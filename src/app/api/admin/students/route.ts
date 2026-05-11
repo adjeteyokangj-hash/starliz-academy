@@ -10,6 +10,8 @@ const createStudentSchema = z.object({
   name: z.string().trim().min(1),
   age: z.number().int().min(1).max(18).optional(),
   yearGroup: z.string().trim().optional(),
+  selectedVoice: z.string().trim().optional(),
+  level: z.number().int().min(1).max(10).optional(),
 });
 
 export async function GET() {
@@ -135,13 +137,33 @@ export async function POST(request: Request) {
   if (!session) return response;
 
   try {
-    const body = createStudentSchema.parse(await request.json());
+    let body;
+    try {
+      body = createStudentSchema.parse(await request.json());
+    } catch (parseError) {
+      if (parseError instanceof z.ZodError) {
+        const issue = parseError.issues[0];
+        const fieldName = issue.path[0] ?? "body";
+        let message = `${fieldName}: ${issue.message}`;
+        if (fieldName === "name" && issue.code === "too_small") {
+          message = "Student name is required";
+        } else if (fieldName === "parentId" && issue.code === "too_small") {
+          message = "Please select a parent";
+        }
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
+      throw parseError;
+    }
+
     const parent = await prisma.user.findFirst({
       where: { id: body.parentId, role: "parent" },
       select: { id: true },
     });
     if (!parent) {
-      return NextResponse.json({ error: "A student must belong to a valid parent account." }, { status: 400 });
+      return NextResponse.json(
+        { error: "A student must belong to a valid parent account." },
+        { status: 400 }
+      );
     }
 
     const student = await prisma.childProfile.create({
@@ -151,6 +173,8 @@ export async function POST(request: Request) {
         name: body.name,
         age: body.age,
         yearGroup: body.yearGroup,
+        selectedVoice: body.selectedVoice || "friendly_coach",
+        level: body.level || 1,
       },
       select: { id: true, name: true, parentId: true },
     });
@@ -164,7 +188,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ student }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Invalid student payload." }, { status: 400 });
+  } catch (error) {
+    console.error("Student creation error:", error);
+    return NextResponse.json(
+      { error: "Unable to create student account. Please try again." },
+      { status: 500 }
+    );
   }
 }

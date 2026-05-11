@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { generatePassword } from "@/lib/password";
 
 type AdminUserRow = {
   id: string;
@@ -23,18 +24,6 @@ type EditState = {
   email: string;
   password: string;
 };
-
-function generatePassword(): string {
-  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const lower = "abcdefghjkmnpqrstuvwxyz";
-  const digits = "23456789";
-  const special = "!@#$%&*";
-  const all = upper + lower + digits + special;
-  const rand = (s: string) => s[Math.floor(Math.random() * s.length)];
-  const core = [rand(upper), rand(lower), rand(digits), rand(special)];
-  for (let i = 0; i < 8; i++) core.push(rand(all));
-  return core.sort(() => Math.random() - 0.5).join("");
-}
 
 type Provider = "openai" | "payment" | "email" | "voice" | "storage";
 

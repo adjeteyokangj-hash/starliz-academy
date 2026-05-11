@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { generatePassword as generateSecurePassword } from "@/lib/password";
 import Button from "@/components/ui/Button";
 
 export default function SignupPage() {
@@ -16,20 +17,7 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
 
   function generatePassword() {
-    const lowercase = "abcdefghijkmnopqrstuvwxyz";
-    const uppercase = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-    const digits = "23456789";
-    const symbols = "!@#$%&*?";
-    const groups = [lowercase, uppercase, digits, symbols];
-    const allChars = groups.join("");
-    const bytes = new Uint32Array(18);
-    crypto.getRandomValues(bytes);
-
-    const required = groups.map((group, index) => group[bytes[index] % group.length]);
-    const remaining = Array.from(bytes.slice(groups.length), (byte) => allChars[byte % allChars.length]);
-    const shuffled = [...required, ...remaining].sort(() => crypto.getRandomValues(new Uint32Array(1))[0] - 2147483648);
-
-    setPassword(shuffled.join(""));
+    setPassword(generateSecurePassword());
     setShowPassword(true);
     setPasswordMessage("Strong password generated.");
   }

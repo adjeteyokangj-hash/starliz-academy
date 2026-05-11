@@ -58,7 +58,38 @@ export async function POST(request: Request) {
   if (!session) return response;
 
   try {
-    const body = createParentSchema.parse(await request.json());
+    let body;
+    try {
+      body = createParentSchema.parse(await request.json());
+    } catch (parseError) {
+      if (parseError instanceof z.ZodError) {
+        const issue = parseError.issues[0];
+        const fieldName = issue.path[0] ?? "body";
+        let message = `${fieldName}: ${issue.message}`;
+        if (fieldName === "password" && issue.code === "too_small") {
+          message = "Password must be at least 8 characters";
+        } else if (fieldName === "email" && issue.code === "invalid_string") {
+          message = "Please provide a valid email address";
+        } else if (fieldName === "name" && issue.code === "too_small") {
+          message = "Parent name is required";
+        }
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
+      throw parseError;
+    }
+
+    // Check if email already exists
+    const existing = await prisma.user.findUnique({
+      where: { email: body.email.toLowerCase() },
+      select: { id: true },
+    });
+    if (existing) {
+      return NextResponse.json(
+        { error: "An account with this email already exists" },
+        { status: 400 }
+      );
+    }
+
     const passwordHash = await hashPassword(body.password);
     const parent = await prisma.user.create({
       data: {
@@ -79,7 +110,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ parent }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Invalid parent payload." }, { status: 400 });
+  } catch (error) {
+    console.error("Parent creation error:", error);
+    return NextResponse.json(
+      { error: "Unable to create parent account. Please try again." },
+      { status: 500 }
+    );
   }
 }

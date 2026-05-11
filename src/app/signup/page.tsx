@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { FormEvent, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import { generatePassword as generateSecurePassword } from "@/lib/password"
 import PublicShell from "@/components/layout/PublicShell"
 
 type Toast = { type: "success" | "error"; message: string } | null
@@ -34,30 +35,6 @@ function isValidEmail(value: string): boolean {
 
 function isValidPhone(value: string): boolean {
   return /^\+?[0-9\s()\-]{8,20}$/.test(value.trim())
-}
-
-function buildStrongPassword(length = 14): string {
-  const lower = "abcdefghijkmnopqrstuvwxyz"
-  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ"
-  const digits = "23456789"
-  const symbols = "!@#$%&*?"
-  const groups = [lower, upper, digits, symbols]
-  const all = groups.join("")
-
-  const bytes = new Uint32Array(length + groups.length)
-  crypto.getRandomValues(bytes)
-
-  const required = groups.map((group, index) => group[bytes[index] % group.length])
-  const remaining = Array.from(bytes.slice(groups.length), (value) => all[value % all.length])
-  const chars = [...required, ...remaining].slice(0, length)
-  for (let i = chars.length - 1; i > 0; i -= 1) {
-    const j = bytes[i] % (i + 1)
-    const tmp = chars[i]
-    chars[i] = chars[j]
-    chars[j] = tmp
-  }
-
-  return chars.join("")
 }
 
 function progressWidthClass(value: number): string {
@@ -165,7 +142,7 @@ export default function SignupPage() {
   }
 
   function generatePassword() {
-    const generated = buildStrongPassword()
+    const generated = generateSecurePassword()
     setPassword(generated)
     setConfirmPassword(generated)
     setShowPassword(true)
