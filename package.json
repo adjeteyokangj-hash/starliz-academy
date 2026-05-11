@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
+    "postinstall": "prisma generate",
     "lint": "eslint",
     "test": "tsx --test tests/csv_escape.test.ts tests/production_flows.test.ts tests/tenant_isolation.test.ts tests/governance_flows.test.ts",
     "test:e2e:assigned-loop": "playwright test tests/e2e/assigned-content-loop.spec.ts",
