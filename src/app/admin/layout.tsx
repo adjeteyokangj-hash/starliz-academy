@@ -7,8 +7,13 @@ export const dynamic = "force-dynamic";
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const session = await readSessionFromCookie();
+  // Don't check authentication here - middleware already handles routing
+  // For /admin without session, middleware redirects to /admin/login
+  // For /admin/login, middleware allows unauthenticated access
   if (!session) {
-    redirect("/auth/login?next=/admin");
+    // Just render children for /admin/login - no redirect needed
+    // Middleware ensures unauthenticated requests to /admin go to /admin/login
+    return <>{children}</>;
   }
 
   const user = await prisma.user.findUnique({
