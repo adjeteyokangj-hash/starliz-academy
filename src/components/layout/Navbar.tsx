@@ -1,0 +1,113 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import Logo from "@/components/Logo";
+import { clearProfile, saveLastPage } from "@/lib/store";
+
+export default function Navbar() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    // Close mobile menu after navigation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMobileOpen(false);
+    // Track last child page so "Continue" can resume their session
+    const CHILD_PAGES = ["/dashboard", "/games", "/spelling", "/maths", "/reading", "/my-profile", "/goals"];
+    if (CHILD_PAGES.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+      saveLastPage(pathname);
+    }
+  }, [pathname]);
+
+  async function logout() {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => undefined);
+    clearProfile();
+    router.replace("/auth/login");
+  }
+
+  return (
+    <header className="sticky top-0 z-10 border-b border-(--ring-color) bg-(--surface) backdrop-blur">
+      <div className="mx-auto max-w-6xl px-3 py-3 sm:px-4">
+        <div className="flex items-center justify-between">
+          <Logo href="/dashboard" variant="wordmark" size={30} textClassName="text-slate-900 dark:text-white" />
+
+          <button
+            type="button"
+            className="rounded-xl px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 md:hidden"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-controls="primary-mobile-nav"
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? "Close" : "Menu"}
+          </button>
+
+          <nav className="hidden items-center gap-2 text-sm font-semibold text-slate-700 md:flex" aria-label="Primary">
+            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/dashboard">
+              Dashboard
+            </Link>
+            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/my-profile">
+              My Profile
+            </Link>
+            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/games/spelling">
+              Spelling
+            </Link>
+            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/games/math">
+              Maths
+            </Link>
+            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/games/reading">
+              Reading
+            </Link>
+            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent-pin">
+              Parent Area
+            </Link>
+            <button
+              type="button"
+              className="rounded-xl px-3 py-2 font-bold text-rose-700 hover:bg-rose-50"
+              onClick={() => void logout()}
+            >
+              Logout
+            </button>
+          </nav>
+        </div>
+
+        <nav
+          id="primary-mobile-nav"
+          className={`${mobileOpen ? "mt-3 grid" : "hidden"} gap-1 text-sm font-semibold text-slate-700 md:hidden`}
+          aria-label="Primary"
+        >
+          <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/dashboard">
+            Dashboard
+          </Link>
+          <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/my-profile">
+            My Profile
+          </Link>
+          <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/games/spelling">
+            Spelling
+          </Link>
+          <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/games/math">
+            Maths
+          </Link>
+          <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/games/reading">
+            Reading
+          </Link>
+          <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent-pin">
+            Parent Area
+          </Link>
+          <button
+            type="button"
+            className="rounded-xl px-3 py-2 text-left font-bold text-rose-700 hover:bg-rose-50"
+            onClick={() => void logout()}
+          >
+            Logout
+          </button>
+        </nav>
+      </div>
+    </header>
+  );
+}

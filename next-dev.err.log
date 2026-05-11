@@ -1,0 +1,46 @@
+⨯ ./src/app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module '@tailwindcss/postcss'
+Require stack:
+- C:\Users\edwar\AppData\Local\starliz-academy-next-cache\dev\build\chunks\[root-of-the-server]__0d-m0h0._.js
+- C:\Users\edwar\AppData\Local\starliz-academy-next-cache\dev\build\chunks\[turbopack]_runtime.js
+- C:\Users\edwar\AppData\Local\starliz-academy-next-cache\dev\build\postcss.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1212:15)]
+    [at Module._load (node:internal/modules/cjs/loader:1043:27)]
+    [at Module.require (node:internal/modules/cjs/loader:1298:19)]
+    [at require (node:internal/modules/helpers:182:18)]
+    [at <anonymous> (turbopack:///[turbopack-node]/transforms/postcss.ts:49:25)]
+    [at <anonymous>]
+    [at Module.init (turbopack:///[turbopack-node]/transforms/postcss.ts:43:33)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:74:20)]
+    [at process.processTicksAndRejections (node:internal/process/task_queues:95:5)]
+
+Import trace:
+  Client Component Browser:
+    ./src/app/globals.css [Client Component Browser]
+    ./src/app/layout.tsx [Server Component]
+
+
+⨯ ./src/app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module '@tailwindcss/postcss'
+Require stack:
+- C:\Users\edwar\AppData\Local\starliz-academy-next-cache\dev\build\chunks\[root-of-the-server]__0d-m0h0._.js
+- C:\Users\edwar\AppData\Local\starliz-academy-next-cache\dev\build\chunks\[turbopack]_runtime.js
+- C:\Users\edwar\AppData\Local\starliz-academy-next-cache\dev\build\postcss.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1212:15)]
+    [at Module._load (node:internal/modules/cjs/loader:1043:27)]
+    [at Module.require (node:internal/modules/cjs/loader:1298:19)]
+    [at require (node:internal/modules/helpers:182:18)]
+    [at <anonymous> (turbopack:///[turbopack-node]/transforms/postcss.ts:49:25)]
+    [at <anonymous>]
+    [at Module.init (turbopack:///[turbopack-node]/transforms/postcss.ts:43:33)]
+    [at run (turbopack:///[turbopack-node]/child_process/evaluate.ts:74:20)]
+    [at process.processTicksAndRejections (node:internal/process/task_queues:95:5)]
+
+Import trace:
+  Client Component Browser:
+    ./src/app/globals.css [Client Component Browser]
+    ./src/app/layout.tsx [Server Component]
+
+

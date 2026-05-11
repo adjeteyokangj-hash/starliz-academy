@@ -1,0 +1,24 @@
+<svg width="720" height="220" viewBox="0 0 720 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M91 23l23 53 58 5-43 38 13 57-51-30-51 30 13-57-43-38 58-5 23-53z" fill="url(#star)" stroke="white" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M53 169c34-17 75-17 109 0" stroke="#FACC15" stroke-width="8" stroke-linecap="round"/>
+  <path d="M61 155c30-14 66-14 96 0" stroke="#22C7F2" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="88" cy="105" r="17" fill="#0B2A7D"/>
+  <path d="M57 150c25-39 51-61 98-76-4 45-42 78-98 76z" fill="#0B2A7D"/>
+  <path d="M64 91l50-8 16 15-57 8-9-15z" fill="#0B2A7D"/>
+  <path d="M143 69l7 15 16 3-12 11 3 16-14-8-14 8 3-16-12-11 16-3 7-15z" fill="#F6B60A"/>
+  <text x="205" y="111" fill="url(#word)" font-family="Arial, Helvetica, sans-serif" font-size="76" font-weight="800" letter-spacing="-2">StarLiz</text>
+  <text x="210" y="159" fill="#2890F8" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" letter-spacing="14">ACADEMY</text>
+  <text x="212" y="199" fill="#CBD5E1" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="500" letter-spacing="8">Learn • Grow • Shine</text>
+  <defs>
+    <linearGradient id="star" x1="9" y1="37" x2="168" y2="176" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00B8F0"/>
+      <stop offset="0.55" stop-color="#1D4EFF"/>
+      <stop offset="1" stop-color="#B728E8"/>
+    </linearGradient>
+    <linearGradient id="word" x1="205" y1="69" x2="528" y2="69" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B2A7D"/>
+      <stop offset="0.66" stop-color="#123EA7"/>
+      <stop offset="1" stop-color="#B728E8"/>
+    </linearGradient>
+  </defs>
+</svg>

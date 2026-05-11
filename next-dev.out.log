@@ -1,0 +1,15 @@
+▲ Next.js 16.2.4 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.17:3000
+- Environments: .env
+✓ Ready in 5.4s
+Creating turbopack project {
+  dir: 'C:\\Users\\edwar\\OneDrive\\Desktop\\Elizabeth Portal\\starliz-academy',
+  testMode: true
+}
+
+○ Compiling /auth/login ...
+○ Compiling /_error ...
+ GET /auth/login 500 in 11.0s (next.js: 10.4s, application-code: 604ms)
+ GET / 500 in 3.6s (next.js: 3.0s, application-code: 630ms)
+[?25h

@@ -1,0 +1,1451 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum PricingInterval {
+  month
+  year
+  custom
+}
+
+enum PricingAudience {
+  individual
+  family
+  school
+  organisation
+}
+
+enum SchoolStatus {
+  pilot
+  active
+  suspended
+  archived
+}
+
+enum SchoolTeacherStatus {
+  invited
+  active
+  suspended
+  archived
+}
+
+enum SchoolTeacherRole {
+  owner
+  admin
+  teacher
+  support
+  staff_observer
+  finance
+}
+
+enum SchoolStudentStatus {
+  active
+  archived
+  transferred
+}
+
+enum SchoolBillingInterval {
+  month
+  year
+  custom
+}
+
+enum SchoolInviteType {
+  teacher
+  school_admin
+  parent
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  passwordHash       String
+  name               String?
+  role               String    @default("parent")
+  trialSessionsUsed  Int       @default(0)
+  pinHash            String?
+  activeChildId      String?
+  consentVersion     String?
+  consentAcceptedAt  DateTime?
+  consentWithdrawnAt DateTime?
+
+  children                        ChildProfile[]
+  adminProfile                    AdminUser?
+  auditLogs                       AuditLog[]
+  subscriptions                   Subscription[]
+  passwordResetTokens             PasswordResetToken[]
+  ownedSchools                    School[]                         @relation("SchoolOwner")
+  teachingLinks                   SchoolTeacher[]
+  schoolLogins                    SchoolLoginHistory[]
+  schoolAccessLogs                SchoolAccessLog[]
+  licenceEvents                   LicenceEvent[]
+  safeguardingIncidents           SafeguardingIncident[]           @relation("SafeguardingReportedBy")
+  consumedSchoolInviteTokens      SchoolInviteToken[]              @relation("SchoolInviteConsumedBy")
+  createdSchoolInviteTokens       SchoolInviteToken[]              @relation("SchoolInviteCreatedBy")
+  parentSchoolLinks               ParentSchoolLink[]               @relation("ParentSchoolLinks")
+  trustMemberships                TrustAdminMembership[]
+  notificationPreferences         NotificationPreference[]
+  schoolProvisioningJobs          SchoolProvisioningJob[]          @relation("ProvisioningRequestedBy")
+  schoolProvisioningStepRuns      SchoolProvisioningStepRun[]      @relation("ProvisioningStepActor")
+  notificationDeliveries          NotificationDelivery[]           @relation("NotificationDeliveredBy")
+  authSessions                    AuthSession[]
+  updatedCommunicationPreferences SchoolCommunicationPreference[]  @relation("CommunicationPreferenceUpdatedBy")
+  schoolCommunicationLogs         SchoolCommunicationLog[]         @relation("SchoolCommunicationActor")
+  ownedSafeguardingEscalations    SafeguardingIncident[]           @relation("SafeguardingEscalationOwner")
+  safeguardingWorkflowEvents      SafeguardingWorkflowEvent[]      @relation("SafeguardingWorkflowActor")
+  safeguardingEvidenceUploads     SafeguardingEvidenceAttachment[] @relation("SafeguardingEvidenceUploadedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model ChildProfile {
+  id       String @id
+  parentId String
+  parent   User   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  name      String
+  avatar    String?
+  age       Int?
+  yearGroup String?
+
+  stars  Int @default(0)
+  xp     Int @default(0)
+  coins  Int @default(0)
+  level  Int @default(1)
+  streak Int @default(0)
+
+  selectedVoice      String  @default("friendly_coach")
+  selectedTheme      String  @default("default")
+  archived           Boolean @default(false)
+  snapshotJson       String?
+  coachingMemoryJson String?
+
+  progressRecords       ProgressRecord[]
+  rewards               ChildReward[]
+  walletTransactions    WalletTransaction[]
+  questionHistory       QuestionHistory[]
+  weakAreas             WeakArea[]
+  assignments           Assignment[]
+  attempts              Attempt[]
+  studentSkills         StudentSkill[]
+  schoolLinks           SchoolStudent[]
+  safeguardingAlerts    SchoolSafeguardingAlert[]
+  safeguardingIncidents SafeguardingIncident[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProgressRecord {
+  id      String       @id @default(cuid())
+  childId String
+  child   ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  activityType String
+  activityName String
+
+  starsEarned Int @default(0)
+  xpEarned    Int @default(0)
+  coinsEarned Int @default(0)
+
+  score      Float?
+  correct    Boolean?
+  difficulty Int?
+  notes      String?
+  accuracy   Int?
+  completed  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+}
+
+model QuestionHistory {
+  id      String       @id @default(cuid())
+  childId String
+  child   ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  activityType      String
+  questionId        String
+  answeredCorrectly Boolean
+  attempts          Int     @default(1)
+
+  createdAt DateTime @default(now())
+
+  @@unique([childId, questionId])
+}
+
+model RewardItem {
+  id          String @id @default(cuid())
+  name        String
+  description String
+  category    String
+
+  cost        Int
+  unlockLevel Int @default(1)
+
+  imageUrl String?
+  isActive Boolean @default(true)
+
+  childRewards ChildReward[]
+
+  createdAt DateTime @default(now())
+}
+
+model AIContentCache {
+  id                 String       @id @default(cuid())
+  contentType        String // "spelling" | "math" | "reading"
+  level              Int
+  topic              String       @default("")
+  contentJson        String // JSON array of generated items
+  usedCount          Int          @default(0)
+  status             String       @default("draft") // draft | reviewed | approved | published
+  reviewedAt         DateTime?
+  approvedAt         DateTime?
+  publishedAt        DateTime?
+  createdAt          DateTime     @default(now())
+  createdBy          String       @default("system")
+  model              String?
+  prompt             String?
+  keyStage           String?
+  yearGroup          String?
+  skillFocus         String?
+  skills             String? // comma-separated skill codes e.g. "cvc,short_vowels"
+  metadataJson       String?
+  estimatedCostPence Int          @default(0)
+  assignments        Assignment[]
+
+  @@index([contentType, level])
+  @@index([status])
+}
+
+model WordProgress {
+  id           String   @id @default(cuid())
+  studentId    String
+  word         String
+  length       Int
+  pattern      String?
+  attempts     Int      @default(0)
+  correctCount Int      @default(0)
+  status       String   @default("seen")
+  mistakeType  String?
+  lastSeen     DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@unique([studentId, word])
+}
+
+model ApiKeyConfig {
+  id             String    @id @default(cuid())
+  provider       String    @unique // openai | payment | email | voice | storage
+  label          String
+  encryptedValue String
+  maskedValue    String
+  status         String    @default("untested") // untested | connected | failed
+  lastTestedAt   DateTime?
+  updatedBy      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+enum AdminPermission {
+  // User Management
+  MANAGE_USERS
+  MANAGE_ADMINS
+  MANAGE_ROLES
+  VIEW_AUDIT_LOGS
+
+  // Content & Learning
+  MANAGE_CONTENT
+  APPROVE_CONTENT
+  MANAGE_ASSIGNMENTS
+  VIEW_PROGRESS
+
+  // Billing & Subscriptions
+  MANAGE_BILLING
+  MANAGE_SUBSCRIPTIONS
+
+  // Integrations & API
+  MANAGE_INTEGRATIONS
+  MANAGE_API_KEYS
+
+  // Platform Settings
+  MANAGE_SETTINGS
+  MANAGE_BRANDING
+  MANAGE_SECURITY
+
+  // Data Operations
+  VIEW_REPORTS
+  EXPORT_DATA
+  ARCHIVE_RECORDS
+  DELETE_RECORDS
+
+  // Inbox & Communications
+  MANAGE_INBOX
+}
+
+model AdminRole {
+  id          String      @id @default(cuid())
+  name        String      @unique(map: "sqlite_autoindex_AdminRole_2")
+  description String?
+  permissions String      @default("[]") // JSON array of AdminPermission enum values
+  isBuiltIn   Boolean     @default(false)
+  users       AdminUser[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model AdminUser {
+  id                  String     @id @default(cuid())
+  userId              String     @unique
+  user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId              String?
+  role                AdminRole? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  active              Boolean    @default(true)
+  title               String?
+  lastLoginAt         DateTime?
+  lastLoginIpAddress  String?
+  lastLoginUserAgent  String?
+  isLocked            Boolean    @default(false)
+  lockedReason        String?
+  lockedUntil         DateTime?
+  deletionRequestedAt DateTime?
+  deletionRequester   String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  // Deletion approvals (many-to-one: this admin is the target being deleted)
+  deleteApprovalsAsTarget    DeleteApproval[] @relation("DeleteTarget")
+  // Deletion approvals (many-to-one: this admin requested the deletion)
+  deleteApprovalsAsRequester DeleteApproval[] @relation("DeleteRequester")
+  // Deletion approvals (many-to-one: this admin approved the deletion)
+  deleteApprovalsAsApprover  DeleteApproval[] @relation("DeleteApprover")
+
+  @@index([active])
+  @@index([roleId])
+}
+
+model DeleteApproval {
+  id                String     @id @default(cuid())
+  targetUserId      String
+  targetUser        AdminUser  @relation(fields: [targetUserId], references: [id], onDelete: Cascade, name: "DeleteTarget")
+  requestedByUserId String
+  requestedBy       AdminUser  @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade, name: "DeleteRequester")
+  approvedByUserId  String?
+  approvedBy        AdminUser? @relation(fields: [approvedByUserId], references: [id], onDelete: SetNull, name: "DeleteApprover")
+
+  entityType        String // "admin_user" | "student" | "parent" | "subscription" | "content" | "api_key"
+  entityId          String
+  reason            String?
+  status            String  @default("pending") // pending | approved | denied | cancelled
+  requestIpAddress  String?
+  requestUserAgent  String?
+  approvalIpAddress String?
+  approvalUserAgent String?
+  denialReason      String?
+
+  requestedAt DateTime  @default(now())
+  approvedAt  DateTime?
+  deniedAt    DateTime?
+  executedAt  DateTime?
+  expiresAt   DateTime // Approval expires after 7 days
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([targetUserId, status])
+  @@index([requestedByUserId, status])
+  @@index([entityType, entityId])
+  @@index([status, expiresAt])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorUserId  String?
+  actor        User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  action       String
+  entityType   String
+  entityId     String?
+  metadataJson String?
+  createdAt    DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+}
+
+model Subscription {
+  id                 String    @id @default(cuid())
+  parentId           String
+  parent             User      @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  provider           String    @default("manual")
+  providerCustomerId String?
+  providerSubId      String?
+  pricingPlanId      String?
+  planKey            String    @default("trial")
+  status             String    @default("trialing")
+  trialEndsAt        DateTime?
+  currentPeriodEnd   DateTime?
+  graceEndsAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([parentId])
+  @@index([providerCustomerId])
+  @@index([providerSubId])
+  @@index([pricingPlanId])
+}
+
+model School {
+  id           String       @id @default(cuid())
+  name         String
+  slug         String       @unique
+  status       SchoolStatus @default(pilot)
+  type         String       @default("school") // school | tutoring_centre | organisation
+  contactEmail String?
+  contactPhone String?
+  addressJson  String?
+  notes        String?
+
+  ownerUserId String?
+  owner       User?   @relation("SchoolOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  teachers                        SchoolTeacher[]
+  classrooms                      Classroom[]
+  students                        SchoolStudent[]
+  licence                         SchoolLicence?
+  licenceEvents                   LicenceEvent[]
+  auditLogs                       SchoolAuditLog[]
+  loginHistory                    SchoolLoginHistory[]
+  accessLogs                      SchoolAccessLog[]
+  inviteTokens                    SchoolInviteToken[]
+  parentLinks                     ParentSchoolLink[]
+  communicationPreferences        SchoolCommunicationPreference[]
+  communicationLogs               SchoolCommunicationLog[]
+  safeguardingAlerts              SchoolSafeguardingAlert[]
+  safeguardingIncidents           SafeguardingIncident[]
+  safeguardingWorkflowEvents      SafeguardingWorkflowEvent[]
+  safeguardingEvidenceAttachments SafeguardingEvidenceAttachment[]
+  trustMemberships                TrustSchoolMembership[]
+  provisioningJobs                SchoolProvisioningJob[]
+  notificationEvents              NotificationEvent[]
+  notificationPreferences         NotificationPreference[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([ownerUserId])
+}
+
+model AuthSession {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionFamilyId   String
+  tokenId           String    @unique
+  refreshTokenHash  String    @unique
+  deviceFingerprint String
+  ipAddress         String?
+  userAgent         String?
+  expiresAt         DateTime
+  issuedAt          DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+  revokedAt         DateTime?
+  revokeReason      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([sessionFamilyId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model Classroom {
+  id           String         @id @default(cuid())
+  schoolId     String
+  school       School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name         String
+  yearGroup    String?
+  academicYear String?
+  status       String         @default("active")
+  teacherId    String?
+  teacher      SchoolTeacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  students SchoolStudent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, name, academicYear])
+  @@index([schoolId, status])
+  @@index([teacherId])
+}
+
+model SchoolTeacher {
+  id              String              @id @default(cuid())
+  schoolId        String
+  school          School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            SchoolTeacherRole   @default(teacher)
+  status          SchoolTeacherStatus @default(invited)
+  title           String?
+  invitedByUserId String?
+  invitedAt       DateTime?
+  acceptedAt      DateTime?
+  lastActiveAt    DateTime?
+
+  classrooms   Classroom[]
+  inviteTokens TeacherInviteToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, userId])
+  @@index([schoolId, role])
+  @@index([userId])
+  @@index([status])
+}
+
+model SchoolStudent {
+  id          String              @id @default(cuid())
+  schoolId    String
+  school      School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  childId     String
+  child       ChildProfile        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  classroomId String?
+  classroom   Classroom?          @relation(fields: [classroomId], references: [id], onDelete: SetNull)
+  status      SchoolStudentStatus @default(active)
+  externalRef String?
+  joinedAt    DateTime            @default(now())
+  leftAt      DateTime?
+
+  parentLinks ParentSchoolLink[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, childId])
+  @@unique([schoolId, externalRef])
+  @@index([schoolId, status])
+  @@index([classroomId])
+  @@index([childId])
+}
+
+model SchoolLicence {
+  id                     String                @id @default(cuid())
+  schoolId               String                @unique
+  school                 School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  pricingPlanId          String?
+  provider               String                @default("manual")
+  providerCustomerId     String?
+  providerSubscriptionId String?
+  status                 String                @default("pilot") // pilot | active | trialing | past_due | cancelled | suspended
+  seatLimit              Int                   @default(0)
+  seatPricePence         Int?
+  currency               String                @default("GBP")
+  billingInterval        SchoolBillingInterval @default(custom)
+  trialEndsAt            DateTime?
+  currentPeriodEnd       DateTime?
+  startsAt               DateTime?
+  endsAt                 DateTime?
+  notes                  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([pricingPlanId])
+  @@index([providerCustomerId])
+  @@index([providerSubscriptionId])
+}
+
+model PricingPlan {
+  id            String          @id @default(cuid())
+  name          String
+  description   String
+  price         Float
+  currency      String          @default("GBP")
+  interval      PricingInterval
+  audience      PricingAudience
+  features      Json
+  priceNote     String?
+  badge         String?
+  ctaLabel      String
+  ctaHref       String
+  stripePriceId String?
+  isActive      Boolean         @default(true)
+  isPopular     Boolean         @default(false)
+  sortOrder     Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  title       String
+  subject     String
+  ageGroup    String?
+  difficulty  Int      @default(1)
+  status      String   @default("draft")
+  contentRefs String?
+  skills      String? // comma-separated skill codes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model RewardRule {
+  id        String   @id @default(cuid())
+  name      String
+  trigger   String
+  points    Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StoreItem {
+  id            String   @id @default(cuid())
+  name          String
+  category      String
+  description   String?
+  price         Int      @default(0)
+  minAge        Int?
+  maxAge        Int?
+  requiredLevel Int?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model WalletTransaction {
+  id            String       @id @default(cuid())
+  childId       String
+  child         ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+  type          String
+  amount        Int
+  source        String
+  itemId        String?
+  reason        String?
+  balanceBefore Int
+  balanceAfter  Int
+  metadataJson  String?
+  createdAt     DateTime     @default(now())
+
+  @@index([childId, createdAt])
+  @@index([type, source])
+}
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  parentId  String?
+  subject   String
+  message   String?
+  status    String   @default("open")
+  priority  String   @default("normal")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([status])
+}
+
+model NotificationTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  channel   String
+  subject   String?
+  body      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MediaAsset {
+  id        String   @id @default(cuid())
+  title     String
+  type      String
+  url       String?
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JobRunLog {
+  id           String    @id @default(cuid())
+  jobName      String
+  status       String
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  error        String?
+  metadataJson String?
+  createdAt    DateTime  @default(now())
+
+  @@index([jobName, startedAt])
+  @@index([status])
+}
+
+model WeakArea {
+  id                String       @id @default(cuid())
+  studentId         String
+  student           ChildProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject           String
+  keyStage          String?
+  yearGroup         String?
+  skillFocus        String
+  weaknessType      String
+  accuracy          Int
+  attemptsCount     Int
+  currentDifficulty Int          @default(1)
+  lastDetectedAt    DateTime     @default(now())
+  status            String       @default("active")
+  metadataJson      String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([studentId, subject, skillFocus])
+  @@index([status])
+  @@index([subject, skillFocus])
+}
+
+model Assignment {
+  id        String         @id @default(cuid())
+  studentId String
+  student   ChildProfile   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  contentId String
+  content   AIContentCache @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  status    String         @default("assigned")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([studentId, contentId])
+  @@index([studentId, status])
+}
+
+model Attempt {
+  id             String       @id @default(cuid())
+  studentId      String
+  student        ChildProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject        String
+  spellingMode   String?
+  keyStage       String?
+  yearGroup      String?
+  skillFocus     String
+  contentId      String?
+  assignmentId   String?
+  questionText   String?
+  answerGiven    String?
+  correctAnswer  String?
+  correct        Boolean
+  responseTimeMs Int
+  hintsUsed      Int          @default(0)
+  difficulty     Int
+  skills         String? // comma-separated skill codes
+  createdAt      DateTime     @default(now())
+
+  @@index([studentId, subject, skillFocus])
+  @@index([createdAt])
+}
+
+model ChildReward {
+  id      String       @id @default(cuid())
+  childId String
+  child   ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  rewardId String
+  reward   RewardItem @relation(fields: [rewardId], references: [id], onDelete: Cascade)
+
+  isEquipped Boolean @default(false)
+
+  purchasedAt DateTime @default(now())
+
+  @@unique([childId, rewardId])
+}
+
+model StudentSkill {
+  id        String       @id @default(cuid())
+  studentId String
+  student   ChildProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  skill     String
+  accuracy  Float        @default(0)
+  attempts  Int          @default(0)
+  correct   Int          @default(0)
+  status    String       @default("weak") // weak | improving | mastered
+  updatedAt DateTime     @updatedAt
+  createdAt DateTime     @default(now())
+
+  @@unique([studentId, skill])
+  @@index([studentId, status])
+  @@index([skill])
+}
+
+model BrandingSettings {
+  id         String   @id @default(cuid())
+  siteName   String   @default("StarLiz Academy")
+  tagline    String   @default("Learn • Grow • Shine")
+  logoUrl    String   @default("/brand/starliz-logo.png")
+  iconUrl    String   @default("/brand/starliz-logo.png")
+  faviconUrl String   @default("/brand/starliz-logo.png")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// Stores the Microsoft Graph OAuth token for the connected admin Outlook inbox
+model OutlookToken {
+  id              String   @id @default(cuid())
+  adminUserId     String   @unique
+  microsoftUserId String
+  email           String
+  displayName     String?
+  accessToken     String // encrypted
+  refreshToken    String // encrypted
+  expiresAt       DateTime
+  scope           String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model GeneralSettings {
+  id              String   @id @default(cuid())
+  appName         String   @default("StarLiz Academy")
+  timezone        String   @default("Europe/London")
+  locale          String   @default("en-GB")
+  supportEmail    String   @default("")
+  maintenanceMode Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SecuritySettings {
+  id                  String   @id @default(cuid())
+  minPasswordLength   Int      @default(8)
+  requireUppercase    Boolean  @default(true)
+  requireNumber       Boolean  @default(true)
+  requireSpecial      Boolean  @default(false)
+  sessionTimeoutHours Int      @default(24)
+  maxLoginAttempts    Int      @default(5)
+  twoFaEnabled        Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model AIAdaptationSettings {
+  id                     String   @id @default(cuid())
+  frustrationThreshold   Int      @default(3)
+  lowConfidenceThreshold Int      @default(40)
+  adaptationEnabled      Boolean  @default(true)
+  warmupRequired         Boolean  @default(true)
+  shortSessionMins       Int      @default(5)
+  normalSessionMins      Int      @default(15)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+// Sent/received emails tracked in the admin inbox
+model AdminEmail {
+  id          String   @id @default(cuid())
+  adminUserId String
+  direction   String // "inbox" | "sent"
+  subject     String
+  body        String?
+  fromAddress String
+  toAddress   String
+  messageId   String? // Microsoft message ID for threading
+  isRead      Boolean  @default(false)
+  receivedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([adminUserId, direction])
+  @@index([adminUserId, isRead])
+}
+
+model ParentMessageThread {
+  id             String    @id @default(cuid())
+  channel        String    @default("whatsapp") // text | whatsapp
+  contactAddress String // e.g. +447700900123
+  contactLabel   String?
+  parentId       String?
+  parentEmail    String?
+  unreadCount    Int       @default(0)
+  lastMessageAt  DateTime  @default(now())
+  lastInboundAt  DateTime?
+  lastOutboundAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  messages ParentMessage[]
+
+  @@unique([channel, contactAddress])
+  @@index([lastMessageAt])
+}
+
+model ParentMessage {
+  id             String              @id @default(cuid())
+  threadId       String
+  thread         ParentMessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  direction      String // inbound | outbound
+  body           String
+  fromAddress    String
+  toAddress      String
+  providerSid    String?             @unique
+  providerStatus String?
+  mediaUrlsJson  String?
+  actorUserId    String?
+  sentAt         DateTime?
+  receivedAt     DateTime?
+  createdAt      DateTime            @default(now())
+
+  @@index([threadId, createdAt])
+  @@index([direction, createdAt])
+}
+
+// ─── School: Invite Tokens ─────────────────────────────────────────────────
+
+model TeacherInviteToken {
+  id              String        @id @default(cuid())
+  schoolTeacherId String
+  schoolTeacher   SchoolTeacher @relation(fields: [schoolTeacherId], references: [id], onDelete: Cascade)
+  tokenHash       String        @unique
+  expiresAt       DateTime
+  usedAt          DateTime?
+  resentAt        DateTime?
+  resentCount     Int           @default(0)
+  createdAt       DateTime      @default(now())
+
+  @@index([schoolTeacherId])
+  @@index([expiresAt])
+}
+
+// ─── School: Generic Invite Tokens (teacher/admin/parent) ───────────────
+
+model SchoolInviteToken {
+  id                    String           @id @default(cuid())
+  schoolId              String
+  school                School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  inviteType            SchoolInviteType
+  targetEmail           String
+  targetRole            String?
+  targetSchoolStudentId String?
+  tokenHash             String           @unique
+  expiresAt             DateTime
+  usedAt                DateTime?
+  consumedByUserId      String?
+  consumedByUser        User?            @relation("SchoolInviteConsumedBy", fields: [consumedByUserId], references: [id], onDelete: SetNull)
+  createdByUserId       String?
+  createdByUser         User?            @relation("SchoolInviteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  metadataJson          String?
+  createdAt             DateTime         @default(now())
+
+  @@index([schoolId, inviteType])
+  @@index([schoolId, targetEmail])
+  @@index([expiresAt])
+  @@index([usedAt])
+}
+
+// ─── School: Audit Log ────────────────────────────────────────────────────
+
+model SchoolAuditLog {
+  id                   String   @id @default(cuid())
+  schoolId             String
+  school               School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  actorUserId          String?
+  action               String // invite_sent | invite_accepted | invite_expired | invite_resent
+  // teacher_activated | teacher_suspended | teacher_archived
+  // student_enrolled | student_transferred | student_archived
+  // login | login_blocked | seat_upgraded | licence_suspended
+  // assignment_issued | content_moderation_flag | safeguarding_alert
+  entityType           String // teacher | student | classroom | licence | assignment | system
+  entityId             String?
+  ipAddress            String?
+  userAgent            String?
+  requestId            String?
+  correlationId        String?
+  source               String? // ui | api | worker | webhook | system
+  operation            String?
+  actorType            String? // admin_user | school_staff | system | webhook
+  actorAdminUserId     String?
+  actorSchoolTeacherId String?
+  actorEmail           String?
+  impersonatedByUserId String?
+  metadataJson         String?
+  beforeJson           String?
+  afterJson            String?
+  diffJson             String?
+  tagsJson             String?
+  severity             String   @default("info") // info | warning | critical
+  createdAt            DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([schoolId, action])
+  @@index([schoolId, operation, createdAt])
+  @@index([entityType, entityId])
+  @@index([correlationId])
+  @@index([actorUserId, createdAt])
+  @@index([severity, createdAt])
+}
+
+// ─── School: Login History ────────────────────────────────────────────────
+
+model SchoolLoginHistory {
+  id         String   @id @default(cuid())
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       String // SchoolTeacherRole value or "student"
+  success    Boolean
+  failReason String? // wrong_password | licence_blocked | account_suspended | etc.
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([userId, createdAt])
+  @@index([success, createdAt])
+}
+
+// ─── School: Access Log ─────────────────────────────────────────────────
+
+model SchoolAccessLog {
+  id              String   @id @default(cuid())
+  schoolId        String
+  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolTeacherId String?
+  method          String
+  route           String
+  resourceType    String?
+  resourceId      String?
+  success         Boolean  @default(true)
+  denialReason    String?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([userId, createdAt])
+  @@index([schoolTeacherId, createdAt])
+  @@index([success, createdAt])
+}
+
+// ─── School: Licence Events ─────────────────────────────────────────────
+
+model LicenceEvent {
+  id              String   @id @default(cuid())
+  schoolId        String
+  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolLicenceId String?
+  eventType       String
+  previousStatus  String?
+  nextStatus      String?
+  actorUserId     String?
+  actor           User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  metadataJson    String?
+  createdAt       DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([schoolLicenceId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+// ─── School: Parent-School Relationship ──────────────────────────────────
+
+model ParentSchoolLink {
+  id                      String                         @id @default(cuid())
+  schoolId                String
+  school                  School                         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parentUserId            String
+  parent                  User                           @relation("ParentSchoolLinks", fields: [parentUserId], references: [id], onDelete: Cascade)
+  schoolStudentId         String
+  schoolStudent           SchoolStudent                  @relation(fields: [schoolStudentId], references: [id], onDelete: Cascade)
+  // Permissions the school has granted/restricted for this parent
+  canReceiveReports       Boolean                        @default(true)
+  canMessageTeachers      Boolean                        @default(true)
+  consentGivenAt          DateTime?
+  consentWithdrawnAt      DateTime?
+  status                  String                         @default("active") // active | pending_consent | suspended | removed
+  invitedAt               DateTime                       @default(now())
+  communicationPreference SchoolCommunicationPreference?
+  communicationLogs       SchoolCommunicationLog[]
+  createdAt               DateTime                       @default(now())
+  updatedAt               DateTime                       @updatedAt
+
+  @@unique([schoolId, parentUserId, schoolStudentId])
+  @@index([schoolId, status])
+  @@index([parentUserId])
+  @@index([schoolStudentId])
+}
+
+model SchoolCommunicationPreference {
+  id                     String           @id @default(cuid())
+  schoolId               String
+  school                 School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parentSchoolLinkId     String           @unique
+  parentSchoolLink       ParentSchoolLink @relation(fields: [parentSchoolLinkId], references: [id], onDelete: Cascade)
+  optedOutAt             DateTime?
+  optOutReason           String?
+  safeguardingLockedAt   DateTime?
+  safeguardingLockReason String?
+  updatedByUserId        String?
+  updatedBy              User?            @relation("CommunicationPreferenceUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  @@index([schoolId, updatedAt])
+  @@index([optedOutAt])
+  @@index([safeguardingLockedAt])
+}
+
+model SchoolCommunicationLog {
+  id                   String           @id @default(cuid())
+  schoolId             String
+  school               School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parentSchoolLinkId   String
+  parentSchoolLink     ParentSchoolLink @relation(fields: [parentSchoolLinkId], references: [id], onDelete: Cascade)
+  actorUserId          String?
+  actor                User?            @relation("SchoolCommunicationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  channel              String
+  subject              String
+  messageBody          String
+  deliveryStatus       String
+  deliveryReason       String?
+  safeguardingOverride Boolean          @default(false)
+  createdAt            DateTime         @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([parentSchoolLinkId, createdAt])
+  @@index([deliveryStatus, createdAt])
+}
+
+// ─── School: Safeguarding Alerts ─────────────────────────────────────────
+
+model SchoolSafeguardingAlert {
+  id           String        @id @default(cuid())
+  schoolId     String
+  school       School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId    String?
+  student      ChildProfile? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  triggeredBy  String // ai_moderation | teacher_flag | system_rule | parent_report
+  category     String // inappropriate_content | distress_signal | unusual_activity | access_anomaly
+  severity     String        @default("medium") // low | medium | high | critical
+  description  String
+  contentRef   String? // e.g. contentId, assignmentId, sessionId
+  status       String        @default("open") // open | under_review | resolved | escalated | dismissed
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  resolvedAt   DateTime?
+  metadataJson String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([schoolId, status])
+  @@index([schoolId, severity])
+  @@index([studentId])
+  @@index([createdAt])
+}
+
+// ─── School: Safeguarding Incidents ─────────────────────────────────────
+
+model SafeguardingIncident {
+  id                    String                           @id @default(cuid())
+  schoolId              String
+  school                School                           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId             String?
+  student               ChildProfile?                    @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  reportedByUserId      String?
+  reportedBy            User?                            @relation("SafeguardingReportedBy", fields: [reportedByUserId], references: [id], onDelete: SetNull)
+  escalationOwnerUserId String?
+  escalationOwner       User?                            @relation("SafeguardingEscalationOwner", fields: [escalationOwnerUserId], references: [id], onDelete: SetNull)
+  escalationLevel       String?
+  category              String
+  severity              String                           @default("medium")
+  status                String                           @default("open")
+  description           String
+  actionTaken           String?
+  metadataJson          String?
+  workflowEvents        SafeguardingWorkflowEvent[]
+  evidenceAttachments   SafeguardingEvidenceAttachment[]
+  createdAt             DateTime                         @default(now())
+  updatedAt             DateTime                         @updatedAt
+  resolvedAt            DateTime?
+
+  @@index([schoolId, status])
+  @@index([schoolId, severity])
+  @@index([studentId, createdAt])
+  @@index([reportedByUserId, createdAt])
+  @@index([escalationOwnerUserId, createdAt])
+}
+
+model SafeguardingWorkflowEvent {
+  id           String               @id @default(cuid())
+  schoolId     String
+  school       School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  incidentId   String
+  incident     SafeguardingIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  actorUserId  String?
+  actor        User?                @relation("SafeguardingWorkflowActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  eventType    String
+  note         String?
+  metadataJson String?
+  createdAt    DateTime             @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([incidentId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model SafeguardingEvidenceAttachment {
+  id               String               @id @default(cuid())
+  schoolId         String
+  school           School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  incidentId       String
+  incident         SafeguardingIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  uploadedByUserId String?
+  uploadedBy       User?                @relation("SafeguardingEvidenceUploadedBy", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  label            String
+  originalName     String
+  storedFilename   String
+  publicUrl        String
+  mimeType         String?
+  fileSizeBytes    Int?
+  note             String?
+  createdAt        DateTime             @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([incidentId, createdAt])
+}
+
+// ─── School Provisioning Jobs (async backend provisioning) ───────────────
+
+model SchoolProvisioningJob {
+  id                String                      @id @default(cuid())
+  schoolId          String
+  school            School                      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  requestedByUserId String?
+  requestedBy       User?                       @relation("ProvisioningRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  status            String                      @default("queued") // queued | running | succeeded | failed | retry_scheduled | cancelled | timed_out
+  priority          String                      @default("normal") // low | normal | high | critical
+  idempotencyKey    String                      @unique
+  requestJson       String?
+  resultJson        String?
+  errorJson         String?
+  attemptCount      Int                         @default(0)
+  maxAttempts       Int                         @default(3)
+  nextRetryAt       DateTime?
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  stepRuns          SchoolProvisioningStepRun[]
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  @@index([schoolId, createdAt])
+  @@index([status, createdAt])
+  @@index([nextRetryAt, status])
+}
+
+model SchoolProvisioningStepRun {
+  id          String                @id @default(cuid())
+  jobId       String
+  job         SchoolProvisioningJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stepKey     String
+  status      String                @default("pending") // pending | running | completed | failed | skipped
+  attempt     Int                   @default(1)
+  actorUserId String?
+  actor       User?                 @relation("ProvisioningStepActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  inputJson   String?
+  outputJson  String?
+  errorJson   String?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  durationMs  Int?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([jobId, createdAt])
+  @@index([stepKey, status])
+}
+
+// ─── MAT / Multi-school Support ──────────────────────────────────────────
+
+model Trust {
+  id                      String                   @id @default(cuid())
+  name                    String
+  code                    String                   @unique
+  status                  String                   @default("active") // active | suspended | archived
+  headquartersRegion      String?
+  metadataJson            String?
+  schoolMemberships       TrustSchoolMembership[]
+  adminMemberships        TrustAdminMembership[]
+  bulkBatches             BulkOnboardingBatch[]
+  notificationEvents      NotificationEvent[]
+  notificationPreferences NotificationPreference[]
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model TrustSchoolMembership {
+  id          String    @id @default(cuid())
+  trustId     String
+  trust       Trust     @relation(fields: [trustId], references: [id], onDelete: Cascade)
+  schoolId    String
+  school      School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  roleInTrust String? // lead_school | member_school | satellite
+  status      String    @default("active") // active | suspended | archived
+  joinedAt    DateTime  @default(now())
+  leftAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([trustId, schoolId])
+  @@index([schoolId, status])
+  @@index([trustId, status])
+}
+
+model TrustAdminMembership {
+  id        String   @id @default(cuid())
+  trustId   String
+  trust     Trust    @relation(fields: [trustId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trustRole String   @default("viewer") // owner | admin | operator | viewer
+  status    String   @default("active") // active | suspended
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([trustId, userId])
+  @@index([userId, status])
+  @@index([trustId, status])
+}
+
+model BulkOnboardingBatch {
+  id              String               @id @default(cuid())
+  trustId         String?
+  trust           Trust?               @relation(fields: [trustId], references: [id], onDelete: SetNull)
+  createdByUserId String?
+  sourceType      String               @default("csv") // csv | api | manual
+  fileRef         String?
+  status          String               @default("draft") // draft | validating | ready | running | completed | failed | cancelled
+  totalRows       Int                  @default(0)
+  successRows     Int                  @default(0)
+  failedRows      Int                  @default(0)
+  dryRun          Boolean              @default(true)
+  items           BulkOnboardingItem[]
+  metadataJson    String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([status, createdAt])
+  @@index([trustId, createdAt])
+}
+
+model BulkOnboardingItem {
+  id                String              @id @default(cuid())
+  batchId           String
+  batch             BulkOnboardingBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rowNumber         Int
+  schoolPayloadJson String
+  status            String              @default("pending") // pending | validated | created | failed | skipped
+  createdSchoolId   String?
+  errorJson         String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([batchId, rowNumber])
+  @@index([status, createdAt])
+  @@index([createdSchoolId])
+}
+
+// ─── Notification Infrastructure ─────────────────────────────────────────
+
+model NotificationEvent {
+  id          String                 @id @default(cuid())
+  eventType   String
+  schoolId    String?
+  school      School?                @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  trustId     String?
+  trust       Trust?                 @relation(fields: [trustId], references: [id], onDelete: SetNull)
+  severity    String                 @default("info") // info | warning | critical
+  payloadJson String
+  dedupeKey   String?
+  status      String                 @default("pending") // pending | processing | dispatched | failed | cancelled
+  deliveries  NotificationDelivery[]
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([eventType, createdAt])
+  @@index([schoolId, createdAt])
+  @@index([trustId, createdAt])
+  @@index([status, createdAt])
+  @@index([dedupeKey])
+}
+
+model NotificationDelivery {
+  id                String            @id @default(cuid())
+  eventId           String
+  event             NotificationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  channel           String // email | sms | whatsapp
+  recipient         String
+  status            String            @default("pending") // pending | sent | delivered | failed | skipped
+  attempts          Int               @default(0)
+  providerMessageId String?
+  providerStatus    String?
+  lastError         String?
+  deliveredByUserId String?
+  deliveredBy       User?             @relation("NotificationDeliveredBy", fields: [deliveredByUserId], references: [id], onDelete: SetNull)
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([eventId, createdAt])
+  @@index([channel, status, createdAt])
+  @@index([recipient, createdAt])
+}
+
+model NotificationPreference {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolId        String?
+  school          School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  trustId         String?
+  trust           Trust?   @relation(fields: [trustId], references: [id], onDelete: Cascade)
+  eventType       String? // null means default rule for scope
+  emailEnabled    Boolean  @default(true)
+  smsEnabled      Boolean  @default(false)
+  whatsappEnabled Boolean  @default(false)
+  minSeverity     String   @default("info") // info | warning | critical
+  quietHoursStart String?
+  quietHoursEnd   String?
+  timezone        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([schoolId, userId])
+  @@index([trustId, userId])
+}

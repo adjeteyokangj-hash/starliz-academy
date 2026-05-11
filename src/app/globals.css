@@ -1,0 +1,331 @@
+@import "tailwindcss";
+
+:root {
+  --font-body: "Segoe UI", Arial, sans-serif;
+  --font-heading: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
+  --background: #f8f9ff;
+  --foreground: #1f2a37;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-strong: rgba(255, 255, 255, 0.94);
+  --ring-color: rgba(148, 163, 184, 0.24);
+  --page-grad-a: rgba(108, 92, 231, 0.14);
+  --page-grad-b: rgba(0, 206, 201, 0.14);
+  --btn-primary: linear-gradient(135deg, #6c5ce7 0%, #8b5cf6 100%);
+  --btn-secondary: linear-gradient(135deg, #00cec9 0%, #22d3ee 100%);
+  --btn-accent: linear-gradient(135deg, #fdcb6e 0%, #f59e0b 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(242,244,255,0.95) 100%);
+  --stat-ring: rgba(108, 92, 231, 0.22);
+}
+
+:root[data-theme="ocean"] {
+  --background: #eefbff;
+  --foreground: #15324a;
+  --surface: rgba(240, 251, 255, 0.84);
+  --surface-strong: rgba(255, 255, 255, 0.94);
+  --ring-color: rgba(14, 116, 144, 0.22);
+  --page-grad-a: rgba(34, 211, 238, 0.22);
+  --page-grad-b: rgba(14, 165, 233, 0.2);
+  --btn-primary: linear-gradient(135deg, #0891b2 0%, #0ea5e9 100%);
+  --btn-secondary: linear-gradient(135deg, #22c55e 0%, #2dd4bf 100%);
+  --btn-accent: linear-gradient(135deg, #67e8f9 0%, #38bdf8 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(224,247,255,0.95) 100%);
+  --stat-ring: rgba(14, 165, 233, 0.22);
+}
+
+:root[data-theme="rainbow"] {
+  --background: #fff8fc;
+  --foreground: #4c1d95;
+  --surface: rgba(255, 255, 255, 0.86);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+  --ring-color: rgba(168, 85, 247, 0.22);
+  --page-grad-a: rgba(236, 72, 153, 0.18);
+  --page-grad-b: rgba(34, 211, 238, 0.18);
+  --btn-primary: linear-gradient(135deg, #ec4899 0%, #8b5cf6 55%, #06b6d4 100%);
+  --btn-secondary: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+  --btn-accent: linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(253,242,248,0.95) 100%);
+  --stat-ring: rgba(236, 72, 153, 0.24);
+}
+
+:root[data-theme="sunshine"] {
+  --background: #fffdf4;
+  --foreground: #7c2d12;
+  --surface: rgba(255, 252, 235, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+  --ring-color: rgba(245, 158, 11, 0.24);
+  --page-grad-a: rgba(251, 191, 36, 0.2);
+  --page-grad-b: rgba(249, 115, 22, 0.18);
+  --btn-primary: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  --btn-secondary: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+  --btn-accent: linear-gradient(135deg, #fde68a 0%, #facc15 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(255,251,235,0.95) 100%);
+  --stat-ring: rgba(245, 158, 11, 0.24);
+}
+
+:root[data-theme="night-sky"] {
+  --background: #f4f8ff;
+  --foreground: #0f172a;
+  --surface: rgba(241, 245, 249, 0.86);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+  --ring-color: rgba(59, 130, 246, 0.24);
+  --page-grad-a: rgba(59, 130, 246, 0.16);
+  --page-grad-b: rgba(99, 102, 241, 0.16);
+  --btn-primary: linear-gradient(135deg, #1d4ed8 0%, #6366f1 100%);
+  --btn-secondary: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%);
+  --btn-accent: linear-gradient(135deg, #334155 0%, #0f172a 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(239,246,255,0.95) 100%);
+  --stat-ring: rgba(59, 130, 246, 0.24);
+}
+
+:root[data-theme="space"] {
+  --background: #f6f0ff;
+  --foreground: #251b43;
+  --surface: rgba(255, 255, 255, 0.84);
+  --surface-strong: rgba(255, 255, 255, 0.94);
+  --ring-color: rgba(129, 140, 248, 0.28);
+  --page-grad-a: rgba(129, 140, 248, 0.22);
+  --page-grad-b: rgba(244, 114, 182, 0.18);
+  --btn-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --btn-secondary: linear-gradient(135deg, #ec4899 0%, #a855f7 100%);
+  --btn-accent: linear-gradient(135deg, #818cf8 0%, #f472b6 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(243,236,255,0.95) 100%);
+  --stat-ring: rgba(168, 85, 247, 0.24);
+}
+
+:root[data-theme="candy"] {
+  --background: #fff6fb;
+  --foreground: #6b093d;
+  --surface: rgba(255, 245, 250, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+  --ring-color: rgba(236, 72, 153, 0.22);
+  --page-grad-a: rgba(244, 114, 182, 0.18);
+  --page-grad-b: rgba(217, 70, 239, 0.16);
+  --btn-primary: linear-gradient(135deg, #ec4899 0%, #f472b6 100%);
+  --btn-secondary: linear-gradient(135deg, #d946ef 0%, #a855f7 100%);
+  --btn-accent: linear-gradient(135deg, #fb7185 0%, #f9a8d4 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(253,242,248,0.95) 100%);
+  --stat-ring: rgba(236, 72, 153, 0.24);
+}
+
+:root[data-theme="princess"] {
+  --background: #fcf7ff;
+  --foreground: #581c87;
+  --surface: rgba(250, 245, 255, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+  --ring-color: rgba(168, 85, 247, 0.24);
+  --page-grad-a: rgba(192, 132, 252, 0.18);
+  --page-grad-b: rgba(244, 114, 182, 0.16);
+  --btn-primary: linear-gradient(135deg, #a855f7 0%, #c084fc 100%);
+  --btn-secondary: linear-gradient(135deg, #ec4899 0%, #f472b6 100%);
+  --btn-accent: linear-gradient(135deg, #f9a8d4 0%, #fde68a 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(250,245,255,0.95) 100%);
+  --stat-ring: rgba(168, 85, 247, 0.24);
+}
+
+:root[data-theme="dinosaur"] {
+  --background: #f9fff3;
+  --foreground: #365314;
+  --surface: rgba(247, 254, 231, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+  --ring-color: rgba(101, 163, 13, 0.22);
+  --page-grad-a: rgba(132, 204, 22, 0.18);
+  --page-grad-b: rgba(16, 185, 129, 0.16);
+  --btn-primary: linear-gradient(135deg, #65a30d 0%, #22c55e 100%);
+  --btn-secondary: linear-gradient(135deg, #10b981 0%, #2dd4bf 100%);
+  --btn-accent: linear-gradient(135deg, #bef264 0%, #84cc16 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(247,254,231,0.95) 100%);
+  --stat-ring: rgba(101, 163, 13, 0.24);
+}
+
+:root[data-theme="jungle"] {
+  --background: #f4fff8;
+  --foreground: #14532d;
+  --surface: rgba(236, 253, 245, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+  --ring-color: rgba(22, 163, 74, 0.22);
+  --page-grad-a: rgba(34, 197, 94, 0.16);
+  --page-grad-b: rgba(14, 165, 233, 0.14);
+  --btn-primary: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+  --btn-secondary: linear-gradient(135deg, #0ea5e9 0%, #22d3ee 100%);
+  --btn-accent: linear-gradient(135deg, #4ade80 0%, #86efac 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(236,253,245,0.95) 100%);
+  --stat-ring: rgba(22, 163, 74, 0.24);
+}
+
+:root[data-theme="football"] {
+  --background: #f6fff6;
+  --foreground: #14532d;
+  --surface: rgba(240, 253, 244, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+  --ring-color: rgba(22, 101, 52, 0.22);
+  --page-grad-a: rgba(34, 197, 94, 0.16);
+  --page-grad-b: rgba(234, 179, 8, 0.14);
+  --btn-primary: linear-gradient(135deg, #166534 0%, #22c55e 100%);
+  --btn-secondary: linear-gradient(135deg, #84cc16 0%, #eab308 100%);
+  --btn-accent: linear-gradient(135deg, #fef08a 0%, #fde047 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(240,253,244,0.95) 100%);
+  --stat-ring: rgba(22, 101, 52, 0.24);
+}
+
+:root[data-theme="galaxy-pro"] {
+  --background: #f4f6ff;
+  --foreground: #1e1b4b;
+  --surface: rgba(238, 242, 255, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.95);
+  --ring-color: rgba(79, 70, 229, 0.24);
+  --page-grad-a: rgba(99, 102, 241, 0.18);
+  --page-grad-b: rgba(168, 85, 247, 0.16);
+  --btn-primary: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  --btn-secondary: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
+  --btn-accent: linear-gradient(135deg, #22d3ee 0%, #60a5fa 100%);
+  --stat-bg: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(238,242,255,0.95) 100%);
+  --stat-ring: rgba(79, 70, 229, 0.24);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-heading: var(--font-heading);
+
+  --color-primary: #6c5ce7;
+  --color-secondary: #00cec9;
+  --color-accent: #fdcb6e;
+  --color-success: #00b894;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), sans-serif;
+  position: relative;
+  overflow-x: hidden;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: auto;
+  border-radius: 9999px;
+  filter: blur(70px);
+  pointer-events: none;
+  z-index: -1;
+}
+
+body::before {
+  width: 28rem;
+  height: 28rem;
+  left: -6rem;
+  top: -6rem;
+  background: var(--page-grad-a);
+}
+
+body::after {
+  width: 24rem;
+  height: 24rem;
+  right: -4rem;
+  bottom: -4rem;
+  background: var(--page-grad-b);
+}
+
+.font-heading {
+  font-family: var(--font-heading), cursive;
+}
+
+:root[data-large-text="true"] {
+  font-size: 18px;
+}
+
+:root[data-high-contrast="true"] {
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --surface: #ffffff;
+  --surface-strong: #ffffff;
+  --ring-color: rgba(15, 23, 42, 0.45);
+}
+
+@keyframes popin {
+  0% { transform: scale(0.92); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+@keyframes confetti {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(42px) scale(0.6); opacity: 0; }
+}
+
+@keyframes journeyCtaPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 10px 24px rgba(99, 102, 241, 0.26);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 14px 30px rgba(99, 102, 241, 0.38);
+  }
+}
+
+.journey-cta-pulse {
+  animation: journeyCtaPulse 1.9s ease-in-out infinite;
+}
+
+.journey-cta-pulse:disabled {
+  animation: none;
+}
+
+:root[data-reduce-motion="true"] *,
+:root[data-reduce-motion="true"] *::before,
+:root[data-reduce-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+.app-splash-dot-1 {
+  animation-delay: 0ms;
+}
+
+.app-splash-dot-2 {
+  animation-delay: 100ms;
+}
+
+.app-splash-dot-3 {
+  animation-delay: 200ms;
+}

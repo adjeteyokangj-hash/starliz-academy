@@ -1,0 +1,1 @@
+export { default } from "@/app/admin/content-library/page";
