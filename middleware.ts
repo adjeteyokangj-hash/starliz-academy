@@ -108,7 +108,7 @@ export async function middleware(request: NextRequest) {
 
   if (pathname.startsWith("/admin")) {
     if (!authenticated) {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/login?next=/admin", request.url)));
+      return withSecurityHeaders(NextResponse.redirect(new URL("/admin/login", request.url)));
     }
     if (session.role !== "admin") {
       return withSecurityHeaders(NextResponse.redirect(new URL("/dashboard", request.url)));
