@@ -91,6 +91,7 @@ const settingsModules = [
   { title: "General",             icon: "⚙",  desc: "App name, timezone, locale",        href: "/admin/settings/general" },
   { title: "Branding",            icon: "🎨", desc: "Logo, colours, fonts",               href: "/admin/branding" },
   { title: "Integrations",        icon: "🔗", desc: "Third-party connections",            href: "/admin/settings/integrations" },
+  { title: "Migration",           icon: "🔁", desc: "Local to production sync controls",  href: "/admin/settings/migration" },
   { title: "Security",            icon: "🔒", desc: "Auth, 2FA, session policy",          href: "/admin/settings/security" },
   { title: "AI Adaptation",       icon: "🧠", desc: "Frustration thresholds, warmup, pacing", href: "/admin/settings/adaptation" },
   { title: "System Health",       icon: "📡", desc: "Uptime, queues, diagnostics",        href: "/admin/settings/system-health" },
@@ -158,11 +159,19 @@ export default function SettingsPage() {
   }
 
   async function loadKeys() {
-    const response = await fetch("/api/admin/settings/api-keys");
-    const payload = await response.json();
-    setKeys(payload.keys ?? []);
-    const emailKey = (payload.keys ?? []).find((k: ApiKeyRow) => k.provider === "email");
-    if (emailKey?.label?.includes("@")) setEmailFrom(emailKey.label);
+    try {
+      const response = await fetch("/api/admin/settings/api-keys");
+      const payload = await response.json();
+      if (!response.ok) {
+        setMessage(payload.error ?? "Unable to load saved API keys.");
+        return;
+      }
+      setKeys(payload.keys ?? []);
+      const emailKey = (payload.keys ?? []).find((k: ApiKeyRow) => k.provider === "email");
+      if (emailKey?.label?.includes("@")) setEmailFrom(emailKey.label);
+    } catch {
+      setMessage("Unable to load saved API keys.");
+    }
   }
 
   useEffect(() => {

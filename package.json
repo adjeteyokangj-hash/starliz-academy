@@ -14,6 +14,9 @@
     "test:e2e:schools-ops": "playwright test --workers=1 tests/e2e/admin-schools-ops.spec.ts tests/e2e/admin-schools-ops-cleanup.spec.ts",
     "test:e2e:schools-ops-cleanup": "playwright test tests/e2e/admin-schools-ops-cleanup.spec.ts",
     "seed:admin": "node scripts/seed_admin.mjs",
+    "migration:export": "tsx scripts/migration_export.ts",
+    "migration:import": "tsx scripts/migration_import.ts",
+    "migration:sync:prod": "tsx scripts/migrate_local_to_production.ts",
     "seed:ops-scenarios": "prisma db execute --file ./scripts/seed_ops_scenarios.sql",
     "cleanup:ops-scenarios": "prisma db execute --file ./scripts/cleanup_ops_scenarios.sql",
     "smoke:routes": "node scripts/smoke_routes.mjs"

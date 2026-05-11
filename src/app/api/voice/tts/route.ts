@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSessionFromCookie } from "@/lib/auth";
+import { getVoiceApiKey } from "@/lib/api-key-config";
 
 // Max text length to prevent abuse
 const MAX_TEXT_LENGTH = 500;
@@ -11,7 +12,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = await getVoiceApiKey();
   if (!apiKey) {
     return NextResponse.json({ error: "TTS not configured" }, { status: 503 });
   }

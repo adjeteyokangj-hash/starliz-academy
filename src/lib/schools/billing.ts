@@ -9,11 +9,20 @@
  *   - Auto-suspension after grace period
  */
 
-import { stripe } from "@/lib/stripe";
+import type Stripe from "stripe";
+import { getStripeClient } from "@/lib/stripe";
 import { prisma } from "@/lib/db";
 import { writeLicenceEvent, writeSchoolAuditLog } from "./audit";
 
 export const SCHOOL_GRACE_PERIOD_DAYS = 7;
+
+async function getConfiguredStripe(): Promise<Stripe> {
+  const stripe = await getStripeClient();
+  if (!stripe) {
+    throw new Error("Stripe is not configured.");
+  }
+  return stripe;
+}
 
 // ─── Customer management ──────────────────────────────────────────────────
 
@@ -22,6 +31,7 @@ export const SCHOOL_GRACE_PERIOD_DAYS = 7;
  * Stores providerCustomerId on the SchoolLicence record.
  */
 export async function ensureSchoolStripeCustomer(schoolId: string): Promise<string> {
+  const stripe = await getConfiguredStripe();
   const school = await prisma.school.findUnique({
     where: { id: schoolId },
     include: { licence: true },
@@ -67,6 +77,7 @@ export async function upgradeSchoolSeats(
   newSeatLimit: number,
   actorUserId?: string
 ): Promise<void> {
+  const stripe = await getConfiguredStripe();
   const licence = await prisma.schoolLicence.findUnique({ where: { schoolId } });
   if (!licence) throw new Error(`No licence for school ${schoolId}`);
 

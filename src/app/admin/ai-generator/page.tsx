@@ -222,12 +222,17 @@ export default function AiGeneratorPage() {
         setMessage("Saved to Content Library");
         setSavedContentId(payload.item?.id ?? null);
         if (targetStudentId && payload.item?.id) {
-          await fetch("/api/admin/assignments", {
+          const assignResponse = await fetch("/api/admin/assignments", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ studentId: targetStudentId, contentId: payload.item.id }),
           });
-          setMessage("Saved to Content Library and assigned to student");
+          const assignPayload = await assignResponse.json().catch(() => ({} as { error?: string }));
+          if (assignResponse.ok) {
+            setMessage("Saved to Content Library and assigned to student");
+          } else {
+            setMessage(assignPayload.error ?? "Saved to Content Library, but assignment failed.");
+          }
         }
       }
     } catch {

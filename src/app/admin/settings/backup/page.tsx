@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 type ExportType = "users" | "children" | "progress" | "subscriptions";
 type ExportFormat = "csv" | "json";
@@ -92,6 +93,17 @@ export default function BackupExportPage() {
           <li>For full database backups, download <code className="rounded bg-slate-800 px-1">dev.db</code> directly from your server storage.</li>
         </ul>
       </div>
+
+      <Link
+        href="/admin/settings/migration"
+        className="block rounded-2xl border border-indigo-700/40 bg-indigo-950/20 p-5 transition hover:border-indigo-500/70 hover:bg-indigo-900/30"
+      >
+        <p className="text-xs font-black uppercase tracking-widest text-indigo-300">Migration pipeline</p>
+        <h2 className="mt-2 text-lg font-black text-white">Open Local to Production Migration Console</h2>
+        <p className="mt-1 text-sm text-slate-300">
+          Run migration export, dry-run validation, and guarded apply flow for parents, lessons, content library, and assignments.
+        </p>
+      </Link>
     </div>
   );
 }

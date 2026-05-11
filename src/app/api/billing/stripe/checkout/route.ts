@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { stripe } from "@/lib/stripe"
+import { getStripeClient } from "@/lib/stripe"
 import { SUBSCRIPTION_PLANS, type SubscriptionPlanKey } from "@/lib/subscription-plans"
 
 const checkoutSchema = z.object({
@@ -16,10 +16,6 @@ function getAppUrl(request: Request): string {
 }
 
 export async function POST(request: Request) {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    return NextResponse.json({ error: "Stripe is not configured." }, { status: 503 })
-  }
-
   const user = await getCurrentUser()
   if (!user) return new Response("Unauthorized", { status: 401 })
 
@@ -82,6 +78,11 @@ export async function POST(request: Request) {
 
   const appUrl = getAppUrl(request)
   try {
+    const stripe = await getStripeClient()
+    if (!stripe) {
+      return NextResponse.json({ error: "Stripe is not configured." }, { status: 503 })
+    }
+
     const existingSubscription = await prisma.subscription.findFirst({
       where: { parentId: user.id },
       orderBy: { updatedAt: "desc" },

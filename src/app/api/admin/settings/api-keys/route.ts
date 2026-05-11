@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
+import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { encryptSecret, maskSecret } from "@/lib/secrets";
 
@@ -14,7 +14,7 @@ const saveKeySchema = z.object({
 });
 
 export async function GET() {
-  const { session, response } = await requireAdminPermission("settings:api_keys:write");
+  const { session, response } = await requireAdmin();
   if (!session) return response;
 
   const keys = await prisma.apiKeyConfig.findMany({

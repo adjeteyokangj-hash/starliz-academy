@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
-import { decryptSecret } from "@/lib/secrets";
 import { writeAuditLog } from "@/lib/audit";
+import { getOpenAiApiKey } from "@/lib/api-key-config";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import { SKILL_MAP, serializeSkills } from "@/lib/skills";
 
@@ -153,19 +153,6 @@ Return JSON with: id, title, passage, vocabularyWords, questions, answers, yearG
 Do not return spelling word lists or maths questions.${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
   return "";
-}
-
-async function getOpenAiApiKey() {
-  const savedKey = await prisma.apiKeyConfig.findUnique({
-    where: { provider: "openai" },
-    select: { encryptedValue: true },
-  });
-
-  if (savedKey?.encryptedValue) {
-    return decryptSecret(savedKey.encryptedValue);
-  }
-
-  return process.env.OPENAI_API_KEY;
 }
 
 async function requestOpenAiJson(apiKey: string, systemPrompt: string, userPrompt: string) {

@@ -33,13 +33,13 @@ export default function AdminHeader() {
             />
           </label>
 
-          <button type="button" aria-label="Notifications" className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-300 hover:text-white">
+          <Link href="/admin/inbox" aria-label="Notifications" className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-300 hover:text-white">
             !
-          </button>
-          <button type="button" className="flex h-11 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-sm font-bold text-slate-200 hover:text-white">
+          </Link>
+          <Link href="/admin/settings" className="flex h-11 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-sm font-bold text-slate-200 hover:text-white">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-500 text-xs text-white">A</span>
             Admin
-          </button>
+          </Link>
           <Link href="/dashboard" className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 hover:text-white">
             Back to App
           </Link>

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { handlePaymentWebhook } from "@/lib/subscriptions/webhook-handler"
-import { stripe } from "@/lib/stripe"
+import { getStripeClient } from "@/lib/stripe"
 
 export async function POST(request: Request) {
   if (!process.env.STRIPE_WEBHOOK_SECRET) {
@@ -16,6 +16,11 @@ export async function POST(request: Request) {
   const rawBody = await request.text()
 
   try {
+    const stripe = await getStripeClient()
+    if (!stripe) {
+      return NextResponse.json({ error: "Stripe is not configured" }, { status: 503 })
+    }
+
     const event = stripe.webhooks.constructEvent(
       rawBody,
       signature,

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { assignContentToStudent } from "@/lib/assignments";
-import { decryptSecret } from "@/lib/secrets";
+import { getOpenAiApiKey } from "@/lib/api-key-config";
 import { SKILL_MAP, serializeSkills } from "@/lib/skills";
 import { adaptiveDifficultyFromSignals, buildSkillStatesForStudent } from "@/lib/learningEngineV2";
 import { composeDailyLessonPlan } from "@/lib/dailyLessonPlanner";
@@ -184,19 +184,6 @@ function buildAlphabetFoundationItems(difficulty: number): LessonItem[] {
   ];
 }
 
-async function resolveOpenAiApiKey(): Promise<string | null> {
-  const config = await prisma.apiKeyConfig.findUnique({
-    where: { provider: "openai" },
-    select: { encryptedValue: true },
-  });
-
-  if (config?.encryptedValue) {
-    return decryptSecret(config.encryptedValue);
-  }
-
-  return process.env.OPENAI_API_KEY ?? null;
-}
-
 function normalizeAiItems(raw: unknown, weakSkills: string[], difficulty: number): LessonItem[] {
   if (Array.isArray(raw)) {
     return raw
@@ -233,7 +220,7 @@ export async function generateTargetedItems(input: {
     return buildFallbackItems(["cvc"], difficulty);
   }
 
-  const apiKey = await resolveOpenAiApiKey();
+  const apiKey = await getOpenAiApiKey();
   if (!apiKey) {
     return buildFallbackItems(weakSkills, difficulty);
   }

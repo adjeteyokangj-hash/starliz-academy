@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
+import { getPaymentApiKey } from "@/lib/api-key-config";
 import { getPlan, normalizePlanKey } from "@/lib/subscriptions/plans";
 
 const checkoutSchema = z.object({
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
       }, { status: 501 });
     }
 
-    const stripeSecret = process.env.STRIPE_SECRET_KEY;
+    const stripeSecret = await getPaymentApiKey();
     const monthlyPrice = process.env.STRIPE_MONTHLY_PRICE_ID;
     const yearlyPrice = process.env.STRIPE_YEARLY_PRICE_ID;
     const priceId = body.planKey === "yearly" ? yearlyPrice : monthlyPrice;
