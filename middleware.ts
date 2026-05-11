@@ -99,23 +99,23 @@ export async function middleware(request: NextRequest) {
   const authenticated = session !== null;
   const adminLoginTarget = request.nextUrl.searchParams.get("next")?.startsWith("/admin") ?? false;
 
-  if (!authenticated && !isPublic) {
-    return withSecurityHeaders(NextResponse.redirect(new URL("/login", request.url)));
-  }
-
-  if (authenticated && (pathname === "/login" || pathname === "/signup" || pathname === "/auth/login" || pathname === "/auth/signup") && !adminLoginTarget) {
-    return withSecurityHeaders(NextResponse.redirect(new URL("/profiles", request.url)));
-  }
-
   if (pathname.startsWith("/admin")) {
     if (!authenticated) {
-      // Allow unauthenticated access to /admin/login
+      // Allow unauthenticated access to /admin/login, redirect all other admin routes there.
       if (pathname !== "/admin/login") {
         return withSecurityHeaders(NextResponse.redirect(new URL("/admin/login", request.url)));
       }
     } else if (session.role !== "admin") {
       return withSecurityHeaders(NextResponse.redirect(new URL("/dashboard", request.url)));
     }
+  }
+
+  if (!authenticated && !isPublic) {
+    return withSecurityHeaders(NextResponse.redirect(new URL("/login", request.url)));
+  }
+
+  if (authenticated && (pathname === "/login" || pathname === "/signup" || pathname === "/auth/login" || pathname === "/auth/signup") && !adminLoginTarget) {
+    return withSecurityHeaders(NextResponse.redirect(new URL("/profiles", request.url)));
   }
 
   // Teacher portal: must be authenticated (role check happens in each page/layout)

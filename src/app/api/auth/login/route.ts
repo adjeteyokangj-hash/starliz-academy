@@ -131,17 +131,30 @@ export async function POST(request: Request) {
 
     const fingerprint = buildDeviceFingerprint({ ip, userAgent });
 
+    if (!process.env.AUTH_SECRET) {
+      return NextResponse.json(
+        { error: "Server auth is not configured. Set AUTH_SECRET in deployment environment." },
+        { status: 500 },
+      );
+    }
+
     // Short-lived access token + rotating refresh token
     const token = await createSessionToken(
       { userId: user.id, email: user.email, role: user.role },
       getAccessTokenMaxAgeSeconds()
     );
-    const refresh = await issueRefreshToken({
-      userId: user.id,
-      fingerprint,
-      ipAddress: ip,
-      userAgent,
-    });
+    let refresh: Awaited<ReturnType<typeof issueRefreshToken>> | null = null;
+    try {
+      refresh = await issueRefreshToken({
+        userId: user.id,
+        fingerprint,
+        ipAddress: ip,
+        userAgent,
+      });
+    } catch (error) {
+      // Keep login available even if refresh-token persistence is temporarily broken.
+      console.error("Failed to issue refresh token; continuing with access token only", error);
+    }
 
     const response = NextResponse.json({
       ok: true,
@@ -154,15 +167,30 @@ export async function POST(request: Request) {
       path: "/",
       maxAge: getAccessTokenMaxAgeSeconds(),
     });
-    response.cookies.set(getRefreshCookieName(), refresh.token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-    });
+    if (refresh) {
+      response.cookies.set(getRefreshCookieName(), refresh.token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30,
+      });
+    }
     return response;
-  } catch {
-    return NextResponse.json({ error: "Invalid login request." }, { status: 400 });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: "Invalid login request." }, { status: 400 });
+    }
+
+    const message = error instanceof Error ? error.message : "unknown_error";
+    if (message.includes("AUTH_SECRET is required")) {
+      return NextResponse.json(
+        { error: "Server auth is not configured. Set AUTH_SECRET in deployment environment." },
+        { status: 500 },
+      );
+    }
+
+    console.error("Auth login failed", error);
+    return NextResponse.json({ error: "Login is temporarily unavailable. Please try again." }, { status: 500 });
   }
 }
