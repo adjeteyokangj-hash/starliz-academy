@@ -8,6 +8,7 @@ const PARENT_UNLOCK_COOKIE = "starliz_parent_unlock";
 const PUBLIC_PATHS = [
   "/",
   "/about",
+  "/admin/login",
   "/billing/cancel",
   "/billing/success",
   "/contact",
