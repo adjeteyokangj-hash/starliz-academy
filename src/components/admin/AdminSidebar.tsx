@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { adminNavItems } from "@/lib/admin-nav";
@@ -29,6 +29,8 @@ export default function AdminSidebar() {
   const [savedOrder, setSavedOrder] = useState<AdminNavHref[] | null>(null);
   const [draggingHref, setDraggingHref] = useState<AdminNavHref | null>(null);
   const [overHref, setOverHref] = useState<AdminNavHref | null>(null);
+  const navRef = useRef<HTMLDivElement>(null);
+  const activeItemRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -44,6 +46,13 @@ export default function AdminSidebar() {
       // Ignore invalid local storage payloads.
     }
   }, []);
+
+  // Scroll active item into view
+  useEffect(() => {
+    if (activeItemRef.current && navRef.current) {
+      activeItemRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [pathname]);
 
   const navItems = useMemo(() => {
     if (!savedOrder?.length) return [...adminNavItems];
@@ -81,7 +90,7 @@ export default function AdminSidebar() {
   }
 
   return (
-    <aside className="hidden w-72 shrink-0 border-r border-slate-800 bg-slate-950/92 px-4 py-5 lg:block">
+    <aside className="hidden w-72 shrink-0 border-r border-slate-800 bg-slate-950/92 px-4 py-5 lg:flex lg:flex-col">
       <Link href="/admin" className="flex items-center gap-3 px-2">
         <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 to-sky-400 text-sm font-black text-white shadow-lg shadow-indigo-950/40">
           SL
@@ -92,56 +101,62 @@ export default function AdminSidebar() {
         </span>
       </Link>
 
-      <nav className="mt-8 space-y-1" aria-label="Admin navigation">
-        {navItems.map((item) => {
-          const active = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
-          const dragOver = overHref === item.href && draggingHref !== item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              draggable
-              onDragStart={() => {
-                setDraggingHref(item.href);
-                setOverHref(null);
-              }}
-              onDragOver={(event) => {
-                event.preventDefault();
-                if (!draggingHref || draggingHref === item.href) return;
-                setOverHref(item.href);
-              }}
-              onDragLeave={() => {
-                if (overHref === item.href) setOverHref(null);
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (!draggingHref || draggingHref === item.href) return;
-                const nextOrder = reorderByHref(navItems, draggingHref, item.href);
-                persistOrder(nextOrder);
-                setDraggingHref(null);
-                setOverHref(null);
-              }}
-              onDragEnd={() => {
-                setDraggingHref(null);
-                setOverHref(null);
-              }}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
-                active
-                  ? "bg-indigo-500 text-white shadow-lg shadow-indigo-950/30"
-                  : "text-slate-400 hover:bg-slate-900 hover:text-white"
-              } ${dragOver ? "ring-2 ring-indigo-400/70" : ""}`}
-              title="Drag to rearrange"
-            >
-              <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[0.65rem] font-black ${
-                active ? "bg-white/16 text-white" : "bg-slate-900 text-slate-500"
-              }`}>
-                {item.icon}
-              </span>
-              {item.title}
-            </Link>
-          );
-        })}
-      </nav>
+      <div ref={navRef} className="mt-8 space-y-1 overflow-y-auto flex-1 pr-2">
+        <nav aria-label="Admin navigation">
+          {navItems.map((item) => {
+            const active = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
+            const dragOver = overHref === item.href && draggingHref !== item.href;
+            return (
+              <div
+                ref={active ? activeItemRef : null}
+                key={item.href}
+                draggable
+                onDragStart={() => {
+                  setDraggingHref(item.href);
+                  setOverHref(null);
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  if (!draggingHref || draggingHref === item.href) return;
+                  setOverHref(item.href);
+                }}
+                onDragLeave={() => {
+                  if (overHref === item.href) setOverHref(null);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (!draggingHref || draggingHref === item.href) return;
+                  const nextOrder = reorderByHref(navItems, draggingHref, item.href);
+                  persistOrder(nextOrder);
+                  setDraggingHref(null);
+                  setOverHref(null);
+                }}
+                onDragEnd={() => {
+                  setDraggingHref(null);
+                  setOverHref(null);
+                }}
+              >
+                <Link
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
+                    active
+                      ? "bg-indigo-500 text-white shadow-lg shadow-indigo-950/30"
+                      : "text-slate-400 hover:bg-slate-900 hover:text-white"
+                  } ${dragOver ? "ring-2 ring-indigo-400/70" : ""}`}
+                  title="Drag to rearrange"
+                >
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[0.65rem] font-black ${
+                    active ? "bg-white/16 text-white" : "bg-slate-900 text-slate-500"
+                  }`}>
+                    {item.icon}
+                  </span>
+                  {item.title}
+                </Link>
+              </div>
+            );
+          })}
+        </nav>
+      </div>
 
       <div className="mt-4 px-1">
         <button
