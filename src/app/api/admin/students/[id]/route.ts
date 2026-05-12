@@ -197,7 +197,13 @@ export async function PATCH(request: Request, context: Context) {
       where: { id },
       data: {
         ...(body.name ? { name: body.name } : {}),
-        ...(body.parentId ? { parentId: body.parentId } : {}),
+        ...(body.parentId
+          ? {
+              parent: {
+                connect: { id: body.parentId },
+              },
+            }
+          : {}),
         ...(body.age !== undefined ? { age: body.age } : {}),
         ...(body.yearGroup !== undefined ? { yearGroup: body.yearGroup } : {}),
         ...(body.avatar !== undefined ? { avatar: body.avatar } : {}),
