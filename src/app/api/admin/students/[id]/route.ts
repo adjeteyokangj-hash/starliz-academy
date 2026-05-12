@@ -207,7 +207,7 @@ export async function PATCH(request: Request, context: Context) {
         ...(body.age !== undefined ? { age: body.age } : {}),
         ...(body.yearGroup !== undefined ? { yearGroup: body.yearGroup } : {}),
         ...(body.avatar !== undefined ? { avatar: body.avatar } : {}),
-        ...(body.selectedVoice !== undefined ? { selectedVoice: body.selectedVoice } : {}),
+        ...(body.selectedVoice != null ? { selectedVoice: body.selectedVoice } : {}),
         ...(body.level !== undefined ? { level: body.level } : {}),
         ...(Object.keys(profileData).length
           ? {
