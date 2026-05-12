@@ -42,7 +42,11 @@ function getRedirectUri(origin: string) {
 }
 
 function pickOrigin(fallbackOrigin: string) {
-  return process.env.NEXT_PUBLIC_APP_URL || fallbackOrigin;
+  return fallbackOrigin || process.env.NEXT_PUBLIC_APP_URL || fallbackOrigin;
+}
+
+export function getInboxRedirectUri(origin: string) {
+  return getRedirectUri(origin);
 }
 
 async function readConnection(adminUserId: string) {

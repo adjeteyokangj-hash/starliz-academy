@@ -275,14 +275,14 @@ export default function AdminMessagesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-3xl font-black text-white">Parent Messaging</h1>
+        <h1 className="text-2xl font-black text-white md:text-3xl">Parent Messaging</h1>
         <p className="mt-1 text-slate-400">Real conversation inbox for WhatsApp and SMS contacts.</p>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-[340px_1fr]">
-        <aside className="rounded-3xl border border-slate-800 bg-slate-900/45 p-4">
+      <section className="grid gap-3 md:gap-4 lg:grid-cols-[340px_1fr]">
+        <aside className="rounded-3xl border border-slate-800 bg-slate-900/45 p-3.5 md:p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-black uppercase tracking-[0.18em] text-slate-400">Conversations</h2>
             <button type="button" onClick={() => void loadData(selectedThreadId ?? undefined)} className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-bold text-slate-300 hover:bg-slate-800">Refresh</button>
@@ -295,7 +295,7 @@ export default function AdminMessagesPage() {
             onChange={(event) => setSearch(event.target.value)}
           />
 
-          <div className="mt-3 space-y-2 overflow-y-auto max-h-[62vh] pr-1">
+          <div className="mt-3 space-y-2 overflow-y-auto max-h-56 pr-1 md:max-h-[62vh]">
             {loading ? <p className="text-sm text-slate-500">Loading...</p> : null}
             {!loading && filteredThreads.length === 0 ? <p className="text-sm text-slate-500">No chats yet. Start a new message on the right.</p> : null}
             {filteredThreads.map((thread) => (
@@ -319,7 +319,7 @@ export default function AdminMessagesPage() {
           </div>
         </aside>
 
-        <div className="rounded-3xl border border-slate-800 bg-slate-900/45 p-4 md:p-5">
+        <div className="rounded-3xl border border-slate-800 bg-slate-900/45 p-3.5 md:p-5">
           <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
             <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500">New or Existing Contact</h3>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -361,7 +361,7 @@ export default function AdminMessagesPage() {
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-            <div className="mb-3 h-[38vh] overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50 p-3 space-y-2">
+            <div className="mb-3 h-56 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50 p-3 space-y-2 md:h-[38vh]">
               {messages.length === 0 ? <p className="text-sm text-slate-500">No messages yet in this conversation.</p> : null}
               {messages.map((row) => (
                 <div key={row.id} className={`flex ${row.direction === "outbound" ? "justify-end" : "justify-start"}`}>

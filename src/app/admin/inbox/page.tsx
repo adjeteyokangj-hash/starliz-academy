@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { getInboxRedirectUri } from "@/lib/imap-client";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Message = {
@@ -34,6 +35,10 @@ function SetupForm({ onConnected }: { onConnected: (email: string) => void }) {
   const [email] = useState("support@starlizacademy.com");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const redirectUri = useMemo(() => {
+    if (typeof window === "undefined") return "/api/admin/inbox/oauth/callback";
+    return getInboxRedirectUri(window.location.origin);
+  }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -64,7 +69,7 @@ function SetupForm({ onConnected }: { onConnected: (email: string) => void }) {
             <p className="font-bold text-indigo-300 mb-1">Step 1 — Azure App Registration</p>
             <ol className="list-decimal list-inside space-y-0.5 ml-1">
               <li>In Azure, register an app for StarLiz Inbox and add a Web redirect URI.</li>
-              <li>Set redirect URI to <span className="text-white">/api/admin/inbox/oauth/callback</span> on your app domain.</li>
+              <li>Set redirect URI to <span className="text-white">{redirectUri}</span>.</li>
               <li>Add delegated permissions: <span className="text-white">Mail.ReadWrite</span>, <span className="text-white">Mail.Send</span>, <span className="text-white">User.Read</span>, <span className="text-white">offline_access</span>.</li>
               <li>Grant admin consent for the tenant.</li>
             </ol>
@@ -354,7 +359,7 @@ export default function AdminInboxPage() {
     setSelected(null);
     setFullMessage(null);
     try {
-      const res = await fetch(`/api/admin/inbox?folder=${f}`);
+      const res = await fetch(`/api/admin/inbox?folder=${f}`, { credentials: "include" });
       if (!res.ok) { setConnected(false); return; }
       const data = await res.json();
       setConnected(data.connected ?? false);
@@ -397,23 +402,26 @@ export default function AdminInboxPage() {
     setSelected(msg);
     setFullMessage(null);
     const res = await fetch(`/api/admin/inbox/${encodeURIComponent(msg.id)}`);
-    if (res.ok) {
-      const full = await res.json();
-      setFullMessage(full);
-      setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, isRead: true } : m));
+    
+    if (!res.ok) {
+      setConnected(false);
+      return;
     }
+    const full = await res.json();
+    setFullMessage(full);
+    setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, isRead: true } : m));
   }
 
   async function deleteMsg(msgId: string) {
     if (!confirm("Delete this message?")) return;
-    await fetch(`/api/admin/inbox/${encodeURIComponent(msgId)}`, { method: "DELETE" });
+    await fetch(`/api/admin/inbox/${encodeURIComponent(msgId)}`, { method: "DELETE", credentials: "include" });
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
     if (selected?.id === msgId) { setSelected(null); setFullMessage(null); }
   }
 
   async function disconnect() {
     if (!confirm("Disconnect inbox?")) return;
-    await fetch("/api/admin/inbox/config", { method: "DELETE" });
+    await fetch("/api/admin/inbox/config", { method: "DELETE", credentials: "include" });
     setConnected(false);
     setMessages([]);
     setAccount(null);
@@ -428,9 +436,9 @@ export default function AdminInboxPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col gap-4">
+    <div className="flex flex-col gap-3 md:h-[calc(100vh-8rem)] md:gap-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-indigo-400">Admin</p>
           <h1 className="text-2xl font-black text-white">Inbox</h1>
@@ -441,7 +449,7 @@ export default function AdminInboxPage() {
             </p>
           )}
         </div>
-        <button onClick={() => { setReplyTo(null); setComposing(true); }} className="rounded-2xl bg-indigo-600 px-5 py-2.5 font-black text-white hover:bg-indigo-500 transition">
+        <button onClick={() => { setReplyTo(null); setComposing(true); }} className="w-full rounded-2xl bg-indigo-600 px-5 py-2.5 font-black text-white hover:bg-indigo-500 transition sm:w-auto">
           ✏️ Compose
         </button>
       </div>
@@ -453,14 +461,14 @@ export default function AdminInboxPage() {
       )}
 
       {/* Layout */}
-      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-visible lg:flex-row lg:gap-4 lg:overflow-hidden">
         {/* Folder sidebar */}
-        <div className="flex w-44 shrink-0 flex-col gap-0.5 rounded-2xl border border-slate-700/60 bg-slate-900/60 p-2.5">
+        <div className="flex shrink-0 gap-2 overflow-x-auto rounded-2xl border border-slate-700/60 bg-slate-900/60 p-2.5 lg:w-44 lg:flex-col lg:gap-0.5 lg:overflow-visible">
           {FOLDERS.map((f) => (
             <button
               key={f}
               onClick={() => setFolder(f)}
-              className={`rounded-xl px-3 py-2.5 text-left text-sm font-bold transition ${
+              className={`whitespace-nowrap rounded-xl px-3 py-2.5 text-left text-sm font-bold transition lg:whitespace-normal ${
                 folder === f
                   ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/40"
                   : "text-slate-400 hover:bg-slate-800/60 hover:text-white"
@@ -472,7 +480,7 @@ export default function AdminInboxPage() {
         </div>
 
         {/* Message list */}
-        <div className="flex w-72 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/60">
+        <div className="flex max-h-80 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/60 lg:max-h-none lg:w-72">
           {loading ? (
             <div className="flex items-center justify-center py-12 text-sm text-slate-400">Loading…</div>
           ) : messages.length === 0 ? (
@@ -523,7 +531,7 @@ export default function AdminInboxPage() {
         </div>
 
         {/* Detail pane */}
-        <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/60">
+        <div className="flex min-h-80 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/60 lg:min-h-0">
           {!selected ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <span className="text-4xl opacity-20">✉️</span>
