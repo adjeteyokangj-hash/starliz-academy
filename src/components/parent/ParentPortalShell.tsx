@@ -174,6 +174,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [insights, setInsights] = useState<InsightsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [reportDownloading, setReportDownloading] = useState(false);
   const [supportSubject, setSupportSubject] = useState("");
   const [supportBody, setSupportBody] = useState("");
   const [nameDraft, setNameDraft] = useState("");
@@ -287,6 +288,38 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       if (refreshed.ok) setAccount((await refreshed.json()) as AccountPayload);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function downloadProgressReport() {
+    if (!selectedChildId) return;
+    setReportDownloading(true);
+    try {
+      const response = await fetch(
+        `/api/parent/reports/export?childId=${encodeURIComponent(selectedChildId)}&range=30d&format=pdf`,
+        { credentials: "include" },
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        window.alert(payload?.error ?? "Unable to generate report.");
+        return;
+      }
+
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("content-disposition") ?? "";
+      const nameMatch = contentDisposition.match(/filename="([^"]+)"/i);
+      const filename = nameMatch?.[1] ?? `starliz-progress-report-${selectedChildId}.pdf`;
+
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(href);
+    } finally {
+      setReportDownloading(false);
     }
   }
 
@@ -428,6 +461,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     <Metric label="Total attempts" value={String(insights.totalAttempts)} />
                     <Metric label="Learning mode" value={insights.learningMode ?? "Standard"} />
                   </div>
+                  <div className="mt-4">
+                    <Button type="button" onClick={() => void downloadProgressReport()} disabled={reportDownloading}>
+                      {reportDownloading ? "Preparing Report..." : "Download Progress Report"}
+                    </Button>
+                  </div>
                 </Panel>
               ) : null}
               
@@ -497,6 +535,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           {section === "progress" ? (
             <>
               <Panel title="Progress" description="See the selected child's recent learning records.">
+                <div className="mb-4">
+                  <Button type="button" onClick={() => void downloadProgressReport()} disabled={!selectedChildId || reportDownloading}>
+                    {reportDownloading ? "Preparing Report..." : "Download Progress Report"}
+                  </Button>
+                </div>
                 {childDetail ? (
                   <div className="grid gap-3 md:grid-cols-3">
                     {childDetail.progressRecords.slice(0, 6).map((record) => (
