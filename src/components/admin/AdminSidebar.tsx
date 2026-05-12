@@ -125,7 +125,7 @@ export default function AdminSidebar() {
       {!isVisible && (
         <button
           onClick={toggleVisibility}
-          className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 lg:hidden"
+          className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-500"
           title="Show sidebar"
         >
           ☰
@@ -134,7 +134,7 @@ export default function AdminSidebar() {
       <aside
         className={`${
           isVisible ? "translate-x-0" : "-translate-x-full"
-        } fixed inset-y-0 left-0 z-40 transition-transform duration-300 lg:relative lg:translate-x-0 w-72 shrink-0 border-r border-slate-800 bg-slate-950/92 px-4 py-5 hidden lg:flex lg:flex-col`}
+        } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-950/92 px-4 py-5 transition-transform duration-300 lg:relative`}
       >
         <div className="relative">
           <Link href="/admin" className="flex items-center gap-3 px-2">
@@ -156,7 +156,7 @@ export default function AdminSidebar() {
           </button>
         </div>
 
-      <div ref={navRef} className="mt-8 space-y-1 overflow-y-auto flex-1 pr-2 relative">
+      <div ref={navRef} className="relative mt-8 flex-1 min-h-0 space-y-1 overflow-y-auto pr-2">
         {canScrollUp && (
           <div className="sticky top-0 z-10 -mx-2 flex justify-center bg-gradient-to-b from-slate-950 to-transparent py-2">
             <div className="text-slate-500 text-xs">↑ Scroll up</div>
