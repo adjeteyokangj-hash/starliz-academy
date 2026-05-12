@@ -37,6 +37,13 @@ export default function AdminSidebar() {
   const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
+    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+
+    if (isDesktop) {
+      setIsVisible(true);
+      return;
+    }
+
     try {
       const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
       if (raw !== null) {

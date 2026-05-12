@@ -1,4 +1,4 @@
-const CACHE_NAME = "starliz-v1";
+const CACHE_NAME = "starliz-v2";
 const APP_SHELL = [
   "/",
   "/onboarding",
@@ -18,6 +18,10 @@ const APP_SHELL = [
   "/screenshots/dashboard-mobile.png",
 ];
 
+function isBypassedPath(pathname) {
+  return pathname.startsWith("/admin") || pathname.startsWith("/api") || pathname.startsWith("/_next/");
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
   self.skipWaiting();
@@ -33,6 +37,12 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+  if (isBypassedPath(url.pathname)) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   if (request.mode === "navigate") {
     event.respondWith(
