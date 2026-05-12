@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { adminNavItems } from "@/lib/admin-nav";
 
 const ORDER_STORAGE_KEY = "starliz.admin.sidebar.order.v1";
+const VISIBILITY_STORAGE_KEY = "starliz.admin.sidebar.visible.v1";
 type AdminNavHref = (typeof adminNavItems)[number]["href"];
 
 function isAdminNavHref(value: string): value is AdminNavHref {
@@ -33,21 +34,28 @@ export default function AdminSidebar() {
   const activeItemRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(ORDER_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      const normalized = parsed.filter((value): value is AdminNavHref => typeof value === "string" && isAdminNavHref(value));
-      if (normalized.length) {
-        window.setTimeout(() => setSavedOrder(normalized), 0);
+      const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
+      if (raw !== null) {
+        setIsVisible(JSON.parse(raw) as boolean);
       }
     } catch {
       // Ignore invalid local storage payloads.
     }
   }, []);
+
+  function toggleVisibility() {
+    const nextVisible = !isVisible;
+    setIsVisible(nextVisible);
+    try {
+      window.localStorage.setItem(VISIBILITY_STORAGE_KEY, JSON.stringify(nextVisible));
+    } catch {
+      // Ignore storage write issues.
+    }
+  }
 
   // Scroll active item into view
   useEffect(() => {
@@ -113,16 +121,40 @@ export default function AdminSidebar() {
   }
 
   return (
-    <aside className="hidden w-72 shrink-0 border-r border-slate-800 bg-slate-950/92 px-4 py-5 lg:flex lg:flex-col">
-      <Link href="/admin" className="flex items-center gap-3 px-2">
-        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 to-sky-400 text-sm font-black text-white shadow-lg shadow-indigo-950/40">
-          SL
-        </span>
-        <span>
-          <span className="block text-base font-black text-white">StarLiz Admin</span>
-          <span className="text-xs font-semibold text-slate-400">Admin Portal</span>
-        </span>
-      </Link>
+    <>
+      {!isVisible && (
+        <button
+          onClick={toggleVisibility}
+          className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 lg:hidden"
+          title="Show sidebar"
+        >
+          ☰
+        </button>
+      )}
+      <aside
+        className={`${
+          isVisible ? "translate-x-0" : "-translate-x-full"
+        } fixed inset-y-0 left-0 z-40 transition-transform duration-300 lg:relative lg:translate-x-0 w-72 shrink-0 border-r border-slate-800 bg-slate-950/92 px-4 py-5 hidden lg:flex lg:flex-col`}
+      >
+        <div className="relative">
+          <Link href="/admin" className="flex items-center gap-3 px-2">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 to-sky-400 text-sm font-black text-white shadow-lg shadow-indigo-950/40">
+              SL
+            </span>
+            <span>
+              <span className="block text-base font-black text-white">StarLiz Admin</span>
+              <span className="text-xs font-semibold text-slate-400">Admin Portal</span>
+            </span>
+          </Link>
+
+          <button
+            onClick={toggleVisibility}
+            className="absolute right-2 top-1 rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+            title="Hide sidebar"
+          >
+            ✕
+          </button>
+        </div>
 
       <div ref={navRef} className="mt-8 space-y-1 overflow-y-auto flex-1 pr-2 relative">
         {canScrollUp && (
@@ -201,6 +233,7 @@ export default function AdminSidebar() {
           Reset Sidebar Order
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
