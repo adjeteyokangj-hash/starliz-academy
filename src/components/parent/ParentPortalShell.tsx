@@ -107,6 +107,16 @@ type ChildDetail = {
   purchaseHistory: Array<{ id: string; itemName: string; cost: number; createdAt: string }>;
 };
 
+type InsightsPayload = {
+  strengths: Array<{ topic: string; accuracy: number; attempts: number }>;
+  weaknesses: Array<{ topic: string; accuracy: number; attempts: number }>;
+  averageAccuracy: number;
+  totalAttempts: number;
+  learningMode: string | null;
+  activity: Array<{ date: string; count: number }>;
+  lastActivityAt: string | null;
+};
+
 const sections: Array<{ id: PortalSection; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
   { id: "children", label: "Children" },
@@ -125,6 +135,22 @@ function currency(value: number) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(value / 100);
 }
 
+function formatLastActivity(dateString: string | null): string {
+  if (!dateString) return "Never";
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
 function sectionLabel(section: PortalSection) {
   return sections.find((item) => item.id === section)?.label ?? "Dashboard";
 }
@@ -138,6 +164,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [threads, setThreads] = useState<MessageThread[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [childDetail, setChildDetail] = useState<ChildDetail | null>(null);
+  const [insights, setInsights] = useState<InsightsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [supportSubject, setSupportSubject] = useState("");
@@ -211,9 +238,20 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     let cancelled = false;
 
     async function loadChild() {
-      const response = await fetch(`/api/children/${selectedChildId}/data`, { credentials: "include" });
-      if (!response.ok || cancelled) return;
-      setChildDetail((await response.json()) as ChildDetail);
+      const [childRes, insightsRes] = await Promise.all([
+        fetch(`/api/children/${selectedChildId}/data`, { credentials: "include" }),
+        fetch("/api/parent/insights", { credentials: "include" }),
+      ]);
+      
+      if (cancelled) return;
+      
+      if (childRes.ok) {
+        setChildDetail((await childRes.json()) as ChildDetail);
+      }
+      
+      if (insightsRes.ok) {
+        setInsights((await insightsRes.json()) as InsightsPayload);
+      }
     }
 
     void loadChild();
@@ -310,18 +348,106 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           ) : null}
 
           {section === "dashboard" ? (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Panel title="Active child" description="Switch between children and review the latest activity.">
-                <ChildPicker profiles={children?.children ?? []} selectedChildId={selectedChildId} setSelectedChildId={setSelectedChildId} />
-                {activeChild ? <p className="mt-4 text-sm text-slate-300">Current child: {activeChild.name}</p> : null}
-              </Panel>
-              <Panel title="Plan and billing" description="Check renewal status and available child limit.">
-                <div className="space-y-3 text-sm text-slate-300">
-                  <p>Plan: <span className="font-semibold text-white">{subscription?.subscription.planName ?? account?.account.subscriptionStatus ?? "Loading"}</span></p>
-                  <p>Children used: <span className="font-semibold text-white">{subscription?.subscription.childrenUsed ?? 0}/{subscription?.subscription.childLimit ?? account?.account.childLimit ?? 0}</span></p>
-                  <p>Renewal: <span className="font-semibold text-white">{subscription?.subscription.renewalDate ? new Date(subscription.subscription.renewalDate).toLocaleDateString() : "No renewal set"}</span></p>
+            <div className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Panel title="Active child" description="Switch between children and review the latest activity.">
+                  <ChildPicker profiles={children?.children ?? []} selectedChildId={selectedChildId} setSelectedChildId={setSelectedChildId} />
+                  {activeChild ? (
+                    <div className="mt-4 space-y-2 text-sm text-slate-300">
+                      <p>Current child: <span className="font-semibold text-white">{activeChild.name}</span></p>
+                      {insights?.lastActivityAt && (
+                        <p>Last active: <span className="font-semibold text-cyan-400">{formatLastActivity(insights.lastActivityAt)}</span></p>
+                      )}
+                    </div>
+                  ) : null}
+                </Panel>
+                <Panel title="Plan and billing" description="Check renewal status and available child limit.">
+                  <div className="space-y-3 text-sm text-slate-300">
+                    <p>Plan: <span className="font-semibold text-white">{subscription?.subscription.planName ?? account?.account.subscriptionStatus ?? "Loading"}</span></p>
+                    <p>Children used: <span className="font-semibold text-white">{subscription?.subscription.childrenUsed ?? 0}/{subscription?.subscription.childLimit ?? account?.account.childLimit ?? 0}</span></p>
+                    <p>Renewal: <span className="font-semibold text-white">{subscription?.subscription.renewalDate ? new Date(subscription.subscription.renewalDate).toLocaleDateString() : "No renewal set"}</span></p>
+                  </div>
+                </Panel>
+              </div>
+              
+              {selectedChildId && insights ? (
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <Panel title="Focus areas" description={`Top ${Math.min(5, insights.weaknesses.length)} areas to work on`}>
+                    {insights.weaknesses.length > 0 ? (
+                      <div className="space-y-2">
+                        {insights.weaknesses.slice(0, 5).map((weakness) => (
+                          <div key={weakness.topic} className="flex items-center justify-between rounded-lg bg-white/5 p-3 text-sm">
+                            <span className="text-slate-300">{weakness.topic}</span>
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-24 rounded-full bg-white/10">
+                                <div className="h-full rounded-full bg-red-500" style={{ width: `${weakness.accuracy}%` }}></div>
+                              </div>
+                              <span className="w-12 text-right font-semibold text-red-400">{weakness.accuracy}%</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState text="No weak areas detected—great job!" />
+                    )}
+                  </Panel>
+                  
+                  <Panel title="Strengths" description={`Top ${Math.min(5, insights.strengths.length)} areas of strength`}>
+                    {insights.strengths.length > 0 ? (
+                      <div className="space-y-2">
+                        {insights.strengths.slice(0, 5).map((strength) => (
+                          <div key={strength.topic} className="flex items-center justify-between rounded-lg bg-white/5 p-3 text-sm">
+                            <span className="text-slate-300">{strength.topic}</span>
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-24 rounded-full bg-white/10">
+                                <div className="h-full rounded-full bg-green-500" style={{ width: `${strength.accuracy}%` }}></div>
+                              </div>
+                              <span className="w-12 text-right font-semibold text-green-400">{strength.accuracy}%</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState text="No strength data yet." />
+                    )}
+                  </Panel>
                 </div>
-              </Panel>
+              ) : null}
+              
+              {selectedChildId && insights ? (
+                <Panel title="Learning summary" description="Overall progress and activity metrics">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <Metric label="Average accuracy" value={`${insights.averageAccuracy}%`} />
+                    <Metric label="Total attempts" value={String(insights.totalAttempts)} />
+                    <Metric label="Learning mode" value={insights.learningMode ?? "Standard"} />
+                  </div>
+                </Panel>
+              ) : null}
+              
+              {selectedChildId && insights && insights.activity.length > 0 ? (
+                <Panel title="30-day activity" description="Daily learning attempts over the past month">
+                  <div className="space-y-3">
+                    <div className="flex h-40 items-end gap-1">
+                      {insights.activity.map((day) => {
+                        const maxCount = Math.max(...insights.activity.map((d) => d.count), 1);
+                        const height = maxCount > 0 ? (day.count / maxCount) * 100 : 0;
+                        return (
+                          <div key={day.date} className="flex-1" title={`${day.date}: ${day.count} attempts`}>
+                            <div
+                              className="w-full bg-gradient-to-t from-cyan-500 to-cyan-300 rounded-t-sm transition hover:opacity-80"
+                              style={{ height: `${height}%`, minHeight: day.count > 0 ? "4px" : "0px" }}
+                            ></div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex justify-between text-xs text-slate-400">
+                      <span>{insights.activity[0]?.date}</span>
+                      <span>{insights.activity[insights.activity.length - 1]?.date}</span>
+                    </div>
+                  </div>
+                </Panel>
+              ) : null}
             </div>
           ) : null}
 
