@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { prisma } from "@/lib/db";
+import { csvEscape } from "@/lib/csv_escape";
 import { summarizeWalletTransactions } from "@/lib/wallet_ledger";
 
 export type ParentReportRange = "7d" | "30d" | "90d" | "all";
@@ -55,6 +56,12 @@ export type ParentProgressReportData = {
     spentPence: number;
   };
   recommendations: string[];
+};
+
+export type ParentProgressReportTable = {
+  name: string;
+  headers: string[];
+  rows: Array<Array<string | number | boolean>>;
 };
 
 function toDateIso(date: Date): string {
@@ -295,6 +302,122 @@ function formatCurrencyPence(value: number): string {
 
 function formatActivityDate(value: string): string {
   return value.slice(5);
+}
+
+function formatDateTime(value: string | null): string {
+  if (!value) return "";
+  return value.replace("T", " ").slice(0, 16);
+}
+
+function formatCurrency(value: number): string {
+  return (value / 100).toFixed(2);
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+export function buildParentProgressReportTables(report: ParentProgressReportData): ParentProgressReportTable[] {
+  return [
+    {
+      name: "Summary",
+      headers: ["field", "value"],
+      rows: [
+        ["generatedAt", report.generatedAt],
+        ["range", report.range],
+        ["parentName", report.parent.name],
+        ["parentEmail", report.parent.email],
+        ["childName", report.child.name],
+        ["childId", report.child.id],
+        ["yearGroup", report.child.yearGroup ?? ""],
+        ["level", report.child.level],
+        ["totalAttempts", report.summary.totalAttempts],
+        ["averageAccuracy", report.summary.averageAccuracy],
+        ["learningMode", report.summary.learningMode ?? ""],
+        ["lastActivityAt", formatDateTime(report.summary.lastActivityAt)],
+      ],
+    },
+    {
+      name: "Strengths",
+      headers: ["topic", "accuracy", "attempts"],
+      rows: report.strengths.map((item) => [item.topic, item.accuracy, item.attempts]),
+    },
+    {
+      name: "WeakAreas",
+      headers: ["topic", "accuracy", "attempts"],
+      rows: report.weakAreas.map((item) => [item.topic, item.accuracy, item.attempts]),
+    },
+    {
+      name: "Activity",
+      headers: ["date", "attemptCount"],
+      rows: report.activity.map((item) => [item.date, item.count]),
+    },
+    {
+      name: "Rewards",
+      headers: ["metric", "value"],
+      rows: [
+        ["balanceGbp", formatCurrency(report.rewards.balancePence)],
+        ["earnedGbp", formatCurrency(report.rewards.earnedPence)],
+        ["spentGbp", formatCurrency(report.rewards.spentPence)],
+      ],
+    },
+    {
+      name: "Recommendations",
+      headers: ["priority", "recommendation"],
+      rows: report.recommendations.map((item, index) => [index + 1, item]),
+    },
+  ];
+}
+
+export function renderParentProgressReportCsv(report: ParentProgressReportData): string {
+  const tables = buildParentProgressReportTables(report);
+  const lines: string[] = [];
+
+  for (const table of tables) {
+    lines.push(csvEscape(table.name));
+    lines.push(table.headers.map((header) => csvEscape(header)).join(","));
+    for (const row of table.rows) {
+      lines.push(row.map((cell) => csvEscape(cell)).join(","));
+    }
+    lines.push("");
+  }
+
+  return lines.join("\r\n");
+}
+
+export function renderParentProgressReportExcel(report: ParentProgressReportData): string {
+  const tables = buildParentProgressReportTables(report);
+  const sheets = tables
+    .map((table) => {
+      const headerRow = `<Row>${table.headers.map((header) => `<Cell><Data ss:Type="String">${escapeXml(header)}</Data></Cell>`).join("")}</Row>`;
+      const dataRows = table.rows
+        .map((row) => {
+          const cells = row.map((cell) => {
+            const isNumber = typeof cell === "number";
+            const type = isNumber ? "Number" : "String";
+            return `<Cell><Data ss:Type="${type}">${escapeXml(String(cell))}</Data></Cell>`;
+          }).join("");
+          return `<Row>${cells}</Row>`;
+        })
+        .join("");
+
+      return `<Worksheet ss:Name="${escapeXml(table.name.slice(0, 31))}"><Table>${headerRow}${dataRows}</Table></Worksheet>`;
+    })
+    .join("");
+
+  return `<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+${sheets}
+</Workbook>`;
 }
 
 export function renderParentProgressReportPdf(report: ParentProgressReportData): ArrayBuffer {

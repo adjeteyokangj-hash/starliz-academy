@@ -4,6 +4,8 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import {
   buildParentProgressReportData,
   type ParentReportRange,
+  renderParentProgressReportCsv,
+  renderParentProgressReportExcel,
   renderParentProgressReportPdf,
 } from "@/lib/reports/parent-progress-report";
 
@@ -42,8 +44,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "childId is required." }, { status: 400 });
   }
 
-  if (format !== "pdf") {
-    return NextResponse.json({ error: "Only format=pdf is currently supported." }, { status: 400 });
+  if (!["pdf", "csv", "excel", "xls", "xlsx"].includes(format)) {
+    return NextResponse.json({ error: "Supported formats are: pdf, csv, excel." }, { status: 400 });
   }
 
   try {
@@ -53,14 +55,38 @@ export async function GET(request: Request) {
       range,
     });
 
-    const pdfBuffer = renderParentProgressReportPdf(report);
-    const filename = `starliz-progress-report-${toSafeFilename(report.child.name)}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    const fileBase = `starliz-progress-report-${toSafeFilename(report.child.name)}-${new Date().toISOString().slice(0, 10)}`;
 
-    return new NextResponse(pdfBuffer, {
+    if (format === "pdf") {
+      const pdfBuffer = renderParentProgressReportPdf(report);
+      return new NextResponse(pdfBuffer, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${fileBase}.pdf"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
+    if (format === "csv") {
+      const csv = renderParentProgressReportCsv(report);
+      return new NextResponse(csv, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${fileBase}.csv"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
+    const excelXml = renderParentProgressReportExcel(report);
+    return new NextResponse(excelXml, {
       status: 200,
       headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Type": "application/vnd.ms-excel; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${fileBase}.xls"`,
         "Cache-Control": "no-store",
       },
     });

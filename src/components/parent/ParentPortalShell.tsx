@@ -291,12 +291,12 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     }
   }
 
-  async function downloadProgressReport() {
+  async function downloadProgressReport(format: "pdf" | "csv" | "excel") {
     if (!selectedChildId) return;
     setReportDownloading(true);
     try {
       const response = await fetch(
-        `/api/parent/reports/export?childId=${encodeURIComponent(selectedChildId)}&range=30d&format=pdf`,
+        `/api/parent/reports/export?childId=${encodeURIComponent(selectedChildId)}&range=30d&format=${format}`,
         { credentials: "include" },
       );
       if (!response.ok) {
@@ -308,7 +308,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       const blob = await response.blob();
       const contentDisposition = response.headers.get("content-disposition") ?? "";
       const nameMatch = contentDisposition.match(/filename="([^"]+)"/i);
-      const filename = nameMatch?.[1] ?? `starliz-progress-report-${selectedChildId}.pdf`;
+      const fallbackExt = format === "excel" ? "xls" : format;
+      const filename = nameMatch?.[1] ?? `starliz-progress-report-${selectedChildId}.${fallbackExt}`;
 
       const href = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -461,9 +462,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     <Metric label="Total attempts" value={String(insights.totalAttempts)} />
                     <Metric label="Learning mode" value={insights.learningMode ?? "Standard"} />
                   </div>
-                  <div className="mt-4">
-                    <Button type="button" onClick={() => void downloadProgressReport()} disabled={reportDownloading}>
-                      {reportDownloading ? "Preparing Report..." : "Download Progress Report"}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button type="button" onClick={() => void downloadProgressReport("pdf")} disabled={reportDownloading}>
+                      {reportDownloading ? "Preparing Report..." : "Download PDF Report"}
+                    </Button>
+                    <Button type="button" onClick={() => void downloadProgressReport("csv")} disabled={reportDownloading}>
+                      {reportDownloading ? "Preparing Report..." : "Download CSV"}
+                    </Button>
+                    <Button type="button" onClick={() => void downloadProgressReport("excel")} disabled={reportDownloading}>
+                      {reportDownloading ? "Preparing Report..." : "Download Excel"}
                     </Button>
                   </div>
                 </Panel>
@@ -535,9 +542,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           {section === "progress" ? (
             <>
               <Panel title="Progress" description="See the selected child's recent learning records.">
-                <div className="mb-4">
-                  <Button type="button" onClick={() => void downloadProgressReport()} disabled={!selectedChildId || reportDownloading}>
-                    {reportDownloading ? "Preparing Report..." : "Download Progress Report"}
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <Button type="button" onClick={() => void downloadProgressReport("pdf")} disabled={!selectedChildId || reportDownloading}>
+                    {reportDownloading ? "Preparing Report..." : "Download PDF Report"}
+                  </Button>
+                  <Button type="button" onClick={() => void downloadProgressReport("csv")} disabled={!selectedChildId || reportDownloading}>
+                    {reportDownloading ? "Preparing Report..." : "Download CSV"}
+                  </Button>
+                  <Button type="button" onClick={() => void downloadProgressReport("excel")} disabled={!selectedChildId || reportDownloading}>
+                    {reportDownloading ? "Preparing Report..." : "Download Excel"}
                   </Button>
                 </div>
                 {childDetail ? (
