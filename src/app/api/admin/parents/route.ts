@@ -97,7 +97,7 @@ export async function POST(request: Request) {
           message = "Password must be at least 8 characters";
         } else if (fieldName === "phone" && issue.code === "too_small") {
           message = "Phone number is required";
-        } else if (fieldName === "email" && (issue.code === "invalid_string" || issue.code === "invalid_format")) {
+        } else if (fieldName === "email" && issue.code === "invalid_format") {
           message = "Please provide a valid email address";
         } else if (fieldName === "name" && issue.code === "too_small") {
           message = "Parent name is required";
