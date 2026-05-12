@@ -104,6 +104,7 @@ export default function ParentsPage() {
           title="No parent accounts yet"
           description="Create a parent account before adding students. Each student must belong to one parent."
           actionLabel="Add Parent"
+          href="/admin/parents/new"
         />
       ) : null}
       {parents.length > 0 ? (

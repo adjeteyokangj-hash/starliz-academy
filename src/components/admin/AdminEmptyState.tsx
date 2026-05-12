@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 type AdminEmptyStateProps = {
   title: string;
   description: string;
@@ -9,9 +11,9 @@ type AdminEmptyStateProps = {
 export default function AdminEmptyState({ title, description, actionLabel, onAction, href }: AdminEmptyStateProps) {
   const action = actionLabel ? (
     href ? (
-      <a href={href} className="inline-flex rounded-xl bg-indigo-500 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-400">
+      <Link href={href} className="inline-flex rounded-xl bg-indigo-500 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-400">
         {actionLabel}
-      </a>
+      </Link>
     ) : (
       <button type="button" onClick={onAction} className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-400">
         {actionLabel}
