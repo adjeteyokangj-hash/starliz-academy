@@ -35,14 +35,25 @@ export default function AdminSidebar() {
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
-    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+    const media = window.matchMedia("(min-width: 1024px)");
 
-    if (isDesktop) {
-      setIsVisible(true);
-      return;
+    function updateDesktopState() {
+      setIsDesktop(media.matches);
     }
+
+    updateDesktopState();
+    media.addEventListener("change", updateDesktopState);
+
+    return () => {
+      media.removeEventListener("change", updateDesktopState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isDesktop) return;
 
     try {
       const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
@@ -52,7 +63,17 @@ export default function AdminSidebar() {
     } catch {
       // Ignore invalid local storage payloads.
     }
-  }, []);
+  }, [isDesktop]);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+
+    const id = window.requestAnimationFrame(() => {
+      setIsVisible(true);
+    });
+
+    return () => window.cancelAnimationFrame(id);
+  }, [isDesktop]);
 
   function toggleVisibility() {
     const nextVisible = !isVisible;
