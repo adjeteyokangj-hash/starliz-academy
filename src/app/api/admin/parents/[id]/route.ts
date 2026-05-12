@@ -160,7 +160,9 @@ export async function PATCH(request: Request, context: Context) {
   } catch (error) {
     if (error instanceof z.ZodError) {
       const issue = error.issues[0];
-      return NextResponse.json({ error: `${issue.path[0] ?? "field"}: ${issue.message}` }, { status: 400 });
+      const fieldNameRaw = issue.path[0] ?? "field";
+      const fieldName = typeof fieldNameRaw === "string" ? fieldNameRaw : String(fieldNameRaw);
+      return NextResponse.json({ error: `${fieldName}: ${issue.message}` }, { status: 400 });
     }
     return NextResponse.json({ error: "Invalid parent update." }, { status: 400 });
   }
