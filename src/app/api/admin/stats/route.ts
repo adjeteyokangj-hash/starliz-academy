@@ -14,6 +14,26 @@ function commsModel() {
   return prisma as PrismaWithComms;
 }
 
+function isMissingTableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { code?: string; message?: string };
+  if (maybeError.code === "P2021" || maybeError.code === "P2022") return true;
+  const message = String(maybeError.message ?? "").toLowerCase();
+  return message.includes("does not exist") || message.includes("not found in the current database");
+}
+
+async function safeQuery<T>(label: string, query: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await query();
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      console.warn(`Admin stats fallback for ${label}:`, error);
+      return fallback;
+    }
+    throw error;
+  }
+}
+
 export async function GET() {
   try {
     const { session, response } = await requireAdmin();
@@ -70,18 +90,26 @@ export async function GET() {
           child: { select: { name: true, parent: { select: { email: true } } } },
         },
       }),
-      Promise.all([prisma.rewardItem.count(), prisma.rewardRule.count()]).then(([items, rules]) => items + rules),
-      prisma.storeItem.count(),
-      prisma.supportTicket.count(),
-      prisma.subscription.count(),
-      prisma.lesson.count(),
-      prisma.apiKeyConfig.findMany({ select: { provider: true, status: true, updatedAt: true } }),
-      prisma.weakArea.findMany({
-        where: { status: "active" },
-        include: { student: { select: { id: true, name: true } } },
-        orderBy: [{ accuracy: "asc" }, { lastDetectedAt: "desc" }],
-        take: 20,
-      }),
+      Promise.all([
+        safeQuery("rewardItem", () => prisma.rewardItem.count(), 0),
+        safeQuery("rewardRule", () => prisma.rewardRule.count(), 0),
+      ]).then(([items, rules]) => items + rules),
+      safeQuery("storeItem", () => prisma.storeItem.count(), 0),
+      safeQuery("supportTicket", () => prisma.supportTicket.count(), 0),
+      safeQuery("subscription", () => prisma.subscription.count(), 0),
+      safeQuery("lesson", () => prisma.lesson.count(), 0),
+      safeQuery("apiKeyConfig", () => prisma.apiKeyConfig.findMany({ select: { provider: true, status: true, updatedAt: true } }), []),
+      safeQuery(
+        "weakArea",
+        () =>
+          prisma.weakArea.findMany({
+            where: { status: "active" },
+            include: { student: { select: { id: true, name: true } } },
+            orderBy: [{ accuracy: "asc" }, { lastDetectedAt: "desc" }],
+            take: 20,
+          }),
+        []
+      ),
       commsModel().adminEmail?.count({ where: { direction: "inbox", isRead: false } }) ?? Promise.resolve(0),
       commsModel().parentMessageThread?.count({ where: { unreadCount: { gt: 0 } } }) ?? Promise.resolve(0),
       commsModel().parentMessageThread?.aggregate({ _sum: { unreadCount: true } }) ?? Promise.resolve({ _sum: { unreadCount: 0 } }),
