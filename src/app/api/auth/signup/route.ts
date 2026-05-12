@@ -66,6 +66,12 @@ export async function POST(request: Request) {
         email: body.email.toLowerCase(),
         passwordHash: await hashPassword(body.password),
         name: body.name,
+        parentProfile: {
+          create: {
+            phone: body.phone || "",
+            status: "active",
+          },
+        },
       },
     });
 

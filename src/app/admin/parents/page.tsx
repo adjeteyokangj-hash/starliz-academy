@@ -11,6 +11,7 @@ type ParentRow = {
   email: string;
   phone: string | null;
   status: string;
+  profileStatus: "complete" | "incomplete";
   childrenCount: number;
   subscriptionStatus: string;
   lastLogin: string;
@@ -114,6 +115,7 @@ export default function ParentsPage() {
                 <th className="px-3 py-3">Email</th>
                 <th className="px-3 py-3">Phone</th>
                 <th className="px-3 py-3">Status</th>
+                <th className="px-3 py-3">Profile</th>
                 <th className="px-3 py-3">Children</th>
                 <th className="px-3 py-3">Subscription</th>
                 <th className="px-3 py-3">Last Login</th>
@@ -128,6 +130,11 @@ export default function ParentsPage() {
                   <td className="px-3 py-3">{parent.phone ?? "Not set"}</td>
                   <td className="px-3 py-3">
                     <span className="rounded-full bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200 capitalize">{parent.status}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className={`rounded-full px-2 py-1 text-xs font-bold capitalize ${parent.profileStatus === "complete" ? "bg-emerald-900 text-emerald-200" : "bg-yellow-900 text-yellow-200"}`}>
+                      {parent.profileStatus === "incomplete" && "⚠ "}{parent.profileStatus}
+                    </span>
                   </td>
                   <td className="px-3 py-3">{parent.childrenCount}</td>
                   <td className="px-3 py-3">

@@ -134,6 +134,7 @@ export async function GET() {
         email: parent.email,
         phone: parent.parentProfile?.phone ?? null,
         status: parent.parentProfile?.status ?? "active",
+        profileStatus: parent.parentProfile ? "complete" : "incomplete",
         childrenCount: parent._count.children,
         subscriptionStatus,
         lastLogin: parent.children[0]?.updatedAt?.toISOString() ?? parent.updatedAt.toISOString(),

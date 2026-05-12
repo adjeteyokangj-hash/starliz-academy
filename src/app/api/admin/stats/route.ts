@@ -40,6 +40,7 @@ export async function GET() {
     inboxUnread,
     messageThreadsWithUnread,
     unreadMessagesAggregate,
+    orphanedParentsCount,
   ] = await Promise.all([
     prisma.user.count({ where: { role: "parent" } }),
     prisma.childProfile.count({ where: { archived: false } }),
@@ -83,6 +84,12 @@ export async function GET() {
     commsModel().adminEmail?.count({ where: { direction: "inbox", isRead: false } }) ?? Promise.resolve(0),
     commsModel().parentMessageThread?.count({ where: { unreadCount: { gt: 0 } } }) ?? Promise.resolve(0),
     commsModel().parentMessageThread?.aggregate({ _sum: { unreadCount: true } }) ?? Promise.resolve({ _sum: { unreadCount: 0 } }),
+    prisma.user.count({
+      where: {
+        role: "parent",
+        parentProfile: null,
+      },
+    }),
   ]);
 
   const activeToday = new Set([...recentProgress.map((p) => p.childId), ...recentAttempts.map((attempt) => attempt.studentId)]).size;
@@ -239,6 +246,10 @@ export async function GET() {
       engagementLevel: engagementTrend,
       frustrationSignals: frustrationTrend,
       dominantMood,
+    },
+    healthCheck: {
+      orphanedParentsCount,
+      orphanedParentsStatus: orphanedParentsCount === 0 ? "healthy" : "warning",
     },
   });
 }
