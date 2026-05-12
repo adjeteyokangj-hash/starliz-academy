@@ -133,8 +133,10 @@ export default function AdminSidebar() {
       )}
       <aside
         className={`${
-          isVisible ? "translate-x-0" : "-translate-x-full"
-        } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-950/92 px-4 py-5 transition-transform duration-300 lg:relative`}
+          isVisible
+            ? "translate-x-0 lg:w-72 lg:px-4 lg:py-5 lg:border-r lg:opacity-100"
+            : "-translate-x-full lg:translate-x-0 lg:w-0 lg:px-0 lg:py-0 lg:border-r-0 lg:opacity-0"
+        } fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col overflow-hidden border-slate-800 bg-slate-950/92 transition-all duration-300`}
       >
         <div className="relative">
           <Link href="/admin" className="flex items-center gap-3 px-2">
