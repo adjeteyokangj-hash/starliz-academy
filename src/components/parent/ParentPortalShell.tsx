@@ -87,9 +87,24 @@ type MessageThread = {
   contactLabel: string | null;
   contactAddress: string;
   unreadCount: number;
+  parentUnreadCount: number;
   lastMessageAt: string;
   lastMessage: string;
   lastDirection: "inbound" | "outbound";
+};
+
+type ThreadMessage = {
+  id: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  actorUserId: string | null;
+  createdAt: string;
+};
+
+type MessagesPayload = {
+  threads: MessageThread[];
+  selectedThreadId: string | null;
+  messages: ThreadMessage[];
 };
 
 type ChildDetail = {
@@ -169,6 +184,12 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [consent, setConsent] = useState<ConsentPayload | null>(null);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [threads, setThreads] = useState<MessageThread[]>([]);
+  const [threadMessages, setThreadMessages] = useState<ThreadMessage[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [childDetail, setChildDetail] = useState<ChildDetail | null>(null);
   const [insights, setInsights] = useState<InsightsPayload | null>(null);
@@ -226,8 +247,10 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       }
 
       if (messagesRes.ok) {
-        const payload = (await messagesRes.json()) as { threads: MessageThread[] };
+        const payload = (await messagesRes.json()) as MessagesPayload;
         setThreads(payload.threads ?? []);
+        setActiveThreadId(payload.selectedThreadId ?? null);
+        setThreadMessages(payload.messages ?? []);
       }
 
       setLoading(false);
@@ -373,9 +396,14 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
               <Link
                 key={item.id}
                 href={item.id === "dashboard" ? "/parent/dashboard" : `/parent/${item.id}`}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${item.id === section ? "bg-cyan-400 text-slate-950" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}
+                className={`relative rounded-full px-4 py-2 text-sm font-semibold transition ${item.id === section ? "bg-cyan-400 text-slate-950" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}
               >
                 {item.label}
+                {item.id === "messages" && threads.reduce((sum, t) => sum + t.parentUnreadCount, 0) > 0 ? (
+                  <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                    {threads.reduce((sum, t) => sum + t.parentUnreadCount, 0)}
+                  </span>
+                ) : null}
               </Link>
             ))}
           </div>
@@ -681,20 +709,119 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           ) : null}
 
           {section === "messages" ? (
-            <Panel title="Messages" description="Parent message threads connected to your account.">
-              <div className="space-y-3">
-                {threads.map((thread) => (
-                  <div key={thread.id} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-semibold text-white">{thread.contactLabel ?? thread.contactAddress}</p>
-                      <p>{thread.unreadCount} unread</p>
+            <div className="space-y-4">
+              <Panel title="Message Support" description="Send a message to the StarLiz team. We'll reply within 1 business day.">
+                <form
+                  className="space-y-3"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (!composeBody.trim()) return;
+                    setSendingMessage(true);
+                    setMessageError(null);
+                    try {
+                      const res = await fetch("/api/parent/messages", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "include",
+                        body: JSON.stringify({ subject: composeSubject || undefined, body: composeBody }),
+                      });
+                      if (!res.ok) {
+                        const payload = await res.json().catch(() => null);
+                        setMessageError((payload as { error?: string } | null)?.error ?? "Failed to send message.");
+                        return;
+                      }
+                      setComposeSubject("");
+                      setComposeBody("");
+                      // Reload messages
+                      const refreshed = await fetch("/api/parent/messages", { credentials: "include" });
+                      if (refreshed.ok) {
+                        const payload = (await refreshed.json()) as MessagesPayload;
+                        setThreads(payload.threads ?? []);
+                        setActiveThreadId(payload.selectedThreadId ?? null);
+                        setThreadMessages(payload.messages ?? []);
+                      }
+                    } finally {
+                      setSendingMessage(false);
+                    }
+                  }}
+                >
+                  <input
+                    className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                    placeholder="Subject (optional)"
+                    value={composeSubject}
+                    onChange={(e) => setComposeSubject(e.target.value)}
+                    maxLength={200}
+                  />
+                  <textarea
+                    className="min-h-24 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                    placeholder="Write your message..."
+                    value={composeBody}
+                    onChange={(e) => setComposeBody(e.target.value)}
+                    maxLength={2000}
+                    required
+                  />
+                  {messageError ? <p className="text-sm text-red-400">{messageError}</p> : null}
+                  <Button type="submit" disabled={sendingMessage || !composeBody.trim()}>
+                    {sendingMessage ? "Sending..." : "Send Message"}
+                  </Button>
+                </form>
+              </Panel>
+
+              {threads.length > 0 ? (
+                <Panel title="Conversation History" description="Your messages and replies from the StarLiz team.">
+                  {threads.length > 1 ? (
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      {threads.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={async () => {
+                            setActiveThreadId(t.id);
+                            const res = await fetch(`/api/parent/messages?threadId=${t.id}`, { credentials: "include" });
+                            if (res.ok) {
+                              const payload = (await res.json()) as MessagesPayload;
+                              setThreadMessages(payload.messages ?? []);
+                              setThreads(payload.threads ?? []);
+                            }
+                          }}
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                            t.id === activeThreadId ? "bg-cyan-400 text-slate-950" : "bg-white/10 text-slate-300 hover:bg-white/20"
+                          }`}
+                        >
+                          {t.contactLabel ?? t.contactAddress}
+                          {t.parentUnreadCount > 0 ? (
+                            <span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">
+                              {t.parentUnreadCount}
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
                     </div>
-                    <p className="mt-2">{thread.lastMessage}</p>
+                  ) : null}
+
+                  <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
+                    {threadMessages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`rounded-2xl p-3 text-sm ${
+                          msg.direction === "inbound"
+                            ? "ml-auto max-w-[80%] bg-cyan-600/20 text-slate-200"
+                            : "mr-auto max-w-[80%] bg-white/8 text-slate-200"
+                        }`}
+                      >
+                        <p className="mb-1 text-xs font-semibold ${ msg.direction === 'inbound' ? 'text-cyan-400' : 'text-slate-400' }">
+                          {msg.direction === "inbound" ? "You" : "StarLiz Support"}
+                        </p>
+                        <p className="whitespace-pre-line">{msg.body}</p>
+                        <p className="mt-1 text-right text-xs text-slate-500">
+                          {new Date(msg.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                    {!threadMessages.length ? <EmptyState text="No messages yet in this conversation." /> : null}
                   </div>
-                ))}
-                {!threads.length ? <EmptyState text="No conversation threads yet. Support tickets still work from the support tab." /> : null}
-              </div>
-            </Panel>
+                </Panel>
+              ) : null}
+            </div>
           ) : null}
 
           {section === "notifications" ? (

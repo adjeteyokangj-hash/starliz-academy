@@ -69,6 +69,10 @@ export default function AdminMessagesPage() {
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [inAppReplyBody, setInAppReplyBody] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  const [replyStatus, setReplyStatus] = useState<string | null>(null);
+  const [replyError, setReplyError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedParent = useMemo(() => parents.find((p) => p.id === parentId) ?? null, [parentId, parents]);
@@ -248,6 +252,28 @@ export default function AdminMessagesPage() {
     });
   }
 
+  async function handleInAppReply(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedThreadId || !inAppReplyBody.trim()) return;
+    setSendingReply(true);
+    setReplyError(null);
+    setReplyStatus(null);
+    const res = await fetch("/api/admin/messages/reply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ threadId: selectedThreadId, body: inAppReplyBody.trim() }),
+    });
+    const payload = await res.json().catch(() => ({})) as { error?: string };
+    setSendingReply(false);
+    if (!res.ok) {
+      setReplyError(payload.error ?? "Failed to send reply.");
+      return;
+    }
+    setReplyStatus("Reply sent.");
+    setInAppReplyBody("");
+    await loadData(selectedThreadId);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -353,6 +379,26 @@ export default function AdminMessagesPage() {
                 </div>
               ))}
             </div>
+
+            {selectedThread?.channel === "text" && selectedThread.to.includes("@") ? (
+              <form className="mt-3 space-y-2" onSubmit={(event) => void handleInAppReply(event)}>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-400">In-App Reply (no phone required)</p>
+                <textarea
+                  className={`${fieldCls} min-h-20 resize-y`}
+                  value={inAppReplyBody}
+                  onChange={(event) => setInAppReplyBody(event.target.value)}
+                  maxLength={2000}
+                  placeholder="Type reply to parent..."
+                />
+                <div className="flex items-center gap-3">
+                  <button type="submit" disabled={sendingReply || !inAppReplyBody.trim()} className="rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-cyan-500 disabled:opacity-50">
+                    {sendingReply ? "Sending..." : "Send Reply"}
+                  </button>
+                  {replyStatus ? <p className="text-sm font-semibold text-emerald-400">{replyStatus}</p> : null}
+                  {replyError ? <p className="text-sm font-semibold text-red-400">{replyError}</p> : null}
+                </div>
+              </form>
+            ) : null}
 
             <form className="space-y-3" onSubmit={(event) => void handleSend(event)}>
               <label>

@@ -933,18 +933,19 @@ model AdminEmail {
 }
 
 model ParentMessageThread {
-  id             String    @id @default(cuid())
-  channel        String    @default("whatsapp") // text | whatsapp
-  contactAddress String // e.g. +447700900123
-  contactLabel   String?
-  parentId       String?
-  parentEmail    String?
-  unreadCount    Int       @default(0)
-  lastMessageAt  DateTime  @default(now())
-  lastInboundAt  DateTime?
-  lastOutboundAt DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  channel           String    @default("whatsapp") // text | whatsapp
+  contactAddress    String // e.g. +447700900123 or parent email for in-app
+  contactLabel      String?
+  parentId          String?
+  parentEmail       String?
+  unreadCount       Int       @default(0) // admin's unread (inbound from parent)
+  parentUnreadCount Int       @default(0) // parent's unread (outbound replies from admin)
+  lastMessageAt     DateTime  @default(now())
+  lastInboundAt     DateTime?
+  lastOutboundAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   messages ParentMessage[]
 

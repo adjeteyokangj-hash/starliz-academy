@@ -75,8 +75,66 @@ export default function PublicPricingSection({ compact = false }: PublicPricingS
     }
   }, [])
 
+  const FALLBACK_INDIVIDUAL: PricingPlan[] = [
+    {
+      id: "starter",
+      name: "Starter",
+      description: "Perfect for one child getting started with spelling, maths and reading.",
+      price: 4.99,
+      currency: "GBP",
+      interval: "month",
+      audience: "individual",
+      features: ["1 child profile", "Spelling, maths and reading", "Basic progress dashboard"],
+      priceNote: "Start free — no credit card required",
+      badge: null,
+      ctaLabel: "Start Free Trial",
+      ctaHref: "/signup",
+      stripePriceId: null,
+      isActive: true,
+      isPopular: false,
+      sortOrder: 1,
+    },
+    {
+      id: "family",
+      name: "Family",
+      description: "All learning areas for the whole family, with rewards and progress tracking.",
+      price: 7.99,
+      currency: "GBP",
+      interval: "month",
+      audience: "family",
+      features: ["Up to 3 child profiles", "All learning areas", "Rewards and progress tracking"],
+      priceNote: null,
+      badge: "Most Popular",
+      ctaLabel: "Start Free Trial",
+      ctaHref: "/signup",
+      stripePriceId: null,
+      isActive: true,
+      isPopular: true,
+      sortOrder: 2,
+    },
+    {
+      id: "premium",
+      name: "Premium",
+      description: "AI-powered learning support and full parent reports for up to 5 children.",
+      price: 11.99,
+      currency: "GBP",
+      interval: "month",
+      audience: "family",
+      features: ["Up to 5 child profiles", "AI learning support", "Full parent reports"],
+      priceNote: null,
+      badge: null,
+      ctaLabel: "Start Free Trial",
+      ctaHref: "/signup",
+      stripePriceId: null,
+      isActive: true,
+      isPopular: false,
+      sortOrder: 3,
+    },
+  ]
+
   const individualPlans = useMemo(() => {
-    return plans.filter((plan) => plan.audience === "individual" || plan.audience === "family")
+    const live = plans.filter((plan) => plan.audience === "individual" || plan.audience === "family")
+    return live.length > 0 ? live : FALLBACK_INDIVIDUAL
   }, [plans])
 
   const orgPlans = useMemo(() => {
@@ -91,7 +149,7 @@ export default function PublicPricingSection({ compact = false }: PublicPricingS
         <h2 className={`${headingSize} font-black`}>Simple pricing. Real learning progress.</h2>
         <p className="mt-4 text-slate-400">Start with a free trial. No credit card required.</p>
 
-        {loading ? <p className="mt-8 text-sm text-slate-500">Loading pricing...</p> : null}
+        {loading && plans.length === 0 ? <p className="mt-8 text-sm text-slate-500">Loading pricing...</p> : null}
 
         <div className="mt-12 grid gap-6 md:grid-cols-3">
           {individualPlans.map((plan) => (
@@ -155,7 +213,7 @@ export default function PublicPricingSection({ compact = false }: PublicPricingS
       </div>
 
       <div className="mx-auto mt-16 max-w-6xl rounded-3xl border border-slate-700 bg-slate-900/80 p-8 lg:p-10">
-        <h3 className="text-3xl font-black text-white">For Schools &amp; Organisations</h3>
+        <h3 className="text-3xl font-black text-white">Schools &amp; Organisations</h3>
         <p className="mt-3 max-w-3xl text-slate-300">
           Bring StarLiz Academy to your school, tutoring centre or learning organisation.
         </p>
@@ -164,7 +222,7 @@ export default function PublicPricingSection({ compact = false }: PublicPricingS
           <ul className="space-y-3 text-slate-300">
             <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Multi-student management</li>
             <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Teacher/admin dashboard</li>
-            <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Class progress tracking</li>
+            <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Safeguarding and reports</li>
             <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>AI learning insights</li>
             <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Safeguarding-focused access controls</li>
             <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Custom onboarding support</li>

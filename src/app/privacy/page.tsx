@@ -16,40 +16,50 @@ export default function Privacy() {
 
       <div className="mx-auto max-w-4xl px-6 py-20">
         <h1 className="text-4xl font-black mb-6">Privacy Policy</h1>
-        <p className="text-sm text-slate-500 mb-10">Last updated: 7 May 2026</p>
+        <p className="text-sm text-slate-500 mb-10">Last updated: 12 May 2026</p>
 
         <p className="mb-8 text-slate-400 leading-8">
           StarLiz Academy is committed to protecting your privacy and your child&apos;s data.
-          We take data protection seriously and only collect what is necessary to deliver the service.
+          We only collect the parent and child information needed to create accounts, deliver learning activities,
+          track progress, manage subscriptions, and meet safeguarding and privacy responsibilities.
         </p>
 
         <div className="space-y-8">
           <div>
             <h2 className="text-xl font-bold mb-3">What parent data is collected</h2>
             <ul className="space-y-2 text-slate-400 list-disc list-inside">
-              <li>Parent account details, including name and email address</li>
-              <li>Parent contact details such as phone number where provided</li>
+              <li>Parent full name</li>
+              <li>Email address</li>
+              <li>Password and authentication details</li>
+              <li>Phone number, if required for account setup or contact purposes</li>
+              <li>Billing and subscription details</li>
               <li>Consent records and consent history</li>
-              <li>Billing and subscription records required to manage paid plans</li>
+              <li>Child profile setup details</li>
             </ul>
           </div>
 
           <div>
             <h2 className="text-xl font-bold mb-3">What child data is collected</h2>
             <ul className="space-y-2 text-slate-400 list-disc list-inside">
-              <li>Child profile details such as nickname and age range</li>
-              <li>Learning progress data (accuracy, attempts, rewards, mastery)</li>
-              <li>Session activity and performance history</li>
-              <li>Optional voice interaction data used to power lesson features, when enabled</li>
+              <li>Child name or nickname</li>
+              <li>Age and year group</li>
+              <li>Learning level</li>
+              <li>Selected subjects</li>
+              <li>Learning progress</li>
+              <li>Attempts, scores, rewards, and weak areas</li>
+              <li>Voice and speech responses where microphone learning is enabled</li>
             </ul>
           </div>
 
           <div>
             <h2 className="text-xl font-bold mb-3">What StarLiz does not collect</h2>
             <ul className="space-y-2 text-slate-400 list-disc list-inside">
-              <li>Location, photos, private messages, or personal contact details from children</li>
-              <li>No sale of parent or child personal data</li>
-              <li>No child social networking profile requirements</li>
+              <li>Children&apos;s personal phone numbers or email addresses</li>
+              <li>Children&apos;s private messages</li>
+              <li>Children&apos;s social media profiles</li>
+              <li>Location tracking data</li>
+              <li>Photos, unless a parent or admin uploads them for an approved purpose</li>
+              <li>Sale of parent or child personal data</li>
             </ul>
           </div>
 
