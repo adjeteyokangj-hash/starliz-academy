@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     });
     return res;
   } catch (error) {
-    const reason = encodeURIComponent(error instanceof Error ? error.message : "oauth_config_error");
-    return NextResponse.redirect(new URL(`/admin/inbox?oauth=error&reason=${reason}`, req.url));
+    void error;
+    return NextResponse.redirect(new URL("/admin/inbox?error=oauth_failed", req.url));
   }
 }

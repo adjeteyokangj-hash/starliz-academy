@@ -15,14 +15,14 @@ export async function GET(req: NextRequest) {
   const folder = searchParams.get("folder") ?? "inbox";
   const limit = Math.min(Number(searchParams.get("limit") ?? "50"), 100);
 
-  const messages = await fetchMessages(session.userId, req.nextUrl.origin, folder, limit).catch((e: Error) =>
-    NextResponse.json({ error: e.message }, { status: 502 })
-  );
-  if (messages instanceof NextResponse) return messages;
+  const result = await fetchMessages(session.userId, req.nextUrl.origin, folder, limit)
+    .then((messages) => ({ messages, mailboxError: null as string | null }))
+    .catch((e: Error) => ({ messages: [] as Awaited<ReturnType<typeof fetchMessages>>, mailboxError: e.message }));
 
   return NextResponse.json({
     connected: true,
     account: { email: cfg.email },
-    messages,
+    messages: result.messages,
+    mailboxError: result.mailboxError,
   });
 }

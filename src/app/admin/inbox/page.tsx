@@ -381,16 +381,17 @@ export default function AdminInboxPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const connectedFlag = params.get("connected") === "1";
     const oauth = params.get("oauth");
-    if (!oauth) return;
+    const hasOauthError = params.get("error") === "oauth_failed" || oauth === "error";
+    if (!connectedFlag && !oauth && !hasOauthError) return;
 
     const timer = window.setTimeout(() => {
-      if (oauth === "connected") {
+      if (connectedFlag || oauth === "connected") {
         setNotice("✅ Inbox connected with Microsoft Graph OAuth.");
         void fetchMessages(folder);
       } else {
-        const reason = params.get("reason");
-        setNotice(`❌ Inbox OAuth failed${reason ? `: ${reason}` : "."}`);
+        setNotice("❌ Inbox OAuth failed.");
       }
     }, 0);
 

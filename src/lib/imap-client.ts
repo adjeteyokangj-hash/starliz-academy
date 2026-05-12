@@ -41,8 +41,19 @@ function getRedirectUri(origin: string) {
   return `${origin}/api/admin/inbox/oauth/callback`;
 }
 
+const PRODUCTION_OAUTH_ORIGIN = "https://www.starlizacademy.com";
+
+function normalizeOrigin(value: string) {
+  return value.trim().replace(/\/+$/, "");
+}
+
 function pickOrigin(fallbackOrigin: string) {
-  return fallbackOrigin || process.env.NEXT_PUBLIC_APP_URL || fallbackOrigin;
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (process.env.NODE_ENV === "production") {
+    if (configured) return normalizeOrigin(configured);
+    return PRODUCTION_OAUTH_ORIGIN;
+  }
+  return normalizeOrigin(configured || fallbackOrigin);
 }
 
 export function getInboxRedirectUri(origin: string) {
