@@ -555,44 +555,42 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           ) : null}
 
           {section === "rewards" ? (
-            <Panel title="Rewards" description="Wallet balance and purchases for the selected child.">
-              {childDetail ? (
-                <div className="grid gap-3 md:grid-cols-3">
-                  <Metric label="Balance" value={currency(childDetail.walletSummary.balance)} />
-                  <Metric label="Earned" value={currency(childDetail.walletSummary.earned)} />
-                  <Metric label="Spent" value={currency(childDetail.walletSummary.spent)} />
-                </div>
-              ) : (
-                <EmptyState text="Select a child to see rewards and wallet history." />
+            <>
+              <Panel title="Rewards" description="Wallet balance and purchases for the selected child.">
+                {childDetail ? (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <Metric label="Balance" value={currency(childDetail.walletSummary.balance)} />
+                    <Metric label="Earned" value={currency(childDetail.walletSummary.earned)} />
+                    <Metric label="Spent" value={currency(childDetail.walletSummary.spent)} />
+                  </div>
+                ) : (
+                  <EmptyState text="Select a child to see rewards and wallet history." />
+                )}
+              </Panel>
 
-                      {childDetail ? (
-                        <>
-                          {childDetail.purchaseHistory.some((p) => p.approvalStatus === "pending") && (
-                            <Panel title="Pending approvals" description="Purchases awaiting admin review">
-                              <div className="space-y-3">
-                                {childDetail.purchaseHistory
-                                  .filter((p) => p.approvalStatus === "pending")
-                                  .map((purchase) => (
-                                    <div key={purchase.id} className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div>
-                                          <p className="font-semibold text-white">{purchase.itemName}</p>
-                                          <p className="text-xs text-slate-400 mt-1">{new Date(purchase.createdAt).toLocaleString()}</p>
-                                        </div>
-                                        <p className="font-semibold text-yellow-400">{currency(purchase.cost)}</p>
-                                      </div>
-                                      {purchase.reviewNote && (
-                                        <p className="mt-2 text-xs text-yellow-300">Admin note: {purchase.reviewNote}</p>
-                                      )}
-                                    </div>
-                                  ))}
-                              </div>
-                            </Panel>
-                          )}
-                        </>
-                      ) : null}
-              )}
-            </Panel>
+              {childDetail && childDetail.purchaseHistory.some((p) => p.approvalStatus === "pending") ? (
+                <Panel title="Pending approvals" description="Purchases awaiting admin review">
+                  <div className="space-y-3">
+                    {childDetail.purchaseHistory
+                      .filter((p) => p.approvalStatus === "pending")
+                      .map((purchase) => (
+                        <div key={purchase.id} className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-white">{purchase.itemName}</p>
+                              <p className="mt-1 text-xs text-slate-400">{new Date(purchase.createdAt).toLocaleString()}</p>
+                            </div>
+                            <p className="font-semibold text-yellow-400">{currency(purchase.cost)}</p>
+                          </div>
+                          {purchase.reviewNote ? (
+                            <p className="mt-2 text-xs text-yellow-300">Admin note: {purchase.reviewNote}</p>
+                          ) : null}
+                        </div>
+                      ))}
+                  </div>
+                </Panel>
+              ) : null}
+            </>
           ) : null}
 
           {section === "consent" ? (
