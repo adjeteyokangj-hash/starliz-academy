@@ -158,7 +158,7 @@ export default function NewParentPage() {
         return;
       }
       router.replace(`/admin/parents/${payload.parent.id}`);
-    } catch (err) {
+    } catch {
       setError("An error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);

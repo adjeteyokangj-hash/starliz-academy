@@ -98,7 +98,7 @@ export default function NewStudentPage() {
         return;
       }
       router.replace(`/admin/students/${payload.student.id}`);
-    } catch (err) {
+    } catch {
       setError("An error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);

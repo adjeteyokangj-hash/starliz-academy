@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import AdminResourceManager from "@/components/admin/AdminResourceManager";
 
@@ -66,8 +66,8 @@ export default function RewardsPage() {
   const [bonusReason, setBonusReason] = useState("Confidence streak bonus");
   const [workingRequestId, setWorkingRequestId] = useState<string | null>(null);
 
-  async function loadData() {
-    setLoading(true);
+  const loadData = useCallback(async (withLoading = true) => {
+    if (withLoading) setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/admin/rewards/ops", { credentials: "include" });
@@ -82,7 +82,7 @@ export default function RewardsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   async function submitBonus() {
     setMessage(null);
@@ -148,8 +148,14 @@ export default function RewardsPage() {
   );
 
   useEffect(() => {
-    void loadData();
-  }, []);
+    const id = window.setTimeout(() => {
+      void loadData(false);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(id);
+    };
+  }, [loadData]);
 
   return (
     <div className="space-y-6">
