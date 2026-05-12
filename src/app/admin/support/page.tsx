@@ -62,7 +62,7 @@ export default function AdminSupportPage() {
     setLoading(true);
     const params = new URLSearchParams();
     if (search.trim()) params.set("search", search.trim());
-    const res = await fetch(`/api/admin/resources/support?${params.toString()}`);
+    const res = await fetch(`/api/admin/resources/support?${params.toString()}`, { credentials: "include" });
     const data = await res.json();
     setTickets(data.records ?? []);
     setLoading(false);
@@ -82,7 +82,7 @@ export default function AdminSupportPage() {
     if (!selected) return;
     setSaving(true);
     setSaveMsg(null);
-    const res = await fetch(`/api/admin/resources/support/${selected.id}`, {
+    const res = await fetch(`/api/admin/resources/support/${selected.id}`, { credentials: "include",
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: editStatus, priority: editPriority }),
@@ -98,7 +98,7 @@ export default function AdminSupportPage() {
   }
 
   async function deleteTicket(id: string) {
-    await fetch(`/api/admin/resources/support/${id}`, { method: "DELETE" });
+    await fetch(`/api/admin/resources/support/${id}`, { method: "DELETE", credentials: "include" });
     setSelected(null);
     setTickets(prev => prev.filter(t => t.id !== id));
   }
@@ -107,7 +107,7 @@ export default function AdminSupportPage() {
     if (!draft.subject.trim()) { setCreateErr("Subject is required."); return; }
     setCreating(true);
     setCreateErr(null);
-    const res = await fetch("/api/admin/resources/support", {
+    const res = await fetch("/api/admin/resources/support", { credentials: "include",
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(draft),

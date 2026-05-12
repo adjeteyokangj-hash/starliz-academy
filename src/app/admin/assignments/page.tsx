@@ -49,7 +49,7 @@ export default function AdminAssignmentsPage() {
 
   async function loadAssignments() {
     setLoading(true);
-    const response = await fetch("/api/admin/assignments");
+    const response = await fetch("/api/admin/assignments", { credentials: "include" });
     const payload = await response.json();
     setAssignments(payload.assignments ?? []);
     setLoading(false);
@@ -63,6 +63,7 @@ export default function AdminAssignmentsPage() {
   async function reassign(row: AssignmentRow) {
     const response = await fetch("/api/admin/assignments", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contentId: row.content.id, studentIds: [row.student.id] }),
     });

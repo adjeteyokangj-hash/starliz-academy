@@ -31,6 +31,8 @@ export default function AdminSidebar() {
   const [overHref, setOverHref] = useState<AdminNavHref | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
   const activeItemRef = useRef<HTMLDivElement>(null);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
 
   useEffect(() => {
     try {
@@ -53,6 +55,27 @@ export default function AdminSidebar() {
       activeItemRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }, [pathname]);
+
+  // Track scroll position for up/down indicators
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+
+    function updateScrollState() {
+      if (!nav) return;
+      setCanScrollUp(nav.scrollTop > 0);
+      setCanScrollDown(nav.scrollTop < nav.scrollHeight - nav.clientHeight - 5);
+    }
+
+    updateScrollState();
+    nav.addEventListener("scroll", updateScrollState);
+    window.addEventListener("resize", updateScrollState);
+
+    return () => {
+      nav.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("resize", updateScrollState);
+    };
+  }, []);
 
   const navItems = useMemo(() => {
     if (!savedOrder?.length) return [...adminNavItems];
@@ -101,7 +124,12 @@ export default function AdminSidebar() {
         </span>
       </Link>
 
-      <div ref={navRef} className="mt-8 space-y-1 overflow-y-auto flex-1 pr-2">
+      <div ref={navRef} className="mt-8 space-y-1 overflow-y-auto flex-1 pr-2 relative">
+        {canScrollUp && (
+          <div className="sticky top-0 z-10 -mx-2 flex justify-center bg-gradient-to-b from-slate-950 to-transparent py-2">
+            <div className="text-slate-500 text-xs">↑ Scroll up</div>
+          </div>
+        )}
         <nav aria-label="Admin navigation">
           {navItems.map((item) => {
             const active = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
@@ -156,6 +184,12 @@ export default function AdminSidebar() {
             );
           })}
         </nav>
+
+        {canScrollDown && (
+          <div className="sticky bottom-0 z-10 -mx-2 flex justify-center bg-gradient-to-t from-slate-950 to-transparent py-2">
+            <div className="text-slate-500 text-xs">↓ Scroll down</div>
+          </div>
+        )}
       </div>
 
       <div className="mt-4 px-1">

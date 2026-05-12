@@ -30,7 +30,7 @@ export default function AuditLogsPage() {
     if (from) params.set("from", from);
     if (to) params.set("to", to);
 
-    const response = await fetch(`/api/admin/audit-logs?${params.toString()}`);
+    const response = await fetch(`/api/admin/audit-logs?${params.toString()}`, { credentials: "include" });
     if (!response.ok) return;
     const data = await response.json();
     setLogs(data.logs ?? []);
