@@ -103,6 +103,12 @@ export async function middleware(request: NextRequest) {
     if (!authenticated) {
       // Allow unauthenticated access to /admin/login, redirect all other admin routes there.
       if (pathname !== "/admin/login") {
+        const refreshToken = request.cookies.get("starliz_refresh")?.value;
+        if (refreshToken) {
+          const next = `${pathname}${request.nextUrl.search}`;
+          const url = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
+          return withSecurityHeaders(NextResponse.redirect(url));
+        }
         return withSecurityHeaders(NextResponse.redirect(new URL("/admin/login", request.url)));
       }
     } else if (session.role !== "admin") {
