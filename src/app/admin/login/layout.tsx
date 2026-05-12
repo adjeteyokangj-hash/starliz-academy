@@ -1,5 +1,10 @@
-export default function AdminLoginLayout({ children }: { children: React.ReactNode }) {
-  // This layout allows unauthenticated access to /admin/login
-  // It bypasses the parent admin layout's authentication check
-  return children;
+import { readSessionFromCookie } from "@/lib/auth";
+import { redirect } from "next/navigation";
+
+export default async function AdminLoginLayout({ children }: { children: React.ReactNode }) {
+  const session = await readSessionFromCookie();
+  if (session?.role === "admin") {
+    redirect("/admin");
+  }
+  return <>{children}</>;
 }
