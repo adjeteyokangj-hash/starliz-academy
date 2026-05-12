@@ -130,11 +130,56 @@ async function refreshSession(request: Request, nextPath?: string | null) {
 }
 
 export async function POST(request: Request) {
-  return refreshSession(request, null);
+  try {
+    return await refreshSession(request, null);
+  } catch (error) {
+    console.error("Auth refresh failed", error);
+    const res = NextResponse.json({ error: "Session refresh failed" }, { status: 503 });
+    res.cookies.set(getAuthCookieName(), "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+    res.cookies.set(getRefreshCookieName(), "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+    return res;
+  }
 }
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const next = url.searchParams.get("next");
-  return refreshSession(request, next);
+  try {
+    return await refreshSession(request, next);
+  } catch (error) {
+    console.error("Auth refresh failed", error);
+    const hasRedirect = Boolean(next && next.startsWith("/"));
+    const target = hasRedirect ? new URL("/admin/login", request.url) : null;
+    const res = hasRedirect
+      ? NextResponse.redirect(target!)
+      : NextResponse.json({ error: "Session refresh failed" }, { status: 503 });
+    res.headers.set("x-refresh-error", "refresh_exception");
+    res.cookies.set(getAuthCookieName(), "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+    res.cookies.set(getRefreshCookieName(), "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+    return res;
+  }
 }
