@@ -104,7 +104,14 @@ type ChildDetail = {
   progressRecords: Array<{ id: string; skill: string; level: string; score: number; updatedAt: string }>;
   walletSummary: { balance: number; earned: number; spent: number };
   recentLevelDecisions: Array<{ id: string; reason: string | null; createdAt: string }>;
-  purchaseHistory: Array<{ id: string; itemName: string; cost: number; createdAt: string }>;
+  purchaseHistory: Array<{ 
+    id: string; 
+    itemName: string; 
+    cost: number; 
+    createdAt: string;
+    approvalStatus?: "pending" | "approved" | "rejected";
+    reviewNote?: string;
+  }>;
 };
 
 type InsightsPayload = {
@@ -497,6 +504,37 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                 </div>
               ) : (
                 <EmptyState text="Choose a child to load recent progress." />
+
+                    {childDetail && childDetail.progressRecords.length > 0 ? (
+                      <Panel title="Subject-skill breakdown" description="All skills organized by subject with accuracy scores">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-white/10">
+                                <th className="px-4 py-2 text-left font-semibold text-slate-300">Subject</th>
+                                <th className="px-4 py-2 text-left font-semibold text-slate-300">Skill</th>
+                                <th className="px-4 py-2 text-left font-semibold text-slate-300">Level</th>
+                                <th className="px-4 py-2 text-right font-semibold text-slate-300">Accuracy</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                              {childDetail.progressRecords.map((record) => (
+                                <tr key={record.id} className="hover:bg-white/5">
+                                  <td className="px-4 py-3 text-slate-400">{record.skill.split("_")[0] ?? "General"}</td>
+                                  <td className="px-4 py-3 text-slate-300">{record.skill}</td>
+                                  <td className="px-4 py-3 text-slate-300">{record.level}</td>
+                                  <td className="px-4 py-3 text-right">
+                                    <span className={record.score >= 80 ? "text-green-400 font-semibold" : record.score >= 60 ? "text-yellow-400" : "text-red-400"}>
+                                      {record.score}%
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </Panel>
+                    ) : null}
               )}
             </Panel>
           ) : null}
@@ -524,6 +562,33 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                 </div>
               ) : (
                 <EmptyState text="Select a child to see rewards and wallet history." />
+
+                      {childDetail ? (
+                        <>
+                          {childDetail.purchaseHistory.some((p) => p.approvalStatus === "pending") && (
+                            <Panel title="Pending approvals" description="Purchases awaiting admin review">
+                              <div className="space-y-3">
+                                {childDetail.purchaseHistory
+                                  .filter((p) => p.approvalStatus === "pending")
+                                  .map((purchase) => (
+                                    <div key={purchase.id} className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                          <p className="font-semibold text-white">{purchase.itemName}</p>
+                                          <p className="text-xs text-slate-400 mt-1">{new Date(purchase.createdAt).toLocaleString()}</p>
+                                        </div>
+                                        <p className="font-semibold text-yellow-400">{currency(purchase.cost)}</p>
+                                      </div>
+                                      {purchase.reviewNote && (
+                                        <p className="mt-2 text-xs text-yellow-300">Admin note: {purchase.reviewNote}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                              </div>
+                            </Panel>
+                          )}
+                        </>
+                      ) : null}
               )}
             </Panel>
           ) : null}
