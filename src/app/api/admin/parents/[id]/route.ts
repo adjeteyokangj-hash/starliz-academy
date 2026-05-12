@@ -278,15 +278,27 @@ export async function DELETE(_request: Request, context: Context) {
     return NextResponse.json({ error: "Parent not found." }, { status: 404 });
   }
 
-  await prisma.user.delete({ where: { id: parent.id } });
+  const result = await prisma.$transaction(async (tx) => {
+    const archivedChildren = await tx.childProfile.updateMany({
+      where: { parentId: parent.id, archived: false },
+      data: { archived: true },
+    });
+
+    await tx.parentProfile.updateMany({
+      where: { userId: parent.id },
+      data: { status: "suspended" },
+    });
+
+    return { archivedChildren: archivedChildren.count };
+  });
 
   await writeAuditLog({
     actorUserId: session.userId,
-    action: "deleted",
+    action: "archived",
     entityType: "parent",
     entityId: parent.id,
-    metadata: { email: parent.email },
+    metadata: { email: parent.email, archivedChildren: result.archivedChildren },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, archivedChildren: result.archivedChildren });
 }

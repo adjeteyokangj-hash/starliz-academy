@@ -181,7 +181,7 @@ export default function NewParentPage() {
               onChange={(event) => setName(event.target.value)}
               required
               className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
-              placeholder="Eddie Okang"
+              placeholder="Parent full name"
             />
           </label>
 
@@ -193,7 +193,7 @@ export default function NewParentPage() {
               onChange={(event) => setEmail(event.target.value)}
               required
               className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
-              placeholder="eddie@example.com"
+              placeholder="parent@example.com"
             />
             {attemptedSubmit && emailError ? <p className="mt-1 text-xs text-rose-300">{emailError}</p> : null}
           </label>

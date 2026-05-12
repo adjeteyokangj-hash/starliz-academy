@@ -37,13 +37,13 @@ export default function ParentsPage() {
   const pageSize = 10;
 
   async function removeParent(parent: ParentRow) {
-    if (!window.confirm(`Delete ${parent.name ?? parent.email}? This also removes linked children.`)) return;
+    if (!window.confirm(`Archive ${parent.name ?? parent.email}? Linked students will be archived, not permanently deleted.`)) return;
     setBusyParentId(parent.id);
     try {
       const response = await fetch(`/api/admin/parents/${parent.id}`, { method: "DELETE" });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        window.alert(payload?.error ?? "Unable to delete parent.");
+        window.alert(payload?.error ?? "Unable to archive parent.");
         return;
       }
       setParents((current) => current.filter((entry) => entry.id !== parent.id));
@@ -154,7 +154,7 @@ export default function ParentsPage() {
                       disabled={busyParentId === parent.id}
                       className="ml-2 rounded-lg border border-rose-500/40 px-3 py-1.5 text-xs font-bold text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
                     >
-                      {busyParentId === parent.id ? "Deleting..." : "Delete"}
+                      {busyParentId === parent.id ? "Archiving..." : "Archive"}
                     </button>
                   </td>
                 </tr>
