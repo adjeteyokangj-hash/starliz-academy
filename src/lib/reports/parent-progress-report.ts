@@ -250,8 +250,8 @@ export async function buildParentProgressReportData(input: {
     activity,
     rewards: {
       balancePence: rewards.balance,
-      earnedPence: rewards.earned,
-      spentPence: rewards.spent,
+      earnedPence: rewards.totalEarned,
+      spentPence: rewards.totalSpent,
     },
     recommendations,
   };
@@ -297,7 +297,7 @@ function formatActivityDate(value: string): string {
   return value.slice(5);
 }
 
-export function renderParentProgressReportPdf(report: ParentProgressReportData): Uint8Array {
+export function renderParentProgressReportPdf(report: ParentProgressReportData): ArrayBuffer {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
 
   drawHeader(doc, report);
@@ -361,6 +361,5 @@ export function renderParentProgressReportPdf(report: ParentProgressReportData):
   doc.text("StarLiz Academy | Parent Progress Report", 40, 820);
   doc.text("Page 1", 540, 820);
 
-  const buffer = doc.output("arraybuffer");
-  return new Uint8Array(buffer);
+  return doc.output("arraybuffer");
 }

@@ -53,10 +53,10 @@ export async function GET(request: Request) {
       range,
     });
 
-    const pdfBytes = renderParentProgressReportPdf(report);
+    const pdfBuffer = renderParentProgressReportPdf(report);
     const filename = `starliz-progress-report-${toSafeFilename(report.child.name)}-${new Date().toISOString().slice(0, 10)}.pdf`;
 
-    return new NextResponse(pdfBytes, {
+    return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
