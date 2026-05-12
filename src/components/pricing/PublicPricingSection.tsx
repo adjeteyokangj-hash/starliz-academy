@@ -75,66 +75,8 @@ export default function PublicPricingSection({ compact = false }: PublicPricingS
     }
   }, [])
 
-  const FALLBACK_INDIVIDUAL: PricingPlan[] = [
-    {
-      id: "starter",
-      name: "Starter",
-      description: "Perfect for one child getting started with spelling, maths and reading.",
-      price: 4.99,
-      currency: "GBP",
-      interval: "month",
-      audience: "individual",
-      features: ["1 child profile", "Spelling, maths and reading", "Basic progress dashboard"],
-      priceNote: "Start free — no credit card required",
-      badge: null,
-      ctaLabel: "Start Free Trial",
-      ctaHref: "/signup",
-      stripePriceId: null,
-      isActive: true,
-      isPopular: false,
-      sortOrder: 1,
-    },
-    {
-      id: "family",
-      name: "Family",
-      description: "All learning areas for the whole family, with rewards and progress tracking.",
-      price: 7.99,
-      currency: "GBP",
-      interval: "month",
-      audience: "family",
-      features: ["Up to 3 child profiles", "All learning areas", "Rewards and progress tracking"],
-      priceNote: null,
-      badge: "Most Popular",
-      ctaLabel: "Start Free Trial",
-      ctaHref: "/signup",
-      stripePriceId: null,
-      isActive: true,
-      isPopular: true,
-      sortOrder: 2,
-    },
-    {
-      id: "premium",
-      name: "Premium",
-      description: "AI-powered learning support and full parent reports for up to 5 children.",
-      price: 11.99,
-      currency: "GBP",
-      interval: "month",
-      audience: "family",
-      features: ["Up to 5 child profiles", "AI learning support", "Full parent reports"],
-      priceNote: null,
-      badge: null,
-      ctaLabel: "Start Free Trial",
-      ctaHref: "/signup",
-      stripePriceId: null,
-      isActive: true,
-      isPopular: false,
-      sortOrder: 3,
-    },
-  ]
-
   const individualPlans = useMemo(() => {
-    const live = plans.filter((plan) => plan.audience === "individual" || plan.audience === "family")
-    return live.length > 0 ? live : FALLBACK_INDIVIDUAL
+    return plans.filter((plan) => plan.audience === "individual" || plan.audience === "family")
   }, [plans])
 
   const orgPlans = useMemo(() => {
