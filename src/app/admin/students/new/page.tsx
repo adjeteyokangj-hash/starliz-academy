@@ -34,6 +34,17 @@ export default function NewStudentPage() {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
   const [yearGroup, setYearGroup] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [avatar, setAvatar] = useState("");
+  const [keyStageLevel, setKeyStageLevel] = useState("");
+  const [learningLevel, setLearningLevel] = useState("");
+  const [senSupportNeeds, setSenSupportNeeds] = useState("");
+  const [readingLevel, setReadingLevel] = useState("");
+  const [weakAreasText, setWeakAreasText] = useState("");
+  const [aiLearningProfileJson, setAiLearningProfileJson] = useState("");
+  const [guardianPermissions, setGuardianPermissions] = useState("");
+  const [schoolInformation, setSchoolInformation] = useState("");
+  const [subjectFocus, setSubjectFocus] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("friendly_coach");
   const [level, setLevel] = useState("1");
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +76,18 @@ export default function NewStudentPage() {
           name,
           age: age ? Number(age) : undefined,
           yearGroup: yearGroup || undefined,
+          dateOfBirth: dateOfBirth ? new Date(dateOfBirth).toISOString() : undefined,
+          avatar: avatar || undefined,
+          keyStageLevel: keyStageLevel || undefined,
+          learningLevel: learningLevel || undefined,
+          senSupportNeeds: senSupportNeeds || undefined,
+          readingLevel: readingLevel || undefined,
+          weakAreasText: weakAreasText || undefined,
+          aiLearningProfileJson: aiLearningProfileJson || undefined,
+          guardianPermissions: guardianPermissions || undefined,
+          schoolInformation: schoolInformation || undefined,
+          subjectFocus: subjectFocus || undefined,
+          voiceProfile: selectedVoice,
           selectedVoice,
           level: Number(level),
         }),
@@ -150,6 +173,27 @@ export default function NewStudentPage() {
               />
             </label>
           </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block text-sm font-bold text-slate-300">
+              Date of Birth
+              <input
+                type="date"
+                value={dateOfBirth}
+                onChange={(event) => setDateOfBirth(event.target.value)}
+                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+              />
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Avatar URL
+              <input
+                value={avatar}
+                onChange={(event) => setAvatar(event.target.value)}
+                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                placeholder="https://..."
+              />
+            </label>
+          </div>
         </fieldset>
 
         {/* Learning Profile */}
@@ -189,6 +233,50 @@ export default function NewStudentPage() {
               </select>
             </label>
           </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block text-sm font-bold text-slate-300">
+              KS Level
+              <input value={keyStageLevel} onChange={(event) => setKeyStageLevel(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Learning Level Label
+              <input value={learningLevel} onChange={(event) => setLearningLevel(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Reading Level
+              <input value={readingLevel} onChange={(event) => setReadingLevel(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Subject Focus
+              <input value={subjectFocus} onChange={(event) => setSubjectFocus(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+            </label>
+          </div>
+
+          <label className="block text-sm font-bold text-slate-300">
+            SEN Support Needs
+            <textarea value={senSupportNeeds} onChange={(event) => setSenSupportNeeds(event.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+          </label>
+
+          <label className="block text-sm font-bold text-slate-300">
+            Weak Areas
+            <textarea value={weakAreasText} onChange={(event) => setWeakAreasText(event.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+          </label>
+
+          <label className="block text-sm font-bold text-slate-300">
+            AI Learning Profile (JSON)
+            <textarea value={aiLearningProfileJson} onChange={(event) => setAiLearningProfileJson(event.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+          </label>
+
+          <label className="block text-sm font-bold text-slate-300">
+            Guardian Permissions
+            <input value={guardianPermissions} onChange={(event) => setGuardianPermissions(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" placeholder="pickup, media-consent, homework" />
+          </label>
+
+          <label className="block text-sm font-bold text-slate-300">
+            School Information
+            <input value={schoolInformation} onChange={(event) => setSchoolInformation(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" placeholder="School name / class / teacher" />
+          </label>
         </fieldset>
 
         {/* Error Message */}

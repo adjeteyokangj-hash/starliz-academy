@@ -12,6 +12,20 @@ const updateStudentSchema = z.object({
   parentId: z.string().min(1).optional(),
   age: z.number().int().min(1).max(18).nullable().optional(),
   yearGroup: z.string().trim().nullable().optional(),
+  avatar: z.string().trim().nullable().optional(),
+  level: z.number().int().min(1).max(10).optional(),
+  selectedVoice: z.string().trim().nullable().optional(),
+  dateOfBirth: z.string().datetime().nullable().optional(),
+  keyStageLevel: z.string().trim().nullable().optional(),
+  learningLevel: z.string().trim().nullable().optional(),
+  senSupportNeeds: z.string().trim().nullable().optional(),
+  readingLevel: z.string().trim().nullable().optional(),
+  weakAreasText: z.string().trim().nullable().optional(),
+  voiceProfile: z.string().trim().nullable().optional(),
+  aiLearningProfileJson: z.string().nullable().optional(),
+  guardianPermissions: z.string().trim().nullable().optional(),
+  schoolInformation: z.string().trim().nullable().optional(),
+  subjectFocus: z.string().trim().nullable().optional(),
 });
 
 type Context = { params: Promise<{ id: string }> };
@@ -25,6 +39,7 @@ export async function GET(_request: Request, context: Context) {
     where: { id },
     include: {
       parent: { select: { id: true, name: true, email: true } },
+      studentProfile: true,
       progressRecords: { orderBy: { createdAt: "desc" }, take: 20 },
       attempts: { orderBy: { createdAt: "desc" }, take: 50 },
       weakAreas: { orderBy: { lastDetectedAt: "desc" }, take: 20 },
@@ -52,6 +67,15 @@ export async function GET(_request: Request, context: Context) {
       age: student.age,
       yearGroup: student.yearGroup,
       level: student.level,
+      selectedVoice: student.selectedVoice,
+      studentProfile: student.studentProfile
+        ? {
+            ...student.studentProfile,
+            dateOfBirth: student.studentProfile.dateOfBirth?.toISOString() ?? null,
+            createdAt: student.studentProfile.createdAt.toISOString(),
+            updatedAt: student.studentProfile.updatedAt.toISOString(),
+          }
+        : null,
       stars: student.stars,
       xp: student.xp,
       coins: student.coins,
@@ -146,6 +170,19 @@ export async function PATCH(request: Request, context: Context) {
   const { id } = await context.params;
   try {
     const body = updateStudentSchema.parse(await request.json());
+    const profileData = {
+      ...(body.dateOfBirth !== undefined ? { dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null } : {}),
+      ...(body.keyStageLevel !== undefined ? { keyStageLevel: body.keyStageLevel } : {}),
+      ...(body.learningLevel !== undefined ? { learningLevel: body.learningLevel } : {}),
+      ...(body.senSupportNeeds !== undefined ? { senSupportNeeds: body.senSupportNeeds } : {}),
+      ...(body.readingLevel !== undefined ? { readingLevel: body.readingLevel } : {}),
+      ...(body.weakAreasText !== undefined ? { weakAreasText: body.weakAreasText } : {}),
+      ...(body.voiceProfile !== undefined ? { voiceProfile: body.voiceProfile } : {}),
+      ...(body.aiLearningProfileJson !== undefined ? { aiLearningProfileJson: body.aiLearningProfileJson } : {}),
+      ...(body.guardianPermissions !== undefined ? { guardianPermissions: body.guardianPermissions } : {}),
+      ...(body.schoolInformation !== undefined ? { schoolInformation: body.schoolInformation } : {}),
+      ...(body.subjectFocus !== undefined ? { subjectFocus: body.subjectFocus } : {}),
+    };
     if (body.parentId) {
       const parent = await prisma.user.findFirst({
         where: { id: body.parentId, role: "parent" },
@@ -163,6 +200,19 @@ export async function PATCH(request: Request, context: Context) {
         ...(body.parentId ? { parentId: body.parentId } : {}),
         ...(body.age !== undefined ? { age: body.age } : {}),
         ...(body.yearGroup !== undefined ? { yearGroup: body.yearGroup } : {}),
+        ...(body.avatar !== undefined ? { avatar: body.avatar } : {}),
+        ...(body.selectedVoice !== undefined ? { selectedVoice: body.selectedVoice } : {}),
+        ...(body.level !== undefined ? { level: body.level } : {}),
+        ...(Object.keys(profileData).length
+          ? {
+              studentProfile: {
+                upsert: {
+                  create: profileData,
+                  update: profileData,
+                },
+              },
+            }
+          : {}),
       },
       select: { id: true, name: true, parentId: true },
     });
@@ -176,7 +226,41 @@ export async function PATCH(request: Request, context: Context) {
     });
 
     return NextResponse.json({ student });
-  } catch {
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const issue = error.issues[0];
+      return NextResponse.json({ error: `${issue.path[0] ?? "field"}: ${issue.message}` }, { status: 400 });
+    }
     return NextResponse.json({ error: "Invalid student update." }, { status: 400 });
   }
+}
+
+export async function DELETE(_request: Request, context: Context) {
+  const { session, response } = await requireAdminPermission("students:write");
+  if (!session) return response;
+
+  const { id } = await context.params;
+  const student = await prisma.childProfile.findUnique({
+    where: { id },
+    select: { id: true, archived: true, name: true },
+  });
+
+  if (!student || student.archived) {
+    return NextResponse.json({ error: "Student not found." }, { status: 404 });
+  }
+
+  await prisma.childProfile.update({
+    where: { id },
+    data: { archived: true },
+  });
+
+  await writeAuditLog({
+    actorUserId: session.userId,
+    action: "archived",
+    entityType: "student",
+    entityId: id,
+    metadata: { name: student.name },
+  });
+
+  return NextResponse.json({ ok: true });
 }

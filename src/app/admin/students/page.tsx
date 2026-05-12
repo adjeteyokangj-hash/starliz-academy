@@ -9,6 +9,9 @@ type Student = {
   id: string;
   name: string;
   age: number | null;
+  keyStageLevel: string | null;
+  readingLevel: string | null;
+  subjectFocus: string | null;
   spellingLevel: number;
   mathLevel: number;
   level: number;
@@ -32,10 +35,27 @@ export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [frustrationThreshold, setFrustrationThreshold] = useState(3);
   const [loading, setLoading] = useState(true);
+  const [busyStudentId, setBusyStudentId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [accuracyFilter, setAccuracyFilter] = useState("all");
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
+  async function archiveStudent(student: Student) {
+    if (!window.confirm(`Archive ${student.name}?`)) return;
+    setBusyStudentId(student.id);
+    try {
+      const response = await fetch(`/api/admin/students/${student.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        window.alert(payload?.error ?? "Unable to archive student.");
+        return;
+      }
+      setStudents((current) => current.filter((entry) => entry.id !== student.id));
+    } finally {
+      setBusyStudentId(null);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/admin/students")
@@ -116,6 +136,9 @@ export default function StudentsPage() {
                 <th className="px-3 py-3">Student</th>
                 <th className="px-3 py-3">Parent</th>
                 <th className="px-3 py-3">Age / Year</th>
+                <th className="px-3 py-3">KS</th>
+                <th className="px-3 py-3">Reading</th>
+                <th className="px-3 py-3">Focus</th>
                 <th className="px-3 py-3">Spelling</th>
                 <th className="px-3 py-3">Maths</th>
                 <th className="px-3 py-3">Reading</th>
@@ -139,6 +162,9 @@ export default function StudentsPage() {
                   </td>
                   <td className="px-3 py-3">{student.parentName ?? student.parentEmail}</td>
                   <td className="px-3 py-3">{student.age ?? "Not set"}</td>
+                  <td className="px-3 py-3">{student.keyStageLevel ?? "-"}</td>
+                  <td className="px-3 py-3">{student.readingLevel ?? "-"}</td>
+                  <td className="px-3 py-3">{student.subjectFocus ?? "-"}</td>
                   <td className="px-3 py-3">Lv {student.spellingLevel}</td>
                   <td className="px-3 py-3">Lv {student.mathLevel}</td>
                   <td className="px-3 py-3">Lv {student.level}</td>
@@ -148,6 +174,14 @@ export default function StudentsPage() {
                     <Link href={`/admin/students/${student.id}/edit`} className="rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-400">
                       Edit
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => archiveStudent(student)}
+                      disabled={busyStudentId === student.id}
+                      className="ml-2 rounded-lg border border-amber-500/40 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-500/10 disabled:opacity-50"
+                    >
+                      {busyStudentId === student.id ? "Archiving..." : "Archive"}
+                    </button>
                   </td>
                 </tr>
               ))}

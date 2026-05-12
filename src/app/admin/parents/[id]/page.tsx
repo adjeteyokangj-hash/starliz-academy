@@ -13,6 +13,19 @@ type ParentDetail = {
   activeChildId: string | null;
   createdAt: string;
   updatedAt: string;
+  parentProfile: {
+    phone: string;
+    whatsappNumber: string | null;
+    address: string | null;
+    country: string | null;
+    timezone: string | null;
+    status: string;
+    trialStatus: string | null;
+    subscriptionPlan: string | null;
+    stripeCustomerId: string | null;
+    paystackCustomerId: string | null;
+    mfaEnabled: boolean;
+  } | null;
   children: { id: string; name: string; age: number | null; yearGroup: string | null; level: number; stars: number; xp: number; streak: number; updatedAt: string }[];
 };
 
@@ -48,7 +61,25 @@ export default function ParentDetailPage() {
           </div>
           <div className="rounded-2xl bg-slate-950/45 p-4">
             <p className="text-xs uppercase text-slate-500">Account rule</p>
-            <p className="mt-2 font-bold text-white">Parent owns students</p>
+            <p className="mt-2 font-bold text-white">{parent.parentProfile?.status ?? "active"}</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl bg-slate-950/45 p-4">
+            <p className="text-xs uppercase text-slate-500">Phone</p>
+            <p className="mt-2 text-sm text-white">{parent.parentProfile?.phone ?? "Not set"}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-950/45 p-4">
+            <p className="text-xs uppercase text-slate-500">WhatsApp</p>
+            <p className="mt-2 text-sm text-white">{parent.parentProfile?.whatsappNumber ?? "Not set"}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-950/45 p-4">
+            <p className="text-xs uppercase text-slate-500">Plan</p>
+            <p className="mt-2 text-sm text-white">{parent.parentProfile?.subscriptionPlan ?? "None"}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-950/45 p-4">
+            <p className="text-xs uppercase text-slate-500">MFA</p>
+            <p className="mt-2 text-sm text-white">{parent.parentProfile?.mfaEnabled ? "Enabled" : "Disabled"}</p>
           </div>
         </div>
       </AdminSectionCard>

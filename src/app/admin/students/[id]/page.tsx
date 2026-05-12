@@ -12,6 +12,19 @@ type StudentDetail = {
   age: number | null;
   yearGroup: string | null;
   level: number;
+  selectedVoice: string;
+  studentProfile: {
+    dateOfBirth: string | null;
+    keyStageLevel: string | null;
+    learningLevel: string | null;
+    senSupportNeeds: string | null;
+    readingLevel: string | null;
+    weakAreasText: string | null;
+    voiceProfile: string | null;
+    guardianPermissions: string | null;
+    schoolInformation: string | null;
+    subjectFocus: string | null;
+  } | null;
   stars: number;
   xp: number;
   coins: number;
@@ -128,6 +141,23 @@ export default function StudentDetailPage() {
           <Link href={`/admin/parents/${student.parent.id}`} className="mt-4 inline-flex rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-200 hover:bg-slate-800">
             View Parent
           </Link>
+        </AdminSectionCard>
+
+        <AdminSectionCard title="Student Onboarding Profile">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">DOB: {student.studentProfile?.dateOfBirth ? new Date(student.studentProfile.dateOfBirth).toLocaleDateString() : "Not set"}</div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Voice: {student.studentProfile?.voiceProfile ?? student.selectedVoice}</div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">KS Level: {student.studentProfile?.keyStageLevel ?? "Not set"}</div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Learning Level: {student.studentProfile?.learningLevel ?? "Not set"}</div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Reading Level: {student.studentProfile?.readingLevel ?? "Not set"}</div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Subject Focus: {student.studentProfile?.subjectFocus ?? "Not set"}</div>
+          </div>
+          <div className="mt-3 space-y-2 text-sm text-slate-300">
+            <p>SEN Support: {student.studentProfile?.senSupportNeeds ?? "Not set"}</p>
+            <p>Weak Areas: {student.studentProfile?.weakAreasText ?? "Not set"}</p>
+            <p>Guardian Permissions: {student.studentProfile?.guardianPermissions ?? "Not set"}</p>
+            <p>School Information: {student.studentProfile?.schoolInformation ?? "Not set"}</p>
+          </div>
         </AdminSectionCard>
 
         {showDevAttemptSeeding ? (

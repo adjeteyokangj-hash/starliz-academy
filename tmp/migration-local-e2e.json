@@ -1,0 +1,62 @@
+{
+  "version": "starliz-migration-v1",
+  "exportedAt": "2026-05-12T05:05:37.181Z",
+  "source": {
+    "note": "manual export"
+  },
+  "data": {
+    "parents": [
+      {
+        "email": "e.okang@yahoo.com",
+        "name": "Eddie",
+        "passwordHash": "$2b$12$/DYw1qt9amAkhWtR5hExn.A68pq6S7d4K1OZ/8elqyGBX69txYLVa",
+        "role": "parent",
+        "trialSessionsUsed": 0,
+        "pinHash": null,
+        "consentVersion": null,
+        "consentAcceptedAt": null,
+        "consentWithdrawnAt": null,
+        "createdAt": "2026-05-11T22:45:16.103Z",
+        "updatedAt": "2026-05-11T22:45:16.103Z",
+        "children": []
+      },
+      {
+        "email": "qa.parent.1778562319481@starliz.local",
+        "name": "QA Parent",
+        "passwordHash": "temp_hash",
+        "role": "parent",
+        "trialSessionsUsed": 0,
+        "pinHash": null,
+        "consentVersion": null,
+        "consentAcceptedAt": null,
+        "consentWithdrawnAt": null,
+        "createdAt": "2026-05-12T05:05:20.825Z",
+        "updatedAt": "2026-05-12T05:05:20.825Z",
+        "children": [
+          {
+            "id": "193b4e7f-239e-4064-b47b-24cb47deb73e",
+            "name": "QA Student",
+            "avatar": null,
+            "age": 8,
+            "yearGroup": "Year 3",
+            "stars": 0,
+            "xp": 0,
+            "coins": 0,
+            "level": 3,
+            "streak": 0,
+            "selectedVoice": "friendly_coach",
+            "selectedTheme": "default",
+            "archived": false,
+            "snapshotJson": null,
+            "coachingMemoryJson": null,
+            "createdAt": "2026-05-12T05:05:21.120Z",
+            "updatedAt": "2026-05-12T05:05:21.120Z"
+          }
+        ]
+      }
+    ],
+    "lessons": [],
+    "contentLibrary": [],
+    "assignments": []
+  }
+}

@@ -100,6 +100,7 @@ model User {
   ownedSafeguardingEscalations    SafeguardingIncident[]           @relation("SafeguardingEscalationOwner")
   safeguardingWorkflowEvents      SafeguardingWorkflowEvent[]      @relation("SafeguardingWorkflowActor")
   safeguardingEvidenceUploads     SafeguardingEvidenceAttachment[] @relation("SafeguardingEvidenceUploadedBy")
+  parentProfile                   ParentProfile?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -151,9 +152,60 @@ model ChildProfile {
   schoolLinks           SchoolStudent[]
   safeguardingAlerts    SchoolSafeguardingAlert[]
   safeguardingIncidents SafeguardingIncident[]
+  studentProfile        StudentProfile?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ParentProfile {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone                  String
+  whatsappNumber         String?
+  address                String?
+  country                String?
+  timezone               String?
+  parentRole             String?  @default("parent")
+  status                 String   @default("active") // active | pending | suspended
+  emailVerified          Boolean  @default(false)
+  smsConsent             Boolean  @default(false)
+  whatsappConsent        Boolean  @default(false)
+  emailConsent           Boolean  @default(false)
+  numberOfChildren       Int?
+  preferredLearningFocus String?
+  schoolType             String?
+  curriculum             String?
+  trialStatus            String?  @default("none")
+  subscriptionPlan       String?
+  stripeCustomerId       String?
+  paystackCustomerId     String?
+  forcePasswordReset     Boolean  @default(false)
+  mfaEnabled             Boolean  @default(false)
+  lastLoginAt            DateTime?
+  deviceTrackingJson     String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model StudentProfile {
+  id                    String       @id @default(cuid())
+  childId               String       @unique
+  child                 ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+  dateOfBirth           DateTime?
+  keyStageLevel         String?
+  learningLevel         String?
+  senSupportNeeds       String?
+  readingLevel          String?
+  weakAreasText         String?
+  voiceProfile          String?
+  aiLearningProfileJson String?
+  guardianPermissions   String?
+  schoolInformation     String?
+  subjectFocus          String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 }
 
 model ProgressRecord {

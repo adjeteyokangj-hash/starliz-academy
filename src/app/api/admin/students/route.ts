@@ -12,6 +12,18 @@ const createStudentSchema = z.object({
   yearGroup: z.string().trim().optional(),
   selectedVoice: z.string().trim().optional(),
   level: z.number().int().min(1).max(10).optional(),
+  dateOfBirth: z.string().datetime().optional(),
+  avatar: z.string().trim().optional(),
+  keyStageLevel: z.string().trim().optional(),
+  learningLevel: z.string().trim().optional(),
+  senSupportNeeds: z.string().trim().optional(),
+  readingLevel: z.string().trim().optional(),
+  weakAreasText: z.string().trim().optional(),
+  voiceProfile: z.string().trim().optional(),
+  aiLearningProfileJson: z.string().optional(),
+  guardianPermissions: z.string().trim().optional(),
+  schoolInformation: z.string().trim().optional(),
+  subjectFocus: z.string().trim().optional(),
 });
 
 export async function GET() {
@@ -23,6 +35,7 @@ export async function GET() {
     orderBy: { updatedAt: "desc" },
     include: {
       parent: { select: { email: true, name: true } },
+      studentProfile: true,
       _count: { select: { progressRecords: true } },
     },
   });
@@ -113,6 +126,10 @@ export async function GET() {
       avatar: child.avatar,
       age: child.age,
       level: child.level,
+      keyStageLevel: child.studentProfile?.keyStageLevel ?? null,
+      learningLevel: child.studentProfile?.learningLevel ?? null,
+      readingLevel: child.studentProfile?.readingLevel ?? null,
+      subjectFocus: child.studentProfile?.subjectFocus ?? null,
       spellingLevel,
       mathLevel,
       stars: child.stars,
@@ -143,7 +160,8 @@ export async function POST(request: Request) {
     } catch (parseError) {
       if (parseError instanceof z.ZodError) {
         const issue = parseError.issues[0];
-        const fieldName = issue.path[0] ?? "body";
+        const fieldNameRaw = issue.path[0] ?? "body";
+        const fieldName = typeof fieldNameRaw === "string" ? fieldNameRaw : String(fieldNameRaw);
         let message = `${fieldName}: ${issue.message}`;
         if (fieldName === "name" && issue.code === "too_small") {
           message = "Student name is required";
@@ -175,6 +193,22 @@ export async function POST(request: Request) {
         yearGroup: body.yearGroup,
         selectedVoice: body.selectedVoice || "friendly_coach",
         level: body.level || 1,
+        avatar: body.avatar,
+        studentProfile: {
+          create: {
+            dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
+            keyStageLevel: body.keyStageLevel || null,
+            learningLevel: body.learningLevel || null,
+            senSupportNeeds: body.senSupportNeeds || null,
+            readingLevel: body.readingLevel || null,
+            weakAreasText: body.weakAreasText || null,
+            voiceProfile: body.voiceProfile || body.selectedVoice || null,
+            aiLearningProfileJson: body.aiLearningProfileJson || null,
+            guardianPermissions: body.guardianPermissions || null,
+            schoolInformation: body.schoolInformation || null,
+            subjectFocus: body.subjectFocus || null,
+          },
+        },
       },
       select: { id: true, name: true, parentId: true },
     });

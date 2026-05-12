@@ -9,6 +9,8 @@ type ParentRow = {
   id: string;
   name: string | null;
   email: string;
+  phone: string | null;
+  status: string;
   childrenCount: number;
   subscriptionStatus: string;
   lastLogin: string;
@@ -27,10 +29,27 @@ function timeAgo(iso: string): string {
 export default function ParentsPage() {
   const [parents, setParents] = useState<ParentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyParentId, setBusyParentId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [subscriptionFilter, setSubscriptionFilter] = useState("all");
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
+  async function removeParent(parent: ParentRow) {
+    if (!window.confirm(`Delete ${parent.name ?? parent.email}? This also removes linked children.`)) return;
+    setBusyParentId(parent.id);
+    try {
+      const response = await fetch(`/api/admin/parents/${parent.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        window.alert(payload?.error ?? "Unable to delete parent.");
+        return;
+      }
+      setParents((current) => current.filter((entry) => entry.id !== parent.id));
+    } finally {
+      setBusyParentId(null);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/admin/parents")
@@ -93,6 +112,8 @@ export default function ParentsPage() {
               <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
                 <th className="px-3 py-3">Parent</th>
                 <th className="px-3 py-3">Email</th>
+                <th className="px-3 py-3">Phone</th>
+                <th className="px-3 py-3">Status</th>
                 <th className="px-3 py-3">Children</th>
                 <th className="px-3 py-3">Subscription</th>
                 <th className="px-3 py-3">Last Login</th>
@@ -104,6 +125,10 @@ export default function ParentsPage() {
                 <tr key={parent.id} className="border-b border-slate-800/70 text-slate-300">
                   <td className="px-3 py-3 font-bold text-white">{parent.name ?? "Parent"}</td>
                   <td className="px-3 py-3">{parent.email}</td>
+                  <td className="px-3 py-3">{parent.phone ?? "Not set"}</td>
+                  <td className="px-3 py-3">
+                    <span className="rounded-full bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200 capitalize">{parent.status}</span>
+                  </td>
                   <td className="px-3 py-3">{parent.childrenCount}</td>
                   <td className="px-3 py-3">
                     <span className="rounded-full bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200">{parent.subscriptionStatus}</span>
@@ -116,6 +141,14 @@ export default function ParentsPage() {
                     <Link href={`/admin/parents/${parent.id}/edit`} className="rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-400">
                       Edit
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => removeParent(parent)}
+                      disabled={busyParentId === parent.id}
+                      className="ml-2 rounded-lg border border-rose-500/40 px-3 py-1.5 text-xs font-bold text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
+                    >
+                      {busyParentId === parent.id ? "Deleting..." : "Delete"}
+                    </button>
                   </td>
                 </tr>
               ))}

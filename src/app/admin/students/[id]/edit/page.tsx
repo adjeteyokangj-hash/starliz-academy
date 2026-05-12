@@ -10,6 +10,22 @@ type StudentDetail = {
   name: string;
   age: number | null;
   yearGroup: string | null;
+  avatar: string | null;
+  level: number;
+  selectedVoice: string;
+  studentProfile: {
+    dateOfBirth: string | null;
+    keyStageLevel: string | null;
+    learningLevel: string | null;
+    senSupportNeeds: string | null;
+    readingLevel: string | null;
+    weakAreasText: string | null;
+    voiceProfile: string | null;
+    aiLearningProfileJson: string | null;
+    guardianPermissions: string | null;
+    schoolInformation: string | null;
+    subjectFocus: string | null;
+  } | null;
   parent: ParentOption;
 };
 
@@ -22,6 +38,20 @@ export default function EditStudentPage() {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
   const [yearGroup, setYearGroup] = useState("");
+  const [avatar, setAvatar] = useState("");
+  const [level, setLevel] = useState("1");
+  const [selectedVoice, setSelectedVoice] = useState("friendly_coach");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [keyStageLevel, setKeyStageLevel] = useState("");
+  const [learningLevel, setLearningLevel] = useState("");
+  const [senSupportNeeds, setSenSupportNeeds] = useState("");
+  const [readingLevel, setReadingLevel] = useState("");
+  const [weakAreasText, setWeakAreasText] = useState("");
+  const [voiceProfile, setVoiceProfile] = useState("friendly_coach");
+  const [aiLearningProfileJson, setAiLearningProfileJson] = useState("");
+  const [guardianPermissions, setGuardianPermissions] = useState("");
+  const [schoolInformation, setSchoolInformation] = useState("");
+  const [subjectFocus, setSubjectFocus] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -38,6 +68,20 @@ export default function EditStudentPage() {
           setParentId(payload.student.parent.id);
           setAge(payload.student.age ? String(payload.student.age) : "");
           setYearGroup(payload.student.yearGroup ?? "");
+          setAvatar(payload.student.avatar ?? "");
+          setLevel(String(payload.student.level ?? 1));
+          setSelectedVoice(payload.student.selectedVoice ?? "friendly_coach");
+          setDateOfBirth(payload.student.studentProfile?.dateOfBirth ? payload.student.studentProfile.dateOfBirth.slice(0, 10) : "");
+          setKeyStageLevel(payload.student.studentProfile?.keyStageLevel ?? "");
+          setLearningLevel(payload.student.studentProfile?.learningLevel ?? "");
+          setSenSupportNeeds(payload.student.studentProfile?.senSupportNeeds ?? "");
+          setReadingLevel(payload.student.studentProfile?.readingLevel ?? "");
+          setWeakAreasText(payload.student.studentProfile?.weakAreasText ?? "");
+          setVoiceProfile(payload.student.studentProfile?.voiceProfile ?? payload.student.selectedVoice ?? "friendly_coach");
+          setAiLearningProfileJson(payload.student.studentProfile?.aiLearningProfileJson ?? "");
+          setGuardianPermissions(payload.student.studentProfile?.guardianPermissions ?? "");
+          setSchoolInformation(payload.student.studentProfile?.schoolInformation ?? "");
+          setSubjectFocus(payload.student.studentProfile?.subjectFocus ?? "");
         }
       });
   }, [params.id]);
@@ -53,6 +97,20 @@ export default function EditStudentPage() {
         name,
         age: age ? Number(age) : null,
         yearGroup: yearGroup || null,
+        avatar: avatar || null,
+        level: Number(level),
+        selectedVoice: selectedVoice || null,
+        dateOfBirth: dateOfBirth ? new Date(dateOfBirth).toISOString() : null,
+        keyStageLevel: keyStageLevel || null,
+        learningLevel: learningLevel || null,
+        senSupportNeeds: senSupportNeeds || null,
+        readingLevel: readingLevel || null,
+        weakAreasText: weakAreasText || null,
+        voiceProfile: voiceProfile || null,
+        aiLearningProfileJson: aiLearningProfileJson || null,
+        guardianPermissions: guardianPermissions || null,
+        schoolInformation: schoolInformation || null,
+        subjectFocus: subjectFocus || null,
       }),
     });
     const payload = await response.json();
@@ -69,7 +127,7 @@ export default function EditStudentPage() {
 
   return (
     <AdminSectionCard title="Edit Student" eyebrow="Learners">
-      <form onSubmit={submit} className="max-w-xl space-y-4">
+      <form onSubmit={submit} className="max-w-3xl space-y-4">
         <label className="block text-sm font-bold text-slate-300">
           Linked parent
           <select value={parentId} onChange={(event) => setParentId(event.target.value)} required className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
@@ -89,6 +147,68 @@ export default function EditStudentPage() {
         <label className="block text-sm font-bold text-slate-300">
           Year group
           <input value={yearGroup} onChange={(event) => setYearGroup(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+        </label>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block text-sm font-bold text-slate-300">
+            Date of birth
+            <input type="date" value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+          </label>
+          <label className="block text-sm font-bold text-slate-300">
+            Avatar URL
+            <input value={avatar} onChange={(event) => setAvatar(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+          </label>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <label className="block text-sm font-bold text-slate-300">
+            Level
+            <input type="number" min={1} max={10} value={level} onChange={(event) => setLevel(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+          </label>
+          <label className="block text-sm font-bold text-slate-300">
+            Voice profile
+            <input value={voiceProfile} onChange={(event) => setVoiceProfile(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+          </label>
+          <label className="block text-sm font-bold text-slate-300">
+            Selected voice
+            <input value={selectedVoice} onChange={(event) => setSelectedVoice(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+          </label>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block text-sm font-bold text-slate-300">
+            KS level
+            <input value={keyStageLevel} onChange={(event) => setKeyStageLevel(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+          </label>
+          <label className="block text-sm font-bold text-slate-300">
+            Learning level
+            <input value={learningLevel} onChange={(event) => setLearningLevel(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+          </label>
+          <label className="block text-sm font-bold text-slate-300">
+            Reading level
+            <input value={readingLevel} onChange={(event) => setReadingLevel(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+          </label>
+          <label className="block text-sm font-bold text-slate-300">
+            Subject focus
+            <input value={subjectFocus} onChange={(event) => setSubjectFocus(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+          </label>
+        </div>
+        <label className="block text-sm font-bold text-slate-300">
+          SEN / support needs
+          <textarea value={senSupportNeeds} onChange={(event) => setSenSupportNeeds(event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+        </label>
+        <label className="block text-sm font-bold text-slate-300">
+          Weak areas
+          <textarea value={weakAreasText} onChange={(event) => setWeakAreasText(event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+        </label>
+        <label className="block text-sm font-bold text-slate-300">
+          AI learning profile (JSON)
+          <textarea value={aiLearningProfileJson} onChange={(event) => setAiLearningProfileJson(event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+        </label>
+        <label className="block text-sm font-bold text-slate-300">
+          Guardian permissions
+          <input value={guardianPermissions} onChange={(event) => setGuardianPermissions(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+        </label>
+        <label className="block text-sm font-bold text-slate-300">
+          School information
+          <input value={schoolInformation} onChange={(event) => setSchoolInformation(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
         </label>
         {error ? <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
         <button className="rounded-xl bg-indigo-500 px-4 py-3 font-black text-white hover:bg-indigo-400">Save Student</button>
