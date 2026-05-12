@@ -6,6 +6,16 @@ import { fromDbRecord, toDbUpdateInput, withChildDefaults } from "@/lib/child_pr
 import { childPayloadSchema } from "@/lib/child_profile_schema";
 import { resolveParentScope } from "@/lib/parent_scope";
 
+function isTransientDbSaturationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("EMAXCONNSESSION")
+    || message.includes("too many connections")
+    || message.includes("PrismaClientInitializationError")
+    || message.includes("PrismaClientUnknownRequestError")
+  );
+}
+
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { session, response } = await requireSession();
   if (!session) return response;
@@ -16,7 +26,18 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   }
 
   const { id } = await params;
-  const child = await prisma.childProfile.findFirst({ where: { id, parentId: parentScope.parentId } });
+  let child: Awaited<ReturnType<typeof prisma.childProfile.findFirst>> = null;
+  try {
+    child = await prisma.childProfile.findFirst({ where: { id, parentId: parentScope.parentId } });
+  } catch (error) {
+    if (isTransientDbSaturationError(error)) {
+      return NextResponse.json(
+        { error: "Service temporarily unavailable. Please retry in a few seconds.", retryable: true },
+        { status: 503, headers: { "Retry-After": "5" } },
+      );
+    }
+    throw error;
+  }
   if (!child) {
     return NextResponse.json({ error: "Child not found." }, { status: 404 });
   }

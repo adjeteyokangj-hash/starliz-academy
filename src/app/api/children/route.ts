@@ -7,6 +7,16 @@ import { childPayloadSchema } from "@/lib/child_profile_schema";
 import { canAddChild } from "@/lib/subscriptions/enforcement";
 import { resolveParentScope } from "@/lib/parent_scope";
 
+function isTransientDbSaturationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("EMAXCONNSESSION")
+    || message.includes("too many connections")
+    || message.includes("PrismaClientInitializationError")
+    || message.includes("PrismaClientUnknownRequestError")
+  );
+}
+
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
@@ -27,13 +37,25 @@ export async function GET(request: Request) {
 
   const includeArchived = new URL(request.url).searchParams.get("includeArchived") === "1";
 
-  const [childrenRows, user] = await Promise.all([
-    prisma.childProfile.findMany({
-      where: { parentId: parentScope.parentId, ...(includeArchived ? {} : { archived: false }) },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { activeChildId: true } }),
-  ]);
+  let childrenRows: Awaited<ReturnType<typeof prisma.childProfile.findMany>> = [];
+  let user: { activeChildId: string | null } | null = null;
+  try {
+    [childrenRows, user] = await Promise.all([
+      prisma.childProfile.findMany({
+        where: { parentId: parentScope.parentId, ...(includeArchived ? {} : { archived: false }) },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { activeChildId: true } }),
+    ]);
+  } catch (error) {
+    if (isTransientDbSaturationError(error)) {
+      return NextResponse.json(
+        { error: "Service temporarily unavailable. Please retry in a few seconds.", retryable: true },
+        { status: 503, headers: { "Retry-After": "5" } },
+      );
+    }
+    throw error;
+  }
 
   if (process.env.NODE_ENV !== "production") {
     console.info(
