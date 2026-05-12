@@ -27,15 +27,38 @@ function reorderByHref(items: readonly { href: AdminNavHref }[], fromHref: Admin
 
 export default function AdminSidebar() {
   const pathname = usePathname();
-  const [savedOrder, setSavedOrder] = useState<AdminNavHref[] | null>(null);
+  const [savedOrder, setSavedOrder] = useState<AdminNavHref[] | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(ORDER_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      const filtered = parsed.filter((value): value is AdminNavHref => typeof value === "string" && isAdminNavHref(value));
+      return filtered.length ? filtered : null;
+    } catch {
+      return null;
+    }
+  });
   const [draggingHref, setDraggingHref] = useState<AdminNavHref | null>(null);
   const [overHref, setOverHref] = useState<AdminNavHref | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
   const activeItemRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
-  const [isVisible, setIsVisible] = useState(true);
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [isVisible, setIsVisible] = useState(() => {
+    if (typeof window === "undefined") return true;
+    if (window.matchMedia("(min-width: 1024px)").matches) return true;
+    try {
+      const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
+      return raw !== null ? (JSON.parse(raw) as boolean) : true;
+    } catch {
+      return true;
+    }
+  });
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(min-width: 1024px)").matches : false,
+  );
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 1024px)");
@@ -51,19 +74,6 @@ export default function AdminSidebar() {
       media.removeEventListener("change", updateDesktopState);
     };
   }, []);
-
-  useEffect(() => {
-    if (isDesktop) return;
-
-    try {
-      const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
-      if (raw !== null) {
-        setIsVisible(JSON.parse(raw) as boolean);
-      }
-    } catch {
-      // Ignore invalid local storage payloads.
-    }
-  }, [isDesktop]);
 
   useEffect(() => {
     if (!isDesktop) return;

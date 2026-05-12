@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 
 type SubscriptionRow = {
@@ -40,6 +40,16 @@ type ActionType =
   | "extend_trial"
   | "send_payment_reminder";
 
+const DEFAULT_METRICS: Metrics = {
+  totalParents: 0,
+  activeSubscriptions: 0,
+  trialSubscriptions: 0,
+  churnedSubscriptions: 0,
+  failedPayments: 0,
+  mrrLabel: "GBP 0.00",
+  monthRevenueLabel: "GBP 0.00",
+};
+
 const PLAN_OPTIONS: Array<{ value: SubscriptionRow["planKey"]; label: string }> = [
   { value: "free", label: "Free" },
   { value: "monthly", label: "Monthly" },
@@ -64,15 +74,7 @@ function formatDate(value: string | null) {
 
 export default function SubscriptionsPage() {
   const [rows, setRows] = useState<SubscriptionRow[]>([]);
-  const [metrics, setMetrics] = useState<Metrics>({
-    totalParents: 0,
-    activeSubscriptions: 0,
-    trialSubscriptions: 0,
-    churnedSubscriptions: 0,
-    failedPayments: 0,
-    mrrLabel: "GBP 0.00",
-    monthRevenueLabel: "GBP 0.00",
-  });
+  const [metrics, setMetrics] = useState<Metrics>(DEFAULT_METRICS);
   const [loading, setLoading] = useState(true);
   const [workingParentId, setWorkingParentId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -81,8 +83,8 @@ export default function SubscriptionsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [planFilter, setPlanFilter] = useState("all");
 
-  async function loadRows() {
-    setLoading(true);
+  const loadRows = useCallback(async (withLoading = true) => {
+    if (withLoading) setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/admin/subscriptions", { credentials: "include" });
@@ -92,13 +94,13 @@ export default function SubscriptionsPage() {
       }
       const payload = (await response.json()) as { rows: SubscriptionRow[]; metrics: Metrics };
       setRows(payload.rows ?? []);
-      setMetrics(payload.metrics ?? metrics);
+      setMetrics(payload.metrics ?? DEFAULT_METRICS);
     } catch {
       setError("Unable to load subscriptions.");
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   async function runAction(row: SubscriptionRow, action: ActionType) {
     setWorkingParentId(row.parentId);
@@ -152,8 +154,14 @@ export default function SubscriptionsPage() {
   }, [planFilter, rows, search, statusFilter]);
 
   useEffect(() => {
-    void loadRows();
-  }, []);
+    const id = window.setTimeout(() => {
+      void loadRows(false);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(id);
+    };
+  }, [loadRows]);
 
   return (
     <AdminSectionCard title="Subscriptions Operations" eyebrow="Billing">

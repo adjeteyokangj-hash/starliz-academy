@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
