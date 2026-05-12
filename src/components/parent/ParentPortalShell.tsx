@@ -495,48 +495,50 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           ) : null}
 
           {section === "progress" ? (
-            <Panel title="Progress" description="See the selected child's recent learning records.">
-              {childDetail ? (
-                <div className="grid gap-3 md:grid-cols-3">
-                  {childDetail.progressRecords.slice(0, 6).map((record) => (
-                    <Metric key={record.id} label={record.skill} value={`${record.level} • ${record.score}%`} />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState text="Choose a child to load recent progress." />
+            <>
+              <Panel title="Progress" description="See the selected child's recent learning records.">
+                {childDetail ? (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {childDetail.progressRecords.slice(0, 6).map((record) => (
+                      <Metric key={record.id} label={record.skill} value={`${record.level} • ${record.score}%`} />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState text="Choose a child to load recent progress." />
+                )}
+              </Panel>
 
-                    {childDetail && childDetail.progressRecords.length > 0 ? (
-                      <Panel title="Subject-skill breakdown" description="All skills organized by subject with accuracy scores">
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="border-b border-white/10">
-                                <th className="px-4 py-2 text-left font-semibold text-slate-300">Subject</th>
-                                <th className="px-4 py-2 text-left font-semibold text-slate-300">Skill</th>
-                                <th className="px-4 py-2 text-left font-semibold text-slate-300">Level</th>
-                                <th className="px-4 py-2 text-right font-semibold text-slate-300">Accuracy</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                              {childDetail.progressRecords.map((record) => (
-                                <tr key={record.id} className="hover:bg-white/5">
-                                  <td className="px-4 py-3 text-slate-400">{record.skill.split("_")[0] ?? "General"}</td>
-                                  <td className="px-4 py-3 text-slate-300">{record.skill}</td>
-                                  <td className="px-4 py-3 text-slate-300">{record.level}</td>
-                                  <td className="px-4 py-3 text-right">
-                                    <span className={record.score >= 80 ? "text-green-400 font-semibold" : record.score >= 60 ? "text-yellow-400" : "text-red-400"}>
-                                      {record.score}%
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </Panel>
-                    ) : null}
-              )}
-            </Panel>
+              {childDetail && childDetail.progressRecords.length > 0 ? (
+                <Panel title="Subject-skill breakdown" description="All skills organized by subject with accuracy scores">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-white/10">
+                          <th className="px-4 py-2 text-left font-semibold text-slate-300">Subject</th>
+                          <th className="px-4 py-2 text-left font-semibold text-slate-300">Skill</th>
+                          <th className="px-4 py-2 text-left font-semibold text-slate-300">Level</th>
+                          <th className="px-4 py-2 text-right font-semibold text-slate-300">Accuracy</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {childDetail.progressRecords.map((record) => (
+                          <tr key={record.id} className="hover:bg-white/5">
+                            <td className="px-4 py-3 text-slate-400">{record.skill.split("_")[0] ?? "General"}</td>
+                            <td className="px-4 py-3 text-slate-300">{record.skill}</td>
+                            <td className="px-4 py-3 text-slate-300">{record.level}</td>
+                            <td className="px-4 py-3 text-right">
+                              <span className={record.score >= 80 ? "text-green-400 font-semibold" : record.score >= 60 ? "text-yellow-400" : "text-red-400"}>
+                                {record.score}%
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Panel>
+              ) : null}
+            </>
           ) : null}
 
           {section === "tutor-history" ? (
