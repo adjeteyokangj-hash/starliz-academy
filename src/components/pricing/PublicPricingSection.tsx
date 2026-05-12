@@ -28,6 +28,7 @@ type PricingPlan = {
 
 type PublicPricingSectionProps = {
   compact?: boolean
+  initialPlans?: PricingPlan[]
 }
 
 function formatCurrency(value: number, currency: string): string {
@@ -48,9 +49,9 @@ function canUseStripeCheckout(plan: PricingPlan): boolean {
   return (plan.interval === "month" || plan.interval === "year") && !!plan.stripePriceId
 }
 
-export default function PublicPricingSection({ compact = false }: PublicPricingSectionProps) {
-  const [plans, setPlans] = useState<PricingPlan[]>([])
-  const [loading, setLoading] = useState(true)
+export default function PublicPricingSection({ compact = false, initialPlans = [] }: PublicPricingSectionProps) {
+  const [plans, setPlans] = useState<PricingPlan[]>(initialPlans)
+  const [loading, setLoading] = useState(initialPlans.length === 0)
 
   useEffect(() => {
     let active = true
@@ -60,7 +61,6 @@ export default function PublicPricingSection({ compact = false }: PublicPricingS
       if (!active) return
 
       if (!response.ok) {
-        setPlans([])
         setLoading(false)
         return
       }
@@ -83,6 +83,11 @@ export default function PublicPricingSection({ compact = false }: PublicPricingS
     return plans.filter((plan) => plan.audience === "school" || plan.audience === "organisation")
   }, [plans])
 
+  const visibleIndividualPlans = useMemo(() => {
+    if (individualPlans.length > 0) return individualPlans
+    return plans.slice(0, 3)
+  }, [individualPlans, plans])
+
   const headingSize = compact ? "text-3xl" : "text-4xl"
 
   return (
@@ -92,9 +97,12 @@ export default function PublicPricingSection({ compact = false }: PublicPricingS
         <p className="mt-4 text-slate-400">Start with a free trial. No credit card required.</p>
 
         {loading && plans.length === 0 ? <p className="mt-8 text-sm text-slate-500">Loading pricing...</p> : null}
+        {!loading && plans.length === 0 ? (
+          <p className="mt-8 text-sm text-slate-500">Pricing plans will appear here after they are configured in Admin Pricing.</p>
+        ) : null}
 
         <div className="mt-12 grid gap-6 md:grid-cols-3">
-          {individualPlans.map((plan) => (
+          {visibleIndividualPlans.map((plan) => (
             <article
               key={plan.id}
               className={`relative flex flex-col rounded-3xl border p-8 text-left ${

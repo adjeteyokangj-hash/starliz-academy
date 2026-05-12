@@ -1,6 +1,7 @@
 import Link from "next/link"
 import Logo from "@/components/Logo"
 import PublicPricingSection from "@/components/pricing/PublicPricingSection"
+import { getPublicPricingPlans } from "@/lib/pricing/service"
 
 const features = [
   {
@@ -89,7 +90,9 @@ const roadmapItems = [
   "🌍 More subjects (science, writing)",
 ]
 
-export default function PublicHomePage() {
+export default async function PublicHomePage() {
+  const plans = await getPublicPricingPlans()
+
   return (
     <main className="min-h-screen bg-[#020617] text-white">
       {/* Navigation */}
@@ -341,7 +344,7 @@ export default function PublicHomePage() {
         </div>
       </section>
 
-      <PublicPricingSection compact />
+      <PublicPricingSection compact initialPlans={plans} />
 
       {/* Roadmap teaser */}
       <section className="mx-auto max-w-5xl px-6 py-20">
