@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { encryptSecret, decryptSecret } from "@/lib/secrets";
 import { randomBytes } from "crypto";
+import { getInboxConnection, saveInboxConnection } from "@/lib/inbox-connection";
 
 const GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0";
 
@@ -160,15 +161,30 @@ function stripHtml(input: string) {
 }
 
 export async function getInboxConfig(adminUserId: string): Promise<InboxConnection | null> {
-  const row = await prisma.outlookToken.findUnique({ where: { adminUserId } });
-  if (!row) return null;
-  return {
-    connected: true,
-    adminUserId: row.adminUserId,
-    email: row.email,
-    microsoftUserId: row.microsoftUserId,
-    displayName: row.displayName,
-  };
+  const conn = await getInboxConnection(adminUserId);
+  if (!conn?.connected) return null;
+  // Re-read to get microsoftUserId (not stored in InboxConnectionRecord)
+  try {
+    const row = await prisma.outlookToken.findUnique({ where: { adminUserId } });
+    if (!row) return null;
+    return {
+      connected: true,
+      adminUserId: row.adminUserId,
+      email: row.email,
+      microsoftUserId: row.microsoftUserId,
+      displayName: row.displayName,
+    };
+  } catch (err) {
+    console.error("[imap-client] getInboxConfig secondary read error:", err);
+    // Return minimal config from the connection record — enough to show connected state
+    return {
+      connected: true,
+      adminUserId: conn.adminUserId,
+      email: conn.email,
+      microsoftUserId: "",
+      displayName: conn.displayName,
+    };
+  }
 }
 
 export async function disconnectInbox(adminUserId: string) {
@@ -237,27 +253,15 @@ export async function exchangeAuthCodeAndStore(input: {
   const email = me.mail || me.userPrincipalName;
   if (!email) throw new Error("Microsoft account did not return an email address.");
 
-  await prisma.outlookToken.upsert({
-    where: { adminUserId: input.adminUserId },
-    create: {
-      adminUserId: input.adminUserId,
-      microsoftUserId: me.id,
-      email,
-      displayName: me.displayName,
-      accessToken: encryptSecret(token.access_token),
-      refreshToken: encryptSecret(token.refresh_token ?? ""),
-      scope: token.scope ?? GRAPH_SCOPES,
-      expiresAt: new Date(Date.now() + token.expires_in * 1000),
-    },
-    update: {
-      microsoftUserId: me.id,
-      email,
-      displayName: me.displayName,
-      accessToken: encryptSecret(token.access_token),
-      refreshToken: encryptSecret(token.refresh_token ?? ""),
-      scope: token.scope ?? GRAPH_SCOPES,
-      expiresAt: new Date(Date.now() + token.expires_in * 1000),
-    },
+  await saveInboxConnection({
+    adminUserId: input.adminUserId,
+    microsoftUserId: me.id,
+    email,
+    displayName: me.displayName,
+    accessToken: encryptSecret(token.access_token),
+    refreshToken: encryptSecret(token.refresh_token ?? ""),
+    scope: token.scope ?? GRAPH_SCOPES,
+    expiresAt: new Date(Date.now() + token.expires_in * 1000),
   });
 
   return { email, displayName: me.displayName };
