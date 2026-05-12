@@ -139,18 +139,24 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     fetch("/api/admin/stats")
-      .then((response) => {
+      .then(async (response) => {
         if (response.status === 401) {
           window.location.replace("/admin/login?next=/admin");
           return null;
         }
-        if (!response.ok) throw new Error("Unable to load admin stats.");
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          const message = body?.error ?? `Unable to load admin stats (${response.status}).`;
+          throw new Error(message);
+        }
         return response.json() as Promise<Stats>;
       })
       .then((payload) => {
         if (payload) setStats(payload);
       })
-      .catch(() => setError("Unable to load admin dashboard right now."));
+      .catch((caughtError: unknown) => {
+        setError(caughtError instanceof Error ? caughtError.message : "Unable to load admin dashboard right now.");
+      });
   }, []);
 
   const activityByType = useMemo(() => {
