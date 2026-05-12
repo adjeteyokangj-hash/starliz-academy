@@ -12,6 +12,15 @@ export type WalletMetadata = {
   activityName?: string;
   itemCategory?: string;
   failureCode?: string;
+  requestId?: string;
+  approvalMode?: "none" | "parent" | "admin";
+  approvalStatus?: "pending" | "approved" | "rejected";
+  rewardType?: "digital" | "physical";
+  stockState?: "unlimited" | "available" | "low" | "sold_out";
+  requestedAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewNote?: string;
 };
 
 export type WalletMutationInput = {

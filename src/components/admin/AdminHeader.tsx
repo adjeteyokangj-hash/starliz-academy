@@ -15,7 +15,7 @@ export default function AdminHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-950/88 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/92 backdrop-blur-xl">
       <div className="flex min-h-20 flex-col gap-4 px-4 py-4 md:px-6 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <p className="text-xs font-bold uppercase text-blue-300">StarLiz Admin</p>

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
@@ -7,9 +8,17 @@ import {
   shopBodySchema,
   syncProfileFromDb,
 } from "@/app/api/shop/_helpers";
-import { applyWalletMutation } from "@/lib/wallet_ledger";
+import { applyWalletMutation, type WalletMetadata } from "@/lib/wallet_ledger";
 
-async function recordFailedPurchase(childId: string, source: string, reason: string, balance: number, itemId?: string, itemName?: string) {
+async function recordFailedPurchase(
+  childId: string,
+  source: string,
+  reason: string,
+  balance: number,
+  itemId?: string,
+  itemName?: string,
+  metadata?: WalletMetadata,
+) {
   await prisma.walletTransaction.create({
     data: {
       childId,
@@ -20,7 +29,7 @@ async function recordFailedPurchase(childId: string, source: string, reason: str
       reason,
       balanceBefore: balance,
       balanceAfter: balance,
-      metadataJson: JSON.stringify({ itemName, failureCode: reason }),
+      metadataJson: JSON.stringify({ itemName, failureCode: reason, ...metadata }),
     },
   });
 }
@@ -73,9 +82,39 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `This item is only available up to age ${item.maxAge}.` }, { status: 400 });
     }
 
+    if (item.stockState === "sold_out" || item.stockRemaining === 0) {
+      await recordFailedPurchase(body.childId, "store", "sold_out", profile.coins, body.itemId, item.name, {
+        stockState: "sold_out",
+      });
+      return NextResponse.json({ error: `${item.name} is currently sold out.` }, { status: 400 });
+    }
+
     if (profile.coins < item.cost) {
       await recordFailedPurchase(body.childId, "store", "insufficient_coins", profile.coins, body.itemId, item.name);
       return NextResponse.json({ error: `You need ${item.cost - profile.coins} more coins.` }, { status: 400 });
+    }
+
+    if (item.approvalMode !== "none") {
+      const requestId = randomUUID();
+      await recordFailedPurchase(body.childId, "store", "approval_required", profile.coins, body.itemId, item.name, {
+        requestId,
+        approvalMode: item.approvalMode,
+        approvalStatus: "pending",
+        rewardType: item.rewardType,
+        requestedAt: new Date().toISOString(),
+        itemCategory: item.category,
+        stockState: item.stockState,
+      });
+      return NextResponse.json(
+        {
+          ok: true,
+          requiresApproval: true,
+          requestId,
+          itemId: body.itemId,
+          message: `${item.name} request submitted for ${item.approvalMode} approval.`,
+        },
+        { status: 202 },
+      );
     }
 
     const updatedProfile = {
@@ -103,6 +142,9 @@ export async function POST(request: Request) {
           itemName: item.name,
           category: item.category,
           itemCategory: item.category,
+          rewardType: item.rewardType,
+          approvalMode: "none",
+          stockState: item.stockState,
         },
       });
       await tx.progressRecord.create({

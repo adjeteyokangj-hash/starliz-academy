@@ -53,7 +53,7 @@ export default function ParentsPage() {
 
   useEffect(() => {
     fetch("/api/admin/parents")
-      .then((r) => { if (r.status === 401) { window.location.replace("/auth/login?next=/admin/parents"); return null; } return r.ok ? r.json() : null; })
+      .then((r) => { if (r.status === 401) { window.location.replace("/admin/login?next=/admin/parents"); return null; } return r.ok ? r.json() : null; })
       .then((payload) => { if (payload) setParents(payload.parents ?? []); })
       .finally(() => setLoading(false));
   }, []);

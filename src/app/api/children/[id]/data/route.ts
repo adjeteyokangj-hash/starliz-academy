@@ -35,6 +35,16 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       metadata: parseWalletMetadata(entry.metadataJson),
     }));
 
+  const pendingRedemptions = walletTransactions
+    .filter((entry) => entry.type === "failed" && entry.reason === "approval_required")
+    .map((entry) => ({
+      id: entry.id,
+      itemId: entry.itemId,
+      createdAt: entry.createdAt.toISOString(),
+      metadata: parseWalletMetadata(entry.metadataJson),
+    }))
+    .filter((entry) => entry.metadata?.approvalStatus === "pending");
+
   return NextResponse.json({
     child: normalizedChild,
     progressRecords,
@@ -50,6 +60,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     questionHistory,
     walletSummary,
     purchaseHistory,
+    pendingRedemptions,
     recentLevelDecisions: [...(normalizedChild.levelDecisions ?? [])].slice(-12).reverse(),
     recommendedNextActivity: normalizedChild.adaptive.nextBestActivity,
   });

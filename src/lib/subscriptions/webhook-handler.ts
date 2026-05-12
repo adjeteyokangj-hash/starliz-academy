@@ -120,6 +120,24 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
     ? await prisma.subscription.update({ where: { id: existing.id }, data })
     : await prisma.subscription.create({ data: { parentId: parent.id, ...data } });
 
+  await prisma.parentProfile.upsert({
+    where: { userId: parent.id },
+    create: {
+      userId: parent.id,
+      phone: "Not set",
+      status: status === "past_due" || status === "cancelled" ? "suspended" : "active",
+      trialStatus: status === "trialing" ? "trial" : status,
+      subscriptionPlan: planKey,
+      stripeCustomerId: providerCustomerId ?? null,
+    },
+    update: {
+      status: status === "past_due" || status === "cancelled" ? "suspended" : "active",
+      trialStatus: status === "trialing" ? "trial" : status,
+      subscriptionPlan: planKey,
+      stripeCustomerId: providerCustomerId ?? undefined,
+    },
+  });
+
   await writeAuditLog({
     action: "payment.webhook",
     entityType: "Subscription",

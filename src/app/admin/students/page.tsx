@@ -60,7 +60,7 @@ export default function StudentsPage() {
   useEffect(() => {
     fetch("/api/admin/students")
       .then((response) => {
-        if (response.status === 401) { window.location.replace("/auth/login?next=/admin/students"); return null; }
+        if (response.status === 401) { window.location.replace("/admin/login?next=/admin/students"); return null; }
         if (!response.ok) throw new Error("Failed to load students");
         return response.json() as Promise<{ students: Student[]; frustrationThreshold?: number }>;
       })

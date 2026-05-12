@@ -107,6 +107,8 @@ export async function middleware(request: NextRequest) {
       }
     } else if (session.role !== "admin") {
       return withSecurityHeaders(NextResponse.redirect(new URL("/dashboard", request.url)));
+    } else if (pathname === "/admin/login") {
+      return withSecurityHeaders(NextResponse.redirect(new URL("/admin", request.url)));
     }
   }
 

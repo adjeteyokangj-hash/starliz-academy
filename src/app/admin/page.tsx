@@ -141,7 +141,7 @@ export default function AdminDashboardPage() {
     fetch("/api/admin/stats")
       .then((response) => {
         if (response.status === 401) {
-          window.location.replace("/auth/login?next=/admin");
+          window.location.replace("/admin/login?next=/admin");
           return null;
         }
         if (!response.ok) throw new Error("Unable to load admin stats.");

@@ -34,18 +34,23 @@ export async function GET(request: Request) {
   const items = liveItems
     .filter((item) => profile.ageYears >= item.minAge && (item.maxAge === null || profile.ageYears <= item.maxAge))
     .map((item) => ({
-    id: item.id,
-    name: item.name,
-    cost: item.cost,
-    unlockLevel: item.unlockLevel,
-    requiredLevel: item.requiredLevel,
-    minAge: item.minAge,
-    maxAge: item.maxAge,
-    category: item.category,
-    description: item.description,
-    owned: ownedMap.has(item.id),
-    equipped: equippedMap.has(item.id),
-  }));
+      id: item.id,
+      name: item.name,
+      cost: item.cost,
+      unlockLevel: item.unlockLevel,
+      requiredLevel: item.requiredLevel,
+      minAge: item.minAge,
+      maxAge: item.maxAge,
+      category: item.category,
+      description: item.description,
+      rewardType: item.rewardType,
+      approvalMode: item.approvalMode,
+      stockTotal: item.stockTotal,
+      stockRemaining: item.stockRemaining,
+      stockState: item.stockState,
+      owned: ownedMap.has(item.id),
+      equipped: equippedMap.has(item.id),
+    }));
 
   return NextResponse.json({
     childId,

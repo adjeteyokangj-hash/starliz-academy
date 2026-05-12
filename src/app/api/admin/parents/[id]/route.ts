@@ -26,11 +26,69 @@ const updateParentSchema = z.object({
   subscriptionPlan: z.string().trim().nullable().optional(),
   stripeCustomerId: z.string().trim().nullable().optional(),
   paystackCustomerId: z.string().trim().nullable().optional(),
+  avatarUrl: z.string().trim().url().nullable().optional(),
+  parentNotes: z.string().trim().nullable().optional(),
+  emergencyContactName: z.string().trim().nullable().optional(),
+  emergencyContactPhone: z.string().trim().nullable().optional(),
+  secondaryGuardianName: z.string().trim().nullable().optional(),
+  secondaryGuardianPhone: z.string().trim().nullable().optional(),
+  devices: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1),
+        browser: z.string().trim().optional(),
+        lastSeen: z.string().trim().optional(),
+        ipAddress: z.string().trim().optional(),
+        trusted: z.boolean().optional(),
+      })
+    )
+    .optional(),
   forcePasswordReset: z.boolean().optional(),
   mfaEnabled: z.boolean().optional(),
   lastLoginAt: z.string().datetime().nullable().optional(),
   deviceTrackingJson: z.string().nullable().optional(),
 });
+
+function buildDeviceTrackingJson(input: {
+  deviceTrackingJson?: string | null;
+  devices?: Array<{
+    name: string;
+    browser?: string;
+    lastSeen?: string;
+    ipAddress?: string;
+    trusted?: boolean;
+  }>;
+  avatarUrl?: string | null;
+  parentNotes?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  secondaryGuardianName?: string | null;
+  secondaryGuardianPhone?: string | null;
+}) {
+  let parsed: Record<string, unknown> = {};
+  if (typeof input.deviceTrackingJson === "string" && input.deviceTrackingJson.trim()) {
+    try {
+      const maybeObject = JSON.parse(input.deviceTrackingJson);
+      if (maybeObject && typeof maybeObject === "object" && !Array.isArray(maybeObject)) {
+        parsed = maybeObject as Record<string, unknown>;
+      }
+    } catch {
+      throw new Error("DEVICE_JSON_INVALID");
+    }
+  }
+
+  const devices = input.devices ?? (Array.isArray(parsed.devices) ? parsed.devices : []);
+  const profile = {
+    avatarUrl: input.avatarUrl ?? null,
+    notes: input.parentNotes ?? null,
+    emergencyContactName: input.emergencyContactName ?? null,
+    emergencyContactPhone: input.emergencyContactPhone ?? null,
+    secondaryGuardianName: input.secondaryGuardianName ?? null,
+    secondaryGuardianPhone: input.secondaryGuardianPhone ?? null,
+  };
+
+  return JSON.stringify({ ...parsed, devices, profile });
+}
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -97,6 +155,25 @@ export async function PATCH(request: Request, context: Context) {
   const { id } = await context.params;
   try {
     const body = updateParentSchema.parse(await request.json());
+    const current = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, parentProfile: { select: { deviceTrackingJson: true } } },
+    });
+
+    if (!current || current.role !== "parent") {
+      return NextResponse.json({ error: "Parent not found." }, { status: 404 });
+    }
+
+    const shouldRebuildDeviceJson =
+      body.deviceTrackingJson !== undefined ||
+      body.devices !== undefined ||
+      body.avatarUrl !== undefined ||
+      body.parentNotes !== undefined ||
+      body.emergencyContactName !== undefined ||
+      body.emergencyContactPhone !== undefined ||
+      body.secondaryGuardianName !== undefined ||
+      body.secondaryGuardianPhone !== undefined;
+
     const profileData = {
       ...(body.phone !== undefined ? { phone: body.phone } : {}),
       ...(body.whatsappNumber !== undefined ? { whatsappNumber: body.whatsappNumber } : {}),
@@ -120,7 +197,20 @@ export async function PATCH(request: Request, context: Context) {
       ...(body.forcePasswordReset !== undefined ? { forcePasswordReset: body.forcePasswordReset } : {}),
       ...(body.mfaEnabled !== undefined ? { mfaEnabled: body.mfaEnabled } : {}),
       ...(body.lastLoginAt !== undefined ? { lastLoginAt: body.lastLoginAt ? new Date(body.lastLoginAt) : null } : {}),
-      ...(body.deviceTrackingJson !== undefined ? { deviceTrackingJson: body.deviceTrackingJson } : {}),
+      ...(shouldRebuildDeviceJson
+        ? {
+            deviceTrackingJson: buildDeviceTrackingJson({
+              deviceTrackingJson: body.deviceTrackingJson ?? current.parentProfile?.deviceTrackingJson,
+              devices: body.devices,
+              avatarUrl: body.avatarUrl,
+              parentNotes: body.parentNotes,
+              emergencyContactName: body.emergencyContactName,
+              emergencyContactPhone: body.emergencyContactPhone,
+              secondaryGuardianName: body.secondaryGuardianName,
+              secondaryGuardianPhone: body.secondaryGuardianPhone,
+            }),
+          }
+        : {}),
     };
     const parent = await prisma.user.update({
       where: { id },
@@ -158,6 +248,12 @@ export async function PATCH(request: Request, context: Context) {
 
     return NextResponse.json({ parent });
   } catch (error) {
+    if (error instanceof Error && error.message === "DEVICE_JSON_INVALID") {
+      return NextResponse.json(
+        { error: "Device tracking JSON must be valid JSON." },
+        { status: 400 }
+      );
+    }
     if (error instanceof z.ZodError) {
       const issue = error.issues[0];
       const fieldNameRaw = issue.path[0] ?? "field";
