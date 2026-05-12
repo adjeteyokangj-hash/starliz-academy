@@ -3,6 +3,8 @@ import Logo from "@/components/Logo"
 import PublicPricingSection from "@/components/pricing/PublicPricingSection"
 import { getPublicPricingPlans } from "@/lib/pricing/service"
 
+export const dynamic = "force-dynamic"
+
 const features = [
   {
     icon: "🧠",
