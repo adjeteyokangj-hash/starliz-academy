@@ -138,7 +138,9 @@ export async function middleware(request: NextRequest) {
 
     const unlocked = await hasParentUnlock(request);
     if (!unlocked) {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/parent-pin", request.url)));
+      const next = `${pathname}${request.nextUrl.search}`;
+      const pinUrl = new URL(`/parent-pin?next=${encodeURIComponent(next)}`, request.url);
+      return withSecurityHeaders(NextResponse.redirect(pinUrl));
     }
   }
 

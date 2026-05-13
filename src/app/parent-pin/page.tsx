@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "back", "0", "submit"];
 
+function safeParentNext(next: string | null): string {
+  if (next && /^\/parent(\/[^/].*)?$/.test(next)) return next;
+  return "/parent/dashboard";
+}
+
 export default function ParentPinPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pin, setPin] = useState("");
   const [hasPin, setHasPin] = useState<boolean | null>(null);
   const [setPinDraft, setSetPinDraft] = useState("");
@@ -30,13 +36,13 @@ export default function ParentPinPage() {
       }
       const payload = await response.json() as { hasPin: boolean; unlocked: boolean };
       if (payload.unlocked) {
-        router.replace("/parent");
+        router.replace(safeParentNext(searchParams.get("next")));
         return;
       }
       setHasPin(payload.hasPin);
     };
     void loadStatus();
-  }, [router]);
+  }, [router, searchParams]);
 
   function pushDigit(digit: string) {
     if (pin.length >= 4) return;
@@ -73,7 +79,7 @@ export default function ParentPinPage() {
       }
 
       if (response.ok) {
-        router.replace("/parent");
+        router.replace(safeParentNext(searchParams.get("next")));
         return;
       }
 
