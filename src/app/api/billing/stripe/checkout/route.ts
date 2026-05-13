@@ -96,14 +96,6 @@ export async function POST(request: Request) {
   const appUrl = getAppUrl(request)
   const safeReturnUrl = resolveReturnUrl(requestedReturnUrl, appUrl)
 
-  console.info("[billing.checkout] request", {
-    parentId: user.id,
-    planId: planId ?? null,
-    priceId: priceId ?? null,
-    hasStripeSecretKey: Boolean(process.env.STRIPE_SECRET_KEY),
-    appUrl,
-  })
-
   try {
     await writeAuditLog({
       actorUserId: user.id,
@@ -208,14 +200,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: checkoutSession.url })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to start Stripe checkout."
-    console.error("[billing.checkout] failed", {
-      parentId: user.id,
-      planId: planId ?? null,
-      priceId: priceId ?? null,
-      hasStripeSecretKey: Boolean(process.env.STRIPE_SECRET_KEY),
-      appUrl,
-      message,
-    })
     return NextResponse.json({ error: message }, { status: 502 })
   }
 }
