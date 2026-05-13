@@ -26,6 +26,11 @@ export type InboxConnectionRecord = {
   connected: boolean;
 };
 
+type DbErrorShape = {
+  code?: string;
+  meta?: unknown;
+};
+
 /**
  * Read the inbox connection for an admin user.
  * Returns null only when no saved connection exists.
@@ -123,10 +128,11 @@ export async function saveInboxConnection(data: {
       updatedAt: result.updatedAt,
     });
   } catch (err) {
+    const dbError = (typeof err === "object" && err !== null ? err : {}) as DbErrorShape;
     console.error("[inbox-connection] saveInboxConnection upsert failed", {
       error: err instanceof Error ? err.message : String(err),
-      errorCode: (err as any)?.code,
-      errorMeta: (err as any)?.meta,
+      errorCode: dbError.code,
+      errorMeta: dbError.meta,
       stack: err instanceof Error ? err.stack : undefined,
       adminUserId: data.adminUserId,
       email: data.email,
