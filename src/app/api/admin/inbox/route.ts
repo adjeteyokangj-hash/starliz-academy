@@ -1,66 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api_guard";
 import { getInboxConnection } from "@/lib/inbox-connection";
-import { getInboxConfig, fetchMessages } from "@/lib/imap-client";
-import { prisma } from "@/lib/db";
+import { fetchMessages } from "@/lib/imap-client";
 
 export async function GET(req: NextRequest) {
   const { session, response } = await requireAdmin();
   if (!session) return response!;
 
-  let tokenRow:
-    | {
-        accessToken: string;
-        refreshToken: string;
-        email: string;
-      }
-    | null = null;
+  let conn;
   try {
-    tokenRow = await prisma.outlookToken.findUnique({
-      where: { adminUserId: session.userId },
-      select: {
-        accessToken: true,
-        refreshToken: true,
-        email: true,
-      },
-    });
-  } catch {
-    // Temporary diagnostics should never block API responses.
-    tokenRow = null;
+    conn = await getInboxConnection(session.userId);
+  } catch (error) {
+    console.error("Inbox API connection read failed", error);
+    return NextResponse.json({ error: "Inbox connection temporarily unavailable." }, { status: 503 });
   }
-  console.log("Inbox API read adminUserId", session.userId);
-  console.log("OutlookToken found", !!tokenRow, tokenRow?.email);
 
-  // Use the safe shared helper — has try/catch so DB saturation returns null
-  const conn = await getInboxConnection(session.userId);
   if (!conn?.connected) {
     console.log("Inbox API response", {
       connected: false,
       provider: "microsoft",
-      email: tokenRow?.email ?? null,
-      hasAccessToken: !!tokenRow?.accessToken?.trim(),
-      hasRefreshToken: !!tokenRow?.refreshToken?.trim(),
+      email: conn?.email ?? null,
+      hasAccessToken: conn?.hasAccessToken ?? false,
+      hasRefreshToken: conn?.hasRefreshToken ?? false,
     });
     return NextResponse.json({ connected: false, messages: [] });
-  }
-
-  // Full config needed for Graph API calls (has microsoftUserId)
-  const cfg = await getInboxConfig(session.userId);
-  if (!cfg) {
-    // Extremely unlikely: connection exists but secondary read failed
-    console.log("Inbox API response", {
-      connected: true,
-      provider: "microsoft",
-      email: conn.email,
-      hasAccessToken: !!tokenRow?.accessToken?.trim(),
-      hasRefreshToken: !!tokenRow?.refreshToken?.trim(),
-    });
-    return NextResponse.json({
-      connected: true,
-      account: { email: conn.email },
-      messages: [],
-      mailboxError: "Could not load mailbox config. Please try refreshing.",
-    });
   }
 
   const { searchParams } = req.nextUrl;
@@ -74,14 +37,14 @@ export async function GET(req: NextRequest) {
   console.log("Inbox API response", {
     connected: true,
     provider: "microsoft",
-    email: cfg.email,
-    hasAccessToken: !!tokenRow?.accessToken?.trim(),
-    hasRefreshToken: !!tokenRow?.refreshToken?.trim(),
+    email: conn.email,
+    hasAccessToken: conn.hasAccessToken,
+    hasRefreshToken: conn.hasRefreshToken,
   });
 
   return NextResponse.json({
     connected: true,
-    account: { email: cfg.email },
+    account: { email: conn.email },
     messages: result.messages,
     mailboxError: result.mailboxError,
   });

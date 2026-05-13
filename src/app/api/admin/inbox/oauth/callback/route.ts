@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { exchangeAuthCodeAndStore, getGraphOrigin, readInboxOAuthState } from "@/lib/imap-client";
+import { getInboxConnection } from "@/lib/inbox-connection";
 
 export async function GET(req: NextRequest) {
   const requestUrl = new URL(req.url);
@@ -43,6 +44,12 @@ export async function GET(req: NextRequest) {
     const fallbackOrigin = requestUrl.origin;
     const origin = getGraphOrigin(fallbackOrigin);
     await exchangeAuthCodeAndStore({ adminUserId, code, origin });
+
+    const persisted = await getInboxConnection(adminUserId);
+    if (!persisted?.connected) {
+      throw new Error("Inbox connection not persisted after OAuth callback.");
+    }
+
     const res = NextResponse.redirect(new URL("/admin/inbox?connected=1", requestUrl));
     res.cookies.set("inbox_oauth_state", "", {
       httpOnly: true,

@@ -394,6 +394,7 @@ export default function AdminInboxPage() {
 
     const timer = window.setTimeout(() => {
       if (connectedFlag || oauth === "connected") {
+        setConnected(true);
         setNotice("✅ Inbox connected with Microsoft Graph OAuth.");
         void fetchMessages(folder);
       } else {

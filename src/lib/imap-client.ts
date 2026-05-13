@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { encryptSecret, decryptSecret } from "@/lib/secrets";
 import { randomBytes } from "crypto";
-import { getInboxConnection, saveInboxConnection } from "@/lib/inbox-connection";
+import { saveInboxConnection } from "@/lib/inbox-connection";
 
 const GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0";
 
@@ -23,7 +23,6 @@ export type InboxConnection = {
   connected: boolean;
   adminUserId: string;
   email: string;
-  microsoftUserId: string;
   displayName?: string | null;
 };
 
@@ -161,30 +160,20 @@ function stripHtml(input: string) {
 }
 
 export async function getInboxConfig(adminUserId: string): Promise<InboxConnection | null> {
-  const conn = await getInboxConnection(adminUserId);
-  if (!conn?.connected) return null;
-  // Re-read to get microsoftUserId (not stored in InboxConnectionRecord)
-  try {
-    const row = await prisma.outlookToken.findUnique({ where: { adminUserId } });
-    if (!row) return null;
-    return {
-      connected: true,
-      adminUserId: row.adminUserId,
-      email: row.email,
-      microsoftUserId: row.microsoftUserId,
-      displayName: row.displayName,
-    };
-  } catch (err) {
-    console.error("[imap-client] getInboxConfig secondary read error:", err);
-    // Return minimal config from the connection record — enough to show connected state
-    return {
-      connected: true,
-      adminUserId: conn.adminUserId,
-      email: conn.email,
-      microsoftUserId: "",
-      displayName: conn.displayName,
-    };
-  }
+  const row = await prisma.outlookToken.findUnique({ where: { adminUserId } });
+  if (!row) return null;
+
+  const hasAccessToken = !!row.accessToken?.trim();
+  const hasRefreshToken = !!row.refreshToken?.trim();
+  const connected = !!(row.email?.trim() && (hasAccessToken || hasRefreshToken));
+  if (!connected) return null;
+
+  return {
+    connected: true,
+    adminUserId: row.adminUserId,
+    email: row.email,
+    displayName: row.displayName,
+  };
 }
 
 export async function disconnectInbox(adminUserId: string) {
