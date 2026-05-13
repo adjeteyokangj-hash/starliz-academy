@@ -1,7 +1,7 @@
 'use client';
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
@@ -230,6 +230,7 @@ function sectionLabel(section: PortalSection) {
 
 export default function ParentPortalShell({ section }: { section: PortalSection }) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [account, setAccount] = useState<AccountPayload | null>(null);
   const [children, setChildren] = useState<ChildListResponse | null>(null);
@@ -361,12 +362,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     return section;
   }, [pathname, section]);
 
-  useEffect(() => {
-    if (activeSection !== "children") return;
-    if (searchParams.get("mode") !== "add") return;
-    setEditingChildId(null);
-    setShowChildForm(true);
-  }, [activeSection, searchParams]);
+  const modeAdd = activeSection === "children" && searchParams.get("mode") === "add";
+  const formVisible = modeAdd || showChildForm;
+  const effectiveEditingChildId = modeAdd ? null : editingChildId;
 
   async function downloadProgressReport(format: "pdf" | "csv" | "excel") {
     if (!selectedChildId) return;
@@ -605,12 +603,12 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
           {activeSection === "children" ? (
             <div className="space-y-6">
-              {showChildForm ? (
-                <Panel title={editingChildId ? "Edit child" : "Add new child"} description={editingChildId ? "Update child details" : "Create a new child profile"}>
+              {formVisible ? (
+                <Panel title={effectiveEditingChildId ? "Edit child" : "Add new child"} description={effectiveEditingChildId ? "Update child details" : "Create a new child profile"}>
                   <ChildManagementForm
-                    mode={editingChildId ? "edit" : "add"}
-                    initialData={editingChildId ? (() => {
-                      const child = children?.children.find(c => c.id === editingChildId);
+                    mode={effectiveEditingChildId ? "edit" : "add"}
+                    initialData={effectiveEditingChildId ? (() => {
+                      const child = children?.children.find(c => c.id === effectiveEditingChildId);
                       return child ? {
                         id: child.id,
                         name: child.name,
@@ -627,10 +625,13 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       } : undefined;
                     })() : undefined}
                     onSuccess={() => {
-                      const wasEditing = editingChildId !== null;
+                      const wasEditing = effectiveEditingChildId !== null;
                       setShowChildForm(false);
                       setEditingChildId(null);
                       setChildFormMessage(wasEditing ? "Child profile updated." : "Child profile added successfully.");
+                      if (modeAdd) {
+                        router.replace("/parent/children");
+                      }
                       void Promise.all([
                         fetch("/api/children", { credentials: "include" }).then(r => r.ok ? r.json() as Promise<ChildListResponse> : null),
                         fetch("/api/account", { credentials: "include" }).then(r => r.ok ? r.json() as Promise<AccountPayload> : null),
@@ -645,6 +646,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       }).catch(() => undefined);
                     }}
                     onCancel={() => {
+                      if (modeAdd) {
+                        router.replace("/parent/children");
+                      }
                       setShowChildForm(false);
                       setEditingChildId(null);
                     }}
