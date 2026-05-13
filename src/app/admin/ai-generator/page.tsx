@@ -4,9 +4,19 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
-import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
+import {
+  KEY_STAGES,
+  YEAR_GROUPS,
+  AGE_GROUPS,
+  keyStageForYearGroup,
+  yearGroupsForKeyStage,
+  ageGroupForYearGroup,
+  subjectsForYearGroup,
+  skillsForSubjectAndYear,
+  type Subject,
+  type YearGroup,
+} from "@/lib/curriculum";
 
-type Subject = "spelling" | "math" | "reading";
 type GeneratedPreviewItem = Record<string, unknown> & {
   id?: string;
   type?: string;
@@ -34,87 +44,16 @@ type GeneratedPreview = {
   items: GeneratedPreviewItem[];
 };
 
-const SPELLING_PHONICS_SKILLS = [
-  "Phase 2 phonics",
-  "Phase 3 phonics",
-  "Phase 4 blends",
-  "Phase 5 alternative sounds",
-  "Segmenting",
-  "Blending",
-  "Digraphs",
-  "Trigraphs",
-  "CVC words",
-  "CVCC words",
-  "CCVC words",
-  "Rhyming words",
-  "Initial sounds",
-  "Final sounds",
-] as const;
-
-const SPELLING_RULE_SKILLS = [
-  "Silent e",
-  "Prefixes",
-  "Suffixes",
-  "Compound words",
-  "Homophones",
-  "Common exception words",
-  "High frequency words",
-  "Tricky words",
-  "Plurals",
-  "Past tense",
-  "Apostrophes",
-  "Possessive apostrophes",
-  "Contractions",
-] as const;
-
-const READING_SKILLS = [
-  "Reading comprehension",
-  "Inference",
-  "Retrieval",
-  "Vocabulary",
-  "Sequencing",
-  "Prediction",
-  "Fluency",
-] as const;
-
-const MATH_SKILLS = [
-  "Number bonds",
-  "Addition",
-  "Subtraction",
-  "Multiplication",
-  "Division",
-  "Fractions",
-  "Time",
-  "Money",
-  "Shape",
-  "Measurement",
-  "Word problems",
-  "Times tables",
-] as const;
-
-function getSkillGroups(subject: Subject): Array<{ label: string; values: string[] }> {
-  if (subject === "spelling") {
-    return [
-      { label: "Phonics", values: [...SPELLING_PHONICS_SKILLS] },
-      { label: "Spelling", values: [...SPELLING_RULE_SKILLS] },
-    ];
-  }
-  if (subject === "reading") {
-    return [{ label: "Reading", values: [...READING_SKILLS] }];
-  }
-  return [{ label: "Maths", values: [...MATH_SKILLS] }];
+function getAvailableSubjects(yearGroup: string | null | undefined): readonly Subject[] {
+  return subjectsForYearGroup(yearGroup);
 }
 
-function getSkillOptions(subject: Subject): string[] {
-  return getSkillGroups(subject).flatMap((group) => group.values);
-}
-
-function getYearOptions(keyStage: string) {
-  return yearGroupsForKeyStage(keyStage).length ? yearGroupsForKeyStage(keyStage) : [...YEAR_GROUPS];
+function getAvailableSkills(subject: Subject, yearGroup: string | null | undefined): readonly string[] {
+  return skillsForSubjectAndYear(subject, yearGroup);
 }
 
 function normalizeYearForKeyStage(keyStage: string, yearGroup: string | null | undefined) {
-  const options = getYearOptions(keyStage);
+  const options = yearGroupsForKeyStage(keyStage);
   return yearGroup && options.includes(yearGroup as (typeof YEAR_GROUPS)[number]) ? yearGroup : options[0];
 }
 
@@ -160,37 +99,63 @@ type SpellingPreviewItem = {
 export default function AiGeneratorPage() {
   const searchParams = useSearchParams();
   const prefillSubject = searchParams.get("subject");
-  const initialSubject: Subject = prefillSubject === "math" || prefillSubject === "reading" || prefillSubject === "spelling" ? prefillSubject : "spelling";
   const prefillSkill = searchParams.get("skill");
   const prefillWords = searchParams.get("words");
   const prefillStudentId = searchParams.get("studentId");
   const prefillDifficulty = Number(searchParams.get("difficulty"));
-  const [subject, setSubject] = useState<Subject>(initialSubject);
-  const [keyStage, setKeyStage] = useState("KS1");
-  const [yearGroup, setYearGroup] = useState("Year 1");
-  const [skillFocus, setSkillFocus] = useState(prefillSkill ?? "Phase 2 phonics");
+
+  // Initialize with sensible defaults; validate against curriculum
+  const initialYearGroup: YearGroup = "Year 1";
+  const initialAgeGroup = ageGroupForYearGroup(initialYearGroup);
+
+  const [yearGroup, setYearGroup] = useState<string>(initialYearGroup);
+  const [ageGroup, setAgeGroup] = useState(initialAgeGroup);
+  const availableSubjects = getAvailableSubjects(yearGroup);
+  const [subject, setSubject] = useState<Subject>(
+    prefillSubject && (availableSubjects as string[]).includes(prefillSubject as string)
+      ? (prefillSubject as Subject)
+      : availableSubjects[0]
+  );
+  const [keyStage, setKeyStage] = useState(keyStageForYearGroup(yearGroup));
+  const availableSkills = getAvailableSkills(subject, yearGroup);
+  const [skillFocus, setSkillFocus] = useState(
+    prefillSkill && availableSkills.includes(prefillSkill) ? prefillSkill : availableSkills[0] ?? ""
+  );
   const [skillSearch, setSkillSearch] = useState("");
-  const [ageGroup, setAgeGroup] = useState("6-8");
-  const [difficulty, setDifficulty] = useState(Number.isFinite(prefillDifficulty) && prefillDifficulty >= 1 ? prefillDifficulty : prefillWords ? 1 : 2);
+  const [difficulty, setDifficulty] = useState(
+    Number.isFinite(prefillDifficulty) && prefillDifficulty >= 1 ? prefillDifficulty : prefillWords ? 1 : 2
+  );
   const [items, setItems] = useState(12);
   const [topic, setTopic] = useState(prefillWords ? `Focus practice on: ${prefillWords}` : "");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<GeneratedPreview | null>(null);
-  const [generationMeta, setGenerationMeta] = useState<{ model?: string; prompt?: string; estimatedCostPence?: number; estimatedTokens?: number; validation?: ValidationMeta } | null>(null);
+  const [generationMeta, setGenerationMeta] = useState<{
+    model?: string;
+    prompt?: string;
+    estimatedCostPence?: number;
+    estimatedTokens?: number;
+    validation?: ValidationMeta;
+  } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [automationMessage, setAutomationMessage] = useState<string | null>(prefillWords ? "Follow-up practice prefilled from assignment weak areas." : null);
+  const [automationMessage, setAutomationMessage] = useState<string | null>(
+    prefillWords ? "Follow-up practice prefilled from assignment weak areas." : null
+  );
   const [weakAreas, setWeakAreas] = useState<WeakArea[]>([]);
   const [weakAreaKeyStageFilter, setWeakAreaKeyStageFilter] = useState("");
   const [weakAreaYearGroupFilter, setWeakAreaYearGroupFilter] = useState("");
   const [savedContentId, setSavedContentId] = useState<string | null>(null);
   const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId);
-  const filteredSkillGroups = getSkillGroups(subject).map((group) => ({
-    ...group,
-    values: group.values.filter((value) => value.toLowerCase().includes(skillSearch.trim().toLowerCase())),
-  })).filter((group) => group.values.length > 0);
-  const phonicsMismatchDetected = (generationMeta?.validation?.errors ?? []).some((value) => value.includes("phonics_stage"));
+
+  // Dynamically filter skills based on search
+  const filteredSkills = availableSkills.filter((skill) =>
+    skill.toLowerCase().includes(skillSearch.trim().toLowerCase())
+  );
+
+  const phonicsMismatchDetected = (generationMeta?.validation?.errors ?? []).some((value) =>
+    value.includes("phonics_stage")
+  );
 
   const generatedItemsList = preview?.items ?? [];
   const saveBlocked = !generatedItemsList.length || generationMeta?.validation?.valid === false;
@@ -399,11 +364,17 @@ export default function AiGeneratorPage() {
   }
 
   function applyWeakArea(area: WeakArea) {
-    const nextSubject = area.subject === "math" ? "math" : area.subject === "reading" ? "reading" : "spelling";
-    const nextKeyStage = area.keyStage ?? keyStageForYearGroup(area.yearGroup ?? "Year 1");
+    // Map the weak area subject to an available subject
+    let nextSubject: Subject = "spelling";
+    if (area.subject === "math") nextSubject = "maths";
+    else if (area.subject === "reading") nextSubject = "reading";
+    else nextSubject = "spelling";
+
+    const nextKeyStage = (area.keyStage ?? keyStageForYearGroup(area.yearGroup ?? "Year 1")) as typeof KEY_STAGES[number];
     setSubject(nextSubject);
     setKeyStage(nextKeyStage);
     setYearGroup(normalizeYearForKeyStage(nextKeyStage, area.yearGroup));
+    setAgeGroup(ageGroupForYearGroup(area.yearGroup) as typeof AGE_GROUPS[number]);
     setSkillFocus(area.skillFocus);
     setDifficulty(Math.max(1, area.status === "active" ? area.currentDifficulty - 1 : area.currentDifficulty));
     setTopic(`${area.weaknessType} support for ${area.skillFocus}`);
@@ -416,41 +387,86 @@ export default function AiGeneratorPage() {
     <div className="grid gap-6 xl:grid-cols-[32rem_minmax(0,1fr)]">
       <AdminSectionCard title="AI Generator" eyebrow="Content">
         <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-bold text-slate-300">
+              Year group
+              <select
+                value={yearGroup}
+                onChange={(event) => {
+                  const nextYear = event.target.value;
+                  setYearGroup(nextYear);
+                  setKeyStage(keyStageForYearGroup(nextYear));
+                  setAgeGroup(ageGroupForYearGroup(nextYear));
+
+                  // Update subject if current is no longer available
+                  const nextAvailable = getAvailableSubjects(nextYear);
+                  if (!nextAvailable.includes(subject)) {
+                    setSubject(nextAvailable[0]);
+                    const nextSkills = getAvailableSkills(nextAvailable[0], nextYear);
+                    setSkillFocus(nextSkills[0] ?? "");
+                  } else {
+                    // Update skill focus if current is no longer available
+                    const nextSkills = getAvailableSkills(subject, nextYear);
+                    if (!nextSkills.includes(skillFocus)) {
+                      setSkillFocus(nextSkills[0] ?? "");
+                    }
+                  }
+                }}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+              >
+                {YEAR_GROUPS.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Key stage
+              <select
+                value={keyStage}
+                onChange={(event) => {
+                  const nextKeyStage = event.target.value as typeof KEY_STAGES[number];
+                  setKeyStage(nextKeyStage);
+                  const options = yearGroupsForKeyStage(nextKeyStage);
+                  const nextYear = options.includes(yearGroup as (typeof YEAR_GROUPS)[number])
+                    ? yearGroup
+                    : options[0];
+                  setYearGroup(nextYear);
+                  setAgeGroup(ageGroupForYearGroup(nextYear));
+                }}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+              >
+                {KEY_STAGES.map((stage) => (
+                  <option key={stage} value={stage}>
+                    {stage}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
           <label className="block text-sm font-bold text-slate-300">
             Subject
-            <select value={subject} onChange={(event) => {
-              const next = event.target.value as Subject;
-              setSubject(next);
-              setSkillFocus(getSkillOptions(next)[0]);
-            }} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
-              <option value="spelling">Spelling words</option>
-              <option value="math">Maths questions</option>
-              <option value="reading">Reading passages</option>
+            <select
+              value={subject}
+              onChange={(event) => {
+                const nextSubject = event.target.value as Subject;
+                setSubject(nextSubject);
+                const nextSkills = getAvailableSkills(nextSubject, yearGroup);
+                setSkillFocus(nextSkills[0] ?? "");
+                setSkillSearch("");
+              }}
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+            >
+              {availableSubjects.map((s) => (
+                <option key={s} value={s}>
+                  {s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, " ")}
+                </option>
+              ))}
             </select>
           </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm font-bold text-slate-300">
-            Key stage
-            <select value={keyStage} onChange={(event) => {
-              const nextKeyStage = event.target.value;
-              setKeyStage(nextKeyStage);
-              setYearGroup((current) => normalizeYearForKeyStage(nextKeyStage, current));
-              setSkillFocus((current) => getSkillOptions(subject).includes(current) ? current : getSkillOptions(subject)[0]);
-            }} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
-              {KEY_STAGES.map((stage) => <option key={stage}>{stage}</option>)}
-            </select>
-          </label>
-          <label className="block text-sm font-bold text-slate-300">
-            Year group
-            <select value={yearGroup} onChange={(event) => {
-              const nextYear = event.target.value;
-              setYearGroup(nextYear);
-              setKeyStage(keyStageForYearGroup(nextYear));
-            }} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
-              {getYearOptions(keyStage).map((year) => <option key={year}>{year}</option>)}
-            </select>
-          </label>
-          </div>
+
           <label className="block text-sm font-bold text-slate-300">
             Skill focus
             <input
@@ -459,29 +475,71 @@ export default function AiGeneratorPage() {
               placeholder="Search skills"
               className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500"
             />
-            <select value={skillFocus} onChange={(event) => setSkillFocus(event.target.value)} className="mt-2 max-h-72 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
-              {filteredSkillGroups.map((group) => (
-                <optgroup key={group.label} label={group.label}>
-                  {group.values.map((preset) => <option key={preset}>{preset}</option>)}
-                </optgroup>
+            <select
+              value={skillFocus}
+              onChange={(event) => {
+                const nextSkill = event.target.value;
+                setSkillFocus(nextSkill);
+              }}
+              className="mt-2 max-h-72 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+            >
+              <option value="">Select a skill focus</option>
+              {filteredSkills.map((skill) => (
+                <option key={skill} value={skill}>
+                  {skill}
+                </option>
               ))}
             </select>
           </label>
-          <label className="block text-sm font-bold text-slate-300">
-            Age group
-            <input value={ageGroup} onChange={(event) => setAgeGroup(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
-          </label>
-          <label className="block text-sm font-bold text-slate-300">
-            Difficulty: {difficulty} / {subject === "reading" ? 10 : 5}
-            <input type="range" min={1} max={subject === "reading" ? 10 : 5} value={difficulty} onChange={(event) => setDifficulty(Number(event.target.value))} className="mt-2 w-full accent-indigo-500" />
-          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-bold text-slate-300">
+              Age group
+              <select
+                value={ageGroup}
+                onChange={(event) => setAgeGroup(event.target.value as typeof AGE_GROUPS[number])}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+              >
+                {AGE_GROUPS.map((group) => (
+                  <option key={group} value={group}>
+                    {group}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Difficulty: {difficulty} / {subject === "reading" || subject === "english-literature" || subject === "english-language" || subject === "gcse-english" ? 10 : 5}
+              <input
+                type="range"
+                min={1}
+                max={subject === "reading" || subject === "english-literature" || subject === "english-language" || subject === "gcse-english" ? 10 : 5}
+                value={difficulty}
+                onChange={(event) => setDifficulty(Number(event.target.value))}
+                className="mt-2 w-full accent-indigo-500"
+              />
+            </label>
+          </div>
+
           <label className="block text-sm font-bold text-slate-300">
             Number of items
-            <input type="number" min={1} max={30} value={items} onChange={(event) => setItems(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+            <input
+              type="number"
+              min={1}
+              max={30}
+              value={items}
+              onChange={(event) => setItems(Number(event.target.value))}
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+            />
           </label>
+
           <label className="block text-sm font-bold text-slate-300">
             Topic / theme
-            <input value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="space adventure, pets, shopping, seasons" className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600" />
+            <input
+              value={topic}
+              onChange={(event) => setTopic(event.target.value)}
+              placeholder="space adventure, pets, shopping, seasons"
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600"
+            />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <button onClick={generatePreview} disabled={loading} className="rounded-xl bg-indigo-500 px-4 py-3 font-black text-white hover:bg-indigo-400 disabled:opacity-50">

@@ -4,16 +4,29 @@ import { writeAuditLog } from "@/lib/audit";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import { SKILL_MAP, serializeSkills } from "@/lib/skills";
-import { keyStageForYearGroup, normalizeYearGroup as normalizeCurriculumYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
+import { keyStageForYearGroup, normalizeYearGroup as normalizeCurriculumYearGroup, yearGroupsForKeyStage, ageGroupForYearGroup, type Subject } from "@/lib/curriculum";
 
 const BATCH_SIZE = 12;
 const OPENAI_MODEL = "gpt-4o-mini";
 const generationCache = new Map<string, { content: unknown; meta: Record<string, unknown> }>();
 const generationRateLimit = new Map<string, { count: number; resetAt: number }>();
 
+// Map new Subject types to legacy API subject types
+function mapSubjectToLegacy(subject: string): "spelling" | "math" | "reading" {
+  const s = String(subject).toLowerCase();
+  if (s === "phonics" || s === "spelling") return "spelling";
+  if (s === "times-tables" || s === "maths") return "math";
+  if (s === "reading" || s === "vocabulary" || s === "english-language" ||
+      s === "english-literature" || s === "gcse-english") return "reading";
+  if (s === "writing" || s === "grammar" || s === "punctuation") return "spelling";
+  if (s === "science" || s === "gcse-science") return "math";
+  if (s === "gcse-maths" || s === "sats-practice" || s === "11-plus-practice") return "math";
+  return "spelling";
+}
+
 type GeneratedPreview = {
   title: string;
-  subject: "spelling" | "math" | "reading";
+  subject: Subject;
   keyStage: string;
   yearGroup: string;
   skillFocus: string;
@@ -313,6 +326,7 @@ function normalizePreviewItems(
 
 function buildGeneratedPreview({
   subject,
+  legacyType,
   keyStage,
   yearGroup,
   skillFocus,
@@ -320,7 +334,8 @@ function buildGeneratedPreview({
   topic,
   content,
 }: {
-  subject: "spelling" | "math" | "reading";
+  subject: Subject;
+  legacyType: "spelling" | "math" | "reading";
   keyStage: string;
   yearGroup: string;
   skillFocus: string;
@@ -328,10 +343,10 @@ function buildGeneratedPreview({
   topic: string;
   content: unknown;
 }): GeneratedPreview {
-  const items = normalizePreviewItems(subject, content, { yearGroup, skillFocus, difficulty, topic });
-  const safeTopic = topic || skillFocus || subject;
+  const items = normalizePreviewItems(legacyType, content, { yearGroup, skillFocus, difficulty, topic });
+  const safeTopic = topic || skillFocus || legacyType;
   return {
-    title: `${yearGroup} ${skillFocus || subject} ${subject === "math" ? "questions" : subject === "reading" ? "reading set" : "practice"}`,
+    title: `${yearGroup} ${skillFocus || subject} ${legacyType === "math" ? "questions" : legacyType === "reading" ? "reading set" : "practice"}`,
     subject,
     keyStage,
     yearGroup,
@@ -512,12 +527,16 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const requestedSubject = body.subject ?? body.type;
+  const requestedSubject = (body.subject ?? body.type) as string;
   const requestedCount = body.numberOfItems ?? body.count;
   const requestedLevel = body.difficulty ?? body.level;
+  
+  // Map the new Subject type to legacy type
+  const legacyType = mapSubjectToLegacy(requestedSubject);
+  
   const { type, level = 1, topic = "" } = {
     ...body,
-    type: requestedSubject,
+    type: legacyType,
     level: requestedLevel,
   } as {
     type: "spelling" | "math" | "reading";
@@ -529,7 +548,7 @@ export async function POST(req: Request) {
     yearGroup?: string;
     skillFocus?: string;
   };
-  const ageGroup = typeof body.ageGroup === "string" ? body.ageGroup : "6-8";
+  const ageGroup = typeof body.ageGroup === "string" ? body.ageGroup : ageGroupForYearGroup(body.yearGroup || "Year 1");
   const count = Math.max(1, Math.min(30, Number(requestedCount ?? BATCH_SIZE)));
   const keyStage = typeof body.keyStage === "string" ? body.keyStage : "KS1";
   const yearGroup = typeof body.yearGroup === "string" ? body.yearGroup : "";
@@ -612,7 +631,8 @@ export async function POST(req: Request) {
     });
 
     const preview = buildGeneratedPreview({
-      subject: type,
+      subject: requestedSubject as Subject,
+      legacyType: type,
       keyStage: safeKeyStage,
       yearGroup: safeYearGroup,
       skillFocus: resolvedSkillFocus,
