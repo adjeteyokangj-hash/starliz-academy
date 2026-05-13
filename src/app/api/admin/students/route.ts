@@ -125,6 +125,7 @@ export async function GET() {
       name: child.name,
       avatar: child.avatar,
       age: child.age,
+      yearGroup: child.yearGroup,
       level: child.level,
       keyStageLevel: child.studentProfile?.keyStageLevel ?? null,
       learningLevel: child.studentProfile?.learningLevel ?? null,

@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from 'react';
 import Button from '@/components/ui/Button';
+import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup } from '@/lib/curriculum';
 
 type ChildFormData = {
   name: string;
@@ -35,6 +36,10 @@ const AVATAR_OPTIONS = [
   { value: 'robot',   emoji: '🤖', label: 'Robot' },
   { value: 'book',    emoji: '📚', label: 'Book' },
   { value: 'rainbow', emoji: '🌈', label: 'Rainbow' },
+  { value: 'dino',    emoji: '🦕', label: 'Dino' },
+  { value: 'cat',     emoji: '🐱', label: 'Cat' },
+  { value: 'dog',     emoji: '🐶', label: 'Dog' },
+  { value: 'dragon',  emoji: '🐉', label: 'Dragon' },
 ];
 
 function calcAgeFromDob(dob: string): number | '' {
@@ -74,9 +79,11 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
-  const yearGroups = ['Reception', 'Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5', 'Year 6', 'Year 7', 'Year 8', 'Year 9', 'Year 10', 'Year 11'];
-  const keyStages = ['EYFS', 'KS1', 'KS2', 'KS3', 'KS4'];
+  const yearGroups = [...YEAR_GROUPS];
+  const keyStages = [...KEY_STAGES];
   const subjectLevels = ['Foundation', 'Core', 'Developing', 'Secure', 'Greater Depth'];
+  const expectedKeyStage = formData.yearGroup ? keyStageForYearGroup(formData.yearGroup) : null;
+  const keyStageMismatch = Boolean(expectedKeyStage && formData.keyStageLevel && expectedKeyStage !== formData.keyStageLevel);
 
   function getAgeRange(ageYears: number): '5-7' | '8-10' {
     return ageYears >= 8 ? '8-10' : '5-7';
@@ -208,7 +215,14 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           </label>
           <select
             value={formData.yearGroup}
-            onChange={(e) => setFormData({ ...formData, yearGroup: e.target.value })}
+            onChange={(e) => {
+              const nextYear = e.target.value;
+              setFormData({
+                ...formData,
+                yearGroup: nextYear,
+                keyStageLevel: nextYear ? keyStageForYearGroup(nextYear) : formData.keyStageLevel,
+              });
+            }}
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
           >
             <option value="">Select year...</option>
@@ -225,7 +239,14 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           </label>
           <select
             value={formData.schoolYear}
-            onChange={(e) => setFormData({ ...formData, schoolYear: e.target.value })}
+            onChange={(e) => {
+              const nextYear = e.target.value;
+              setFormData({
+                ...formData,
+                schoolYear: nextYear,
+                keyStageLevel: nextYear ? keyStageForYearGroup(nextYear) : formData.keyStageLevel,
+              });
+            }}
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
           >
             <option value="">Select school year...</option>
@@ -286,6 +307,11 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
             ))}
           </select>
           {fieldErrors.keyStageLevel ? <p className="mt-1 text-xs text-red-400">{fieldErrors.keyStageLevel}</p> : null}
+          {keyStageMismatch ? (
+            <p className="mt-1 text-xs text-amber-300">
+              Calculated key stage for {formData.yearGroup} is {expectedKeyStage}. Please double-check this selection.
+            </p>
+          ) : null}
         </div>
 
         <div>
@@ -310,7 +336,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
         <label className="block text-sm font-semibold text-slate-300 mb-2">
           Avatar
         </label>
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 xl:grid-cols-12">
           {AVATAR_OPTIONS.map((option) => (
             <button
               key={option.value}

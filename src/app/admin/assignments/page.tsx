@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
 
 type AssignmentRow = {
   id: string;
@@ -46,6 +47,8 @@ export default function AdminAssignmentsPage() {
   const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+  const [keyStageFilter, setKeyStageFilter] = useState("");
+  const [yearGroupFilter, setYearGroupFilter] = useState("");
 
   async function loadAssignments() {
     setLoading(true);
@@ -59,6 +62,14 @@ export default function AdminAssignmentsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAssignments();
   }, []);
+
+  const filteredAssignments = assignments.filter((assignment) => {
+    const studentYear = assignment.student.yearGroup;
+    const studentKeyStage = keyStageForYearGroup(studentYear);
+    const matchesKeyStage = !keyStageFilter || studentKeyStage === keyStageFilter;
+    const matchesYearGroup = !yearGroupFilter || studentYear === yearGroupFilter;
+    return matchesKeyStage && matchesYearGroup;
+  });
 
   async function reassign(row: AssignmentRow) {
     const response = await fetch("/api/admin/assignments", {
@@ -100,8 +111,44 @@ export default function AdminAssignmentsPage() {
       {message ? <p className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-bold text-blue-200">{message}</p> : null}
       {loading ? <p className="text-sm text-slate-400">Loading assignments...</p> : null}
 
+      <div className="grid gap-3 sm:grid-cols-2 lg:max-w-xl">
+        <select
+          value={keyStageFilter}
+          onChange={(event) => {
+            const nextStage = event.target.value;
+            setKeyStageFilter(nextStage);
+            if (!nextStage) {
+              setYearGroupFilter("");
+              return;
+            }
+            const options = yearGroupsForKeyStage(nextStage);
+            setYearGroupFilter((current) => options.includes(current as (typeof YEAR_GROUPS)[number]) ? current : "");
+          }}
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+        >
+          <option value="">All key stages</option>
+          {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+        </select>
+        <select
+          value={yearGroupFilter}
+          onChange={(event) => {
+            const nextYear = event.target.value;
+            setYearGroupFilter(nextYear);
+            if (nextYear) {
+              setKeyStageFilter(keyStageForYearGroup(nextYear));
+            }
+          }}
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+        >
+          <option value="">All year groups</option>
+          {(keyStageFilter ? yearGroupsForKeyStage(keyStageFilter) : [...YEAR_GROUPS]).map((group) => (
+            <option key={group} value={group}>{group}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="grid gap-4">
-        {assignments.map((assignment) => (
+        {filteredAssignments.map((assignment) => (
           <div
             key={assignment.id}
             className="rounded-3xl border border-slate-800 bg-slate-900 p-6"
@@ -186,7 +233,7 @@ export default function AdminAssignmentsPage() {
           </div>
         ))}
 
-        {!loading && !assignments.length ? (
+        {!loading && !filteredAssignments.length ? (
           <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/50 p-8 text-center text-slate-400">
             No assignments yet. Save AI content, then assign it from the Content Library.
           </div>

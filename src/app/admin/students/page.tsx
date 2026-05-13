@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import AdminEmptyState from "@/components/admin/AdminEmptyState";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
 
 type Student = {
   id: string;
   name: string;
   age: number | null;
+  yearGroup: string | null;
   keyStageLevel: string | null;
   readingLevel: string | null;
   subjectFocus: string | null;
@@ -38,6 +40,8 @@ export default function StudentsPage() {
   const [busyStudentId, setBusyStudentId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [accuracyFilter, setAccuracyFilter] = useState("all");
+  const [keyStageFilter, setKeyStageFilter] = useState("");
+  const [yearGroupFilter, setYearGroupFilter] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
@@ -85,7 +89,10 @@ export default function StudentsPage() {
       (accuracyFilter === "no-data" && student.accuracy === null) ||
       (accuracyFilter === "low" && student.accuracy !== null && student.accuracy < 60) ||
       (accuracyFilter === "good" && student.accuracy !== null && student.accuracy >= 60);
-    return matchesSearch && matchesAccuracy;
+    const studentKeyStage = student.keyStageLevel ?? keyStageForYearGroup(student.yearGroup);
+    const matchesKeyStage = !keyStageFilter || studentKeyStage === keyStageFilter;
+    const matchesYearGroup = !yearGroupFilter || student.yearGroup === yearGroupFilter;
+    return matchesSearch && matchesAccuracy && matchesKeyStage && matchesYearGroup;
   });
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -97,7 +104,7 @@ export default function StudentsPage() {
       action={<Link href="/admin/students/new" className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-bold text-white">Add Student</Link>}
     >
       {loading ? <p className="text-sm text-slate-400">Loading students...</p> : null}
-      <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_14rem]">
+      <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_14rem_12rem_12rem]">
         <input
           value={search}
           onChange={(event) => {
@@ -119,6 +126,41 @@ export default function StudentsPage() {
           <option value="good">60% and above</option>
           <option value="low">Below 60%</option>
           <option value="no-data">No data</option>
+        </select>
+        <select
+          value={keyStageFilter}
+          onChange={(event) => {
+            const nextStage = event.target.value;
+            setKeyStageFilter(nextStage);
+            if (!nextStage) {
+              setYearGroupFilter("");
+            } else {
+              const options = yearGroupsForKeyStage(nextStage);
+              setYearGroupFilter((current) => options.includes(current as (typeof YEAR_GROUPS)[number]) ? current : "");
+            }
+            setPage(1);
+          }}
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+        >
+          <option value="">All key stages</option>
+          {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+        </select>
+        <select
+          value={yearGroupFilter}
+          onChange={(event) => {
+            const nextYear = event.target.value;
+            setYearGroupFilter(nextYear);
+            if (nextYear) {
+              setKeyStageFilter(keyStageForYearGroup(nextYear));
+            }
+            setPage(1);
+          }}
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+        >
+          <option value="">All year groups</option>
+          {(keyStageFilter ? yearGroupsForKeyStage(keyStageFilter) : [...YEAR_GROUPS]).map((year) => (
+            <option key={year} value={year}>{year}</option>
+          ))}
         </select>
       </div>
       {!loading && students.length === 0 ? (
@@ -161,7 +203,7 @@ export default function StudentsPage() {
                     </span>
                   </td>
                   <td className="px-3 py-3">{student.parentName ?? student.parentEmail}</td>
-                  <td className="px-3 py-3">{student.age ?? "Not set"}</td>
+                  <td className="px-3 py-3">{student.age ?? "-"}{student.yearGroup ? ` / ${student.yearGroup}` : ""}</td>
                   <td className="px-3 py-3">{student.keyStageLevel ?? "-"}</td>
                   <td className="px-3 py-3">{student.readingLevel ?? "-"}</td>
                   <td className="px-3 py-3">{student.subjectFocus ?? "-"}</td>

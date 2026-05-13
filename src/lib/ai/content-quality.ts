@@ -1,3 +1,5 @@
+import { KEY_STAGES, phonicsStageFromSkillFocus, type PhonicsStage } from "@/lib/curriculum";
+
 type QualityInput = {
   type: "spelling" | "math" | "reading";
   keyStage?: string;
@@ -46,10 +48,50 @@ function isSilentEWord(word: string) {
   return /[aeiou][^aeiou]e$/i.test(word);
 }
 
+const PHASE3_DIGRAPHS = ["sh", "ch", "th", "ng", "ai", "ee", "igh", "oa", "oo", "ar", "or", "ur", "ow", "oi", "ear", "air", "ure", "er"];
+const PHASE5_ALTERNATIVE_VOWELS = ["ay", "ea", "ou", "ie", "ue", "ew", "au", "oy", "ir", "wh", "ph", "eigh", "a_e", "e_e", "i_e", "o_e", "u_e"];
+
+function hasAnyPattern(word: string, patterns: string[]) {
+  return patterns.some((pattern) => {
+    if (pattern.includes("_")) {
+      const [left, right] = pattern.split("_");
+      const rx = new RegExp(`${left}[^aeiou]${right}`, "i");
+      return rx.test(word);
+    }
+    return word.includes(pattern);
+  });
+}
+
+function isSimpleVcOrCvc(word: string) {
+  if (!/^[a-z]+$/i.test(word)) return false;
+  if (word.length < 2 || word.length > 3) return false;
+  if (hasAnyPattern(word, PHASE3_DIGRAPHS) || hasAnyPattern(word, PHASE5_ALTERNATIVE_VOWELS)) return false;
+  const vowels = (word.match(/[aeiou]/gi) ?? []).length;
+  if (word.length === 2) return vowels === 1;
+  return vowels === 1 && /^[^aeiou][aeiou][^aeiou]$/i.test(word);
+}
+
+function isPhase4AdjacentConsonantsWord(word: string) {
+  if (!/^[a-z]+$/i.test(word)) return false;
+  if (word.length < 4 || word.length > 5) return false;
+  if (hasAnyPattern(word, ["a_e", "e_e", "i_e", "o_e", "u_e"])) return false;
+  return /[^aeiou]{2}/i.test(word);
+}
+
+function matchesPhonicsStage(word: string, stage: PhonicsStage): boolean {
+  const clean = word.trim().toLowerCase();
+  if (!clean) return false;
+  if (stage === "phase2") return isSimpleVcOrCvc(clean);
+  if (stage === "phase3") return hasAnyPattern(clean, PHASE3_DIGRAPHS) && !hasAnyPattern(clean, ["a_e", "e_e", "i_e", "o_e", "u_e"]);
+  if (stage === "phase4") return isPhase4AdjacentConsonantsWord(clean);
+  return hasAnyPattern(clean, PHASE5_ALTERNATIVE_VOWELS) || /[aeiou][^aeiou]e$/i.test(clean);
+}
+
 function createSpellingErrorMessage(code: string) {
   const [type, word] = code.split(":");
   if (type === "duplicate") return `Duplicate spelling word rejected: ${word}`;
   if (type === "invalid_silent_e") return `Invalid silent-e word rejected: ${word}`;
+  if (type.startsWith("phonics_stage_")) return `Word exceeds selected phonics stage: ${word}`;
   if (type === "incomplete") return `Incomplete spelling item rejected: ${word || "unknown"}`;
   return "Invalid spelling content.";
 }
@@ -60,6 +102,7 @@ function repairSpellingItems(records: unknown[], skillFocus?: string, requestedC
   const fixesApplied: string[] = [];
   const removedWords: string[] = [];
   const cleaned: Record<string, unknown>[] = [];
+  const phonicsStage = phonicsStageFromSkillFocus(skillFocus);
 
   for (const item of records) {
     if (!item || typeof item !== "object") {
@@ -88,6 +131,13 @@ function repairSpellingItems(records: unknown[], skillFocus?: string, requestedC
       continue;
     }
 
+    if (phonicsStage && !matchesPhonicsStage(word, phonicsStage)) {
+      errors.push(`phonics_stage_${phonicsStage}:${word}`);
+      fixesApplied.push(`Removed out-of-stage word (${phonicsStage}): ${word}`);
+      removedWords.push(word);
+      continue;
+    }
+
     const hint = String(data.hint ?? "").trim();
     const sentenceContext = String(data.sentenceContext ?? "").trim();
     if (!hint || !sentenceContext) {
@@ -105,7 +155,7 @@ function repairSpellingItems(records: unknown[], skillFocus?: string, requestedC
     }
 
     seen.add(word);
-    cleaned.push({ ...data, word });
+    cleaned.push({ ...data, word, phonicsStage: phonicsStage ?? null });
   }
 
   return {
@@ -183,7 +233,7 @@ export function validateAiContentQuality({ type, keyStage, yearGroup, skillFocus
     }
   }
 
-  if (selectedStage && !["KS1", "KS2"].includes(selectedStage)) {
+  if (selectedStage && !KEY_STAGES.includes(selectedStage as (typeof KEY_STAGES)[number])) {
     return { ok: false, error: "Invalid key stage." };
   }
 

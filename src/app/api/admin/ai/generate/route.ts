@@ -4,6 +4,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import { SKILL_MAP, serializeSkills } from "@/lib/skills";
+import { keyStageForYearGroup, normalizeYearGroup as normalizeCurriculumYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
 
 const BATCH_SIZE = 12;
 const OPENAI_MODEL = "gpt-4o-mini";
@@ -27,15 +28,21 @@ type GeneratedPreview = {
 };
 
 const SYSTEM_PROMPT: Record<string, string> = {
-  spelling: `You are a UK primary curriculum content creator for KS1/KS2.
+  spelling: `You are a UK phonics-and-spelling curriculum engine for England (Reception-Year 11 support where relevant).
 Generate curriculum-grade spelling content using UK primary expectations.
 Support phonics patterns, common exception words, suffixes, prefixes, silent letters, homophones and age-appropriate vocabulary.
+For phonics phases, enforce progression strictly:
+- Phase 2: simple VC/CVC words only (sat, pin, tap, cat, dog, mop, run)
+- Phase 3: basic digraph/trigraph words (ship, chat, teeth, rain)
+- Phase 4: adjacent consonants/blends (stop, clap, swim)
+- Phase 5: split digraphs and alternative vowel sounds (make, bike, rope, tune)
+Never include higher-phase words in lower phases.
 Return a JSON array. Each item must follow this schema exactly:
-{ "id": string, "word": string, "hint": string, "sentenceContext": string, "categoryHint": string, "syllables": string, "emoji": string, "yearGroup": string, "skillFocus": string, "difficulty": number }
+{ "id": string, "word": string, "hint": string, "sentenceContext": string, "categoryHint": string, "syllables": string, "emoji": string, "yearGroup": string, "skillFocus": string, "phonicsStage": string | null, "difficulty": number }
 Content type lock: spelling must not generate maths questions, number problems, reading passages, or comprehension questions.
 Return ONLY valid JSON — no explanation, no markdown.`,
 
-  math: `You are a UK primary curriculum content creator for KS1/KS2.
+  math: `You are a UK curriculum content creator for England.
 Generate curriculum-grade KS1/KS2 maths questions.
 Difficulty must increase by year group and level.
 Return a JSON array. Each item must follow this schema exactly:
@@ -43,7 +50,7 @@ Return a JSON array. Each item must follow this schema exactly:
 Content type lock: maths must not generate spelling word lists or reading passages.
 Return ONLY valid JSON — no explanation, no markdown.`,
 
-  reading: `You are a UK primary curriculum content creator for KS1/KS2.
+  reading: `You are a UK curriculum content creator for England.
 Generate age-appropriate reading content.
 Return a JSON object. It must follow this schema exactly:
 { "id": string, "title": string, "passage": string, "vocabularyWords": string[], "questions": [{ "question": string, "answer": string, "options": string[] }], "answers": string[], "yearGroup": string, "skillFocus": string, "difficulty": number }
@@ -65,8 +72,10 @@ function cleanTopic(topic: string, type: string) {
 }
 
 function normalizeYearGroup(yearGroup: string, keyStage: string) {
-  if (/year\s*[1-6]/i.test(yearGroup)) return yearGroup.replace(/year/i, "Year").trim();
-  return keyStage === "KS2" ? "Year 4" : "Year 2";
+  const normalized = normalizeCurriculumYearGroup(yearGroup);
+  if (normalized) return normalized;
+  const options = yearGroupsForKeyStage(keyStage);
+  return options[0] ?? "Year 1";
 }
 
 function buildUserPrompt(
@@ -100,6 +109,16 @@ FOLLOW-UP PRACTICE:
     : "";
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
   if (type === "spelling") {
+    const stageLower = (skillFocus || "").toLowerCase();
+    const phonicsInstruction = stageLower.startsWith("phase 2")
+      ? "- Phase 2 strict rule: only simple VC/CVC words. No split digraphs, no magic-e, no advanced vowel teams."
+      : stageLower.startsWith("phase 3")
+        ? "- Phase 3 strict rule: use basic digraph/trigraph words only (e.g. sh/ch/th/ng/ai/ee/oa)."
+        : stageLower.startsWith("phase 4")
+          ? "- Phase 4 strict rule: include adjacent consonants/blends (e.g. stop, clap, swim)."
+          : stageLower.startsWith("phase 5")
+            ? "- Phase 5 strict rule: allow split digraphs and alternative vowel sounds."
+            : "";
     return `
 You are generating UK KS1 spelling content.
 
@@ -111,6 +130,7 @@ STRICT RULES:
 - Theme: ${cleanedTopic || skillFocus || "silent e"}
 - All words MUST follow the skill exactly
 - For "Silent e": every word MUST end with "e" and follow vowel-consonant-e pattern (examples: make, bike, rope)
+- ${phonicsInstruction || "Match selected spelling progression exactly."}
 - DO NOT include words like sneak, climb, bread, or any irregular patterns
 - NO duplicates
 - Avoid these words: ${excludeWords.join(", ") || "none"}
@@ -533,7 +553,8 @@ export async function POST(req: Request) {
   }
 
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
-  const requestKey = cacheKey({ type, level, topic, ageGroup, count, keyStage, yearGroup: safeYearGroup, skillFocus });
+  const safeKeyStage = keyStageForYearGroup(safeYearGroup);
+  const requestKey = cacheKey({ type, level, topic, ageGroup, count, keyStage: safeKeyStage, yearGroup: safeYearGroup, skillFocus });
   const cached = generationCache.get(requestKey);
   if (cached) {
     const cachedValidation = (cached.meta.validation ?? {}) as Record<string, unknown>;
@@ -541,7 +562,7 @@ export async function POST(req: Request) {
       type,
       level,
       topic,
-      keyStage,
+      keyStage: safeKeyStage,
       yearGroup: safeYearGroup,
       skillFocus,
       model: OPENAI_MODEL,
@@ -553,7 +574,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const userPrompt = buildUserPrompt(type, safeLevel, topic, ageGroup, count, keyStage, safeYearGroup, resolvedSkillFocus, [], targetSkills, weakAreas);
+  const userPrompt = buildUserPrompt(type, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, [], targetSkills, weakAreas);
   const systemPrompt = SYSTEM_PROMPT[type];
 
   try {
@@ -569,7 +590,7 @@ export async function POST(req: Request) {
         topic,
         ageGroup,
         count,
-        keyStage,
+        keyStage: safeKeyStage,
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus || "Silent e",
       });
@@ -587,12 +608,12 @@ export async function POST(req: Request) {
       actorUserId: session.userId,
       action: "ai_content.generated",
       entityType: "ai_generation",
-      metadata: { type, level: safeLevel, topic, keyStage, yearGroup: safeYearGroup, skillFocus: resolvedSkillFocus, targetSkills, weakAreas, model: OPENAI_MODEL, estimatedCostPence: estimated.estimatedCostPence, validation },
+      metadata: { type, level: safeLevel, topic, keyStage: safeKeyStage, yearGroup: safeYearGroup, skillFocus: resolvedSkillFocus, targetSkills, weakAreas, model: OPENAI_MODEL, estimatedCostPence: estimated.estimatedCostPence, validation },
     });
 
     const preview = buildGeneratedPreview({
       subject: type,
-      keyStage,
+      keyStage: safeKeyStage,
       yearGroup: safeYearGroup,
       skillFocus: resolvedSkillFocus,
       difficulty: safeLevel,
@@ -614,7 +635,7 @@ export async function POST(req: Request) {
       type,
       level: safeLevel,
       topic,
-      keyStage,
+      keyStage: safeKeyStage,
       yearGroup: safeYearGroup,
       skillFocus: resolvedSkillFocus,
       skills: serializeSkills(targetSkills.length ? targetSkills : []),

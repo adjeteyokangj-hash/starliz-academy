@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
 
 type Subject = "spelling" | "math" | "reading";
 type GeneratedPreviewItem = Record<string, unknown> & {
@@ -33,30 +34,88 @@ type GeneratedPreview = {
   items: GeneratedPreviewItem[];
 };
 
-const skillPresets: Record<Subject, string[]> = {
-  spelling: ["Phase 2 phonics", "Phase 3 phonics", "Phase 4 blends", "Phase 5 alternative sounds", "Common exception words", "Silent e"],
-  math: ["Number bonds", "Addition and subtraction", "Times tables", "Fractions", "Place value", "Shape", "Money", "Time", "Measurement"],
-  reading: ["Fiction", "Non-fiction", "Inference", "Vocabulary", "Retrieval questions", "Sequencing", "Prediction", "Main idea"],
-};
+const SPELLING_PHONICS_SKILLS = [
+  "Phase 2 phonics",
+  "Phase 3 phonics",
+  "Phase 4 blends",
+  "Phase 5 alternative sounds",
+  "Segmenting",
+  "Blending",
+  "Digraphs",
+  "Trigraphs",
+  "CVC words",
+  "CVCC words",
+  "CCVC words",
+  "Rhyming words",
+  "Initial sounds",
+  "Final sounds",
+] as const;
 
-const ks2SpellingPresets = ["Prefixes and suffixes", "Homophones", "Year 3/4 spelling list", "Year 5/6 spelling list", "Irregular spellings", "Spelling rules (-tion, -sion)"];
-const yearGroupsByKeyStage: Record<string, string[]> = {
-  KS1: ["Year 1", "Year 2"],
-  KS2: ["Year 3", "Year 4", "Year 5", "Year 6"],
-};
+const SPELLING_RULE_SKILLS = [
+  "Silent e",
+  "Prefixes",
+  "Suffixes",
+  "Compound words",
+  "Homophones",
+  "Common exception words",
+  "High frequency words",
+  "Tricky words",
+  "Plurals",
+  "Past tense",
+  "Apostrophes",
+  "Possessive apostrophes",
+  "Contractions",
+] as const;
 
-function getSkillOptions(subject: Subject, keyStage: string) {
-  if (subject === "spelling" && keyStage === "KS2") return ks2SpellingPresets;
-  return skillPresets[subject];
+const READING_SKILLS = [
+  "Reading comprehension",
+  "Inference",
+  "Retrieval",
+  "Vocabulary",
+  "Sequencing",
+  "Prediction",
+  "Fluency",
+] as const;
+
+const MATH_SKILLS = [
+  "Number bonds",
+  "Addition",
+  "Subtraction",
+  "Multiplication",
+  "Division",
+  "Fractions",
+  "Time",
+  "Money",
+  "Shape",
+  "Measurement",
+  "Word problems",
+  "Times tables",
+] as const;
+
+function getSkillGroups(subject: Subject): Array<{ label: string; values: string[] }> {
+  if (subject === "spelling") {
+    return [
+      { label: "Phonics", values: [...SPELLING_PHONICS_SKILLS] },
+      { label: "Spelling", values: [...SPELLING_RULE_SKILLS] },
+    ];
+  }
+  if (subject === "reading") {
+    return [{ label: "Reading", values: [...READING_SKILLS] }];
+  }
+  return [{ label: "Maths", values: [...MATH_SKILLS] }];
+}
+
+function getSkillOptions(subject: Subject): string[] {
+  return getSkillGroups(subject).flatMap((group) => group.values);
 }
 
 function getYearOptions(keyStage: string) {
-  return yearGroupsByKeyStage[keyStage] ?? yearGroupsByKeyStage.KS1;
+  return yearGroupsForKeyStage(keyStage).length ? yearGroupsForKeyStage(keyStage) : [...YEAR_GROUPS];
 }
 
 function normalizeYearForKeyStage(keyStage: string, yearGroup: string | null | undefined) {
   const options = getYearOptions(keyStage);
-  return yearGroup && options.includes(yearGroup) ? yearGroup : options[0];
+  return yearGroup && options.includes(yearGroup as (typeof YEAR_GROUPS)[number]) ? yearGroup : options[0];
 }
 
 type WeakArea = {
@@ -108,8 +167,9 @@ export default function AiGeneratorPage() {
   const prefillDifficulty = Number(searchParams.get("difficulty"));
   const [subject, setSubject] = useState<Subject>(initialSubject);
   const [keyStage, setKeyStage] = useState("KS1");
-  const [yearGroup, setYearGroup] = useState("Year 2");
-  const [skillFocus, setSkillFocus] = useState(prefillSkill ?? "Silent e");
+  const [yearGroup, setYearGroup] = useState("Year 1");
+  const [skillFocus, setSkillFocus] = useState(prefillSkill ?? "Phase 2 phonics");
+  const [skillSearch, setSkillSearch] = useState("");
   const [ageGroup, setAgeGroup] = useState("6-8");
   const [difficulty, setDifficulty] = useState(Number.isFinite(prefillDifficulty) && prefillDifficulty >= 1 ? prefillDifficulty : prefillWords ? 1 : 2);
   const [items, setItems] = useState(12);
@@ -122,8 +182,15 @@ export default function AiGeneratorPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(prefillWords ? "Follow-up practice prefilled from assignment weak areas." : null);
   const [weakAreas, setWeakAreas] = useState<WeakArea[]>([]);
+  const [weakAreaKeyStageFilter, setWeakAreaKeyStageFilter] = useState("");
+  const [weakAreaYearGroupFilter, setWeakAreaYearGroupFilter] = useState("");
   const [savedContentId, setSavedContentId] = useState<string | null>(null);
   const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId);
+  const filteredSkillGroups = getSkillGroups(subject).map((group) => ({
+    ...group,
+    values: group.values.filter((value) => value.toLowerCase().includes(skillSearch.trim().toLowerCase())),
+  })).filter((group) => group.values.length > 0);
+  const phonicsMismatchDetected = (generationMeta?.validation?.errors ?? []).some((value) => value.includes("phonics_stage"));
 
   const generatedItemsList = preview?.items ?? [];
   const saveBlocked = !generatedItemsList.length || generationMeta?.validation?.valid === false;
@@ -138,6 +205,7 @@ export default function AiGeneratorPage() {
     const [type, word] = error.split(":");
     if (type === "duplicate") return `Removed duplicate: ${word}`;
     if (type === "invalid_silent_e") return `Removed invalid word: ${word}`;
+    if (type.startsWith("phonics_stage")) return `Removed out-of-stage phonics word: ${word}`;
     if (type === "incomplete") return `Removed incomplete item: ${word}`;
     return error;
   }
@@ -302,19 +370,37 @@ export default function AiGeneratorPage() {
 
   async function runAutomation(mode: "autofill" | "weaknesses") {
     setAutomationMessage("Running...");
-    const response = await fetch(mode === "weaknesses" ? "/api/admin/weak-areas" : "/api/admin/ai/automation", {
+    if (mode === "weaknesses") {
+      const detectResponse = await fetch("/api/admin/weak-areas", { method: "POST" });
+      const detectPayload = await detectResponse.json();
+      if (!detectResponse.ok) {
+        setAutomationMessage(detectPayload.error ?? "Automation failed.");
+        return;
+      }
+
+      const weaknessParams = new URLSearchParams();
+      if (weakAreaKeyStageFilter) weaknessParams.set("keyStage", weakAreaKeyStageFilter);
+      if (weakAreaYearGroupFilter) weaknessParams.set("yearGroup", weakAreaYearGroupFilter);
+      const weakAreasUrl = `/api/admin/weak-areas${weaknessParams.toString() ? `?${weaknessParams.toString()}` : ""}`;
+      const listResponse = await fetch(weakAreasUrl);
+      const listPayload = await listResponse.json();
+      setAutomationMessage(listResponse.ok ? JSON.stringify(detectPayload) : listPayload.error ?? "Automation failed.");
+      if (listResponse.ok) setWeakAreas(listPayload.weakAreas ?? []);
+      return;
+    }
+
+    const response = await fetch("/api/admin/ai/automation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: mode === "weaknesses" ? undefined : JSON.stringify({ mode }),
+      body: JSON.stringify({ mode }),
     });
     const payload = await response.json();
     setAutomationMessage(response.ok ? JSON.stringify(payload) : payload.error ?? "Automation failed.");
-    if (mode === "weaknesses" && response.ok) setWeakAreas(payload.weakAreas ?? []);
   }
 
   function applyWeakArea(area: WeakArea) {
     const nextSubject = area.subject === "math" ? "math" : area.subject === "reading" ? "reading" : "spelling";
-    const nextKeyStage = area.keyStage ?? "KS1";
+    const nextKeyStage = area.keyStage ?? keyStageForYearGroup(area.yearGroup ?? "Year 1");
     setSubject(nextSubject);
     setKeyStage(nextKeyStage);
     setYearGroup(normalizeYearForKeyStage(nextKeyStage, area.yearGroup));
@@ -335,7 +421,7 @@ export default function AiGeneratorPage() {
             <select value={subject} onChange={(event) => {
               const next = event.target.value as Subject;
               setSubject(next);
-              setSkillFocus(getSkillOptions(next, keyStage)[0]);
+              setSkillFocus(getSkillOptions(next)[0]);
             }} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
               <option value="spelling">Spelling words</option>
               <option value="math">Maths questions</option>
@@ -349,23 +435,36 @@ export default function AiGeneratorPage() {
               const nextKeyStage = event.target.value;
               setKeyStage(nextKeyStage);
               setYearGroup((current) => normalizeYearForKeyStage(nextKeyStage, current));
-              setSkillFocus(getSkillOptions(subject, nextKeyStage)[0]);
+              setSkillFocus((current) => getSkillOptions(subject).includes(current) ? current : getSkillOptions(subject)[0]);
             }} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
-              <option>KS1</option>
-              <option>KS2</option>
+              {KEY_STAGES.map((stage) => <option key={stage}>{stage}</option>)}
             </select>
           </label>
           <label className="block text-sm font-bold text-slate-300">
             Year group
-            <select value={yearGroup} onChange={(event) => setYearGroup(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
+            <select value={yearGroup} onChange={(event) => {
+              const nextYear = event.target.value;
+              setYearGroup(nextYear);
+              setKeyStage(keyStageForYearGroup(nextYear));
+            }} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
               {getYearOptions(keyStage).map((year) => <option key={year}>{year}</option>)}
             </select>
           </label>
           </div>
           <label className="block text-sm font-bold text-slate-300">
             Skill focus
-            <select value={skillFocus} onChange={(event) => setSkillFocus(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
-              {getSkillOptions(subject, keyStage).map((preset) => <option key={preset}>{preset}</option>)}
+            <input
+              value={skillSearch}
+              onChange={(event) => setSkillSearch(event.target.value)}
+              placeholder="Search skills"
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500"
+            />
+            <select value={skillFocus} onChange={(event) => setSkillFocus(event.target.value)} className="mt-2 max-h-72 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
+              {filteredSkillGroups.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.values.map((preset) => <option key={preset}>{preset}</option>)}
+                </optgroup>
+              ))}
             </select>
           </label>
           <label className="block text-sm font-bold text-slate-300">
@@ -407,6 +506,41 @@ export default function AiGeneratorPage() {
 
       <div className="space-y-6">
       <AdminSectionCard title="Automation" eyebrow="Smart content">
+        <div className="mb-3 grid gap-3 sm:grid-cols-2">
+          <select
+            value={weakAreaKeyStageFilter}
+            onChange={(event) => {
+              const nextStage = event.target.value;
+              setWeakAreaKeyStageFilter(nextStage);
+              if (!nextStage) {
+                setWeakAreaYearGroupFilter("");
+                return;
+              }
+              const options = yearGroupsForKeyStage(nextStage);
+              setWeakAreaYearGroupFilter((current) => options.includes(current as (typeof YEAR_GROUPS)[number]) ? current : "");
+            }}
+            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+          >
+            <option value="">All key stages</option>
+            {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+          </select>
+          <select
+            value={weakAreaYearGroupFilter}
+            onChange={(event) => {
+              const nextYear = event.target.value;
+              setWeakAreaYearGroupFilter(nextYear);
+              if (nextYear) {
+                setWeakAreaKeyStageFilter(keyStageForYearGroup(nextYear));
+              }
+            }}
+            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+          >
+            <option value="">All year groups</option>
+            {(weakAreaKeyStageFilter ? yearGroupsForKeyStage(weakAreaKeyStageFilter) : [...YEAR_GROUPS]).map((group) => (
+              <option key={group} value={group}>{group}</option>
+            ))}
+          </select>
+        </div>
         <div className="flex flex-wrap gap-3">
           <button onClick={() => void runAutomation("autofill")} className="rounded-xl bg-blue-500 px-4 py-3 font-black text-white">Auto-fill Low Library</button>
           <button onClick={() => void runAutomation("weaknesses")} className="rounded-xl border border-slate-700 px-4 py-3 font-black text-slate-200">Detect Weak Areas</button>
@@ -480,7 +614,14 @@ export default function AiGeneratorPage() {
               </label>
             </div>
 
-            <div className={`rounded-2xl border p-4 text-sm ${generationMeta?.validation?.repaired ? "border-amber-500/30 bg-amber-500/10 text-amber-100" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"}`}>
+            {phonicsMismatchDetected ? (
+              <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-100">
+                <p className="font-bold">Phonics-stage mismatch detected.</p>
+                <p className="mt-1 text-xs text-rose-100/90">Some generated words exceeded the selected phonics stage and were automatically rejected/regenerated.</p>
+              </div>
+            ) : null}
+
+            <div className={`rounded-2xl border p-3 text-sm ${generationMeta?.validation?.repaired ? "border-amber-500/30 bg-amber-500/10 text-amber-100" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"}`}>
               {generationMeta?.validation?.repaired ? (
                 <>
                   <p className="font-bold">Auto-repair applied before preview.</p>
@@ -497,26 +638,31 @@ export default function AiGeneratorPage() {
               )}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {preview.items.map((item, index) => (
-                <article key={`${String(item.id ?? "item")}-${index}`} className={`rounded-2xl border p-4 ${item.status === "rejected" ? "border-rose-500/40 bg-rose-950/30 opacity-70" : "border-slate-800 bg-slate-950/70"}`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-lg font-bold text-white">
+                <article key={`${String(item.id ?? "item")}-${index}`} className={`flex min-h-0 flex-col rounded-2xl border p-3 ${item.status === "rejected" ? "border-rose-500/40 bg-rose-950/30 opacity-70" : "border-slate-800 bg-slate-950/70"}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-sm font-bold text-white">
                       {subject === "spelling" ? `${String((item as SpellingPreviewItem).emoji ?? "🔤")} ${String((item as SpellingPreviewItem).word ?? item.prompt ?? "")}` : String(item.prompt ?? item.question ?? item.title ?? `Item ${index + 1}`)}
                     </h3>
-                    <span className="rounded-full bg-slate-800 px-2 py-1 text-[11px] font-bold text-blue-200">Item {index + 1}</span>
+                    <span className="rounded-full bg-slate-800 px-2 py-1 text-[10px] font-bold text-blue-200">Item {index + 1}</span>
                   </div>
-                  <p className="mt-2 text-sm text-slate-300">{String(item.hint ?? item.explanation ?? "Review this item before saving.")}</p>
-                  <p className="mt-2 text-sm text-slate-400">{String(item.sentence ?? item.sentenceContext ?? item.passage ?? "")}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => markPreviewItem(index, "approved")} className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-black text-white">Approve</button>
-                    <button type="button" onClick={() => markPreviewItem(index, "rejected")} className="rounded-xl bg-rose-500 px-3 py-2 text-xs font-black text-white">Reject</button>
-                    <button type="button" onClick={() => void regenerateItem(index)} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200">Regenerate</button>
+                  {typeof item.phonicsStage === "string" ? (
+                    <p className="mt-1 inline-flex w-fit rounded-full border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-100">
+                      {String(item.phonicsStage)}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 line-clamp-3 text-xs text-slate-300">{String(item.hint ?? item.explanation ?? "Review this item before saving.")}</p>
+                  <p className="mt-1 line-clamp-3 text-xs text-slate-400">{String(item.sentence ?? item.sentenceContext ?? item.passage ?? "")}</p>
+                  <div className="mt-2 grid grid-cols-3 gap-1">
+                    <button type="button" onClick={() => markPreviewItem(index, "approved")} className="rounded-lg bg-emerald-500 px-2 py-1.5 text-[11px] font-black text-white">Approve</button>
+                    <button type="button" onClick={() => markPreviewItem(index, "rejected")} className="rounded-lg bg-rose-500 px-2 py-1.5 text-[11px] font-black text-white">Reject</button>
+                    <button type="button" onClick={() => void regenerateItem(index)} className="rounded-lg border border-slate-700 px-2 py-1.5 text-[11px] font-black text-slate-200">Regenerate</button>
                   </div>
                   <textarea
                     value={JSON.stringify(item, null, 2)}
                     onChange={(event) => updatePreviewItemJson(index, event.target.value)}
-                    className="mt-3 min-h-44 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 font-mono text-xs leading-relaxed text-slate-300 outline-none"
+                    className="mt-2 min-h-28 w-full rounded-xl border border-slate-800 bg-slate-900 px-2 py-2 font-mono text-[11px] leading-relaxed text-slate-300 outline-none"
                   />
                 </article>
               ))}

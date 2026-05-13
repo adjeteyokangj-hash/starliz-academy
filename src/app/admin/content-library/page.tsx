@@ -5,6 +5,7 @@ import Link from "next/link";
 import AdminEmptyState from "@/components/admin/AdminEmptyState";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import { skillsForSubject } from "@/lib/skills";
+import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
 
 type ContentItem = {
   id: string;
@@ -52,6 +53,8 @@ export default function ContentLibraryPage() {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [filter, setFilter] = useState("all");
   const [skillFilter, setSkillFilter] = useState("");
+  const [keyStageFilter, setKeyStageFilter] = useState("");
+  const [yearGroupFilter, setYearGroupFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [assigningId, setAssigningId] = useState<string | null>(null);
@@ -62,12 +65,14 @@ export default function ContentLibraryPage() {
     const params = new URLSearchParams();
     if (filter !== "all") params.set("type", filter);
     if (skillFilter) params.set("skill", skillFilter);
+    if (keyStageFilter) params.set("keyStage", keyStageFilter);
+    if (yearGroupFilter) params.set("yearGroup", yearGroupFilter);
     const url = `/api/admin/content${params.toString() ? `?${params.toString()}` : ""}`;
     const response = await fetch(url);
     const payload = await response.json();
     setItems(payload.items ?? []);
     setLoading(false);
-  }, [filter, skillFilter]);
+  }, [filter, skillFilter, keyStageFilter, yearGroupFilter]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -130,6 +135,41 @@ export default function ContentLibraryPage() {
               ))}
             </select>
           )}
+          <select
+            value={keyStageFilter}
+            onChange={(e) => {
+              const nextStage = e.target.value;
+              setLoading(true);
+              setKeyStageFilter(nextStage);
+              if (!nextStage) {
+                setYearGroupFilter("");
+                return;
+              }
+              const available = yearGroupsForKeyStage(nextStage);
+              setYearGroupFilter((current) => available.includes(current as (typeof YEAR_GROUPS)[number]) ? current : "");
+            }}
+            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200"
+          >
+            <option value="">All key stages</option>
+            {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+          </select>
+          <select
+            value={yearGroupFilter}
+            onChange={(e) => {
+              const nextYear = e.target.value;
+              setLoading(true);
+              setYearGroupFilter(nextYear);
+              if (nextYear) {
+                setKeyStageFilter(keyStageForYearGroup(nextYear));
+              }
+            }}
+            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200"
+          >
+            <option value="">All year groups</option>
+            {(keyStageFilter ? yearGroupsForKeyStage(keyStageFilter) : [...YEAR_GROUPS]).map((group) => (
+              <option key={group} value={group}>{group}</option>
+            ))}
+          </select>
         </div>
       }
     >

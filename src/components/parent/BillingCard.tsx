@@ -48,6 +48,8 @@ export default function BillingCard({
     () => plans.filter((plan) => plan.interval !== 'custom' && Boolean(plan.stripePriceId)),
     [plans],
   );
+  const billingSetupPending = availableCheckoutPlans.length === 0;
+  const activeOrTrial = status === 'active' || status === 'trialing';
 
   const suggestedPlan = useMemo(
     () => availableCheckoutPlans.find((plan) => plan.id !== currentPlanId) ?? availableCheckoutPlans[0] ?? null,
@@ -167,7 +169,15 @@ export default function BillingCard({
         )}
       </div>
 
-      {upgradeRequired && reason && (
+      {billingSetupPending ? (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+          <p className="text-sm font-semibold text-amber-300">Billing setup pending</p>
+          <p className="mt-1 text-sm text-amber-100">Online payments are not live yet. Plan changes will be available once billing is activated.</p>
+          <p className="mt-1 text-xs text-amber-100/90">Billing upgrades are not live yet. Please contact StarLiz Academy support to change plan.</p>
+        </div>
+      ) : null}
+
+      {!billingSetupPending && upgradeRequired && reason && (
         <div className="mb-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3">
           <p className="text-sm font-semibold text-yellow-400">⚠ Upgrade required</p>
           <p className="mt-1 text-sm text-yellow-200">{reason}</p>
@@ -175,29 +185,29 @@ export default function BillingCard({
       )}
 
       <div className="flex flex-wrap gap-3">
-        {upgradeRequired && suggestedPlan && (
+        {!billingSetupPending && upgradeRequired && suggestedPlan && (
           <Button onClick={() => void startCheckout(suggestedPlan)} className="bg-cyan-600 hover:bg-cyan-700" disabled={loadingPlanId !== null}>
             Upgrade Plan
           </Button>
         )}
 
-        {!upgradeRequired && suggestedPlan ? (
+        {!billingSetupPending && !upgradeRequired && suggestedPlan ? (
           <Button onClick={() => void startCheckout(suggestedPlan)} className="bg-indigo-600 hover:bg-indigo-700" disabled={loadingPlanId !== null}>
             Change Plan
           </Button>
         ) : null}
 
-        {stripeCustomerId && (
+        {activeOrTrial ? (
           <Button 
-            onClick={handleManageSubscription}
-            disabled={openingPortal}
+            onClick={stripeCustomerId ? handleManageSubscription : undefined}
+            disabled={openingPortal || !stripeCustomerId}
             className="bg-slate-700 hover:bg-slate-600"
           >
             {openingPortal ? 'Opening...' : 'Manage Subscription'}
           </Button>
-        )}
+        ) : null}
 
-        {!stripeCustomerId && !upgradeRequired && (
+        {!billingSetupPending && !stripeCustomerId && !upgradeRequired && (
           <p className="text-sm text-slate-400">
             You&apos;re on the free plan. {childrenUsed >= childLimit ? 'Upgrade to add more children.' : 'Upgrade to unlock advanced features.'}
           </p>
@@ -240,7 +250,7 @@ export default function BillingCard({
                 </p>
                 {plan.badge ? <p className="mt-1 text-xs text-cyan-300">{plan.badge}</p> : null}
                 {!plan.stripePriceId ? (
-                  <p className="mt-1 text-xs text-slate-500 italic">Not yet available</p>
+                  <p className="mt-1 text-xs text-slate-500 italic">Plan not available yet - missing Stripe price ID.</p>
                 ) : null}
               </button>
             ))}

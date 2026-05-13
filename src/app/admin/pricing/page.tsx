@@ -25,6 +25,16 @@ type Plan = {
   sortOrder: number
 }
 
+type BillingSetupStatus = {
+  stripeSecretKeyConfigured: boolean
+  stripePublishableKeyConfigured: boolean
+  stripeWebhookSecretConfigured: boolean
+  starterPriceIdAdded: boolean
+  proPriceIdAdded: boolean
+  annualFamilyPriceIdAdded: boolean
+  webhookTested: boolean
+}
+
 const INTERVAL_OPTIONS: PricingInterval[] = ["month", "year", "custom"]
 const AUDIENCE_OPTIONS: PricingAudience[] = ["individual", "family", "school", "organisation"]
 
@@ -66,6 +76,7 @@ export default function AdminPricingPage() {
   const [saving, setSaving] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [setupStatus, setSetupStatus] = useState<BillingSetupStatus | null>(null)
 
   const maxSort = useMemo(() => {
     return plans.length ? Math.max(...plans.map((plan) => plan.sortOrder)) : 0
@@ -109,6 +120,22 @@ export default function AdminPricingPage() {
         setError("Unable to load pricing plans.")
         setLoading(false)
       })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    fetch("/api/admin/pricing/setup-status", { credentials: "include" })
+      .then((response) => response.ok ? response.json() as Promise<{ setup: BillingSetupStatus }> : null)
+      .then((payload) => {
+        if (!active || !payload) return
+        setSetupStatus(payload.setup)
+      })
+      .catch(() => undefined)
 
     return () => {
       active = false
@@ -205,6 +232,18 @@ export default function AdminPricingPage() {
         <p className="text-sm text-slate-400">
           Manage public pricing without code changes. Stripe is launch provider for UK billing, with room for Paystack later.
         </p>
+      </AdminSectionCard>
+
+      <AdminSectionCard title="Stripe Setup Checklist" eyebrow="Admin Only">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <SetupChecklistItem label="Stripe secret key configured" done={Boolean(setupStatus?.stripeSecretKeyConfigured)} />
+          <SetupChecklistItem label="Stripe publishable key configured" done={Boolean(setupStatus?.stripePublishableKeyConfigured)} />
+          <SetupChecklistItem label="Stripe webhook secret configured" done={Boolean(setupStatus?.stripeWebhookSecretConfigured)} />
+          <SetupChecklistItem label="Starter price ID added" done={Boolean(setupStatus?.starterPriceIdAdded)} />
+          <SetupChecklistItem label="Pro price ID added" done={Boolean(setupStatus?.proPriceIdAdded)} />
+          <SetupChecklistItem label="Annual Family price ID added" done={Boolean(setupStatus?.annualFamilyPriceIdAdded)} />
+          <SetupChecklistItem label="Webhook tested" done={Boolean(setupStatus?.webhookTested)} />
+        </div>
       </AdminSectionCard>
 
       <AdminSectionCard title="Create New Plan" className="space-y-4">
@@ -414,5 +453,13 @@ function PlanEditor({ plan, onChange, onSave, onDelete, saveLabel, saving, disab
         ) : null}
       </div>
     </article>
+  )
+}
+
+function SetupChecklistItem({ label, done }: { label: string; done: boolean }) {
+  return (
+    <div className={`rounded-lg border px-3 py-2 text-sm ${done ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>
+      {done ? "✓" : "○"} {label}
+    </div>
   )
 }

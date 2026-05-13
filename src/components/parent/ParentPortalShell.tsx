@@ -1145,6 +1145,7 @@ function ChecklistItem({ index, title, href, cta, disabled = false, helpText }: 
 const AVATAR_EMOJI: Record<string, string> = {
   star: '⭐', rocket: '🚀', owl: '🦉', lion: '🦁',
   unicorn: '🦄', robot: '🤖', book: '📚', rainbow: '🌈',
+  dino: '🦕', cat: '🐱', dog: '🐶', dragon: '🐉',
 };
 
 const AVATAR_LEGACY_COLOR: Record<string, string> = {

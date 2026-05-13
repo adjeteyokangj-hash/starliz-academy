@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup } from "@/lib/curriculum";
 
 type ParentOption = { id: string; name: string | null; email: string };
 
@@ -165,12 +166,18 @@ export default function NewStudentPage() {
 
             <label className="block text-sm font-bold text-slate-300">
               Year Group
-              <input
+              <select
                 value={yearGroup}
-                onChange={(event) => setYearGroup(event.target.value)}
+                onChange={(event) => {
+                  const nextYear = event.target.value;
+                  setYearGroup(nextYear);
+                  setKeyStageLevel(nextYear ? keyStageForYearGroup(nextYear) : "");
+                }}
                 className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
-                placeholder="Year 3"
-              />
+              >
+                <option value="">Select year group</option>
+                {YEAR_GROUPS.map((group) => <option key={group} value={group}>{group}</option>)}
+              </select>
             </label>
           </div>
 
@@ -237,7 +244,10 @@ export default function NewStudentPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block text-sm font-bold text-slate-300">
               KS Level
-              <input value={keyStageLevel} onChange={(event) => setKeyStageLevel(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+              <select value={keyStageLevel} onChange={(event) => setKeyStageLevel(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white">
+                <option value="">Select key stage</option>
+                {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+              </select>
             </label>
             <label className="block text-sm font-bold text-slate-300">
               Learning Level Label

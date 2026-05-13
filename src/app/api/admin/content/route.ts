@@ -35,11 +35,15 @@ export async function GET(req: Request) {
   const contentType = searchParams.get("type") ?? undefined;
   const level = searchParams.get("level") ? Number(searchParams.get("level")) : undefined;
   const skillParam = searchParams.get("skill") ?? undefined;
+  const keyStage = searchParams.get("keyStage") ?? undefined;
+  const yearGroup = searchParams.get("yearGroup") ?? undefined;
 
   const items = await prisma.aIContentCache.findMany({
     where: {
       ...(contentType ? { contentType } : {}),
       ...(level !== undefined ? { level } : {}),
+      ...(keyStage ? { keyStage } : {}),
+      ...(yearGroup ? { yearGroup } : {}),
       ...(skillParam ? { OR: [{ skillFocus: { contains: skillParam } }, { skills: { contains: skillParam } }] } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -117,6 +121,15 @@ export async function POST(req: Request) {
           ageGroup: body.ageGroup,
           source: "ai-generator",
           version: 1,
+          subject: body.type,
+          yearGroup: body.yearGroup,
+          keyStage: body.keyStage,
+          skillFocus: body.skillFocus,
+          difficulty: body.difficulty,
+          topic: body.topic,
+          qualityScore: (body.items as Record<string, unknown> | null)?.qualityScore ?? null,
+          safetyStatus: (body.items as Record<string, unknown> | null)?.safetyStatus ?? null,
+          approvalStatus: body.status,
           generatedPreview: body.items && typeof body.items === "object" && !Array.isArray(body.items) ? body.items : undefined,
         }),
       },
