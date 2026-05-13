@@ -119,6 +119,22 @@ export async function GET() {
         take: 1,
         select: { status: true, planKey: true },
       },
+      notificationPreferences: {
+        where: {
+          schoolId: null,
+          trustId: null,
+          eventType: {
+            in: [
+              "parent_weekly_report",
+              "parent_assignment_alert",
+              "parent_lesson_reminder",
+              "parent_reward_notification",
+              "parent_product_update",
+            ],
+          },
+        },
+        select: { emailEnabled: true },
+      },
     },
   });
 
@@ -137,6 +153,8 @@ export async function GET() {
         profileStatus: parent.parentProfile ? "complete" : "incomplete",
         childrenCount: parent._count.children,
         subscriptionStatus,
+        consentStatus: parent.consentAcceptedAt ? "accepted" : "pending",
+        notificationsEnabledCount: parent.notificationPreferences.filter((pref) => pref.emailEnabled).length,
         lastLogin: parent.children[0]?.updatedAt?.toISOString() ?? parent.updatedAt.toISOString(),
         createdAt: parent.createdAt.toISOString(),
       };

@@ -26,6 +26,18 @@ type ParentDetail = {
     paystackCustomerId: string | null;
     mfaEnabled: boolean;
   } | null;
+  subscription: {
+    id: string;
+    status: string;
+    planKey: string;
+    currentPeriodEnd: string | null;
+    updatedAt: string;
+  } | null;
+  consentVersion: string | null;
+  consentAcceptedAt: string | null;
+  consentWithdrawnAt: string | null;
+  notificationPreferences: Array<{ eventType: string | null; emailEnabled: boolean; updatedAt: string }>;
+  auditTrail: Array<{ id: string; action: string; entityType: string; metadataJson: string | null; createdAt: string }>;
   children: { id: string; name: string; age: number | null; yearGroup: string | null; level: number; stars: number; xp: number; streak: number; updatedAt: string }[];
 };
 
@@ -75,13 +87,59 @@ export default function ParentDetailPage() {
           </div>
           <div className="rounded-2xl bg-slate-950/45 p-4">
             <p className="text-xs uppercase text-slate-500">Plan</p>
-            <p className="mt-2 text-sm text-white">{parent.parentProfile?.subscriptionPlan ?? "None"}</p>
+            <p className="mt-2 text-sm text-white">{parent.subscription?.planKey ?? parent.parentProfile?.subscriptionPlan ?? "None"}</p>
           </div>
           <div className="rounded-2xl bg-slate-950/45 p-4">
             <p className="text-xs uppercase text-slate-500">MFA</p>
             <p className="mt-2 text-sm text-white">{parent.parentProfile?.mfaEnabled ? "Enabled" : "Disabled"}</p>
           </div>
         </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-2xl bg-slate-950/45 p-4">
+            <p className="text-xs uppercase text-slate-500">Subscription status</p>
+            <p className="mt-2 text-sm text-white">{parent.subscription?.status ?? "free"}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-950/45 p-4">
+            <p className="text-xs uppercase text-slate-500">Consent status</p>
+            <p className="mt-2 text-sm text-white">{parent.consentAcceptedAt ? "Accepted" : "Pending"}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-950/45 p-4">
+            <p className="text-xs uppercase text-slate-500">Consent version</p>
+            <p className="mt-2 text-sm text-white">{parent.consentVersion ?? "Not set"}</p>
+          </div>
+        </div>
+      </AdminSectionCard>
+
+      <AdminSectionCard title="Notification Preferences">
+        {parent.notificationPreferences.length === 0 ? (
+          <p className="text-sm text-slate-400">No saved parent notification preferences.</p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {parent.notificationPreferences.map((pref) => (
+              <article key={`${pref.eventType}-${pref.updatedAt}`} className="rounded-2xl border border-slate-800 bg-slate-950/45 p-4">
+                <p className="text-sm font-semibold text-white">{pref.eventType ?? 'default'}</p>
+                <p className="mt-1 text-xs text-slate-400">Email: {pref.emailEnabled ? 'enabled' : 'disabled'}</p>
+                <p className="mt-1 text-xs text-slate-500">Updated: {new Date(pref.updatedAt).toLocaleString()}</p>
+              </article>
+            ))}
+          </div>
+        )}
+      </AdminSectionCard>
+
+      <AdminSectionCard title="Consent & Security History">
+        {parent.auditTrail.length === 0 ? (
+          <p className="text-sm text-slate-400">No consent/security audit events recorded yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {parent.auditTrail.map((event) => (
+              <article key={event.id} className="rounded-2xl border border-slate-800 bg-slate-950/45 p-4">
+                <p className="text-sm font-semibold text-white">{event.action}</p>
+                <p className="mt-1 text-xs text-slate-400">{new Date(event.createdAt).toLocaleString()}</p>
+              </article>
+            ))}
+          </div>
+        )}
       </AdminSectionCard>
 
       <AdminSectionCard

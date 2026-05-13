@@ -6,9 +6,9 @@ import Button from '@/components/ui/Button';
 type NotificationPrefs = {
   emailWeeklyReport: boolean;
   assignmentAlerts: boolean;
+  lessonReminders: boolean;
+  rewardNotifications: boolean;
   productUpdates: boolean;
-  lessonReminders?: boolean;
-  rewardNotifications?: boolean;
 };
 
 type NotificationPreferencesProps = {
@@ -23,10 +23,12 @@ export default function NotificationPreferences({
   const [prefs, setPrefs] = useState(preferences);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
     setSaving(true);
     setSuccess(false);
+    setError(null);
 
     try {
       const response = await fetch('/api/account', {
@@ -40,7 +42,12 @@ export default function NotificationPreferences({
         setSuccess(true);
         onUpdate(prefs);
         setTimeout(() => setSuccess(false), 3000);
+      } else {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        setError(payload?.error ?? 'Unable to save preferences. Please try again.');
       }
+    } catch {
+      setError('Unable to save preferences. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -79,6 +86,12 @@ export default function NotificationPreferences({
       {success && (
         <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-400">
           ✓ Preferences saved successfully
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+          {error}
         </div>
       )}
 

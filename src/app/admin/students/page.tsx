@@ -130,7 +130,7 @@ export default function StudentsPage() {
       ) : null}
       {students.length > 0 ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-240 text-left text-sm">
+          <table className="w-full min-w-[1100px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
                 <th className="px-3 py-3">Student</th>
@@ -171,7 +171,7 @@ export default function StudentsPage() {
                   <td className="px-3 py-3">{student.accuracy !== null ? `${student.accuracy}%` : "No data"}</td>
                   <td className="px-3 py-3">{timeAgo(student.lastActive)}</td>
                   <td className="px-3 py-3">
-                    <Link href={`/admin/students/${student.id}/edit`} className="rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-400">
+                    <Link href={`/admin/students/${student.id}/edit`} className="mb-2 inline-flex rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-400">
                       Edit
                     </Link>
                     <button

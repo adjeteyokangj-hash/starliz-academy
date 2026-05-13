@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { getStripeClient } from "@/lib/stripe"
 import { SUBSCRIPTION_PLANS, type SubscriptionPlanKey } from "@/lib/subscription-plans"
+import { writeAuditLog } from "@/lib/audit"
 
 const checkoutSchema = z.object({
   planKey: z.string().optional(),
@@ -78,6 +79,14 @@ export async function POST(request: Request) {
 
   const appUrl = getAppUrl(request)
   try {
+    await writeAuditLog({
+      actorUserId: user.id,
+      action: "billing.plan_change_attempted",
+      entityType: "subscription",
+      entityId: user.id,
+      metadata: { planId: planId ?? null, planKey: planKey ?? null },
+    })
+
     const stripe = await getStripeClient()
     if (!stripe) {
       return NextResponse.json({ error: "Stripe is not configured." }, { status: 503 })

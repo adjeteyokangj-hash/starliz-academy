@@ -5,6 +5,7 @@ import { ChildProfile } from "@/lib/store";
 import { fromDbRecord, toDbUpdateInput, withChildDefaults } from "@/lib/child_profile_db";
 import { childPayloadSchema } from "@/lib/child_profile_schema";
 import { resolveParentScope } from "@/lib/parent_scope";
+import { writeAuditLog } from "@/lib/audit";
 
 function isTransientDbSaturationError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -71,7 +72,17 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 
   try {
-    const body = childPayloadSchema.parse(await request.json());
+    const rawBody = await request.json();
+    const parsed = childPayloadSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const fieldErrors = parsed.error.flatten().fieldErrors;
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[children.put] validation_error", { fieldErrors, body: rawBody, childId: id });
+      }
+      return NextResponse.json({ error: "Invalid child payload.", fieldErrors }, { status: 400 });
+    }
+
+    const body = parsed.data;
     const normalized = withChildDefaults({ ...(body as Partial<ChildProfile>), id });
 
     const updated = await prisma.childProfile.update({
@@ -81,8 +92,44 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       },
     });
 
+    await prisma.studentProfile.upsert({
+      where: { childId: id },
+      update: {
+        dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
+        keyStageLevel: body.keyStageLevel ?? null,
+        learningLevel: body.subjectLevel ?? null,
+        senSupportNeeds: body.senSupportNeeds ?? null,
+        weakAreasText: body.learningGoals?.join(", ") ?? null,
+        subjectFocus: body.subjectLevel ?? null,
+      },
+      create: {
+        childId: id,
+        dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
+        keyStageLevel: body.keyStageLevel ?? null,
+        learningLevel: body.subjectLevel ?? null,
+        senSupportNeeds: body.senSupportNeeds ?? null,
+        weakAreasText: body.learningGoals?.join(", ") ?? null,
+        subjectFocus: body.subjectLevel ?? null,
+      },
+    });
+
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "child.updated",
+      entityType: "child_profile",
+      entityId: id,
+      metadata: {
+        parentId: parentScope.parentId,
+        yearGroup: body.yearGroup,
+        keyStageLevel: body.keyStageLevel ?? null,
+      },
+    });
+
     return NextResponse.json({ ok: true, child: fromDbRecord(updated) });
-  } catch {
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[children.put] unexpected_error", error);
+    }
     return NextResponse.json({ error: "Invalid child payload." }, { status: 400 });
   }
 }

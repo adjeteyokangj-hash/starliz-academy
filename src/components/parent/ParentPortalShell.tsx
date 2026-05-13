@@ -34,22 +34,41 @@ type AccountPayload = {
     childLimit: number;
     renewalDate: string | null;
     stripeCustomerId: string | null;
+    security?: {
+      lastPasswordChangedAt: string | null;
+    };
   };
   activeChild: { id: string; name: string; avatar: string | null } | null;
   notifications: {
     emailWeeklyReport: boolean;
     assignmentAlerts: boolean;
+    lessonReminders: boolean;
+    rewardNotifications: boolean;
     productUpdates: boolean;
   };
 };
 
 type ChildListResponse = {
-  children: Array<{ id: string; name: string; avatar: string | null; archived?: boolean }>;
+  children: Array<{
+    id: string;
+    name: string;
+    avatar: string | null;
+    archived?: boolean;
+    ageYears?: number;
+    yearGroup?: string;
+    schoolYear?: string;
+    keyStageLevel?: string;
+    subjectLevel?: string;
+    dateOfBirth?: string | null;
+    learningGoals?: string[];
+    senSupportNeeds?: string;
+  }>;
   activeChildId: string | null;
 };
 
 type SubscriptionPayload = {
   subscription: {
+    pricingPlanId: string | null;
     planName: string;
     badge: string;
     status: string;
@@ -61,13 +80,18 @@ type SubscriptionPayload = {
     trialEndsAt: string | null;
   };
   plans: Array<{
+    id: string;
     key: string;
     name: string;
     childLimit: number;
     description: string;
     features: string[];
-    monthlyPricePence: number;
+    monthlyPricePence: number | null;
     yearlyPricePence: number | null;
+    price: number;
+    currency: string;
+    interval: "month" | "year" | "custom";
+    badge: string | null;
   }>;
 };
 
@@ -76,6 +100,7 @@ type ConsentPayload = {
   version: string | null;
   acceptedAt: string | null;
   withdrawnAt: string | null;
+  auditHistory?: Array<{ id: string; status: "accepted" | "withdrawn"; version: string; timestamp: string }>;
 };
 
 type SupportTicket = {
@@ -207,6 +232,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [notificationsDraft, setNotificationsDraft] = useState({
     emailWeeklyReport: true,
     assignmentAlerts: true,
+    lessonReminders: true,
+    rewardNotifications: true,
     productUpdates: false,
   });
   const [showChildForm, setShowChildForm] = useState(false);
@@ -364,11 +391,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.22),_transparent_35%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 md:px-8">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.4em] text-cyan-300">Parent portal</p>
-              <h1 className="mt-2 text-4xl font-black tracking-tight text-white md:text-5xl">{sectionTitle}</h1>
+              <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-6xl">{sectionTitle}</h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-300">
                 A single place for children, billing, progress, consent, support, and account settings.
               </p>
@@ -380,7 +407,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
+          <div className="-mx-1 overflow-x-auto">
+            <div className="flex min-w-max gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
             {sections.map((item) => (
               <Link
                 key={item.id}
@@ -395,11 +423,12 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                 ) : null}
               </Link>
             ))}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 md:px-8 xl:grid-cols-[1.8fr_1fr]">
+      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:px-8 xl:grid-cols-[1.8fr_1fr]">
         <div className="space-y-6">
           {loading ? (
             <Panel title="Loading portal" description="Fetching your account, children, and school support data."></Panel>
@@ -427,6 +456,17 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                   </div>
                 </Panel>
               </div>
+
+              {(children?.children ?? []).length === 0 ? (
+                <Panel title="Parent setup checklist" description="Complete these steps to start your first lesson.">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <ChecklistItem index={1} title="Add child" href="/parent/children" cta="Add child" />
+                    <ChecklistItem index={2} title="Confirm consent" href="/parent/consent" cta="Review consent" />
+                    <ChecklistItem index={3} title="Choose plan" href="/parent/billing" cta="Choose plan" />
+                    <ChecklistItem index={4} title="Start first lesson" href="/games/lesson" cta="Start lesson" />
+                  </div>
+                </Panel>
+              ) : null}
               
               {selectedChildId && insights ? (
                 <div className="grid gap-6 lg:grid-cols-2">
@@ -531,19 +571,28 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       return child ? {
                         id: child.id,
                         name: child.name,
-                        yearGroup: '',
-                        age: '',
-                        avatar: child.avatar || 'avatar1',
-                        learningNeeds: '',
+                        dateOfBirth: child.dateOfBirth ?? '',
+                        schoolYear: child.schoolYear ?? child.yearGroup ?? '',
+                        yearGroup: child.yearGroup ?? '',
+                        keyStageLevel: child.keyStageLevel ?? '',
+                        subjectLevel: child.subjectLevel ?? '',
+                        learningGoals: (child.learningGoals ?? []).join('\n'),
+                        supportNeeds: child.senSupportNeeds ?? '',
+                        ageYears: child.ageYears ?? '',
+                        startLevelChoice: 'Beginner',
+                        avatar: child.avatar || 'blue',
                       } : undefined;
                     })() : undefined}
                     onSuccess={() => {
                       setShowChildForm(false);
                       setEditingChildId(null);
-                      // Reload children
-                      fetch("/api/children", { credentials: "include" })
-                        .then(r => r.json())
-                        .then(data => setChildren(data));
+                      Promise.all([
+                        fetch("/api/children", { credentials: "include" }).then(r => r.json()),
+                        fetch("/api/account", { credentials: "include" }).then(r => r.json()),
+                      ]).then(([childrenData, accountData]) => {
+                        setChildren(childrenData as ChildListResponse);
+                        setAccount(accountData as AccountPayload);
+                      });
                     }}
                     onCancel={() => {
                       setShowChildForm(false);
@@ -589,6 +638,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             <Panel title="Billing" description="Review your plan and upgrade path.">
               {subscription && account ? (
                 <BillingCard
+                  currentPlanId={subscription.subscription.pricingPlanId}
                   planName={subscription.subscription.planName}
                   status={subscription.subscription.status}
                   childrenUsed={subscription.subscription.childrenUsed}
@@ -598,6 +648,14 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                   renewalDate={subscription.subscription.renewalDate}
                   trialEndsAt={subscription.subscription.trialEndsAt}
                   stripeCustomerId={account.account.stripeCustomerId}
+                  plans={subscription.plans.map((plan) => ({
+                    id: plan.id,
+                    name: plan.name,
+                    interval: plan.interval,
+                    price: plan.price,
+                    currency: plan.currency,
+                    badge: plan.badge,
+                  }))}
                 />
               ) : (
                 <EmptyState text="Loading billing information..." />
@@ -613,7 +671,13 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <p className="font-semibold text-white">{plan.name}</p>
                             <p className="text-xs text-slate-400 mt-1">{plan.description}</p>
                           </div>
-                          <p className="font-semibold text-cyan-400 whitespace-nowrap">{currency(plan.monthlyPricePence)}/mo</p>
+                          <p className="font-semibold text-cyan-400 whitespace-nowrap">
+                            {plan.monthlyPricePence !== null
+                              ? `${currency(plan.monthlyPricePence)}/mo`
+                              : plan.yearlyPricePence !== null
+                                ? `${currency(plan.yearlyPricePence)}/yr`
+                                : 'Custom'}
+                          </p>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1">
                           {(plan.features ?? []).map((feature, idx) => (
@@ -746,6 +810,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
               version={consent?.version ?? null}
               acceptedAt={consent?.acceptedAt ?? null}
               withdrawnAt={consent?.withdrawnAt ?? null}
+              auditHistory={consent?.auditHistory ?? []}
               onAccept={() => {
                 fetch("/api/consent", { credentials: "include" })
                   .then(r => r.json())
@@ -859,7 +924,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             : "mr-auto max-w-[80%] bg-white/8 text-slate-200"
                         }`}
                       >
-                        <p className="mb-1 text-xs font-semibold ${ msg.direction === 'inbound' ? 'text-cyan-400' : 'text-slate-400' }">
+                        <p className={`mb-1 text-xs font-semibold ${msg.direction === "inbound" ? "text-cyan-400" : "text-slate-400"}`}>
                           {msg.direction === "inbound" ? "You" : "StarLiz Support"}
                         </p>
                         <p className="whitespace-pre-line">{msg.body}</p>
@@ -878,6 +943,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           {section === "notifications" ? (
             <Panel title="Notifications" description="Control weekly reports and alert preferences.">
               <NotificationPreferences
+                key={JSON.stringify(notificationsDraft)}
                 preferences={notificationsDraft}
                 onUpdate={(prefs) => {
                   setNotificationsDraft(prefs);
@@ -910,6 +976,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           {section === "security" ? (
             <SecuritySettings
               currentName={account?.account.name ?? ""}
+              lastPasswordChangedAt={account?.account.security?.lastPasswordChangedAt ?? null}
               onUpdate={() => {
                 // Reload account data
                 fetch("/api/account", { credentials: "include" })
@@ -949,7 +1016,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
 function Panel({ title, description, children }: { title: string; description: string; children?: ReactNode }) {
   return (
-    <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/30">
+    <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-2xl shadow-slate-950/30 sm:p-5 lg:p-6">
       <div className="mb-4">
         <h2 className="text-xl font-bold text-white">{title}</h2>
         <p className="mt-1 text-sm text-slate-400">{description}</p>
@@ -1000,4 +1067,16 @@ function ChildPicker({ profiles, selectedChildId, setSelectedChildId }: { profil
 
 function EmptyState({ text }: { text: string }) {
   return <p className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">{text}</p>;
+}
+
+function ChecklistItem({ index, title, href, cta }: { index: number; title: string; href: string; cta: string }) {
+  return (
+    <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">Step {index}</p>
+      <h3 className="mt-2 text-base font-semibold text-white">{title}</h3>
+      <Link href={href} className="mt-3 inline-flex rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-500">
+        {cta}
+      </Link>
+    </article>
+  );
 }

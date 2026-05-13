@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getAuthCookieName } from "@/lib/auth";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { getPlan, planBadgeText } from "@/lib/subscriptions/plans";
+import { writeAuditLog } from "@/lib/audit";
 
-const NOTIFICATION_PREFS_COOKIE = "starliz_notify_prefs";
+const PARENT_NOTIFICATION_TYPES = {
+  emailWeeklyReport: "parent_weekly_report",
+  assignmentAlerts: "parent_assignment_alert",
+  lessonReminders: "parent_lesson_reminder",
+  rewardNotifications: "parent_reward_notification",
+  productUpdates: "parent_product_update",
+} as const;
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -15,6 +21,8 @@ const updateSchema = z.object({
     .object({
       emailWeeklyReport: z.boolean().optional(),
       assignmentAlerts: z.boolean().optional(),
+      lessonReminders: z.boolean().optional(),
+      rewardNotifications: z.boolean().optional(),
       productUpdates: z.boolean().optional(),
     })
     .optional(),
@@ -23,6 +31,8 @@ const updateSchema = z.object({
 type NotificationPrefs = {
   emailWeeklyReport: boolean;
   assignmentAlerts: boolean;
+  lessonReminders: boolean;
+  rewardNotifications: boolean;
   productUpdates: boolean;
 };
 
@@ -30,33 +40,68 @@ function defaultNotificationPrefs(): NotificationPrefs {
   return {
     emailWeeklyReport: true,
     assignmentAlerts: true,
+    lessonReminders: true,
+    rewardNotifications: true,
     productUpdates: false,
   };
 }
 
-async function getNotificationPrefs(): Promise<NotificationPrefs> {
-  const raw = (await cookies()).get(NOTIFICATION_PREFS_COOKIE)?.value;
-  if (!raw) return defaultNotificationPrefs();
-  try {
-    const parsed = JSON.parse(raw) as Partial<NotificationPrefs>;
-    return {
-      emailWeeklyReport: parsed.emailWeeklyReport ?? true,
-      assignmentAlerts: parsed.assignmentAlerts ?? true,
-      productUpdates: parsed.productUpdates ?? false,
-    };
-  } catch {
-    return defaultNotificationPrefs();
-  }
+async function getNotificationPrefs(userId: string): Promise<NotificationPrefs> {
+  const defaults = defaultNotificationPrefs();
+  const rows = await prisma.notificationPreference.findMany({
+    where: {
+      userId,
+      schoolId: null,
+      trustId: null,
+      eventType: { in: Object.values(PARENT_NOTIFICATION_TYPES) },
+    },
+  });
+
+  const byType = new Map(rows.map((row) => [row.eventType ?? "", row]));
+  return {
+    emailWeeklyReport: byType.get(PARENT_NOTIFICATION_TYPES.emailWeeklyReport)?.emailEnabled ?? defaults.emailWeeklyReport,
+    assignmentAlerts: byType.get(PARENT_NOTIFICATION_TYPES.assignmentAlerts)?.emailEnabled ?? defaults.assignmentAlerts,
+    lessonReminders: byType.get(PARENT_NOTIFICATION_TYPES.lessonReminders)?.emailEnabled ?? defaults.lessonReminders,
+    rewardNotifications: byType.get(PARENT_NOTIFICATION_TYPES.rewardNotifications)?.emailEnabled ?? defaults.rewardNotifications,
+    productUpdates: byType.get(PARENT_NOTIFICATION_TYPES.productUpdates)?.emailEnabled ?? defaults.productUpdates,
+  };
 }
 
-async function setNotificationPrefs(preferences: NotificationPrefs): Promise<void> {
-  (await cookies()).set(NOTIFICATION_PREFS_COOKIE, JSON.stringify(preferences), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  });
+async function setNotificationPrefs(userId: string, preferences: NotificationPrefs): Promise<void> {
+  const entries = [
+    [PARENT_NOTIFICATION_TYPES.emailWeeklyReport, preferences.emailWeeklyReport],
+    [PARENT_NOTIFICATION_TYPES.assignmentAlerts, preferences.assignmentAlerts],
+    [PARENT_NOTIFICATION_TYPES.lessonReminders, preferences.lessonReminders],
+    [PARENT_NOTIFICATION_TYPES.rewardNotifications, preferences.rewardNotifications],
+    [PARENT_NOTIFICATION_TYPES.productUpdates, preferences.productUpdates],
+  ] as const;
+
+  await Promise.all(
+    entries.map(async ([eventType, enabled]) => {
+      const existing = await prisma.notificationPreference.findFirst({
+        where: { userId, eventType, schoolId: null, trustId: null },
+        select: { id: true },
+      });
+
+      if (existing) {
+        await prisma.notificationPreference.update({
+          where: { id: existing.id },
+          data: { emailEnabled: enabled },
+        });
+        return;
+      }
+
+      await prisma.notificationPreference.create({
+        data: {
+          userId,
+          eventType,
+          emailEnabled: enabled,
+          smsEnabled: false,
+          whatsappEnabled: false,
+        },
+      });
+    })
+  );
 }
 
 export async function GET() {
@@ -94,7 +139,7 @@ export async function GET() {
         select: { id: true, name: true, avatar: true },
       });
     }),
-    getNotificationPrefs(),
+    getNotificationPrefs(parentScope.parentId),
     prisma.subscription.findFirst({
       where: { parentId: parentScope.parentId },
       orderBy: { updatedAt: "desc" },
@@ -107,12 +152,22 @@ export async function GET() {
     }),
     prisma.parentProfile.findUnique({
       where: { userId: parentScope.parentId },
-      select: { stripeCustomerId: true },
+      select: { stripeCustomerId: true, deviceTrackingJson: true },
     }),
   ]);
 
   if (!account) {
     return NextResponse.json({ error: "Account not found." }, { status: 404 });
+  }
+
+  let lastPasswordChangedAt: string | null = null;
+  if (parentProfile?.deviceTrackingJson) {
+    try {
+      const parsed = JSON.parse(parentProfile.deviceTrackingJson) as { security?: { lastPasswordChangedAt?: string | null } };
+      lastPasswordChangedAt = parsed.security?.lastPasswordChangedAt ?? null;
+    } catch {
+      lastPasswordChangedAt = null;
+    }
   }
 
   const plan = getPlan(subscription?.planKey);
@@ -133,6 +188,9 @@ export async function GET() {
       trialUsed: account.trialSessionsUsed,
       renewalDate: subscription?.currentPeriodEnd?.toISOString() ?? null,
       stripeCustomerId: parentProfile?.stripeCustomerId ?? null,
+      security: {
+        lastPasswordChangedAt,
+      },
     },
     activeChild,
     notifications,
@@ -160,13 +218,23 @@ export async function PATCH(request: Request) {
 
     let nextNotifications: NotificationPrefs | null = null;
     if (body.notifications) {
-      const current = await getNotificationPrefs();
+      const current = await getNotificationPrefs(parentScope.parentId);
       nextNotifications = {
         emailWeeklyReport: body.notifications.emailWeeklyReport ?? current.emailWeeklyReport,
         assignmentAlerts: body.notifications.assignmentAlerts ?? current.assignmentAlerts,
+        lessonReminders: body.notifications.lessonReminders ?? current.lessonReminders,
+        rewardNotifications: body.notifications.rewardNotifications ?? current.rewardNotifications,
         productUpdates: body.notifications.productUpdates ?? current.productUpdates,
       };
-      await setNotificationPrefs(nextNotifications);
+      await setNotificationPrefs(parentScope.parentId, nextNotifications);
+
+      await writeAuditLog({
+        actorUserId: session.userId,
+        action: "parent.notifications.updated",
+        entityType: "parent_account",
+        entityId: parentScope.parentId,
+        metadata: nextNotifications,
+      });
     }
 
     const updated = await prisma.user.findUnique({

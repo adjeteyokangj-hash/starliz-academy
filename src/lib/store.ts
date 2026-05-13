@@ -170,6 +170,12 @@ export type ChildProfile = {
   archived?: boolean;
   name: string;
   avatar: string;
+  dateOfBirth?: string | null;
+  schoolYear?: string;
+  keyStageLevel?: string;
+  subjectLevel?: string;
+  learningGoals?: string[];
+  senSupportNeeds?: string;
   theme:
     | "default"
     | "rainbow"
@@ -269,6 +275,12 @@ function withDefaults(profile: Partial<ChildProfile>): ChildProfile {
     archived: profile.archived ?? false,
     name: profile.name ?? "",
     avatar: profile.avatar ?? "🦊",
+    dateOfBirth: profile.dateOfBirth ?? null,
+    schoolYear: profile.schoolYear ?? profile.yearGroup ?? "Year 1",
+    keyStageLevel: profile.keyStageLevel ?? "",
+    subjectLevel: profile.subjectLevel ?? "",
+    learningGoals: profile.learningGoals ?? [],
+    senSupportNeeds: profile.senSupportNeeds ?? "",
     theme: profile.theme ?? "default",
     hubPins: profile.hubPins ?? ["spelling"],
     hubOrder: profile.hubOrder ?? DEFAULT_HUB_ORDER,

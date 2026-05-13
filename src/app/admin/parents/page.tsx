@@ -14,6 +14,8 @@ type ParentRow = {
   profileStatus: "complete" | "incomplete";
   childrenCount: number;
   subscriptionStatus: string;
+  consentStatus: string;
+  notificationsEnabledCount: number;
   lastLogin: string;
   createdAt: string;
 };
@@ -109,7 +111,7 @@ export default function ParentsPage() {
       ) : null}
       {parents.length > 0 ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table className="w-full min-w-[860px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
                 <th className="px-3 py-3">Parent</th>
@@ -119,6 +121,8 @@ export default function ParentsPage() {
                 <th className="px-3 py-3">Profile</th>
                 <th className="px-3 py-3">Children</th>
                 <th className="px-3 py-3">Subscription</th>
+                <th className="px-3 py-3">Consent</th>
+                <th className="px-3 py-3">Notifications</th>
                 <th className="px-3 py-3">Last Login</th>
                 <th className="px-3 py-3">Action</th>
               </tr>
@@ -141,12 +145,18 @@ export default function ParentsPage() {
                   <td className="px-3 py-3">
                     <span className="rounded-full bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200">{parent.subscriptionStatus}</span>
                   </td>
+                  <td className="px-3 py-3">
+                    <span className={`rounded-full px-2 py-1 text-xs font-bold ${parent.consentStatus === 'accepted' ? 'bg-emerald-900 text-emerald-200' : 'bg-yellow-900 text-yellow-200'}`}>
+                      {parent.consentStatus}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3">{parent.notificationsEnabledCount}</td>
                   <td className="px-3 py-3">{timeAgo(parent.lastLogin)}</td>
                   <td className="px-3 py-3">
-                    <Link href={`/admin/parents/${parent.id}`} className="mr-2 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-800">
+                    <Link href={`/admin/parents/${parent.id}`} className="mb-2 mr-2 inline-flex rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-800">
                       View Account
                     </Link>
-                    <Link href={`/admin/parents/${parent.id}/edit`} className="rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-400">
+                    <Link href={`/admin/parents/${parent.id}/edit`} className="mb-2 inline-flex rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-400">
                       Edit
                     </Link>
                     <button

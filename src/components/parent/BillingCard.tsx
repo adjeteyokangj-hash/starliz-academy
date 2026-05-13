@@ -3,6 +3,7 @@
 import Button from '@/components/ui/Button';
 
 type BillingCardProps = {
+  currentPlanId: string | null;
   planName: string;
   status: string;
   childrenUsed: number;
@@ -12,9 +13,18 @@ type BillingCardProps = {
   renewalDate: string | null;
   trialEndsAt: string | null;
   stripeCustomerId: string | null;
+  plans: Array<{
+    id: string;
+    name: string;
+    interval: 'month' | 'year' | 'custom';
+    price: number;
+    currency: string;
+    badge: string | null;
+  }>;
 };
 
 export default function BillingCard({ 
+  currentPlanId,
   planName, 
   status, 
   childrenUsed, 
@@ -24,18 +34,20 @@ export default function BillingCard({
   renewalDate,
   trialEndsAt,
   stripeCustomerId,
+  plans,
 }: BillingCardProps) {
-  const currencyFormat = (value: number) => {
-    return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(value / 100);
+  const currencyFormat = (value: number, currency: string) => {
+    return new Intl.NumberFormat('en-GB', { style: 'currency', currency: currency.toUpperCase() }).format(value);
   };
 
-  async function handleUpgrade() {
+  async function startCheckout(planId: string) {
     try {
-      const response = await fetch('/api/checkout', {
+      const response = await fetch('/api/billing/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ 
+          planId,
           returnUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/parent/billing`
         }),
       });
@@ -46,7 +58,7 @@ export default function BillingCard({
       if (url) window.location.href = url;
     } catch (error) {
       console.error('Checkout error:', error);
-      alert('Failed to start upgrade. Please try again.');
+      alert('Failed to start checkout. Please try again.');
     }
   }
 
@@ -116,11 +128,17 @@ export default function BillingCard({
       )}
 
       <div className="flex flex-wrap gap-3">
-        {upgradeRequired && (
-          <Button onClick={handleUpgrade} className="bg-cyan-600 hover:bg-cyan-700">
+        {upgradeRequired && plans.length > 0 && (
+          <Button onClick={() => void startCheckout(plans[0].id)} className="bg-cyan-600 hover:bg-cyan-700">
             Upgrade Plan
           </Button>
         )}
+
+        {!upgradeRequired && plans.length > 0 ? (
+          <Button onClick={() => void startCheckout(plans[0].id)} className="bg-indigo-600 hover:bg-indigo-700">
+            Change Plan
+          </Button>
+        ) : null}
 
         {stripeCustomerId && (
           <Button 
@@ -137,6 +155,31 @@ export default function BillingCard({
           </p>
         )}
       </div>
+
+      {plans.length > 0 ? (
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          {plans
+            .filter((plan) => plan.interval !== 'custom')
+            .map((plan) => (
+              <button
+                key={plan.id}
+                type="button"
+                onClick={() => void startCheckout(plan.id)}
+                className={`rounded-xl border p-3 text-left text-sm transition ${
+                  plan.id === currentPlanId
+                    ? 'border-cyan-400 bg-cyan-400/10'
+                    : 'border-white/10 bg-white/5 hover:border-white/30'
+                }`}
+              >
+                <p className="font-semibold text-white">{plan.name}</p>
+                <p className="mt-1 text-slate-300">
+                  {currencyFormat(plan.price, plan.currency)} / {plan.interval}
+                </p>
+                {plan.badge ? <p className="mt-1 text-xs text-cyan-300">{plan.badge}</p> : null}
+              </button>
+            ))}
+        </div>
+      ) : null}
     </div>
   );
 }

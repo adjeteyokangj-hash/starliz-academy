@@ -4,8 +4,8 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { canAddChild } from "@/lib/subscriptions/enforcement";
-import { getPlan, listPlans, normalizePlanKey, planBadgeText, SubscriptionPlanKey } from "@/lib/subscriptions/plans";
-import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import { getPlan, normalizePlanKey, planBadgeText, SubscriptionPlanKey } from "@/lib/subscriptions/plans";
+import { getPublicPricingPlans, resolveCurrentPricingPlan } from "@/lib/pricing/service";
 
 const updateSchema = z.object({
   planKey: z.enum(["free", "monthly", "yearly"]).optional(),
@@ -35,6 +35,9 @@ export async function GET() {
     pricingPlanId: subscription?.pricingPlanId,
     legacyPlanKey: subscription?.planKey,
   });
+  const pricingPlans = await getPublicPricingPlans();
+
+  const inferredChildLimit = currentPricingPlan?.audience === "individual" ? 1 : 6;
 
   return NextResponse.json({
     subscription: {
@@ -45,7 +48,7 @@ export async function GET() {
       status: subscription?.status ?? "active",
       badge: currentPricingPlan?.badge ?? currentPricingPlan?.name ?? planBadgeText(subscription?.planKey, subscription?.status),
       provider: subscription?.provider ?? "stripe",
-      childLimit: plan.childLimit,
+      childLimit: currentPricingPlan ? inferredChildLimit : plan.childLimit,
       childrenUsed,
       upgradeRequired: !access.allowed,
       reason: access.reason ?? null,
@@ -53,14 +56,19 @@ export async function GET() {
       renewalDate: subscription?.currentPeriodEnd?.toISOString() ?? null,
       paymentFailed: (subscription?.status ?? "").toLowerCase() === "past_due",
     },
-    plans: listPlans().map((entry) => ({
-      key: entry.key,
+    plans: pricingPlans.map((entry) => ({
+      id: entry.id,
+      key: entry.id,
       name: entry.name,
-      monthlyPricePence: entry.monthlyPricePence,
-      yearlyPricePence: entry.yearlyPricePence ?? null,
-      childLimit: entry.childLimit,
+      monthlyPricePence: entry.interval === "month" ? Math.round(entry.price * 100) : null,
+      yearlyPricePence: entry.interval === "year" ? Math.round(entry.price * 100) : null,
+      childLimit: entry.audience === "individual" ? 1 : 6,
       description: entry.description,
       features: entry.features,
+      price: entry.price,
+      currency: entry.currency,
+      interval: entry.interval,
+      badge: entry.badge,
     })),
   });
 }

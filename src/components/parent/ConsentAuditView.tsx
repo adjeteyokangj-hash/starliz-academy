@@ -40,7 +40,7 @@ export default function ConsentAuditView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ accepted: true }),
+        body: JSON.stringify({ accepted: true, version: version ?? 'v1' }),
       });
 
       if (response.ok) {
@@ -58,11 +58,9 @@ export default function ConsentAuditView({
 
     setSaving(true);
     try {
-      const response = await fetch('/api/consent', {
+      const response = await fetch('/api/consent/withdraw', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ accepted: false }),
       });
 
       if (response.ok) {

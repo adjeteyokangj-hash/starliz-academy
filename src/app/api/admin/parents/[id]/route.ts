@@ -107,7 +107,41 @@ export async function GET(_request: Request, context: Context) {
       activeChildId: true,
       createdAt: true,
       updatedAt: true,
+      consentVersion: true,
+      consentAcceptedAt: true,
+      consentWithdrawnAt: true,
       parentProfile: true,
+      subscriptions: {
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          status: true,
+          planKey: true,
+          currentPeriodEnd: true,
+          updatedAt: true,
+        },
+      },
+      notificationPreferences: {
+        where: {
+          schoolId: null,
+          trustId: null,
+          eventType: {
+            in: [
+              "parent_weekly_report",
+              "parent_assignment_alert",
+              "parent_lesson_reminder",
+              "parent_reward_notification",
+              "parent_product_update",
+            ],
+          },
+        },
+        select: {
+          eventType: true,
+          emailEnabled: true,
+          updatedAt: true,
+        },
+      },
       children: {
         where: { archived: false },
         orderBy: { updatedAt: "desc" },
@@ -130,11 +164,26 @@ export async function GET(_request: Request, context: Context) {
     return NextResponse.json({ error: "Parent not found." }, { status: 404 });
   }
 
+  const auditTrail = await prisma.auditLog.findMany({
+    where: {
+      OR: [
+        { actorUserId: id, action: { in: ["consent.accepted", "consent.withdrawn", "parent.notifications.updated", "parent.password.updated"] } },
+        { entityId: id, action: { in: ["consent.accepted", "consent.withdrawn", "parent.notifications.updated", "parent.password.updated"] } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+
+  const latestSubscription = parent.subscriptions[0] ?? null;
+
   return NextResponse.json({
     parent: {
       ...parent,
       createdAt: parent.createdAt.toISOString(),
       updatedAt: parent.updatedAt.toISOString(),
+      consentAcceptedAt: parent.consentAcceptedAt?.toISOString() ?? null,
+      consentWithdrawnAt: parent.consentWithdrawnAt?.toISOString() ?? null,
       parentProfile: parent.parentProfile
         ? {
             ...parent.parentProfile,
@@ -143,7 +192,25 @@ export async function GET(_request: Request, context: Context) {
             updatedAt: parent.parentProfile.updatedAt.toISOString(),
           }
         : null,
+      subscription: latestSubscription
+        ? {
+            ...latestSubscription,
+            currentPeriodEnd: latestSubscription.currentPeriodEnd?.toISOString() ?? null,
+            updatedAt: latestSubscription.updatedAt.toISOString(),
+          }
+        : null,
+      notificationPreferences: parent.notificationPreferences.map((pref) => ({
+        ...pref,
+        updatedAt: pref.updatedAt.toISOString(),
+      })),
       children: parent.children.map((child) => ({ ...child, updatedAt: child.updatedAt.toISOString() })),
+      auditTrail: auditTrail.map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        entityType: entry.entityType,
+        metadataJson: entry.metadataJson,
+        createdAt: entry.createdAt.toISOString(),
+      })),
     },
   });
 }
