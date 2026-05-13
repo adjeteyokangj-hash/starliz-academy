@@ -1,11 +1,10 @@
-const CACHE_NAME = "starliz-v2";
+const CACHE_NAME = "starliz-v3";
 const APP_SHELL = [
   "/",
   "/onboarding",
   "/dashboard",
   "/parent",
   "/pet",
-  "/profiles",
   "/rewards",
   "/games/spelling",
   "/games/math",
@@ -47,12 +46,7 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(async () => (await caches.match(request)) || (await caches.match("/offline")))
+        .catch(async () => (await caches.match("/offline")))
     );
     return;
   }

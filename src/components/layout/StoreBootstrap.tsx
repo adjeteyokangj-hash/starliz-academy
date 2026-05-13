@@ -18,6 +18,7 @@ export default function StoreBootstrap({ children }: Props) {
       const pathname = window.location.pathname;
       const isConsentPage = pathname.startsWith("/consent");
       const isPrivacyPage = pathname.startsWith("/privacy");
+      const isProfilesPage = pathname.startsWith("/profiles");
       const isAuthPage = pathname.startsWith("/auth/");
       const isAdminPage = pathname.startsWith("/admin");
       const isPublicPage = pathname === "/" || pathname.startsWith("/about") || pathname.startsWith("/pricing")
@@ -40,7 +41,7 @@ export default function StoreBootstrap({ children }: Props) {
         }
       }
 
-      if (!isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage && !getProfile()) {
+      if (!isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage && !isProfilesPage && !getProfile()) {
         window.location.replace("/profiles");
         return;
       }
@@ -57,7 +58,18 @@ export default function StoreBootstrap({ children }: Props) {
   }, []);
 
   if (!ready) {
-    return <main className="min-h-screen bg-background" />;
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">
+        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/80 p-6 text-center shadow-2xl shadow-slate-950/40">
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-cyan-300">StarLiz Academy</p>
+          <h1 className="mt-3 text-2xl font-black text-white">Preparing your learning space</h1>
+          <p className="mt-2 text-sm text-slate-300">Checking your session, child profile, and consent settings.</p>
+          <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="h-full w-1/3 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-cyan-400"></div>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return <>{children}</>;
