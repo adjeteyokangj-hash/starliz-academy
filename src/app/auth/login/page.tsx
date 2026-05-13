@@ -2,15 +2,17 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const resetSuccess = searchParams.get("reset") === "success";
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -76,8 +78,18 @@ export default function LoginPage() {
               className="mt-1 w-full rounded-lg sm:rounded-xl border border-slate-300 px-3 py-2 text-sm"
             />
           </label>
+          <div className="flex justify-end">
+            <Link href="/auth/forgot-password" className="text-xs sm:text-sm font-bold text-primary hover:underline">
+              Forgot password?
+            </Link>
+          </div>
 
           {error ? <p className="text-xs sm:text-sm font-semibold text-rose-700">{error}</p> : null}
+          {resetSuccess ? (
+            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-700">
+              Password updated. Please log in with your new password.
+            </p>
+          ) : null}
 
           <Button type="submit" className="w-full mt-2" disabled={loading}>
             {loading ? "Logging in..." : "Login"}
