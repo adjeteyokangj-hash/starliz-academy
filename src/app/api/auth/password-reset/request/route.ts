@@ -59,9 +59,16 @@ export async function POST(request: Request) {
       text: emailContent.text,
     });
 
-    if (!sent.ok && process.env.NODE_ENV !== "production") {
-      devResetUrl = resetUrl;
-      console.warn(`[password-reset] Email not sent: ${sent.reason}. Dev reset URL: ${resetUrl}`);
+    if (!sent.ok) {
+      console.error("[password-reset] Email not sent", {
+        reason: sent.reason,
+        email: user.email,
+        origin,
+      });
+      if (process.env.NODE_ENV !== "production") {
+        devResetUrl = resetUrl;
+        console.warn(`[password-reset] Dev reset URL: ${resetUrl}`);
+      }
     }
   }
 

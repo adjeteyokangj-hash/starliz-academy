@@ -76,7 +76,11 @@ export async function POST(request: Request) {
       });
 
       if (!sent.ok) {
-        console.error("[forgot-password] Reset email failed:", sent.reason);
+        console.error("[forgot-password] Reset email failed:", {
+          reason: sent.reason,
+          email: user.email,
+          origin: RESET_URL_ORIGIN,
+        });
       }
     }
   } catch (error) {
