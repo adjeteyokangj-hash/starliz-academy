@@ -4,6 +4,11 @@ import Link from "next/link";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
+import ChildManagementForm from "./ChildManagementForm";
+import BillingCard from "./BillingCard";
+import SecuritySettings from "./SecuritySettings";
+import ConsentAuditView from "./ConsentAuditView";
+import NotificationPreferences from "./NotificationPreferences";
 
 type PortalSection =
   | "dashboard"
@@ -28,6 +33,7 @@ type AccountPayload = {
     subscriptionState: string;
     childLimit: number;
     renewalDate: string | null;
+    stripeCustomerId: string | null;
   };
   activeChild: { id: string; name: string; avatar: string | null } | null;
   notifications: {
@@ -198,12 +204,13 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [reportDownloading, setReportDownloading] = useState(false);
   const [supportSubject, setSupportSubject] = useState("");
   const [supportBody, setSupportBody] = useState("");
-  const [nameDraft, setNameDraft] = useState("");
   const [notificationsDraft, setNotificationsDraft] = useState({
     emailWeeklyReport: true,
     assignmentAlerts: true,
     productUpdates: false,
   });
+  const [showChildForm, setShowChildForm] = useState(false);
+  const [editingChildId, setEditingChildId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -224,7 +231,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       if (accountRes.ok) {
         const payload = (await accountRes.json()) as AccountPayload;
         setAccount(payload);
-        setNameDraft(payload.account.name);
         setNotificationsDraft(payload.notifications);
         setSelectedChildId(payload.activeChild?.id ?? null);
       }
@@ -296,23 +302,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     if (!children?.children?.length) return null;
     return children.children.find((child) => child.id === selectedChildId) ?? children.children[0] ?? null;
   }, [children, selectedChildId]);
-
-  async function saveAccountPatch(payload: Record<string, unknown>) {
-    setSaving(true);
-    try {
-      const response = await fetch("/api/account", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) return;
-      const refreshed = await fetch("/api/account", { credentials: "include" });
-      if (refreshed.ok) setAccount((await refreshed.json()) as AccountPayload);
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function downloadProgressReport(format: "pdf" | "csv" | "excel") {
     if (!selectedChildId) return;
@@ -532,38 +521,112 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           ) : null}
 
           {section === "children" ? (
-            <Panel title="Children" description="Manage child profiles and choose the active profile.">
-              <ChildPicker profiles={children?.children ?? []} selectedChildId={selectedChildId} setSelectedChildId={setSelectedChildId} />
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {(children?.children ?? []).map((child) => (
-                  <article key={child.id} className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-                    <p className="font-semibold text-white">{child.name}</p>
-                    <p className="text-sm text-slate-400">{child.archived ? "Archived" : "Active"}</p>
-                  </article>
-                ))}
-              </div>
-            </Panel>
+            <div className="space-y-6">
+              {showChildForm ? (
+                <Panel title={editingChildId ? "Edit child" : "Add new child"} description={editingChildId ? "Update child details" : "Create a new child profile"}>
+                  <ChildManagementForm
+                    mode={editingChildId ? "edit" : "add"}
+                    initialData={editingChildId ? (() => {
+                      const child = children?.children.find(c => c.id === editingChildId);
+                      return child ? {
+                        id: child.id,
+                        name: child.name,
+                        yearGroup: '',
+                        age: '',
+                        avatar: child.avatar || 'avatar1',
+                        learningNeeds: '',
+                      } : undefined;
+                    })() : undefined}
+                    onSuccess={() => {
+                      setShowChildForm(false);
+                      setEditingChildId(null);
+                      // Reload children
+                      fetch("/api/children", { credentials: "include" })
+                        .then(r => r.json())
+                        .then(data => setChildren(data));
+                    }}
+                    onCancel={() => {
+                      setShowChildForm(false);
+                      setEditingChildId(null);
+                    }}
+                  />
+                </Panel>
+              ) : (
+                <Panel title="Children" description="Manage child profiles and choose the active profile.">
+                  <div className="space-y-4">
+                    <ChildPicker profiles={children?.children ?? []} selectedChildId={selectedChildId} setSelectedChildId={setSelectedChildId} />
+                    <Button onClick={() => setShowChildForm(true)} className="w-full bg-cyan-600 hover:bg-cyan-700">
+                      + Add child
+                    </Button>
+                  </div>
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                    {(children?.children ?? []).map((child) => (
+                      <article key={child.id} className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 group hover:bg-slate-900/90 transition">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <p className="font-semibold text-white">{child.name}</p>
+                            <p className="text-sm text-slate-400">{child.archived ? "Archived" : "Active"}</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setEditingChildId(child.id);
+                              setShowChildForm(true);
+                            }}
+                            className="text-xs text-cyan-400 hover:text-cyan-300 opacity-0 group-hover:opacity-100 transition"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </Panel>
+              )}
+            </div>
           ) : null}
 
           {section === "billing" ? (
             <Panel title="Billing" description="Review your plan and upgrade path.">
-              <div className="grid gap-3 md:grid-cols-2">
-                <Metric label="Status" value={subscription?.subscription.status ?? account?.account.subscriptionState ?? "active"} />
-                <Metric label="Upgrade" value={subscription?.subscription.upgradeRequired ? "Required" : "Not required"} />
-                <Metric label="Reason" value={subscription?.subscription.reason ?? "Within plan limits"} />
-                <Metric label="Trial ends" value={subscription?.subscription.trialEndsAt ? new Date(subscription.subscription.trialEndsAt).toLocaleDateString() : "N/A"} />
-              </div>
-              <div className="mt-4 space-y-2">
-                {(subscription?.plans ?? []).map((plan) => (
-                  <div key={plan.key} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-semibold text-white">{plan.name}</p>
-                      <p>{currency(plan.monthlyPricePence)}/mo</p>
-                    </div>
-                    <p className="mt-1">{plan.description}</p>
+              {subscription && account ? (
+                <BillingCard
+                  planName={subscription.subscription.planName}
+                  status={subscription.subscription.status}
+                  childrenUsed={subscription.subscription.childrenUsed}
+                  childLimit={subscription.subscription.childLimit}
+                  upgradeRequired={subscription.subscription.upgradeRequired}
+                  reason={subscription.subscription.reason}
+                  renewalDate={subscription.subscription.renewalDate}
+                  trialEndsAt={subscription.subscription.trialEndsAt}
+                  stripeCustomerId={account.account.stripeCustomerId}
+                />
+              ) : (
+                <EmptyState text="Loading billing information..." />
+              )}
+              {(subscription?.plans ?? []).length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-lg font-bold text-white mb-3">Available plans</h3>
+                  <div className="space-y-2">
+                    {(subscription?.plans ?? []).map((plan) => (
+                      <div key={plan.key} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-white">{plan.name}</p>
+                            <p className="text-xs text-slate-400 mt-1">{plan.description}</p>
+                          </div>
+                          <p className="font-semibold text-cyan-400 whitespace-nowrap">{currency(plan.monthlyPricePence)}/mo</p>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {(plan.features ?? []).map((feature, idx) => (
+                            <span key={idx} className="inline-block text-xs bg-white/10 text-slate-300 rounded px-2 py-1">
+                              {feature}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </Panel>
           ) : null}
 
@@ -678,34 +741,22 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           ) : null}
 
           {section === "consent" ? (
-            <Panel title="Consent" description="Track parental consent status and version history.">
-              <div className="grid gap-3 md:grid-cols-3">
-                <Metric label="Status" value={consent?.accepted ? "Accepted" : "Pending"} />
-                <Metric label="Version" value={consent?.version ?? "Unknown"} />
-                <Metric label="Accepted at" value={consent?.acceptedAt ? new Date(consent.acceptedAt).toLocaleString() : "N/A"} />
-              </div>
-              <form
-                className="mt-4 flex flex-wrap gap-3"
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  setSaving(true);
-                  try {
-                    await fetch("/api/consent", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      credentials: "include",
-                      body: JSON.stringify({ accepted: true }),
-                    });
-                    const refreshed = await fetch("/api/consent", { credentials: "include" });
-                    if (refreshed.ok) setConsent((await refreshed.json()) as ConsentPayload);
-                  } finally {
-                    setSaving(false);
-                  }
-                }}
-              >
-                <Button type="submit" disabled={saving}>{consent?.accepted ? "Refresh consent" : "Accept consent"}</Button>
-              </form>
-            </Panel>
+            <ConsentAuditView
+              accepted={consent?.accepted ?? false}
+              version={consent?.version ?? null}
+              acceptedAt={consent?.acceptedAt ?? null}
+              withdrawnAt={consent?.withdrawnAt ?? null}
+              onAccept={() => {
+                fetch("/api/consent", { credentials: "include" })
+                  .then(r => r.json())
+                  .then(data => setConsent(data));
+              }}
+              onWithdraw={() => {
+                fetch("/api/consent", { credentials: "include" })
+                  .then(r => r.json())
+                  .then(data => setConsent(data));
+              }}
+            />
           ) : null}
 
           {section === "messages" ? (
@@ -826,18 +877,12 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
           {section === "notifications" ? (
             <Panel title="Notifications" description="Control weekly reports and alert preferences.">
-              <form
-                className="space-y-3"
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  await saveAccountPatch({ notifications: notificationsDraft });
+              <NotificationPreferences
+                preferences={notificationsDraft}
+                onUpdate={(prefs) => {
+                  setNotificationsDraft(prefs);
                 }}
-              >
-                <ToggleRow label="Weekly report" checked={notificationsDraft.emailWeeklyReport} onChange={(checked) => setNotificationsDraft((value) => ({ ...value, emailWeeklyReport: checked }))} />
-                <ToggleRow label="Assignment alerts" checked={notificationsDraft.assignmentAlerts} onChange={(checked) => setNotificationsDraft((value) => ({ ...value, assignmentAlerts: checked }))} />
-                <ToggleRow label="Product updates" checked={notificationsDraft.productUpdates} onChange={(checked) => setNotificationsDraft((value) => ({ ...value, productUpdates: checked }))} />
-                <Button type="submit" disabled={saving}>Save notifications</Button>
-              </form>
+              />
             </Panel>
           ) : null}
 
@@ -863,36 +908,17 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           ) : null}
 
           {section === "security" ? (
-            <Panel title="Security" description="Update your profile name and password.">
-              <form className="space-y-3" onSubmit={async (event) => {
-                event.preventDefault();
-                await saveAccountPatch({ name: nameDraft });
-              }}>
-                <input className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} />
-                <Button type="submit" disabled={saving}>Save name</Button>
-              </form>
-              <form
-                className="mt-6 space-y-3"
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  const form = new FormData(event.currentTarget);
-                  const currentPassword = String(form.get("currentPassword") ?? "");
-                  const newPassword = String(form.get("newPassword") ?? "");
-                  if (!currentPassword || !newPassword) return;
-                  await fetch("/api/account/password", {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({ currentPassword, newPassword }),
+            <SecuritySettings
+              currentName={account?.account.name ?? ""}
+              onUpdate={() => {
+                // Reload account data
+                fetch("/api/account", { credentials: "include" })
+                  .then(r => r.json())
+                  .then(data => {
+                    setAccount(data);
                   });
-                  event.currentTarget.reset();
-                }}
-              >
-                <input name="currentPassword" type="password" autoComplete="current-password" className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" placeholder="Current password" />
-                <input name="newPassword" type="password" autoComplete="new-password" className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" placeholder="New password" />
-                <Button type="submit" disabled={saving}>Update password</Button>
-              </form>
-            </Panel>
+              }}
+            />
           ) : null}
         </div>
 
@@ -969,15 +995,6 @@ function ChildPicker({ profiles, selectedChildId, setSelectedChildId }: { profil
         </button>
       ))}
     </div>
-  );
-}
-
-function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void; }) {
-  return (
-    <label className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
-      <span>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-    </label>
   );
 }
 

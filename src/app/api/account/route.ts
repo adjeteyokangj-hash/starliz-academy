@@ -68,7 +68,7 @@ export async function GET() {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
 
-  const [account, childrenCount, activeChild, notifications, subscription] = await Promise.all([
+  const [account, childrenCount, activeChild, notifications, subscription, parentProfile] = await Promise.all([
     prisma.user.findUnique({
       where: { id: parentScope.parentId },
       select: {
@@ -105,6 +105,10 @@ export async function GET() {
         currentPeriodEnd: true,
       },
     }),
+    prisma.parentProfile.findUnique({
+      where: { userId: parentScope.parentId },
+      select: { stripeCustomerId: true },
+    }),
   ]);
 
   if (!account) {
@@ -128,6 +132,7 @@ export async function GET() {
       childLimit: plan.childLimit,
       trialUsed: account.trialSessionsUsed,
       renewalDate: subscription?.currentPeriodEnd?.toISOString() ?? null,
+      stripeCustomerId: parentProfile?.stripeCustomerId ?? null,
     },
     activeChild,
     notifications,
