@@ -6,10 +6,18 @@ export const adminResourceSchemas = {
   lessons: z.object({
     title: z.string().trim().min(1),
     subject: z.string().trim().min(1),
+    yearGroup: optionalText,
+    keyStage: optionalText,
     ageGroup: optionalText,
+    skillFocus: optionalText,
+    template: optionalText,
+    pathway: optionalText,
+    objectives: optionalText,
+    difficultyBand: z.string().trim().default("core"),
     difficulty: z.number().int().min(1).max(10).default(1),
     status: z.string().trim().default("draft"),
     contentRefs: optionalText,
+    skills: optionalText,
   }),
   rewards: z.object({
     name: z.string().trim().min(1),

@@ -302,8 +302,22 @@ function detectWarmupMood(transcript: string, childName = "Learner"): WarmupResu
 
 function getItemSection(item: LessonItem, fallback: string): "spelling" | "math" | "reading" {
   const type = String(item.type ?? fallback).toLowerCase();
-  if (type === "math" || type === "maths") return "math";
-  if (type === "reading" || item.passage) return "reading";
+  if (
+    type === "math" ||
+    type === "maths" ||
+    type === "times-tables" ||
+    type === "gcse-maths" ||
+    type === "science" ||
+    type === "gcse-science"
+  ) return "math";
+  if (
+    type === "reading" ||
+    type === "english-language" ||
+    type === "english-literature" ||
+    type === "gcse-english" ||
+    type === "vocabulary" ||
+    item.passage
+  ) return "reading";
   return "spelling";
 }
 

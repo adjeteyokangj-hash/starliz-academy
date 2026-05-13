@@ -659,16 +659,23 @@ model PricingPlan {
 }
 
 model Lesson {
-  id          String   @id @default(cuid())
-  title       String
-  subject     String
-  ageGroup    String?
-  difficulty  Int      @default(1)
-  status      String   @default("draft")
-  contentRefs String?
-  skills      String? // comma-separated skill codes
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  title          String
+  subject        String
+  yearGroup      String?
+  keyStage       String?
+  ageGroup       String?
+  skillFocus     String?
+  template       String?  // "phonics-lesson" | "spelling-practice" | etc.
+  pathway        String?  // JSON: ordered array of stage labels
+  objectives     String?  // Learning objectives free text
+  difficultyBand String   @default("core") // "support" | "core" | "stretch" | "mastery"
+  difficulty     Int      @default(1)
+  status         String   @default("draft") // "draft" | "ready" | "assigned" | "in_progress" | "completed" | "archived"
+  contentRefs    String?  // comma-separated AIContentCache IDs
+  skills         String?  // comma-separated skill codes
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model RewardRule {
