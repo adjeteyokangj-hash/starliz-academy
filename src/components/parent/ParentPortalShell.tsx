@@ -1,6 +1,7 @@
 'use client';
 
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
@@ -83,6 +84,7 @@ type SubscriptionPayload = {
     id: string;
     key: string;
     name: string;
+    stripePriceId: string | null;
     childLimit: number;
     description: string;
     features: string[];
@@ -184,6 +186,24 @@ const sections: Array<{ id: PortalSection; label: string }> = [
   { id: "security", label: "Security" },
 ];
 
+const sectionHref: Record<PortalSection, string> = {
+  dashboard: "/parent/dashboard",
+  children: "/parent/children",
+  billing: "/parent/billing",
+  progress: "/parent/progress",
+  "tutor-history": "/parent/tutor-history",
+  rewards: "/parent/rewards",
+  consent: "/parent/consent",
+  messages: "/parent/messages",
+  notifications: "/parent/notifications",
+  support: "/parent/support",
+  security: "/parent/security",
+};
+
+const pathToSection = new Map<string, PortalSection>(
+  Object.entries(sectionHref).map(([id, href]) => [href, id as PortalSection]),
+);
+
 function currency(value: number) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(value / 100);
 }
@@ -209,6 +229,8 @@ function sectionLabel(section: PortalSection) {
 }
 
 export default function ParentPortalShell({ section }: { section: PortalSection }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [account, setAccount] = useState<AccountPayload | null>(null);
   const [children, setChildren] = useState<ChildListResponse | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionPayload | null>(null);
@@ -238,6 +260,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   });
   const [showChildForm, setShowChildForm] = useState(false);
   const [editingChildId, setEditingChildId] = useState<string | null>(null);
+  const [childFormMessage, setChildFormMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -330,6 +353,21 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     return children.children.find((child) => child.id === selectedChildId) ?? children.children[0] ?? null;
   }, [children, selectedChildId]);
 
+  const activeSection = useMemo<PortalSection>(() => {
+    if (!pathname) return section;
+    if (pathToSection.has(pathname)) {
+      return pathToSection.get(pathname) as PortalSection;
+    }
+    return section;
+  }, [pathname, section]);
+
+  useEffect(() => {
+    if (activeSection !== "children") return;
+    if (searchParams.get("mode") !== "add") return;
+    setEditingChildId(null);
+    setShowChildForm(true);
+  }, [activeSection, searchParams]);
+
   async function downloadProgressReport(format: "pdf" | "csv" | "excel") {
     if (!selectedChildId) return;
     setReportDownloading(true);
@@ -386,8 +424,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     }
   }
 
-  const sectionTitle = sectionLabel(section);
-
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.22),_transparent_35%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]">
@@ -395,7 +431,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.4em] text-cyan-300">Parent portal</p>
-              <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-6xl">{sectionTitle}</h1>
+              <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-6xl">{sectionLabel(activeSection)}</h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-300">
                 A single place for children, billing, progress, consent, support, and account settings.
               </p>
@@ -412,8 +448,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             {sections.map((item) => (
               <Link
                 key={item.id}
-                href={item.id === "dashboard" ? "/parent/dashboard" : `/parent/${item.id}`}
-                className={`relative rounded-full px-4 py-2 text-sm font-semibold transition ${item.id === section ? "bg-cyan-400 text-slate-950" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}
+                href={sectionHref[item.id]}
+                className={`relative rounded-full px-4 py-2 text-sm font-semibold transition ${item.id === activeSection ? "bg-cyan-400 text-slate-950" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}
               >
                 {item.label}
                 {item.id === "messages" && threads.reduce((sum, t) => sum + t.parentUnreadCount, 0) > 0 ? (
@@ -434,7 +470,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             <Panel title="Loading portal" description="Fetching your account, children, and school support data."></Panel>
           ) : null}
 
-          {section === "dashboard" ? (
+          {activeSection === "dashboard" ? (
             <div className="space-y-6">
               <div className="grid gap-6 lg:grid-cols-2">
                 <Panel title="Active child" description="Switch between children and review the latest activity.">
@@ -460,10 +496,17 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
               {(children?.children ?? []).length === 0 ? (
                 <Panel title="Parent setup checklist" description="Complete these steps to start your first lesson.">
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <ChecklistItem index={1} title="Add child" href="/parent/children" cta="Add child" />
+                    <ChecklistItem index={1} title="Add child" href="/parent/children?mode=add" cta="Add child" />
                     <ChecklistItem index={2} title="Confirm consent" href="/parent/consent" cta="Review consent" />
                     <ChecklistItem index={3} title="Choose plan" href="/parent/billing" cta="Choose plan" />
-                    <ChecklistItem index={4} title="Start first lesson" href="/games/lesson" cta="Start lesson" />
+                    <ChecklistItem
+                      index={4}
+                      title="Start first lesson"
+                      href="/student/dashboard"
+                      cta="Start lesson"
+                      disabled
+                      helpText="Add a child first to start a lesson."
+                    />
                   </div>
                 </Panel>
               ) : null}
@@ -560,7 +603,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </div>
           ) : null}
 
-          {section === "children" ? (
+          {activeSection === "children" ? (
             <div className="space-y-6">
               {showChildForm ? (
                 <Panel title={editingChildId ? "Edit child" : "Add new child"} description={editingChildId ? "Update child details" : "Create a new child profile"}>
@@ -584,13 +627,17 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       } : undefined;
                     })() : undefined}
                     onSuccess={() => {
+                      const wasEditing = editingChildId !== null;
                       setShowChildForm(false);
                       setEditingChildId(null);
+                      setChildFormMessage(wasEditing ? "Child profile updated." : "Child profile added successfully.");
                       Promise.all([
                         fetch("/api/children", { credentials: "include" }).then(r => r.json()),
                         fetch("/api/account", { credentials: "include" }).then(r => r.json()),
                       ]).then(([childrenData, accountData]) => {
-                        setChildren(childrenData as ChildListResponse);
+                        const childrenPayload = childrenData as ChildListResponse;
+                        setChildren(childrenPayload);
+                        setSelectedChildId(childrenPayload.activeChildId ?? childrenPayload.children[0]?.id ?? null);
                         setAccount(accountData as AccountPayload);
                       });
                     }}
@@ -602,9 +649,21 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                 </Panel>
               ) : (
                 <Panel title="Children" description="Manage child profiles and choose the active profile.">
+                  {childFormMessage ? (
+                    <p className="mb-4 rounded-xl border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm text-green-200">
+                      {childFormMessage}
+                    </p>
+                  ) : null}
                   <div className="space-y-4">
                     <ChildPicker profiles={children?.children ?? []} selectedChildId={selectedChildId} setSelectedChildId={setSelectedChildId} />
-                    <Button onClick={() => setShowChildForm(true)} className="w-full bg-cyan-600 hover:bg-cyan-700">
+                    <Button
+                      onClick={() => {
+                        setChildFormMessage(null);
+                        setEditingChildId(null);
+                        setShowChildForm(true);
+                      }}
+                      className="w-full bg-cyan-600 hover:bg-cyan-700"
+                    >
                       + Add child
                     </Button>
                   </div>
@@ -634,7 +693,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </div>
           ) : null}
 
-          {section === "billing" ? (
+          {activeSection === "billing" ? (
             <Panel title="Billing" description="Review your plan and upgrade path.">
               {subscription && account ? (
                 <BillingCard
@@ -650,11 +709,13 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                   stripeCustomerId={account.account.stripeCustomerId}
                   plans={subscription.plans.map((plan) => ({
                     id: plan.id,
+                    key: plan.key,
                     name: plan.name,
                     interval: plan.interval,
                     price: plan.price,
                     currency: plan.currency,
                     badge: plan.badge,
+                    stripePriceId: plan.stripePriceId,
                   }))}
                 />
               ) : (
@@ -694,7 +755,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </Panel>
           ) : null}
 
-          {section === "progress" ? (
+          {activeSection === "progress" ? (
             <>
               <Panel title="Progress" description="See the selected child's recent learning records.">
                 <div className="mb-4 flex flex-wrap gap-2">
@@ -752,7 +813,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </>
           ) : null}
 
-          {section === "tutor-history" ? (
+          {activeSection === "tutor-history" ? (
             <Panel title="Tutor history" description="Recent level decisions and learning adjustments.">
               <div className="space-y-3">
                 {(childDetail?.recentLevelDecisions ?? []).map((decision) => (
@@ -765,7 +826,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </Panel>
           ) : null}
 
-          {section === "rewards" ? (
+          {activeSection === "rewards" ? (
             <>
               <Panel title="Rewards" description="Wallet balance and purchases for the selected child.">
                 {childDetail ? (
@@ -804,7 +865,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </>
           ) : null}
 
-          {section === "consent" ? (
+          {activeSection === "consent" ? (
             <ConsentAuditView
               accepted={consent?.accepted ?? false}
               version={consent?.version ?? null}
@@ -824,7 +885,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             />
           ) : null}
 
-          {section === "messages" ? (
+          {activeSection === "messages" ? (
             <div className="space-y-4">
               <Panel title="Message Support" description="Send a message to the StarLiz team. We'll reply within 1 business day.">
                 <form
@@ -940,7 +1001,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </div>
           ) : null}
 
-          {section === "notifications" ? (
+          {activeSection === "notifications" ? (
             <Panel title="Notifications" description="Control weekly reports and alert preferences.">
               <NotificationPreferences
                 key={JSON.stringify(notificationsDraft)}
@@ -952,7 +1013,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </Panel>
           ) : null}
 
-          {section === "support" ? (
+          {activeSection === "support" ? (
             <Panel title="Support" description="Submit a ticket or review the latest ones.">
               <form className="space-y-3" onSubmit={submitSupport}>
                 <input className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white" placeholder="Subject" value={supportSubject} onChange={(event) => setSupportSubject(event.target.value)} />
@@ -973,7 +1034,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </Panel>
           ) : null}
 
-          {section === "security" ? (
+          {activeSection === "security" ? (
             <SecuritySettings
               currentName={account?.account.name ?? ""}
               lastPasswordChangedAt={account?.account.security?.lastPasswordChangedAt ?? null}
@@ -1002,7 +1063,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           <Panel title="Navigation" description="Jump directly to the remaining portal areas.">
             <div className="grid gap-2">
               {sections.map((item) => (
-                <Link key={item.id} href={item.id === "dashboard" ? "/parent/dashboard" : `/parent/${item.id}`} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-300 transition hover:bg-white/5 hover:text-white">
+                <Link
+                  key={item.id}
+                  href={sectionHref[item.id]}
+                  className={`rounded-xl border px-3 py-2 text-sm transition ${item.id === activeSection ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-200" : "border-white/10 text-slate-300 hover:bg-white/5 hover:text-white"}`}
+                >
                   {item.label}
                 </Link>
               ))}
@@ -1069,14 +1134,21 @@ function EmptyState({ text }: { text: string }) {
   return <p className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">{text}</p>;
 }
 
-function ChecklistItem({ index, title, href, cta }: { index: number; title: string; href: string; cta: string }) {
+function ChecklistItem({ index, title, href, cta, disabled = false, helpText }: { index: number; title: string; href: string; cta: string; disabled?: boolean; helpText?: string }) {
   return (
     <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">Step {index}</p>
       <h3 className="mt-2 text-base font-semibold text-white">{title}</h3>
-      <Link href={href} className="mt-3 inline-flex rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-500">
-        {cta}
-      </Link>
+      {disabled ? (
+        <span className="mt-3 inline-flex cursor-not-allowed rounded-xl bg-slate-700 px-3 py-2 text-sm font-semibold text-slate-300">
+          {cta}
+        </span>
+      ) : (
+        <Link href={href} className="mt-3 inline-flex rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-500">
+          {cta}
+        </Link>
+      )}
+      {helpText ? <p className="mt-2 text-xs text-slate-400">{helpText}</p> : null}
     </article>
   );
 }

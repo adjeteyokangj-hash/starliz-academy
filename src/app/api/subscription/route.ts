@@ -60,6 +60,7 @@ export async function GET() {
       id: entry.id,
       key: entry.id,
       name: entry.name,
+      stripePriceId: entry.stripePriceId,
       monthlyPricePence: entry.interval === "month" ? Math.round(entry.price * 100) : null,
       yearlyPricePence: entry.interval === "year" ? Math.round(entry.price * 100) : null,
       childLimit: entry.audience === "individual" ? 1 : 6,

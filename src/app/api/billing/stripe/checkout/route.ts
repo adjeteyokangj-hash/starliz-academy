@@ -9,11 +9,26 @@ import { writeAuditLog } from "@/lib/audit"
 const checkoutSchema = z.object({
   planKey: z.string().optional(),
   planId: z.string().optional(),
+  returnUrl: z.string().optional(),
 })
 
 function getAppUrl(request: Request): string {
   const url = new URL(request.url)
-  return process.env.NEXT_PUBLIC_APP_URL ?? `${url.protocol}//${url.host}`
+  return process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? `${url.protocol}//${url.host}`
+}
+
+function resolveReturnUrl(returnUrl: string | undefined, appUrl: string): string {
+  if (!returnUrl) return `${appUrl}/parent/billing`
+  try {
+    const requested = new URL(returnUrl)
+    const base = new URL(appUrl)
+    if (requested.origin !== base.origin) {
+      return `${appUrl}/parent/billing`
+    }
+    return requested.toString()
+  } catch {
+    return `${appUrl}/parent/billing`
+  }
 }
 
 export async function POST(request: Request) {
@@ -27,6 +42,7 @@ export async function POST(request: Request) {
 
   const planId = parsed.data.planId
   const requestedPlanKey = parsed.data.planKey as SubscriptionPlanKey | undefined
+  const requestedReturnUrl = parsed.data.returnUrl
 
   let planKey: string | undefined = requestedPlanKey
   let unitAmount = 0
@@ -78,6 +94,16 @@ export async function POST(request: Request) {
   }
 
   const appUrl = getAppUrl(request)
+  const safeReturnUrl = resolveReturnUrl(requestedReturnUrl, appUrl)
+
+  console.info("[billing.checkout] request", {
+    parentId: user.id,
+    planId: planId ?? null,
+    priceId: priceId ?? null,
+    hasStripeSecretKey: Boolean(process.env.STRIPE_SECRET_KEY),
+    appUrl,
+  })
+
   try {
     await writeAuditLog({
       actorUserId: user.id,
@@ -89,7 +115,16 @@ export async function POST(request: Request) {
 
     const stripe = await getStripeClient()
     if (!stripe) {
-      return NextResponse.json({ error: "Stripe is not configured." }, { status: 503 })
+      return NextResponse.json(
+        {
+          error: "Stripe is not configured.",
+          details: {
+            hasStripeSecretKey: Boolean(process.env.STRIPE_SECRET_KEY),
+            appUrl,
+          },
+        },
+        { status: 503 },
+      )
     }
 
     const existingSubscription = await prisma.subscription.findFirst({
@@ -147,7 +182,7 @@ export async function POST(request: Request) {
           },
         ],
     success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/pricing`,
+    cancel_url: safeReturnUrl,
     metadata: {
       provider: "stripe",
       userId: user.id,
@@ -171,7 +206,16 @@ export async function POST(request: Request) {
   })
 
     return NextResponse.json({ url: checkoutSession.url })
-  } catch {
-    return NextResponse.json({ error: "Unable to start Stripe checkout." }, { status: 502 })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to start Stripe checkout."
+    console.error("[billing.checkout] failed", {
+      parentId: user.id,
+      planId: planId ?? null,
+      priceId: priceId ?? null,
+      hasStripeSecretKey: Boolean(process.env.STRIPE_SECRET_KEY),
+      appUrl,
+      message,
+    })
+    return NextResponse.json({ error: message }, { status: 502 })
   }
 }

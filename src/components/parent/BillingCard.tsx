@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import Button from '@/components/ui/Button';
 
 type BillingCardProps = {
@@ -15,11 +16,13 @@ type BillingCardProps = {
   stripeCustomerId: string | null;
   plans: Array<{
     id: string;
+    key: string;
     name: string;
     interval: 'month' | 'year' | 'custom';
     price: number;
     currency: string;
     badge: string | null;
+    stripePriceId: string | null;
   }>;
 };
 
@@ -36,33 +39,68 @@ export default function BillingCard({
   stripeCustomerId,
   plans,
 }: BillingCardProps) {
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [portalError, setPortalError] = useState<string | null>(null);
+  const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
+  const [openingPortal, setOpeningPortal] = useState(false);
+
+  const availableCheckoutPlans = useMemo(
+    () => plans.filter((plan) => plan.interval !== 'custom' && Boolean(plan.stripePriceId)),
+    [plans],
+  );
+
+  const suggestedPlan = useMemo(
+    () => availableCheckoutPlans.find((plan) => plan.id !== currentPlanId) ?? availableCheckoutPlans[0] ?? null,
+    [availableCheckoutPlans, currentPlanId],
+  );
+
   const currencyFormat = (value: number, currency: string) => {
     return new Intl.NumberFormat('en-GB', { style: 'currency', currency: currency.toUpperCase() }).format(value);
   };
 
-  async function startCheckout(planId: string) {
+  async function startCheckout(plan: BillingCardProps['plans'][number]) {
+    if (!plan.stripePriceId) {
+      setCheckoutError('Stripe price ID missing in admin pricing settings.');
+      return;
+    }
+
+    setCheckoutError(null);
+    setLoadingPlanId(plan.id);
+
     try {
       const response = await fetch('/api/billing/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ 
-          planId,
+          planId: plan.id,
+          planKey: plan.key,
           returnUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/parent/billing`
         }),
       });
+
+      const data = (await response.json().catch(() => null)) as { url?: string; error?: string } | null;
+
+      if (!response.ok || !data?.url) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('[parent.billing] checkout failed response', data);
+        }
+        throw new Error(data?.error ?? 'Failed to start checkout.');
+      }
       
-      if (!response.ok) throw new Error('Failed to create checkout session');
-      
-      const { url } = await response.json();
-      if (url) window.location.href = url;
+      window.location.href = data.url;
     } catch (error) {
       console.error('Checkout error:', error);
-      alert('Failed to start checkout. Please try again.');
+      setCheckoutError(error instanceof Error ? error.message : 'Failed to start checkout. Please try again.');
+    } finally {
+      setLoadingPlanId(null);
     }
   }
 
   async function handleManageSubscription() {
+    setPortalError(null);
+    setOpeningPortal(true);
+
     try {
       const response = await fetch('/api/billing/portal', {
         method: 'POST',
@@ -72,14 +110,19 @@ export default function BillingCard({
           returnUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/parent/billing`
         }),
       });
+
+      const data = (await response.json().catch(() => null)) as { url?: string; error?: string } | null;
+
+      if (!response.ok || !data?.url) {
+        throw new Error(data?.error ?? 'Failed to open billing portal.');
+      }
       
-      if (!response.ok) throw new Error('Failed to create portal session');
-      
-      const { url } = await response.json();
-      if (url) window.location.href = url;
+      window.location.href = data.url;
     } catch (error) {
       console.error('Portal error:', error);
-      alert('Failed to manage subscription. Please try again.');
+      setPortalError(error instanceof Error ? error.message : 'Failed to manage subscription. Please try again.');
+    } finally {
+      setOpeningPortal(false);
     }
   }
 
@@ -128,14 +171,14 @@ export default function BillingCard({
       )}
 
       <div className="flex flex-wrap gap-3">
-        {upgradeRequired && plans.length > 0 && (
-          <Button onClick={() => void startCheckout(plans[0].id)} className="bg-cyan-600 hover:bg-cyan-700">
+        {upgradeRequired && suggestedPlan && (
+          <Button onClick={() => void startCheckout(suggestedPlan)} className="bg-cyan-600 hover:bg-cyan-700" disabled={loadingPlanId !== null}>
             Upgrade Plan
           </Button>
         )}
 
-        {!upgradeRequired && plans.length > 0 ? (
-          <Button onClick={() => void startCheckout(plans[0].id)} className="bg-indigo-600 hover:bg-indigo-700">
+        {!upgradeRequired && suggestedPlan ? (
+          <Button onClick={() => void startCheckout(suggestedPlan)} className="bg-indigo-600 hover:bg-indigo-700" disabled={loadingPlanId !== null}>
             Change Plan
           </Button>
         ) : null}
@@ -143,9 +186,10 @@ export default function BillingCard({
         {stripeCustomerId && (
           <Button 
             onClick={handleManageSubscription}
+            disabled={openingPortal}
             className="bg-slate-700 hover:bg-slate-600"
           >
-            Manage Billing
+            {openingPortal ? 'Opening...' : 'Manage Billing'}
           </Button>
         )}
 
@@ -156,6 +200,18 @@ export default function BillingCard({
         )}
       </div>
 
+      {checkoutError ? (
+        <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          {checkoutError}
+        </p>
+      ) : null}
+
+      {portalError ? (
+        <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          {portalError}
+        </p>
+      ) : null}
+
       {plans.length > 0 ? (
         <div className="mt-5 grid gap-2 sm:grid-cols-2">
           {plans
@@ -164,7 +220,8 @@ export default function BillingCard({
               <button
                 key={plan.id}
                 type="button"
-                onClick={() => void startCheckout(plan.id)}
+                disabled={!plan.stripePriceId || loadingPlanId !== null}
+                onClick={() => void startCheckout(plan)}
                 className={`rounded-xl border p-3 text-left text-sm transition ${
                   plan.id === currentPlanId
                     ? 'border-cyan-400 bg-cyan-400/10'
@@ -176,6 +233,9 @@ export default function BillingCard({
                   {currencyFormat(plan.price, plan.currency)} / {plan.interval}
                 </p>
                 {plan.badge ? <p className="mt-1 text-xs text-cyan-300">{plan.badge}</p> : null}
+                {!plan.stripePriceId ? (
+                  <p className="mt-1 text-xs text-yellow-300">Stripe price ID missing in admin pricing settings.</p>
+                ) : null}
               </button>
             ))}
         </div>

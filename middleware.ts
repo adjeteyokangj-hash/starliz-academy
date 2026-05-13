@@ -131,6 +131,11 @@ export async function middleware(request: NextRequest) {
   }
 
   if (authenticated && pathname.startsWith("/parent") && !pathname.startsWith("/parent-pin")) {
+    if (session.role !== "parent") {
+      const fallback = session.role === "admin" ? "/admin" : "/student/dashboard";
+      return withSecurityHeaders(NextResponse.redirect(new URL(fallback, request.url)));
+    }
+
     const unlocked = await hasParentUnlock(request);
     if (!unlocked) {
       return withSecurityHeaders(NextResponse.redirect(new URL("/parent-pin", request.url)));
