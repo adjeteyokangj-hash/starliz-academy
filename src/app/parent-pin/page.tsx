@@ -25,21 +25,27 @@ export default function ParentPinPage() {
 
   useEffect(() => {
     const loadStatus = async () => {
-      const response = await fetch("/api/pin/status", { credentials: "include" });
-      if (response.status === 401) {
-        router.replace("/auth/login");
-        return;
-      }
-      if (!response.ok) {
+      try {
+        const response = await fetch("/api/pin/status", { credentials: "include" });
+        if (response.status === 401) {
+          router.replace("/auth/login");
+          return;
+        }
+        if (!response.ok) {
+          setHasPin(true);
+          setError("Could not verify PIN status. Enter PIN to continue.");
+          return;
+        }
+        const payload = await response.json() as { hasPin: boolean; unlocked: boolean };
+        if (payload.unlocked) {
+          router.replace(safeParentNext(searchParams.get("next")));
+          return;
+        }
+        setHasPin(payload.hasPin);
+      } catch {
         setHasPin(true);
-        return;
+        setError("Could not verify PIN status. Enter PIN to continue.");
       }
-      const payload = await response.json() as { hasPin: boolean; unlocked: boolean };
-      if (payload.unlocked) {
-        router.replace(safeParentNext(searchParams.get("next")));
-        return;
-      }
-      setHasPin(payload.hasPin);
     };
     void loadStatus();
   }, [router, searchParams]);
@@ -138,7 +144,11 @@ export default function ParentPinPage() {
   }
 
   if (hasPin === null) {
-    return <main className="min-h-screen bg-background" />;
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
+        <p className="text-sm text-slate-600">Loading parent access...</p>
+      </main>
+    );
   }
 
   return (
