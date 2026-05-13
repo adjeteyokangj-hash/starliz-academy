@@ -26,9 +26,37 @@ type ChildManagementFormProps = {
   onCancel: () => void;
 };
 
+const AVATAR_OPTIONS = [
+  { value: 'star',    emoji: '⭐', label: 'Star' },
+  { value: 'rocket',  emoji: '🚀', label: 'Rocket' },
+  { value: 'owl',     emoji: '🦉', label: 'Owl' },
+  { value: 'lion',    emoji: '🦁', label: 'Lion' },
+  { value: 'unicorn', emoji: '🦄', label: 'Unicorn' },
+  { value: 'robot',   emoji: '🤖', label: 'Robot' },
+  { value: 'book',    emoji: '📚', label: 'Book' },
+  { value: 'rainbow', emoji: '🌈', label: 'Rainbow' },
+];
+
+function calcAgeFromDob(dob: string): number | '' {
+  if (!dob) return '';
+  const birthDate = new Date(dob);
+  const today = new Date();
+  if (isNaN(birthDate.getTime())) return '';
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+  return age >= 0 ? age : '';
+}
+
 export default function ChildManagementForm({ mode, initialData, onSuccess, onCancel }: ChildManagementFormProps) {
-  const [formData, setFormData] = useState<ChildFormData>(
-    initialData || {
+  const [formData, setFormData] = useState<ChildFormData>(() => {
+    if (initialData) {
+      const computedAge = initialData.dateOfBirth
+        ? calcAgeFromDob(initialData.dateOfBirth)
+        : initialData.ageYears;
+      return { ...initialData, ageYears: computedAge };
+    }
+    return {
       name: '',
       dateOfBirth: '',
       schoolYear: '',
@@ -39,19 +67,12 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
       supportNeeds: '',
       ageYears: '',
       startLevelChoice: 'Beginner',
-      avatar: 'blue',
-    }
-  );
+      avatar: 'star',
+    };
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-
-  const avatarOptions = [
-    { value: 'blue', cardClass: 'from-sky-400 to-cyan-500' },
-    { value: 'emerald', cardClass: 'from-emerald-400 to-teal-500' },
-    { value: 'rose', cardClass: 'from-rose-400 to-orange-500' },
-    { value: 'violet', cardClass: 'from-violet-400 to-indigo-500' },
-  ];
 
   const yearGroups = ['Reception', 'Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5', 'Year 6', 'Year 7', 'Year 8', 'Year 9', 'Year 10', 'Year 11'];
   const keyStages = ['EYFS', 'KS1', 'KS2', 'KS3', 'KS4'];
@@ -68,17 +89,17 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
     if (!formData.schoolYear.trim()) nextErrors.schoolYear = 'Please choose a school year.';
     if (!formData.keyStageLevel.trim()) nextErrors.keyStageLevel = 'Please choose a key stage.';
     if (!formData.subjectLevel.trim()) nextErrors.subjectLevel = 'Please choose a subject level.';
-    if (!formData.ageYears) nextErrors.ageYears = 'Age is required.';
+    if (!formData.ageYears) nextErrors.ageYears = 'Enter a date of birth to calculate age automatically.';
     if (typeof formData.ageYears === 'number' && (formData.ageYears < 3 || formData.ageYears > 18)) {
-      nextErrors.ageYears = 'Age must be between 3 and 18.';
+      nextErrors.ageYears = 'Calculated age must be between 3 and 18.';
+    }
+    if (formData.dateOfBirth) {
+      const dob = new Date(formData.dateOfBirth);
+      if (!isNaN(dob.getTime()) && dob > new Date()) {
+        nextErrors.dateOfBirth = 'Date of birth cannot be in the future.';
+      }
     }
     return nextErrors;
-  }
-
-  function initials(name: string): string {
-    const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
-    if (!parts.length) return 'ST';
-    return parts.map((part) => part[0]?.toUpperCase() ?? '').join('');
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -224,7 +245,11 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           <input
             type="date"
             value={formData.dateOfBirth}
-            onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+            max={new Date().toISOString().split('T')[0]}
+            onChange={(e) => {
+              const dob = e.target.value;
+              setFormData({ ...formData, dateOfBirth: dob, ageYears: calcAgeFromDob(dob) });
+            }}
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
           />
           {fieldErrors.dateOfBirth ? <p className="mt-1 text-xs text-red-400">{fieldErrors.dateOfBirth}</p> : null}
@@ -237,12 +262,10 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           <input
             type="number"
             value={formData.ageYears}
-            onChange={(e) => setFormData({ ...formData, ageYears: e.target.value ? Number(e.target.value) : '' })}
-            placeholder="e.g., 7"
-            min="3"
-            max="18"
-            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+            readOnly
+            className="w-full rounded-xl border border-white/10 bg-slate-800/60 px-3 py-2 text-sm text-slate-300 cursor-not-allowed"
           />
+          <p className="mt-1 text-xs text-slate-400">Age is calculated automatically from date of birth.</p>
           {fieldErrors.ageYears ? <p className="mt-1 text-xs text-red-400">{fieldErrors.ageYears}</p> : null}
         </div>
       </div>
@@ -287,22 +310,20 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
         <label className="block text-sm font-semibold text-slate-300 mb-2">
           Avatar
         </label>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {avatarOptions.map((option) => (
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+          {AVATAR_OPTIONS.map((option) => (
             <button
               key={option.value}
               type="button"
               onClick={() => setFormData({ ...formData, avatar: option.value })}
-              className={`rounded-xl border-2 p-3 transition ${
+              className={`flex flex-col items-center rounded-xl border-2 p-2 transition ${
                 formData.avatar === option.value
                   ? 'border-cyan-400 bg-cyan-400/10'
                   : 'border-white/10 bg-slate-900 hover:border-white/30'
               }`}
             >
-              <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br ${option.cardClass} text-sm font-black text-white`}>
-                {initials(formData.name)}
-              </div>
-              <p className="mt-2 text-xs text-slate-300">{option.value}</p>
+              <span className="text-2xl leading-none" role="img" aria-label={option.label}>{option.emoji}</span>
+              <p className="mt-1 text-[10px] text-slate-300">{option.label}</p>
             </button>
           ))}
         </div>
@@ -315,7 +336,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
         <textarea
           value={formData.learningGoals}
           onChange={(e) => setFormData({ ...formData, learningGoals: e.target.value })}
-          placeholder="Improve spelling confidence\nRead 20 minutes daily"
+          placeholder="One goal per line, e.g. Improve spelling confidence"
           rows={3}
           className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500"
           maxLength={500}

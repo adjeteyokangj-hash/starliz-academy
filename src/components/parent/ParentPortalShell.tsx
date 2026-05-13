@@ -617,11 +617,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         yearGroup: child.yearGroup ?? '',
                         keyStageLevel: child.keyStageLevel ?? '',
                         subjectLevel: child.subjectLevel ?? '',
-                        learningGoals: (child.learningGoals ?? []).join('\n'),
+                        learningGoals: (child.learningGoals ?? []).join('\n').replace(/\\n/g, '\n'),
                         supportNeeds: child.senSupportNeeds ?? '',
                         ageYears: child.ageYears ?? '',
                         startLevelChoice: 'Beginner',
-                        avatar: child.avatar || 'blue',
+                        avatar: child.avatar || 'star',
                       } : undefined;
                     })() : undefined}
                     onSuccess={() => {
@@ -678,9 +678,12 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     {(children?.children ?? []).map((child) => (
                       <article key={child.id} className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 group hover:bg-slate-900/90 transition">
                         <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <p className="font-semibold text-white">{child.name}</p>
-                            <p className="text-sm text-slate-400">{child.archived ? "Archived" : "Active"}</p>
+                          <div className="flex items-center gap-3 flex-1">
+                            <ChildAvatar avatar={child.avatar} name={child.name} size="md" />
+                            <div>
+                              <p className="font-semibold text-white">{child.name}</p>
+                              <p className="text-sm text-slate-400">{child.archived ? "Archived" : "Active"}</p>
+                            </div>
                           </div>
                           <button
                             onClick={() => {
@@ -1031,7 +1034,17 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
               <p>Name: <span className="font-semibold text-white">{account?.account.name ?? "Loading"}</span></p>
               <p>Email: <span className="font-semibold text-white">{account?.account.email ?? "Loading"}</span></p>
               <p>Children: <span className="font-semibold text-white">{account?.account.linkedChildrenCount ?? 0}</span></p>
-              <p>Active child: <span className="font-semibold text-white">{activeChild?.name ?? account?.activeChild?.name ?? "None"}</span></p>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-300">Active child:</span>
+                {activeChild ? (
+                  <span className="flex items-center gap-1.5">
+                    <ChildAvatar avatar={activeChild.avatar} name={activeChild.name} size="sm" />
+                    <span className="font-semibold text-white">{activeChild.name}</span>
+                  </span>
+                ) : (
+                  <span className="font-semibold text-white">{account?.activeChild?.name ?? "None"}</span>
+                )}
+              </div>
             </div>
           </Panel>
 
@@ -1096,8 +1109,9 @@ function ChildPicker({ profiles, selectedChildId, setSelectedChildId }: { profil
           key={child.id}
           type="button"
           onClick={() => setSelectedChildId(child.id)}
-          className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedChildId === child.id ? "border-cyan-400 bg-cyan-400 text-slate-950" : "border-white/10 bg-slate-900 text-slate-300 hover:bg-white/10 hover:text-white"}`}
+          className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedChildId === child.id ? "border-cyan-400 bg-cyan-400 text-slate-950" : "border-white/10 bg-slate-900 text-slate-300 hover:bg-white/10 hover:text-white"}`}
         >
+          <ChildAvatar avatar={child.avatar} name={child.name} size="sm" />
           {child.name}
         </button>
       ))}
@@ -1125,5 +1139,43 @@ function ChecklistItem({ index, title, href, cta, disabled = false, helpText }: 
       )}
       {helpText ? <p className="mt-2 text-xs text-slate-400">{helpText}</p> : null}
     </article>
+  );
+}
+
+const AVATAR_EMOJI: Record<string, string> = {
+  star: '⭐', rocket: '🚀', owl: '🦉', lion: '🦁',
+  unicorn: '🦄', robot: '🤖', book: '📚', rainbow: '🌈',
+};
+
+const AVATAR_LEGACY_COLOR: Record<string, string> = {
+  blue: 'from-sky-400 to-cyan-500',
+  emerald: 'from-emerald-400 to-teal-500',
+  rose: 'from-rose-400 to-orange-500',
+  violet: 'from-violet-400 to-indigo-500',
+};
+
+function ChildAvatar({ avatar, name, size = 'md' }: { avatar: string | null | undefined; name: string; size?: 'sm' | 'md' }) {
+  const key = avatar ?? '';
+  const emoji = key in AVATAR_EMOJI ? AVATAR_EMOJI[key] : '';
+  const sizeClass = size === 'sm' ? 'h-6 w-6 text-sm' : 'h-9 w-9 text-xl';
+  if (emoji) {
+    return (
+      <span
+        className={`inline-flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 ${sizeClass}`}
+        role="img"
+        aria-label={key}
+      >
+        {emoji}
+      </span>
+    );
+  }
+  const colorClass = key in AVATAR_LEGACY_COLOR ? AVATAR_LEGACY_COLOR[key] : 'from-slate-400 to-slate-500';
+  const initials = name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || 'ST';
+  return (
+    <span
+      className={`inline-flex flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${colorClass} ${sizeClass} ${size === 'sm' ? 'text-[9px]' : 'text-xs'} font-black text-white`}
+    >
+      {initials}
+    </span>
   );
 }

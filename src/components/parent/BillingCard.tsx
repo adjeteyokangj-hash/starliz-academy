@@ -193,7 +193,7 @@ export default function BillingCard({
             disabled={openingPortal}
             className="bg-slate-700 hover:bg-slate-600"
           >
-            {openingPortal ? 'Opening...' : 'Manage Billing'}
+            {openingPortal ? 'Opening...' : 'Manage Subscription'}
           </Button>
         )}
 
@@ -225,20 +225,22 @@ export default function BillingCard({
                 key={plan.id}
                 type="button"
                 disabled={!plan.stripePriceId || loadingPlanId !== null}
-                onClick={() => void startCheckout(plan)}
+                onClick={() => { if (plan.stripePriceId) void startCheckout(plan); }}
                 className={`rounded-xl border p-3 text-left text-sm transition ${
-                  plan.id === currentPlanId
+                  !plan.stripePriceId
+                    ? 'cursor-not-allowed border-white/5 bg-white/[0.02] opacity-50'
+                    : plan.id === currentPlanId
                     ? 'border-cyan-400 bg-cyan-400/10'
                     : 'border-white/10 bg-white/5 hover:border-white/30'
                 }`}
               >
-                <p className="font-semibold text-white">{plan.name}</p>
-                <p className="mt-1 text-slate-300">
+                <p className={`font-semibold ${plan.stripePriceId ? 'text-white' : 'text-slate-500'}`}>{plan.name}</p>
+                <p className="mt-1 text-slate-400">
                   {currencyFormat(plan.price, plan.currency)} / {plan.interval}
                 </p>
                 {plan.badge ? <p className="mt-1 text-xs text-cyan-300">{plan.badge}</p> : null}
                 {!plan.stripePriceId ? (
-                  <p className="mt-1 text-xs text-yellow-300">Stripe price ID missing in admin pricing settings.</p>
+                  <p className="mt-1 text-xs text-slate-500 italic">Not yet available</p>
                 ) : null}
               </button>
             ))}
