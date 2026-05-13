@@ -177,6 +177,9 @@ export default function LessonsPage() {
     const subject = (subjectsForYearGroup(yearGroup).includes(lesson.subject as Subject) ? lesson.subject : "reading") as Subject;
     const template = (lesson.template as LessonTemplateValue) ?? "reading-comprehension";
     const pathway = lesson.pathway ? (JSON.parse(lesson.pathway) as LessonPathwayStep[]) : buildLessonPathway(template);
+    const status = LESSON_STATUS_OPTIONS.includes(lesson.status as (typeof LESSON_STATUS_OPTIONS)[number])
+      ? (lesson.status as (typeof LESSON_STATUS_OPTIONS)[number])
+      : "draft";
     setForm({
       title: lesson.title,
       subject,
@@ -189,7 +192,7 @@ export default function LessonsPage() {
       objectives: lesson.objectives ?? "",
       difficultyBand: (lesson.difficultyBand as LessonDifficultyBand) ?? "core",
       difficulty: lesson.difficulty,
-      status: lesson.status,
+      status,
       selectedContentIds: ids,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
