@@ -18,7 +18,10 @@ const APP_SHELL = [
 ];
 
 function isBypassedPath(pathname) {
-  return pathname.startsWith("/admin") || pathname.startsWith("/api") || pathname.startsWith("/_next/");
+  return pathname.startsWith("/admin")
+    || pathname.startsWith("/api")
+    || pathname.startsWith("/_next/")
+    || pathname.startsWith("/profiles");
 }
 
 self.addEventListener("install", (event) => {

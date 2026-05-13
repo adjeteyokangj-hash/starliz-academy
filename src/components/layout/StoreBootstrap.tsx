@@ -9,12 +9,17 @@ type Props = {
 
 export default function StoreBootstrap({ children }: Props) {
   const [ready, setReady] = useState(false);
+  const [showFallback, setShowFallback] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    const bootstrap = async () => {
-      await hydrateProfilesFromServer();
+    const timeoutId = window.setTimeout(() => {
+      if (mounted) {
+        setShowFallback(true);
+      }
+    }, 5000);
 
+    const bootstrap = async () => {
       const pathname = window.location.pathname;
       const isConsentPage = pathname.startsWith("/consent");
       const isPrivacyPage = pathname.startsWith("/privacy");
@@ -26,7 +31,14 @@ export default function StoreBootstrap({ children }: Props) {
         || pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname.startsWith("/forgot-password")
         || pathname.startsWith("/reset-password") || pathname.startsWith("/terms") || pathname.startsWith("/privacy");
 
-      if (!isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage) {
+      const needsProtectedBootstrap = !isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage;
+      const shouldHydrateProfiles = needsProtectedBootstrap && !isProfilesPage;
+
+      if (shouldHydrateProfiles) {
+        await hydrateProfilesFromServer();
+      }
+
+      if (needsProtectedBootstrap) {
         try {
           const response = await fetch("/api/consent", { credentials: "include" });
           if (response.ok) {
@@ -41,12 +53,13 @@ export default function StoreBootstrap({ children }: Props) {
         }
       }
 
-      if (!isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage && !isProfilesPage && !getProfile()) {
+      if (shouldHydrateProfiles && !getProfile()) {
         window.location.replace("/profiles");
         return;
       }
 
       if (mounted) {
+        window.clearTimeout(timeoutId);
         setReady(true);
       }
     };
@@ -54,6 +67,7 @@ export default function StoreBootstrap({ children }: Props) {
     void bootstrap();
     return () => {
       mounted = false;
+      window.clearTimeout(timeoutId);
     };
   }, []);
 
@@ -67,6 +81,15 @@ export default function StoreBootstrap({ children }: Props) {
           <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-white/10">
             <div className="h-full w-1/3 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-cyan-400"></div>
           </div>
+          {showFallback ? (
+            <button
+              type="button"
+              onClick={() => window.location.replace("/parent/dashboard")}
+              className="mt-5 inline-flex rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500"
+            >
+              Continue to parent dashboard
+            </button>
+          ) : null}
         </div>
       </main>
     );

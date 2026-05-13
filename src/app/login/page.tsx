@@ -37,13 +37,7 @@ export default function LoginPage() {
         return
       }
 
-      const consentResponse = await fetch("/api/consent", { credentials: "include" })
-      if (consentResponse.ok) {
-        const consent = await consentResponse.json() as { accepted: boolean }
-        router.replace(consent.accepted ? "/profiles" : "/consent")
-      } else {
-        router.replace("/profiles")
-      }
+      router.replace("/profiles")
     } catch {
       setError("Unable to login right now.")
     } finally {
