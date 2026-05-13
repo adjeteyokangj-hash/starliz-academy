@@ -54,7 +54,6 @@ function buildFallbackDraft(input: {
     ],
     recapPrompt: `Explain ${skillFocus} in your own words.`,
     parentSummary: `This lesson targets ${skillFocus} in ${input.yearGroup} ${input.subject}.`,
-    title,
     subject: input.subject,
     yearGroup: input.yearGroup,
     keyStage: keyStageForYearGroup(input.yearGroup),

@@ -263,7 +263,12 @@ export default function LessonsPage() {
           difficultyBand: form.difficultyBand,
         }),
       });
-      const payload = (await response.json()) as { ok?: boolean; draft?: Record<string, unknown>; error?: string };
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        source?: "openai" | "fallback";
+        draft?: Record<string, unknown>;
+        error?: string;
+      };
       if (!response.ok || !payload.ok || !payload.draft) {
         setMsg({ text: payload.error ?? "Could not build lesson.", ok: false });
         return;
