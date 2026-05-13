@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 
@@ -50,16 +50,15 @@ export default function ParentPinPage() {
     void loadStatus();
   }, [router, searchParams]);
 
-  function pushDigit(digit: string) {
-    if (pin.length >= 4) return;
-    setPin((prev) => `${prev}${digit}`);
-  }
+  const pushDigit = useCallback((digit: string) => {
+    setPin((prev) => (prev.length >= 4 ? prev : `${prev}${digit}`));
+  }, []);
 
-  function clearDigit() {
+  const clearDigit = useCallback(() => {
     setPin((prev) => prev.slice(0, -1));
-  }
+  }, []);
 
-  async function verifyPin() {
+  const verifyPin = useCallback(async () => {
     if (pin.length !== 4) return;
     if (isLocked) {
       setError("Too many attempts. Please wait a moment.");
@@ -107,7 +106,51 @@ export default function ParentPinPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [failedAttempts, isLocked, pin, router, searchParams]);
+
+  useEffect(() => {
+    if (!hasPin) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (loading) return;
+
+      const digitByCode: Record<string, string> = {
+        Numpad0: "0",
+        Numpad1: "1",
+        Numpad2: "2",
+        Numpad3: "3",
+        Numpad4: "4",
+        Numpad5: "5",
+        Numpad6: "6",
+        Numpad7: "7",
+        Numpad8: "8",
+        Numpad9: "9",
+      };
+
+      const digit = /^\d$/.test(event.key) ? event.key : digitByCode[event.code];
+      if (digit) {
+        event.preventDefault();
+        pushDigit(digit);
+        return;
+      }
+
+      if (event.key === "Backspace" || event.key === "Delete") {
+        event.preventDefault();
+        clearDigit();
+        return;
+      }
+
+      if (event.key === "Enter" || event.code === "NumpadEnter") {
+        event.preventDefault();
+        void verifyPin();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [clearDigit, hasPin, loading, pushDigit, verifyPin]);
 
   async function savePin() {
     if (!/^\d{4}$/.test(setPinDraft)) {
@@ -223,6 +266,7 @@ export default function ParentPinPage() {
               <Button variant="secondary" onClick={() => router.replace("/profiles")}>Cancel</Button>
               <Button onClick={() => void verifyPin()} disabled={loading || pin.length !== 4}>Unlock</Button>
             </div>
+            <p className="mt-2 text-xs text-slate-500">Tip: use keyboard or numpad digits, Backspace to delete, Enter to unlock.</p>
           </>
         )}
 
