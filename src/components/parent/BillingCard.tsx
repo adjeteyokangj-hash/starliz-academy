@@ -90,7 +90,9 @@ export default function BillingCard({
       
       window.location.href = data.url;
     } catch (error) {
-      console.error('Checkout error:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[parent.billing] checkout error:', error);
+      }
       setCheckoutError(error instanceof Error ? error.message : 'Failed to start checkout. Please try again.');
     } finally {
       setLoadingPlanId(null);
@@ -119,7 +121,9 @@ export default function BillingCard({
       
       window.location.href = data.url;
     } catch (error) {
-      console.error('Portal error:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[parent.billing] portal error:', error);
+      }
       setPortalError(error instanceof Error ? error.message : 'Failed to manage subscription. Please try again.');
     } finally {
       setOpeningPortal(false);

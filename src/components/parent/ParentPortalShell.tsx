@@ -631,15 +631,18 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       setShowChildForm(false);
                       setEditingChildId(null);
                       setChildFormMessage(wasEditing ? "Child profile updated." : "Child profile added successfully.");
-                      Promise.all([
-                        fetch("/api/children", { credentials: "include" }).then(r => r.json()),
-                        fetch("/api/account", { credentials: "include" }).then(r => r.json()),
+                      void Promise.all([
+                        fetch("/api/children", { credentials: "include" }).then(r => r.ok ? r.json() as Promise<ChildListResponse> : null),
+                        fetch("/api/account", { credentials: "include" }).then(r => r.ok ? r.json() as Promise<AccountPayload> : null),
                       ]).then(([childrenData, accountData]) => {
-                        const childrenPayload = childrenData as ChildListResponse;
-                        setChildren(childrenPayload);
-                        setSelectedChildId(childrenPayload.activeChildId ?? childrenPayload.children[0]?.id ?? null);
-                        setAccount(accountData as AccountPayload);
-                      });
+                        if (childrenData) {
+                          setChildren(childrenData);
+                          setSelectedChildId(childrenData.activeChildId ?? childrenData.children[0]?.id ?? null);
+                        }
+                        if (accountData) {
+                          setAccount(accountData);
+                        }
+                      }).catch(() => undefined);
                     }}
                     onCancel={() => {
                       setShowChildForm(false);
@@ -720,37 +723,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                 />
               ) : (
                 <EmptyState text="Loading billing information..." />
-              )}
-              {(subscription?.plans ?? []).length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-bold text-white mb-3">Available plans</h3>
-                  <div className="space-y-2">
-                    {(subscription?.plans ?? []).map((plan) => (
-                      <div key={plan.key} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-white">{plan.name}</p>
-                            <p className="text-xs text-slate-400 mt-1">{plan.description}</p>
-                          </div>
-                          <p className="font-semibold text-cyan-400 whitespace-nowrap">
-                            {plan.monthlyPricePence !== null
-                              ? `${currency(plan.monthlyPricePence)}/mo`
-                              : plan.yearlyPricePence !== null
-                                ? `${currency(plan.yearlyPricePence)}/yr`
-                                : 'Custom'}
-                          </p>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {(plan.features ?? []).map((feature, idx) => (
-                            <span key={idx} className="inline-block text-xs bg-white/10 text-slate-300 rounded px-2 py-1">
-                              {feature}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               )}
             </Panel>
           ) : null}
@@ -1004,7 +976,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           {activeSection === "notifications" ? (
             <Panel title="Notifications" description="Control weekly reports and alert preferences.">
               <NotificationPreferences
-                key={JSON.stringify(notificationsDraft)}
                 preferences={notificationsDraft}
                 onUpdate={(prefs) => {
                   setNotificationsDraft(prefs);
