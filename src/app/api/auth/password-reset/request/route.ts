@@ -38,6 +38,13 @@ export async function POST(request: Request) {
   let devResetUrl: string | undefined;
 
   if (user) {
+    const hasEmailFrom = !!process.env.EMAIL_FROM?.trim();
+    const hasResendApiKey = !!process.env.RESEND_API_KEY?.trim() && !process.env.RESEND_API_KEY.trim().startsWith("__SET_");
+    console.log("[password-reset] Resend config presence", {
+      hasEmailFrom,
+      hasResendApiKey,
+    });
+
     const { token, tokenHash } = createPasswordResetToken();
     const expiresAt = getPasswordResetExpiry();
     const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
@@ -52,23 +59,35 @@ export async function POST(request: Request) {
       },
     });
 
-    const sent = await sendEmail({
-      to: user.email,
-      subject: emailContent.subject,
-      html: emailContent.html,
-      text: emailContent.text,
-    });
+    try {
+      const sent = await sendEmail({
+        to: user.email,
+        subject: emailContent.subject,
+        html: emailContent.html,
+        text: emailContent.text,
+      });
 
-    if (!sent.ok) {
-      console.error("[password-reset] Email not sent", {
-        reason: sent.reason,
+      if (!sent.ok) {
+        console.error("[password-reset] Resend send failed", {
+          reason: sent.reason,
+          statusCode: sent.statusCode ?? null,
+          errorName: sent.errorName ?? null,
+          errorMessage: sent.errorMessage ?? null,
+          errorResponse: sent.errorResponse ?? null,
+          email: user.email,
+          origin,
+        });
+        if (process.env.NODE_ENV !== "production") {
+          devResetUrl = resetUrl;
+          console.warn(`[password-reset] Dev reset URL: ${resetUrl}`);
+        }
+      }
+    } catch (error) {
+      console.error("[password-reset] Resend send threw", {
+        error: error instanceof Error ? error.message : String(error),
         email: user.email,
         origin,
       });
-      if (process.env.NODE_ENV !== "production") {
-        devResetUrl = resetUrl;
-        console.warn(`[password-reset] Dev reset URL: ${resetUrl}`);
-      }
     }
   }
 

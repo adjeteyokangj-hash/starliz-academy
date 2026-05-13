@@ -9,6 +9,17 @@ type EmailPayload = {
   text?: string;
 };
 
+type SendEmailResult =
+  | { ok: true; id: string | null }
+  | {
+    ok: false;
+    reason: string;
+    statusCode?: number | null;
+    errorName?: string | null;
+    errorMessage?: string | null;
+    errorResponse?: unknown;
+  };
+
 function isConfiguredSecret(value: string | null | undefined): value is string {
   if (!value) return false;
   const trimmed = value.trim();
@@ -51,7 +62,7 @@ async function getEmailConfig(): Promise<{ apiKey: string | null; from: string }
   return { apiKey, from };
 }
 
-export async function sendEmail(payload: EmailPayload) {
+export async function sendEmail(payload: EmailPayload): Promise<SendEmailResult> {
   const { apiKey, from } = await getEmailConfig();
   if (!apiKey) {
     return { ok: false as const, reason: "EMAIL_PROVIDER_NOT_CONFIGURED" };
@@ -69,14 +80,39 @@ export async function sendEmail(payload: EmailPayload) {
     });
 
     if (result.error) {
-      return { ok: false as const, reason: result.error.message };
+      const err = result.error as {
+        name?: string;
+        message?: string;
+        statusCode?: number;
+        status?: number;
+        response?: unknown;
+      };
+      return {
+        ok: false,
+        reason: err.message ?? "RESEND_SEND_FAILED",
+        statusCode: err.statusCode ?? err.status ?? null,
+        errorName: err.name ?? null,
+        errorMessage: err.message ?? null,
+        errorResponse: err.response ?? null,
+      };
     }
 
     return { ok: true as const, id: result.data?.id ?? null };
   } catch (error) {
+    const err = error as {
+      name?: string;
+      message?: string;
+      statusCode?: number;
+      status?: number;
+      response?: unknown;
+    };
     return {
-      ok: false as const,
-      reason: error instanceof Error ? error.message : String(error),
+      ok: false,
+      reason: err?.message ?? String(error),
+      statusCode: err?.statusCode ?? err?.status ?? null,
+      errorName: err?.name ?? null,
+      errorMessage: err?.message ?? null,
+      errorResponse: err?.response ?? null,
     };
   }
 }
