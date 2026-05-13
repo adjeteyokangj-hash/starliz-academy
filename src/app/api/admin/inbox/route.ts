@@ -28,6 +28,8 @@ export async function GET(req: NextRequest) {
     // Temporary diagnostics should never block API responses.
     tokenRow = null;
   }
+  console.log("Inbox API read adminUserId", session.userId);
+  console.log("OutlookToken found", !!tokenRow, tokenRow?.email);
 
   // Use the safe shared helper — has try/catch so DB saturation returns null
   const conn = await getInboxConnection(session.userId);

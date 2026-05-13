@@ -195,6 +195,35 @@ export function generateOAuthState() {
   return randomBytes(24).toString("hex");
 }
 
+type InboxOAuthStatePayload = {
+  adminUserId: string;
+  nonce: string;
+  expiresAt: number;
+};
+
+export function createInboxOAuthState(adminUserId: string) {
+  return encryptSecret(JSON.stringify({
+    adminUserId,
+    nonce: generateOAuthState(),
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  } satisfies InboxOAuthStatePayload));
+}
+
+export function readInboxOAuthState(state: string): InboxOAuthStatePayload | null {
+  try {
+    const parsed = JSON.parse(decryptSecret(state)) as Partial<InboxOAuthStatePayload>;
+    if (!parsed.adminUserId || !parsed.nonce || !parsed.expiresAt) return null;
+    if (parsed.expiresAt < Date.now()) return null;
+    return {
+      adminUserId: parsed.adminUserId,
+      nonce: parsed.nonce,
+      expiresAt: parsed.expiresAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function buildMicrosoftAuthorizeUrl(input: {
   origin: string;
   state: string;
