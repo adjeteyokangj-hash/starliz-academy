@@ -20,8 +20,12 @@ export default function StoreBootstrap({ children }: Props) {
       const isPrivacyPage = pathname.startsWith("/privacy");
       const isAuthPage = pathname.startsWith("/auth/");
       const isAdminPage = pathname.startsWith("/admin");
+      const isPublicPage = pathname === "/" || pathname.startsWith("/about") || pathname.startsWith("/pricing")
+        || pathname.startsWith("/contact") || pathname.startsWith("/features") || pathname.startsWith("/roadmap")
+        || pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname.startsWith("/forgot-password")
+        || pathname.startsWith("/terms") || pathname.startsWith("/privacy");
 
-      if (!isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage) {
+      if (!isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage) {
         try {
           const response = await fetch("/api/consent", { credentials: "include" });
           if (response.ok) {
@@ -36,10 +40,6 @@ export default function StoreBootstrap({ children }: Props) {
         }
       }
 
-      const isPublicPage = pathname === "/" || pathname.startsWith("/about") || pathname.startsWith("/pricing")
-        || pathname.startsWith("/contact") || pathname.startsWith("/features") || pathname.startsWith("/roadmap")
-        || pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname.startsWith("/forgot-password")
-        || pathname.startsWith("/terms") || pathname.startsWith("/privacy");
       if (!isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage && !getProfile()) {
         window.location.replace("/profiles");
         return;
