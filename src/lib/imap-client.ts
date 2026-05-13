@@ -271,6 +271,11 @@ export async function exchangeAuthCodeAndStore(input: {
   const email = me.mail || me.userPrincipalName;
   if (!email) throw new Error("Microsoft account did not return an email address.");
 
+  console.log("[exchangeAuthCodeAndStore] calling saveInboxConnection", {
+    adminUserId: input.adminUserId,
+    microsoftUserId: me.id,
+    email,
+  });
   await saveInboxConnection({
     adminUserId: input.adminUserId,
     microsoftUserId: me.id,
@@ -281,6 +286,7 @@ export async function exchangeAuthCodeAndStore(input: {
     scope: token.scope ?? GRAPH_SCOPES,
     expiresAt: new Date(Date.now() + token.expires_in * 1000),
   });
+  console.log("[exchangeAuthCodeAndStore] saveInboxConnection succeeded");
 
   return { email, displayName: me.displayName };
 }

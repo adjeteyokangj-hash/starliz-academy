@@ -73,8 +73,18 @@ export async function saveInboxConnection(data: {
   scope: string;
   expiresAt: Date;
 }): Promise<void> {
+  console.log("[inbox-connection] saveInboxConnection: before upsert", {
+    adminUserId: data.adminUserId,
+    microsoftUserId: data.microsoftUserId,
+    email: data.email,
+    displayName: data.displayName,
+    accessTokenLen: data.accessToken?.length ?? 0,
+    refreshTokenLen: data.refreshToken?.length ?? 0,
+    scope: data.scope,
+    expiresAt: data.expiresAt,
+  });
   try {
-    await prisma.outlookToken.upsert({
+    const result = await prisma.outlookToken.upsert({
       where: { adminUserId: data.adminUserId },
       create: {
         adminUserId: data.adminUserId,
@@ -97,11 +107,19 @@ export async function saveInboxConnection(data: {
       },
     });
     console.log("[inbox-connection] saveInboxConnection: upsert OK", {
+      id: result.id,
+      adminUserId: result.adminUserId,
+      email: result.email,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt,
+    });
+  } catch (err) {
+    console.error("[inbox-connection] saveInboxConnection upsert failed", {
+      error: err instanceof Error ? err.message : String(err),
+      errorCode: (err as any)?.code,
       adminUserId: data.adminUserId,
       email: data.email,
     });
-  } catch (err) {
-    console.error("[inbox-connection] saveInboxConnection DB error:", err);
     throw err;
   }
 }

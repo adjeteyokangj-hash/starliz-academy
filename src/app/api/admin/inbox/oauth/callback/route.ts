@@ -40,16 +40,24 @@ export async function GET(req: NextRequest) {
     }
 
     const adminUserId = decodedState.adminUserId;
-    console.log("Inbox OAuth save adminUserId", adminUserId);
+    console.log("[inbox-oauth-callback] starting exchange for adminUserId", adminUserId);
     const fallbackOrigin = requestUrl.origin;
     const origin = getGraphOrigin(fallbackOrigin);
+    console.log("[inbox-oauth-callback] calling exchangeAuthCodeAndStore", { adminUserId, code: code?.substring(0, 10), origin });
     await exchangeAuthCodeAndStore({ adminUserId, code, origin });
+    console.log("[inbox-oauth-callback] exchangeAuthCodeAndStore succeeded");
 
+    console.log("[inbox-oauth-callback] verifying persistence");
     const persisted = await getInboxConnection(adminUserId);
+    console.log("[inbox-oauth-callback] persisted connection", {
+      connected: persisted?.connected,
+      email: persisted?.email,
+    });
     if (!persisted?.connected) {
       throw new Error("Inbox connection not persisted after OAuth callback.");
     }
 
+    console.log("[inbox-oauth-callback] redirecting to /admin/inbox?connected=1");
     const res = NextResponse.redirect(new URL("/admin/inbox?connected=1", requestUrl));
     res.cookies.set("inbox_oauth_state", "", {
       httpOnly: true,
@@ -60,7 +68,11 @@ export async function GET(req: NextRequest) {
     });
     return res;
   } catch (error) {
-    void error;
+    console.error("[inbox-oauth-callback] FAILED", {
+      error: error instanceof Error ? error.message : String(error),
+      adminUserId: decodedState?.adminUserId,
+      code: code?.substring(0, 10),
+    });
     return NextResponse.redirect(new URL("/admin/inbox?error=oauth_failed", requestUrl));
   }
 }
