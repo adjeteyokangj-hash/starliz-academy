@@ -7,6 +7,15 @@
  */
 import { prisma } from "@/lib/db";
 
+export class InboxTokenSaveError extends Error {
+  readonly code = "TOKEN_SAVE_FAILED";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "InboxTokenSaveError";
+  }
+}
+
 export type InboxConnectionRecord = {
   provider: "microsoft";
   adminUserId: string;
@@ -117,10 +126,12 @@ export async function saveInboxConnection(data: {
     console.error("[inbox-connection] saveInboxConnection upsert failed", {
       error: err instanceof Error ? err.message : String(err),
       errorCode: (err as any)?.code,
+      errorMeta: (err as any)?.meta,
+      stack: err instanceof Error ? err.stack : undefined,
       adminUserId: data.adminUserId,
       email: data.email,
     });
-    throw err;
+    throw new InboxTokenSaveError("Failed to persist OutlookToken in database.");
   }
 }
 

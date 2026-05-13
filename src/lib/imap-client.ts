@@ -26,6 +26,15 @@ export type InboxConnection = {
   displayName?: string | null;
 };
 
+function assertInboxEncryptionEnv() {
+  const raw = process.env.API_KEY_ENCRYPTION_SECRET || process.env.AUTH_SECRET;
+  if (!raw) {
+    throw new Error(
+      "Missing encryption env for Outlook token storage. Set API_KEY_ENCRYPTION_SECRET or AUTH_SECRET in Vercel."
+    );
+  }
+}
+
 function getRequiredEnv(name: "MICROSOFT_CLIENT_ID" | "MICROSOFT_CLIENT_SECRET" | "MICROSOFT_TENANT_ID") {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
@@ -234,6 +243,8 @@ export async function exchangeAuthCodeAndStore(input: {
   code: string;
   origin: string;
 }) {
+  assertInboxEncryptionEnv();
+
   const body = new URLSearchParams({
     client_id: getRequiredEnv("MICROSOFT_CLIENT_ID"),
     client_secret: getRequiredEnv("MICROSOFT_CLIENT_SECRET"),

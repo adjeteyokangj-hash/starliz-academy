@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { exchangeAuthCodeAndStore, getGraphOrigin, readInboxOAuthState } from "@/lib/imap-client";
-import { getInboxConnection } from "@/lib/inbox-connection";
+import { getInboxConnection, InboxTokenSaveError } from "@/lib/inbox-connection";
 
 export async function GET(req: NextRequest) {
   const requestUrl = new URL(req.url);
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
       email: persisted?.email,
     });
     if (!persisted?.connected) {
-      throw new Error("Inbox connection not persisted after OAuth callback.");
+      throw new InboxTokenSaveError("Inbox connection not persisted after OAuth callback.");
     }
 
     console.log("[inbox-oauth-callback] redirecting to /admin/inbox?connected=1");
@@ -73,6 +73,17 @@ export async function GET(req: NextRequest) {
       adminUserId: decodedState?.adminUserId,
       code: code?.substring(0, 10),
     });
-    return NextResponse.redirect(new URL("/admin/inbox?error=oauth_failed", requestUrl));
+    const isTokenSaveFailure =
+      error instanceof InboxTokenSaveError ||
+      (error instanceof Error && /persist|OutlookToken|token storage/i.test(error.message));
+
+    return NextResponse.redirect(
+      new URL(
+        isTokenSaveFailure
+          ? "/admin/inbox?error=token_save_failed"
+          : "/admin/inbox?error=oauth_failed",
+        requestUrl
+      )
+    );
   }
 }
