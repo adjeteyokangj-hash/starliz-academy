@@ -360,13 +360,19 @@ export default function AdminInboxPage() {
     setFullMessage(null);
     try {
       const res = await fetch(`/api/admin/inbox?folder=${f}`, { credentials: "include" });
-      if (!res.ok) { setConnected(false); return; }
+      if (!res.ok) {
+        console.log("Inbox page API response", { ok: false, status: res.status });
+        setNotice("Could not refresh inbox right now. Please retry.");
+        return;
+      }
       const data = await res.json();
+      console.log("Inbox page API response", data);
       setConnected(data.connected ?? false);
       if (data.account?.email) setAccount(data.account.email);
       setMessages(data.messages ?? []);
-    } catch {
-      setConnected(false);
+    } catch (error) {
+      console.log("Inbox page API response", { ok: false, error });
+      setNotice("Could not refresh inbox right now. Please retry.");
     } finally {
       setLoading(false);
     }
@@ -405,7 +411,7 @@ export default function AdminInboxPage() {
     const res = await fetch(`/api/admin/inbox/${encodeURIComponent(msg.id)}`);
     
     if (!res.ok) {
-      setConnected(false);
+      setNotice("Could not open message right now. Please retry.");
       return;
     }
     const full = await res.json();
