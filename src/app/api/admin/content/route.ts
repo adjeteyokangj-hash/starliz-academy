@@ -4,9 +4,23 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
+import { type Subject } from "@/lib/curriculum";
+
+// Maps new 17-subject system to legacy 3-type system for backward compatibility
+function mapSubjectToLegacy(subject: string): "spelling" | "math" | "reading" {
+  const s = String(subject).toLowerCase();
+  if (s === "phonics" || s === "spelling") return "spelling";
+  if (s === "times-tables" || s === "maths") return "math";
+  if (s === "reading" || s === "vocabulary" || s === "english-language" ||
+      s === "english-literature" || s === "gcse-english") return "reading";
+  if (s === "writing" || s === "grammar" || s === "punctuation") return "spelling";
+  if (s === "science" || s === "gcse-science") return "math";
+  if (s === "gcse-maths" || s === "sats-practice" || s === "11-plus-practice") return "math";
+  return "spelling";
+}
 
 const saveContentSchema = z.object({
-  type: z.enum(["spelling", "math", "reading"]),
+  type: z.string(), // Accept both legacy types and new Subject types
   ageGroup: z.string().optional(),
   keyStage: z.string().optional(),
   yearGroup: z.string().optional(),
@@ -80,7 +94,11 @@ export async function POST(req: Request) {
 
   try {
     const body = saveContentSchema.parse(await req.json());
-    const maxDifficulty = body.type === "reading" ? 10 : 5;
+    
+    // Map new Subject type to legacy type for validation and storage
+    const legacyType = mapSubjectToLegacy(body.type);
+    const maxDifficulty = legacyType === "reading" ? 10 : 5;
+    
     if (body.difficulty > maxDifficulty) {
       return NextResponse.json(
         { error: `Difficulty must be between 1 and ${maxDifficulty} for ${body.type}.` },
@@ -90,7 +108,7 @@ export async function POST(req: Request) {
     const status = body.status === "review" ? "reviewed" : body.status;
     const contentItems = extractGeneratedItems(body.items);
     const quality = validateAiContentQuality({
-      type: body.type,
+      type: legacyType,
       keyStage: body.keyStage,
       yearGroup: body.yearGroup,
       skillFocus: body.skillFocus,
@@ -102,7 +120,7 @@ export async function POST(req: Request) {
 
     const item = await prisma.aIContentCache.create({
       data: {
-        contentType: body.type,
+        contentType: legacyType,
         level: body.difficulty,
         topic: body.topic || body.skillFocus || body.ageGroup || "",
         contentJson: JSON.stringify(contentItems),
@@ -120,8 +138,9 @@ export async function POST(req: Request) {
         metadataJson: JSON.stringify({
           ageGroup: body.ageGroup,
           source: "ai-generator",
-          version: 1,
+          version: 2,
           subject: body.type,
+          legacyType: legacyType,
           yearGroup: body.yearGroup,
           keyStage: body.keyStage,
           skillFocus: body.skillFocus,
@@ -140,11 +159,12 @@ export async function POST(req: Request) {
       action: "ai_content.saved",
       entityType: "AIContentCache",
       entityId: item.id,
-      metadata: { type: body.type, status, ageGroup: body.ageGroup, keyStage: body.keyStage, yearGroup: body.yearGroup, skillFocus: body.skillFocus },
+      metadata: { subject: body.type, legacyType, status, ageGroup: body.ageGroup, keyStage: body.keyStage, yearGroup: body.yearGroup, skillFocus: body.skillFocus },
     });
 
     return NextResponse.json({ item }, { status: 201 });
-  } catch {
+  } catch (error) {
+    console.error("Content save error:", error);
     return NextResponse.json({ error: "Invalid content payload." }, { status: 400 });
   }
 }
