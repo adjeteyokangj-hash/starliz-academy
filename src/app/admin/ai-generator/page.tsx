@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import { safeJsonParse } from "@/lib/safe-json";
 import {
   KEY_STAGES,
   YEAR_GROUPS,
@@ -150,6 +151,70 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
   }
 }
 
+type SafeApiResponse<T = Record<string, unknown>> = {
+  ok: boolean;
+  payload: T | null;
+  message: string | null;
+  diagnostics: {
+    status: number;
+    contentType: string;
+    parseStage: "json" | "text-json" | "invalid-content-type" | "invalid-shape" | "empty";
+    rawResponse: string;
+  };
+};
+
+async function parseApiResponse<T = Record<string, unknown>>(response: Response): Promise<SafeApiResponse<T>> {
+  const contentType = response.headers.get("content-type") ?? "";
+  const text = await response.text();
+  const trimmed = text.trim();
+
+  if (!trimmed) {
+    return {
+      ok: false,
+      payload: null,
+      message: "The server returned an empty response.",
+      diagnostics: { status: response.status, contentType, parseStage: "empty", rawResponse: text },
+    };
+  }
+
+  if (contentType.includes("application/json")) {
+    const parsed = safeJsonParse<T>(trimmed);
+    if (parsed.success) {
+      return {
+        ok: true,
+        payload: parsed.data,
+        message: null,
+        diagnostics: { status: response.status, contentType, parseStage: "json", rawResponse: text },
+      };
+    }
+    return {
+      ok: false,
+      payload: null,
+      message: "Generation failed due to malformed AI output.",
+      diagnostics: { status: response.status, contentType, parseStage: "invalid-shape", rawResponse: text },
+    };
+  }
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const parsed = safeJsonParse<T>(trimmed);
+    if (parsed.success) {
+      return {
+        ok: true,
+        payload: parsed.data,
+        message: null,
+        diagnostics: { status: response.status, contentType, parseStage: "text-json", rawResponse: text },
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    payload: null,
+    message: "The server returned an unexpected response.",
+    diagnostics: { status: response.status, contentType, parseStage: "invalid-content-type", rawResponse: text },
+  };
+}
+
 export default function AiGeneratorPage() {
   const searchParams = useSearchParams();
   const prefillSubject = searchParams.get("subject");
@@ -206,6 +271,15 @@ export default function AiGeneratorPage() {
   const [weakAreaYearGroupFilter, setWeakAreaYearGroupFilter] = useState("");
   const [savedContentId, setSavedContentId] = useState<string | null>(null);
   const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId);
+  const [generationPhase, setGenerationPhase] = useState<"idle" | "generating" | "repairing-response" | "validating-content" | "retrying-parse">("idle");
+  const [generationDiagnostics, setGenerationDiagnostics] = useState<{
+    rawResponse: string;
+    parseStage: string;
+    statusCode: number;
+    contentType: string;
+    model?: string;
+    provider?: string;
+  } | null>(null);
 
   const topicSuggestions = useMemo(() => topicSuggestionsForSelection({
     yearGroup,
@@ -251,7 +325,7 @@ export default function AiGeneratorPage() {
     return error;
   }
 
-  async function generatePreview() {
+  async function generatePreview(retryCount = 0) {
     if (!subject || !keyStage || !yearGroup || !skillFocus.trim()) {
       setError("Subject, key stage, year group and skill focus are required.");
       return;
@@ -279,32 +353,76 @@ export default function AiGeneratorPage() {
       return;
     }
     setLoading(true);
+    setGenerationPhase("generating");
     setError(null);
     setMessage(null);
     setSavedContentId(null);
     setPreview(null);
     setGenerationMeta(null);
+    setGenerationDiagnostics(null);
     try {
       const response = await fetch("/api/admin/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subject, keyStage, yearGroup, skillFocus, ageGroup, difficulty, numberOfItems: items, topic: selectedTopicTheme }),
       });
-      const payload = await response.json();
-      if (!response.ok) {
-        const errorMsg = payload.error ?? `Generation failed with status ${response.status}`;
-        const details = payload.details 
-          ? `\n\nDetails: ${JSON.stringify(payload.details, null, 2)}`
-          : "";
+      setGenerationPhase("repairing-response");
+      const parsed = await parseApiResponse<Record<string, unknown>>(response);
+      setGenerationDiagnostics({
+        rawResponse: parsed.diagnostics.rawResponse,
+        parseStage: parsed.diagnostics.parseStage,
+        statusCode: parsed.diagnostics.status,
+        contentType: parsed.diagnostics.contentType,
+        model: typeof parsed.payload?.model === "string" ? parsed.payload.model : undefined,
+        provider: "openai",
+      });
+
+      if (!parsed.ok || !parsed.payload) {
+        if (retryCount === 0) {
+          setGenerationPhase("retrying-parse");
+          await generatePreview(1);
+          return;
+        }
+        setError(parsed.message ?? "The AI returned an invalid response. Please try again.");
+        return;
+      }
+
+        const payload = parsed.payload as {
+        success?: boolean;
+        error?: string;
+        details?: unknown;
+          content?: Partial<GeneratedPreview> & { items?: unknown[]; title?: string };
+        model?: string;
+        prompt?: string;
+        estimatedCostPence?: number;
+        estimatedTokens?: number;
+        meta?: ValidationMeta;
+      };
+
+      setGenerationPhase("validating-content");
+      if (!response.ok || payload.success === false) {
+        const errorMsg = payload.error ?? "The AI returned an invalid response. Please try again.";
+        const details = payload.details ? `\n\nDetails: ${JSON.stringify(payload.details, null, 2)}` : "";
         setError(errorMsg + details);
       } else {
+        const content = payload.content;
         const incomingItems = Array.isArray(payload.content?.items)
           ? (payload.content.items as GeneratedPreviewItem[])
           : [];
         setPreview({
-          ...payload.content,
+          ...(content ?? {}),
+          subject: content?.subject ?? subject,
+          keyStage: content?.keyStage ?? keyStage,
+          yearGroup: content?.yearGroup ?? yearGroup,
+          skillFocus: content?.skillFocus ?? skillFocus,
+          difficulty: content?.difficulty ?? difficulty,
+          status: "draft",
+          safetyStatus: content?.safetyStatus ?? "passed",
+          qualityScore: content?.qualityScore ?? 80,
+          voiceScript: content?.voiceScript ?? "",
+          imagePrompt: content?.imagePrompt ?? "",
           topic: selectedTopicTheme,
-          title: payload.content?.title ?? `${formatSubjectLabel(subject)} - ${selectedTopicTheme}`,
+          title: content?.title ?? `${formatSubjectLabel(subject)} - ${selectedTopicTheme}`,
           items: applyDefaultItemStatuses(incomingItems, "approved"),
         });
         setGenerationMeta({
@@ -320,6 +438,7 @@ export default function AiGeneratorPage() {
       setError(`Network or server error: ${errorMsg}`);
     } finally {
       setLoading(false);
+      setGenerationPhase("idle");
     }
   }
 
@@ -431,8 +550,13 @@ export default function AiGeneratorPage() {
           topic: `${selectedTopicTheme || skillFocus} replacement item`,
         }),
       });
-      const payload = await response.json();
-      if (!response.ok) {
+      const parsed = await parseApiResponse<Record<string, unknown>>(response);
+      if (!parsed.ok || !parsed.payload) {
+        setError(parsed.message ?? "Regeneration failed due to malformed AI output.");
+        return;
+      }
+      const payload = parsed.payload as { success?: boolean; error?: string; content?: { items?: unknown[] }; meta?: { valid?: boolean } };
+      if (!response.ok || payload.success === false) {
         setError(payload.error ?? "Regeneration failed.");
         return;
       }
@@ -767,7 +891,7 @@ export default function AiGeneratorPage() {
             ) : null}
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <button onClick={generatePreview} disabled={loading || !canGenerate} className="rounded-xl bg-indigo-500 px-4 py-3 font-black text-white hover:bg-indigo-400 disabled:opacity-50">
+            <button onClick={() => void generatePreview()} disabled={loading || !canGenerate} className="rounded-xl bg-indigo-500 px-4 py-3 font-black text-white hover:bg-indigo-400 disabled:opacity-50">
               {loading ? "Generating with AI..." : "Generate Preview"}
             </button>
             <button onClick={saveGeneratedContent} disabled={saving || saveBlocked || !approvedCount} className="rounded-xl bg-emerald-500 px-4 py-3 font-black text-white hover:bg-emerald-400 disabled:opacity-50">
@@ -775,6 +899,14 @@ export default function AiGeneratorPage() {
             </button>
           </div>
           {error ? <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
+          {loading ? (
+            <p className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm text-indigo-100">
+              {generationPhase === "retrying-parse" ? "Retrying parse..."
+                : generationPhase === "repairing-response" ? "Repairing response..."
+                  : generationPhase === "validating-content" ? "Validating content..."
+                    : "Generating content..."}
+            </p>
+          ) : null}
           {(generatedItemsList.length > 0 || generationMeta || error) ? (
             <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-xs text-slate-400">
               <p className="font-bold text-slate-300 mb-2">Diagnostic Info:</p>
@@ -795,6 +927,18 @@ export default function AiGeneratorPage() {
                 ) : null}
               </ul>
             </div>
+          ) : null}
+          {showDeveloperDetails && generationDiagnostics ? (
+            <details className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-300">
+              <summary className="cursor-pointer font-bold uppercase tracking-[0.16em] text-slate-200">Developer Diagnostics</summary>
+              <ul className="mt-2 space-y-1">
+                <li>Parse stage failed: {generationDiagnostics.parseStage}</li>
+                <li>Backend status code: {generationDiagnostics.statusCode}</li>
+                <li>Content-Type: {generationDiagnostics.contentType || "(none)"}</li>
+                <li>Provider/model: {generationDiagnostics.provider || "openai"}/{generationDiagnostics.model || generationMeta?.model || "unknown"}</li>
+              </ul>
+              <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-slate-900 p-2 text-xs">{generationDiagnostics.rawResponse}</pre>
+            </details>
           ) : null}
           {message ? (
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">

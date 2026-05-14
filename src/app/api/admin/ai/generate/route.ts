@@ -4,6 +4,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import { SKILL_MAP, serializeSkills } from "@/lib/skills";
+import { parseJsonWithRepair } from "@/lib/safe-json";
 import {
   GENERATION_CONTENT_TYPE_BY_SUBJECT,
   keyStageForYearGroup,
@@ -311,16 +312,32 @@ async function requestOpenAiJson(apiKey: string, systemPrompt: string, userPromp
     }),
   });
 
+  const rawProviderBody = await openAIResponse.text();
+  const providerPayload = parseJsonWithRepair<Record<string, unknown>>(rawProviderBody);
   if (!openAIResponse.ok) {
-    const err = await openAIResponse.text();
-    console.error("OpenAI error:", err);
-    throw new Error("OpenAI request failed");
+    console.error("OpenAI error:", rawProviderBody);
+    throw new Error(`OpenAI request failed with status ${openAIResponse.status}`);
+  }
+  if (!providerPayload.success) {
+    throw new Error("OpenAI returned a non-JSON payload.");
   }
 
-  const data = await openAIResponse.json();
-  const rawContent = data.choices?.[0]?.message?.content ?? "";
-  const cleaned = rawContent.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-  return { rawContent, parsed: JSON.parse(cleaned) as unknown };
+  const choices = providerPayload.data.choices as Array<{ message?: { content?: string } }> | undefined;
+  const rawContent = choices?.[0]?.message?.content ?? "";
+  if (!String(rawContent).trim()) {
+    throw new Error("OpenAI returned an empty content payload.");
+  }
+
+  const repaired = parseJsonWithRepair(rawContent);
+  if (!repaired.success) {
+    throw new Error(`Generation failed due to malformed AI output. Stages: ${repaired.diagnostics.stagesTried.join(" -> ")}`);
+  }
+
+  return {
+    rawContent,
+    parsed: repaired.data,
+    repairDiagnostics: repaired.diagnostics,
+  };
 }
 
 function estimateCost(count: number) {
@@ -656,7 +673,7 @@ export async function POST(req: Request) {
   if (!session) return response;
 
   if (!checkGenerationRateLimit(session.userId)) {
-    return NextResponse.json({ error: "AI generation limit reached. Please wait a minute before trying again." }, { status: 429 });
+    return NextResponse.json({ success: false, error: "AI generation limit reached. Please wait a minute before trying again." }, { status: 429 });
   }
 
   const body = await req.json();
@@ -699,6 +716,7 @@ export async function POST(req: Request) {
       skillFocus: resolvedSkillFocus,
     });
     return NextResponse.json({
+      success: false,
       error: pathValidation.reason,
       details: {
         yearGroup: safeYearGroup,
@@ -711,7 +729,7 @@ export async function POST(req: Request) {
 
   const apiKey = await getOpenAiApiKey();
   if (!apiKey) {
-    return NextResponse.json({ error: "OpenAI API key not configured. Save it in Admin Settings > API Keys." }, { status: 503 });
+    return NextResponse.json({ success: false, error: "OpenAI API key not configured. Save it in Admin Settings > API Keys." }, { status: 503 });
   }
 
   const requestKey = cacheKey({ generationType, promptType, level, topic, ageGroup, count, keyStage: safeKeyStage, yearGroup: safeYearGroup, skillFocus });
@@ -719,6 +737,7 @@ export async function POST(req: Request) {
   if (cached) {
     const cachedValidation = (cached.meta.validation ?? {}) as Record<string, unknown>;
     return NextResponse.json({
+      success: true,
       type: promptType,
       generationType,
       level,
@@ -775,7 +794,10 @@ export async function POST(req: Request) {
         throw new Error(quality.error ?? `Invalid ${generationType} content.`);
       }
       parsed = quality.cleanedItems ?? parsed;
-      validation = (quality.meta as Record<string, unknown>) ?? validation;
+      validation = {
+        ...(quality.meta as Record<string, unknown>),
+        repairDiagnostics: response.repairDiagnostics,
+      };
     }
 
     const estimated = estimateCost(count);
@@ -810,6 +832,7 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({
+      success: true,
       type: promptType,
       generationType,
       level: safeLevel,
@@ -827,6 +850,31 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("OpenAI generation failed:", error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to reach OpenAI" }, { status: 502 });
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "ai_content.malformed_generation",
+      entityType: "ai_generation",
+      metadata: {
+        model: OPENAI_MODEL,
+        subject: requestedSubject,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        skillFocus: resolvedSkillFocus,
+        prompt: userPrompt,
+        error: error instanceof Error ? error.message : "Failed to parse AI response",
+      },
+    });
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to reach OpenAI",
+        details: {
+          provider: "openai",
+          model: OPENAI_MODEL,
+          stage: "generation",
+        },
+      },
+      { status: 502 },
+    );
   }
 }

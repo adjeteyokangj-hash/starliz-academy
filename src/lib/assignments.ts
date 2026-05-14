@@ -314,6 +314,15 @@ export async function assignContentToStudent(input: {
     },
   });
 
+  await prisma.aIContentCache.update({
+    where: { id: input.contentId },
+    data: {
+      usedCount: {
+        increment: 1,
+      },
+    },
+  });
+
   await writeAuditLog({
     actorUserId: input.actorUserId,
     action: "assignment.created",
