@@ -8,6 +8,8 @@ export type ContentItem = {
   createdAt: string;
   createdBy: string;
   status: string;
+  model?: string | null;
+  prompt?: string | null;
   keyStage?: string | null;
   yearGroup?: string | null;
   skillFocus?: string | null;
