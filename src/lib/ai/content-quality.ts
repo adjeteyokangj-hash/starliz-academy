@@ -1,7 +1,7 @@
 import { KEY_STAGES, phonicsStageFromSkillFocus, type PhonicsStage } from "@/lib/curriculum";
 
 type QualityInput = {
-  type: "spelling" | "math" | "reading";
+  type: "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths";
   keyStage?: string;
   yearGroup?: string;
   skillFocus?: string;
@@ -183,11 +183,12 @@ export function validateAiContentQuality({ type, keyStage, yearGroup, skillFocus
   const selectedYear = yearGroup?.trim();
   const selectedStage = keyStage?.trim();
 
-  if (type === "spelling") {
+  if (type === "spelling" || type === "phonics") {
     const repaired = repairSpellingItems(records, skillFocus, requestedCount);
     if (mode === "repair") {
       if (!repaired.cleaned.length) {
-        return { ok: false, error: "No valid spelling content remained after validation.", cleanedItems: repaired.cleaned, meta: repaired.meta };
+        const label = type === "phonics" ? "phonics" : "spelling";
+        return { ok: false, error: `No valid ${label} content remained after validation.`, cleanedItems: repaired.cleaned, meta: repaired.meta };
       }
       return { ok: true, cleanedItems: repaired.cleaned, meta: repaired.meta };
     }
@@ -207,7 +208,7 @@ export function validateAiContentQuality({ type, keyStage, yearGroup, skillFocus
     return { ok: true, cleanedItems: repaired.cleaned, meta: repaired.meta };
   }
 
-  if (type === "math") {
+  if (type === "maths") {
     const questions = new Set<string>();
     for (const item of records) {
       if (!item || typeof item !== "object") return { ok: false, error: "Maths content must be structured objects." };
@@ -218,6 +219,29 @@ export function validateAiContentQuality({ type, keyStage, yearGroup, skillFocus
       if (questions.has(question)) return { ok: false, error: `Duplicate maths question rejected: ${question}` };
       if (selectedYear && String(data.yearGroup ?? "") && String(data.yearGroup) !== selectedYear) return { ok: false, error: "Content year group does not match selection." };
       questions.add(question);
+    }
+  }
+
+  if (type === "punctuation" || type === "grammar" || type === "writing") {
+    const prompts = new Set<string>();
+    const label = type === "punctuation" ? "Punctuation" : type === "grammar" ? "Grammar" : "Writing";
+
+    for (const item of records) {
+      if (!item || typeof item !== "object") return { ok: false, error: `${label} content must be structured objects.` };
+      const data = item as Record<string, unknown>;
+      const prompt = String(data.question ?? data.prompt ?? data.sentence ?? "").trim();
+      if (!prompt) return { ok: false, error: `${label} content must include a prompt or question.` };
+
+      const normalizedPrompt = prompt.toLowerCase();
+      if (prompts.has(normalizedPrompt)) return { ok: false, error: `Duplicate ${type} prompt rejected: ${prompt}` };
+      prompts.add(normalizedPrompt);
+
+      const answer = String(data.answer ?? "").trim();
+      if (!answer) return { ok: false, error: `${label} content must include an answer.` };
+
+      if (selectedYear && String(data.yearGroup ?? "") && String(data.yearGroup) !== selectedYear) {
+        return { ok: false, error: "Content year group does not match selection." };
+      }
     }
   }
 

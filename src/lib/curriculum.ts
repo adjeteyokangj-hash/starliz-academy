@@ -116,24 +116,38 @@ export function ageGroupForYearGroup(yearGroup: string | null | undefined): AgeG
 // Subject types
 export type Subject = "phonics" | "spelling" | "reading" | "writing" | "grammar" | "punctuation" | "vocabulary" | "maths" | "times-tables" | "science" | "english-literature" | "english-language" | "sats-practice" | "11-plus-practice" | "gcse-english" | "gcse-maths" | "gcse-science";
 
-export const GENERATION_CONTENT_TYPE_BY_SUBJECT: Record<Subject, "spelling" | "math" | "reading"> = {
-  phonics: "spelling",
+export type GenerationType =
+  | "phonics"
+  | "spelling"
+  | "punctuation"
+  | "grammar"
+  | "writing"
+  | "reading"
+  | "vocabulary"
+  | "maths"
+  | "science"
+  | "english-language"
+  | "english-literature"
+  | "exam-practice";
+
+export const GENERATION_CONTENT_TYPE_BY_SUBJECT: Record<Subject, GenerationType> = {
+  phonics: "phonics",
   spelling: "spelling",
   reading: "reading",
-  writing: "spelling",
-  grammar: "spelling",
-  punctuation: "spelling",
-  vocabulary: "reading",
-  maths: "math",
-  "times-tables": "math",
-  science: "math",
-  "english-literature": "reading",
-  "english-language": "reading",
-  "sats-practice": "math",
-  "11-plus-practice": "math",
-  "gcse-english": "reading",
-  "gcse-maths": "math",
-  "gcse-science": "math",
+  writing: "writing",
+  grammar: "grammar",
+  punctuation: "punctuation",
+  vocabulary: "vocabulary",
+  maths: "maths",
+  "times-tables": "maths",
+  science: "science",
+  "english-literature": "english-literature",
+  "english-language": "english-language",
+  "sats-practice": "exam-practice",
+  "11-plus-practice": "exam-practice",
+  "gcse-english": "english-language",
+  "gcse-maths": "maths",
+  "gcse-science": "science",
 };
 
 // Subject availability by year group

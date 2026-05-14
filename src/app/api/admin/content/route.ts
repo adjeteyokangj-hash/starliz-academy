@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
+import { GENERATION_CONTENT_TYPE_BY_SUBJECT, type Subject } from "@/lib/curriculum";
 
 // Maps new 17-subject system to legacy 3-type system for backward compatibility
 function mapSubjectToLegacy(subject: string): "spelling" | "math" | "reading" {
@@ -18,12 +19,25 @@ function mapSubjectToLegacy(subject: string): "spelling" | "math" | "reading" {
   return "spelling";
 }
 
+function mapSubjectToGenerationType(subject: string): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" {
+  const mapped = GENERATION_CONTENT_TYPE_BY_SUBJECT[String(subject).toLowerCase() as Subject];
+  if (mapped === "phonics") return "phonics";
+  if (mapped === "spelling") return "spelling";
+  if (mapped === "punctuation") return "punctuation";
+  if (mapped === "grammar") return "grammar";
+  if (mapped === "writing" || mapped === "english-language") return "writing";
+  if (mapped === "reading" || mapped === "vocabulary" || mapped === "english-literature") return "reading";
+  return "maths";
+}
+
 const saveContentSchema = z.object({
   type: z.string(), // Accept both legacy types and new Subject types
   ageGroup: z.string().optional(),
   keyStage: z.string().optional(),
   yearGroup: z.string().optional(),
   skillFocus: z.string().optional(),
+  generationType: z.string().optional(),
+  itemSchema: z.string().optional(),
   difficulty: z.number().int().min(1).max(10),
   topic: z.string().optional(),
   items: z.unknown(),
@@ -96,6 +110,7 @@ export async function POST(req: Request) {
     
     // Map new Subject type to legacy type for validation and storage
     const legacyType = mapSubjectToLegacy(body.type);
+    const generationType = mapSubjectToGenerationType(body.type);
     const maxDifficulty = legacyType === "reading" ? 10 : 5;
     
     if (body.difficulty > maxDifficulty) {
@@ -107,7 +122,7 @@ export async function POST(req: Request) {
     const status = body.status === "review" ? "reviewed" : body.status;
     const contentItems = extractGeneratedItems(body.items);
     const quality = validateAiContentQuality({
-      type: legacyType,
+      type: generationType,
       keyStage: body.keyStage,
       yearGroup: body.yearGroup,
       skillFocus: body.skillFocus,
@@ -140,6 +155,8 @@ export async function POST(req: Request) {
           version: 2,
           subject: body.type,
           legacyType: legacyType,
+          generationType,
+          itemSchema: body.itemSchema ?? generationType,
           yearGroup: body.yearGroup,
           keyStage: body.keyStage,
           skillFocus: body.skillFocus,
@@ -158,7 +175,7 @@ export async function POST(req: Request) {
       action: "ai_content.saved",
       entityType: "AIContentCache",
       entityId: item.id,
-      metadata: { subject: body.type, legacyType, status, ageGroup: body.ageGroup, keyStage: body.keyStage, yearGroup: body.yearGroup, skillFocus: body.skillFocus },
+      metadata: { subject: body.type, legacyType, generationType, status, ageGroup: body.ageGroup, keyStage: body.keyStage, yearGroup: body.yearGroup, skillFocus: body.skillFocus },
     });
 
     return NextResponse.json({ item }, { status: 201 });

@@ -126,6 +126,20 @@ function formatSubjectLabel(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1).replace(/-/g, " ");
 }
 
+function formatValidationSuccessMessage(subject: Subject): string {
+  if (subject === "punctuation") return "Final punctuation set is valid.";
+  if (subject === "grammar") return "Final grammar set is valid.";
+  if (subject === "reading") return "Final reading set is valid.";
+  if (subject === "maths" || subject === "times-tables" || subject === "gcse-maths" || subject === "science" || subject === "gcse-science") {
+    return "Final maths set is valid.";
+  }
+  if (subject === "spelling" || subject === "phonics") {
+    return "Final set is valid. No duplicates or invalid skill words detected.";
+  }
+  if (subject === "writing" || subject === "english-language") return "Final writing set is valid.";
+  return `Final ${formatSubjectLabel(subject).toLowerCase()} set is valid.`;
+}
+
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs = 25000): Promise<Response> {
   const controller = new AbortController();
   const id = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -220,6 +234,7 @@ export default function AiGeneratorPage() {
   const generatedItemsList = (preview?.items ?? []) as GeneratedPreviewItem[];
   const saveBlocked = !generatedItemsList.length || generationMeta?.validation?.valid === false;
   const approvedCount = generatedItemsList.filter((item) => item.status === "approved").length;
+  const selectedGenerationType = subject ? GENERATION_CONTENT_TYPE_BY_SUBJECT[subject] : null;
   const showDeveloperDetails = process.env.NEXT_PUBLIC_ADMIN_DEBUG === "1";
   const previewBadge = generationMeta?.validation?.valid === false
     ? { label: "Needs Review", className: "bg-rose-500/15 text-rose-200" }
@@ -319,12 +334,14 @@ export default function AiGeneratorPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: subject,
+          generationType: selectedGenerationType,
           ageGroup,
           keyStage,
           yearGroup,
           skillFocus,
           difficulty,
           topic: selectedTopicTheme,
+          itemSchema: selectedGenerationType,
           items: {
             ...preview,
             items: (preview.items as GeneratedPreviewItem[]).filter((item) => item.status === "approved"),
@@ -758,7 +775,7 @@ export default function AiGeneratorPage() {
             </button>
           </div>
           {error ? <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
-          {error && (generatedItemsList.length > 0 || generationMeta) ? (
+          {(generatedItemsList.length > 0 || generationMeta || error) ? (
             <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-xs text-slate-400">
               <p className="font-bold text-slate-300 mb-2">Diagnostic Info:</p>
               <ul className="space-y-1">
@@ -766,7 +783,7 @@ export default function AiGeneratorPage() {
                 <li><strong>Subject:</strong> {formatSubjectLabel(subject)}</li>
                 <li><strong>Skill Focus:</strong> {skillFocus || "(none)"}</li>
                 <li><strong>Topic/Theme:</strong> {selectedTopicTheme || "(none)"}</li>
-                <li><strong>Generation Type:</strong> {subject && GENERATION_CONTENT_TYPE_BY_SUBJECT[subject] || "(unknown)"}</li>
+                <li><strong>Generation Type:</strong> {selectedGenerationType || "(unknown)"}</li>
                 <li><strong>Difficulty:</strong> {difficulty}/5</li>
                 <li><strong>Items Requested:</strong> {items}</li>
                 {generationMeta?.model ? <li><strong>Model:</strong> {generationMeta.model}</li> : null}
@@ -974,7 +991,7 @@ export default function AiGeneratorPage() {
                   </div>
                 </>
               ) : (
-                <p className="font-bold">Final set is valid. No duplicates or invalid skill words detected.</p>
+                <p className="font-bold">{formatValidationSuccessMessage(subject)}</p>
               )}
             </div>
 
