@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/api_guard";
-import { assignContentToStudent, SchoolLicenceAccessError } from "@/lib/assignments";
+import {
+  assignContentToStudent,
+  AssignmentEligibilityError,
+  DuplicateAssignmentError,
+  SchoolLicenceAccessError,
+} from "@/lib/assignments";
 import { mergeWeakAreas, parseWeakAreaMetadata } from "@/lib/weakAreas";
 
 const assignmentSchema = z.object({
@@ -123,7 +128,7 @@ export async function POST(request: Request) {
     }
 
     const assignments = [];
-    const blocked: Array<{ studentId: string; reason: string; schoolId?: string; schoolName?: string }> = [];
+    const blocked: Array<{ studentId: string; reason: string; schoolId?: string; schoolName?: string; code?: string; details?: Record<string, unknown>; assignmentId?: string }> = [];
     for (const student of targetStudents) {
       try {
         const assignment = await assignContentToStudent({
@@ -138,8 +143,27 @@ export async function POST(request: Request) {
           blocked.push({
             studentId: student.id,
             reason: error.reason,
+            code: "SCHOOL_LICENCE_BLOCKED",
             schoolId: error.schoolId,
             schoolName: error.schoolName,
+          });
+          continue;
+        }
+        if (error instanceof AssignmentEligibilityError) {
+          blocked.push({
+            studentId: student.id,
+            reason: error.message,
+            code: "ELIGIBILITY_BLOCKED",
+            details: error.details,
+          });
+          continue;
+        }
+        if (error instanceof DuplicateAssignmentError) {
+          blocked.push({
+            studentId: student.id,
+            reason: error.message,
+            code: "DUPLICATE_ASSIGNMENT",
+            assignmentId: error.assignmentId,
           });
           continue;
         }
@@ -148,10 +172,7 @@ export async function POST(request: Request) {
     }
 
     if (!assignments.length && blocked.length) {
-      return NextResponse.json(
-        { error: "All assignments were blocked by school licence rules.", blocked },
-        { status: 402 },
-      );
+      return NextResponse.json({ error: "All assignments were blocked.", blocked }, { status: 409 });
     }
 
     return NextResponse.json({ assignments, blocked, count: assignments.length }, { status: 201 });

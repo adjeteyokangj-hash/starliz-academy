@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
+import { keyStageForYearGroup } from "@/lib/curriculum";
 
 const createStudentSchema = z.object({
   parentId: z.string().min(1),
@@ -36,6 +37,12 @@ export async function GET() {
     include: {
       parent: { select: { email: true, name: true } },
       studentProfile: true,
+      schoolLinks: {
+        where: { status: "active" },
+        include: {
+          classroom: { select: { name: true } },
+        },
+      },
       _count: { select: { progressRecords: true } },
     },
   });
@@ -120,6 +127,11 @@ export async function GET() {
       }
     }
 
+    const normalizedKeyStage = child.studentProfile?.keyStageLevel ?? (child.yearGroup ? keyStageForYearGroup(child.yearGroup) : null);
+    const classGroups = child.schoolLinks
+      .map((link) => link.classroom?.name)
+      .filter((name): name is string => Boolean(name));
+
     return {
       id: child.id,
       name: child.name,
@@ -127,10 +139,12 @@ export async function GET() {
       age: child.age,
       yearGroup: child.yearGroup,
       level: child.level,
-      keyStageLevel: child.studentProfile?.keyStageLevel ?? null,
+      keyStageLevel: normalizedKeyStage,
       learningLevel: child.studentProfile?.learningLevel ?? null,
       readingLevel: child.studentProfile?.readingLevel ?? null,
       subjectFocus: child.studentProfile?.subjectFocus ?? null,
+      classGroup: classGroups[0] ?? null,
+      classGroups,
       spellingLevel,
       mathLevel,
       stars: child.stars,
