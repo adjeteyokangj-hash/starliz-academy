@@ -20,6 +20,7 @@ import {
 
 type GeneratedPreviewItem = Record<string, unknown> & {
   id?: string;
+  status?: "pending" | "approved" | "rejected";
   type?: string;
   prompt?: string;
   answer?: unknown;
@@ -104,6 +105,17 @@ type AutomationStatus = {
 };
 
 const CUSTOM_TOPIC_VALUE = "__custom_topic__";
+
+function resolvePreviewItemStatus(item: GeneratedPreviewItem, fallback: "pending" | "approved" = "approved"): "pending" | "approved" | "rejected" {
+  return item.status === "approved" || item.status === "rejected" || item.status === "pending" ? item.status : fallback;
+}
+
+function applyDefaultItemStatuses(items: GeneratedPreviewItem[], fallback: "pending" | "approved" = "approved"): GeneratedPreviewItem[] {
+  return items.map((item) => ({
+    ...item,
+    status: resolvePreviewItemStatus(item, fallback),
+  }));
+}
 
 function formatSubjectLabel(value: string): string {
   if (value === "math") return "Maths";
@@ -203,9 +215,9 @@ export default function AiGeneratorPage() {
     value.includes("phonics_stage")
   );
 
-  const generatedItemsList = preview?.items ?? [];
+  const generatedItemsList = (preview?.items ?? []) as GeneratedPreviewItem[];
   const saveBlocked = !generatedItemsList.length || generationMeta?.validation?.valid === false;
-  const approvedCount = generatedItemsList.filter((item) => item.status !== "rejected").length;
+  const approvedCount = generatedItemsList.filter((item) => item.status === "approved").length;
   const showDeveloperDetails = process.env.NEXT_PUBLIC_ADMIN_DEBUG === "1";
   const previewBadge = generationMeta?.validation?.valid === false
     ? { label: "Needs Review", className: "bg-rose-500/15 text-rose-200" }
@@ -235,7 +247,7 @@ export default function AiGeneratorPage() {
       setError("Number of items must be between 1 and 30.");
       return;
     }
-    const maxDifficulty = subject === "reading" ? 10 : 5;
+    const maxDifficulty = 5;
     if (difficulty < 1 || difficulty > maxDifficulty) {
       setError(`Difficulty must be between 1 and ${maxDifficulty}.`);
       return;
@@ -256,10 +268,14 @@ export default function AiGeneratorPage() {
       if (!response.ok) {
         setError(payload.error ?? "Generation failed.");
       } else {
+        const incomingItems = Array.isArray(payload.content?.items)
+          ? (payload.content.items as GeneratedPreviewItem[])
+          : [];
         setPreview({
           ...payload.content,
           topic: selectedTopicTheme,
           title: payload.content?.title ?? `${formatSubjectLabel(subject)} - ${selectedTopicTheme}`,
+          items: applyDefaultItemStatuses(incomingItems, "approved"),
         });
         setGenerationMeta({
           model: payload.model,
@@ -295,7 +311,7 @@ export default function AiGeneratorPage() {
           topic: selectedTopicTheme,
           items: {
             ...preview,
-            items: preview.items.filter((item) => item.status !== "rejected"),
+            items: (preview.items as GeneratedPreviewItem[]).filter((item) => item.status === "approved"),
           },
           status: "review",
           model: generationMeta?.model,
@@ -340,6 +356,16 @@ export default function AiGeneratorPage() {
     });
   }
 
+  function replacePreviewItem(index: number, nextItem: GeneratedPreviewItem) {
+    setPreview((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        items: current.items.map((item, itemIndex) => itemIndex === index ? nextItem : item),
+      };
+    });
+  }
+
   function updatePreviewItemJson(index: number, value: string) {
     try {
       const parsed = JSON.parse(value) as GeneratedPreviewItem;
@@ -379,7 +405,11 @@ export default function AiGeneratorPage() {
       }
       const replacement = payload.content?.items?.[0] as GeneratedPreviewItem | undefined;
       if (replacement) {
-        updatePreviewItem(index, replacement);
+        const fallbackStatus = payload.meta?.valid === false ? "pending" : "approved";
+        replacePreviewItem(index, {
+          ...replacement,
+          status: resolvePreviewItemStatus(replacement, fallbackStatus),
+        });
       }
     } catch {
       setError("Unable to regenerate item.");
@@ -653,11 +683,11 @@ export default function AiGeneratorPage() {
               </select>
             </label>
             <label className="block text-sm font-bold text-slate-300">
-              Difficulty: {difficulty} / {subject === "reading" || subject === "english-literature" || subject === "english-language" || subject === "gcse-english" ? 10 : 5}
+              Difficulty: {difficulty} / 5
               <input
                 type="range"
                 min={1}
-                max={subject === "reading" || subject === "english-literature" || subject === "english-language" || subject === "gcse-english" ? 10 : 5}
+                max={5}
                 value={difficulty}
                 onChange={(event) => setDifficulty(Number(event.target.value))}
                 className="mt-2 w-full accent-indigo-500"
@@ -913,13 +943,16 @@ export default function AiGeneratorPage() {
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
               {preview.items.map((item, index) => (
-                <article key={`${String(item.id ?? "item")}-${index}`} className={`flex min-h-0 flex-col rounded-2xl border p-3 ${item.status === "rejected" ? "border-rose-500/40 bg-rose-950/30 opacity-70" : "border-slate-800 bg-slate-950/70"}`}>
+                <article key={`${String(item.id ?? "item")}-${index}`} className={`relative z-10 flex min-h-0 flex-col rounded-2xl border p-3 ${item.status === "rejected" ? "border-rose-500/40 bg-rose-950/30 opacity-70" : item.status === "approved" ? "border-emerald-500/35 bg-emerald-950/20" : "border-amber-500/30 bg-amber-950/20"}`}>
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="text-sm font-bold text-white">
                       {subject === "spelling" ? `${String((item as SpellingPreviewItem).emoji ?? "🔤")} ${String((item as SpellingPreviewItem).word ?? item.prompt ?? "")}` : String(item.prompt ?? item.question ?? item.title ?? `Item ${index + 1}`)}
                     </h3>
                     <span className="rounded-full bg-slate-800 px-2 py-1 text-[10px] font-bold text-blue-200">Item {index + 1}</span>
                   </div>
+                  <p className={`mt-1 inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${item.status === "approved" ? "bg-emerald-500/20 text-emerald-200" : item.status === "rejected" ? "bg-rose-500/20 text-rose-200" : "bg-amber-500/20 text-amber-200"}`}>
+                    {item.status === "approved" ? "Approved" : item.status === "rejected" ? "Rejected" : "Pending"}
+                  </p>
                   {typeof item.phonicsStage === "string" ? (
                     <p className="mt-1 inline-flex w-fit rounded-full border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-100">
                       {String(item.phonicsStage)}
@@ -928,8 +961,8 @@ export default function AiGeneratorPage() {
                   <p className="mt-1 line-clamp-3 text-xs text-slate-300">{String(item.hint ?? item.explanation ?? "Review this item before saving.")}</p>
                   <p className="mt-1 line-clamp-3 text-xs text-slate-400">{String(item.sentence ?? item.sentenceContext ?? item.passage ?? "")}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => markPreviewItem(index, "approved")} className="min-w-24 flex-1 rounded-lg bg-emerald-500 px-2 py-1.5 text-[11px] font-black text-white">Approve</button>
-                    <button type="button" onClick={() => markPreviewItem(index, "rejected")} className="min-w-24 flex-1 rounded-lg bg-rose-500 px-2 py-1.5 text-[11px] font-black text-white">Reject</button>
+                    <button type="button" onClick={() => markPreviewItem(index, "approved")} className={`min-w-24 flex-1 rounded-lg px-2 py-1.5 text-[11px] font-black text-white ${item.status === "approved" ? "bg-emerald-400 ring-2 ring-emerald-200" : "bg-emerald-500 hover:bg-emerald-400"}`}>Approve</button>
+                    <button type="button" onClick={() => markPreviewItem(index, "rejected")} className={`min-w-24 flex-1 rounded-lg px-2 py-1.5 text-[11px] font-black text-white ${item.status === "rejected" ? "bg-rose-400 ring-2 ring-rose-200" : "bg-rose-500 hover:bg-rose-400"}`}>Reject</button>
                     <button type="button" onClick={() => void regenerateItem(index)} className="min-w-24 flex-1 rounded-lg border border-slate-700 px-2 py-1.5 text-[11px] font-black text-slate-200">Regenerate</button>
                   </div>
                   <details className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
