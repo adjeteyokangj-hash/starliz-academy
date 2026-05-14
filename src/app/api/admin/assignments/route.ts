@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/api_guard";
 import {
   assignContentToStudent,
-  AssignmentEligibilityError,
+  AssignmentSafetyError,
   DuplicateAssignmentError,
   SchoolLicenceAccessError,
 } from "@/lib/assignments";
@@ -149,11 +149,11 @@ export async function POST(request: Request) {
           });
           continue;
         }
-        if (error instanceof AssignmentEligibilityError) {
+        if (error instanceof AssignmentSafetyError) {
           blocked.push({
             studentId: student.id,
             reason: error.message,
-            code: "ELIGIBILITY_BLOCKED",
+            code: "SAFETY_BLOCKED",
             details: error.details,
           });
           continue;

@@ -40,6 +40,7 @@ export async function GET() {
       schoolLinks: {
         where: { status: "active" },
         include: {
+          school: { select: { id: true } },
           classroom: { select: { name: true } },
         },
       },
@@ -131,6 +132,7 @@ export async function GET() {
     const classGroups = child.schoolLinks
       .map((link) => link.classroom?.name)
       .filter((name): name is string => Boolean(name));
+    const schoolIds = child.schoolLinks.map((link) => link.school.id);
 
     return {
       id: child.id,
@@ -145,6 +147,7 @@ export async function GET() {
       subjectFocus: child.studentProfile?.subjectFocus ?? null,
       classGroup: classGroups[0] ?? null,
       classGroups,
+      schoolIds,
       spellingLevel,
       mathLevel,
       stars: child.stars,

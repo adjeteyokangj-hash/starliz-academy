@@ -30,6 +30,23 @@ type ContentItem = {
   metadataJson?: string | null;
 };
 
+type ContentSummary = {
+  valid: boolean;
+  itemCount: number;
+  preview: string;
+};
+
+type ContentMeta = {
+  title: string;
+  subject: string;
+  keyStage: string | null;
+  yearGroup: string | null;
+  ageGroup: string | null;
+  topic: string | null;
+  skillFocus: string | null;
+  schoolId: string | null;
+};
+
 type StudentOption = {
   id: string;
   name: string;
@@ -41,27 +58,16 @@ type StudentOption = {
   parentName?: string | null;
   subjectFocus?: string | null;
   weakPatterns?: string[];
+  schoolIds?: string[];
 };
 
-type ContentSummary = {
-  valid: boolean;
-  itemCount: number;
-  preview: string;
-};
-
-type ContentMeta = {
-  subject: string;
-  keyStage: string | null;
-  yearGroup: string | null;
-  ageGroup: string | null;
-  topic: string | null;
-  skillFocus: string | null;
-};
-
-type StudentEligibility = {
+type StudentAssignmentCandidate = {
   student: StudentOption;
-  eligible: boolean;
-  reason: string | null;
+  hardEligible: boolean;
+  hardBlockReason: string | null;
+  recommendationLevel: "recommended" | "eligible_manual";
+  recommendationReason: string;
+  matchedWeakAreas: string[];
   recommendationScore: number;
 };
 
@@ -75,6 +81,8 @@ type AssignmentPayload = {
     code?: string;
   }>;
 };
+
+type AssignMode = "recommended" | "eligible_manual";
 
 function normalizeText(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
@@ -115,6 +123,11 @@ function parseMetadata(item: ContentItem): Record<string, unknown> {
 
 function getContentMeta(item: ContentItem): ContentMeta {
   const metadata = parseMetadata(item);
+  const title = typeof metadata.title === "string"
+    ? metadata.title
+    : typeof metadata.name === "string"
+      ? metadata.name
+      : item.topic || `${item.contentType} practice`;
   const subjectRaw = typeof metadata.subject === "string" ? metadata.subject : item.contentType;
   const subject = normalizeText(subjectRaw) || "unknown";
   const keyStage = item.keyStage ?? (typeof metadata.keyStage === "string" ? metadata.keyStage : null);
@@ -126,64 +139,151 @@ function getContentMeta(item: ContentItem): ContentMeta {
       : null;
 
   return {
+    title,
     subject,
     keyStage,
     yearGroup,
     ageGroup,
     topic: typeof metadata.topic === "string" ? metadata.topic : item.topic || null,
     skillFocus: typeof metadata.skillFocus === "string" ? metadata.skillFocus : item.skillFocus || null,
+    schoolId: typeof metadata.schoolId === "string" ? metadata.schoolId : null,
   };
 }
 
-function getStudentAgeGroup(student: StudentOption): string | null {
-  if (!student.yearGroup) return null;
-  return ageGroupForYearGroup(student.yearGroup);
+function parseAgeGroupRange(ageGroup: string | null | undefined): { min: number; max: number } | null {
+  if (!ageGroup) return null;
+  const match = ageGroup.match(/(\d{1,2})\s*[\u2013\-]\s*(\d{1,2})/);
+  if (!match) return null;
+  const min = Number(match[1]);
+  const max = Number(match[2]);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  return { min, max };
 }
 
-function evaluateEligibility(item: ContentItem, student: StudentOption): StudentEligibility {
+function evaluateAssignmentCandidate(item: ContentItem, student: StudentOption): StudentAssignmentCandidate {
   const summary = getContentJsonSummary(item.contentJson);
   const meta = getContentMeta(item);
   const studentYear = student.yearGroup ?? null;
   const studentKeyStage = student.keyStageLevel || (studentYear ? keyStageForYearGroup(studentYear) : null);
-  const studentAge = getStudentAgeGroup(student);
+  const strictAgeRange = parseAgeGroupRange(meta.ageGroup);
+  const studentSchoolIds = student.schoolIds ?? [];
 
   if (!["reviewed", "published"].includes(item.status)) {
-    return { student, eligible: false, reason: "Only reviewed or published content can be assigned.", recommendationScore: 0 };
+    return {
+      student,
+      hardEligible: false,
+      hardBlockReason: "Only reviewed or published content can be assigned.",
+      recommendationLevel: "eligible_manual",
+      recommendationReason: "Blocked by hard safety checks.",
+      matchedWeakAreas: [],
+      recommendationScore: 0,
+    };
   }
   if (!summary.valid) {
-    return { student, eligible: false, reason: "Content JSON is invalid.", recommendationScore: 0 };
+    return {
+      student,
+      hardEligible: false,
+      hardBlockReason: "Content JSON is invalid.",
+      recommendationLevel: "eligible_manual",
+      recommendationReason: "Blocked by hard safety checks.",
+      matchedWeakAreas: [],
+      recommendationScore: 0,
+    };
   }
   if (meta.yearGroup && studentYear && meta.yearGroup !== studentYear) {
-    return { student, eligible: false, reason: `Year mismatch (${meta.yearGroup} required).`, recommendationScore: 0 };
+    return {
+      student,
+      hardEligible: false,
+      hardBlockReason: `Year mismatch (${meta.yearGroup} required).`,
+      recommendationLevel: "eligible_manual",
+      recommendationReason: "Blocked by hard safety checks.",
+      matchedWeakAreas: [],
+      recommendationScore: 0,
+    };
   }
   if (meta.keyStage && studentKeyStage && meta.keyStage !== studentKeyStage) {
-    return { student, eligible: false, reason: `Key stage mismatch (${meta.keyStage} required).`, recommendationScore: 0 };
+    return {
+      student,
+      hardEligible: false,
+      hardBlockReason: `Key stage mismatch (${meta.keyStage} required).`,
+      recommendationLevel: "eligible_manual",
+      recommendationReason: "Blocked by hard safety checks.",
+      matchedWeakAreas: [],
+      recommendationScore: 0,
+    };
   }
-  if (meta.ageGroup && studentAge && meta.ageGroup !== studentAge) {
-    return { student, eligible: false, reason: `Age group mismatch (${meta.ageGroup} required).`, recommendationScore: 0 };
+  if (strictAgeRange && typeof student.age === "number" && (student.age < strictAgeRange.min || student.age > strictAgeRange.max)) {
+    return {
+      student,
+      hardEligible: false,
+      hardBlockReason: `Age group mismatch (${meta.ageGroup} required).`,
+      recommendationLevel: "eligible_manual",
+      recommendationReason: "Blocked by hard safety checks.",
+      matchedWeakAreas: [],
+      recommendationScore: 0,
+    };
+  }
+
+  if (meta.schoolId && studentSchoolIds.length > 0 && !studentSchoolIds.includes(meta.schoolId)) {
+    return {
+      student,
+      hardEligible: false,
+      hardBlockReason: "School mismatch for this school-scoped content.",
+      recommendationLevel: "eligible_manual",
+      recommendationReason: "Blocked by hard safety checks.",
+      matchedWeakAreas: [],
+      recommendationScore: 0,
+    };
+  }
+
+  if (meta.schoolId && studentSchoolIds.length === 0) {
+    return {
+      student,
+      hardEligible: false,
+      hardBlockReason: "No active school context for this school-scoped content.",
+      recommendationLevel: "eligible_manual",
+      recommendationReason: "Blocked by hard safety checks.",
+      matchedWeakAreas: [],
+      recommendationScore: 0,
+    };
   }
 
   const studentSubjectFocus = normalizeText(student.subjectFocus);
-  if (studentSubjectFocus && meta.subject !== "unknown") {
-    const metaSubject = normalizeText(meta.subject);
-    if (!studentSubjectFocus.includes(metaSubject) && !metaSubject.includes(studentSubjectFocus)) {
-      return { student, eligible: false, reason: "Subject focus does not match.", recommendationScore: 0 };
-    }
-  }
+  const metaSubject = normalizeText(meta.subject);
+  const skillNeedle = normalizeText(meta.skillFocus);
+  const topicNeedle = normalizeText(meta.topic);
+  const matchedWeakAreas = (student.weakPatterns ?? []).filter((pattern) => {
+    const normalizedPattern = normalizeText(pattern);
+    const hasNeedle = Boolean(skillNeedle) || Boolean(topicNeedle);
+    return Boolean(normalizedPattern)
+      && hasNeedle
+      && (skillNeedle.includes(normalizedPattern)
+        || topicNeedle.includes(normalizedPattern)
+        || (Boolean(skillNeedle) && normalizedPattern.includes(skillNeedle)));
+  });
 
   let recommendationScore = 0;
-  const searchableNeedles = [normalizeText(meta.skillFocus), normalizeText(meta.topic)].filter(Boolean);
-  for (const pattern of student.weakPatterns ?? []) {
-    const normalizedPattern = normalizeText(pattern);
-    if (searchableNeedles.some((needle) => needle.includes(normalizedPattern) || normalizedPattern.includes(needle))) {
-      recommendationScore += 3;
-    }
+  if (matchedWeakAreas.length > 0) {
+    recommendationScore += matchedWeakAreas.length * 3;
   }
-  if (studentSubjectFocus && normalizeText(meta.subject) && studentSubjectFocus.includes(normalizeText(meta.subject))) {
+  if (studentSubjectFocus && metaSubject && (studentSubjectFocus.includes(metaSubject) || metaSubject.includes(studentSubjectFocus))) {
     recommendationScore += 1;
   }
 
-  return { student, eligible: true, reason: null, recommendationScore };
+  const recommendationLevel = recommendationScore > 0 ? "recommended" : "eligible_manual";
+  const recommendationReason = recommendationLevel === "recommended"
+    ? "Recommended match: this content supports the student's weak area."
+    : "Eligible manual assignment: no matching weak area detected.";
+
+  return {
+    student,
+    hardEligible: true,
+    hardBlockReason: null,
+    recommendationLevel,
+    recommendationReason,
+    matchedWeakAreas,
+    recommendationScore,
+  };
 }
 
 export default function ContentLibraryPage() {
@@ -304,28 +404,59 @@ export default function ContentLibraryPage() {
     }
   }
 
-  async function assignSingle(item: ContentItem, entry: StudentEligibility | undefined) {
-    if (!entry || !entry.eligible) {
+  async function assignSingle(item: ContentItem, entry: StudentAssignmentCandidate | undefined) {
+    if (!entry || !entry.hardEligible) {
       setMessage("Choose an eligible student before assigning.");
       return;
     }
 
     const meta = getContentMeta(item);
+    const summary = getContentJsonSummary(item.contentJson);
+    const weakAreasText = (entry.student.weakPatterns ?? []).length
+      ? (entry.student.weakPatterns ?? []).join(", ")
+      : "None detected";
+    const recommendationText = entry.recommendationLevel === "recommended"
+      ? "Recommended match: this content supports the student's weak area."
+      : "Eligible manual assignment: no matching weak area detected.";
     const confirmation = window.confirm(
-      `Assign ${meta.subject} content (${meta.yearGroup ?? "all years"} / ${meta.keyStage ?? "all key stages"}) to ${entry.student.name}?`
+      [
+        `Assign \"${meta.title}\" to ${entry.student.name}?`,
+        `Year group: ${meta.yearGroup ?? "all years"}`,
+        `Key stage: ${meta.keyStage ?? "all key stages"}`,
+        `Difficulty: ${item.level}`,
+        `Item count: ${summary.itemCount}`,
+        `Student weak areas: ${weakAreasText}`,
+        `Recommendation: ${recommendationText}`,
+      ].join("\n")
     );
     if (!confirmation) return;
 
     await submitAssignment(item, [entry.student.id], entry.student.name);
   }
 
-  async function assignAllEligible(item: ContentItem, eligibleIds: string[]) {
+  async function assignByMode(item: ContentItem, mode: AssignMode, ids: string[]) {
+    if (!ids.length) {
+      setMessage(mode === "recommended" ? "No recommended students available." : "No eligible students available.");
+      return;
+    }
     const meta = getContentMeta(item);
+    const summary = getContentJsonSummary(item.contentJson);
+    const modeLabel = mode === "recommended" ? "recommended weak-area matches" : "eligible students";
+    const modeReason = mode === "recommended"
+      ? "Recommended match: this content supports students' weak areas."
+      : "Eligible manual assignment: no matching weak area detected for some students.";
     const confirmation = window.confirm(
-      `Assign this ${meta.subject} content to ${eligibleIds.length} eligible students only (${meta.yearGroup ?? "all years"} / ${meta.keyStage ?? "all key stages"})?`
+      [
+        `Assign \"${meta.title}\" to ${ids.length} ${modeLabel}?`,
+        `Year group: ${meta.yearGroup ?? "all years"}`,
+        `Key stage: ${meta.keyStage ?? "all key stages"}`,
+        `Difficulty: ${item.level}`,
+        `Item count: ${summary.itemCount}`,
+        `Recommendation: ${modeReason}`,
+      ].join("\n")
     );
     if (!confirmation) return;
-    await submitAssignment(item, eligibleIds, "eligible students");
+    await submitAssignment(item, ids, modeLabel);
   }
 
   return (
@@ -459,14 +590,16 @@ export default function ContentLibraryPage() {
             const summary = getContentJsonSummary(item.contentJson);
             const meta = getContentMeta(item);
             const evaluated = filteredStudents
-              .map((student) => evaluateEligibility(item, student))
+              .map((student) => evaluateAssignmentCandidate(item, student))
               .sort((a, b) => b.recommendationScore - a.recommendationScore || a.student.name.localeCompare(b.student.name));
-            const eligible = evaluated.filter((entry) => entry.eligible);
-            const recommended = eligible.filter((entry) => entry.recommendationScore > 0).slice(0, 5);
+            const recommended = evaluated.filter((entry) => entry.hardEligible && entry.recommendationLevel === "recommended");
+            const eligibleManual = evaluated.filter((entry) => entry.hardEligible && entry.recommendationLevel === "eligible_manual");
+            const blocked = evaluated.filter((entry) => !entry.hardEligible);
+            const assignable = [...recommended, ...eligibleManual];
 
             const selectedId = selectedStudentIds[item.id] ?? "";
             const selectedEntry = evaluated.find((entry) => entry.student.id === selectedId);
-            const canAssignSelected = Boolean(selectedEntry?.eligible) && assigningId !== item.id;
+            const canAssignSelected = Boolean(selectedEntry?.hardEligible) && assigningId !== item.id;
 
             return (
               <article key={item.id} className="rounded-2xl border border-slate-800 bg-slate-950/45 p-4">
@@ -491,11 +624,11 @@ export default function ContentLibraryPage() {
 
                 {recommended.length > 0 ? (
                   <p className="mt-3 text-xs font-bold text-emerald-200">
-                    Recommended students: {recommended.map((entry) => entry.student.name).join(", ")}
+                    Recommended students: {recommended.slice(0, 5).map((entry) => entry.student.name).join(", ")}
                   </p>
                 ) : null}
 
-                {eligible.length === 0 ? (
+                {assignable.length === 0 ? (
                   <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-200">
                     No eligible students for this content.
                   </p>
@@ -511,15 +644,21 @@ export default function ContentLibraryPage() {
                     className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200"
                   >
                     <option value="">Choose eligible student</option>
-                    {evaluated.map((entry) => (
-                      <option
-                        key={`${item.id}-${entry.student.id}`}
-                        value={entry.student.id}
-                        disabled={!entry.eligible}
-                      >
-                        {entry.student.name}{entry.student.yearGroup ? ` | ${entry.student.yearGroup}` : ""}{entry.eligible ? "" : ` | blocked: ${entry.reason}`}
+                    {recommended.length > 0 ? <optgroup label="Recommended">{recommended.map((entry) => (
+                      <option key={`${item.id}-recommended-${entry.student.id}`} value={entry.student.id}>
+                        {entry.student.name}{entry.student.yearGroup ? ` | ${entry.student.yearGroup}` : ""} | Recommended match: this content supports {entry.matchedWeakAreas[0] ?? "a weak area"}
                       </option>
-                    ))}
+                    ))}</optgroup> : null}
+                    {eligibleManual.length > 0 ? <optgroup label="Eligible">{eligibleManual.map((entry) => (
+                      <option key={`${item.id}-eligible-${entry.student.id}`} value={entry.student.id}>
+                        {entry.student.name}{entry.student.yearGroup ? ` | ${entry.student.yearGroup}` : ""} | Eligible - no matching weak area detected
+                      </option>
+                    ))}</optgroup> : null}
+                    {blocked.length > 0 ? <optgroup label="Blocked">{blocked.map((entry) => (
+                      <option key={`${item.id}-blocked-${entry.student.id}`} value={entry.student.id} disabled>
+                        {entry.student.name}{entry.student.yearGroup ? ` | ${entry.student.yearGroup}` : ""} | Blocked: {entry.hardBlockReason}
+                      </option>
+                    ))}</optgroup> : null}
                   </select>
                   <button
                     type="button"
@@ -531,16 +670,27 @@ export default function ContentLibraryPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void assignAllEligible(item, eligible.map((entry) => entry.student.id))}
-                    disabled={assigningId === item.id || eligible.length === 0}
+                    onClick={() => void assignByMode(item, "recommended", recommended.map((entry) => entry.student.id))}
+                    disabled={assigningId === item.id || recommended.length === 0}
+                    className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-100 disabled:opacity-60"
+                  >
+                    Smart assign ({recommended.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void assignByMode(item, "eligible_manual", assignable.map((entry) => entry.student.id))}
+                    disabled={assigningId === item.id || assignable.length === 0}
                     className="rounded-xl border border-indigo-400/40 bg-indigo-500/10 px-3 py-2 text-xs font-black text-indigo-100 disabled:opacity-60"
                   >
-                    Assign all eligible ({eligible.length})
+                    Assign all eligible ({assignable.length})
                   </button>
                 </div>
 
-                {selectedEntry && !selectedEntry.eligible ? (
-                  <p className="mt-2 text-xs font-bold text-rose-300">This student is blocked: {selectedEntry.reason}</p>
+                {selectedEntry && !selectedEntry.hardEligible ? (
+                  <p className="mt-2 text-xs font-bold text-rose-300">This student is blocked: {selectedEntry.hardBlockReason}</p>
+                ) : null}
+                {selectedEntry && selectedEntry.hardEligible ? (
+                  <p className="mt-2 text-xs font-bold text-sky-200">{selectedEntry.recommendationReason}</p>
                 ) : null}
               </article>
             );
@@ -548,7 +698,7 @@ export default function ContentLibraryPage() {
         </div>
       ) : null}
 
-      <p className="mt-4 text-xs text-slate-500">Eligibility rules apply in both UI and backend: status, valid JSON, year group, key stage, age group, subject-focus match, and duplicate assignment prevention.</p>
+      <p className="mt-4 text-xs text-slate-500">Eligibility = hard safety checks (status, valid JSON, year group, key stage, strict age, tenant school, duplicate prevention). Recommendation = weak-area and subject-focus guidance.</p>
       <p className="mt-1 text-xs text-slate-500">Supported age groups: {AGE_GROUPS.join(", ")}</p>
     </AdminSectionCard>
   );
