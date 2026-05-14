@@ -39,7 +39,7 @@ writeFileSync(outputPath, `${lines.join("\n")}\n`, "utf8");
 
 console.log(`AI curriculum coverage report written to ${outputPath}`);
 
-if (report.missing > 0 || report.fallbackOnly > 0) {
-  console.error("Coverage audit failed: missing or fallback-only paths detected.");
+if (report.missing > 0 || report.fallbackOnly > 0 || report.partiallyWired > 0) {
+  console.error("Coverage audit failed: missing, fallback-only, or partially-wired paths detected.");
   process.exit(1);
 }

@@ -61,6 +61,7 @@ test("all visible curriculum paths have at least one topic", () => {
 
 test("coverage report has no fallback-only or missing paths", () => {
   const report = buildCurriculumCoverageReport();
+  assert.equal(report.partiallyWired, 0, "Partially-wired paths detected");
   assert.equal(report.fallbackOnly, 0, "Fallback-only paths detected");
   assert.equal(report.missing, 0, "Missing paths detected");
 });
