@@ -159,6 +159,16 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Billing and subscription routes require parent role
+  if (
+    authenticated &&
+    (pathname.startsWith("/billing") || pathname.startsWith("/subscription")) &&
+    session.role !== "parent" &&
+    session.role !== "admin"
+  ) {
+    return withSecurityHeaders(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+  }
+
   return withSecurityHeaders(NextResponse.next());
 }
 

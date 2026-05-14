@@ -10,6 +10,7 @@ import BillingCard from "./BillingCard";
 import SecuritySettings from "./SecuritySettings";
 import ConsentAuditView from "./ConsentAuditView";
 import NotificationPreferences from "./NotificationPreferences";
+import { resolveDashboardTier, dashboardTierLabel, isProfileComplete } from "@/lib/dashboardResolver";
 
 type PortalSection =
   | "dashboard"
@@ -172,6 +173,20 @@ type InsightsPayload = {
   lastActivityAt: string | null;
 };
 
+type ChildAssignment = {
+  id: string;
+  status: string;
+  title: string;
+  subject: string;
+  difficulty?: number;
+  createdAt: string;
+  href?: string;
+};
+
+type ChildAssignmentsPayload = {
+  assignments: ChildAssignment[];
+};
+
 const sections: Array<{ id: PortalSection; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
   { id: "children", label: "Children" },
@@ -247,6 +262,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [childDetail, setChildDetail] = useState<ChildDetail | null>(null);
   const [insights, setInsights] = useState<InsightsPayload | null>(null);
+  const [childAssignments, setChildAssignments] = useState<ChildAssignment[]>([]);
+  const [goingToDashboard, setGoingToDashboard] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reportDownloading, setReportDownloading] = useState(false);
@@ -326,9 +343,10 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     let cancelled = false;
 
     async function loadChild() {
-      const [childRes, insightsRes] = await Promise.all([
+      const [childRes, insightsRes, assignmentsRes] = await Promise.all([
         fetch(`/api/children/${selectedChildId}/data`, { credentials: "include" }),
         fetch("/api/parent/insights", { credentials: "include" }),
+        fetch(`/api/assignments?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
       ]);
       
       if (cancelled) return;
@@ -339,6 +357,13 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       
       if (insightsRes.ok) {
         setInsights((await insightsRes.json()) as InsightsPayload);
+      }
+
+      if (assignmentsRes.ok) {
+        const payload = (await assignmentsRes.json()) as ChildAssignmentsPayload;
+        setChildAssignments(payload.assignments ?? []);
+      } else {
+        setChildAssignments([]);
       }
     }
 
@@ -365,6 +390,21 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const modeAdd = activeSection === "children" && searchParams.get("mode") === "add";
   const formVisible = modeAdd || showChildForm;
   const effectiveEditingChildId = modeAdd ? null : editingChildId;
+
+  async function goToChildDashboard(childId: string) {
+    setGoingToDashboard(true);
+    try {
+      await fetch("/api/children/active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ childId }),
+      });
+      router.push("/student/dashboard");
+    } finally {
+      setGoingToDashboard(false);
+    }
+  }
 
   async function downloadProgressReport(format: "pdf" | "csv" | "excel") {
     if (!selectedChildId) return;
@@ -474,11 +514,36 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                 <Panel title="Active child" description="Switch between children and review the latest activity.">
                   <ChildPicker profiles={children?.children ?? []} selectedChildId={selectedChildId} setSelectedChildId={setSelectedChildId} />
                   {activeChild ? (
-                    <div className="mt-4 space-y-2 text-sm text-slate-300">
-                      <p>Current child: <span className="font-semibold text-white">{activeChild.name}</span></p>
-                      {insights?.lastActivityAt && (
-                        <p>Last active: <span className="font-semibold text-cyan-400">{formatLastActivity(insights.lastActivityAt)}</span></p>
-                      )}
+                    <div className="mt-4 space-y-3 text-sm text-slate-300">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p>Child: <span className="font-semibold text-white">{activeChild.name}</span></p>
+                          {activeChild.yearGroup && (
+                            <p className="mt-1">Year group: <span className="font-semibold text-cyan-300">{activeChild.yearGroup}</span></p>
+                          )}
+                          {activeChild.ageYears && (
+                            <p className="mt-1">Age: <span className="font-semibold text-cyan-300">{activeChild.ageYears} years</span></p>
+                          )}
+                          {activeChild.keyStageLevel && (
+                            <p className="mt-1">Key Stage: <span className="font-semibold text-cyan-300">{activeChild.keyStageLevel}</span></p>
+                          )}
+                          <p className="mt-1">Dashboard: <span className="font-semibold text-white">{dashboardTierLabel(resolveDashboardTier({ yearGroup: activeChild.yearGroup, ageYears: activeChild.ageYears, dateOfBirth: activeChild.dateOfBirth }))}</span></p>
+                          {insights?.lastActivityAt && (
+                            <p className="mt-1">Last active: <span className="font-semibold text-cyan-400">{formatLastActivity(insights.lastActivityAt)}</span></p>
+                          )}
+                          {!isProfileComplete({ yearGroup: activeChild.yearGroup, ageYears: activeChild.ageYears, dateOfBirth: activeChild.dateOfBirth }) && (
+                            <p className="mt-2 text-xs text-amber-400">We&apos;re setting up the best learning view for this child.</p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={goingToDashboard}
+                        onClick={() => void goToChildDashboard(activeChild.id)}
+                        className="mt-2 w-full rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {goingToDashboard ? "Opening..." : `Go to ${activeChild.name}'s Dashboard`}
+                      </button>
                     </div>
                   ) : null}
                 </Panel>
@@ -506,6 +571,38 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       helpText="Add a child first to start a lesson."
                     />
                   </div>
+                </Panel>
+              ) : null}
+              
+              {selectedChildId && childAssignments.length > 0 ? (
+                <Panel title="Assigned tasks" description={`${childAssignments.length} task${childAssignments.length !== 1 ? "s" : ""} assigned to ${activeChild?.name ?? "this child"}`}>
+                  <div className="divide-y divide-white/10">
+                    {childAssignments.slice(0, 8).map((assignment) => (
+                      <div key={assignment.id} className="flex items-center justify-between gap-3 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold text-white">{assignment.title}</p>
+                          <p className="mt-0.5 text-xs capitalize text-slate-400">{assignment.subject}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
+                          assignment.status === "in_progress" ? "bg-amber-400/20 text-amber-300" :
+                          assignment.status === "completed" ? "bg-emerald-400/20 text-emerald-300" :
+                          "bg-sky-400/20 text-sky-300"
+                        }`}>
+                          {assignment.status === "in_progress" ? "In Progress" : assignment.status === "completed" ? "Complete" : "Assigned"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {activeChild && (
+                    <button
+                      type="button"
+                      disabled={goingToDashboard}
+                      onClick={() => void goToChildDashboard(activeChild.id)}
+                      className="mt-4 w-full rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {goingToDashboard ? "Opening..." : `Go to ${activeChild.name}'s Dashboard`}
+                    </button>
+                  )}
                 </Panel>
               ) : null}
               

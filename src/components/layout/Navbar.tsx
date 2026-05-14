@@ -11,6 +11,13 @@ export default function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const isStudentPage = Boolean(
+    pathname?.startsWith("/student") ||
+    pathname?.startsWith("/games") ||
+    pathname === "/dashboard" ||
+    pathname?.startsWith("/dashboard/")
+  );
+
   useEffect(() => {
     // Close mobile menu after navigation.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -63,9 +70,15 @@ export default function Navbar() {
             <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/games/reading">
               Reading
             </Link>
-            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent-pin">
-              Parent Area
-            </Link>
+            {isStudentPage ? (
+              <Link className="rounded-xl px-3 py-2 text-slate-500 hover:bg-slate-100" href="/parent-pin">
+                Parent View
+              </Link>
+            ) : (
+              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent-pin">
+                Parent Area
+              </Link>
+            )}
             <button
               type="button"
               className="rounded-xl px-3 py-2 font-bold text-rose-700 hover:bg-rose-50"
@@ -96,9 +109,15 @@ export default function Navbar() {
           <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/games/reading">
             Reading
           </Link>
-          <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent-pin">
-            Parent Area
-          </Link>
+          {isStudentPage ? (
+            <Link className="rounded-xl px-3 py-2 text-slate-500 hover:bg-slate-100" href="/parent-pin">
+              Parent View
+            </Link>
+          ) : (
+            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent-pin">
+              Parent Area
+            </Link>
+          )}
           <button
             type="button"
             className="rounded-xl px-3 py-2 text-left font-bold text-rose-700 hover:bg-rose-50"
