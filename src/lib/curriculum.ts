@@ -116,6 +116,26 @@ export function ageGroupForYearGroup(yearGroup: string | null | undefined): AgeG
 // Subject types
 export type Subject = "phonics" | "spelling" | "reading" | "writing" | "grammar" | "punctuation" | "vocabulary" | "maths" | "times-tables" | "science" | "english-literature" | "english-language" | "sats-practice" | "11-plus-practice" | "gcse-english" | "gcse-maths" | "gcse-science";
 
+export const GENERATION_CONTENT_TYPE_BY_SUBJECT: Record<Subject, "spelling" | "math" | "reading"> = {
+  phonics: "spelling",
+  spelling: "spelling",
+  reading: "reading",
+  writing: "spelling",
+  grammar: "spelling",
+  punctuation: "spelling",
+  vocabulary: "reading",
+  maths: "math",
+  "times-tables": "math",
+  science: "math",
+  "english-literature": "reading",
+  "english-language": "reading",
+  "sats-practice": "math",
+  "11-plus-practice": "math",
+  "gcse-english": "reading",
+  "gcse-maths": "math",
+  "gcse-science": "math",
+};
+
 // Subject availability by year group
 const SUBJECTS_BY_YEAR: Record<YearGroup, readonly Subject[]> = {
   "Reception": ["phonics", "spelling", "reading", "writing", "maths"] as const,
@@ -197,7 +217,14 @@ const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
   },
   "punctuation": {
     "Year 3": ["Full stops", "Capital letters", "Question marks", "Exclamation marks"],
-    "Year 4": ["Commas in lists", "Apostrophes for possession", "Inverted commas"],
+    "Year 4": [
+      "Commas in lists",
+      "Apostrophes for possession",
+      "Direct speech punctuation",
+      "Question marks and exclamation marks",
+      "Full stops and capital letters",
+      "Fronted adverbials with commas",
+    ],
     "Year 5": ["Commas in clauses", "Apostrophes for contraction", "Parentheses"],
     "Year 6": ["Dash usage", "Colon and semicolon", "Bullet points"],
     "Year 7": ["Complex punctuation", "Semi-colons", "Colons"],
@@ -301,6 +328,48 @@ export function skillsForSubjectAndYear(subject: Subject, yearGroup: string | nu
   type TopicSuggestionKey = `${YearGroup}|${Subject}|${string}`;
 
   const TOPIC_SUGGESTIONS_BY_SKILL: Partial<Record<TopicSuggestionKey, readonly string[]>> = {
+    "Year 4|punctuation|Commas in lists": [
+      "shopping lists",
+      "animal lists",
+      "classroom objects",
+      "food lists",
+      "adventure items",
+    ],
+    "Year 4|punctuation|Apostrophes for possession": [
+      "singular possession",
+      "plural possession",
+      "classroom belongings",
+      "family ownership",
+      "story ownership clues",
+    ],
+    "Year 4|punctuation|Direct speech punctuation": [
+      "dialogue in stories",
+      "speaking verbs",
+      "quoted questions",
+      "quoted commands",
+      "character conversations",
+    ],
+    "Year 4|punctuation|Question marks and exclamation marks": [
+      "curiosity questions",
+      "exciting events",
+      "detecting sentence intent",
+      "punctuation swaps",
+      "adventure reactions",
+    ],
+    "Year 4|punctuation|Full stops and capital letters": [
+      "sentence boundaries",
+      "proper nouns",
+      "editing paragraphs",
+      "capital letter checks",
+      "mixed punctuation repair",
+    ],
+    "Year 4|punctuation|Fronted adverbials with commas": [
+      "time openers",
+      "place openers",
+      "manner openers",
+      "story scene setting",
+      "instruction starters",
+    ],
     "Year 4|vocabulary|Morphology": [
       "Prefixes and suffixes",
       "Root words",
@@ -321,6 +390,34 @@ export function skillsForSubjectAndYear(subject: Subject, yearGroup: string | nu
   };
 
   const TOPIC_SUGGESTIONS_BY_SUBJECT: Partial<Record<Subject, readonly string[]>> = {
+    phonics: [
+      "sound blending",
+      "segmenting practice",
+      "grapheme recognition",
+      "decodable words",
+      "phoneme mapping",
+    ],
+    writing: [
+      "story openings",
+      "character description",
+      "setting description",
+      "sentence expansion",
+      "editing and redrafting",
+    ],
+    grammar: [
+      "sentence accuracy",
+      "word class practice",
+      "tense control",
+      "clause building",
+      "grammar correction",
+    ],
+    punctuation: [
+      "sentence boundary checks",
+      "dialogue punctuation",
+      "list punctuation",
+      "comma practice",
+      "apostrophe practice",
+    ],
     maths: [
       "Fluency practice",
       "Mixed problem solving",
@@ -328,12 +425,40 @@ export function skillsForSubjectAndYear(subject: Subject, yearGroup: string | nu
       "Real-world application",
       "Exam-style questions",
     ],
+    "times-tables": [
+      "fact fluency drills",
+      "inverse division facts",
+      "missing number equations",
+      "multiplication grids",
+      "timed fluency rounds",
+    ],
     reading: [
       "Retrieval practice",
       "Inference with evidence",
       "Vocabulary in context",
       "Author intent",
       "Summarising key ideas",
+    ],
+    "english-language": [
+      "language analysis",
+      "writer's methods",
+      "transactional writing",
+      "comparison skills",
+      "exam response planning",
+    ],
+    "english-literature": [
+      "theme analysis",
+      "character development",
+      "quotation analysis",
+      "context connections",
+      "comparative response",
+    ],
+    "gcse-english": [
+      "Paper 1 style questions",
+      "Paper 2 comparison",
+      "unseen poetry practice",
+      "extended response planning",
+      "language and structure",
     ],
     spelling: [
       "Prefix patterns",
@@ -356,6 +481,34 @@ export function skillsForSubjectAndYear(subject: Subject, yearGroup: string | nu
       "Data interpretation",
       "Misconception repair",
     ],
+    "gcse-science": [
+      "required practicals",
+      "exam command words",
+      "calculation practice",
+      "application questions",
+      "synoptic revision",
+    ],
+    "gcse-maths": [
+      "algebra fluency",
+      "problem solving",
+      "geometry and measure",
+      "statistics interpretation",
+      "exam non-calculator practice",
+    ],
+    "sats-practice": [
+      "arithmetic fluency",
+      "reasoning papers",
+      "reading test style",
+      "mixed revision set",
+      "timed checkpoint",
+    ],
+    "11-plus-practice": [
+      "verbal reasoning",
+      "non-verbal reasoning",
+      "math reasoning",
+      "code and sequence puzzles",
+      "timed mixed practice",
+    ],
   };
 
   export function topicSuggestionsForSelection(input: {
@@ -365,7 +518,7 @@ export function skillsForSubjectAndYear(subject: Subject, yearGroup: string | nu
   }): readonly string[] {
     const normalizedYear = normalizeYearGroup(input.yearGroup);
     const normalizedSkill = (input.skillFocus ?? "").trim();
-    if (!normalizedYear) return ["General practice"];
+    if (!normalizedYear) return [];
 
     const key = normalizedSkill
       ? (`${normalizedYear}|${input.subject}|${normalizedSkill}` as TopicSuggestionKey)
@@ -374,6 +527,119 @@ export function skillsForSubjectAndYear(subject: Subject, yearGroup: string | nu
     const bySkill = key ? (TOPIC_SUGGESTIONS_BY_SKILL[key] ?? []) : [];
     const bySubject = TOPIC_SUGGESTIONS_BY_SUBJECT[input.subject] ?? [];
 
-    const merged = [...bySkill, ...bySubject, "General practice"];
+    const merged = [...bySkill, ...bySubject];
     return Array.from(new Set(merged));
+  }
+
+  export type CurriculumWiringStatus = "fully-wired" | "partially-wired" | "fallback-only" | "missing";
+
+  export type CurriculumPathAudit = {
+    yearGroup: YearGroup;
+    keyStage: KeyStage;
+    ageGroup: AgeGroup;
+    subject: Subject;
+    skillFocus: string;
+    topicThemes: string[];
+    status: CurriculumWiringStatus;
+    notes: string[];
+  };
+
+  export function isValidCurriculumPath(input: {
+    yearGroup: string | null | undefined;
+    subject: Subject;
+    skillFocus: string | null | undefined;
+    topic: string | null | undefined;
+  }) {
+    const year = normalizeYearGroup(input.yearGroup);
+    if (!year) return { ok: false, reason: "Invalid year group" };
+    const subjects = subjectsForYearGroup(year);
+    if (!subjects.includes(input.subject)) return { ok: false, reason: "Subject is not available for selected year group" };
+
+    const skill = (input.skillFocus ?? "").trim();
+    const skills = skillsForSubjectAndYear(input.subject, year);
+    if (!skill || !skills.includes(skill)) return { ok: false, reason: "Skill focus is not mapped for selected year and subject" };
+
+    const topic = (input.topic ?? "").trim();
+    const topics = topicSuggestionsForSelection({ yearGroup: year, subject: input.subject, skillFocus: skill });
+    if (!topic || !topics.includes(topic)) return { ok: false, reason: "Topic/theme is not mapped for selected skill" };
+
+    return { ok: true, reason: null as string | null };
+  }
+
+  export function buildCurriculumCoverageReport(): {
+    totalPaths: number;
+    fullyWired: number;
+    partiallyWired: number;
+    fallbackOnly: number;
+    missing: number;
+    paths: CurriculumPathAudit[];
+  } {
+    const paths: CurriculumPathAudit[] = [];
+
+    for (const yearGroup of YEAR_GROUPS) {
+      const keyStage = keyStageForYearGroup(yearGroup);
+      const ageGroup = ageGroupForYearGroup(yearGroup);
+      for (const subject of subjectsForYearGroup(yearGroup)) {
+        const skills = skillsForSubjectAndYear(subject, yearGroup);
+        if (!skills.length) {
+          paths.push({
+            yearGroup,
+            keyStage,
+            ageGroup,
+            subject,
+            skillFocus: "",
+            topicThemes: [],
+            status: "missing",
+            notes: ["No skills mapped"],
+          });
+          continue;
+        }
+
+        for (const skillFocus of skills) {
+          const topics = [...topicSuggestionsForSelection({ yearGroup, subject, skillFocus })];
+          let status: CurriculumWiringStatus = "fully-wired";
+          const notes: string[] = [];
+          if (!GENERATION_CONTENT_TYPE_BY_SUBJECT[subject]) {
+            status = "missing";
+            notes.push("No AI generation content type mapping");
+          }
+          if (!topics.length) {
+            status = "missing";
+            notes.push("No topic/theme mappings");
+          } else {
+            const hasSkillTopics = (TOPIC_SUGGESTIONS_BY_SKILL[`${yearGroup}|${subject}|${skillFocus}` as TopicSuggestionKey] ?? []).length > 0;
+            const hasSubjectTopics = (TOPIC_SUGGESTIONS_BY_SUBJECT[subject] ?? []).length > 0;
+            if (hasSkillTopics) {
+              status = "fully-wired";
+            } else if (hasSubjectTopics) {
+              status = "partially-wired";
+              notes.push("Using subject-level topics only");
+            } else {
+              status = "fallback-only";
+              notes.push("No explicit skill topics");
+            }
+          }
+
+          paths.push({
+            yearGroup,
+            keyStage,
+            ageGroup,
+            subject,
+            skillFocus,
+            topicThemes: topics,
+            status,
+            notes,
+          });
+        }
+      }
+    }
+
+    return {
+      totalPaths: paths.length,
+      fullyWired: paths.filter((path) => path.status === "fully-wired").length,
+      partiallyWired: paths.filter((path) => path.status === "partially-wired").length,
+      fallbackOnly: paths.filter((path) => path.status === "fallback-only").length,
+      missing: paths.filter((path) => path.status === "missing").length,
+      paths,
+    };
   }

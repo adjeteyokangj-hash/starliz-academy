@@ -4,7 +4,16 @@ import { writeAuditLog } from "@/lib/audit";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import { SKILL_MAP, serializeSkills } from "@/lib/skills";
-import { keyStageForYearGroup, normalizeYearGroup as normalizeCurriculumYearGroup, yearGroupsForKeyStage, ageGroupForYearGroup, type Subject } from "@/lib/curriculum";
+import {
+  GENERATION_CONTENT_TYPE_BY_SUBJECT,
+  keyStageForYearGroup,
+  normalizeYearGroup as normalizeCurriculumYearGroup,
+  yearGroupsForKeyStage,
+  ageGroupForYearGroup,
+  isValidCurriculumPath,
+  topicSuggestionsForSelection,
+  type Subject,
+} from "@/lib/curriculum";
 
 const BATCH_SIZE = 12;
 const OPENAI_MODEL = "gpt-4o-mini";
@@ -13,15 +22,7 @@ const generationRateLimit = new Map<string, { count: number; resetAt: number }>(
 
 // Map new Subject types to legacy API subject types
 function mapSubjectToLegacy(subject: string): "spelling" | "math" | "reading" {
-  const s = String(subject).toLowerCase();
-  if (s === "phonics" || s === "spelling") return "spelling";
-  if (s === "times-tables" || s === "maths") return "math";
-  if (s === "reading" || s === "vocabulary" || s === "english-language" ||
-      s === "english-literature" || s === "gcse-english") return "reading";
-  if (s === "writing" || s === "grammar" || s === "punctuation") return "spelling";
-  if (s === "science" || s === "gcse-science") return "math";
-  if (s === "gcse-maths" || s === "sats-practice" || s === "11-plus-practice") return "math";
-  return "spelling";
+  return (GENERATION_CONTENT_TYPE_BY_SUBJECT[String(subject).toLowerCase() as Subject] ?? "spelling");
 }
 
 type GeneratedPreview = {
@@ -93,6 +94,7 @@ function normalizeYearGroup(yearGroup: string, keyStage: string) {
 
 function buildUserPrompt(
   type: string,
+  subject: Subject,
   level: number,
   topic: string,
   ageGroup: string,
@@ -121,6 +123,47 @@ FOLLOW-UP PRACTICE:
 - Keep wording encouraging and parent-friendly.`
     : "";
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
+  if (subject === "punctuation") {
+    return `Generate ${count} UK Year ${safeYearGroup.replace("Year ", "")} punctuation practice items.
+Selection context:
+- Key stage: ${keyStage}
+- Year group: ${safeYearGroup}
+- Subject: punctuation
+- Skill focus: ${skillFocus || "Commas in lists"}
+- Topic/theme: ${cleanedTopic || skillFocus || "punctuation practice"}
+- Difficulty range: 1-5, selected ${level}
+
+Expected content type:
+- sentence editing and multiple-choice punctuation questions
+
+Question format:
+- short prompt sentence or mini-context
+- include one clear punctuation target
+
+Answer format:
+- include a correct answer string and a brief explanation
+
+Safety rules:
+- age-appropriate school-safe language
+- no harmful, violent, or adult themes
+
+Curriculum note:
+- keep examples aligned with UK KS2 punctuation expectations for the selected skill
+
+Return JSON array only using this schema:
+{
+  "id": string,
+  "question": string,
+  "answer": string,
+  "options": string[],
+  "explanation": string,
+  "hint": string,
+  "yearGroup": "${safeYearGroup}",
+  "skillFocus": "${skillFocus}",
+  "difficulty": ${level}
+}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+  }
+
   if (type === "spelling") {
     const stageLower = (skillFocus || "").toLowerCase();
     const phonicsInstruction = stageLower.startsWith("phase 2")
@@ -269,6 +312,7 @@ function readingObjectToItems(value: unknown): unknown[] {
 
 function normalizePreviewItems(
   subject: "spelling" | "math" | "reading",
+  sourceSubject: Subject,
   content: unknown,
   metadata: { yearGroup: string; skillFocus: string; difficulty: number; topic: string },
 ): unknown[] {
@@ -284,6 +328,23 @@ function normalizePreviewItems(
   return records.map((item, index) => {
     const data = item as Record<string, unknown>;
     if (subject === "spelling") {
+      if (["punctuation", "grammar", "writing", "vocabulary", "english-language", "gcse-english"].includes(sourceSubject)) {
+        return {
+          ...data,
+          id: String(data.id ?? `lang-${index + 1}`),
+          type: sourceSubject,
+          yearGroup: metadata.yearGroup,
+          skillFocus: metadata.skillFocus,
+          difficulty: metadata.difficulty,
+          prompt: String(data.prompt ?? data.question ?? data.sentence ?? ""),
+          question: String(data.question ?? data.prompt ?? ""),
+          answer: String(data.answer ?? ""),
+          options: Array.isArray(data.options) ? data.options : [],
+          sentence: String(data.sentence ?? data.sentenceContext ?? ""),
+          explanation: String(data.explanation ?? "Use punctuation to make meaning clear."),
+          hint: String(data.hint ?? "Check sentence boundaries, capitals and punctuation marks."),
+        };
+      }
       return {
         ...data,
         type: "spelling",
@@ -343,7 +404,7 @@ function buildGeneratedPreview({
   topic: string;
   content: unknown;
 }): GeneratedPreview {
-  const items = normalizePreviewItems(legacyType, content, { yearGroup, skillFocus, difficulty, topic });
+  const items = normalizePreviewItems(legacyType, subject, content, { yearGroup, skillFocus, difficulty, topic });
   const safeTopic = topic || skillFocus || legacyType;
   return {
     title: `${yearGroup} ${skillFocus || subject} ${legacyType === "math" ? "questions" : legacyType === "reading" ? "reading set" : "practice"}`,
@@ -455,7 +516,7 @@ async function generateValidatedSpellingContent({
 
   for (let attempt = 0; attempt < 4 && collected.length < count; attempt += 1) {
     const needed = count - collected.length;
-    lastPrompt = buildUserPrompt("spelling", level, topic, ageGroup, needed, keyStage, safeYearGroup, skillFocus, Array.from(excludeWords));
+    lastPrompt = buildUserPrompt("spelling", "spelling", level, topic, ageGroup, needed, keyStage, safeYearGroup, skillFocus, Array.from(excludeWords));
     const { parsed } = await requestOpenAiJson(apiKey, systemPrompt, lastPrompt);
     const incoming = Array.isArray(parsed) ? parsed : [];
     const combined = [...collected, ...incoming];
@@ -563,16 +624,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "type must be spelling, math, or reading" }, { status: 400 });
   }
 
-  const maxLevel = type === "reading" ? 10 : 5;
+  const maxLevel = 5;
   const safeLevel = Math.max(1, Math.min(maxLevel, Number.isFinite(level) ? level : 1));
+  const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
+  const safeKeyStage = keyStageForYearGroup(safeYearGroup);
+
+  const sourceSubject = requestedSubject as Subject;
+  const pathValidation = isValidCurriculumPath({
+    yearGroup: safeYearGroup,
+    subject: sourceSubject,
+    skillFocus: resolvedSkillFocus,
+    topic: topic,
+  });
+  if (!pathValidation.ok) {
+    const mappedTopics = topicSuggestionsForSelection({
+      yearGroup: safeYearGroup,
+      subject: sourceSubject,
+      skillFocus: resolvedSkillFocus,
+    });
+    return NextResponse.json({
+      error: pathValidation.reason,
+      details: {
+        yearGroup: safeYearGroup,
+        subject: sourceSubject,
+        skillFocus: resolvedSkillFocus,
+        mappedTopics,
+      },
+    }, { status: 422 });
+  }
 
   const apiKey = await getOpenAiApiKey();
   if (!apiKey) {
     return NextResponse.json({ error: "OpenAI API key not configured. Save it in Admin Settings > API Keys." }, { status: 503 });
   }
 
-  const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
-  const safeKeyStage = keyStageForYearGroup(safeYearGroup);
   const requestKey = cacheKey({ type, level, topic, ageGroup, count, keyStage: safeKeyStage, yearGroup: safeYearGroup, skillFocus });
   const cached = generationCache.get(requestKey);
   if (cached) {
@@ -593,7 +678,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const userPrompt = buildUserPrompt(type, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, [], targetSkills, weakAreas);
+  const userPrompt = buildUserPrompt(type, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, [], targetSkills, weakAreas);
   const systemPrompt = SYSTEM_PROMPT[type];
 
   try {
@@ -601,7 +686,8 @@ export async function POST(req: Request) {
     let promptUsed = userPrompt;
     let validation: Record<string, unknown> = { valid: true, repaired: false, errors: [], fixesApplied: [], removedWords: [], regeneratedCount: 0, requestedCount: count, finalCount: count };
 
-    if (type === "spelling") {
+    const strictSpellingValidation = type === "spelling" && (sourceSubject === "spelling" || sourceSubject === "phonics");
+    if (strictSpellingValidation) {
       const validated = await generateValidatedSpellingContent({
         apiKey,
         systemPrompt,

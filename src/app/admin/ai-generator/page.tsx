@@ -8,6 +8,7 @@ import {
   KEY_STAGES,
   YEAR_GROUPS,
   AGE_GROUPS,
+  isValidCurriculumPath,
   keyStageForYearGroup,
   yearGroupsForKeyStage,
   ageGroupForYearGroup,
@@ -200,7 +201,7 @@ export default function AiGeneratorPage() {
     ? CUSTOM_TOPIC_VALUE
     : topicSuggestions.includes(topicChoice)
       ? topicChoice
-      : topicSuggestions[0] ?? "General practice";
+      : topicSuggestions[0] ?? "";
   const selectedTopicTheme = (effectiveTopicChoice === CUSTOM_TOPIC_VALUE ? customTopic : effectiveTopicChoice).trim();
 
   const canGenerate = Boolean(subject && keyStage && yearGroup && skillFocus.trim() && selectedTopicTheme);
@@ -239,8 +240,17 @@ export default function AiGeneratorPage() {
       setError("Subject, key stage, year group and skill focus are required.");
       return;
     }
+    if (!topicSuggestions.length && effectiveTopicChoice !== CUSTOM_TOPIC_VALUE) {
+      setError("No topic/theme mapping exists for this year, subject and skill. Add curriculum mapping before generating.");
+      return;
+    }
     if (!selectedTopicTheme) {
       setError("Topic/theme is required before generating content.");
+      return;
+    }
+    const pathValidation = isValidCurriculumPath({ yearGroup, subject, skillFocus, topic: selectedTopicTheme });
+    if (!pathValidation.ok) {
+      setError(pathValidation.reason);
       return;
     }
     if (items < 1 || items > 30) {
@@ -872,7 +882,7 @@ export default function AiGeneratorPage() {
               </div>
               <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Topic</p>
-                <p className="mt-2 font-bold text-white">{previewTitle || "General practice"}</p>
+                <p className="mt-2 font-bold text-white">{previewTitle || "Mapped topic required"}</p>
               </div>
               <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Quality</p>
