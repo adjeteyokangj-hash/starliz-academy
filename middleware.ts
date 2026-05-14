@@ -76,6 +76,9 @@ async function hasParentUnlock(request: NextRequest): Promise<boolean> {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isPrefetch = request.headers.get("purpose") === "prefetch" || request.headers.has("next-router-prefetch");
+  const acceptsHtml = request.headers.get("accept")?.includes("text/html") ?? false;
+  const isDocumentNavigation = request.headers.get("sec-fetch-mode") === "navigate" || acceptsHtml;
 
   if (
     pathname.startsWith("/_next")
@@ -102,6 +105,7 @@ export async function middleware(request: NextRequest) {
   const session = await getSessionPayload(request);
   const authenticated = session !== null;
   const hasRefreshToken = Boolean(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
+  const shouldAttemptRefresh = hasRefreshToken && request.method === "GET" && isDocumentNavigation && !isPrefetch;
   const adminLoginTarget = request.nextUrl.searchParams.get("next")?.startsWith("/admin") ?? false;
 
   if (pathname.startsWith("/admin")) {
@@ -109,7 +113,7 @@ export async function middleware(request: NextRequest) {
       // Allow unauthenticated access to /admin/login, redirect all other admin routes there.
       if (pathname !== "/admin/login") {
         const next = `${pathname}${request.nextUrl.search}`;
-        if (hasRefreshToken && request.method === "GET") {
+        if (shouldAttemptRefresh) {
           const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
           return withSecurityHeaders(NextResponse.redirect(refreshTarget));
         }
@@ -124,7 +128,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!authenticated && !isPublic) {
-    if (hasRefreshToken && request.method === "GET") {
+    if (shouldAttemptRefresh) {
       const next = `${pathname}${request.nextUrl.search}`;
       const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
       return withSecurityHeaders(NextResponse.redirect(refreshTarget));

@@ -64,32 +64,8 @@ export default function AdminSidebar() {
     };
   }, []);
 
-  useEffect(() => {
-    if (isDesktop) {
-      setIsVisible(true);
-      return;
-    }
-    try {
-      const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
-      if (raw !== null) {
-        setIsVisible(JSON.parse(raw) as boolean);
-      }
-    } catch {
-      // Ignore storage read issues.
-    }
-  }, [isDesktop]);
-
-  useEffect(() => {
-    if (!isDesktop) return;
-
-    const id = window.requestAnimationFrame(() => {
-      setIsVisible(true);
-    });
-
-    return () => window.cancelAnimationFrame(id);
-  }, [isDesktop]);
-
   function toggleVisibility() {
+    if (isDesktop) return;
     const nextVisible = !isVisible;
     setIsVisible(nextVisible);
     try {
@@ -162,9 +138,11 @@ export default function AdminSidebar() {
     }
   }
 
+  const sidebarVisible = isDesktop ? true : isVisible;
+
   return (
     <>
-      {!isVisible && (
+      {!sidebarVisible && (
         <button
           onClick={toggleVisibility}
           className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-500"
@@ -175,7 +153,7 @@ export default function AdminSidebar() {
       )}
       <aside
         className={`${
-          isVisible
+          sidebarVisible
             ? "translate-x-0 lg:w-72 lg:px-4 lg:py-5 lg:border-r lg:opacity-100"
             : "-translate-x-full lg:translate-x-0 lg:w-0 lg:px-0 lg:py-0 lg:border-r-0 lg:opacity-0"
         } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-slate-800 bg-slate-950/92 transition-all duration-300 lg:relative lg:z-auto`}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
@@ -13,6 +13,7 @@ import {
   ageGroupForYearGroup,
   subjectsForYearGroup,
   skillsForSubjectAndYear,
+  topicSuggestionsForSelection,
   type Subject,
   type YearGroup,
 } from "@/lib/curriculum";
@@ -102,6 +103,25 @@ type AutomationStatus = {
   ok: boolean;
 };
 
+const CUSTOM_TOPIC_VALUE = "__custom_topic__";
+
+function formatSubjectLabel(value: string): string {
+  if (value === "math") return "Maths";
+  if (value === "maths") return "Maths";
+  if (value === "times-tables") return "Times Tables";
+  return value.charAt(0).toUpperCase() + value.slice(1).replace(/-/g, " ");
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs = 25000): Promise<Response> {
+  const controller = new AbortController();
+  const id = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(id);
+  }
+}
+
 export default function AiGeneratorPage() {
   const searchParams = useSearchParams();
   const prefillSubject = searchParams.get("subject");
@@ -127,12 +147,12 @@ export default function AiGeneratorPage() {
   const [skillFocus, setSkillFocus] = useState(
     prefillSkill && availableSkills.includes(prefillSkill) ? prefillSkill : availableSkills[0] ?? ""
   );
-  const [skillSearch, setSkillSearch] = useState("");
   const [difficulty, setDifficulty] = useState(
     Number.isFinite(prefillDifficulty) && prefillDifficulty >= 1 ? prefillDifficulty : prefillWords ? 1 : 2
   );
   const [items, setItems] = useState(12);
-  const [topic, setTopic] = useState(prefillWords ? `Focus practice on: ${prefillWords}` : "");
+  const [topicChoice, setTopicChoice] = useState<string>(prefillWords ? CUSTOM_TOPIC_VALUE : "");
+  const [customTopic, setCustomTopic] = useState(prefillWords ? `Focus practice on: ${prefillWords}` : "");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +167,9 @@ export default function AiGeneratorPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null);
   const [automationDebugPayload, setAutomationDebugPayload] = useState<string | null>(null);
+  const [automationLoading, setAutomationLoading] = useState<"autofill" | "weaknesses" | null>(null);
+  const [automationDurationMs, setAutomationDurationMs] = useState<number | null>(null);
+  const [automationRetryMode, setAutomationRetryMode] = useState<"autofill" | "weaknesses" | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(
     prefillWords ? "Follow-up practice prefilled from assignment weak areas." : null
   );
@@ -156,10 +179,25 @@ export default function AiGeneratorPage() {
   const [savedContentId, setSavedContentId] = useState<string | null>(null);
   const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId);
 
-  // Dynamically filter skills based on search
-  const filteredSkills = availableSkills.filter((skill) =>
-    skill.toLowerCase().includes(skillSearch.trim().toLowerCase())
-  );
+  const topicSuggestions = useMemo(() => topicSuggestionsForSelection({
+    yearGroup,
+    subject,
+    skillFocus,
+  }), [yearGroup, subject, skillFocus]);
+  const effectiveTopicChoice = topicChoice === CUSTOM_TOPIC_VALUE
+    ? CUSTOM_TOPIC_VALUE
+    : topicSuggestions.includes(topicChoice)
+      ? topicChoice
+      : topicSuggestions[0] ?? "General practice";
+  const selectedTopicTheme = (effectiveTopicChoice === CUSTOM_TOPIC_VALUE ? customTopic : effectiveTopicChoice).trim();
+
+  const canGenerate = Boolean(subject && keyStage && yearGroup && skillFocus.trim() && selectedTopicTheme);
+
+  const automationDurationLabel = automationDurationMs === null
+    ? null
+    : `${(automationDurationMs / 1000).toFixed(1)}s`;
+
+  const previewTitle = preview?.topic?.trim() || selectedTopicTheme;
 
   const phonicsMismatchDetected = (generationMeta?.validation?.errors ?? []).some((value) =>
     value.includes("phonics_stage")
@@ -189,6 +227,10 @@ export default function AiGeneratorPage() {
       setError("Subject, key stage, year group and skill focus are required.");
       return;
     }
+    if (!selectedTopicTheme) {
+      setError("Topic/theme is required before generating content.");
+      return;
+    }
     if (items < 1 || items > 30) {
       setError("Number of items must be between 1 and 30.");
       return;
@@ -208,13 +250,17 @@ export default function AiGeneratorPage() {
       const response = await fetch("/api/admin/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, keyStage, yearGroup, skillFocus, ageGroup, difficulty, numberOfItems: items, topic }),
+        body: JSON.stringify({ subject, keyStage, yearGroup, skillFocus, ageGroup, difficulty, numberOfItems: items, topic: selectedTopicTheme }),
       });
       const payload = await response.json();
       if (!response.ok) {
         setError(payload.error ?? "Generation failed.");
       } else {
-        setPreview(payload.content);
+        setPreview({
+          ...payload.content,
+          topic: selectedTopicTheme,
+          title: payload.content?.title ?? `${formatSubjectLabel(subject)} - ${selectedTopicTheme}`,
+        });
         setGenerationMeta({
           model: payload.model,
           prompt: payload.prompt,
@@ -246,7 +292,7 @@ export default function AiGeneratorPage() {
           yearGroup,
           skillFocus,
           difficulty,
-          topic,
+          topic: selectedTopicTheme,
           items: {
             ...preview,
             items: preview.items.filter((item) => item.status !== "rejected"),
@@ -323,7 +369,7 @@ export default function AiGeneratorPage() {
           ageGroup,
           difficulty,
           numberOfItems: 1,
-          topic: `${topic || skillFocus} replacement item`,
+          topic: `${selectedTopicTheme || skillFocus} replacement item`,
         }),
       });
       const payload = await response.json();
@@ -343,86 +389,120 @@ export default function AiGeneratorPage() {
   }
 
   async function runAutomation(mode: "autofill" | "weaknesses") {
-    setAutomationStatus({ title: "Running automation...", lines: ["Please wait while processing."], ok: true });
-    setAutomationDebugPayload(null);
-    if (mode === "weaknesses") {
-      const detectResponse = await fetch("/api/admin/weak-areas", { method: "POST" });
-      const detectPayload = await detectResponse.json() as { error?: string; weakAreas?: unknown[] };
-      if (!detectResponse.ok) {
-        setAutomationStatus({
-          title: "Weak area scan failed",
-          lines: [detectPayload.error ?? "Automation failed."],
-          ok: false,
-        });
-        return;
-      }
-
-      const weaknessParams = new URLSearchParams();
-      if (weakAreaKeyStageFilter) weaknessParams.set("keyStage", weakAreaKeyStageFilter);
-      if (weakAreaYearGroupFilter) weaknessParams.set("yearGroup", weakAreaYearGroupFilter);
-      const weakAreasUrl = `/api/admin/weak-areas${weaknessParams.toString() ? `?${weaknessParams.toString()}` : ""}`;
-      const listResponse = await fetch(weakAreasUrl);
-      const listPayload = await listResponse.json() as { error?: string; weakAreas?: WeakArea[] };
-      if (!listResponse.ok) {
-        setAutomationStatus({
-          title: "Weak area listing failed",
-          lines: [listPayload.error ?? "Automation failed."],
-          ok: false,
-        });
-        return;
-      }
-
-      const detectedCount = Array.isArray(detectPayload.weakAreas) ? detectPayload.weakAreas.length : 0;
-      const currentWeakAreas = listPayload.weakAreas ?? [];
-      setWeakAreas(currentWeakAreas);
-      setAutomationStatus({
-        title: "Weak area detection complete",
-        lines: currentWeakAreas.length
-          ? [
-              `${currentWeakAreas.length} active weak areas currently tracked.`,
-              `${detectedCount} weak area signals detected in latest scan.`,
-            ]
-          : ["No weak areas detected."],
-        ok: true,
-      });
-      setAutomationDebugPayload(JSON.stringify({ detectPayload, listPayload }, null, 2));
-      return;
-    }
-
-    const response = await fetch("/api/admin/ai/automation", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
-    });
-    const payload = await response.json() as {
-      error?: string;
-      created?: Array<{ type: string; id: string; reused: boolean }>;
-    };
-    if (!response.ok) {
-      setAutomationStatus({
-        title: "Library automation failed",
-        lines: [payload.error ?? "Automation failed."],
-        ok: false,
-      });
-      return;
-    }
-
-    const created = payload.created ?? [];
-    const reusedCount = created.filter((entry) => entry.reused).length;
-    const freshCount = created.length - reusedCount;
-    const typeSummary = created.length
-      ? `Updated content for ${Array.from(new Set(created.map((entry) => entry.type))).join(", ")}.`
-      : "Library already had enough starter content.";
+    const startedAt = Date.now();
+    setAutomationLoading(mode);
+    setAutomationRetryMode(null);
+    setAutomationDurationMs(null);
     setAutomationStatus({
-      title: "Library auto-fill complete",
-      lines: [
-        `${freshCount} content sets created.`,
-        `${reusedCount} reused from existing library.`,
-        typeSummary,
-      ],
+      title: mode === "weaknesses" ? "Running weak area detection..." : "Running library automation...",
+      lines: ["Please wait while processing."],
       ok: true,
     });
-    setAutomationDebugPayload(JSON.stringify(payload, null, 2));
+    setAutomationDebugPayload(null);
+    try {
+      if (mode === "weaknesses") {
+        const detectResponse = await fetchWithTimeout("/api/admin/weak-areas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            keyStage: weakAreaKeyStageFilter || undefined,
+            yearGroup: weakAreaYearGroupFilter || undefined,
+          }),
+        });
+        const detectPayload = await detectResponse.json() as { error?: string; weakAreas?: unknown[] };
+        if (!detectResponse.ok) {
+          setAutomationRetryMode(mode);
+          setAutomationStatus({
+            title: "Weak area scan failed",
+            lines: [detectPayload.error ?? "Could not detect weak areas. Try again."],
+            ok: false,
+          });
+          return;
+        }
+
+        const weaknessParams = new URLSearchParams();
+        if (weakAreaKeyStageFilter) weaknessParams.set("keyStage", weakAreaKeyStageFilter);
+        if (weakAreaYearGroupFilter) weaknessParams.set("yearGroup", weakAreaYearGroupFilter);
+        const weakAreasUrl = `/api/admin/weak-areas${weaknessParams.toString() ? `?${weaknessParams.toString()}` : ""}`;
+        const listResponse = await fetchWithTimeout(weakAreasUrl, { method: "GET" });
+        const listPayload = await listResponse.json() as { error?: string; weakAreas?: WeakArea[] };
+        if (!listResponse.ok) {
+          setAutomationRetryMode(mode);
+          setAutomationStatus({
+            title: "Weak area listing failed",
+            lines: [listPayload.error ?? "Unable to fetch weak area list."],
+            ok: false,
+          });
+          return;
+        }
+
+        const detectedCount = Array.isArray(detectPayload.weakAreas) ? detectPayload.weakAreas.length : 0;
+        const currentWeakAreas = listPayload.weakAreas ?? [];
+        setWeakAreas(currentWeakAreas);
+        setAutomationStatus({
+          title: "Weak area detection complete",
+          lines: currentWeakAreas.length
+            ? [
+                `${currentWeakAreas.length} active weak areas currently tracked.`,
+                `${detectedCount} weak area signals detected in latest scan.`,
+              ]
+            : ["No weak areas detected."],
+          ok: true,
+        });
+        setAutomationDebugPayload(JSON.stringify({ detectPayload, listPayload }, null, 2));
+        return;
+      }
+
+      const response = await fetchWithTimeout("/api/admin/ai/automation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      const payload = await response.json() as {
+        error?: string;
+        created?: Array<{ type: string; id: string; reused: boolean }>;
+      };
+      if (!response.ok) {
+        setAutomationRetryMode(mode);
+        setAutomationStatus({
+          title: "Library automation failed",
+          lines: [payload.error ?? "Automation failed."],
+          ok: false,
+        });
+        return;
+      }
+
+      const created = payload.created ?? [];
+      const reusedCount = created.filter((entry) => entry.reused).length;
+      const freshCount = created.length - reusedCount;
+      const subjectLabels = Array.from(new Set(created.map((entry) => formatSubjectLabel(entry.type))));
+      setAutomationStatus({
+        title: "Library updated successfully",
+        lines: freshCount > 0
+          ? [
+              `${freshCount} content sets generated.`,
+              `${reusedCount} existing content sets reused.`,
+              subjectLabels.length ? `${subjectLabels.join(", ")} library refreshed.` : "Library refreshed.",
+            ]
+          : [
+              `${reusedCount} existing content sets reused.`,
+              "No new content generation required.",
+            ],
+        ok: true,
+      });
+      setAutomationDebugPayload(JSON.stringify(payload, null, 2));
+    } catch (error) {
+      const timeout = error instanceof DOMException && error.name === "AbortError";
+      setAutomationRetryMode(mode);
+      setAutomationStatus({
+        title: timeout ? "Automation timed out" : "Automation failed",
+        lines: [timeout ? "Request timed out. Please retry." : "Unexpected error while running automation."],
+        ok: false,
+      });
+    } finally {
+      setAutomationLoading(null);
+      setAutomationDurationMs(Date.now() - startedAt);
+    }
   }
 
   function applyWeakArea(area: WeakArea) {
@@ -439,16 +519,18 @@ export default function AiGeneratorPage() {
     setAgeGroup(ageGroupForYearGroup(area.yearGroup) as typeof AGE_GROUPS[number]);
     setSkillFocus(area.skillFocus);
     setDifficulty(Math.max(1, area.status === "active" ? area.currentDifficulty - 1 : area.currentDifficulty));
-    setTopic(`${area.weaknessType} support for ${area.skillFocus}`);
+    setTopicChoice(CUSTOM_TOPIC_VALUE);
+    setCustomTopic(`${area.weaknessType} support for ${area.skillFocus}`);
     setTargetStudentId(area.studentId);
     setSavedContentId(null);
     setAutomationMessage(`Prefilled targeted content for ${area.student.name}.`);
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[32rem_minmax(0,1fr)]">
+    <div className="grid items-start gap-6 xl:grid-cols-[32rem_minmax(0,1fr)]">
+      <div className="xl:sticky xl:top-24">
       <AdminSectionCard title="AI Generator" eyebrow="Content">
-        <div className="space-y-4">
+        <div className="space-y-4 pb-6">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-bold text-slate-300">
               Year group
@@ -459,6 +541,8 @@ export default function AiGeneratorPage() {
                   setYearGroup(nextYear);
                   setKeyStage(keyStageForYearGroup(nextYear));
                   setAgeGroup(ageGroupForYearGroup(nextYear));
+                  setTopicChoice("");
+                  setCustomTopic("");
 
                   // Update subject if current is no longer available
                   const nextAvailable = getAvailableSubjects(nextYear);
@@ -496,6 +580,8 @@ export default function AiGeneratorPage() {
                     : options[0];
                   setYearGroup(nextYear);
                   setAgeGroup(ageGroupForYearGroup(nextYear));
+                  setTopicChoice("");
+                  setCustomTopic("");
                 }}
                 className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
               >
@@ -517,7 +603,8 @@ export default function AiGeneratorPage() {
                 setSubject(nextSubject);
                 const nextSkills = getAvailableSkills(nextSubject, yearGroup);
                 setSkillFocus(nextSkills[0] ?? "");
-                setSkillSearch("");
+                setTopicChoice("");
+                setCustomTopic("");
               }}
               className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
             >
@@ -531,22 +618,18 @@ export default function AiGeneratorPage() {
 
           <label className="block text-sm font-bold text-slate-300">
             Skill focus
-            <input
-              value={skillSearch}
-              onChange={(event) => setSkillSearch(event.target.value)}
-              placeholder="Search skills"
-              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500"
-            />
             <select
               value={skillFocus}
               onChange={(event) => {
                 const nextSkill = event.target.value;
                 setSkillFocus(nextSkill);
+                setTopicChoice("");
+                setCustomTopic("");
               }}
               className="mt-2 max-h-72 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
             >
               <option value="">Select a skill focus</option>
-              {filteredSkills.map((skill) => (
+              {availableSkills.map((skill) => (
                 <option key={skill} value={skill}>
                   {skill}
                 </option>
@@ -596,15 +679,32 @@ export default function AiGeneratorPage() {
 
           <label className="block text-sm font-bold text-slate-300">
             Topic / theme
-            <input
-              value={topic}
-              onChange={(event) => setTopic(event.target.value)}
-              placeholder="space adventure, pets, shopping, seasons"
-              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600"
-            />
+            <select
+              value={effectiveTopicChoice}
+              onChange={(event) => {
+                setTopicChoice(event.target.value);
+                if (event.target.value !== CUSTOM_TOPIC_VALUE) {
+                  setCustomTopic("");
+                }
+              }}
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+            >
+              {topicSuggestions.map((suggestion) => (
+                <option key={suggestion} value={suggestion}>{suggestion}</option>
+              ))}
+              <option value={CUSTOM_TOPIC_VALUE}>Custom topic</option>
+            </select>
+            {effectiveTopicChoice === CUSTOM_TOPIC_VALUE ? (
+              <input
+                value={customTopic}
+                onChange={(event) => setCustomTopic(event.target.value)}
+                placeholder="Type a custom topic/theme"
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600"
+              />
+            ) : null}
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <button onClick={generatePreview} disabled={loading} className="rounded-xl bg-indigo-500 px-4 py-3 font-black text-white hover:bg-indigo-400 disabled:opacity-50">
+            <button onClick={generatePreview} disabled={loading || !canGenerate} className="rounded-xl bg-indigo-500 px-4 py-3 font-black text-white hover:bg-indigo-400 disabled:opacity-50">
               {loading ? "Generating with AI..." : "Generate Preview"}
             </button>
             <button onClick={saveGeneratedContent} disabled={saving || saveBlocked || !approvedCount} className="rounded-xl bg-emerald-500 px-4 py-3 font-black text-white hover:bg-emerald-400 disabled:opacity-50">
@@ -623,8 +723,9 @@ export default function AiGeneratorPage() {
           ) : null}
         </div>
       </AdminSectionCard>
+      </div>
 
-      <div className="space-y-6">
+      <div className="space-y-6 pb-24 xl:max-h-[calc(100vh-10rem)] xl:overflow-y-auto xl:pr-1">
       <AdminSectionCard title="Automation" eyebrow="Smart content">
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <select
@@ -662,18 +763,50 @@ export default function AiGeneratorPage() {
           </select>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button onClick={() => void runAutomation("autofill")} className="rounded-xl bg-blue-500 px-4 py-3 font-black text-white">Auto-fill Low Library</button>
-          <button onClick={() => void runAutomation("weaknesses")} className="rounded-xl border border-slate-700 px-4 py-3 font-black text-slate-200">Detect Weak Areas</button>
+          <button
+            onClick={() => void runAutomation("autofill")}
+            disabled={automationLoading !== null}
+            className="rounded-xl bg-blue-500 px-4 py-3 font-black text-white disabled:opacity-60"
+          >
+            {automationLoading === "autofill" ? "Running..." : "Auto-fill Low Library"}
+          </button>
+          <button
+            onClick={() => void runAutomation("weaknesses")}
+            disabled={automationLoading !== null}
+            className="rounded-xl border border-slate-700 px-4 py-3 font-black text-slate-200 disabled:opacity-60"
+          >
+            {automationLoading === "weaknesses" ? "Scanning..." : "Detect Weak Areas"}
+          </button>
+          <Link href="/admin/content-library" className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-black text-slate-200">View Content Library</Link>
+          <button
+            onClick={() => void runAutomation("autofill")}
+            disabled={automationLoading !== null}
+            className="rounded-xl border border-blue-500/60 px-4 py-3 text-sm font-black text-blue-200 disabled:opacity-60"
+          >
+            Generate Missing Content
+          </button>
+          <Link href="/admin/content-library" className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-black text-slate-200">View Updated Subjects</Link>
         </div>
+        {automationLoading ? <p className="mt-3 text-xs text-slate-400">Processing automation request...</p> : null}
         {automationMessage ? <p className="mt-4 text-sm text-slate-400">{automationMessage}</p> : null}
         {automationStatus ? (
           <div className={`mt-4 rounded-2xl border p-4 ${automationStatus.ok ? "border-emerald-500/30 bg-emerald-500/10" : "border-rose-500/30 bg-rose-500/10"}`}>
             <p className={`text-sm font-black ${automationStatus.ok ? "text-emerald-100" : "text-rose-100"}`}>{automationStatus.title}</p>
+            {automationDurationLabel ? <p className="mt-1 text-xs text-slate-300">Duration: {automationDurationLabel}</p> : null}
             <div className="mt-2 space-y-1 text-sm text-slate-200">
               {automationStatus.lines.map((line) => (
                 <p key={line}>{line}</p>
               ))}
             </div>
+            {!automationStatus.ok && automationRetryMode ? (
+              <button
+                type="button"
+                onClick={() => void runAutomation(automationRetryMode)}
+                className="mt-3 rounded-lg border border-slate-600 px-3 py-2 text-xs font-black text-slate-100"
+              >
+                Retry
+              </button>
+            ) : null}
             {showDeveloperDetails && automationDebugPayload ? (
               <details className="mt-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3">
                 <summary className="cursor-pointer text-xs font-bold uppercase tracking-[0.16em] text-slate-300">Developer Details</summary>
@@ -706,6 +839,10 @@ export default function AiGeneratorPage() {
               <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Title</p>
                 <p className="mt-2 font-bold text-white">{preview.title}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Topic</p>
+                <p className="mt-2 font-bold text-white">{previewTitle || "General practice"}</p>
               </div>
               <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Quality</p>
@@ -774,7 +911,7 @@ export default function AiGeneratorPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
               {preview.items.map((item, index) => (
                 <article key={`${String(item.id ?? "item")}-${index}`} className={`flex min-h-0 flex-col rounded-2xl border p-3 ${item.status === "rejected" ? "border-rose-500/40 bg-rose-950/30 opacity-70" : "border-slate-800 bg-slate-950/70"}`}>
                   <div className="flex items-start justify-between gap-2">
@@ -790,10 +927,10 @@ export default function AiGeneratorPage() {
                   ) : null}
                   <p className="mt-1 line-clamp-3 text-xs text-slate-300">{String(item.hint ?? item.explanation ?? "Review this item before saving.")}</p>
                   <p className="mt-1 line-clamp-3 text-xs text-slate-400">{String(item.sentence ?? item.sentenceContext ?? item.passage ?? "")}</p>
-                  <div className="mt-2 grid grid-cols-3 gap-1">
-                    <button type="button" onClick={() => markPreviewItem(index, "approved")} className="rounded-lg bg-emerald-500 px-2 py-1.5 text-[11px] font-black text-white">Approve</button>
-                    <button type="button" onClick={() => markPreviewItem(index, "rejected")} className="rounded-lg bg-rose-500 px-2 py-1.5 text-[11px] font-black text-white">Reject</button>
-                    <button type="button" onClick={() => void regenerateItem(index)} className="rounded-lg border border-slate-700 px-2 py-1.5 text-[11px] font-black text-slate-200">Regenerate</button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => markPreviewItem(index, "approved")} className="min-w-24 flex-1 rounded-lg bg-emerald-500 px-2 py-1.5 text-[11px] font-black text-white">Approve</button>
+                    <button type="button" onClick={() => markPreviewItem(index, "rejected")} className="min-w-24 flex-1 rounded-lg bg-rose-500 px-2 py-1.5 text-[11px] font-black text-white">Reject</button>
+                    <button type="button" onClick={() => void regenerateItem(index)} className="min-w-24 flex-1 rounded-lg border border-slate-700 px-2 py-1.5 text-[11px] font-black text-slate-200">Regenerate</button>
                   </div>
                   <details className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
                     <summary className="cursor-pointer text-xs font-bold text-slate-300">Preview details</summary>

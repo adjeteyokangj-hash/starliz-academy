@@ -297,3 +297,83 @@ export function skillsForSubjectAndYear(subject: Subject, yearGroup: string | nu
   
   return subjectSkills[normalized] ?? [];
 }
+
+  type TopicSuggestionKey = `${YearGroup}|${Subject}|${string}`;
+
+  const TOPIC_SUGGESTIONS_BY_SKILL: Partial<Record<TopicSuggestionKey, readonly string[]>> = {
+    "Year 4|vocabulary|Morphology": [
+      "Prefixes and suffixes",
+      "Root words",
+      "Word families",
+      "Plural endings",
+      "Compound words",
+      "Synonyms and antonyms",
+      "Meaning from word parts",
+    ],
+    "Year 11|maths|Quadratic equations": [
+      "Expanding and factorising quadratics",
+      "Solving by factorisation",
+      "Completing the square",
+      "Quadratic formula",
+      "Graphing quadratic functions",
+      "Word problems with quadratics",
+    ],
+  };
+
+  const TOPIC_SUGGESTIONS_BY_SUBJECT: Partial<Record<Subject, readonly string[]>> = {
+    maths: [
+      "Fluency practice",
+      "Mixed problem solving",
+      "Reasoning chains",
+      "Real-world application",
+      "Exam-style questions",
+    ],
+    reading: [
+      "Retrieval practice",
+      "Inference with evidence",
+      "Vocabulary in context",
+      "Author intent",
+      "Summarising key ideas",
+    ],
+    spelling: [
+      "Prefix patterns",
+      "Suffix patterns",
+      "Homophones",
+      "Common exception words",
+      "Word families",
+    ],
+    vocabulary: [
+      "Context clues",
+      "Synonyms and antonyms",
+      "Morphology",
+      "Academic vocabulary",
+      "Nuanced meanings",
+    ],
+    science: [
+      "Concept check",
+      "Scientific vocabulary",
+      "Practical reasoning",
+      "Data interpretation",
+      "Misconception repair",
+    ],
+  };
+
+  export function topicSuggestionsForSelection(input: {
+    yearGroup: string | null | undefined;
+    subject: Subject;
+    skillFocus: string | null | undefined;
+  }): readonly string[] {
+    const normalizedYear = normalizeYearGroup(input.yearGroup);
+    const normalizedSkill = (input.skillFocus ?? "").trim();
+    if (!normalizedYear) return ["General practice"];
+
+    const key = normalizedSkill
+      ? (`${normalizedYear}|${input.subject}|${normalizedSkill}` as TopicSuggestionKey)
+      : null;
+
+    const bySkill = key ? (TOPIC_SUGGESTIONS_BY_SKILL[key] ?? []) : [];
+    const bySubject = TOPIC_SUGGESTIONS_BY_SUBJECT[input.subject] ?? [];
+
+    const merged = [...bySkill, ...bySubject, "General practice"];
+    return Array.from(new Set(merged));
+  }
