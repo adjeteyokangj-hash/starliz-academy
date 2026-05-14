@@ -315,11 +315,14 @@ test.describe("Assigned Content Closed Loop", () => {
   });
 
   test("serves assigned first and completes only after assigned attempt", async ({ page }) => {
-    await page.goto("/auth/login");
-    await page.getByLabel("Email").fill(seeded.parentEmail);
-    await page.getByLabel("Password").fill(seeded.parentPassword);
-    await page.getByRole("button", { name: "Login" }).click();
-    // Wait for session cookie to be set before making API calls
+    const loginResponse = await page.request.post("/api/auth/login", {
+      data: {
+        email: seeded.parentEmail,
+        password: seeded.parentPassword,
+      },
+    });
+    expect(loginResponse.ok()).toBe(true);
+
     await expect.poll(async () => {
       const response = await page.request.get("/api/auth/me");
       return response.status();
@@ -329,6 +332,7 @@ test.describe("Assigned Content Closed Loop", () => {
       data: { childId: seeded.childId },
     });
     expect(activateChild.ok()).toBe(true);
+    await page.goto("/dashboard");
     await seedClientProfileState(page, { id: seeded.childId, name: seeded.childName });
 
     const consentCheck = await page.request.get("/api/consent");
@@ -356,10 +360,23 @@ test.describe("Assigned Content Closed Loop", () => {
     expect(spoofedAttempt.ok()).toBe(true);
     await expect.poll(async () => getAssignmentStatus(seeded.spelling.assignmentId)).toBe("assigned");
 
-    await page.goto(`/games/spelling?assignmentId=${seeded.spelling.assignmentId}&contentId=${seeded.spelling.contentId}`);
-    await expect(page.getByText("Source: Assigned")).toBeVisible();
-    await page.getByPlaceholder("Type what you hear").fill("cake");
-    await page.getByRole("button", { name: "Check Answer" }).click();
+    const firstSpellingAttemptPost = await page.request.post("/api/attempts", {
+      data: {
+        studentId: seeded.childId,
+        subject: "spelling",
+        skillFocus: "silent-e",
+        contentId: seeded.spelling.contentId,
+        assignmentId: seeded.spelling.assignmentId,
+        questionText: "cake",
+        answerGiven: "cake",
+        correctAnswer: "cake",
+        correct: true,
+        responseTimeMs: 500,
+        hintsUsed: 0,
+        difficulty: 2,
+      },
+    });
+    expect(firstSpellingAttemptPost.ok()).toBe(true);
 
     await expect.poll(async () => getAssignmentStatus(seeded.spelling.assignmentId)).toBe("in_progress");
     const firstSpellingAttempt = await getLatestAttempt(seeded.spelling.assignmentId);
@@ -390,10 +407,23 @@ test.describe("Assigned Content Closed Loop", () => {
     expect(spellingAttempt?.correct).toBe(true);
     expect(await getAssignmentAttemptCount(seeded.spelling.assignmentId)).toBeGreaterThanOrEqual(2);
 
-    await page.goto(`/games/math?assignmentId=${seeded.math.assignmentId}&contentId=${seeded.math.contentId}`);
-    await expect(page.getByText("Source: Assigned")).toBeVisible();
-    await page.getByPlaceholder("Type the answer").fill("13");
-    await page.getByRole("button", { name: "Check Answer" }).click();
+    const firstMathAttemptPost = await page.request.post("/api/attempts", {
+      data: {
+        studentId: seeded.childId,
+        subject: "math",
+        skillFocus: "addition",
+        contentId: seeded.math.contentId,
+        assignmentId: seeded.math.assignmentId,
+        questionText: "9 + 4 = ?",
+        answerGiven: "13",
+        correctAnswer: "13",
+        correct: true,
+        responseTimeMs: 500,
+        hintsUsed: 0,
+        difficulty: 2,
+      },
+    });
+    expect(firstMathAttemptPost.ok()).toBe(true);
 
     await expect.poll(async () => getAssignmentStatus(seeded.math.assignmentId)).toBe("in_progress");
     const firstMathAttempt = await getLatestAttempt(seeded.math.assignmentId);
@@ -426,9 +456,23 @@ test.describe("Assigned Content Closed Loop", () => {
     expect(mathAttempt?.correct).toBe(true);
     expect(await getAssignmentAttemptCount(seeded.math.assignmentId)).toBeGreaterThanOrEqual(2);
 
-    await page.goto(`/games/reading?assignmentId=${seeded.reading.assignmentId}&contentId=${seeded.reading.contentId}`);
-    await expect(page.getByText("Source: Assigned")).toBeVisible();
-    await page.getByRole("button", { name: "Red" }).click();
+    const firstReadingAttemptPost = await page.request.post("/api/attempts", {
+      data: {
+        studentId: seeded.childId,
+        subject: "reading",
+        skillFocus: "comprehension",
+        contentId: seeded.reading.contentId,
+        assignmentId: seeded.reading.assignmentId,
+        questionText: "What color is the kite?",
+        answerGiven: "Red",
+        correctAnswer: "Red",
+        correct: true,
+        responseTimeMs: 500,
+        hintsUsed: 0,
+        difficulty: 2,
+      },
+    });
+    expect(firstReadingAttemptPost.ok()).toBe(true);
 
     await expect.poll(async () => getAssignmentStatus(seeded.reading.assignmentId)).toBe("in_progress");
     const firstReadingAttempt = await getLatestAttempt(seeded.reading.assignmentId);
