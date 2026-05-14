@@ -7,20 +7,75 @@ type Props = {
   blocked: StudentAssignmentCandidate[];
   expanded: boolean;
   onToggleExpanded: () => void;
+  onExport: () => void;
+  contentTitle: string;
 };
 
-export default function BlockedStudentsTable({ blocked, expanded, onToggleExpanded }: Props) {
+function escapeCsvField(field: string): string {
+  if (field.includes(",") || field.includes('"') || field.includes("\n")) {
+    return `"${field.replace(/"/g, '""')}"`;
+  }
+  return field;
+}
+
+export default function BlockedStudentsTable({
+  blocked,
+  expanded,
+  onToggleExpanded,
+  onExport,
+  contentTitle,
+}: Props) {
+  const handleExport = () => {
+    const headers = ["Student", "Year Group", "Key Stage", "Reason", "Content"];
+    const rows = blocked.map((entry) => [
+      entry.student.name,
+      entry.student.yearGroup || "Unknown",
+      entry.student.keyStageLevel || "Unknown",
+      entry.hardBlockReason || "Blocked",
+      contentTitle,
+    ]);
+
+    const csv = [
+      headers.map(escapeCsvField).join(","),
+      ...rows.map((row) => row.map(escapeCsvField).join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `blocked-students-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    onExport();
+  };
+
   return (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-black text-white">Blocked Students</h3>
+        <h3 className="text-sm font-black text-white">Blocked Students ({blocked.length})</h3>
         <div className="flex gap-2">
-          <button type="button" onClick={onToggleExpanded} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200">
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800"
+          >
             {expanded ? "Hide blocked students" : "View blocked students"}
           </button>
-          <button type="button" className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200" disabled={blocked.length === 0}>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={blocked.length === 0}
+          >
             Export blocked list
           </button>
+          <Link
+            href="/admin/assignments"
+            className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800"
+          >
+            Audit log
+          </Link>
         </div>
       </div>
 
@@ -44,7 +99,12 @@ export default function BlockedStudentsTable({ blocked, expanded, onToggleExpand
                   <td className="py-2">{entry.hardBlockReason || "Blocked"}</td>
                   <td className="py-2">Content cannot be assigned until hard safety checks pass.</td>
                   <td className="py-2">
-                    <Link href={`/admin/students/${entry.student.id}`} className="rounded-lg border border-slate-700 px-2 py-1 text-xs font-black text-slate-200">View student</Link>
+                    <Link
+                      href={`/admin/students/${entry.student.id}`}
+                      className="rounded-lg border border-slate-700 px-2 py-1 text-xs font-bold text-slate-200 hover:bg-slate-800"
+                    >
+                      View student
+                    </Link>
                   </td>
                 </tr>
               ))}

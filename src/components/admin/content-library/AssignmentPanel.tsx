@@ -102,7 +102,13 @@ export default function AssignmentPanel(props: Props) {
         </div>
       </div>
 
-      <BlockedStudentsTable blocked={props.blocked} expanded={props.showBlocked} onToggleExpanded={props.onToggleBlocked} />
+      <BlockedStudentsTable
+        blocked={props.blocked}
+        expanded={props.showBlocked}
+        onToggleExpanded={props.onToggleBlocked}
+        onExport={() => {}}
+        contentTitle={meta.title}
+      />
 
       <div className="grid gap-2 text-xs text-slate-400 md:grid-cols-3">
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3">

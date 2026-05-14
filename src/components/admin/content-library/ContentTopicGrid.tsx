@@ -9,9 +9,22 @@ type Props = {
   selectedContentId: string | null;
   viewMode: ViewMode;
   onSelect: (item: ContentItem) => void;
+  onView: (item: ContentItem) => void;
+  onDuplicate: (item: ContentItem) => void;
+  onArchive: (item: ContentItem) => void;
+  onPublish: (item: ContentItem) => void;
 };
 
-export default function ContentTopicGrid({ items, selectedContentId, onSelect, viewMode }: Props) {
+export default function ContentTopicGrid({
+  items,
+  selectedContentId,
+  onSelect,
+  onView,
+  onDuplicate,
+  onArchive,
+  onPublish,
+  viewMode,
+}: Props) {
   const grouped = items.reduce<Record<string, ContentItem[]>>((acc, item) => {
     const meta = getContentMeta(item);
     const key = `${meta.subject} / ${meta.topic || "General"}`;
@@ -44,6 +57,10 @@ export default function ContentTopicGrid({ items, selectedContentId, onSelect, v
                 viewMode={viewMode}
                 selected={selectedContentId === item.id}
                 onSelect={onSelect}
+                onView={onView}
+                onDuplicate={onDuplicate}
+                onArchive={onArchive}
+                onPublish={onPublish}
               />
             ))}
           </div>

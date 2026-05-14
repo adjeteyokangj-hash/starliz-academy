@@ -7,6 +7,7 @@ import AssignmentPanel from "@/components/admin/content-library/AssignmentPanel"
 import ContentLibraryFilters from "@/components/admin/content-library/ContentLibraryFilters";
 import ContentSummaryPanel from "@/components/admin/content-library/ContentSummaryPanel";
 import ContentTopicGrid from "@/components/admin/content-library/ContentTopicGrid";
+import ContentViewModal from "@/components/admin/content-library/ContentViewModal";
 import type { AssignMode, AssignmentPayload, ContentItem, SortMode, StudentAssignmentCandidate, StudentOption, ViewMode } from "@/components/admin/content-library/types";
 import { evaluateAssignmentCandidate, getContentJsonSummary, getContentMeta, normalizeText } from "@/components/admin/content-library/utils";
 import { keyStageForYearGroup } from "@/lib/curriculum";
@@ -19,6 +20,7 @@ export default function ContentLibraryPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
+  const [operating, setOperating] = useState(false);
 
   const [query, setQuery] = useState("");
   const [studentYear, setStudentYear] = useState("");
@@ -34,6 +36,7 @@ export default function ContentLibraryPage() {
   const [showBlocked, setShowBlocked] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [localDuplicateByContent, setLocalDuplicateByContent] = useState<Record<string, Set<string>>>({});
+  const [viewModalContent, setViewModalContent] = useState<ContentItem | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -211,6 +214,73 @@ export default function ContentLibraryPage() {
     setPendingAction(null);
   }
 
+  async function handleDuplicate(item: ContentItem) {
+    setOperating(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/content/${item.id}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const result = await response.json() as { id: string; topic: string };
+      if (!response.ok) {
+        setMessage("Failed to duplicate content");
+        return;
+      }
+      setMessage(`Duplicated as "${result.topic}"`);
+      await loadData();
+    } catch {
+      setMessage("Duplicate request failed");
+    } finally {
+      setOperating(false);
+    }
+  }
+
+  async function handleArchive(item: ContentItem) {
+    setOperating(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/content/${item.id}/archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok) {
+        setMessage("Failed to archive content");
+        return;
+      }
+      setMessage("Content archived");
+      setItems((current) => current.filter((c) => c.id !== item.id));
+      if (selectedContentId === item.id) {
+        setSelectedContentId(null);
+      }
+    } catch {
+      setMessage("Archive request failed");
+    } finally {
+      setOperating(false);
+    }
+  }
+
+  async function handlePublish(item: ContentItem) {
+    setOperating(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/content/${item.id}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok) {
+        setMessage("Failed to publish content");
+        return;
+      }
+      setMessage("Content published");
+      setItems((current) => current.map((c) => c.id === item.id ? { ...c, status: "published" } : c));
+    } catch {
+      setMessage("Publish request failed");
+    } finally {
+      setOperating(false);
+    }
+  }
+
   return (
     <div className="space-y-6 pb-24">
       <header>
@@ -251,6 +321,10 @@ export default function ContentLibraryPage() {
               selectedContentId={selectedContentId}
               viewMode={viewMode}
               onSelect={selectContent}
+              onView={setViewModalContent}
+              onDuplicate={handleDuplicate}
+              onArchive={handleArchive}
+              onPublish={handlePublish}
             />
           )}
         </AdminSectionCard>
@@ -284,6 +358,12 @@ export default function ContentLibraryPage() {
         onClose={() => setPendingAction(null)}
         onConfirm={() => void confirmPendingAction()}
         confirming={assigning}
+      />
+
+      <ContentViewModal
+        open={viewModalContent !== null}
+        content={viewModalContent}
+        onClose={() => setViewModalContent(null)}
       />
     </div>
   );

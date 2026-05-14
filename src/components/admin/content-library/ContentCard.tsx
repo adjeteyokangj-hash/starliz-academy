@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
 import type { ContentItem } from "./types";
 import { getContentJsonSummary, getContentMeta } from "./utils";
 
@@ -8,13 +8,28 @@ type Props = {
   item: ContentItem;
   selected: boolean;
   onSelect: (item: ContentItem) => void;
+  onView: (item: ContentItem) => void;
+  onDuplicate: (item: ContentItem) => void;
+  onArchive: (item: ContentItem) => void;
+  onPublish: (item: ContentItem) => void;
   viewMode: "grid" | "list";
 };
 
-export default function ContentCard({ item, selected, onSelect, viewMode }: Props) {
+export default function ContentCard({
+  item,
+  selected,
+  onSelect,
+  onView,
+  onDuplicate,
+  onArchive,
+  onPublish,
+  viewMode,
+}: Props) {
+  const [showMenu, setShowMenu] = useState(false);
   const summary = getContentJsonSummary(item.contentJson);
   const meta = getContentMeta(item);
   const assignDisabled = !["reviewed", "published"].includes(item.status) || !summary.valid;
+  const canPublish = ["reviewed", "published"].includes(item.status);
 
   return (
     <article className={`rounded-2xl border p-4 ${selected ? "border-indigo-400 bg-indigo-500/5" : "border-slate-800 bg-slate-950/45"}`}>
@@ -34,9 +49,65 @@ export default function ContentCard({ item, selected, onSelect, viewMode }: Prop
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Link href={`/admin/content-library/${item.id}`} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800">View</Link>
-        <button type="button" onClick={() => onSelect(item)} disabled={assignDisabled} className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Assign</button>
-        <button type="button" className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-300">More</button>
+        <button
+          type="button"
+          onClick={() => onView(item)}
+          className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800"
+        >
+          View
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelect(item)}
+          disabled={assignDisabled}
+          className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Assign
+        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowMenu(!showMenu)}
+            className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-300 hover:bg-slate-800"
+          >
+            More
+          </button>
+          {showMenu ? (
+            <div className="absolute right-0 top-full mt-1 rounded-xl border border-slate-700 bg-slate-950 shadow-lg z-10">
+              <button
+                type="button"
+                onClick={() => {
+                  onDuplicate(item);
+                  setShowMenu(false);
+                }}
+                className="block w-full px-4 py-2 text-left text-xs font-black text-slate-200 hover:bg-slate-800"
+              >
+                Duplicate
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onArchive(item);
+                  setShowMenu(false);
+                }}
+                className="block w-full px-4 py-2 text-left text-xs font-black text-slate-200 hover:bg-slate-800"
+              >
+                Archive
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onPublish(item);
+                  setShowMenu(false);
+                }}
+                disabled={!canPublish}
+                className="block w-full px-4 py-2 text-left text-xs font-black text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800"
+              >
+                {item.status === "published" ? "Unpublish" : "Publish"}
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
     </article>
   );
