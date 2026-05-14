@@ -19,15 +19,6 @@ async function readFile(filePath) {
     return null;
   }
 }
-
-async function verifyFile(filePath, searches) {
-  const content = await readFile(filePath);
-  if (!content) return { found: 0, missing: searches.length };
-
-  const results = {};
-  for (const search of searches) {
-    results[search] = content.includes(search);
-  }
   return results;
 }
 

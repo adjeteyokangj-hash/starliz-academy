@@ -62,7 +62,9 @@ export default async function ProfilesPage() {
   const hasParent = user!.role === "parent";
 
   if (user!.role === "parent") {
-    const redirectTarget = childCount > 0 ? "/parent/dashboard" : "/parent/children?mode=add";
+    // Parents with existing children should land in the learner dashboard first.
+    // Parent management remains available via the parent area (PIN protected).
+    const redirectTarget = childCount > 0 ? "/dashboard" : "/parent/children?mode=add";
     logBridgeRedirect({ role: user!.role, hasParent, childCount, consentStatus, redirectTarget });
     redirect(redirectTarget);
   }

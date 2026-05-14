@@ -3,8 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
-import { AGE_GROUPS, KEY_STAGES, YEAR_GROUPS, ageGroupForYearGroup, keyStageForYearGroup, subjectsForYearGroup, skillsForSubjectAndYear, type Subject, type YearGroup } from "@/lib/curriculum";
-import { buildLessonPathway, LESSON_DIFFICULTY_BANDS, LESSON_PATHWAY_STEPS, LESSON_STATUS_OPTIONS, LESSON_TEMPLATES, type LessonDifficultyBand, type LessonTemplateValue, type LessonPathwayStep } from "@/lib/lesson-curriculum";
+import { KEY_STAGES, YEAR_GROUPS, ageGroupForYearGroup, keyStageForYearGroup, skillsForSubjectAndYear, type Subject, type YearGroup } from "@/lib/curriculum";
+import { buildLessonPathway, LESSON_DIFFICULTY_BANDS, LESSON_STATUS_OPTIONS, LESSON_TEMPLATES, type LessonDifficultyBand, type LessonTemplateValue, type LessonPathwayStep } from "@/lib/lesson-curriculum";
 
 type Lesson = {
   id: string;

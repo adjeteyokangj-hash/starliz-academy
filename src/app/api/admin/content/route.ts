@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
-import { type Subject } from "@/lib/curriculum";
 
 // Maps new 17-subject system to legacy 3-type system for backward compatibility
 function mapSubjectToLegacy(subject: string): "spelling" | "math" | "reading" {
