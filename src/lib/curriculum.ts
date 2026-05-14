@@ -325,6 +325,191 @@ export function skillsForSubjectAndYear(subject: Subject, yearGroup: string | nu
   return subjectSkills[normalized] ?? [];
 }
 
+// Auto-generate skill-specific topics from skill focus name
+function generateTopicsFromSkill(skillFocus: string, subject: Subject): readonly string[] {
+  const skill = skillFocus.toLowerCase().trim();
+  const generated: string[] = [];
+  
+  // Generic patterns
+  generated.push(`${skillFocus} practice`);
+  generated.push(`${skillFocus} drill`);
+  generated.push(`${skillFocus} application`);
+  generated.push(`${skillFocus} review`);
+  generated.push(`Focused ${skillFocus.toLowerCase()} work`);
+  
+  // Subject and skill-specific patterns
+  if (subject === "spelling" || subject === "phonics") {
+    if (skill.includes("prefix")) {
+      generated.push("Adding prefixes", "Prefix types", "Prefix recognition", "Word families with prefixes");
+    }
+    if (skill.includes("suffix")) {
+      generated.push("Adding suffixes", "Suffix types", "Suffix recognition", "Common suffixes");
+    }
+    if (skill.includes("silent")) {
+      generated.push("Silent letter words", "Magic e patterns", "Hidden letters");
+    }
+    if (skill.includes("phase")) {
+      generated.push("Sound segmentation", "Blending sounds", "Sound discrimination");
+    }
+    if (skill.includes("homophone")) {
+      generated.push("Sound-alike words", "Homophone pairs", "Homophone context");
+    }
+    if (skill.includes("compound")) {
+      generated.push("Compound word formation", "Splitting compound words", "Compound patterns");
+    }
+  }
+  
+  if (subject === "punctuation" || subject === "grammar") {
+    if (skill.includes("comma")) {
+      generated.push("Comma types", "List formatting", "Clause punctuation", "Comma placement");
+    }
+    if (skill.includes("apostrophe")) {
+      generated.push("Possession markers", "Contraction punctuation", "Apostrophe placement");
+    }
+    if (skill.includes("speech") || skill.includes("dialogue")) {
+      generated.push("Quote formatting", "Character dialogue", "Speaking verbs", "Direct speech practice");
+    }
+    if (skill.includes("adverbial")) {
+      generated.push("Sentence starters", "Opening adverbials", "Adverbial placement");
+    }
+    if (skill.includes("capital") || skill.includes("full stop")) {
+      generated.push("Sentence boundaries", "Proper nouns", "Case rules");
+    }
+    if (skill.includes("question") || skill.includes("exclamation")) {
+      generated.push("Sentence intent", "Punctuation choices", "Intonation markers");
+    }
+    if (skill.includes("dash")) {
+      generated.push("Dash usage", "Parenthetical information", "Clause separation");
+    }
+    if (skill.includes("colon") || skill.includes("semicolon")) {
+      generated.push("List introduction", "Clause connection", "Advanced punctuation");
+    }
+  }
+  
+  if (subject === "maths" || subject === "times-tables" || subject === "sats-practice" || subject === "11-plus-practice" || subject === "gcse-maths") {
+    if (skill.includes("times table") || skill.includes("multiplication facts") || skill.includes("times") || skill.includes("multiplica")) {
+      generated.push("Fact fluency", "Timed drills", "Missing factors", "Inverse facts", "Speed practice");
+    }
+    if (skill.includes("division")) {
+      generated.push("Division fluency", "Sharing equally", "Repeated subtraction", "Division facts");
+    }
+    if (skill.includes("fraction")) {
+      generated.push("Fraction understanding", "Equivalent fractions", "Comparing fractions", "Fraction application");
+    }
+    if (skill.includes("decimal")) {
+      generated.push("Decimal notation", "Place value", "Decimal comparison", "Rounding decimals");
+    }
+    if (skill.includes("percentage")) {
+      generated.push("Percentage calculation", "Finding percentages", "Percentage change");
+    }
+    if (skill.includes("algebra")) {
+      generated.push("Equation solving", "Pattern recognition", "Variable substitution");
+    }
+    if (skill.includes("equation") || skill.includes("quadratic")) {
+      generated.push("Solving techniques", "Graphical representation", "Real-world problems");
+    }
+    if (skill.includes("geometry") || skill.includes("trigonometry")) {
+      generated.push("Shape properties", "Angle calculations", "Transformation practice");
+    }
+    if (skill.includes("ratio") || skill.includes("proportion")) {
+      generated.push("Scaling", "Equivalent ratios", "Proportion problems");
+    }
+    if (skill.includes("number") || skill.includes("place value")) {
+      generated.push("Number ordering", "Number comparison", "Number bonds", "Part-whole relationships");
+    }
+    if (skill.includes("problem solving") || skill.includes("reasoning")) {
+      generated.push("Multi-step problems", "Real-world context", "Logic puzzles", "Reasoning chains");
+    }
+  }
+  
+  if (subject === "reading" || subject === "english-literature" || subject === "english-language" || subject === "gcse-english") {
+    if (skill.includes("comprehension") || skill.includes("retrieval")) {
+      generated.push("Text recall", "Direct information", "Literal meaning");
+    }
+    if (skill.includes("inference") || skill.includes("infer")) {
+      generated.push("Reading between the lines", "Implicit meaning", "Evidence-based inference", "Prediction");
+    }
+    if (skill.includes("vocabulary")) {
+      generated.push("Word meaning in context", "Vocabulary building", "Word choice analysis");
+    }
+    if (skill.includes("analysis") || skill.includes("technique")) {
+      generated.push("Writer's methods", "Language effects", "Structural choices", "Stylistic analysis");
+    }
+    if (skill.includes("character")) {
+      generated.push("Character traits", "Character development", "Character motivation");
+    }
+    if (skill.includes("theme")) {
+      generated.push("Theme identification", "Theme exploration", "Symbolic meaning");
+    }
+    if (skill.includes("poetry")) {
+      generated.push("Poetic devices", "Rhythm and meter", "Figurative language", "Poem interpretation");
+    }
+  }
+  
+  if (subject === "writing" || skill.includes("writing")) {
+    if (skill.includes("narrative")) {
+      generated.push("Story plot", "Character development", "Setting description", "Dialogue writing");
+    }
+    if (skill.includes("description")) {
+      generated.push("Sensory details", "Adjective use", "Varied description");
+    }
+    if (skill.includes("dialogue")) {
+      generated.push("Speech punctuation", "Character voices", "Conversation flow");
+    }
+    if (skill.includes("persuasion") || skill.includes("persuasive")) {
+      generated.push("Persuasive techniques", "Argument development", "Audience awareness");
+    }
+    if (skill.includes("argument")) {
+      generated.push("Point development", "Evidence use", "Counterargument");
+    }
+  }
+  
+  if (subject === "science" || subject === "gcse-science") {
+    if (skill.includes("living") || skill.includes("organism")) {
+      generated.push("Organism classification", "Habitat adaptation", "Life process");
+    }
+    if (skill.includes("force") || skill.includes("motion")) {
+      generated.push("Force types", "Newton's laws", "Speed and acceleration", "Friction effects");
+    }
+    if (skill.includes("energy")) {
+      generated.push("Energy types", "Energy transfer", "Renewable energy");
+    }
+    if (skill.includes("electric")) {
+      generated.push("Circuit building", "Current flow", "Conductivity", "Series and parallel circuits");
+    }
+    if (skill.includes("matter") || skill.includes("state")) {
+      generated.push("State changes", "Particle theory", "Density and mass");
+    }
+    if (skill.includes("light")) {
+      generated.push("Light reflection", "Light refraction", "Color and spectrum");
+    }
+    if (skill.includes("wave")) {
+      generated.push("Wave properties", "Sound transmission", "Wave interference");
+    }
+    if (skill.includes("atom") || skill.includes("chemical")) {
+      generated.push("Atomic structure", "Chemical bonding", "Reaction types");
+    }
+  }
+  
+  if (subject === "vocabulary") {
+    if (skill.includes("morphology")) {
+      generated.push("Word parts analysis", "Root words", "Affix study");
+    }
+    if (skill.includes("synonym")) {
+      generated.push("Synonym relationships", "Word replacement");
+    }
+    if (skill.includes("etymology")) {
+      generated.push("Word origin", "Language history", "Etymological patterns");
+    }
+    if (skill.includes("connotation")) {
+      generated.push("Positive/negative associations", "Nuanced meaning");
+    }
+  }
+  
+  // Remove duplicates and empty strings
+  return Array.from(new Set(generated.filter(t => t && t.trim())));
+}
+
   type TopicSuggestionKey = `${YearGroup}|${Subject}|${string}`;
 
   const TOPIC_SUGGESTIONS_BY_SKILL: Partial<Record<TopicSuggestionKey, readonly string[]>> = {
@@ -526,8 +711,13 @@ export function skillsForSubjectAndYear(subject: Subject, yearGroup: string | nu
 
     const bySkill = key ? (TOPIC_SUGGESTIONS_BY_SKILL[key] ?? []) : [];
     const bySubject = TOPIC_SUGGESTIONS_BY_SUBJECT[input.subject] ?? [];
+    
+    // Auto-generate topics from skill focus if no explicit mapping
+    const autoGenerated = bySkill.length === 0 && normalizedSkill 
+      ? generateTopicsFromSkill(normalizedSkill, input.subject)
+      : [];
 
-    const merged = [...bySkill, ...bySubject];
+    const merged = [...bySkill, ...autoGenerated, ...bySubject];
     return Array.from(new Set(merged));
   }
 
@@ -607,16 +797,22 @@ export function skillsForSubjectAndYear(subject: Subject, yearGroup: string | nu
             status = "missing";
             notes.push("No topic/theme mappings");
           } else {
-            const hasSkillTopics = (TOPIC_SUGGESTIONS_BY_SKILL[`${yearGroup}|${subject}|${skillFocus}` as TopicSuggestionKey] ?? []).length > 0;
+            const hasExplicitSkillTopics = (TOPIC_SUGGESTIONS_BY_SKILL[`${yearGroup}|${subject}|${skillFocus}` as TopicSuggestionKey] ?? []).length > 0;
+            const hasAutoGeneratedTopics = (generateTopicsFromSkill(skillFocus, subject) ?? []).length > 0;
             const hasSubjectTopics = (TOPIC_SUGGESTIONS_BY_SUBJECT[subject] ?? []).length > 0;
-            if (hasSkillTopics) {
+            
+            // Mark as fully-wired if has explicit skill topics OR has auto-generated topics
+            if (hasExplicitSkillTopics || hasAutoGeneratedTopics) {
               status = "fully-wired";
+              if (!hasExplicitSkillTopics && hasAutoGeneratedTopics) {
+                notes.push("Using auto-generated skill-specific topics");
+              }
             } else if (hasSubjectTopics) {
               status = "partially-wired";
-              notes.push("Using subject-level topics only");
+              notes.push("Using subject-level topics only (no skill-specific mapping)");
             } else {
               status = "fallback-only";
-              notes.push("No explicit skill topics");
+              notes.push("No explicit skill or subject topics");
             }
           }
 

@@ -8,6 +8,7 @@ import {
   KEY_STAGES,
   YEAR_GROUPS,
   AGE_GROUPS,
+  GENERATION_CONTENT_TYPE_BY_SUBJECT,
   isValidCurriculumPath,
   keyStageForYearGroup,
   yearGroupsForKeyStage,
@@ -276,7 +277,11 @@ export default function AiGeneratorPage() {
       });
       const payload = await response.json();
       if (!response.ok) {
-        setError(payload.error ?? "Generation failed.");
+        const errorMsg = payload.error ?? `Generation failed with status ${response.status}`;
+        const details = payload.details 
+          ? `\n\nDetails: ${JSON.stringify(payload.details, null, 2)}`
+          : "";
+        setError(errorMsg + details);
       } else {
         const incomingItems = Array.isArray(payload.content?.items)
           ? (payload.content.items as GeneratedPreviewItem[])
@@ -295,8 +300,9 @@ export default function AiGeneratorPage() {
           validation: payload.meta,
         });
       }
-    } catch {
-      setError("Unable to reach AI generator.");
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Unable to reach AI generator";
+      setError(`Network or server error: ${errorMsg}`);
     } finally {
       setLoading(false);
     }
@@ -752,6 +758,27 @@ export default function AiGeneratorPage() {
             </button>
           </div>
           {error ? <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
+          {error && (generatedItemsList.length > 0 || generationMeta) ? (
+            <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-xs text-slate-400">
+              <p className="font-bold text-slate-300 mb-2">Diagnostic Info:</p>
+              <ul className="space-y-1">
+                <li><strong>Year Group:</strong> {yearGroup}</li>
+                <li><strong>Subject:</strong> {formatSubjectLabel(subject)}</li>
+                <li><strong>Skill Focus:</strong> {skillFocus || "(none)"}</li>
+                <li><strong>Topic/Theme:</strong> {selectedTopicTheme || "(none)"}</li>
+                <li><strong>Generation Type:</strong> {subject && GENERATION_CONTENT_TYPE_BY_SUBJECT[subject] || "(unknown)"}</li>
+                <li><strong>Difficulty:</strong> {difficulty}/5</li>
+                <li><strong>Items Requested:</strong> {items}</li>
+                {generationMeta?.model ? <li><strong>Model:</strong> {generationMeta.model}</li> : null}
+                {generationMeta?.validation ? (
+                  <>
+                    <li><strong>API Valid:</strong> {generationMeta.validation.valid ? "✓" : "✗"}</li>
+                    <li><strong>Repaired:</strong> {generationMeta.validation.repaired ? "Yes" : "No"}</li>
+                  </>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
           {message ? (
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
               <p>{message}</p>
