@@ -145,9 +145,13 @@ export async function isRefreshRecordActive(input: {
     return { active: false as const, reason: "expired" as const, sid: row.sessionFamilyId };
   }
 
-  // Device binding for refresh tokens
+  // Device binding for refresh tokens: warn on mismatch but allow refresh
+  // This handles normal network changes (IP switch, VPN, browser updates) while still tracking device info
+  let hadFingerprintMismatch = false;
   if (row.deviceFingerprint && row.deviceFingerprint !== input.fingerprint) {
-    return { active: false as const, reason: "fingerprint_mismatch" as const, sid: row.sessionFamilyId };
+    // Log mismatch but don't reject - normal network transitions should be allowed
+    console.warn(`[auth] fingerprint_mismatch for userId=${input.userId}, stored=${row.deviceFingerprint?.slice(0, 8)}, current=${input.fingerprint?.slice(0, 8)}`);
+    hadFingerprintMismatch = true;
   }
 
   await prisma.authSession.update({
@@ -156,10 +160,12 @@ export async function isRefreshRecordActive(input: {
       lastSeenAt: new Date(),
       ipAddress: input.ipAddress,
       userAgent: input.userAgent ?? null,
+      // Update device fingerprint on each refresh to track device changes
+      deviceFingerprint: input.fingerprint,
     },
   });
 
-  return { active: true as const, reason: null, sid: row.sessionFamilyId, rowId: row.id };
+  return { active: true as const, reason: null, sid: row.sessionFamilyId, rowId: row.id, hadFingerprintMismatch };
 }
 
 export async function detectSuspiciousLogin(input: {
