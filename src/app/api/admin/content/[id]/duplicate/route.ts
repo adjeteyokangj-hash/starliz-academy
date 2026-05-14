@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
-import { v4 as uuid } from "uuid";
+import { randomUUID } from "node:crypto";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -21,7 +21,7 @@ export async function POST(_request: Request, context: Context) {
 
   const duplicate = await prisma.aIContentCache.create({
     data: {
-      id: uuid(),
+      id: randomUUID(),
       contentType: original.contentType,
       contentJson: original.contentJson,
       level: original.level,
