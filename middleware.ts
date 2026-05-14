@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const COOKIE_NAME = "starliz_session";
+const REFRESH_COOKIE_NAME = "starliz_refresh";
 const PARENT_UNLOCK_COOKIE = "starliz_parent_unlock";
 
 const PUBLIC_PATHS = [
@@ -100,6 +101,7 @@ export async function middleware(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const session = await getSessionPayload(request);
   const authenticated = session !== null;
+  const hasRefreshToken = Boolean(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
   const adminLoginTarget = request.nextUrl.searchParams.get("next")?.startsWith("/admin") ?? false;
 
   if (pathname.startsWith("/admin")) {
@@ -107,6 +109,10 @@ export async function middleware(request: NextRequest) {
       // Allow unauthenticated access to /admin/login, redirect all other admin routes there.
       if (pathname !== "/admin/login") {
         const next = `${pathname}${request.nextUrl.search}`;
+        if (hasRefreshToken && request.method === "GET") {
+          const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
+          return withSecurityHeaders(NextResponse.redirect(refreshTarget));
+        }
         const target = new URL(`/admin/login?next=${encodeURIComponent(next)}`, request.url);
         return withSecurityHeaders(NextResponse.redirect(target));
       }
@@ -118,6 +124,11 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!authenticated && !isPublic) {
+    if (hasRefreshToken && request.method === "GET") {
+      const next = `${pathname}${request.nextUrl.search}`;
+      const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
+      return withSecurityHeaders(NextResponse.redirect(refreshTarget));
+    }
     return withSecurityHeaders(NextResponse.redirect(new URL("/login", request.url)));
   }
 

@@ -46,19 +46,8 @@ export default function AdminSidebar() {
   const activeItemRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
-  const [isVisible, setIsVisible] = useState(() => {
-    if (typeof window === "undefined") return true;
-    if (window.matchMedia("(min-width: 1024px)").matches) return true;
-    try {
-      const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
-      return raw !== null ? (JSON.parse(raw) as boolean) : true;
-    } catch {
-      return true;
-    }
-  });
-  const [isDesktop, setIsDesktop] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(min-width: 1024px)").matches : false,
-  );
+  const [isVisible, setIsVisible] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 1024px)");
@@ -74,6 +63,21 @@ export default function AdminSidebar() {
       media.removeEventListener("change", updateDesktopState);
     };
   }, []);
+
+  useEffect(() => {
+    if (isDesktop) {
+      setIsVisible(true);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
+      if (raw !== null) {
+        setIsVisible(JSON.parse(raw) as boolean);
+      }
+    } catch {
+      // Ignore storage read issues.
+    }
+  }, [isDesktop]);
 
   useEffect(() => {
     if (!isDesktop) return;

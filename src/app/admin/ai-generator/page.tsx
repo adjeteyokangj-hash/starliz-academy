@@ -96,6 +96,12 @@ type SpellingPreviewItem = {
   difficulty: number;
 };
 
+type AutomationStatus = {
+  title: string;
+  lines: string[];
+  ok: boolean;
+};
+
 export default function AiGeneratorPage() {
   const searchParams = useSearchParams();
   const prefillSubject = searchParams.get("subject");
@@ -139,6 +145,8 @@ export default function AiGeneratorPage() {
     validation?: ValidationMeta;
   } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null);
+  const [automationDebugPayload, setAutomationDebugPayload] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(
     prefillWords ? "Follow-up practice prefilled from assignment weak areas." : null
   );
@@ -160,6 +168,7 @@ export default function AiGeneratorPage() {
   const generatedItemsList = preview?.items ?? [];
   const saveBlocked = !generatedItemsList.length || generationMeta?.validation?.valid === false;
   const approvedCount = generatedItemsList.filter((item) => item.status !== "rejected").length;
+  const showDeveloperDetails = process.env.NEXT_PUBLIC_ADMIN_DEBUG === "1";
   const previewBadge = generationMeta?.validation?.valid === false
     ? { label: "Needs Review", className: "bg-rose-500/15 text-rose-200" }
     : generationMeta?.validation?.repaired
@@ -334,12 +343,17 @@ export default function AiGeneratorPage() {
   }
 
   async function runAutomation(mode: "autofill" | "weaknesses") {
-    setAutomationMessage("Running...");
+    setAutomationStatus({ title: "Running automation...", lines: ["Please wait while processing."], ok: true });
+    setAutomationDebugPayload(null);
     if (mode === "weaknesses") {
       const detectResponse = await fetch("/api/admin/weak-areas", { method: "POST" });
-      const detectPayload = await detectResponse.json();
+      const detectPayload = await detectResponse.json() as { error?: string; weakAreas?: unknown[] };
       if (!detectResponse.ok) {
-        setAutomationMessage(detectPayload.error ?? "Automation failed.");
+        setAutomationStatus({
+          title: "Weak area scan failed",
+          lines: [detectPayload.error ?? "Automation failed."],
+          ok: false,
+        });
         return;
       }
 
@@ -348,9 +362,30 @@ export default function AiGeneratorPage() {
       if (weakAreaYearGroupFilter) weaknessParams.set("yearGroup", weakAreaYearGroupFilter);
       const weakAreasUrl = `/api/admin/weak-areas${weaknessParams.toString() ? `?${weaknessParams.toString()}` : ""}`;
       const listResponse = await fetch(weakAreasUrl);
-      const listPayload = await listResponse.json();
-      setAutomationMessage(listResponse.ok ? JSON.stringify(detectPayload) : listPayload.error ?? "Automation failed.");
-      if (listResponse.ok) setWeakAreas(listPayload.weakAreas ?? []);
+      const listPayload = await listResponse.json() as { error?: string; weakAreas?: WeakArea[] };
+      if (!listResponse.ok) {
+        setAutomationStatus({
+          title: "Weak area listing failed",
+          lines: [listPayload.error ?? "Automation failed."],
+          ok: false,
+        });
+        return;
+      }
+
+      const detectedCount = Array.isArray(detectPayload.weakAreas) ? detectPayload.weakAreas.length : 0;
+      const currentWeakAreas = listPayload.weakAreas ?? [];
+      setWeakAreas(currentWeakAreas);
+      setAutomationStatus({
+        title: "Weak area detection complete",
+        lines: currentWeakAreas.length
+          ? [
+              `${currentWeakAreas.length} active weak areas currently tracked.`,
+              `${detectedCount} weak area signals detected in latest scan.`,
+            ]
+          : ["No weak areas detected."],
+        ok: true,
+      });
+      setAutomationDebugPayload(JSON.stringify({ detectPayload, listPayload }, null, 2));
       return;
     }
 
@@ -359,8 +394,35 @@ export default function AiGeneratorPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode }),
     });
-    const payload = await response.json();
-    setAutomationMessage(response.ok ? JSON.stringify(payload) : payload.error ?? "Automation failed.");
+    const payload = await response.json() as {
+      error?: string;
+      created?: Array<{ type: string; id: string; reused: boolean }>;
+    };
+    if (!response.ok) {
+      setAutomationStatus({
+        title: "Library automation failed",
+        lines: [payload.error ?? "Automation failed."],
+        ok: false,
+      });
+      return;
+    }
+
+    const created = payload.created ?? [];
+    const reusedCount = created.filter((entry) => entry.reused).length;
+    const freshCount = created.length - reusedCount;
+    const typeSummary = created.length
+      ? `Updated content for ${Array.from(new Set(created.map((entry) => entry.type))).join(", ")}.`
+      : "Library already had enough starter content.";
+    setAutomationStatus({
+      title: "Library auto-fill complete",
+      lines: [
+        `${freshCount} content sets created.`,
+        `${reusedCount} reused from existing library.`,
+        typeSummary,
+      ],
+      ok: true,
+    });
+    setAutomationDebugPayload(JSON.stringify(payload, null, 2));
   }
 
   function applyWeakArea(area: WeakArea) {
@@ -603,7 +665,23 @@ export default function AiGeneratorPage() {
           <button onClick={() => void runAutomation("autofill")} className="rounded-xl bg-blue-500 px-4 py-3 font-black text-white">Auto-fill Low Library</button>
           <button onClick={() => void runAutomation("weaknesses")} className="rounded-xl border border-slate-700 px-4 py-3 font-black text-slate-200">Detect Weak Areas</button>
         </div>
-        {automationMessage ? <pre className="mt-4 max-h-48 overflow-auto rounded-2xl bg-slate-950 p-4 text-xs text-slate-300">{automationMessage}</pre> : null}
+        {automationMessage ? <p className="mt-4 text-sm text-slate-400">{automationMessage}</p> : null}
+        {automationStatus ? (
+          <div className={`mt-4 rounded-2xl border p-4 ${automationStatus.ok ? "border-emerald-500/30 bg-emerald-500/10" : "border-rose-500/30 bg-rose-500/10"}`}>
+            <p className={`text-sm font-black ${automationStatus.ok ? "text-emerald-100" : "text-rose-100"}`}>{automationStatus.title}</p>
+            <div className="mt-2 space-y-1 text-sm text-slate-200">
+              {automationStatus.lines.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+            {showDeveloperDetails && automationDebugPayload ? (
+              <details className="mt-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3">
+                <summary className="cursor-pointer text-xs font-bold uppercase tracking-[0.16em] text-slate-300">Developer Details</summary>
+                <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-slate-900 p-2 text-xs text-slate-300">{automationDebugPayload}</pre>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
         {weakAreas.length ? (
           <div className="mt-4 space-y-3">
             {weakAreas.slice(0, 8).map((area, index) => (
@@ -696,7 +774,7 @@ export default function AiGeneratorPage() {
               )}
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
               {preview.items.map((item, index) => (
                 <article key={`${String(item.id ?? "item")}-${index}`} className={`flex min-h-0 flex-col rounded-2xl border p-3 ${item.status === "rejected" ? "border-rose-500/40 bg-rose-950/30 opacity-70" : "border-slate-800 bg-slate-950/70"}`}>
                   <div className="flex items-start justify-between gap-2">
@@ -717,14 +795,37 @@ export default function AiGeneratorPage() {
                     <button type="button" onClick={() => markPreviewItem(index, "rejected")} className="rounded-lg bg-rose-500 px-2 py-1.5 text-[11px] font-black text-white">Reject</button>
                     <button type="button" onClick={() => void regenerateItem(index)} className="rounded-lg border border-slate-700 px-2 py-1.5 text-[11px] font-black text-slate-200">Regenerate</button>
                   </div>
-                  <textarea
-                    value={JSON.stringify(item, null, 2)}
-                    onChange={(event) => updatePreviewItemJson(index, event.target.value)}
-                    className="mt-2 min-h-28 w-full rounded-xl border border-slate-800 bg-slate-900 px-2 py-2 font-mono text-[11px] leading-relaxed text-slate-300 outline-none"
-                  />
+                  <details className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+                    <summary className="cursor-pointer text-xs font-bold text-slate-300">Preview details</summary>
+                    <div className="mt-2 max-h-40 space-y-1 overflow-auto text-xs text-slate-300">
+                      {typeof item.answer !== "undefined" ? <p><span className="font-semibold text-slate-200">Answer:</span> {String(item.answer)}</p> : null}
+                      {Array.isArray(item.options) && item.options.length ? <p><span className="font-semibold text-slate-200">Options:</span> {item.options.map((option) => String(option)).join(", ")}</p> : null}
+                      {typeof item.explanation === "string" && item.explanation ? <p><span className="font-semibold text-slate-200">Explanation:</span> {item.explanation}</p> : null}
+                      {typeof item.hint === "string" && item.hint ? <p><span className="font-semibold text-slate-200">Hint:</span> {item.hint}</p> : null}
+                    </div>
+                  </details>
+                  {showDeveloperDetails ? (
+                    <details className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+                      <summary className="cursor-pointer text-xs font-bold uppercase tracking-[0.14em] text-slate-300">Developer Details</summary>
+                      <textarea
+                        value={JSON.stringify(item, null, 2)}
+                        onChange={(event) => updatePreviewItemJson(index, event.target.value)}
+                        className="mt-2 min-h-28 w-full rounded-xl border border-slate-800 bg-slate-900 px-2 py-2 font-mono text-[11px] leading-relaxed text-slate-300 outline-none"
+                      />
+                    </details>
+                  ) : null}
                 </article>
               ))}
             </div>
+
+            {showDeveloperDetails && generationMeta ? (
+              <details className="rounded-2xl border border-slate-700 bg-slate-950/70 p-3">
+                <summary className="cursor-pointer text-xs font-bold uppercase tracking-[0.16em] text-slate-300">Developer Details</summary>
+                <pre className="mt-2 max-h-56 overflow-auto rounded-xl bg-slate-900 p-3 text-xs text-slate-300">
+                  {JSON.stringify(generationMeta, null, 2)}
+                </pre>
+              </details>
+            ) : null}
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/35 p-8 text-center text-sm text-slate-400">
