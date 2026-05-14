@@ -1,0 +1,10 @@
+
+> starliz-academy@0.1.0 lint
+> eslint --max-warnings=0
+
+
+C:\Users\edwar\Documents\Projects\starliz-academy\verify-curriculum-integration.mjs
+  23:0  error  Parsing error: Declaration or statement expected
+
+Ô£û 1 problem (1 error, 0 warnings)
+

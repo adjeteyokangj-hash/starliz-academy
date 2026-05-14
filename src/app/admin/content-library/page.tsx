@@ -94,14 +94,35 @@ export default function ContentLibraryPage() {
     }
     setAssigningId(item.id);
     setMessage(null);
-    const response = await fetch("/api/admin/assignments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contentId: item.id, studentIds: [studentId] }),
-    });
-    const payload = await response.json();
-    setAssigningId(null);
-    setMessage(response.ok ? `Assigned to ${payload.count} student(s).` : payload.error ?? "Assignment failed.");
+    try {
+      const response = await fetch("/api/admin/assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentId: item.id, studentIds: [studentId] }),
+      });
+      const payload = await response.json() as {
+        count?: number;
+        error?: string;
+        blocked?: Array<{ studentId: string; reason: string; schoolName?: string }>;
+      };
+      setAssigningId(null);
+
+      if (response.status === 402 && payload.blocked?.length) {
+        const blockReasons = payload.blocked.map((b) => `${b.reason}${b.schoolName ? ` (${b.schoolName})` : ""}`).join(", ");
+        setMessage(`Assignment blocked by school licence: ${blockReasons}`);
+        return;
+      }
+
+      if (response.ok && payload.count) {
+        setMessage(`✓ Assigned to ${payload.count} student(s). Refresh the Assignments page to see it.`);
+        return;
+      }
+
+      setMessage(payload.error ?? "Assignment failed.");
+    } catch (error) {
+      setAssigningId(null);
+      setMessage(error instanceof Error ? error.message : "Assignment request failed.");
+    }
   }
 
   return (
@@ -174,6 +195,11 @@ export default function ContentLibraryPage() {
       }
     >
       {message ? <p className="mb-4 rounded-2xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-bold text-blue-200">{message}</p> : null}
+      {!loading && students.length === 0 && items.length > 0 ? (
+        <p className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-200">
+          ⚠️ No students found. <Link href="/admin/students" className="underline">Create a student</Link> first to enable assignments.
+        </p>
+      ) : null}
       {loading ? <p className="text-sm text-slate-400">Loading content...</p> : null}
       {!loading && items.length === 0 ? (
         <AdminEmptyState

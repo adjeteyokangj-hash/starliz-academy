@@ -103,13 +103,31 @@ export default function AdminAssignmentsPage() {
             Track assigned AI content from generation through gameplay and progress.
           </p>
         </div>
-        <Link href="/admin/content-library" className="rounded-2xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-500">
-          Assign from Library
-        </Link>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void loadAssignments()}
+            className="rounded-2xl border border-slate-700 px-5 py-3 font-semibold text-slate-200 hover:bg-slate-800"
+          >
+            🔄 Refresh
+          </button>
+          <Link href="/admin/content-library" className="rounded-2xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-500">
+            Assign from Library
+          </Link>
+        </div>
       </div>
 
       {message ? <p className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-bold text-blue-200">{message}</p> : null}
       {loading ? <p className="text-sm text-slate-400">Loading assignments...</p> : null}
+
+      {!loading && assignments.length === 0 ? (
+        <div className="rounded-2xl border border-slate-700 bg-slate-900/50 p-8 text-center">
+          <p className="text-slate-400">No assignments yet.</p>
+          <Link href="/admin/content-library" className="mt-4 inline-block rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500">
+            Create your first assignment
+          </Link>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:max-w-xl">
         <select
