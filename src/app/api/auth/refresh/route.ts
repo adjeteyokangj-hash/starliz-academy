@@ -20,6 +20,11 @@ import {
 } from "@/lib/auth_sessions";
 import { getRequestIp } from "@/lib/api_guard";
 
+function withNoStore<T extends NextResponse>(response: T): T {
+  response.headers.set("Cache-Control", "no-store");
+  return response;
+}
+
 async function refreshSession(request: Request, nextPath?: string | null) {
   const refreshCookieName = getRefreshCookieName();
   const authCookieName = getAuthCookieName();
@@ -48,7 +53,7 @@ async function refreshSession(request: Request, nextPath?: string | null) {
       path: "/",
       maxAge: 0,
     });
-    return res;
+    return withNoStore(res);
   };
 
   const token = (await cookies()).get(refreshCookieName)?.value;
@@ -126,7 +131,7 @@ async function refreshSession(request: Request, nextPath?: string | null) {
     maxAge: getRefreshTokenMaxAgeSeconds(),
   });
 
-  return response;
+  return withNoStore(response);
 }
 
 export async function POST(request: Request) {
@@ -149,7 +154,7 @@ export async function POST(request: Request) {
       path: "/",
       maxAge: 0,
     });
-    return res;
+    return withNoStore(res);
   }
 }
 
@@ -180,6 +185,6 @@ export async function GET(request: Request) {
       path: "/",
       maxAge: 0,
     });
-    return res;
+    return withNoStore(res);
   }
 }
