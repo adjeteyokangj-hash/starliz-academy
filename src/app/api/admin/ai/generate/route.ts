@@ -611,69 +611,6 @@ function buildGeneratedPreview({
   };
 }
 
-function buildFallbackPreview(input: {
-  subject: Subject;
-  generationType: GenerationType;
-  promptType: PromptType;
-  keyStage: string;
-  yearGroup: string;
-  curriculumPathway: string;
-  examBoard: string | null;
-  skillFocus: string;
-  difficulty: number;
-  topic: string;
-  reason: string;
-}): GeneratedPreview {
-  const safeTopic = input.topic || input.skillFocus || input.subject;
-  const placeholderItem = {
-    id: "fallback-preview-1",
-    type: input.generationType,
-    prompt: `${input.skillFocus || "Practice"}: preview unavailable`,
-    question: `${input.skillFocus || "Practice"}: preview unavailable`,
-    answer: "Awaiting regenerated content",
-    options: ["Retry generation", "Adjust skill focus", "Select another topic"],
-    explanation: `Automatic fallback preview shown. Reason: ${input.reason}`,
-    hint: "Use admin diagnostics and retry after adjusting topic, skill focus, or exam board.",
-    yearGroup: input.yearGroup,
-    skillFocus: input.skillFocus,
-    difficulty: input.difficulty,
-    topic: safeTopic,
-    status: "pending",
-  };
-
-  return {
-    title: `${input.yearGroup} ${input.skillFocus || input.subject} fallback preview`,
-    subject: input.subject,
-    keyStage: input.keyStage,
-    yearGroup: input.yearGroup,
-    curriculumPathway: input.curriculumPathway,
-    examBoard: input.examBoard,
-    skillFocus: input.skillFocus,
-    difficulty: input.difficulty,
-    topic: safeTopic,
-    status: "draft",
-    safetyStatus: "passed",
-    qualityScore: 40,
-    voiceScript: `We could not complete generation for ${input.skillFocus || input.subject}. Please review diagnostics and retry.`,
-    imagePrompt: `Educational placeholder card for ${input.yearGroup} ${input.subject} ${safeTopic}.`,
-    items: [placeholderItem],
-    metadata: {
-      generationType: input.generationType,
-      promptType: input.promptType,
-      parser: input.promptType === "reading" ? "reading-object" : "array-items",
-    },
-    curriculumContext: {
-      pathway: input.curriculumPathway,
-      examBoard: input.examBoard,
-      keyStage: input.keyStage,
-      yearGroup: input.yearGroup,
-      subject: input.subject,
-      skillFocus: input.skillFocus,
-      topic: safeTopic,
-    },
-  };
-}
-
 function normalizeSpellingItems(items: unknown[], yearGroup: string, skillFocus: string, level: number, topic: string) {
   return items.map((item, index) => {
     const data = item as Record<string, unknown>;
