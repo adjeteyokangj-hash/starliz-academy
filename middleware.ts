@@ -140,6 +140,25 @@ export async function middleware(request: NextRequest) {
     return withSecurityHeaders(NextResponse.redirect(new URL("/profiles", request.url)));
   }
 
+  if (authenticated && session.role === "student") {
+    if (pathname === "/my-profile") {
+      return withSecurityHeaders(NextResponse.redirect(new URL("/student/profile", request.url)));
+    }
+
+    if (pathname.startsWith("/parent") || pathname.startsWith("/parent-pin")) {
+      return withSecurityHeaders(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+    }
+
+    if (pathname.startsWith("/billing") || pathname.startsWith("/subscription")) {
+      return withSecurityHeaders(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+    }
+  }
+
+  if (authenticated && pathname.startsWith("/student/profile") && session.role !== "student") {
+    const fallback = session.role === "admin" ? "/admin" : "/my-profile";
+    return withSecurityHeaders(NextResponse.redirect(new URL(fallback, request.url)));
+  }
+
   // Teacher portal: must be authenticated (role check happens in each page/layout)
   if (pathname.startsWith("/teacher") && !authenticated) {
     return withSecurityHeaders(NextResponse.redirect(new URL(`/auth/login?next=${encodeURIComponent(pathname)}`, request.url)));

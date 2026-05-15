@@ -20,7 +20,7 @@ export default function ContentLibraryPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
-  const [_operating, setOperating] = useState(false);
+  const [, setOperating] = useState(false);
 
   const [query, setQuery] = useState("");
   const [studentYear, setStudentYear] = useState("");

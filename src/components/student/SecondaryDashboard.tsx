@@ -15,12 +15,20 @@ function subjectLabel(subject: string): string {
   return subject.charAt(0).toUpperCase() + subject.slice(1);
 }
 
+function assignmentSessionLabel(title: string, skillFocus?: string | null): string {
+  if (skillFocus?.trim()) return `${title} · ${skillFocus.trim()}`;
+  return title;
+}
+
 export default function SecondaryDashboard({
   childName,
   stats,
   visibleAssignments,
   skills,
   coachRows,
+  focusAssignment,
+  weakAssignment,
+  reviewAssignment,
   bossUnlocked,
   bossPlayedToday,
   sessionSummary,
@@ -33,6 +41,12 @@ export default function SecondaryDashboard({
   const masteredCount = skills.filter((s) => s.status === "mastered").length;
   const weakCount = skills.filter((s) => s.status === "weak").length;
   const improvingCount = skills.filter((s) => s.status === "improving").length;
+  const priorityAssignments = [focusAssignment, weakAssignment, reviewAssignment]
+    .filter((assignment, index, array): assignment is NonNullable<typeof assignment> => {
+      return Boolean(assignment) && array.findIndex((candidate) => candidate?.id === assignment?.id) === index;
+    })
+    .slice(0, 3);
+  const sessionAssignments = priorityAssignments.length > 0 ? priorityAssignments : visibleAssignments.slice(0, 3);
 
   return (
     <div className="space-y-6">
@@ -81,10 +95,30 @@ export default function SecondaryDashboard({
       <section className="rounded-3xl border border-indigo-200 bg-indigo-950 p-6 text-indigo-50">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-indigo-300">Today&apos;s Session</p>
         <h2 className="mt-2 text-xl font-black">Adaptive Study Session</h2>
-        <p className="mt-1 text-sm text-indigo-200">
-          A personalised session covering warm-up, skill focus, weak area revision, and a progress check.
-          Estimated time: 7 minutes.
-        </p>
+        {sessionAssignments.length > 0 ? (
+          <div className="mt-3 space-y-2 text-sm text-indigo-100">
+            {sessionAssignments.map((assignment, index) => (
+              <button
+                key={assignment.id}
+                type="button"
+                onClick={() => onStartAssignment(assignment)}
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-800 bg-indigo-900/70 px-4 py-3 text-left transition hover:bg-indigo-900"
+              >
+                <span>
+                  {index + 1}. {assignmentSessionLabel(assignment.title, assignment.skillFocus)}
+                </span>
+                <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-indigo-300">
+                  {subjectLabel(assignment.subject)}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-1 text-sm text-indigo-200">
+            No assigned tasks are queued yet. Starting this session will open adaptive revision for today.
+          </p>
+        )}
+        <p className="mt-3 text-sm text-indigo-200">Estimated time: {Math.max(7, sessionAssignments.length * 4)} minutes.</p>
         <button
           type="button"
           onClick={() => void onStartJourney()}

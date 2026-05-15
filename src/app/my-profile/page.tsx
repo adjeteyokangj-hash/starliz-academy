@@ -59,13 +59,17 @@ export default function MyProfilePage() {
       const res = await fetch("/api/account", { credentials: "include" });
       if (!res.ok) { setError("Unable to load account profile."); setLoading(false); return; }
       const payload = (await res.json()) as AccountPayload;
+      if (payload.account.role === "student") {
+        router.replace("/student/profile");
+        return;
+      }
       setData(payload);
       setDisplayName(payload.account.name);
       setNotifications(payload.notifications);
       setLoading(false);
     };
     void load();
-  }, []);
+  }, [router]);
 
   async function saveSettings() {
     setSaving(true);

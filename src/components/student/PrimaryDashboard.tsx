@@ -15,13 +15,19 @@ function subjectEmoji(subject: string): string {
   return "📝";
 }
 
+function assignmentStepLabel(title: string, skillFocus?: string | null): string {
+  if (skillFocus?.trim()) return `${title} · ${skillFocus.trim()}`;
+  return title;
+}
+
 export default function PrimaryDashboard({
   childName,
   stats,
   visibleAssignments,
   coachRows,
-  focusSkill,
-  weakSkill,
+  focusAssignment,
+  weakAssignment,
+  reviewAssignment,
   bossUnlocked,
   bossPlayedToday,
   ownedBadges,
@@ -33,6 +39,18 @@ export default function PrimaryDashboard({
   onStartAssignment,
   onOpenStore,
 }: DashboardProps) {
+  const journeyAssignments = [focusAssignment, weakAssignment, reviewAssignment]
+    .filter((assignment, index, array): assignment is NonNullable<typeof assignment> => {
+      return Boolean(assignment) && array.findIndex((candidate) => candidate?.id === assignment?.id) === index;
+    })
+    .slice(0, 3);
+
+  const fallbackAssignments = visibleAssignments
+    .filter((assignment) => !journeyAssignments.some((candidate) => candidate.id === assignment.id))
+    .slice(0, Math.max(0, 3 - journeyAssignments.length));
+
+  const todayJourney = [...journeyAssignments, ...fallbackAssignments];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -80,13 +98,26 @@ export default function PrimaryDashboard({
       {/* Today's Journey */}
       <section className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-sky-50 to-white p-6">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-indigo-600">🌈 Today&apos;s Learning Journey</p>
-        <div className="mt-4 space-y-2 text-sm font-semibold text-slate-700">
-          <div className="rounded-xl bg-white px-4 py-2">1. Warm up</div>
-          {focusSkill && <div className="rounded-xl bg-white px-4 py-2">2. Practise {focusSkill}</div>}
-          {weakSkill && <div className="rounded-xl bg-white px-4 py-2">3. Work on {weakSkill}</div>}
-          <div className="rounded-xl bg-white px-4 py-2">4. Mini boss test</div>
-        </div>
-        <p className="mt-4 text-sm text-slate-600">Estimated time: 7 minutes</p>
+        {todayJourney.length > 0 ? (
+          <div className="mt-4 space-y-2 text-sm font-semibold text-slate-700">
+            {todayJourney.map((assignment, index) => (
+              <button
+                key={assignment.id}
+                type="button"
+                onClick={() => onStartAssignment(assignment)}
+                className="flex w-full items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 text-left transition hover:bg-indigo-100"
+              >
+                <span>
+                  {index + 1}. {assignmentStepLabel(assignment.title, assignment.skillFocus)}
+                </span>
+                <span className="shrink-0 text-lg">{subjectEmoji(assignment.subject)}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-slate-600">No assigned tasks yet. Your journey button will open adaptive practice for today.</p>
+        )}
+        <p className="mt-4 text-sm text-slate-600">Estimated time: {Math.max(7, todayJourney.length * 4)} minutes</p>
         <button
           type="button"
           onClick={() => void onStartJourney()}
