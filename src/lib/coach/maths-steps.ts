@@ -76,6 +76,9 @@ function parsePattern(question: string): MathPattern {
     return { type: "bracket", outer, inner, offset, total };
   }
 
+  // Linear: ax + b = c  or  x - b = c
+  const linearMatch = q.match(/^(\d+)?\s*x\s*([+\-])\s*(\d+)\s*=\s*(\d+)$/i);
+
   if (linearMatch) {
     return {
       type: "linear",
@@ -305,12 +308,6 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
       reinforcementNote: reinforcementNote(pattern, ageBand),
       tryAgainPrompt: shouldReveal ? "Try a similar question on your own before asking for help again." : null,
       masterySignal: null,
-    };
-  }
-
-  // ── hint / guided mode ────────────────────────────────────────────────────
-
-      ...emotFields,
     };
   }
 

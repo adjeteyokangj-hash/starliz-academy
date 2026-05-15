@@ -408,21 +408,21 @@ function CoachShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-[1.75rem] border border-cyan-200 bg-cyan-50/80 p-4 shadow-sm">
       {children}
-
-    function CloseButton({ onClick }: { onClick: () => void }) {
-      return (
-        <button
-          onClick={onClick}
-          aria-label="Close coach"
-          className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" />
-          </svg>
-        </button>
-      );
-    }
     </div>
+  );
+}
+
+function CloseButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Close coach"
+      className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+    >
+      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" />
+      </svg>
+    </button>
   );
 }
 
