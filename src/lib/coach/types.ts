@@ -29,6 +29,46 @@ export type MasterySignal =
   | "memorising"   // correct but slow + multiple hints
   | "guessing";    // answer revealed then confirmed
 
+/** Longer-term mastery stage for a skill path. */
+export type MasteryLevel =
+  | "new"
+  | "practising"
+  | "developing"
+  | "confident"
+  | "mastered";
+
+/** What the student appears to be doing cognitively in this interaction. */
+export type LearningIntent =
+  | "seeking_guidance"
+  | "building_understanding"
+  | "developing_understanding"
+  | "misconception_risk"
+  | "guessing_risk"
+  | "independent_reasoning";
+
+/** Explicit strategy object that controls tutoring behaviour for this turn. */
+export type CoachStrategy = {
+  subject: CoachSubject;
+  ageBand: AgeBand;
+  yearGroup?: number;
+  hintLevel: number;
+  confidenceLevel: number;
+  weaknessHistory: string[];
+  hintUsage: number;
+  retryCount: number;
+  responseSpeed: "fast" | "steady" | "slow";
+  struggleScore: number; // 0-1
+  learningIntent: LearningIntent;
+  masteryLevel: MasteryLevel;
+  teachingStyle:
+    | "visual_scaffold"
+    | "guided_reasoning"
+    | "interactive_questioning"
+    | "exam_technique"
+    | "pattern_practice";
+  adaptationSummary: string;
+};
+
 /**
  * All the information the coach engine needs to produce a response.
  * Serialisable — safe to pass over an API boundary.
@@ -86,6 +126,14 @@ export type CoachResponse = {
   waitPrompt?: string;
   /** Follow-up question after full reveal — mastery confirmation. */
   similarQuestion?: { prompt: string; answer?: string };
+  /** Strategy metadata that powers adaptive tutoring decisions. */
+  strategy?: CoachStrategy;
+  /** Current estimated mastery stage for this skill. */
+  masteryLevel?: MasteryLevel;
+  /** Estimated learning intent for this interaction. */
+  learningIntent?: LearningIntent;
+  /** Human-readable summary of why this adaptation was chosen. */
+  adaptationSummary?: string;
 };
 
 /** Emitted when the student interacts with the coach — feeds tracking. */

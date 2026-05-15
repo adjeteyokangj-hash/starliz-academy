@@ -4,7 +4,7 @@
 // implements mastery detection.  Pure function — no API calls.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { AgeBand, CoachContext, CoachResponse, MasterySignal } from "./types";
+import { AgeBand, CoachContext, CoachResponse, CoachStrategy, LearningIntent, MasteryLevel, MasterySignal } from "./types";
 import { buildMathsCoachResponse } from "./maths-steps";
 import { buildReadingCoachResponse } from "./reading-hints";
 import { buildSpellingCoachResponse } from "./spelling-hints";
@@ -94,6 +94,87 @@ export function computeConfidenceDelta(signal: MasterySignal | null, hintsUsed: 
   return hintsUsed > 0 ? -0.02 : 0;
 }
 
+// ── Universal tutor strategy ────────────────────────────────────────────────
+
+function computeResponseSpeed(responseTimeMs?: number): "fast" | "steady" | "slow" {
+  if (!responseTimeMs || responseTimeMs <= 6000) return "fast";
+  if (responseTimeMs <= 30000) return "steady";
+  return "slow";
+}
+
+function inferLearningIntent(ctx: CoachContext, responseSpeed: "fast" | "steady" | "slow"): LearningIntent {
+  const hasAttempt = typeof ctx.studentAnswer === "string" && ctx.studentAnswer.length > 0;
+  if (!hasAttempt) return "seeking_guidance";
+  if (ctx.attemptCount >= 3) return "misconception_risk";
+  if (responseSpeed === "fast" && ctx.attemptCount >= 1) return "guessing_risk";
+  if (ctx.hintCount >= 3) return "developing_understanding";
+  if (ctx.hintCount <= 1 && ctx.attemptCount <= 1 && ctx.confidenceScore >= 0.7) return "independent_reasoning";
+  return "building_understanding";
+}
+
+function inferTeachingStyle(ctx: CoachContext): CoachStrategy["teachingStyle"] {
+  if (ctx.ageBand === "foundation") return "visual_scaffold";
+  if (ctx.ageBand === "gcse") return "exam_technique";
+  if (ctx.subject === "spelling") return "pattern_practice";
+  if (ctx.subject === "reading" || ctx.subject === "english") return "interactive_questioning";
+  return "guided_reasoning";
+}
+
+function inferMasteryLevel(ctx: CoachContext, responseSpeed: "fast" | "steady" | "slow"): MasteryLevel {
+  if (ctx.hintCount === 0 && ctx.attemptCount === 0 && ctx.confidenceScore >= 0.8 && responseSpeed === "fast") {
+    return "mastered";
+  }
+  if (ctx.hintCount <= 1 && ctx.attemptCount <= 1 && ctx.confidenceScore >= 0.65) return "confident";
+  if (ctx.hintCount >= 3 || ctx.attemptCount >= 3) return "practising";
+  if (ctx.hintCount >= 2 || responseSpeed === "slow") return "developing";
+  return "new";
+}
+
+/** Build explicit per-turn tutoring strategy used across all subjects. */
+export function buildCoachStrategy(ctx: CoachContext): CoachStrategy {
+  const hintLevel = Math.min(ctx.hintCount + 1, 4);
+  const responseSpeed = computeResponseSpeed(ctx.responseTimeMs);
+  const struggleRaw =
+    (ctx.hintCount / 4) * 0.35 +
+    Math.min(ctx.attemptCount / 4, 1) * 0.35 +
+    (1 - Math.min(Math.max(ctx.confidenceScore, 0), 1)) * 0.2 +
+    Math.min((ctx.weakSkills?.length ?? 0) / 5, 1) * 0.1;
+  const struggleScore = Math.min(Math.max(struggleRaw, 0), 1);
+  const learningIntent = inferLearningIntent(ctx, responseSpeed);
+  const masteryLevel = inferMasteryLevel(ctx, responseSpeed);
+  const teachingStyle = inferTeachingStyle(ctx);
+
+  const adaptationSummary =
+    learningIntent === "misconception_risk"
+      ? "Repeated errors detected: switch to mistake-recovery coaching with gentle correction."
+      : learningIntent === "guessing_risk"
+      ? "Fast incorrect attempts detected: enforce wait-and-think prompts and short follow-ups."
+      : hintLevel >= 4
+      ? "Full walkthrough enabled after progressive hints; mastery check should follow."
+      : ctx.ageBand === "foundation"
+      ? "Use short language, concrete examples, and visual scaffolds."
+      : ctx.ageBand === "gcse"
+      ? "Use exam-focused method language and explicit mark-winning structure."
+      : "Use one-step hints, interactive questions, and confidence-building prompts.";
+
+  return {
+    subject: ctx.subject,
+    ageBand: ctx.ageBand,
+    yearGroup: ctx.yearGroup,
+    hintLevel,
+    confidenceLevel: Math.min(Math.max(ctx.confidenceScore, 0), 1),
+    weaknessHistory: ctx.weakSkills ?? [],
+    hintUsage: ctx.hintCount,
+    retryCount: ctx.attemptCount,
+    responseSpeed,
+    struggleScore,
+    learningIntent,
+    masteryLevel,
+    teachingStyle,
+    adaptationSummary,
+  };
+}
+
 // ── Science fallback ──────────────────────────────────────────────────────────
 
 function buildScienceFallback(ctx: CoachContext): CoachResponse {
@@ -153,21 +234,38 @@ function buildScienceFallback(ctx: CoachContext): CoachResponse {
 export function buildCoachResponse(ctx: CoachContext): CoachResponse {
   // Clamp hintCount defensively
   const safeCtx: CoachContext = { ...ctx, hintCount: Math.max(0, ctx.hintCount) };
+  const strategy = buildCoachStrategy(safeCtx);
+
+  let base: CoachResponse;
 
   switch (safeCtx.subject) {
     case "maths":
-      return buildMathsCoachResponse(safeCtx);
+      base = buildMathsCoachResponse(safeCtx);
+      break;
     case "reading":
-      return buildReadingCoachResponse(safeCtx);
+      base = buildReadingCoachResponse(safeCtx);
+      break;
     case "english":
-      return buildEnglishCoachResponse(safeCtx);
+      base = buildEnglishCoachResponse(safeCtx);
+      break;
     case "spelling":
-      return buildSpellingCoachResponse(safeCtx);
+      base = buildSpellingCoachResponse(safeCtx);
+      break;
     case "science":
-      return buildScienceCoachResponse(safeCtx); // from science-hints.ts
+      base = buildScienceCoachResponse(safeCtx); // from science-hints.ts
+      break;
     default:
-      return buildMathsCoachResponse(safeCtx); // safe fallback
+      base = buildMathsCoachResponse(safeCtx); // safe fallback
+      break;
   }
+
+  return {
+    ...base,
+    strategy,
+    masteryLevel: strategy.masteryLevel,
+    learningIntent: strategy.learningIntent,
+    adaptationSummary: strategy.adaptationSummary,
+  };
 }
 
 // ── Emotional tone helper ─────────────────────────────────────────────────────
@@ -259,6 +357,8 @@ export function buildAISystemPrompt(ctx: CoachContext): string | null {
   if (ctx.ageBand !== "secondary" && ctx.ageBand !== "gcse") return null;
   if (ctx.hintCount === 0 && ctx.subject === "maths") return null; // level 1 hint is always deterministic
 
+  const strategy = buildCoachStrategy(ctx);
+
   return `You are a precise UK-curriculum ${ctx.subject} tutor for StarLiz Academy, supporting Year ${ctx.yearGroup ?? (ctx.ageBand === "gcse" ? "10-11" : "7-9")} students.
 
 RULES:
@@ -280,6 +380,10 @@ Student's answer: ${ctx.studentAnswer ?? "(not yet answered)"}
 Skill focus: ${ctx.skillFocus ?? "general"}
 Hint count: ${ctx.hintCount}
 Confidence score: ${ctx.confidenceScore.toFixed(2)} (0=struggling, 1=confident)
+Learning intent: ${strategy.learningIntent}
+Mastery stage: ${strategy.masteryLevel}
+Teaching style: ${strategy.teachingStyle}
+Struggle score: ${strategy.struggleScore.toFixed(2)}
 
 OUTPUT SCHEMA (JSON only):
 {
