@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { AgeBand, CoachContext, CoachFollowUp, CoachResponse, CoachStep } from "./types";
+import { injectRealLifeContext, formatContextAsCoachingLine } from "./context-injectors";
 
 // ── Equation parsers ──────────────────────────────────────────────────────────
 // ── Emotional field builder ───────────────────────────────────────────────────
@@ -264,6 +265,20 @@ function foundationVisual(a: Arithmetic): string | null {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
+/**
+ * Apply real-life context to a coaching message if appropriate.
+ * Prepends a context line for hint levels 1–2.
+ */
+function applyContextToMessage(msg: string, ctx: CoachContext, hintLevel: number): string {
+  if (hintLevel > 2) return msg; // Only at early hints
+  
+  const context = injectRealLifeContext("maths", ctx.ageBand, hintLevel, ctx.skillFocus);
+  if (!context) return msg;
+  
+  const contextLine = formatContextAsCoachingLine(context);
+  return `${contextLine}\n\n${msg}`;
+}
+
 export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
   const pattern = parsePattern(ctx.question);
   const hintLevel = Math.min(ctx.hintCount + 1, 4);
@@ -300,7 +315,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
     return {
       mode: "mistake_recovery",
       ageBand,
-      message: recoveryMsg,
+      message: applyContextToMessage(recoveryMsg, ctx, hintLevel),
       steps: shouldReveal ? steps : steps.slice(0, Math.max(1, steps.length - 1)),
       followUp: pattern.type === "linear" ? linearFollowUp1(pattern) : null,
       hintLevel,
@@ -332,7 +347,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
     return {
       mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
       ageBand,
-      message: messages[hintLevel] ?? messages[4]!,
+      message: applyContextToMessage(messages[hintLevel] ?? messages[4]!, ctx, hintLevel),
       steps: shouldReveal ? linearSteps(eq, 4) : steps,
       followUp,
       hintLevel,
@@ -360,7 +375,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
     return {
       mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
       ageBand,
-      message,
+      message: applyContextToMessage(message, ctx, hintLevel),
       steps: shouldReveal ? steps : steps.slice(0, hintLevel),
       followUp: hintLevel === 2 ? {
         question: `What is ${pattern.outer} × ${pattern.inner}?`,
@@ -411,7 +426,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
     return {
       mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
       ageBand,
-      message: messages[ageBand]?.[hintLevel] ?? "Work through each step carefully.",
+      message: applyContextToMessage(messages[ageBand]?.[hintLevel] ?? "Work through each step carefully.", ctx, hintLevel),
       steps: shouldReveal ? steps : steps.slice(0, hintLevel),
       followUp: hintLevel >= 2 ? arithFollowUp(pattern, ageBand) : null,
       hintLevel,
@@ -433,7 +448,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
   return {
     mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
     ageBand,
-    message: genericMessages[hintLevel] ?? genericMessages[4]!,
+    message: applyContextToMessage(genericMessages[hintLevel] ?? genericMessages[4]!, ctx, hintLevel),
     steps: shouldReveal ? [{ expression: ctx.question, explanation: `Answer: ${ctx.correctAnswer}` }] : [],
     followUp: hintLevel === 2 ? {
       question: "What is the most important number or keyword in this question?",

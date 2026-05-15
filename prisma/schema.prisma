@@ -157,6 +157,9 @@ model ChildProfile {
   safeguardingAlerts    SchoolSafeguardingAlert[]
   safeguardingIncidents SafeguardingIncident[]
   studentProfile        StudentProfile?
+  skillMasteries        SkillMastery[]
+  masteryCheckResults   MasteryCheckResult[]
+  coachInteractionLogs  CoachInteractionLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -291,6 +294,82 @@ model AIContentCache {
 
   @@index([contentType, level])
   @@index([status])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Persistent skill mastery tracking — New → Practising → Developing → Confident → Mastered
+// ──────────────────────────────────────────────────────────────────────────
+
+model SkillMastery {
+  id String @id @default(cuid())
+
+  childId String
+  child   ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  subject    String // "maths" | "reading" | "spelling" | "science" | "english"
+  skillFocus String // "linear_equations", "phonics", etc.
+
+  masteryLevel    String   @default("new") // "new" | "practising" | "developing" | "confident" | "mastered"
+  confidenceScore Float    @default(0.5)
+  attemptCount    Int      @default(0)
+  correctCount    Int      @default(0)
+  lastAttemptAt   DateTime?
+  lastMasteredAt  DateTime?
+
+  masteryCheckResults MasteryCheckResult[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([childId, subject, skillFocus])
+  @@index([childId])
+  @@index([masteryLevel])
+}
+
+// Track independent mastery check attempts (no hints allowed)
+model MasteryCheckResult {
+  id String @id @default(cuid())
+
+  childId String
+  child   ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  skillId String
+  skill   SkillMastery @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  questionText   String
+  correctAnswer  String
+  studentAnswer  String
+  hintsUsed      Int      @default(0)
+  responseTimeMs Int?
+  passed         Boolean
+
+  createdAt DateTime @default(now())
+
+  @@index([childId])
+  @@index([skillId, passed])
+}
+
+// Track coach interaction history for progressive-help gating
+model CoachInteractionLog {
+  id String @id @default(cuid())
+
+  childId String
+  child   ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  subject    String // "maths" | "reading" | etc.
+  skillFocus String?
+  questionText String
+
+  hintLevel      Int
+  mode           String // "hint" | "guided_steps" | "full_walkthrough" | "mistake_recovery" | "reveal"
+  studentAnswer  String?
+  correct        Boolean?
+  responseTimeMs Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([childId])
+  @@index([subject])
 }
 
 model WordProgress {

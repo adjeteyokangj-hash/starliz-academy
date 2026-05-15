@@ -134,6 +134,10 @@ export type CoachResponse = {
   learningIntent?: LearningIntent;
   /** Human-readable summary of why this adaptation was chosen. */
   adaptationSummary?: string;
+  /** Prompt for independent mastery check (no hints allowed). */
+  masteryCheckPrompt?: string;
+  /** Whether a mastery check must be completed before marking skill as Confident/Mastered. */
+  masteryCheckRequired?: boolean;
 };
 
 /** Emitted when the student interacts with the coach — feeds tracking. */

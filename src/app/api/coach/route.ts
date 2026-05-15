@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession, checkRateLimit, getRequestIp } from "@/lib/api_guard";
 import { buildCoachResponse, buildAISystemPrompt, resolveAgeBand } from "@/lib/coach/engine";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
+import { validateProgressiveHelp, recommendHintLevel } from "@/lib/coach/progressive-help-gating";
+import { shouldEnforceMasteryCheck, buildMasteryCheckPrompt, attachMasteryCheckToResponse } from "@/lib/coach/mastery-check-enforcement";
+import { recordCoachInteraction, getSkillMastery } from "@/lib/coach/db-helpers";
 import type { CoachContext, CoachResponse, AgeBand } from "@/lib/coach/types";
 
 const VALID_SUBJECTS = ["maths", "reading", "spelling", "science", "english"] as const;
@@ -95,6 +98,42 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Deterministic engine — always runs (fast fallback)
   const deterministicResponse = buildCoachResponse(ctx);
 
+  // ─ Progressive-help gating: enforce level sequencing ─────────────────────
+  const gatingValidation = validateProgressiveHelp(ctx, ctx.hintCount > 0 ? ctx.hintCount : undefined);
+  if (!gatingValidation.allowed) {
+    return NextResponse.json(
+      {
+        error: "gating_violation",
+        message: gatingValidation.reason || "Cannot request that hint level yet",
+        suggestedHintLevel: gatingValidation.suggestedHintLevel,
+      },
+      { status: 403 },
+    );
+  }
+
+  // ─ Record interaction to database (async, non-blocking) ──────────────────
+  recordCoachInteraction(
+    session.userId,
+    ctx.subject,
+    ctx.skillFocus,
+    ctx.question,
+    deterministicResponse.hintLevel,
+    deterministicResponse.mode,
+    ctx.studentAnswer,
+    ctx.studentAnswer ? true : undefined, // marked as correct if they already answered
+    ctx.responseTimeMs,
+  ).catch((err) => console.error("[coach db] Failed to record:", err));
+
+  // ─ Attach mastery check if appropriate ─────────────────────────────────
+  let finalResponse = deterministicResponse;
+  if (shouldEnforceMasteryCheck(ctx)) {
+    const skill = await getSkillMastery(session.userId, ctx.subject, ctx.skillFocus || "general").catch(() => null);
+    if (skill && skill.masteryLevel !== "mastered") {
+      const checkPrompt = buildMasteryCheckPrompt(ctx, deterministicResponse.similarQuestion);
+      finalResponse = attachMasteryCheckToResponse(deterministicResponse, true, checkPrompt);
+    }
+  }
+
   // AI enhancement — only for secondary/GCSE, only when key is present
   const shouldUseAI = ctx.ageBand === "secondary" || ctx.ageBand === "gcse";
   if (shouldUseAI) {
@@ -103,7 +142,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const systemPrompt = buildAISystemPrompt(ctx);
       if (systemPrompt) {
         try {
-          const aiResponse = await callOpenAI(apiKey, systemPrompt, ctx, deterministicResponse);
+          const aiResponse = await callOpenAI(apiKey, systemPrompt, ctx, finalResponse);
           if (aiResponse) {
             return NextResponse.json(aiResponse);
           }
@@ -117,7 +156,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  return NextResponse.json(deterministicResponse);
+  return NextResponse.json(finalResponse);
 }
 
 // ── OpenAI call ───────────────────────────────────────────────────────────────
