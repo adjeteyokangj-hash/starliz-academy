@@ -376,7 +376,11 @@ export default function AiGeneratorPage() {
   );
 
   const generatedItemsList = (preview?.items ?? []) as GeneratedPreviewItem[];
-  const saveBlocked = !generatedItemsList.length || generationMeta?.validation?.valid === false;
+  const isPlaceholderGeneration = preview != null && generationMeta?.validation != null && generationMeta.validation.valid === false;
+  const saveBlocked =
+    !generatedItemsList.length ||
+    isPlaceholderGeneration ||
+    (preview != null && preview.safetyStatus !== "passed");
   const approvedCount = generatedItemsList.filter((item) => item.status === "approved").length;
   const effectiveGenerationContext = previewContext ?? {
     subject,
@@ -410,10 +414,11 @@ export default function AiGeneratorPage() {
     : weakAreasWithMatch.filter((entry) => entry.contextMatches);
   const showDeveloperDetails = process.env.NEXT_PUBLIC_ADMIN_DEBUG === "1";
   const previewBadge = generationMeta?.validation?.valid === false
-    ? { label: "Needs Review", className: "bg-rose-500/15 text-rose-200" }
+  const previewBadge = isPlaceholderGeneration
+    ? { label: "Generation Failed", className: "bg-rose-600/30 text-rose-100" }
     : generationMeta?.validation?.repaired
-      ? { label: "Adjusted", className: "bg-amber-500/15 text-amber-200" }
-      : { label: "Perfect", className: "bg-emerald-500/15 text-emerald-200" };
+      ? { label: "Auto-Repaired", className: "bg-amber-500/15 text-amber-200" }
+      : { label: "Valid", className: "bg-emerald-500/15 text-emerald-200" };
 
   const clearWeakAreaLink = () => {
     setLoadedWeakAreaId(null);
@@ -895,7 +900,14 @@ export default function AiGeneratorPage() {
     const recommendedExamBoard = needExamBoard ? EXAM_BOARDS.find((value) => value.toUpperCase() === "AQA") ?? EXAM_BOARDS[0] ?? "" : "";
     const baselineDifficulty = Math.max(1, Math.min(5, area.currentDifficulty || 2));
     const recommendedDifficulty = Math.max(1, baselineDifficulty - 1);
-    const recommendedTopic = mappedTopics[0] ?? `${mappedSkill} practice`;
+    const firstMappedTopic = mappedTopics[0];
+    const subjectDisplayLabel = mappedSubject.startsWith("gcse-")
+      ? `GCSE ${formatSubjectLabel(mappedSubject.slice(5))}`
+      : formatSubjectLabel(mappedSubject);
+    const recommendedTopic =
+      firstMappedTopic && !/^\s*.+\s+practice\s*$/i.test(firstMappedTopic)
+        ? firstMappedTopic
+        : `${subjectDisplayLabel} ${toTitleCaseWords(mappedSkill)} Practice`;
 
     return {
       subject: mappedSubject,
@@ -1186,7 +1198,7 @@ export default function AiGeneratorPage() {
               {loading ? "Generating with AI..." : "Generate Preview"}
             </button>
             <button onClick={saveGeneratedContent} disabled={saving || saveBlocked || !approvedCount} className="rounded-xl bg-emerald-500 px-4 py-3 font-black text-white hover:bg-emerald-400 disabled:opacity-50">
-              {saving ? "Saving..." : saveBlocked ? "Fix required before save" : "Save to Content Library"}
+              {saving ? "Saving..." : isPlaceholderGeneration ? "Generation Failed — Cannot Save" : saveBlocked ? "Fix required before save" : "Save to Content Library"}
             </button>
           </div>
           {error ? <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
@@ -1462,8 +1474,21 @@ export default function AiGeneratorPage() {
               </div>
             ) : null}
 
-            <div className={`rounded-2xl border p-3 text-sm ${generationMeta?.validation?.repaired ? "border-amber-500/30 bg-amber-500/10 text-amber-100" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"}`}>
-              {generationMeta?.validation?.repaired ? (
+            <div className={`rounded-2xl border p-3 text-sm ${isPlaceholderGeneration ? "border-rose-500/30 bg-rose-500/10 text-rose-100" : generationMeta?.validation?.repaired ? "border-amber-500/30 bg-amber-500/10 text-amber-100" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"}`}>
+              {isPlaceholderGeneration ? (
+                <>
+                  <p className="font-bold">Generation Failed — Fallback Placeholder Only</p>
+                  <p className="mt-1 text-xs">The AI response did not produce schema-valid curriculum content. This content cannot be approved or saved.</p>
+                  {(generationMeta?.validation?.errors ?? []).length > 0 ? (
+                    <div className="mt-2 space-y-1 text-xs">
+                      {generationMeta!.validation!.errors.map((err, errIdx) => (
+                        <p key={`err-${errIdx}`}>- {err}</p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className="mt-2 text-xs font-semibold">Try regenerating with a different topic or skill focus.</p>
+                </>
+              ) : generationMeta?.validation?.repaired ? (
                 <>
                   <p className="font-bold">Auto-repair applied before preview.</p>
                   <div className="mt-2 space-y-1 text-xs sm:text-sm">
@@ -1475,21 +1500,27 @@ export default function AiGeneratorPage() {
                   </div>
                 </>
               ) : (
-                <p className="font-bold">{formatValidationSuccessMessage(subject)}</p>
+                <p className="font-bold">{formatValidationSuccessMessage(effectiveGenerationContext.subject)}</p>
               )}
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {isPlaceholderGeneration ? (
+              <div className="rounded-2xl border border-rose-500/50 bg-rose-950/30 p-4">
+                <p className="font-black text-rose-100">Generation Failed — Fallback Placeholder Only</p>
+                <p className="mt-2 text-xs text-rose-200">The AI response did not produce schema-valid curriculum content. These items are placeholders and cannot be approved or saved. Regenerate with a different topic or skill focus.</p>
+              </div>
+            ) : null}
+            <div className={`grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4${isPlaceholderGeneration ? " pointer-events-none opacity-40" : ""}`}>
               {preview.items.map((item, index) => (
-                <article key={`${String(item.id ?? "item")}-${index}`} className={`relative z-10 flex min-h-0 flex-col rounded-2xl border p-3 ${item.status === "rejected" ? "border-rose-500/40 bg-rose-950/30 opacity-70" : item.status === "approved" ? "border-emerald-500/35 bg-emerald-950/20" : "border-amber-500/30 bg-amber-950/20"}`}>
+                <article key={`${String(item.id ?? "item")}-${index}`} className={`relative z-10 flex min-h-0 flex-col rounded-2xl border p-3 ${isPlaceholderGeneration ? "border-slate-600/40 bg-slate-900/30" : item.status === "rejected" ? "border-rose-500/40 bg-rose-950/30 opacity-70" : item.status === "approved" ? "border-emerald-500/35 bg-emerald-950/20" : "border-amber-500/30 bg-amber-950/20"}`}>
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="text-sm font-bold text-white">
-                      {subject === "spelling" ? `${String((item as SpellingPreviewItem).emoji ?? "🔤")} ${String((item as SpellingPreviewItem).word ?? item.prompt ?? "")}` : String(item.prompt ?? item.question ?? item.title ?? `Item ${index + 1}`)}
+                      {effectiveGenerationContext.subject === "spelling" ? `${String((item as SpellingPreviewItem).emoji ?? "🔤")} ${String((item as SpellingPreviewItem).word ?? item.prompt ?? "")}` : String(item.prompt ?? item.question ?? item.title ?? `Item ${index + 1}`)}
                     </h3>
                     <span className="rounded-full bg-slate-800 px-2 py-1 text-[10px] font-bold text-blue-200">Item {index + 1}</span>
                   </div>
-                  <p className={`mt-1 inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${item.status === "approved" ? "bg-emerald-500/20 text-emerald-200" : item.status === "rejected" ? "bg-rose-500/20 text-rose-200" : "bg-amber-500/20 text-amber-200"}`}>
-                    {item.status === "approved" ? "Approved" : item.status === "rejected" ? "Rejected" : "Pending"}
+                  <p className={`mt-1 inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isPlaceholderGeneration ? "bg-slate-600/20 text-slate-400" : item.status === "approved" ? "bg-emerald-500/20 text-emerald-200" : item.status === "rejected" ? "bg-rose-500/20 text-rose-200" : "bg-amber-500/20 text-amber-200"}`}>
+                    {isPlaceholderGeneration ? "Fallback Placeholder" : item.status === "approved" ? "Approved" : item.status === "rejected" ? "Rejected" : "Pending"}
                   </p>
                   {typeof item.phonicsStage === "string" ? (
                     <p className="mt-1 inline-flex w-fit rounded-full border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-100">
@@ -1498,11 +1529,15 @@ export default function AiGeneratorPage() {
                   ) : null}
                   <p className="mt-1 line-clamp-3 text-xs text-slate-300">{String(item.hint ?? item.explanation ?? "Review this item before saving.")}</p>
                   <p className="mt-1 line-clamp-3 text-xs text-slate-400">{String(item.sentence ?? item.sentenceContext ?? item.passage ?? "")}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => markPreviewItem(index, "approved")} className={`min-w-24 flex-1 rounded-lg px-2 py-1.5 text-[11px] font-black text-white ${item.status === "approved" ? "bg-emerald-400 ring-2 ring-emerald-200" : "bg-emerald-500 hover:bg-emerald-400"}`}>Approve</button>
-                    <button type="button" onClick={() => markPreviewItem(index, "rejected")} className={`min-w-24 flex-1 rounded-lg px-2 py-1.5 text-[11px] font-black text-white ${item.status === "rejected" ? "bg-rose-400 ring-2 ring-rose-200" : "bg-rose-500 hover:bg-rose-400"}`}>Reject</button>
-                    <button type="button" onClick={() => void regenerateItem(index)} className="min-w-24 flex-1 rounded-lg border border-slate-700 px-2 py-1.5 text-[11px] font-black text-slate-200">Regenerate</button>
-                  </div>
+                  {isPlaceholderGeneration ? (
+                    <p className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1.5 text-[11px] font-bold text-rose-300">Fallback placeholder — not approvable</p>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => markPreviewItem(index, "approved")} className={`min-w-24 flex-1 rounded-lg px-2 py-1.5 text-[11px] font-black text-white ${item.status === "approved" ? "bg-emerald-400 ring-2 ring-emerald-200" : "bg-emerald-500 hover:bg-emerald-400"}`}>Approve</button>
+                      <button type="button" onClick={() => markPreviewItem(index, "rejected")} className={`min-w-24 flex-1 rounded-lg px-2 py-1.5 text-[11px] font-black text-white ${item.status === "rejected" ? "bg-rose-400 ring-2 ring-rose-200" : "bg-rose-500 hover:bg-rose-400"}`}>Reject</button>
+                      <button type="button" onClick={() => void regenerateItem(index)} className="min-w-24 flex-1 rounded-lg border border-slate-700 px-2 py-1.5 text-[11px] font-black text-slate-200">Regenerate</button>
+                    </div>
+                  )}
                   <details className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
                     <summary className="cursor-pointer text-xs font-bold text-slate-300">Preview details</summary>
                     <div className="mt-2 max-h-40 space-y-1 overflow-auto text-xs text-slate-300">
