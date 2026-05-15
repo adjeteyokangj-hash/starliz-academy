@@ -28,7 +28,7 @@ export default function Navbar() {
   );
   const isStudentContext = role === "student" || (!authResolved && isStudentPage);
   const dashboardHref = isStudentContext ? "/student/dashboard" : "/dashboard";
-  const profileHref = isStudentContext ? "/student/profile" : "/my-profile";
+  const profileHref = isStudentContext ? "/student/profile" : role === "parent" ? "/parent/profile" : "/my-profile";
   const showParentAccess = authResolved && role === "parent";
 
   useEffect(() => {
