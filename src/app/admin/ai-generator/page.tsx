@@ -149,6 +149,26 @@ function formatSubjectLabel(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1).replace(/-/g, " ");
 }
 
+function subjectFamily(value: string): "maths" | "science" | "english" | "other" {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.includes("math")) return "maths";
+  if (normalized.includes("science")) return "science";
+  if (
+    normalized.includes("english")
+    || normalized.includes("reading")
+    || normalized.includes("writing")
+    || normalized.includes("grammar")
+    || normalized.includes("punctuation")
+    || normalized.includes("spelling")
+    || normalized.includes("phonics")
+    || normalized.includes("literature")
+    || normalized.includes("vocabulary")
+  ) {
+    return "english";
+  }
+  return "other";
+}
+
 function formatFriendlyTopic(value: string): string {
   const normalized = value.replace(/_/g, " ").replace(/-/g, " ").trim();
   if (!normalized) return "Targeted intervention";
@@ -308,6 +328,7 @@ export default function AiGeneratorPage() {
   const [weakAreas, setWeakAreas] = useState<WeakArea[]>([]);
   const [weakAreaKeyStageFilter, setWeakAreaKeyStageFilter] = useState("");
   const [weakAreaYearGroupFilter, setWeakAreaYearGroupFilter] = useState("");
+  const [weakAreaSubjectFilter, setWeakAreaSubjectFilter] = useState<"manual" | "all">("manual");
   const [savedContentId, setSavedContentId] = useState<string | null>(null);
   const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId);
   const [generationPhase, setGenerationPhase] = useState<"idle" | "generating" | "repairing-response" | "validating-content" | "retrying-parse">("idle");
@@ -357,7 +378,36 @@ export default function AiGeneratorPage() {
   const generatedItemsList = (preview?.items ?? []) as GeneratedPreviewItem[];
   const saveBlocked = !generatedItemsList.length || generationMeta?.validation?.valid === false;
   const approvedCount = generatedItemsList.filter((item) => item.status === "approved").length;
-  const selectedGenerationType = subject ? GENERATION_CONTENT_TYPE_BY_SUBJECT[subject] : null;
+  const effectiveGenerationContext = previewContext ?? {
+    subject,
+    keyStage,
+    yearGroup: yearGroup as YearGroup,
+    curriculumPathway,
+    examBoard: shouldTagExamBoard ? examBoard : undefined,
+    skillFocus,
+    ageGroup: ageGroup as (typeof AGE_GROUPS)[number],
+    difficulty,
+    topic: selectedTopicTheme,
+    targetStudentId,
+    source: "manual" as const,
+    weakAreaId: null,
+  };
+  const selectedGenerationTypeForContext = GENERATION_CONTENT_TYPE_BY_SUBJECT[effectiveGenerationContext.subject];
+
+  const weakAreasWithMatch = weakAreas.map((area) => {
+    const areaDerivedKeyStage = area.keyStage ?? keyStageForYearGroup(area.yearGroup ?? "Year 1");
+    const subjectMatches = subjectFamily(area.subject) === subjectFamily(subject);
+    const keyStageMatches = areaDerivedKeyStage === keyStage;
+    const yearGroupMatches = area.yearGroup ? area.yearGroup === yearGroup : true;
+    return {
+      area,
+      subjectMatches,
+      contextMatches: subjectMatches && keyStageMatches && yearGroupMatches,
+    };
+  });
+  const visibleWeakAreas = weakAreaSubjectFilter === "all"
+    ? weakAreasWithMatch
+    : weakAreasWithMatch.filter((entry) => entry.contextMatches);
   const showDeveloperDetails = process.env.NEXT_PUBLIC_ADMIN_DEBUG === "1";
   const previewBadge = generationMeta?.validation?.valid === false
     ? { label: "Needs Review", className: "bg-rose-500/15 text-rose-200" }
@@ -493,18 +543,18 @@ export default function AiGeneratorPage() {
           : [];
         setPreview({
           ...(content ?? {}),
-          subject: content?.subject ?? context.subject,
-          keyStage: content?.keyStage ?? context.keyStage,
-          yearGroup: content?.yearGroup ?? context.yearGroup,
-          skillFocus: content?.skillFocus ?? context.skillFocus,
-          difficulty: content?.difficulty ?? context.difficulty,
+          subject: context.subject,
+          keyStage: context.keyStage,
+          yearGroup: context.yearGroup,
+          skillFocus: context.skillFocus,
+          difficulty: context.difficulty,
           status: "draft",
           safetyStatus: content?.safetyStatus ?? "passed",
           qualityScore: content?.qualityScore ?? 80,
           voiceScript: content?.voiceScript ?? "",
           imagePrompt: content?.imagePrompt ?? "",
           topic: context.topic,
-          title: content?.title ?? `${formatSubjectLabel(context.subject)} - ${context.topic}`,
+          title: `${formatSubjectLabel(context.subject)} - ${context.topic}`,
           items: applyDefaultItemStatuses(incomingItems, "approved"),
         });
         setGenerationMeta({
@@ -1152,12 +1202,13 @@ export default function AiGeneratorPage() {
             <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-xs text-slate-400">
               <p className="font-bold text-slate-300 mb-2">Diagnostic Info:</p>
               <ul className="space-y-1">
-                <li><strong>Year Group:</strong> {yearGroup}</li>
-                <li><strong>Subject:</strong> {formatSubjectLabel(subject)}</li>
-                <li><strong>Skill Focus:</strong> {skillFocus || "(none)"}</li>
-                <li><strong>Topic/Theme:</strong> {selectedTopicTheme || "(none)"}</li>
-                <li><strong>Generation Type:</strong> {selectedGenerationType || "(unknown)"}</li>
-                <li><strong>Difficulty:</strong> {difficulty}/5</li>
+                <li><strong>Source:</strong> {effectiveGenerationContext.source === "weak-area" ? "AI Intervention Engine" : "Manual generator"}</li>
+                <li><strong>Year Group:</strong> {effectiveGenerationContext.yearGroup}</li>
+                <li><strong>Subject:</strong> {formatSubjectLabel(effectiveGenerationContext.subject)}</li>
+                <li><strong>Skill Focus:</strong> {effectiveGenerationContext.skillFocus || "(none)"}</li>
+                <li><strong>Topic/Theme:</strong> {effectiveGenerationContext.topic || "(none)"}</li>
+                <li><strong>Generation Type:</strong> {selectedGenerationTypeForContext || "(unknown)"}</li>
+                <li><strong>Difficulty:</strong> {effectiveGenerationContext.difficulty}/5</li>
                 <li><strong>Items Requested:</strong> {items}</li>
                 {generationMeta?.model ? <li><strong>Model:</strong> {generationMeta.model}</li> : null}
                 {generationMeta?.validation ? (
@@ -1196,7 +1247,7 @@ export default function AiGeneratorPage() {
 
       <div className="space-y-6 pb-24 xl:max-h-[calc(100vh-10rem)] xl:overflow-y-auto xl:pr-1">
       <AdminSectionCard title="AI Intervention Engine" eyebrow="Intervention analytics">
-        <div className="mb-3 grid gap-3 sm:grid-cols-2">
+        <div className="mb-3 grid gap-3 sm:grid-cols-3">
           <select
             value={weakAreaKeyStageFilter}
             onChange={(event) => {
@@ -1229,6 +1280,14 @@ export default function AiGeneratorPage() {
             {(weakAreaKeyStageFilter ? yearGroupsForKeyStage(weakAreaKeyStageFilter) : [...YEAR_GROUPS]).map((group) => (
               <option key={group} value={group}>{group}</option>
             ))}
+          </select>
+          <select
+            value={weakAreaSubjectFilter}
+            onChange={(event) => setWeakAreaSubjectFilter(event.target.value as "manual" | "all")}
+            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+          >
+            <option value="manual">Match manual form subject/year/key stage</option>
+            <option value="all">All subjects</option>
           </select>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -1284,9 +1343,9 @@ export default function AiGeneratorPage() {
             ) : null}
           </div>
         ) : null}
-        {weakAreas.length ? (
+        {visibleWeakAreas.length ? (
           <div className="mt-4 space-y-3">
-            {weakAreas.slice(0, 8).map((area, index) => (
+            {visibleWeakAreas.slice(0, 8).map(({ area, contextMatches }, index) => (
               <div key={`${area.id}-${index}`} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-300">Detected Weak Area</p>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
@@ -1299,6 +1358,9 @@ export default function AiGeneratorPage() {
                     <p className="text-xs text-cyan-200">{area.accuracy}% accuracy detected</p>
                     <p className="text-xs text-cyan-200">Targeted support recommended</p>
                     <p className="mt-2 text-xs text-amber-200">This intervention is based on detected weak-area data, not the manual form above.</p>
+                    {!contextMatches ? (
+                      <p className="mt-2 text-xs text-rose-300">Weak-area context does not match the current manual form. Interventions here will still use the weak-area subject.</p>
+                    ) : null}
                     {loadedWeakAreaId === area.id ? (
                       <p className={`mt-2 text-xs ${weakAreaFormSynced ? "text-emerald-300" : "text-slate-400"}`}>
                         {weakAreaFormSynced
@@ -1325,6 +1387,10 @@ export default function AiGeneratorPage() {
               </div>
             ))}
           </div>
+        ) : weakAreas.length ? (
+          <p className="mt-4 rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-sm text-slate-300">
+            No weak-area cards match the current manual form context. Switch intervention filter to &quot;All subjects&quot; to review every weak area.
+          </p>
         ) : null}
       </AdminSectionCard>
 
@@ -1356,6 +1422,12 @@ export default function AiGeneratorPage() {
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded-full px-3 py-1 text-xs font-black ${previewBadge.className}`}>
                 {previewBadge.label}
+              </span>
+              <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-black text-slate-200">
+                {effectiveGenerationContext.source === "weak-area" ? "Source: AI Intervention Engine" : "Source: Manual generator"}
+              </span>
+              <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-black text-slate-200">
+                Subject: {formatSubjectLabel(effectiveGenerationContext.subject)}
               </span>
               {generationMeta?.validation?.repaired ? (
                 <span className="text-sm text-slate-400">
