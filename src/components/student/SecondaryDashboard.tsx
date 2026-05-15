@@ -35,9 +35,12 @@ export default function SecondaryDashboard({
   loading,
   error,
   startingJourney,
+  pathway,
+  allAssignments,
   onStartJourney,
   onStartAssignment,
 }: DashboardProps) {
+  const isGcse = pathway === "gcse";
   const masteredCount = skills.filter((s) => s.status === "mastered").length;
   const weakCount = skills.filter((s) => s.status === "weak").length;
   const improvingCount = skills.filter((s) => s.status === "improving").length;
@@ -47,6 +50,38 @@ export default function SecondaryDashboard({
     })
     .slice(0, 3);
   const sessionAssignments = priorityAssignments.length > 0 ? priorityAssignments : visibleAssignments.slice(0, 3);
+  const examReadiness = Math.max(0, Math.min(100, Math.round((masteredCount * 2 + improvingCount - weakCount) * 8)));
+  const weakTopics = coachRows.filter((row) => row.status === "weak").map((row) => row.label).slice(0, 4);
+  const revisionTasks = visibleAssignments.filter((assignment) => {
+    const haystack = `${assignment.title} ${assignment.skillFocus ?? ""} ${assignment.subject}`.toLowerCase();
+    return haystack.includes("revision") || haystack.includes("mock") || haystack.includes("gcse") || haystack.includes("exam");
+  });
+  const sourceAssignments = (allAssignments && allAssignments.length ? allAssignments : visibleAssignments);
+  const trackedSubjects = Array.from(new Set(
+    sourceAssignments
+      .map((assignment) => subjectLabel(assignment.subject))
+      .filter((value) => value && value !== "Daily Revision")
+  )).slice(0, 6);
+
+  const subjectDashboardRows = trackedSubjects.map((subjectName) => {
+    const subjectAssignments = sourceAssignments.filter((assignment) => subjectLabel(assignment.subject) === subjectName);
+    const completedCount = subjectAssignments.filter((assignment) => assignment.status === "completed").length;
+    const totalCount = subjectAssignments.length;
+    const revisionStatus = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+    const examBoard = subjectAssignments.find((assignment) => assignment.examBoard)?.examBoard ?? "Not tagged";
+    const weakTopicHint = weakTopics.find((topic) => {
+      const haystack = `${subjectName} ${topic}`.toLowerCase();
+      return haystack.includes(subjectName.toLowerCase().split("/")[0].trim());
+    }) ?? (weakTopics[0] ?? "No weak topics detected");
+    const readiness = Math.max(0, Math.min(100, Math.round(examReadiness * 0.7 + revisionStatus * 0.3)));
+    return {
+      subjectName,
+      examBoard,
+      revisionStatus,
+      weakTopicHint,
+      readiness,
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -94,7 +129,7 @@ export default function SecondaryDashboard({
       {/* Daily Study Session */}
       <section className="rounded-3xl border border-indigo-200 bg-indigo-950 p-6 text-indigo-50">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-indigo-300">Today&apos;s Session</p>
-        <h2 className="mt-2 text-xl font-black">Adaptive Study Session</h2>
+        <h2 className="mt-2 text-xl font-black">{isGcse ? "Revision Session" : "Adaptive Study Session"}</h2>
         {sessionAssignments.length > 0 ? (
           <div className="mt-3 space-y-2 text-sm text-indigo-100">
             {sessionAssignments.map((assignment, index) => (
@@ -128,6 +163,61 @@ export default function SecondaryDashboard({
           {startingJourney ? "Starting session..." : "Begin Session"}
         </button>
       </section>
+
+      {isGcse && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-6">
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">GCSE Progress</p>
+          <h2 className="mt-1 text-lg font-black text-slate-900">Exam Preparation</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Exam Readiness</p>
+              <p className="mt-1 text-lg font-black text-slate-900">{examReadiness}%</p>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Revision Planner</p>
+              <p className="mt-1 text-lg font-black text-slate-900">{Math.max(3, sessionAssignments.length)} tasks</p>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Mock Support</p>
+              <p className="mt-1 text-lg font-black text-slate-900">{revisionTasks.length} queued</p>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Weak Topics</p>
+              <p className="mt-1 text-lg font-black text-slate-900">{weakTopics.length}</p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Study Goals</p>
+              <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                <li>Complete at least one focused revision block today.</li>
+                <li>Review one weak topic with accuracy above 70%.</li>
+                <li>Finish one exam-style task before ending session.</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">GCSE Subject Tracking</p>
+              {subjectDashboardRows.length ? (
+                <div className="mt-3 space-y-2">
+                  {subjectDashboardRows.map((row) => (
+                    <div key={row.subjectName} className="rounded-lg border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-black text-slate-900">{row.subjectName}</p>
+                        <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white">{row.readiness}% ready</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">Exam board: {row.examBoard}</p>
+                      <p className="text-xs text-slate-600">Revision status: {row.revisionStatus}% complete</p>
+                      <p className="text-xs text-slate-600">Weak GCSE topic: {row.weakTopicHint}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-slate-600">No GCSE subjects tracked yet.</p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Assigned Tasks */}
       <section className="rounded-3xl border border-slate-200 bg-white p-6">

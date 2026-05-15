@@ -21,6 +21,10 @@ type StudentDetail = {
     readingLevel: string | null;
     weakAreasText: string | null;
     voiceProfile: string | null;
+    curriculumPathway?: string | null;
+    examBoard?: string | null;
+    gcseSubjects?: string[];
+    targetGrades?: Record<string, string>;
     guardianPermissions: string | null;
     schoolInformation: string | null;
     subjectFocus: string | null;
@@ -148,11 +152,15 @@ export default function StudentDetailPage() {
             <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">DOB: {student.studentProfile?.dateOfBirth ? new Date(student.studentProfile.dateOfBirth).toLocaleDateString() : "Not set"}</div>
             <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Voice: {student.studentProfile?.voiceProfile ?? student.selectedVoice}</div>
             <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">KS Level: {student.studentProfile?.keyStageLevel ?? "Not set"}</div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Pathway: {student.studentProfile?.curriculumPathway?.toUpperCase() ?? "Not set"}</div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Exam Board: {student.studentProfile?.examBoard ?? "Not set"}</div>
             <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Learning Level: {student.studentProfile?.learningLevel ?? "Not set"}</div>
             <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Reading Level: {student.studentProfile?.readingLevel ?? "Not set"}</div>
             <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Subject Focus: {student.studentProfile?.subjectFocus ?? "Not set"}</div>
           </div>
           <div className="mt-3 space-y-2 text-sm text-slate-300">
+            <p>GCSE Subjects: {(student.studentProfile?.gcseSubjects ?? []).join(", ") || "Not set"}</p>
+            <p>Target Grades: {student.studentProfile?.targetGrades ? JSON.stringify(student.studentProfile.targetGrades) : "Not set"}</p>
             <p>SEN Support: {student.studentProfile?.senSupportNeeds ?? "Not set"}</p>
             <p>Weak Areas: {student.studentProfile?.weakAreasText ?? "Not set"}</p>
             <p>Guardian Permissions: {student.studentProfile?.guardianPermissions ?? "Not set"}</p>

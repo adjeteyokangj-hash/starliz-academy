@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import { EXAM_BOARDS, KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
 
 type Report = {
+  filters?: { keyStage: string | null; yearGroup: string | null; examBoard: string | null };
   overview: Record<string, number>;
   ai: { contentItems: number; estimatedCostPence: number; totalUses: number };
   weakTopics: { topic: string; count: number }[];
@@ -39,17 +41,30 @@ const CARD_LABELS: Record<string, string> = {
 
 export default function ReportsPage() {
   const [report, setReport] = useState<Report | null>(null);
+  const [keyStageFilter, setKeyStageFilter] = useState("");
+  const [yearGroupFilter, setYearGroupFilter] = useState("");
+  const [examBoardFilter, setExamBoardFilter] = useState("");
 
-  async function loadReport() {
-    const response = await fetch("/api/admin/reports");
+  const loadReport = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (keyStageFilter) params.set("keyStage", keyStageFilter);
+    if (yearGroupFilter) params.set("yearGroup", yearGroupFilter);
+    if (examBoardFilter) params.set("examBoard", examBoardFilter);
+    const response = await fetch(`/api/admin/reports?${params.toString()}`);
     if (!response.ok) return;
     setReport(await response.json());
-  }
+  }, [keyStageFilter, yearGroupFilter, examBoardFilter]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadReport();
-  }, []);
+  }, [loadReport]);
+
+  const exportParams = new URLSearchParams();
+  exportParams.set("format", "csv");
+  if (keyStageFilter) exportParams.set("keyStage", keyStageFilter);
+  if (yearGroupFilter) exportParams.set("yearGroup", yearGroupFilter);
+  if (examBoardFilter) exportParams.set("examBoard", examBoardFilter);
 
   return (
     <div className="space-y-6">
@@ -58,9 +73,56 @@ export default function ReportsPage() {
           <h1 className="text-3xl font-black text-white">Reports</h1>
           <p className="mt-1 text-slate-400">Learning, engagement, subscription and AI usage insights.</p>
         </div>
-        <a className="rounded-2xl bg-violet-500 px-5 py-3 font-bold text-white" href="/api/admin/reports?format=csv">
+        <a className="rounded-2xl bg-violet-500 px-5 py-3 font-bold text-white" href={`/api/admin/reports?${exportParams.toString()}`}>
           Export CSV
         </a>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <select
+          value={keyStageFilter}
+          onChange={(event) => {
+            const nextStage = event.target.value;
+            setKeyStageFilter(nextStage);
+            if (!nextStage) {
+              setYearGroupFilter("");
+            } else {
+              const options = yearGroupsForKeyStage(nextStage);
+              setYearGroupFilter((current) => (current && !options.includes(current as (typeof YEAR_GROUPS)[number]) ? "" : current));
+            }
+            if (!nextStage.startsWith("KS4")) setExamBoardFilter("");
+          }}
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+        >
+          <option value="">All key stages</option>
+          {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+        </select>
+        <select
+          value={yearGroupFilter}
+          onChange={(event) => {
+            const nextYear = event.target.value;
+            setYearGroupFilter(nextYear);
+            if (nextYear) {
+              const stage = keyStageForYearGroup(nextYear);
+              setKeyStageFilter(stage);
+              if (!stage.startsWith("KS4")) setExamBoardFilter("");
+            }
+          }}
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+        >
+          <option value="">All year groups</option>
+          {(keyStageFilter ? yearGroupsForKeyStage(keyStageFilter) : [...YEAR_GROUPS]).map((group) => (
+            <option key={group} value={group}>{group}</option>
+          ))}
+        </select>
+        <select
+          value={examBoardFilter}
+          onChange={(event) => setExamBoardFilter(event.target.value)}
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+        >
+          <option value="">All exam boards</option>
+          {EXAM_BOARDS.map((board) => <option key={board} value={board}>{board}</option>)}
+        </select>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">

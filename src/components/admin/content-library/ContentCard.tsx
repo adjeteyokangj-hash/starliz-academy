@@ -38,6 +38,7 @@ export default function ContentCard({
           <p className="truncate text-sm font-black text-white">{meta.title}</p>
           <p className="mt-1 text-xs text-slate-400">{meta.subject} | {meta.topic || "General"}</p>
           <p className="text-xs text-slate-500">{meta.yearGroup || "All years"} | {meta.keyStage || "All key stages"} | {meta.ageGroup || "Any age"}</p>
+          <p className="text-xs text-slate-500">Pathway: {meta.curriculumPathway ? meta.curriculumPathway.toUpperCase() : "N/A"} | Exam board: {meta.examBoard ?? "None"}</p>
           <p className="text-xs text-slate-500">Level {item.level} | Used {item.usedCount}x | {summary.itemCount} item(s)</p>
           <p className="mt-2 line-clamp-2 text-xs text-slate-400">{summary.preview}</p>
         </div>

@@ -6,6 +6,8 @@ import { writeAuditLog } from "@/lib/audit";
 import { fromDbRecord } from "@/lib/child_profile_db";
 import { parseWalletMetadata, summarizeWalletTransactions } from "@/lib/wallet_ledger";
 import { parseWeakAreaMetadata } from "@/lib/weakAreas";
+import { keyStageForYearGroup } from "@/lib/curriculum";
+import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 
 const updateStudentSchema = z.object({
   name: z.string().trim().min(1).optional(),
@@ -26,6 +28,10 @@ const updateStudentSchema = z.object({
   guardianPermissions: z.string().trim().nullable().optional(),
   schoolInformation: z.string().trim().nullable().optional(),
   subjectFocus: z.string().trim().nullable().optional(),
+  curriculumPathway: z.string().trim().nullable().optional(),
+  examBoard: z.string().trim().nullable().optional(),
+  gcseSubjects: z.array(z.string().trim().min(1)).nullable().optional(),
+  targetGrades: z.record(z.string(), z.string()).nullable().optional(),
 });
 
 type Context = { params: Promise<{ id: string }> };
@@ -57,6 +63,11 @@ export async function GET(_request: Request, context: Context) {
   const correct = student.attempts.length ? student.attempts.filter((record) => record.correct === true).length : student.progressRecords.filter((record) => record.correct === true).length;
   const accuracy = total > 0 ? Math.round((correct / total) * 100) : null;
   const normalizedStudent = fromDbRecord(student);
+  const curriculumProfile = readStudentCurriculumProfile({
+    yearGroup: student.yearGroup,
+    keyStageLevel: student.studentProfile?.keyStageLevel ?? null,
+    aiLearningProfileJson: student.studentProfile?.aiLearningProfileJson ?? null,
+  });
   const walletSummary = summarizeWalletTransactions(student.walletTransactions, student.coins);
 
   return NextResponse.json({
@@ -72,6 +83,10 @@ export async function GET(_request: Request, context: Context) {
         ? {
             ...student.studentProfile,
             dateOfBirth: student.studentProfile.dateOfBirth?.toISOString() ?? null,
+            curriculumPathway: curriculumProfile.curriculumPathway,
+            examBoard: curriculumProfile.examBoard,
+            gcseSubjects: curriculumProfile.gcseSubjects,
+            targetGrades: curriculumProfile.targetGrades,
             createdAt: student.studentProfile.createdAt.toISOString(),
             updatedAt: student.studentProfile.updatedAt.toISOString(),
           }
@@ -170,6 +185,42 @@ export async function PATCH(request: Request, context: Context) {
   const { id } = await context.params;
   try {
     const body = updateStudentSchema.parse(await request.json());
+    const existing = await prisma.childProfile.findUnique({
+      where: { id },
+      select: {
+        yearGroup: true,
+        studentProfile: { select: { aiLearningProfileJson: true, keyStageLevel: true } },
+      },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Student not found." }, { status: 404 });
+    }
+
+    const nextYearGroup = body.yearGroup !== undefined ? body.yearGroup : existing.yearGroup;
+    const nextKeyStage = body.keyStageLevel !== undefined
+      ? body.keyStageLevel
+      : (existing.studentProfile?.keyStageLevel ?? (nextYearGroup ? keyStageForYearGroup(nextYearGroup) : null));
+    const shouldUpdateCurriculumProfile = body.curriculumPathway !== undefined
+      || body.examBoard !== undefined
+      || body.gcseSubjects !== undefined
+      || body.targetGrades !== undefined
+      || body.yearGroup !== undefined
+      || body.keyStageLevel !== undefined
+      || body.aiLearningProfileJson !== undefined;
+    const nextAiProfileJson = shouldUpdateCurriculumProfile
+      ? mergeStudentCurriculumProfileJson({
+          existingJson: body.aiLearningProfileJson !== undefined
+            ? body.aiLearningProfileJson
+            : (existing.studentProfile?.aiLearningProfileJson ?? null),
+          yearGroup: nextYearGroup,
+          keyStage: nextKeyStage,
+          curriculumPathway: body.curriculumPathway,
+          examBoard: body.examBoard,
+          gcseSubjects: body.gcseSubjects ?? null,
+          targetGrades: body.targetGrades ?? null,
+        })
+      : undefined;
+
     const profileData = {
       ...(body.dateOfBirth !== undefined ? { dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null } : {}),
       ...(body.keyStageLevel !== undefined ? { keyStageLevel: body.keyStageLevel } : {}),
@@ -178,7 +229,7 @@ export async function PATCH(request: Request, context: Context) {
       ...(body.readingLevel !== undefined ? { readingLevel: body.readingLevel } : {}),
       ...(body.weakAreasText !== undefined ? { weakAreasText: body.weakAreasText } : {}),
       ...(body.voiceProfile !== undefined ? { voiceProfile: body.voiceProfile } : {}),
-      ...(body.aiLearningProfileJson !== undefined ? { aiLearningProfileJson: body.aiLearningProfileJson } : {}),
+      ...(nextAiProfileJson !== undefined ? { aiLearningProfileJson: nextAiProfileJson } : {}),
       ...(body.guardianPermissions !== undefined ? { guardianPermissions: body.guardianPermissions } : {}),
       ...(body.schoolInformation !== undefined ? { schoolInformation: body.schoolInformation } : {}),
       ...(body.subjectFocus !== undefined ? { subjectFocus: body.subjectFocus } : {}),

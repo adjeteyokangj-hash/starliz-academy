@@ -6,9 +6,12 @@ import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import { SKILL_MAP, serializeSkills } from "@/lib/skills";
 import { parseJsonWithRepair } from "@/lib/safe-json";
 import {
+  curriculumPathwayForYearGroup,
   GENERATION_CONTENT_TYPE_BY_SUBJECT,
   keyStageForYearGroup,
+  normalizeExamBoard,
   normalizeYearGroup as normalizeCurriculumYearGroup,
+  shouldApplyExamBoardTag,
   yearGroupsForKeyStage,
   ageGroupForYearGroup,
   isValidCurriculumPath,
@@ -52,6 +55,8 @@ type GeneratedPreview = {
   subject: Subject;
   keyStage: string;
   yearGroup: string;
+  curriculumPathway?: string;
+  examBoard?: string | null;
   skillFocus: string;
   difficulty: number;
   topic: string;
@@ -475,6 +480,8 @@ function buildGeneratedPreview({
   promptType,
   keyStage,
   yearGroup,
+  curriculumPathway,
+  examBoard,
   skillFocus,
   difficulty,
   topic,
@@ -485,6 +492,8 @@ function buildGeneratedPreview({
   promptType: PromptType;
   keyStage: string;
   yearGroup: string;
+  curriculumPathway: string;
+  examBoard: string | null;
   skillFocus: string;
   difficulty: number;
   topic: string;
@@ -498,6 +507,8 @@ function buildGeneratedPreview({
     subject,
     keyStage,
     yearGroup,
+    curriculumPathway,
+    examBoard,
     skillFocus,
     difficulty,
     topic: safeTopic,
@@ -690,6 +701,10 @@ export async function POST(req: Request) {
   const count = Math.max(1, Math.min(30, Number(requestedCount ?? BATCH_SIZE)));
   const keyStage = typeof body.keyStage === "string" ? body.keyStage : "KS1";
   const yearGroup = typeof body.yearGroup === "string" ? body.yearGroup : "";
+  const requestedCurriculumPathway = typeof body.curriculumPathway === "string"
+    ? body.curriculumPathway
+    : curriculumPathwayForYearGroup(yearGroup);
+  const requestedExamBoard = typeof body.examBoard === "string" ? body.examBoard : null;
   const skillFocus = typeof body.skillFocus === "string" ? body.skillFocus : "";
   // Skill-first targeting
   const targetSkills: string[] = Array.isArray(body.targetSkills) ? (body.targetSkills as string[]) : [];
@@ -701,6 +716,13 @@ export async function POST(req: Request) {
   const safeLevel = Math.max(1, Math.min(maxLevel, Number.isFinite(level) ? level : 1));
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
   const safeKeyStage = keyStageForYearGroup(safeYearGroup);
+  const safeCurriculumPathway = requestedCurriculumPathway || curriculumPathwayForYearGroup(safeYearGroup);
+  const safeExamBoard = shouldApplyExamBoardTag({
+    yearGroup: safeYearGroup,
+    keyStage: safeKeyStage,
+    curriculumPathway: safeCurriculumPathway,
+    subject: requestedSubject,
+  }) ? normalizeExamBoard(requestedExamBoard) : null;
 
   const sourceSubject = requestedSubject as Subject;
   const pathValidation = isValidCurriculumPath({
@@ -732,7 +754,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: "OpenAI API key not configured. Save it in Admin Settings > API Keys." }, { status: 503 });
   }
 
-  const requestKey = cacheKey({ generationType, promptType, level, topic, ageGroup, count, keyStage: safeKeyStage, yearGroup: safeYearGroup, skillFocus });
+  const requestKey = cacheKey({ generationType, promptType, level, topic, ageGroup, count, keyStage: safeKeyStage, yearGroup: safeYearGroup, curriculumPathway: safeCurriculumPathway, examBoard: safeExamBoard, skillFocus });
   const cached = generationCache.get(requestKey);
   if (cached) {
     const cachedValidation = (cached.meta.validation ?? {}) as Record<string, unknown>;
@@ -744,6 +766,8 @@ export async function POST(req: Request) {
       topic,
       keyStage: safeKeyStage,
       yearGroup: safeYearGroup,
+      curriculumPathway: safeCurriculumPathway,
+      examBoard: safeExamBoard,
       skillFocus,
       model: OPENAI_MODEL,
       prompt: cached.meta.prompt,
@@ -815,6 +839,8 @@ export async function POST(req: Request) {
       promptType,
       keyStage: safeKeyStage,
       yearGroup: safeYearGroup,
+      curriculumPathway: safeCurriculumPathway,
+      examBoard: safeExamBoard,
       skillFocus: resolvedSkillFocus,
       difficulty: safeLevel,
       topic,
@@ -839,6 +865,8 @@ export async function POST(req: Request) {
       topic,
       keyStage: safeKeyStage,
       yearGroup: safeYearGroup,
+      curriculumPathway: safeCurriculumPathway,
+      examBoard: safeExamBoard,
       skillFocus: resolvedSkillFocus,
       skills: serializeSkills(targetSkills.length ? targetSkills : []),
       model: OPENAI_MODEL,

@@ -14,9 +14,14 @@ export const YEAR_GROUPS = [
 ] as const;
 
 export const KEY_STAGES = ["EYFS", "KS1", "KS2", "KS3", "KS4"] as const;
+export const CURRICULUM_PATHWAYS = ["primary", "ks3", "gcse"] as const;
+export const EXAM_BOARDS = ["AQA", "Edexcel", "OCR"] as const;
+export const GCSE_EXAM_BOARD_WARNING = "GCSE content should be tagged with an exam board for accurate alignment.";
 
 export type YearGroup = (typeof YEAR_GROUPS)[number];
 export type KeyStage = (typeof KEY_STAGES)[number];
+export type CurriculumPathway = (typeof CURRICULUM_PATHWAYS)[number];
+export type ExamBoard = (typeof EXAM_BOARDS)[number];
 
 export function normalizeYearGroup(value: string | null | undefined): YearGroup | null {
   if (!value) return null;
@@ -54,6 +59,51 @@ export function yearGroupsForKeyStage(keyStage: string | null | undefined): Year
     default:
       return [...YEAR_GROUPS];
   }
+}
+
+export function curriculumPathwayForYearGroup(yearGroup: string | null | undefined): CurriculumPathway {
+  const normalized = normalizeYearGroup(yearGroup);
+  if (!normalized) return "primary";
+  if (["Year 10", "Year 11"].includes(normalized)) return "gcse";
+  if (["Year 7", "Year 8", "Year 9"].includes(normalized)) return "ks3";
+  return "primary";
+}
+
+export function isGcseYearGroup(yearGroup: string | null | undefined): boolean {
+  const normalized = normalizeYearGroup(yearGroup);
+  return normalized === "Year 10" || normalized === "Year 11";
+}
+
+export function normalizeCurriculumPathway(value: string | null | undefined): CurriculumPathway | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "primary" || normalized === "national-curriculum" || normalized === "national curriculum") return "primary";
+  if (normalized === "ks3") return "ks3";
+  if (normalized === "gcse" || normalized === "ks4") return "gcse";
+  return null;
+}
+
+export function normalizeExamBoard(value: string | null | undefined): ExamBoard | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "aqa") return "AQA";
+  if (normalized === "edexcel") return "Edexcel";
+  if (normalized === "ocr") return "OCR";
+  return null;
+}
+
+export function shouldApplyExamBoardTag(input: {
+  yearGroup?: string | null;
+  keyStage?: string | null;
+  curriculumPathway?: string | null;
+  subject?: string | null;
+}): boolean {
+  const pathway = normalizeCurriculumPathway(input.curriculumPathway);
+  const subject = (input.subject ?? "").trim().toLowerCase();
+  return isGcseYearGroup(input.yearGroup)
+    || (input.keyStage ?? "").toUpperCase() === "KS4"
+    || pathway === "gcse"
+    || subject.startsWith("gcse-");
 }
 
 export const PHONICS_STAGE_SKILL_FOCUS = [

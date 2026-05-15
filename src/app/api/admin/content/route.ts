@@ -4,7 +4,13 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
-import { GENERATION_CONTENT_TYPE_BY_SUBJECT, type Subject } from "@/lib/curriculum";
+import {
+  GCSE_EXAM_BOARD_WARNING,
+  GENERATION_CONTENT_TYPE_BY_SUBJECT,
+  normalizeExamBoard,
+  shouldApplyExamBoardTag,
+  type Subject,
+} from "@/lib/curriculum";
 
 // Maps new 17-subject system to legacy 3-type system for backward compatibility
 function mapSubjectToLegacy(subject: string): "spelling" | "math" | "reading" {
@@ -35,6 +41,8 @@ const saveContentSchema = z.object({
   ageGroup: z.string().optional(),
   keyStage: z.string().optional(),
   yearGroup: z.string().optional(),
+  curriculumPathway: z.string().optional(),
+  examBoard: z.string().optional(),
   skillFocus: z.string().optional(),
   generationType: z.string().optional(),
   itemSchema: z.string().optional(),
@@ -132,6 +140,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: quality.error }, { status: 422 });
     }
 
+    const shouldTagExamBoard = shouldApplyExamBoardTag({
+      yearGroup: body.yearGroup,
+      keyStage: body.keyStage,
+      curriculumPathway: body.curriculumPathway,
+      subject: body.type,
+    });
+    const normalizedExamBoard = shouldTagExamBoard ? normalizeExamBoard(body.examBoard) : null;
+    const warnings: string[] = [];
+    if (shouldTagExamBoard && !normalizedExamBoard) {
+      warnings.push(GCSE_EXAM_BOARD_WARNING);
+    }
+
     const item = await prisma.aIContentCache.create({
       data: {
         contentType: legacyType,
@@ -159,6 +179,8 @@ export async function POST(req: Request) {
           itemSchema: body.itemSchema ?? generationType,
           yearGroup: body.yearGroup,
           keyStage: body.keyStage,
+          curriculumPathway: body.curriculumPathway,
+          examBoard: normalizedExamBoard,
           skillFocus: body.skillFocus,
           difficulty: body.difficulty,
           topic: body.topic,
@@ -175,10 +197,21 @@ export async function POST(req: Request) {
       action: "ai_content.saved",
       entityType: "AIContentCache",
       entityId: item.id,
-      metadata: { subject: body.type, legacyType, generationType, status, ageGroup: body.ageGroup, keyStage: body.keyStage, yearGroup: body.yearGroup, skillFocus: body.skillFocus },
+      metadata: {
+        subject: body.type,
+        legacyType,
+        generationType,
+        status,
+        ageGroup: body.ageGroup,
+        keyStage: body.keyStage,
+        yearGroup: body.yearGroup,
+        curriculumPathway: body.curriculumPathway,
+        examBoard: normalizedExamBoard,
+        skillFocus: body.skillFocus,
+      },
     });
 
-    return NextResponse.json({ item }, { status: 201 });
+    return NextResponse.json({ item, warnings }, { status: 201 });
   } catch (error) {
     console.error("Content save error:", error);
     return NextResponse.json({ error: "Invalid content payload." }, { status: 400 });

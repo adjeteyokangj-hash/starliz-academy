@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
+import { EXAM_BOARDS, KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
 
 type AssignmentRow = {
   id: string;
@@ -23,6 +23,7 @@ type AssignmentRow = {
     topic: string;
     skillFocus: string | null;
     level: number;
+    examBoard: string | null;
   };
   weakAreas: {
     subject: string;
@@ -47,29 +48,30 @@ export default function AdminAssignmentsPage() {
   const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+  const [queryFilter, setQueryFilter] = useState("");
   const [keyStageFilter, setKeyStageFilter] = useState("");
   const [yearGroupFilter, setYearGroupFilter] = useState("");
+  const [examBoardFilter, setExamBoardFilter] = useState("");
 
-  async function loadAssignments() {
+  const loadAssignments = useCallback(async () => {
     setLoading(true);
-    const response = await fetch("/api/admin/assignments", { credentials: "include" });
+    const params = new URLSearchParams();
+    if (queryFilter.trim()) params.set("query", queryFilter.trim());
+    if (keyStageFilter) params.set("keyStage", keyStageFilter);
+    if (yearGroupFilter) params.set("yearGroup", yearGroupFilter);
+    if (examBoardFilter) params.set("examBoard", examBoardFilter);
+    const response = await fetch(`/api/admin/assignments?${params.toString()}`, { credentials: "include" });
     const payload = await response.json();
     setAssignments(payload.assignments ?? []);
     setLoading(false);
-  }
+  }, [queryFilter, keyStageFilter, yearGroupFilter, examBoardFilter]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAssignments();
-  }, []);
+  }, [loadAssignments]);
 
-  const filteredAssignments = assignments.filter((assignment) => {
-    const studentYear = assignment.student.yearGroup;
-    const studentKeyStage = keyStageForYearGroup(studentYear);
-    const matchesKeyStage = !keyStageFilter || studentKeyStage === keyStageFilter;
-    const matchesYearGroup = !yearGroupFilter || studentYear === yearGroupFilter;
-    return matchesKeyStage && matchesYearGroup;
-  });
+  const filteredAssignments = assignments;
 
   async function reassign(row: AssignmentRow) {
     const response = await fetch("/api/admin/assignments", {
@@ -129,7 +131,13 @@ export default function AdminAssignmentsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:max-w-xl">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <input
+          value={queryFilter}
+          onChange={(event) => setQueryFilter(event.target.value)}
+          placeholder="Search student, parent, topic..."
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white lg:col-span-2"
+        />
         <select
           value={keyStageFilter}
           onChange={(event) => {
@@ -141,6 +149,9 @@ export default function AdminAssignmentsPage() {
             }
             const options = yearGroupsForKeyStage(nextStage);
             setYearGroupFilter((current) => options.includes(current as (typeof YEAR_GROUPS)[number]) ? current : "");
+            if (!nextStage.startsWith("KS4")) {
+              setExamBoardFilter("");
+            }
           }}
           className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
         >
@@ -154,6 +165,9 @@ export default function AdminAssignmentsPage() {
             setYearGroupFilter(nextYear);
             if (nextYear) {
               setKeyStageFilter(keyStageForYearGroup(nextYear));
+              if (!keyStageForYearGroup(nextYear).startsWith("KS4")) {
+                setExamBoardFilter("");
+              }
             }
           }}
           className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
@@ -162,6 +176,14 @@ export default function AdminAssignmentsPage() {
           {(keyStageFilter ? yearGroupsForKeyStage(keyStageFilter) : [...YEAR_GROUPS]).map((group) => (
             <option key={group} value={group}>{group}</option>
           ))}
+        </select>
+        <select
+          value={examBoardFilter}
+          onChange={(event) => setExamBoardFilter(event.target.value)}
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+        >
+          <option value="">All exam boards</option>
+          {EXAM_BOARDS.map((board) => <option key={board} value={board}>{board}</option>)}
         </select>
       </div>
 
@@ -179,6 +201,9 @@ export default function AdminAssignmentsPage() {
                 </h2>
                 <p className="mt-2 text-sm text-slate-400">
                   Assigned to {assignment.student.name}{assignment.student.yearGroup ? ` · ${assignment.student.yearGroup}` : ""} · {assignment.student.parent.email}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Exam board: {assignment.content.examBoard ?? "Not tagged"}
                 </p>
               </div>
               <span className="rounded-full bg-blue-500/10 px-3 py-1 text-sm font-bold capitalize text-blue-300">

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { keyStageForYearGroup } from "@/lib/curriculum";
+import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 
 const createStudentSchema = z.object({
   parentId: z.string().min(1),
@@ -25,6 +26,10 @@ const createStudentSchema = z.object({
   guardianPermissions: z.string().trim().optional(),
   schoolInformation: z.string().trim().optional(),
   subjectFocus: z.string().trim().optional(),
+  curriculumPathway: z.string().trim().optional(),
+  examBoard: z.string().trim().optional(),
+  gcseSubjects: z.array(z.string().trim().min(1)).optional(),
+  targetGrades: z.record(z.string(), z.string()).optional(),
 });
 
 export async function GET() {
@@ -129,6 +134,11 @@ export async function GET() {
     }
 
     const normalizedKeyStage = child.studentProfile?.keyStageLevel ?? (child.yearGroup ? keyStageForYearGroup(child.yearGroup) : null);
+    const curriculumProfile = readStudentCurriculumProfile({
+      yearGroup: child.yearGroup,
+      keyStageLevel: normalizedKeyStage,
+      aiLearningProfileJson: child.studentProfile?.aiLearningProfileJson ?? null,
+    });
     const classGroups = child.schoolLinks
       .map((link) => link.classroom?.name)
       .filter((name): name is string => Boolean(name));
@@ -142,6 +152,10 @@ export async function GET() {
       yearGroup: child.yearGroup,
       level: child.level,
       keyStageLevel: normalizedKeyStage,
+      curriculumPathway: curriculumProfile.curriculumPathway,
+      examBoard: curriculumProfile.examBoard,
+      gcseSubjects: curriculumProfile.gcseSubjects,
+      targetGrades: curriculumProfile.targetGrades,
       learningLevel: child.studentProfile?.learningLevel ?? null,
       readingLevel: child.studentProfile?.readingLevel ?? null,
       subjectFocus: child.studentProfile?.subjectFocus ?? null,
@@ -221,7 +235,15 @@ export async function POST(request: Request) {
             readingLevel: body.readingLevel || null,
             weakAreasText: body.weakAreasText || null,
             voiceProfile: body.voiceProfile || body.selectedVoice || null,
-            aiLearningProfileJson: body.aiLearningProfileJson || null,
+            aiLearningProfileJson: mergeStudentCurriculumProfileJson({
+              existingJson: body.aiLearningProfileJson || null,
+              yearGroup: body.yearGroup ?? null,
+              keyStage: body.keyStageLevel ?? (body.yearGroup ? keyStageForYearGroup(body.yearGroup) : null),
+              curriculumPathway: body.curriculumPathway ?? null,
+              examBoard: body.examBoard ?? null,
+              gcseSubjects: body.gcseSubjects ?? null,
+              targetGrades: body.targetGrades ?? null,
+            }),
             guardianPermissions: body.guardianPermissions || null,
             schoolInformation: body.schoolInformation || null,
             subjectFocus: body.subjectFocus || null,

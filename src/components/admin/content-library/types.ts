@@ -22,6 +22,8 @@ export type StudentOption = {
   age?: number | null;
   yearGroup?: string | null;
   keyStageLevel?: string | null;
+  curriculumPathway?: string | null;
+  examBoard?: string | null;
   classGroup?: string | null;
   classGroups?: string[];
   parentName?: string | null;
@@ -41,6 +43,8 @@ export type ContentMeta = {
   subject: string;
   keyStage: string | null;
   yearGroup: string | null;
+  curriculumPathway: string | null;
+  examBoard: string | null;
   ageGroup: string | null;
   topic: string | null;
   skillFocus: string | null;

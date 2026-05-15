@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
 import { evaluateStudentAssignmentAccess, type SchoolLicenceBlockedReason } from "@/lib/schools/licensing";
-import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
+import { ageGroupForYearGroup, keyStageForYearGroup, shouldApplyExamBoardTag } from "@/lib/curriculum";
+import { readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 
 export class SchoolLicenceAccessError extends Error {
   reason: SchoolLicenceBlockedReason;
@@ -45,6 +46,8 @@ type AssignmentSafetyMeta = {
   subject: string;
   yearGroup: string | null;
   keyStage: string | null;
+  curriculumPathway: string | null;
+  examBoard: string | null;
   ageGroup: string | null;
   topic: string | null;
   skillFocus: string | null;
@@ -60,23 +63,27 @@ type AssignmentRecommendation = {
 
 function parseContentMetadata(raw: string | null | undefined): {
   subject: string | null;
+  curriculumPathway: string | null;
+  examBoard: string | null;
   ageGroup: string | null;
   topic: string | null;
   skillFocus: string | null;
   schoolId: string | null;
 } {
-  if (!raw) return { subject: null, ageGroup: null, topic: null, skillFocus: null, schoolId: null };
+  if (!raw) return { subject: null, curriculumPathway: null, examBoard: null, ageGroup: null, topic: null, skillFocus: null, schoolId: null };
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
       subject: typeof parsed.subject === "string" ? parsed.subject : null,
+      curriculumPathway: typeof parsed.curriculumPathway === "string" ? parsed.curriculumPathway : null,
+      examBoard: typeof parsed.examBoard === "string" ? parsed.examBoard : null,
       ageGroup: typeof parsed.ageGroup === "string" ? parsed.ageGroup : null,
       topic: typeof parsed.topic === "string" ? parsed.topic : null,
       skillFocus: typeof parsed.skillFocus === "string" ? parsed.skillFocus : null,
       schoolId: typeof parsed.schoolId === "string" ? parsed.schoolId : null,
     };
   } catch {
-    return { subject: null, ageGroup: null, topic: null, skillFocus: null, schoolId: null };
+    return { subject: null, curriculumPathway: null, examBoard: null, ageGroup: null, topic: null, skillFocus: null, schoolId: null };
   }
 }
 
@@ -134,7 +141,7 @@ export async function getAssignmentSafetyAndRecommendation(input: {
           where: { status: "active" },
           select: { schoolId: true },
         },
-        studentProfile: { select: { keyStageLevel: true, subjectFocus: true } },
+        studentProfile: { select: { keyStageLevel: true, subjectFocus: true, aiLearningProfileJson: true } },
       },
     }),
     prisma.aIContentCache.findUnique({
@@ -147,6 +154,7 @@ export async function getAssignmentSafetyAndRecommendation(input: {
         skillFocus: true,
         keyStage: true,
         yearGroup: true,
+        contentType: true,
         metadataJson: true,
       },
     }),
@@ -160,6 +168,8 @@ export async function getAssignmentSafetyAndRecommendation(input: {
         subject: "unknown",
         yearGroup: null,
         keyStage: null,
+        curriculumPathway: null,
+        examBoard: null,
         ageGroup: null,
         topic: null,
         skillFocus: null,
@@ -173,13 +183,22 @@ export async function getAssignmentSafetyAndRecommendation(input: {
   const contentSubject = normalizeSubject(parsedMeta.subject) || "unknown";
   const contentYearGroup = content.yearGroup ?? null;
   const contentKeyStage = content.keyStage ?? null;
+  const contentPathway = parsedMeta.curriculumPathway ?? null;
+  const contentExamBoard = parsedMeta.examBoard ?? null;
   const contentAgeGroup = parsedMeta.ageGroup ?? (contentYearGroup ? ageGroupForYearGroup(contentYearGroup) : null);
   const studentKeyStage = student.studentProfile?.keyStageLevel || (student.yearGroup ? keyStageForYearGroup(student.yearGroup) : null);
+  const studentCurriculum = readStudentCurriculumProfile({
+    yearGroup: student.yearGroup,
+    keyStageLevel: studentKeyStage,
+    aiLearningProfileJson: student.studentProfile?.aiLearningProfileJson ?? null,
+  });
   const studentSchoolIds = student.schoolLinks.map((link) => link.schoolId);
   const meta: AssignmentSafetyMeta = {
     subject: contentSubject,
     yearGroup: contentYearGroup,
     keyStage: contentKeyStage,
+    curriculumPathway: contentPathway,
+    examBoard: contentExamBoard,
     ageGroup: contentAgeGroup,
     topic: parsedMeta.topic ?? content.topic ?? null,
     skillFocus: parsedMeta.skillFocus ?? content.skillFocus ?? null,
@@ -215,6 +234,20 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     return {
       safe: false,
       reason: `This content is for ${contentYearGroup ?? "specific year"} / ${contentKeyStage} and cannot be assigned to this student.`,
+      meta,
+    };
+  }
+
+  const shouldCheckExamBoard = shouldApplyExamBoardTag({
+    yearGroup: contentYearGroup,
+    keyStage: contentKeyStage,
+    curriculumPathway: contentPathway,
+    subject: parsedMeta.subject ?? content.contentType,
+  });
+  if (shouldCheckExamBoard && contentExamBoard && studentCurriculum.examBoard && contentExamBoard !== studentCurriculum.examBoard) {
+    return {
+      safe: false,
+      reason: `This GCSE content is tagged for ${contentExamBoard} and cannot be assigned to a ${studentCurriculum.examBoard} learner profile.`,
       meta,
     };
   }

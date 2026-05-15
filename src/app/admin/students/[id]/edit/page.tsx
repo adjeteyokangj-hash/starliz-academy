@@ -3,7 +3,16 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
-import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup } from "@/lib/curriculum";
+import {
+  CURRICULUM_PATHWAYS,
+  EXAM_BOARDS,
+  GCSE_EXAM_BOARD_WARNING,
+  KEY_STAGES,
+  YEAR_GROUPS,
+  curriculumPathwayForYearGroup,
+  isGcseYearGroup,
+  keyStageForYearGroup,
+} from "@/lib/curriculum";
 
 type ParentOption = { id: string; name: string | null; email: string };
 type StudentDetail = {
@@ -23,6 +32,10 @@ type StudentDetail = {
     weakAreasText: string | null;
     voiceProfile: string | null;
     aiLearningProfileJson: string | null;
+    curriculumPathway?: string | null;
+    examBoard?: string | null;
+    gcseSubjects?: string[];
+    targetGrades?: Record<string, string>;
     guardianPermissions: string | null;
     schoolInformation: string | null;
     subjectFocus: string | null;
@@ -53,6 +66,10 @@ export default function EditStudentPage() {
   const [guardianPermissions, setGuardianPermissions] = useState("");
   const [schoolInformation, setSchoolInformation] = useState("");
   const [subjectFocus, setSubjectFocus] = useState("");
+  const [curriculumPathway, setCurriculumPathway] = useState<"primary" | "ks3" | "gcse">("primary");
+  const [examBoard, setExamBoard] = useState("");
+  const [gcseSubjects, setGcseSubjects] = useState("");
+  const [targetGrades, setTargetGrades] = useState("{}");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -80,6 +97,10 @@ export default function EditStudentPage() {
           setWeakAreasText(payload.student.studentProfile?.weakAreasText ?? "");
           setVoiceProfile(payload.student.studentProfile?.voiceProfile ?? payload.student.selectedVoice ?? "friendly_coach");
           setAiLearningProfileJson(payload.student.studentProfile?.aiLearningProfileJson ?? "");
+          setCurriculumPathway((payload.student.studentProfile?.curriculumPathway as "primary" | "ks3" | "gcse") ?? curriculumPathwayForYearGroup(payload.student.yearGroup));
+          setExamBoard(payload.student.studentProfile?.examBoard ?? "");
+          setGcseSubjects((payload.student.studentProfile?.gcseSubjects ?? []).join(", "));
+          setTargetGrades(JSON.stringify(payload.student.studentProfile?.targetGrades ?? {}, null, 2));
           setGuardianPermissions(payload.student.studentProfile?.guardianPermissions ?? "");
           setSchoolInformation(payload.student.studentProfile?.schoolInformation ?? "");
           setSubjectFocus(payload.student.studentProfile?.subjectFocus ?? "");
@@ -90,6 +111,19 @@ export default function EditStudentPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    let parsedTargetGrades: Record<string, string> = {};
+    try {
+      const parsed = JSON.parse(targetGrades || "{}") as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        parsedTargetGrades = parsed as Record<string, string>;
+      } else {
+        setError("Target grades must be a JSON object.");
+        return;
+      }
+    } catch {
+      setError("Target grades must be valid JSON.");
+      return;
+    }
     const response = await fetch(`/api/admin/students/${params.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -109,6 +143,10 @@ export default function EditStudentPage() {
         weakAreasText: weakAreasText || null,
         voiceProfile: voiceProfile || null,
         aiLearningProfileJson: aiLearningProfileJson || null,
+        curriculumPathway,
+        examBoard: examBoard || null,
+        gcseSubjects: gcseSubjects.split(",").map((entry) => entry.trim()).filter(Boolean),
+        targetGrades: parsedTargetGrades,
         guardianPermissions: guardianPermissions || null,
         schoolInformation: schoolInformation || null,
         subjectFocus: subjectFocus || null,
@@ -153,6 +191,11 @@ export default function EditStudentPage() {
               const nextYear = event.target.value;
               setYearGroup(nextYear);
               setKeyStageLevel(nextYear ? keyStageForYearGroup(nextYear) : keyStageLevel);
+              const nextPathway = curriculumPathwayForYearGroup(nextYear);
+              setCurriculumPathway(nextPathway);
+              if (!isGcseYearGroup(nextYear)) {
+                setExamBoard("");
+              }
             }}
             className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
           >
@@ -197,6 +240,19 @@ export default function EditStudentPage() {
             <input value={learningLevel} onChange={(event) => setLearningLevel(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
           </label>
           <label className="block text-sm font-bold text-slate-300">
+            Curriculum pathway
+            <select value={curriculumPathway} onChange={(event) => setCurriculumPathway(event.target.value as "primary" | "ks3" | "gcse")} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white">
+              {CURRICULUM_PATHWAYS.map((pathway) => <option key={pathway} value={pathway}>{pathway.toUpperCase()}</option>)}
+            </select>
+          </label>
+          <label className="block text-sm font-bold text-slate-300">
+            Exam board {isGcseYearGroup(yearGroup) ? "(recommended)" : "(not needed for this year)"}
+            <select value={examBoard} onChange={(event) => setExamBoard(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" disabled={!isGcseYearGroup(yearGroup)}>
+              <option value="">None</option>
+              {EXAM_BOARDS.map((board) => <option key={board} value={board}>{board}</option>)}
+            </select>
+          </label>
+          <label className="block text-sm font-bold text-slate-300">
             Reading level
             <input value={readingLevel} onChange={(event) => setReadingLevel(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
           </label>
@@ -213,6 +269,17 @@ export default function EditStudentPage() {
           Weak areas
           <textarea value={weakAreasText} onChange={(event) => setWeakAreasText(event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
         </label>
+        <label className="block text-sm font-bold text-slate-300">
+          GCSE subjects (comma separated)
+          <input value={gcseSubjects} onChange={(event) => setGcseSubjects(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+        </label>
+        <label className="block text-sm font-bold text-slate-300">
+          Target grades (JSON)
+          <textarea value={targetGrades} onChange={(event) => setTargetGrades(event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+        </label>
+        {isGcseYearGroup(yearGroup) && !examBoard ? (
+          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{GCSE_EXAM_BOARD_WARNING}</p>
+        ) : null}
         <label className="block text-sm font-bold text-slate-300">
           AI learning profile (JSON)
           <textarea value={aiLearningProfileJson} onChange={(event) => setAiLearningProfileJson(event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />

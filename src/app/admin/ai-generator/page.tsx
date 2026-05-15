@@ -6,14 +6,18 @@ import { useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import { safeJsonParse } from "@/lib/safe-json";
 import {
+  EXAM_BOARDS,
+  GCSE_EXAM_BOARD_WARNING,
   KEY_STAGES,
   YEAR_GROUPS,
   AGE_GROUPS,
+  curriculumPathwayForYearGroup,
   GENERATION_CONTENT_TYPE_BY_SUBJECT,
   isValidCurriculumPath,
   keyStageForYearGroup,
   yearGroupsForKeyStage,
   ageGroupForYearGroup,
+  shouldApplyExamBoardTag,
   subjectsForYearGroup,
   skillsForSubjectAndYear,
   topicSuggestionsForSelection,
@@ -228,6 +232,7 @@ export default function AiGeneratorPage() {
   const initialAgeGroup = ageGroupForYearGroup(initialYearGroup);
 
   const [yearGroup, setYearGroup] = useState<string>(initialYearGroup);
+  const [examBoard, setExamBoard] = useState("");
   const [ageGroup, setAgeGroup] = useState(initialAgeGroup);
   const availableSubjects = getAvailableSubjects(yearGroup);
   const [subject, setSubject] = useState<Subject>(
@@ -292,6 +297,13 @@ export default function AiGeneratorPage() {
       ? topicChoice
       : topicSuggestions[0] ?? "";
   const selectedTopicTheme = (effectiveTopicChoice === CUSTOM_TOPIC_VALUE ? customTopic : effectiveTopicChoice).trim();
+  const curriculumPathway = curriculumPathwayForYearGroup(yearGroup);
+  const shouldTagExamBoard = shouldApplyExamBoardTag({
+    yearGroup,
+    keyStage,
+    curriculumPathway,
+    subject,
+  });
 
   const canGenerate = Boolean(subject && keyStage && yearGroup && skillFocus.trim() && selectedTopicTheme);
 
@@ -364,7 +376,18 @@ export default function AiGeneratorPage() {
       const response = await fetch("/api/admin/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, keyStage, yearGroup, skillFocus, ageGroup, difficulty, numberOfItems: items, topic: selectedTopicTheme }),
+        body: JSON.stringify({
+          subject,
+          keyStage,
+          yearGroup,
+          curriculumPathway,
+          examBoard: shouldTagExamBoard ? examBoard : undefined,
+          skillFocus,
+          ageGroup,
+          difficulty,
+          numberOfItems: items,
+          topic: selectedTopicTheme,
+        }),
       });
       setGenerationPhase("repairing-response");
       const parsed = await parseApiResponse<Record<string, unknown>>(response);
@@ -457,6 +480,8 @@ export default function AiGeneratorPage() {
           ageGroup,
           keyStage,
           yearGroup,
+          curriculumPathway,
+          examBoard: shouldTagExamBoard ? examBoard : undefined,
           skillFocus,
           difficulty,
           topic: selectedTopicTheme,
@@ -475,7 +500,10 @@ export default function AiGeneratorPage() {
       if (!response.ok) {
         setError(payload.error ?? "Save failed.");
       } else {
-        setMessage("Saved to Content Library");
+        const warnings = Array.isArray(payload.warnings)
+          ? payload.warnings.filter((entry: unknown): entry is string => typeof entry === "string")
+          : [];
+        setMessage(warnings.length ? `Saved to Content Library. Warning: ${warnings.join(" ")}` : "Saved to Content Library");
         setSavedContentId(payload.item?.id ?? null);
         if (targetStudentId && payload.item?.id) {
           const assignResponse = await fetch("/api/admin/assignments", {
@@ -543,6 +571,8 @@ export default function AiGeneratorPage() {
           subject,
           keyStage,
           yearGroup,
+          curriculumPathway,
+          examBoard: shouldTagExamBoard ? examBoard : undefined,
           skillFocus,
           ageGroup,
           difficulty,
@@ -728,6 +758,14 @@ export default function AiGeneratorPage() {
                   setYearGroup(nextYear);
                   setKeyStage(keyStageForYearGroup(nextYear));
                   setAgeGroup(ageGroupForYearGroup(nextYear));
+                  if (!shouldApplyExamBoardTag({
+                    yearGroup: nextYear,
+                    keyStage: keyStageForYearGroup(nextYear),
+                    curriculumPathway: curriculumPathwayForYearGroup(nextYear),
+                    subject,
+                  })) {
+                    setExamBoard("");
+                  }
                   setTopicChoice("");
                   setCustomTopic("");
 
@@ -767,6 +805,14 @@ export default function AiGeneratorPage() {
                     : options[0];
                   setYearGroup(nextYear);
                   setAgeGroup(ageGroupForYearGroup(nextYear));
+                  if (!shouldApplyExamBoardTag({
+                    yearGroup: nextYear,
+                    keyStage: nextKeyStage,
+                    curriculumPathway: curriculumPathwayForYearGroup(nextYear),
+                    subject,
+                  })) {
+                    setExamBoard("");
+                  }
                   setTopicChoice("");
                   setCustomTopic("");
                 }}
@@ -823,6 +869,34 @@ export default function AiGeneratorPage() {
               ))}
             </select>
           </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-bold text-slate-300">
+              Curriculum pathway
+              <input
+                value={curriculumPathway.toUpperCase()}
+                readOnly
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-white"
+              />
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Exam board {shouldTagExamBoard ? "(recommended)" : "(not needed)"}
+              <select
+                value={examBoard}
+                onChange={(event) => setExamBoard(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+                disabled={!shouldTagExamBoard}
+              >
+                <option value="">None</option>
+                {EXAM_BOARDS.map((board) => (
+                  <option key={board} value={board}>{board}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {shouldTagExamBoard && !examBoard ? (
+            <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{GCSE_EXAM_BOARD_WARNING}</p>
+          ) : null}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-bold text-slate-300">

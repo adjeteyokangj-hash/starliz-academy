@@ -5,6 +5,7 @@ export type StudentAssignment = {
   title: string;
   skillFocus?: string | null;
   difficulty?: number;
+  examBoard?: string | null;
   updatedAt: string;
 };
 
@@ -54,6 +55,8 @@ export type DashboardProps = {
   loading: boolean;
   error: string;
   startingJourney: boolean;
+  pathway?: "primary" | "ks3" | "gcse";
+  allAssignments?: StudentAssignment[];
   onStartJourney: () => Promise<void>;
   onStartAssignment: (assignment: StudentAssignment | null) => void;
   onOpenStore: () => void;

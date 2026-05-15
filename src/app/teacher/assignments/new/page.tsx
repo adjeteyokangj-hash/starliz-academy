@@ -13,6 +13,7 @@ type Props = {
     studentId?: string;
     subject?: string;
     skill?: string;
+    examBoard?: string;
     error?: string;
   }>;
 };
@@ -34,6 +35,7 @@ export default async function TeacherNewAssignmentPage({ searchParams }: Props) 
         status: { in: ["approved", "published"] },
         ...(params.subject ? { contentType: params.subject } : {}),
         ...(params.skill ? { skillFocus: params.skill } : {}),
+        ...(params.examBoard ? { metadataJson: { contains: `\"examBoard\":\"${params.examBoard}\"` } } : {}),
       },
       orderBy: [{ contentType: "asc" }, { level: "asc" }, { createdAt: "desc" }],
       take: 100,
@@ -44,6 +46,7 @@ export default async function TeacherNewAssignmentPage({ searchParams }: Props) 
         skillFocus: true,
         level: true,
         status: true,
+        metadataJson: true,
       },
     }),
   ]);
@@ -170,6 +173,9 @@ export default async function TeacherNewAssignmentPage({ searchParams }: Props) 
               </option>
             ))}
           </select>
+          <p className="mt-2 text-xs text-foreground/50">
+            GCSE content is easier to keep aligned when exam-board tagged. Use the filter when choosing revision content.
+          </p>
         </div>
 
         <div className="flex items-center gap-3 pt-2">

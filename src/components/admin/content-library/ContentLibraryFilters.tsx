@@ -1,6 +1,6 @@
 "use client";
 
-import { KEY_STAGES, YEAR_GROUPS } from "@/lib/curriculum";
+import { EXAM_BOARDS, KEY_STAGES, YEAR_GROUPS } from "@/lib/curriculum";
 import type { SortMode, ViewMode } from "./types";
 
 type Props = {
@@ -10,6 +10,8 @@ type Props = {
   onYearGroupChange: (value: string) => void;
   keyStage: string;
   onKeyStageChange: (value: string) => void;
+  examBoard: string;
+  onExamBoardChange: (value: string) => void;
   classGroup: string;
   classGroups: string[];
   onClassGroupChange: (value: string) => void;
@@ -41,7 +43,7 @@ export default function ContentLibraryFilters(props: Props) {
           </button>
         ))}
       </div>
-      <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-8">
+      <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-9">
         <input
           value={props.query}
           onChange={(event) => props.onQueryChange(event.target.value)}
@@ -55,6 +57,10 @@ export default function ContentLibraryFilters(props: Props) {
         <select value={props.keyStage} onChange={(event) => props.onKeyStageChange(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100">
           <option value="">Key stage: all</option>
           {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+        </select>
+        <select value={props.examBoard} onChange={(event) => props.onExamBoardChange(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100">
+          <option value="">Exam board: all</option>
+          {EXAM_BOARDS.map((board) => <option key={board} value={board}>{board}</option>)}
         </select>
         <select value={props.classGroup} onChange={(event) => props.onClassGroupChange(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100">
           <option value="">Class/group: all</option>

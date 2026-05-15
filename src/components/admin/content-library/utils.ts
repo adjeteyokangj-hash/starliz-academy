@@ -1,4 +1,4 @@
-import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
+import { ageGroupForYearGroup, keyStageForYearGroup, shouldApplyExamBoardTag } from "@/lib/curriculum";
 import type { ContentItem, ContentMeta, ContentSummary, StudentAssignmentCandidate, StudentOption } from "./types";
 
 export function normalizeText(value: string | null | undefined): string {
@@ -49,6 +49,8 @@ export function getContentMeta(item: ContentItem): ContentMeta {
   const subject = normalizeText(subjectRaw) || "unknown";
   const keyStage = item.keyStage ?? (typeof metadata.keyStage === "string" ? metadata.keyStage : null);
   const yearGroup = item.yearGroup ?? (typeof metadata.yearGroup === "string" ? metadata.yearGroup : null);
+  const curriculumPathway = typeof metadata.curriculumPathway === "string" ? metadata.curriculumPathway : null;
+  const examBoard = typeof metadata.examBoard === "string" ? metadata.examBoard : null;
   const ageGroup = typeof metadata.ageGroup === "string"
     ? metadata.ageGroup
     : yearGroup
@@ -60,6 +62,8 @@ export function getContentMeta(item: ContentItem): ContentMeta {
     subject,
     keyStage,
     yearGroup,
+    curriculumPathway,
+    examBoard,
     ageGroup,
     topic: typeof metadata.topic === "string" ? metadata.topic : item.topic || null,
     skillFocus: typeof metadata.skillFocus === "string" ? metadata.skillFocus : item.skillFocus || null,
@@ -84,6 +88,12 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
   const studentKeyStage = student.keyStageLevel || (studentYear ? keyStageForYearGroup(studentYear) : null);
   const strictAgeRange = parseAgeGroupRange(meta.ageGroup);
   const studentSchoolIds = student.schoolIds ?? [];
+  const shouldCheckExamBoard = shouldApplyExamBoardTag({
+    yearGroup: meta.yearGroup,
+    keyStage: meta.keyStage,
+    curriculumPathway: meta.curriculumPathway,
+    subject: meta.subject,
+  });
 
   if (localDuplicates.has(student.id)) {
     return {
@@ -168,6 +178,17 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
       student,
       hardEligible: false,
       hardBlockReason: "School mismatch",
+      recommendationLevel: "eligible_manual",
+      recommendationReason: "Blocked by hard safety checks.",
+      matchedWeakAreas: [],
+      recommendationScore: 0,
+    };
+  }
+  if (shouldCheckExamBoard && meta.examBoard && student.examBoard && meta.examBoard !== student.examBoard) {
+    return {
+      student,
+      hardEligible: false,
+      hardBlockReason: "Exam board mismatch",
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],

@@ -6,7 +6,6 @@ import Navbar from "@/components/layout/Navbar";
 import { SKILL_MAP } from "@/lib/skills";
 import { isInterventionEligibleSkill } from "@/lib/interventionMission";
 import { resolveDashboardTier } from "@/lib/dashboardResolver";
-import EarlyYearsDashboard from "@/components/student/EarlyYearsDashboard";
 import PrimaryDashboard from "@/components/student/PrimaryDashboard";
 import SecondaryDashboard from "@/components/student/SecondaryDashboard";
 
@@ -17,6 +16,7 @@ type StudentAssignment = {
   title: string;
   skillFocus?: string | null;
   difficulty?: number;
+  examBoard?: string | null;
   items?: unknown[];
   updatedAt: string;
 };
@@ -133,7 +133,7 @@ export default function StudentDashboardPage() {
   const [journey, setJourney] = useState<DailyJourneyPayload["journey"] | null>(null);
   const [childName, setChildName] = useState("Learner");
   const [stats, setStats] = useState({ stars: 0, xp: 0, coins: 0, streak: 0 });
-  const [dashboardTier, setDashboardTier] = useState<"early" | "primary" | "secondary">("primary");
+  const [dashboardTier, setDashboardTier] = useState<"primary" | "ks3" | "gcse">("primary");
   const [loading, setLoading] = useState(true);
   const [startingJourney, setStartingJourney] = useState(false);
   const [bossUnlocked, setBossUnlocked] = useState(false);
@@ -310,31 +310,6 @@ export default function StudentDashboardPage() {
       <Navbar />
       <section className="mx-auto max-w-6xl px-6 py-8">
         <div className="rounded-4xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 md:p-8">
-          {dashboardTier === "early" && (
-            <EarlyYearsDashboard
-              childName={childName}
-              stats={stats}
-              visibleAssignments={visibleAssignments}
-              skills={skills}
-              coachRows={coachRows}
-              focusSkill={focusSkill}
-              weakSkill={weakSkill}
-              strongSkill={strongSkill}
-              focusAssignment={focusAssignment}
-              weakAssignment={weakAssignment}
-              reviewAssignment={reviewAssignment}
-              bossUnlocked={bossUnlocked}
-              bossPlayedToday={bossPlayedToday}
-              ownedBadges={ownedBadges}
-              sessionSummary={sessionSummary ?? null}
-              loading={loading}
-              error={error}
-              startingJourney={startingJourney}
-              onStartJourney={startTodayJourney}
-              onStartAssignment={startAssignment}
-              onOpenStore={() => router.push("/shop")}
-            />
-          )}
           {dashboardTier === "primary" && (
             <PrimaryDashboard
               childName={childName}
@@ -360,7 +335,7 @@ export default function StudentDashboardPage() {
               onOpenStore={() => router.push("/shop")}
             />
           )}
-          {dashboardTier === "secondary" && (
+          {(dashboardTier === "ks3" || dashboardTier === "gcse") && (
             <SecondaryDashboard
               childName={childName}
               stats={stats}
@@ -380,6 +355,8 @@ export default function StudentDashboardPage() {
               loading={loading}
               error={error}
               startingJourney={startingJourney}
+              pathway={dashboardTier}
+              allAssignments={assignments}
               onStartJourney={startTodayJourney}
               onStartAssignment={startAssignment}
               onOpenStore={() => router.push("/shop")}

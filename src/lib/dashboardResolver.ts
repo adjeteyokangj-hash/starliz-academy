@@ -1,9 +1,9 @@
 /**
- * Resolves a student's age-aware dashboard tier from available profile data.
+ * Resolves a student's dashboard pathway from available profile data.
  * Priority: yearGroup → age → dateOfBirth → safe fallback (primary)
  */
 
-export type DashboardTier = "early" | "primary" | "secondary";
+export type DashboardTier = "primary" | "ks3" | "gcse";
 
 function yearGroupIndex(yearGroup: string): number | null {
   const lower = yearGroup.toLowerCase().trim();
@@ -14,15 +14,15 @@ function yearGroupIndex(yearGroup: string): number | null {
 }
 
 function ageToTier(age: number): DashboardTier {
-  if (age <= 7) return "early";
   if (age <= 11) return "primary";
-  return "secondary";
+  if (age <= 14) return "ks3";
+  return "gcse";
 }
 
 function yearIndexToTier(idx: number): DashboardTier {
-  if (idx <= 2) return "early";
   if (idx <= 6) return "primary";
-  return "secondary";
+  if (idx <= 9) return "ks3";
+  return "gcse";
 }
 
 export function resolveDashboardTier(input: {
@@ -57,9 +57,9 @@ export function resolveDashboardTier(input: {
 }
 
 export function dashboardTierLabel(tier: DashboardTier): string {
-  if (tier === "early") return "Early Years";
-  if (tier === "secondary") return "Secondary";
-  return "Primary";
+  if (tier === "ks3") return "KS3 Pathway";
+  if (tier === "gcse") return "GCSE Pathway";
+  return "Primary Pathway";
 }
 
 /** Returns true when the child profile contains enough data to resolve the tier reliably. */

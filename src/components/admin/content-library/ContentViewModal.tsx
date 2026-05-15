@@ -46,6 +46,8 @@ export default function ContentViewModal({ open, content, onClose }: Props) {
             <div className="mt-2 grid gap-2 text-xs text-slate-400">
               <div><span className="font-bold">Year Group:</span> {meta.yearGroup || "All"}</div>
               <div><span className="font-bold">Key Stage:</span> {meta.keyStage || "All"}</div>
+              <div><span className="font-bold">Pathway:</span> {meta.curriculumPathway || "Not tagged"}</div>
+              <div><span className="font-bold">Exam Board:</span> {meta.examBoard || "Not tagged"}</div>
               <div><span className="font-bold">Age Group:</span> {meta.ageGroup || "Any"}</div>
               <div><span className="font-bold">Level:</span> {content.level}</div>
               <div><span className="font-bold">Status:</span> {content.status}</div>

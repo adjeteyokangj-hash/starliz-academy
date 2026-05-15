@@ -25,6 +25,7 @@ export default function ContentLibraryPage() {
   const [query, setQuery] = useState("");
   const [studentYear, setStudentYear] = useState("");
   const [studentKeyStage, setStudentKeyStage] = useState("");
+  const [examBoardFilter, setExamBoardFilter] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [studentParent, setStudentParent] = useState("");
   const [subjectTab, setSubjectTab] = useState("all");
@@ -99,13 +100,18 @@ export default function ContentLibraryPage() {
       return getContentMeta(item).subject === subjectTab;
     });
 
-    return [...bySubject].sort((a, b) => {
+    const byExamBoard = bySubject.filter((item) => {
+      if (!examBoardFilter) return true;
+      return getContentMeta(item).examBoard === examBoardFilter;
+    });
+
+    return [...byExamBoard].sort((a, b) => {
       if (sortMode === "newest") return Date.parse(b.createdAt) - Date.parse(a.createdAt);
       if (sortMode === "oldest") return Date.parse(a.createdAt) - Date.parse(b.createdAt);
       if (sortMode === "most-used") return b.usedCount - a.usedCount;
       return (b.usedCount - a.usedCount) || (Date.parse(b.createdAt) - Date.parse(a.createdAt));
     });
-  }, [items, subjectTab, sortMode]);
+  }, [items, subjectTab, examBoardFilter, sortMode]);
 
   const selectedContent = useMemo(
     () => filteredItems.find((item) => item.id === selectedContentId) ?? null,
@@ -295,6 +301,8 @@ export default function ContentLibraryPage() {
         onYearGroupChange={setStudentYear}
         keyStage={studentKeyStage}
         onKeyStageChange={setStudentKeyStage}
+        examBoard={examBoardFilter}
+        onExamBoardChange={setExamBoardFilter}
         classGroup={studentClass}
         classGroups={classGroups}
         onClassGroupChange={setStudentClass}

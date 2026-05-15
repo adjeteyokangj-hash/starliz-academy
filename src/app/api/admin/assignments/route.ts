@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/api_guard";
+import { keyStageForYearGroup, normalizeExamBoard } from "@/lib/curriculum";
 import {
   assignContentToStudent,
   AssignmentSafetyError,
@@ -24,16 +25,34 @@ const assignmentStatusSchema = z.object({
   status: z.enum(["assigned", "in_progress", "completed", "archived"]),
 });
 
-export async function GET() {
+function parseContentMetadata(raw: string | null): { examBoard: string | null } {
+  if (!raw) return { examBoard: null };
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      examBoard: normalizeExamBoard(typeof parsed.examBoard === "string" ? parsed.examBoard : null),
+    };
+  } catch {
+    return { examBoard: null };
+  }
+}
+
+export async function GET(request: Request) {
   const { session, response } = await requireAdminPermission("students:write");
   if (!session) return response;
+
+  const searchParams = new URL(request.url).searchParams;
+  const keyStageFilter = searchParams.get("keyStage")?.trim() ?? "";
+  const yearGroupFilter = searchParams.get("yearGroup")?.trim() ?? "";
+  const examBoardFilter = normalizeExamBoard(searchParams.get("examBoard")?.trim() ?? null) ?? "";
+  const queryFilter = searchParams.get("query")?.trim().toLowerCase() ?? "";
 
   const assignments = await prisma.assignment.findMany({
     orderBy: { updatedAt: "desc" },
     take: 100,
     include: {
       student: { select: { id: true, name: true, yearGroup: true, parent: { select: { email: true } } } },
-      content: { select: { id: true, contentType: true, topic: true, skillFocus: true, level: true } },
+      content: { select: { id: true, contentType: true, topic: true, skillFocus: true, level: true, metadataJson: true } },
     },
   });
 
@@ -66,11 +85,11 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({
-    assignments: assignments.map((assignment) => {
+  const mappedAssignments = assignments.map((assignment) => {
       const stats = attemptMap.get(assignment.id);
       const attemptsCount = stats?.attempts ?? 0;
       const correctCount = stats?.correct ?? 0;
+      const contentMeta = parseContentMetadata(assignment.content.metadataJson);
       const relatedWeakAreas = weakAreas.filter((area) =>
         area.studentId === assignment.studentId
         && area.subject === assignment.content.contentType
@@ -90,7 +109,14 @@ export async function GET() {
         createdAt: assignment.createdAt.toISOString(),
         updatedAt: assignment.updatedAt.toISOString(),
         student: assignment.student,
-        content: assignment.content,
+        content: {
+          id: assignment.content.id,
+          contentType: assignment.content.contentType,
+          topic: assignment.content.topic,
+          skillFocus: assignment.content.skillFocus,
+          level: assignment.content.level,
+          examBoard: contentMeta.examBoard,
+        },
         attempts: attemptsCount,
         score: attemptsCount ? Math.round((correctCount / attemptsCount) * 100) : null,
         weakAreas: relatedWeakAreas.map((area) => ({
@@ -103,7 +129,21 @@ export async function GET() {
         })),
         weakWords,
       };
-    }),
+    });
+
+  const filteredAssignments = mappedAssignments.filter((assignment) => {
+    const yearGroup = assignment.student.yearGroup ?? "";
+    const keyStage = keyStageForYearGroup(yearGroup);
+    const matchesYearGroup = !yearGroupFilter || yearGroup === yearGroupFilter;
+    const matchesKeyStage = !keyStageFilter || keyStage === keyStageFilter;
+    const matchesExamBoard = !examBoardFilter || assignment.content.examBoard === examBoardFilter;
+    const haystack = `${assignment.student.name} ${assignment.student.parent.email} ${assignment.content.contentType} ${assignment.content.topic} ${assignment.content.skillFocus ?? ""}`.toLowerCase();
+    const matchesQuery = !queryFilter || haystack.includes(queryFilter);
+    return matchesYearGroup && matchesKeyStage && matchesExamBoard && matchesQuery;
+  });
+
+  return NextResponse.json({
+    assignments: filteredAssignments,
   });
 }
 

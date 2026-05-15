@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { taskHrefForContentType } from "@/lib/assignments";
 import { mergeWeakAreas, parseWeakAreaMetadata } from "@/lib/weakAreas";
+import { normalizeExamBoard } from "@/lib/curriculum";
 
 function parseItems(contentJson: string): unknown[] {
   try {
@@ -11,6 +12,18 @@ function parseItems(contentJson: string): unknown[] {
     return Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" ? [parsed] : [];
   } catch {
     return [];
+  }
+}
+
+function parseContentMetadata(raw: string | null): { examBoard: string | null } {
+  if (!raw) return { examBoard: null };
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      examBoard: normalizeExamBoard(typeof parsed.examBoard === "string" ? parsed.examBoard : null),
+    };
+  } catch {
+    return { examBoard: null };
   }
 }
 
@@ -46,6 +59,7 @@ export async function GET(request: Request) {
     }
 
     const items = parseItems(assignment.content.contentJson);
+    const contentMeta = parseContentMetadata(assignment.content.metadataJson);
     return NextResponse.json({
       id: assignment.id,
       status: assignment.status,
@@ -55,6 +69,7 @@ export async function GET(request: Request) {
       title: assignment.content.topic || assignment.content.skillFocus || assignment.content.contentType,
       skillFocus: assignment.content.skillFocus,
       difficulty: assignment.content.level,
+      examBoard: contentMeta.examBoard,
       items,
       href: taskHrefForContentType(assignment.content.contentType, assignment.id),
       createdAt: assignment.createdAt.toISOString(),
@@ -66,6 +81,7 @@ export async function GET(request: Request) {
         contentId: assignment.contentId,
         subject: assignment.content.contentType,
         difficulty: assignment.content.level,
+        examBoard: contentMeta.examBoard,
         topic: assignment.content.topic,
         createdAt: assignment.createdAt.toISOString(),
       },
@@ -75,6 +91,7 @@ export async function GET(request: Request) {
         level: assignment.content.level,
         topic: assignment.content.topic,
         skillFocus: assignment.content.skillFocus,
+        examBoard: contentMeta.examBoard,
         items,
       },
     });
@@ -99,7 +116,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     weakWords,
     weakSkills,
-    assignments: assignments.map((assignment) => ({
+    assignments: assignments.map((assignment) => {
+      const contentMeta = parseContentMetadata(assignment.content.metadataJson);
+      return ({
       id: assignment.id,
       status: assignment.status,
       subject: assignment.content.contentType,
@@ -107,10 +126,12 @@ export async function GET(request: Request) {
       title: assignment.content.topic || assignment.content.skillFocus || assignment.content.contentType,
       skillFocus: assignment.content.skillFocus,
       difficulty: assignment.content.level,
+      examBoard: contentMeta.examBoard,
       items: parseItems(assignment.content.contentJson),
       href: taskHrefForContentType(assignment.content.contentType, assignment.id),
       createdAt: assignment.createdAt.toISOString(),
       updatedAt: assignment.updatedAt.toISOString(),
-    })),
+    });
+    }),
   });
 }

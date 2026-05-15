@@ -11,6 +11,7 @@
 
 import { prisma } from "@/lib/db";
 import type { SchoolRole } from "./permissions";
+import { keyStageForYearGroup, normalizeExamBoard } from "@/lib/curriculum";
 
 // ─── Pure helpers (no DB — testable in isolation) ─────────────────────────
 
@@ -148,21 +149,48 @@ export async function getAccessibleStudents(
 export async function getSchoolAssignments(
   schoolId: string,
   schoolTeacherId: string,
-  role: SchoolRole
+  role: SchoolRole,
+  filters: { query?: string; keyStage?: string; yearGroup?: string; examBoard?: string } = {}
 ) {
   const students = await getAccessibleStudents(schoolId, schoolTeacherId, role);
   const studentIds = students.map((s) => s.childId);
 
   if (studentIds.length === 0) return [];
 
-  return prisma.assignment.findMany({
+  const assignments = await prisma.assignment.findMany({
     where: { studentId: { in: studentIds } },
     include: {
       student: { select: { id: true, name: true } },
-      content: { select: { contentType: true, level: true, topic: true } },
+      content: { select: { contentType: true, level: true, topic: true, metadataJson: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 200,
+  });
+
+  const query = filters.query?.trim().toLowerCase() ?? "";
+  const yearGroupFilter = filters.yearGroup?.trim() ?? "";
+  const keyStageFilter = filters.keyStage?.trim() ?? "";
+  const examBoardFilter = normalizeExamBoard(filters.examBoard ?? null) ?? "";
+
+  return assignments.filter((assignment) => {
+    const studentYear = students.find((student) => student.childId === assignment.studentId)?.child.yearGroup ?? null;
+    const keyStage = studentYear ? keyStageForYearGroup(studentYear) : "";
+    const contentMeta = (() => {
+      if (!assignment.content.metadataJson) return { examBoard: null as string | null };
+      try {
+        const parsed = JSON.parse(assignment.content.metadataJson) as Record<string, unknown>;
+        return { examBoard: normalizeExamBoard(typeof parsed.examBoard === "string" ? parsed.examBoard : null) };
+      } catch {
+        return { examBoard: null as string | null };
+      }
+    })();
+    const haystack = `${assignment.student.name} ${assignment.content.contentType} ${assignment.content.topic ?? ""}`.toLowerCase();
+    return (
+      (!query || haystack.includes(query))
+      && (!yearGroupFilter || studentYear === yearGroupFilter)
+      && (!keyStageFilter || keyStage === keyStageFilter)
+      && (!examBoardFilter || contentMeta.examBoard === examBoardFilter)
+    );
   });
 }
 

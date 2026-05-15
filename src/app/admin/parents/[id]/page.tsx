@@ -44,12 +44,44 @@ type ParentDetail = {
 export default function ParentDetailPage() {
   const params = useParams<{ id: string }>();
   const [parent, setParent] = useState<ParentDetail | null>(null);
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [resetPasswordMessage, setResetPasswordMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     fetch(`/api/admin/parents/${params.id}`)
       .then((r) => r.ok ? r.json() : null)
       .then((payload) => { if (payload) setParent(payload.parent ?? null); });
   }, [params.id]);
+
+  async function handleResetPassword() {
+    if (!parent) return;
+    setResetPasswordLoading(true);
+    setResetPasswordMessage(null);
+    try {
+      const response = await fetch(`/api/admin/parents/${parent.id}/reset-password`, {
+        method: "POST",
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setResetPasswordMessage({
+          type: "error",
+          text: payload.error ?? "Failed to send password reset email",
+        });
+      } else {
+        setResetPasswordMessage({
+          type: "success",
+          text: payload.message ?? "Password reset email sent successfully",
+        });
+      }
+    } catch {
+      setResetPasswordMessage({
+        type: "error",
+        text: "An error occurred. Please try again.",
+      });
+    } finally {
+      setResetPasswordLoading(false);
+    }
+  }
 
   if (!parent) {
     return <AdminSectionCard title="Parent Profile"><p className="text-sm text-slate-400">Loading parent...</p></AdminSectionCard>;
@@ -60,8 +92,17 @@ export default function ParentDetailPage() {
       <AdminSectionCard
         title={parent.name ?? "Parent"}
         eyebrow="Parent profile"
-        action={<Link href={`/admin/parents/${parent.id}/edit`} className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-bold text-white">Edit Parent</Link>}
+        action={<div className="flex gap-2"><Link href={`/admin/parents/${parent.id}/edit`} className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-400">Edit Parent</Link><button onClick={handleResetPassword} disabled={resetPasswordLoading} className="rounded-xl bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-500 disabled:opacity-50">{resetPasswordLoading ? "Sending..." : "Reset Password"}</button></div>}
       >
+        {resetPasswordMessage && (
+          <div className={`rounded-xl border px-4 py-3 mb-4 text-sm ${
+            resetPasswordMessage.type === "success"
+              ? "border-green-500/50 bg-green-500/10 text-green-300"
+              : "border-red-500/50 bg-red-500/10 text-red-300"
+          }`}>
+            {resetPasswordMessage.text}
+          </div>
+        )}
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl bg-slate-950/45 p-4">
             <p className="text-xs uppercase text-slate-500">Email</p>

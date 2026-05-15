@@ -6,8 +6,13 @@ export async function GET(request: Request) {
   const { session, response } = await requireAdminPermission("reports:view");
   if (!session) return response;
 
-  const report = await buildAdminReports();
-  const format = new URL(request.url).searchParams.get("format");
+  const searchParams = new URL(request.url).searchParams;
+  const report = await buildAdminReports({
+    keyStage: searchParams.get("keyStage") ?? undefined,
+    yearGroup: searchParams.get("yearGroup") ?? undefined,
+    examBoard: searchParams.get("examBoard") ?? undefined,
+  });
+  const format = searchParams.get("format");
   if (format === "csv") {
     return new NextResponse(reportsToCsv(report), {
       headers: {

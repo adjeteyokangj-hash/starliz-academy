@@ -2,6 +2,8 @@ import jsPDF from "jspdf";
 import { prisma } from "@/lib/db";
 import { csvEscape } from "@/lib/csv_escape";
 import { summarizeWalletTransactions } from "@/lib/wallet_ledger";
+import { isGcseYearGroup } from "@/lib/curriculum";
+import { parseWeakAreaMetadata } from "@/lib/weakAreas";
 
 export type ParentReportRange = "7d" | "30d" | "90d" | "all";
 
@@ -46,6 +48,10 @@ export type ParentProgressReportData = {
     averageAccuracy: number;
     learningMode: string | null;
     lastActivityAt: string | null;
+    revisionProgressPct: number | null;
+    examReadinessPct: number | null;
+    weakTopicCount: number;
+    interventionTrackingCount: number;
   };
   strengths: TopicStats[];
   weakAreas: TopicStats[];
@@ -126,6 +132,10 @@ function buildRecommendations(input: {
   weakAreas: TopicStats[];
   activity: ActivityPoint[];
   learningMode: string | null;
+  isGcse: boolean;
+  revisionProgressPct: number | null;
+  examReadinessPct: number | null;
+  interventionTrackingCount: number;
 }): string[] {
   const recommendations: string[] = [];
 
@@ -153,6 +163,18 @@ function buildRecommendations(input: {
     recommendations.push(`Current dominant learning mode is ${input.learningMode}; continue using it for reinforcement.`);
   }
 
+  if (input.isGcse) {
+    if (typeof input.revisionProgressPct === "number") {
+      recommendations.push(`Revision progress is ${input.revisionProgressPct}%. Keep a weekly revision plan to improve exam readiness.`);
+    }
+    if (typeof input.examReadinessPct === "number") {
+      recommendations.push(`Current exam readiness indicator is ${input.examReadinessPct}%. Prioritise mock-style practice on weak topics.`);
+    }
+    if (input.interventionTrackingCount > 0) {
+      recommendations.push(`Intervention tracking shows ${input.interventionTrackingCount} active support signals. Review these areas this week.`);
+    }
+  }
+
   return recommendations.slice(0, 5);
 }
 
@@ -178,7 +200,7 @@ export async function buildParentProgressReportData(input: {
     throw new Error("Child not found for this parent account.");
   }
 
-  const [attempts, walletTransactions] = await Promise.all([
+  const [attempts, walletTransactions, assignments, weakAreaSignals] = await Promise.all([
     prisma.attempt.findMany({
       where: {
         studentId: child.id,
@@ -201,6 +223,23 @@ export async function buildParentProgressReportData(input: {
       orderBy: { createdAt: "desc" },
       take: 300,
     }),
+    prisma.assignment.findMany({
+      where: {
+        studentId: child.id,
+        ...(since ? { createdAt: { gte: since } } : {}),
+      },
+      select: { status: true },
+      take: 600,
+    }),
+    prisma.weakArea.findMany({
+      where: {
+        studentId: child.id,
+        status: "active",
+        ...(since ? { lastDetectedAt: { gte: since } } : {}),
+      },
+      select: { metadataJson: true },
+      take: 200,
+    }),
   ]);
 
   const totalAttempts = attempts.length;
@@ -220,11 +259,28 @@ export async function buildParentProgressReportData(input: {
 
   const rewards = summarizeWalletTransactions(walletTransactions, child.coins);
 
+  const isGcse = isGcseYearGroup(child.yearGroup);
+  const revisionProgressPct = assignments.length
+    ? Math.round((assignments.filter((entry) => entry.status === "completed").length / assignments.length) * 100)
+    : null;
+  const weakTopicCount = weakAreas.length;
+  const interventionTrackingCount = weakAreaSignals.filter((entry) => {
+    const intervention = parseWeakAreaMetadata(entry.metadataJson).intervention;
+    return Boolean(intervention?.launchedAt) && !intervention?.completedAt;
+  }).length;
+  const examReadinessPct = isGcse
+    ? Math.max(0, Math.min(100, Math.round((averageAccuracy * 0.7) + ((revisionProgressPct ?? 0) * 0.3) - weakTopicCount * 2)))
+    : null;
+
   const recommendations = buildRecommendations({
     averageAccuracy,
     weakAreas,
     activity,
     learningMode,
+    isGcse,
+    revisionProgressPct,
+    examReadinessPct,
+    interventionTrackingCount,
   });
 
   return {
@@ -251,6 +307,10 @@ export async function buildParentProgressReportData(input: {
       averageAccuracy,
       learningMode,
       lastActivityAt,
+      revisionProgressPct,
+      examReadinessPct,
+      weakTopicCount,
+      interventionTrackingCount,
     },
     strengths,
     weakAreas,
@@ -338,6 +398,10 @@ export function buildParentProgressReportTables(report: ParentProgressReportData
         ["level", report.child.level],
         ["totalAttempts", report.summary.totalAttempts],
         ["averageAccuracy", report.summary.averageAccuracy],
+        ["revisionProgressPct", report.summary.revisionProgressPct ?? ""],
+        ["examReadinessPct", report.summary.examReadinessPct ?? ""],
+        ["weakTopicCount", report.summary.weakTopicCount],
+        ["interventionTrackingCount", report.summary.interventionTrackingCount],
         ["learningMode", report.summary.learningMode ?? ""],
         ["lastActivityAt", formatDateTime(report.summary.lastActivityAt)],
       ],
@@ -434,6 +498,8 @@ export function renderParentProgressReportPdf(report: ParentProgressReportData):
     `Average Accuracy: ${report.summary.averageAccuracy}% | Attempts: ${report.summary.totalAttempts}`,
     `Last Activity: ${report.summary.lastActivityAt ? report.summary.lastActivityAt.replace("T", " ").slice(0, 16) : "No activity recorded"}`,
     `Learning Mode: ${report.summary.learningMode ?? "Standard"}`,
+    `Revision Progress: ${report.summary.revisionProgressPct ?? "N/A"}% | Exam Readiness: ${report.summary.examReadinessPct ?? "N/A"}%`,
+    `Weak Topics: ${report.summary.weakTopicCount} | Active Interventions: ${report.summary.interventionTrackingCount}`,
   ], y);
 
   y += 10;
