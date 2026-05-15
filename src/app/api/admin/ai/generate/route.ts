@@ -31,6 +31,10 @@ function isSupportedSubject(value: string): value is Subject {
   return Object.prototype.hasOwnProperty.call(GENERATION_CONTENT_TYPE_BY_SUBJECT, value);
 }
 
+function normalizeSubjectKey(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 function mapSubjectToGenerationType(subject: Subject): GenerationType {
   return GENERATION_CONTENT_TYPE_BY_SUBJECT[subject];
 }
@@ -839,7 +843,7 @@ export async function POST(req: Request) {
     }, { status: 400 });
   }
   const requestedSubject = (body.subject ?? body.type) as string;
-  const normalizedSubject = String(requestedSubject ?? "").toLowerCase();
+  const normalizedSubject = normalizeSubjectKey(String(requestedSubject ?? ""));
   if (!isSupportedSubject(normalizedSubject)) {
     return NextResponse.json({
       success: false,
