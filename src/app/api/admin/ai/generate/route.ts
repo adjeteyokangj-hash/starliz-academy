@@ -611,6 +611,49 @@ function buildGeneratedPreview({
   };
 }
 
+function attachSelectedMetadataToGeneratedItems(
+  content: unknown,
+  meta: {
+    subject: Subject;
+    yearGroup: string;
+    keyStage: string;
+    curriculumPathway: string;
+    examBoard: string | null;
+    skillFocus: string;
+    difficulty: number;
+    topic: string;
+  },
+): unknown[] {
+  const records = Array.isArray(content) ? content : content && typeof content === "object" ? [content] : [];
+  return records.map((item) => {
+    const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    return {
+      ...row,
+      subject: meta.subject,
+      yearGroup: meta.yearGroup,
+      keyStage: meta.keyStage,
+      curriculumPathway: meta.curriculumPathway,
+      examBoard: meta.examBoard,
+      skillFocus: meta.skillFocus,
+      difficulty: meta.difficulty,
+      topic: meta.topic || row.topic,
+    };
+  });
+}
+
+function pickMetadataSnapshot(item: unknown) {
+  const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+  return {
+    yearGroup: row.yearGroup ?? null,
+    keyStage: row.keyStage ?? null,
+    subject: row.subject ?? null,
+    curriculumPathway: row.curriculumPathway ?? null,
+    examBoard: row.examBoard ?? null,
+    skillFocus: row.skillFocus ?? null,
+    topic: row.topic ?? null,
+  };
+}
+
 function normalizeSpellingItems(items: unknown[], yearGroup: string, skillFocus: string, level: number, topic: string) {
   return items.map((item, index) => {
     const data = item as Record<string, unknown>;
@@ -920,6 +963,8 @@ export async function POST(req: Request) {
     let parsed: unknown;
     let promptUsed = userPrompt;
     let validation: Record<string, unknown> = { valid: true, repaired: false, errors: [], fixesApplied: [], removedWords: [], regeneratedCount: 0, requestedCount: count, finalCount: count };
+    let generatedMetadataSnapshot: Record<string, unknown> | null = null;
+    let normalizedMetadataSnapshot: Record<string, unknown> | null = null;
 
     const strictSpellingValidation = generationType === "spelling" || generationType === "phonics";
     if (strictSpellingValidation) {
@@ -940,6 +985,17 @@ export async function POST(req: Request) {
       validation = validated.validation;
     } else {
       const response = await requestOpenAiJson(apiKey, systemPrompt, userPrompt);
+      generatedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(response.parsed) ? response.parsed[0] : response.parsed);
+      const normalizedBeforeValidation = attachSelectedMetadataToGeneratedItems(response.parsed, {
+        subject: sourceSubject,
+        yearGroup: safeYearGroup,
+        keyStage: safeKeyStage,
+        curriculumPathway: safeCurriculumPathway,
+        examBoard: safeExamBoard,
+        skillFocus: resolvedSkillFocus,
+        difficulty: safeLevel,
+        topic,
+      });
       parsed = response.parsed;
       const quality = validateAiContentQuality({
         type: validatorType,
@@ -947,12 +1003,13 @@ export async function POST(req: Request) {
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus,
         requestedCount: count,
-        items: parsed,
+        items: normalizedBeforeValidation,
       });
       if (!quality.ok) {
         throw new Error(quality.error ?? `Invalid ${generationType} content.`);
       }
-      parsed = quality.cleanedItems ?? parsed;
+      parsed = quality.cleanedItems ?? normalizedBeforeValidation;
+      normalizedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(parsed) ? parsed[0] : parsed);
       validation = {
         ...(quality.meta as Record<string, unknown>),
         repairDiagnostics: response.repairDiagnostics,
@@ -1009,7 +1066,22 @@ export async function POST(req: Request) {
       estimatedCostPence: estimated.estimatedCostPence,
       estimatedTokens: estimated.estimatedTokens,
       content: preview,
-      meta: validation,
+      meta: {
+        ...validation,
+        metadataDebug: {
+          requestedMetadata: {
+            yearGroup: safeYearGroup,
+            keyStage: safeKeyStage,
+            subject: sourceSubject,
+            curriculumPathway: safeCurriculumPathway,
+            examBoard: safeExamBoard,
+            skillFocus: resolvedSkillFocus,
+            topic,
+          },
+          generatedMetadata: generatedMetadataSnapshot,
+          normalizedMetadata: normalizedMetadataSnapshot,
+        },
+      },
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Failed to parse AI response";

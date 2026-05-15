@@ -13,6 +13,8 @@ type StudentAssignment = {
   id: string;
   status: "assigned" | "in_progress" | "completed" | string;
   subject: string;
+  contentId?: string;
+  href?: string;
   title: string;
   skillFocus?: string | null;
   difficulty?: number;
@@ -90,10 +92,20 @@ type SessionSummaryPayload = {
   };
 };
 
-function subjectPath(subject: string): "spelling" | "math" | "reading" | "lesson" {
-  if (subject === "lesson" || subject === "ai_daily" || subject === "daily") return "lesson";
-  if (subject === "math") return "math";
-  if (subject === "reading") return "reading";
+function subjectPath(subject: string, title?: string | null, skillFocus?: string | null): "spelling" | "math" | "reading" | "lesson" {
+  const normalized = normalize(subject);
+  const context = `${normalized} ${normalize(title)} ${normalize(skillFocus)}`;
+  if (normalized === "lesson" || normalized === "ai_daily" || normalized === "daily") return "lesson";
+  if (normalized === "math" || normalized === "maths") return "math";
+  if (
+    normalized === "reading"
+    || normalized === "english-language"
+    || normalized === "english-literature"
+    || normalized === "gcse-english"
+    || context.includes("literature")
+    || context.includes("comprehension")
+  ) return "reading";
+  if (normalized === "science" || normalized === "gcse-science") return "lesson";
   return "spelling";
 }
 
@@ -261,7 +273,19 @@ export default function StudentDashboardPage() {
       router.push("/games/lesson");
       return;
     }
-    router.push(`/games/${subjectPath(assignment.subject)}?assignmentId=${assignment.id}`);
+    if (assignment.href) {
+      router.push(assignment.href);
+      return;
+    }
+
+    const route = subjectPath(assignment.subject, assignment.title, assignment.skillFocus);
+    const params = new URLSearchParams({ assignmentId: assignment.id });
+    if (assignment.contentId) params.set("contentId", assignment.contentId);
+    const literatureContext = `${assignment.title} ${assignment.skillFocus ?? ""}`.toLowerCase();
+    if (route === "reading" && /literature|gcse english|english literature/.test(literatureContext)) {
+      params.set("mode", "literature");
+    }
+    router.push(`/games/${route}?${params.toString()}`);
   }
 
   async function startTodayJourney() {

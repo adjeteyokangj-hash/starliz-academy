@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/api_guard";
 import { addDays, getPlan, normalizePlanKey } from "@/lib/subscriptions/plans";
+import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import { writeAuditLog } from "@/lib/audit";
 
 const actionSchema = z.enum([
   "change_plan",
@@ -16,7 +18,7 @@ const actionSchema = z.enum([
 const updateSchema = z.object({
   parentId: z.string().min(1),
   action: actionSchema,
-  planKey: z.enum(["free", "monthly", "yearly"]).optional(),
+  planKey: z.string().trim().min(1).optional(),
   status: z
     .enum(["active", "trialing", "cancelled", "past_due", "blocked", "failed_payment", "suspended"])
     .optional(),
@@ -51,6 +53,24 @@ function accountStatusFromSubscription(status: string) {
   return "active";
 }
 
+function normalizeAdminPlanKey(planKey: string | null | undefined): string {
+  const raw = String(planKey ?? "free").trim().toLowerCase();
+  if (!raw) return "free";
+  if (raw === "free") return "free";
+  if (raw === "starter") return "starter";
+  if (raw === "standard" || raw === "monthly") return "standard";
+  if (raw === "pro" || raw === "yearly" || raw === "family" || raw === "premium") return "pro";
+  if (raw.includes("enterprise") || raw.includes("custom") || raw.includes("school")) return "enterprise";
+  return raw;
+}
+
+function toStoredPlanKey(adminPlanKey: string): string {
+  if (adminPlanKey === "standard") return "monthly";
+  if (adminPlanKey === "pro") return "yearly";
+  if (adminPlanKey === "enterprise") return "enterprise_custom";
+  return adminPlanKey;
+}
+
 export async function GET() {
   const { session, response } = await requireAdminPermission("parents:write");
   if (!session) return response;
@@ -79,22 +99,28 @@ export async function GET() {
     orderBy: { updatedAt: "desc" },
   });
 
-  const rows = parents.map((parent) => {
+  const rows = await Promise.all(parents.map(async (parent) => {
     const subscription = parent.subscriptions[0] ?? null;
-    const normalizedPlan = normalizePlanKey(subscription?.planKey ?? parent.parentProfile?.subscriptionPlan ?? "free");
+    const rawPlan = subscription?.planKey ?? parent.parentProfile?.subscriptionPlan ?? "free";
+    const normalizedPlan = normalizePlanKey(rawPlan);
     const uiStatus = toUiStatus(subscription?.status ?? parent.parentProfile?.status ?? "active");
+    const currentPricingPlan = await resolveCurrentPricingPlan({
+      pricingPlanId: subscription?.pricingPlanId,
+      legacyPlanKey: rawPlan,
+    });
     const renewalDate = subscription?.currentPeriodEnd?.toISOString() ?? null;
     const trialEndDate = subscription?.trialEndsAt?.toISOString() ?? null;
     const paymentProvider = subscription?.provider === "paystack" ? "paystack" : "stripe";
-    const billingCycle: "monthly" | "yearly" = normalizedPlan === "yearly" ? "yearly" : "monthly";
-    const amountPence = amountForPlan(normalizedPlan, billingCycle);
+    const billingCycle: "monthly" | "yearly" = currentPricingPlan?.interval === "year" || normalizedPlan === "yearly" ? "yearly" : "monthly";
+    const amountPence = currentPricingPlan ? Math.round(currentPricingPlan.price * 100) : amountForPlan(normalizedPlan, billingCycle);
+    const adminPlanKey = normalizeAdminPlanKey(rawPlan);
 
     return {
       parentId: parent.id,
       parentName: parent.name,
       parentEmail: parent.email,
-      planKey: normalizedPlan,
-      planName: getPlan(normalizedPlan).name,
+      planKey: adminPlanKey,
+      planName: currentPricingPlan?.name ?? getPlan(normalizedPlan).name,
       status: uiStatus,
       trialStatus: parent.parentProfile?.trialStatus ?? null,
       trialEndDate,
@@ -102,6 +128,7 @@ export async function GET() {
       amountLabel: currency(amountPence),
       amountPence,
       billingCycle,
+      childLimit: currentPricingPlan?.childLimit ?? getPlan(normalizedPlan).childLimit,
       paymentProvider,
       paymentMethod: paymentProvider === "stripe" ? "Card (Stripe)" : "Paystack",
       stripeCustomerId: subscription?.providerCustomerId ?? parent.parentProfile?.stripeCustomerId ?? null,
@@ -109,12 +136,12 @@ export async function GET() {
       lastPaymentDate: subscription?.updatedAt?.toISOString() ?? parent.updatedAt.toISOString(),
       createdAt: parent.updatedAt.toISOString(),
     };
-  });
+  }));
 
   const monthlyRecurringRevenuePence = rows
     .filter((row) => row.status === "active" || row.status === "trialing")
     .reduce((sum, row) => {
-      if (row.planKey === "yearly") return sum + Math.round(row.amountPence / 12);
+      if (row.billingCycle === "yearly") return sum + Math.round(row.amountPence / 12);
       return sum + row.amountPence;
     }, 0);
 
@@ -155,13 +182,13 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ ok: true, message: "Payment reminder queued." });
     }
 
-    const existingPlan = normalizePlanKey(current?.planKey ?? "free");
+    const existingPlan = normalizeAdminPlanKey(current?.planKey ?? "free");
     let nextPlan = existingPlan;
     let nextStatus = toUiStatus(current?.status ?? "active");
     let nextTrialEndsAt = current?.trialEndsAt ?? null;
 
     if (body.action === "change_plan") {
-      nextPlan = normalizePlanKey(body.planKey ?? existingPlan);
+      nextPlan = normalizeAdminPlanKey(body.planKey ?? existingPlan);
     }
     if (body.action === "cancel_subscription") {
       nextStatus = "cancelled";
@@ -182,8 +209,29 @@ export async function PATCH(request: Request) {
 
     const databaseStatus = nextStatus === "suspended" ? "blocked" : nextStatus === "failed_payment" ? "past_due" : nextStatus;
 
+    let selectedPricingPlanId = current?.pricingPlanId ?? null;
+    if (body.action === "change_plan") {
+      const planMatcher = nextPlan;
+      const candidate = await prisma.pricingPlan.findFirst({
+        where: {
+          isActive: true,
+          OR: [
+            { name: { contains: planMatcher, mode: "insensitive" } },
+            planMatcher === "standard" ? { interval: "month", audience: "family" } : { id: "__none__" },
+            planMatcher === "pro" ? { name: { contains: "pro", mode: "insensitive" } } : { id: "__none__" },
+            planMatcher === "enterprise" ? { interval: "custom" } : { id: "__none__" },
+          ],
+        },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      });
+      selectedPricingPlanId = candidate?.id ?? current?.pricingPlanId ?? null;
+    }
+
+    const storedPlanKey = toStoredPlanKey(nextPlan);
+
     const data = {
-      planKey: nextPlan,
+      planKey: storedPlanKey,
+      pricingPlanId: selectedPricingPlanId,
       status: databaseStatus,
       provider: current?.provider === "paystack" ? "paystack" : "stripe",
       currentPeriodEnd: body.renewalDate ? new Date(body.renewalDate) : current?.currentPeriodEnd ?? null,
@@ -204,12 +252,27 @@ export async function PATCH(request: Request) {
         phone: "Not set",
         status: accountStatusFromSubscription(databaseStatus),
         trialStatus: nextStatus === "trialing" ? "trial" : nextStatus,
-        subscriptionPlan: nextPlan,
+        subscriptionPlan: storedPlanKey,
       },
       update: {
         status: accountStatusFromSubscription(databaseStatus),
         trialStatus: nextStatus === "trialing" ? "trial" : nextStatus,
-        subscriptionPlan: nextPlan,
+        subscriptionPlan: storedPlanKey,
+      },
+    });
+
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "admin.subscription.override",
+      entityType: "subscription",
+      entityId: current?.id,
+      metadata: {
+        parentId: body.parentId,
+        action: body.action,
+        oldPlan: existingPlan,
+        newPlan: nextPlan,
+        oldStatus: toUiStatus(current?.status ?? "active"),
+        newStatus: nextStatus,
       },
     });
 

@@ -93,6 +93,11 @@ type ValidationMeta = {
   requestedCount: number;
   finalCount: number;
   cached?: boolean;
+  metadataDebug?: {
+    requestedMetadata?: Record<string, unknown>;
+    generatedMetadata?: Record<string, unknown> | null;
+    normalizedMetadata?: Record<string, unknown> | null;
+  };
 };
 
 type SpellingPreviewItem = {
@@ -541,8 +546,13 @@ export default function AiGeneratorPage() {
       setGenerationPhase("validating-content");
       if (!response.ok || payload.success === false) {
         const errorMsg = payload.error ?? "The AI returned an invalid response. Please try again.";
-        const details = payload.details ? `\n\nDetails: ${JSON.stringify(payload.details, null, 2)}` : "";
-        setError(errorMsg + details);
+        const detailObj = payload.details && typeof payload.details === "object" ? payload.details as Record<string, unknown> : null;
+        const mismatchReason = typeof detailObj?.reason === "string"
+          ? detailObj.reason
+          : typeof detailObj?.category === "string"
+            ? detailObj.category
+            : null;
+        setError(mismatchReason ? `${errorMsg} (${mismatchReason})` : errorMsg);
       } else {
         const content = payload.content;
         const incomingItems = Array.isArray(payload.content?.items)
@@ -1229,6 +1239,13 @@ export default function AiGeneratorPage() {
                   <>
                     <li><strong>API Valid:</strong> {generationMeta.validation.valid ? "✓" : "✗"}</li>
                     <li><strong>Repaired:</strong> {generationMeta.validation.repaired ? "Yes" : "No"}</li>
+                    {generationMeta.validation.metadataDebug ? (
+                      <>
+                        <li><strong>Requested Metadata:</strong> {JSON.stringify(generationMeta.validation.metadataDebug.requestedMetadata)}</li>
+                        <li><strong>Generated Metadata:</strong> {JSON.stringify(generationMeta.validation.metadataDebug.generatedMetadata ?? {})}</li>
+                        <li><strong>Normalized Metadata:</strong> {JSON.stringify(generationMeta.validation.metadataDebug.normalizedMetadata ?? {})}</li>
+                      </>
+                    ) : null}
                   </>
                 ) : null}
               </ul>

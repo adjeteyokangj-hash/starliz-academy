@@ -6,6 +6,9 @@ import type { SortMode, ViewMode } from "./types";
 type Props = {
   query: string;
   onQueryChange: (value: string) => void;
+  onApplyFilters: () => void;
+  onResetFilters: () => void;
+  applyingFilters: boolean;
   yearGroup: string;
   onYearGroupChange: (value: string) => void;
   keyStage: string;
@@ -47,6 +50,12 @@ export default function ContentLibraryFilters(props: Props) {
         <input
           value={props.query}
           onChange={(event) => props.onQueryChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              props.onApplyFilters();
+            }
+          }}
           placeholder="Search name, parent or class..."
           className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100 md:col-span-2"
         />
@@ -76,6 +85,22 @@ export default function ContentLibraryFilters(props: Props) {
           <option value="most-used">Most used</option>
           <option value="recently-assigned">Recently assigned</option>
         </select>
+        <button
+          type="button"
+          onClick={props.onApplyFilters}
+          disabled={props.applyingFilters}
+          className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white hover:bg-indigo-400 disabled:opacity-60"
+        >
+          {props.applyingFilters ? "Applying..." : "Apply Filters"}
+        </button>
+        <button
+          type="button"
+          onClick={props.onResetFilters}
+          disabled={props.applyingFilters}
+          className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-black text-slate-100 hover:bg-slate-800 disabled:opacity-60"
+        >
+          Reset
+        </button>
         <div className="flex gap-2">
           <button type="button" onClick={() => props.onViewModeChange("grid")} className={`rounded-xl px-3 py-2 text-xs font-black ${props.viewMode === "grid" ? "bg-slate-200 text-slate-900" : "bg-slate-800 text-slate-200"}`}>Grid</button>
           <button type="button" onClick={() => props.onViewModeChange("list")} className={`rounded-xl px-3 py-2 text-xs font-black ${props.viewMode === "list" ? "bg-slate-200 text-slate-900" : "bg-slate-800 text-slate-200"}`}>List</button>

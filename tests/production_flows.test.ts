@@ -17,6 +17,7 @@ test("topic tagger identifies common subjects", () => {
 test("reports csv includes overview and weak topics", () => {
   const csv = reportsToCsv({
     generatedAt: new Date().toISOString(),
+    filters: { keyStage: null, yearGroup: null, examBoard: null },
     overview: { parents: 1, students: 2, activeStudents: 1, activeParents: 1, avgAccuracy: 80, completed: 3, activeSubscriptions: 1, lessons: 2, rewards: 1, storeItems: 1, supportTickets: 0 },
     ai: { contentItems: 1, estimatedCostPence: 4, totalUses: 2 },
     weakTopics: [{ topic: "spelling: silent e", count: 3 }],

@@ -13,14 +13,14 @@ import {
 } from "@/lib/curriculum";
 
 // Maps new 17-subject system to legacy 3-type system for backward compatibility
-function mapSubjectToLegacy(subject: string): "spelling" | "math" | "reading" {
+function mapSubjectToLegacy(subject: string): "spelling" | "math" | "reading" | "science" {
   const s = String(subject).toLowerCase();
   if (s === "phonics" || s === "spelling") return "spelling";
   if (s === "times-tables" || s === "maths") return "math";
   if (s === "reading" || s === "vocabulary" || s === "english-language" ||
       s === "english-literature" || s === "gcse-english") return "reading";
   if (s === "writing" || s === "grammar" || s === "punctuation") return "spelling";
-  if (s === "science" || s === "gcse-science") return "math";
+  if (s === "science" || s === "gcse-science") return "science";
   if (s === "gcse-maths" || s === "sats-practice" || s === "11-plus-practice") return "math";
   return "spelling";
 }
@@ -60,6 +60,36 @@ function extractGeneratedItems(items: unknown): unknown {
     return (items as Record<string, unknown>).items;
   }
   return items;
+}
+
+function attachSelectedMetadataToItems(
+  items: unknown,
+  meta: {
+    subject: string;
+    yearGroup?: string;
+    keyStage?: string;
+    curriculumPathway?: string;
+    examBoard?: string | null;
+    skillFocus?: string;
+    difficulty: number;
+    topic?: string;
+  },
+) {
+  const records = Array.isArray(items) ? items : items && typeof items === "object" ? [items] : [];
+  return records.map((item) => {
+    const row = (item && typeof item === "object") ? (item as Record<string, unknown>) : {};
+    return {
+      ...row,
+      subject: meta.subject,
+      yearGroup: meta.yearGroup ?? null,
+      keyStage: meta.keyStage ?? null,
+      curriculumPathway: meta.curriculumPathway ?? null,
+      examBoard: meta.examBoard ?? null,
+      skillFocus: meta.skillFocus ?? null,
+      difficulty: meta.difficulty,
+      topic: meta.topic ?? row.topic ?? null,
+    };
+  });
 }
 
 export async function GET(req: Request) {
@@ -128,7 +158,16 @@ export async function POST(req: Request) {
       );
     }
     const status = body.status === "review" ? "reviewed" : body.status;
-    const contentItems = extractGeneratedItems(body.items);
+    const contentItems = attachSelectedMetadataToItems(extractGeneratedItems(body.items), {
+      subject: body.type,
+      yearGroup: body.yearGroup,
+      keyStage: body.keyStage,
+      curriculumPathway: body.curriculumPathway,
+      examBoard: normalizeExamBoard(body.examBoard),
+      skillFocus: body.skillFocus,
+      difficulty: body.difficulty,
+      topic: body.topic,
+    });
     const quality = validateAiContentQuality({
       type: generationType,
       keyStage: body.keyStage,

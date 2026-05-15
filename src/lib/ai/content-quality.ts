@@ -176,11 +176,10 @@ function repairSpellingItems(records: unknown[], skillFocus?: string, requestedC
   };
 }
 
-export function validateAiContentQuality({ type, keyStage, yearGroup, skillFocus, requestedCount, mode = "strict", items }: QualityInput): QualityResult {
+export function validateAiContentQuality({ type, keyStage, skillFocus, requestedCount, mode = "strict", items }: QualityInput): QualityResult {
   const records = asArray(items);
   if (!records.length) return { ok: false, error: "No generated content to save." };
 
-  const selectedYear = yearGroup?.trim();
   const selectedStage = keyStage?.trim();
 
   if (type === "spelling" || type === "phonics") {
@@ -198,13 +197,6 @@ export function validateAiContentQuality({ type, keyStage, yearGroup, skillFocus
       return { ok: false, error: createSpellingErrorMessage(firstError ?? repaired.errors[0] ?? "invalid"), cleanedItems: repaired.cleaned, meta: repaired.meta };
     }
 
-    for (const item of repaired.cleaned) {
-      const data = item as Record<string, unknown>;
-      if (selectedYear && String(data.yearGroup ?? "") && String(data.yearGroup) !== selectedYear) {
-        return { ok: false, error: "Content year group does not match selection." };
-      }
-    }
-
     return { ok: true, cleanedItems: repaired.cleaned, meta: repaired.meta };
   }
 
@@ -217,7 +209,6 @@ export function validateAiContentQuality({ type, keyStage, yearGroup, skillFocus
       if (!question) return { ok: false, error: "Maths content must include a question." };
       if (data.answer === undefined || data.answer === null || data.answer === "") return { ok: false, error: "Maths output contains a question with no answer." };
       if (questions.has(question)) return { ok: false, error: `Duplicate maths question rejected: ${question}` };
-      if (selectedYear && String(data.yearGroup ?? "") && String(data.yearGroup) !== selectedYear) return { ok: false, error: "Content year group does not match selection." };
       questions.add(question);
     }
   }
@@ -239,9 +230,6 @@ export function validateAiContentQuality({ type, keyStage, yearGroup, skillFocus
       const answer = String(data.answer ?? "").trim();
       if (!answer) return { ok: false, error: `${label} content must include an answer.` };
 
-      if (selectedYear && String(data.yearGroup ?? "") && String(data.yearGroup) !== selectedYear) {
-        return { ok: false, error: "Content year group does not match selection." };
-      }
     }
   }
 
@@ -253,7 +241,6 @@ export function validateAiContentQuality({ type, keyStage, yearGroup, skillFocus
       const hasQuestionArray = Array.isArray(data.questions) && data.questions.length > 0;
       if (!hasQuestion && !hasQuestionArray) return { ok: false, error: "Reading output must include questions." };
       if (hasQuestion && !data.answer) return { ok: false, error: "Reading question must include an answer." };
-      if (selectedYear && String(data.yearGroup ?? "") && String(data.yearGroup) !== selectedYear) return { ok: false, error: "Content year group does not match selection." };
     }
   }
 

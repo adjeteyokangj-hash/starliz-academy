@@ -278,6 +278,7 @@ export default function ReadingJourneyPage() {
   const searchParams = useSearchParams();
   const assignedContentId = searchParams.get("contentId");
   const assignedAssignmentId = searchParams.get("assignmentId") ?? undefined;
+  const requestedMode = searchParams.get("mode");
   const [profile, setProfile] = useState<ChildProfile | null>(null);
   const profileId = profile?.id ?? null;
   const [sessionQuestions, setSessionQuestions] = useState<ReadingPassage[]>([]);
@@ -289,6 +290,8 @@ export default function ReadingJourneyPage() {
   const [questionStartedAt, setQuestionStartedAt] = useState(0);
   const [reaction, setReaction] = useState<{ mood: "happy" | "support" | "celebrate"; message: string } | null>(null);
   const [contentSource, setContentSource] = useState<"assigned" | "static">("static");
+  const [assignmentLoadError, setAssignmentLoadError] = useState<string | null>(null);
+  const [assignmentApplying, setAssignmentApplying] = useState(false);
   const [rewardToast, setRewardToast] = useState<{ points: number; message: string } | null>(null);
   const [tutorFeedback, setTutorFeedback] = useState("");
   const [showSuccessBurst, setShowSuccessBurst] = useState(false);
@@ -480,10 +483,67 @@ export default function ReadingJourneyPage() {
   }, [hintLevel, item]);
 
   const startReadingSession = useCallback(async (currentProfile: ChildProfile, preferAssigned = false, retryIds: string[] = []): Promise<void> => {
+    const reportAssignmentFailure = async (reason: string, details?: Record<string, unknown>) => {
+      try {
+        await fetch("/api/student/assignment-load-failure", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            assignmentId: assignedAssignmentId,
+            contentId: assignedContentId,
+            subject: "reading",
+            skillFocus: null,
+            yearGroup: currentProfile.yearGroup ?? null,
+            keyStage: currentProfile.keyStageLevel ?? null,
+            reason,
+            details,
+          }),
+        });
+      } catch {
+        // Ignore telemetry failures.
+      }
+    };
+
+    const upperSecondary = (() => {
+      const parsed = Number(String(currentProfile.yearGroup ?? "").match(/\d+/)?.[0] ?? "0");
+      return Number.isFinite(parsed) && parsed >= 10;
+    })();
+    const supportOverrideRequested = searchParams.get("support") === "1" || searchParams.get("intervention") === "1";
+
+    setAssignmentLoadError(null);
     let assignedItems: ReadingPassage[] = [];
     if (preferAssigned && (assignedAssignmentId || assignedContentId)) {
+      setAssignmentApplying(true);
       const batch = await fetchAssignedReadingBatch(assignedContentId ?? "", assignedAssignmentId);
+      setAssignmentApplying(false);
       assignedItems = batch?.items ?? [];
+
+      if (!assignedItems.length) {
+        setAssignmentLoadError("Assigned content could not be loaded");
+        await reportAssignmentFailure("assigned_content_missing", {
+          requestedMode,
+          assignmentId: assignedAssignmentId ?? null,
+          contentId: assignedContentId ?? null,
+        });
+        return;
+      }
+
+      const supportTag = `${batch?.content?.topic ?? ""} ${batch?.content?.skillFocus ?? ""} ${String(batch?.content?.metadata?.curriculumPathway ?? "")}`.toLowerCase();
+      const explicitSupportAssignment = /intervention|support|catch-?up|foundation/.test(supportTag);
+      if (upperSecondary && !explicitSupportAssignment && !supportOverrideRequested) {
+        const hasPrimaryLevelPassage = assignedItems.some((entry) => /mia has a red kite/i.test(entry.passage) || /^read-1-/i.test(entry.id));
+        if (hasPrimaryLevelPassage) {
+          setAssignmentLoadError("Assigned content could not be loaded");
+          await reportAssignmentFailure("upper_secondary_received_primary_reading", {
+            assignmentId: assignedAssignmentId ?? null,
+            contentId: assignedContentId ?? null,
+            requestedMode,
+            samplePassageId: assignedItems[0]?.id ?? null,
+          });
+          return;
+        }
+      }
     }
 
     const baseQuestions = buildReadingSessionQuestions(passagePool, assignedItems, currentProfile.adaptive.readingDifficulty);
@@ -491,9 +551,12 @@ export default function ReadingJourneyPage() {
     const retryQuestions = normalizedRetryIds.length
       ? allReadingPassages.filter((entry) => normalizedRetryIds.includes(normalizeReadingRetryId(entry.id)))
       : [];
+    const staticGuardedQuestions = upperSecondary && !supportOverrideRequested && assignedItems.length === 0
+      ? baseQuestions.filter((entry) => inferPassageLevel(entry.id) >= 7)
+      : baseQuestions;
     const questions = retryQuestions.length
       ? shuffleReadingPassages(retryQuestions)
-      : chooseFreshReadingQuestions(baseQuestions, recentQuestionIds, MIN_READING_QUESTIONS);
+      : chooseFreshReadingQuestions(staticGuardedQuestions.length ? staticGuardedQuestions : baseQuestions, recentQuestionIds, MIN_READING_QUESTIONS);
     if (normalizedRetryIds.length && !retryQuestions.length) {
       setSessionMode("standard");
       setFeedback("Retry pack refreshed. Some older weak items are no longer available, so we loaded balanced practice.");
@@ -524,7 +587,7 @@ export default function ReadingJourneyPage() {
     setDidReadAloudThisQuestion(false);
     setThisQuestionRequiresReadAloud(false);
     setThisQuestionReadAloudTarget("answer");
-  }, [allReadingPassages, assignedAssignmentId, assignedContentId, passagePool, recentQuestionIds]);
+  }, [allReadingPassages, assignedAssignmentId, assignedContentId, passagePool, recentQuestionIds, requestedMode, searchParams]);
 
   useEffect(() => {
     if (!item || !profile) return;
@@ -1031,7 +1094,46 @@ export default function ReadingJourneyPage() {
     }
   }
 
-  if (!profile || !item) return <main className="min-h-screen bg-background" />;
+  if (!profile) return <main className="min-h-screen bg-background" />;
+
+  if (assignmentLoadError && !item) {
+    return (
+      <PremiumAccessGate>
+        <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+          <Navbar />
+          <section className="mx-auto flex min-h-[70vh] max-w-3xl items-center px-4 py-10">
+            <div className="w-full rounded-3xl border border-rose-200 bg-white p-6 shadow-xl">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-rose-600">Content Load Error</p>
+              <h1 className="mt-3 text-2xl font-black text-slate-950">Assigned content could not be loaded</h1>
+              <p className="mt-2 text-sm text-slate-600">We could not open this assignment safely. Please return to the dashboard and try again later.</p>
+              <div className="mt-5">
+                <Link href="/dashboard" className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700">
+                  Return to dashboard
+                </Link>
+              </div>
+            </div>
+          </section>
+        </main>
+      </PremiumAccessGate>
+    );
+  }
+
+  if ((!item && assignmentApplying) || !item) {
+    return (
+      <PremiumAccessGate>
+        <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+          <Navbar />
+          <section className="mx-auto flex min-h-[70vh] max-w-3xl items-center px-4 py-10">
+            <div className="w-full rounded-3xl border border-slate-200 bg-white p-6 shadow-xl">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-600">Preparing Session</p>
+              <h1 className="mt-3 text-2xl font-black text-slate-950">Loading your reading assignment...</h1>
+              <p className="mt-2 text-sm text-slate-600">Please wait while we fetch your content.</p>
+            </div>
+          </section>
+        </main>
+      </PremiumAccessGate>
+    );
+  }
 
   return (
     <PremiumAccessGate>
@@ -1090,8 +1192,11 @@ export default function ReadingJourneyPage() {
                     Target {profile.dailySubjectProgress.completed.reading}/{profile.dailySubjectProgress.targets.reading}
                   </span>
                   <span className={`rounded-full px-3 py-1 text-xs font-bold ${usingAssignedContent ? "bg-indigo-100 text-indigo-800" : "bg-slate-100 text-slate-700"}`}>
-                    Source: {usingAssignedContent ? "Assigned" : "Static"}
+                    Source: {usingAssignedContent ? "Assignment Library" : "Static"}
                   </span>
+                  {requestedMode === "literature" ? (
+                    <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">Literature mode</span>
+                  ) : null}
                   {readingSupportActive ? (
                     <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-black text-cyan-800">Reading support active</span>
                   ) : null}

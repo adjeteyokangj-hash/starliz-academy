@@ -21,6 +21,9 @@ type AssignedContentResponse = {
     level: number;
     topic: string;
     skillFocus?: string | null;
+    yearGroup?: string | null;
+    keyStage?: string | null;
+    metadata?: Record<string, unknown>;
     items: unknown[];
   };
 };

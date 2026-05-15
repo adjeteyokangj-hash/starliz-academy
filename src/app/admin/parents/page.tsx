@@ -156,6 +156,9 @@ export default function ParentsPage() {
                     <Link href={`/admin/parents/${parent.id}`} className="mb-2 mr-2 inline-flex rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-800">
                       View Account
                     </Link>
+                    <Link href={`/admin/subscriptions?parentId=${encodeURIComponent(parent.id)}`} className="mb-2 mr-2 inline-flex rounded-lg border border-indigo-500/40 px-3 py-1.5 text-xs font-bold text-indigo-200 hover:bg-indigo-500/10">
+                      Manage Plan
+                    </Link>
                     <Link href={`/admin/parents/${parent.id}/edit`} className="mb-2 inline-flex rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-400">
                       Edit
                     </Link>

@@ -382,15 +382,20 @@ export async function assignContentToStudent(input: {
 }
 
 export function taskHrefForContentType(contentType: string, assignmentId?: string) {
-  const path = contentType === "lesson" || contentType === "ai_daily"
+  const normalized = contentType.trim().toLowerCase();
+  const readingTypes = new Set(["reading", "english-language", "english-literature", "gcse-english", "vocabulary"]);
+  const lessonTypes = new Set(["lesson", "ai_daily", "daily", "science", "gcse-science"]);
+  const mathTypes = new Set(["math", "maths", "times-tables", "gcse-maths", "11-plus-practice", "sats-practice"]);
+  const path = lessonTypes.has(normalized)
     ? "/games/lesson"
-    : contentType === "math"
+    : mathTypes.has(normalized)
       ? "/games/math"
-      : contentType === "reading"
+      : readingTypes.has(normalized)
         ? "/games/reading"
         : "/games/spelling";
   const params = new URLSearchParams();
   if (assignmentId) params.set("assignmentId", assignmentId);
+  if (normalized.includes("literature") || normalized.includes("gcse-english")) params.set("mode", "literature");
   const query = params.toString();
   return query ? `${path}?${query}` : path;
 }

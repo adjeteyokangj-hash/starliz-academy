@@ -9,6 +9,16 @@ function toArray(value: unknown): unknown[] {
   return [];
 }
 
+function parseMetadata(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
@@ -62,6 +72,7 @@ export async function GET(request: Request) {
   }
 
   const items = toArray(parsed);
+  const metadata = parseMetadata(assignment.content.metadataJson);
   return NextResponse.json({
     assignment: {
       id: assignment.id,
@@ -79,6 +90,9 @@ export async function GET(request: Request) {
       level: assignment.content.level,
       topic: assignment.content.topic,
       skillFocus: assignment.content.skillFocus,
+      yearGroup: assignment.content.yearGroup,
+      keyStage: assignment.content.keyStage,
+      metadata,
       items,
     },
   });

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 
 type SubscriptionRow = {
   parentId: string;
   parentName: string | null;
   parentEmail: string;
-  planKey: "free" | "monthly" | "yearly";
+  planKey: string;
   planName: string;
   status: "active" | "trialing" | "past_due" | "cancelled" | "failed_payment" | "suspended";
   trialStatus: string | null;
@@ -15,6 +16,7 @@ type SubscriptionRow = {
   renewalDate: string | null;
   amountLabel: string;
   billingCycle: "monthly" | "yearly";
+  childLimit: number;
   paymentProvider: "stripe" | "paystack" | string;
   paymentMethod: string;
   stripeCustomerId: string | null;
@@ -50,10 +52,12 @@ const DEFAULT_METRICS: Metrics = {
   monthRevenueLabel: "GBP 0.00",
 };
 
-const PLAN_OPTIONS: Array<{ value: SubscriptionRow["planKey"]; label: string }> = [
+const PLAN_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "free", label: "Free" },
-  { value: "monthly", label: "Monthly" },
-  { value: "yearly", label: "Yearly" },
+  { value: "starter", label: "Starter" },
+  { value: "standard", label: "Standard" },
+  { value: "pro", label: "Pro" },
+  { value: "enterprise", label: "Enterprise / Custom" },
 ];
 
 const STATUS_OPTIONS: Array<{ value: SubscriptionRow["status"]; label: string }> = [
@@ -73,13 +77,15 @@ function formatDate(value: string | null) {
 }
 
 export default function SubscriptionsPage() {
+  const searchParams = useSearchParams();
+  const requestedParentId = searchParams.get("parentId");
   const [rows, setRows] = useState<SubscriptionRow[]>([]);
   const [metrics, setMetrics] = useState<Metrics>(DEFAULT_METRICS);
   const [loading, setLoading] = useState(true);
   const [workingParentId, setWorkingParentId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => requestedParentId ?? "");
   const [statusFilter, setStatusFilter] = useState("all");
   const [planFilter, setPlanFilter] = useState("all");
 
@@ -145,6 +151,7 @@ export default function SubscriptionsPage() {
     return rows.filter((row) => {
       const searchMatch =
         !needle ||
+        row.parentId.toLowerCase().includes(needle) ||
         row.parentEmail.toLowerCase().includes(needle) ||
         (row.parentName ?? "").toLowerCase().includes(needle);
       const statusMatch = statusFilter === "all" || row.status === statusFilter;
@@ -251,6 +258,7 @@ export default function SubscriptionsPage() {
               <th className="px-3 py-2">Trial End</th>
               <th className="px-3 py-2">Renewal</th>
               <th className="px-3 py-2">Amount</th>
+              <th className="px-3 py-2">Child Limit</th>
               <th className="px-3 py-2">Cycle</th>
               <th className="px-3 py-2">Provider</th>
               <th className="px-3 py-2">Payment Method</th>
@@ -270,7 +278,7 @@ export default function SubscriptionsPage() {
                   <select
                     value={row.planKey}
                     onChange={(event) =>
-                      updateLocalRow(row.parentId, { planKey: event.target.value as SubscriptionRow["planKey"] })
+                      updateLocalRow(row.parentId, { planKey: event.target.value })
                     }
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
                   >
@@ -311,6 +319,7 @@ export default function SubscriptionsPage() {
                   />
                 </td>
                 <td className="px-3 py-3 text-slate-200">{row.amountLabel}</td>
+                <td className="px-3 py-3 text-slate-200">{row.childLimit}</td>
                 <td className="px-3 py-3 text-slate-200">{row.billingCycle}</td>
                 <td className="px-3 py-3 text-slate-200">{row.paymentProvider === "stripe" ? "Stripe" : "Paystack"}</td>
                 <td className="px-3 py-3 text-slate-200">{row.paymentMethod}</td>
@@ -374,7 +383,7 @@ export default function SubscriptionsPage() {
             ))}
             {!loading && filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={12} className="px-3 py-6 text-center text-sm text-slate-400">
+                <td colSpan={13} className="px-3 py-6 text-center text-sm text-slate-400">
                   No subscriptions match your filters.
                 </td>
               </tr>

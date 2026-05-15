@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams, type ReadonlyURLSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import AssignmentConfirmModal from "@/components/admin/content-library/AssignmentConfirmModal";
 import AssignmentPanel from "@/components/admin/content-library/AssignmentPanel";
@@ -14,7 +15,47 @@ import { keyStageForYearGroup } from "@/lib/curriculum";
 
 type PendingAction = { type: "single"; candidate: StudentAssignmentCandidate } | null;
 
+type FilterState = {
+  query: string;
+  studentYear: string;
+  studentKeyStage: string;
+  examBoardFilter: string;
+  studentClass: string;
+  studentParent: string;
+  subjectTab: string;
+  sortMode: SortMode;
+};
+
+function emptyFilters(): FilterState {
+  return {
+    query: "",
+    studentYear: "",
+    studentKeyStage: "",
+    examBoardFilter: "",
+    studentClass: "",
+    studentParent: "",
+    subjectTab: "all",
+    sortMode: "newest",
+  };
+}
+
+function parseFiltersFromSearchParams(searchParams: ReadonlyURLSearchParams): FilterState {
+  return {
+    query: searchParams.get("q") ?? "",
+    studentYear: searchParams.get("year") ?? "",
+    studentKeyStage: searchParams.get("ks") ?? "",
+    examBoardFilter: searchParams.get("exam") ?? "",
+    studentClass: searchParams.get("class") ?? "",
+    studentParent: searchParams.get("parent") ?? "",
+    subjectTab: searchParams.get("subject") ?? "all",
+    sortMode: (searchParams.get("sort") as SortMode | null) ?? "newest",
+  };
+}
+
 export default function ContentLibraryPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [items, setItems] = useState<ContentItem[]>([]);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,14 +63,8 @@ export default function ContentLibraryPage() {
   const [assigning, setAssigning] = useState(false);
   const [, setOperating] = useState(false);
 
-  const [query, setQuery] = useState("");
-  const [studentYear, setStudentYear] = useState("");
-  const [studentKeyStage, setStudentKeyStage] = useState("");
-  const [examBoardFilter, setExamBoardFilter] = useState("");
-  const [studentClass, setStudentClass] = useState("");
-  const [studentParent, setStudentParent] = useState("");
-  const [subjectTab, setSubjectTab] = useState("all");
-  const [sortMode, setSortMode] = useState<SortMode>("newest");
+  const [draftFilters, setDraftFilters] = useState<FilterState>(() => parseFiltersFromSearchParams(searchParams));
+  const [applyingFilters, setApplyingFilters] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   const [selectedContentId, setSelectedContentId] = useState<string | null>(null);
@@ -60,6 +95,32 @@ export default function ContentLibraryPage() {
     void loadData();
   }, [loadData]);
 
+  const appliedFilters = useMemo(() => parseFiltersFromSearchParams(searchParams), [searchParams]);
+
+  function applyFilters(nextFilters?: FilterState) {
+    const resolved = nextFilters ?? draftFilters;
+    setApplyingFilters(true);
+
+    const params = new URLSearchParams();
+    if (resolved.query) params.set("q", resolved.query);
+    if (resolved.studentYear) params.set("year", resolved.studentYear);
+    if (resolved.studentKeyStage) params.set("ks", resolved.studentKeyStage);
+    if (resolved.examBoardFilter) params.set("exam", resolved.examBoardFilter);
+    if (resolved.studentClass) params.set("class", resolved.studentClass);
+    if (resolved.studentParent) params.set("parent", resolved.studentParent);
+    if (resolved.subjectTab && resolved.subjectTab !== "all") params.set("subject", resolved.subjectTab);
+    if (resolved.sortMode !== "newest") params.set("sort", resolved.sortMode);
+    const queryString = params.toString();
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+    window.setTimeout(() => setApplyingFilters(false), 150);
+  }
+
+  function resetFilters() {
+    const reset = emptyFilters();
+    setDraftFilters(reset);
+    applyFilters(reset);
+  }
+
   const classGroups = useMemo(() => {
     const values = new Set<string>();
     for (const student of students) {
@@ -78,7 +139,7 @@ export default function ContentLibraryPage() {
   }, [students]);
 
   const filteredStudents = useMemo(() => {
-    const needle = normalizeText(query);
+    const needle = normalizeText(appliedFilters.query);
     return students.filter((student) => {
       const studentYearValue = student.yearGroup ?? "";
       const stage = student.keyStageLevel || (studentYearValue ? keyStageForYearGroup(studentYearValue) : "");
@@ -86,32 +147,32 @@ export default function ContentLibraryPage() {
         || normalizeText(student.name).includes(needle)
         || normalizeText(student.parentName).includes(needle)
         || normalizeText(student.classGroup).includes(needle);
-      const matchesYear = !studentYear || studentYearValue === studentYear;
-      const matchesStage = !studentKeyStage || stage === studentKeyStage;
-      const matchesClass = !studentClass || student.classGroup === studentClass || (student.classGroups ?? []).includes(studentClass);
-      const matchesParent = !studentParent || student.parentName === studentParent;
+      const matchesYear = !appliedFilters.studentYear || studentYearValue === appliedFilters.studentYear;
+      const matchesStage = !appliedFilters.studentKeyStage || stage === appliedFilters.studentKeyStage;
+      const matchesClass = !appliedFilters.studentClass || student.classGroup === appliedFilters.studentClass || (student.classGroups ?? []).includes(appliedFilters.studentClass);
+      const matchesParent = !appliedFilters.studentParent || student.parentName === appliedFilters.studentParent;
       return matchesSearch && matchesYear && matchesStage && matchesClass && matchesParent;
     });
-  }, [students, query, studentYear, studentKeyStage, studentClass, studentParent]);
+  }, [students, appliedFilters]);
 
   const filteredItems = useMemo(() => {
     const bySubject = items.filter((item) => {
-      if (subjectTab === "all") return true;
-      return getContentMeta(item).subject === subjectTab;
+      if (appliedFilters.subjectTab === "all") return true;
+      return getContentMeta(item).subject === appliedFilters.subjectTab;
     });
 
     const byExamBoard = bySubject.filter((item) => {
-      if (!examBoardFilter) return true;
-      return getContentMeta(item).examBoard === examBoardFilter;
+      if (!appliedFilters.examBoardFilter) return true;
+      return getContentMeta(item).examBoard === appliedFilters.examBoardFilter;
     });
 
     return [...byExamBoard].sort((a, b) => {
-      if (sortMode === "newest") return Date.parse(b.createdAt) - Date.parse(a.createdAt);
-      if (sortMode === "oldest") return Date.parse(a.createdAt) - Date.parse(b.createdAt);
-      if (sortMode === "most-used") return b.usedCount - a.usedCount;
+      if (appliedFilters.sortMode === "newest") return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+      if (appliedFilters.sortMode === "oldest") return Date.parse(a.createdAt) - Date.parse(b.createdAt);
+      if (appliedFilters.sortMode === "most-used") return b.usedCount - a.usedCount;
       return (b.usedCount - a.usedCount) || (Date.parse(b.createdAt) - Date.parse(a.createdAt));
     });
-  }, [items, subjectTab, examBoardFilter, sortMode]);
+  }, [items, appliedFilters]);
 
   const selectedContent = useMemo(
     () => filteredItems.find((item) => item.id === selectedContentId) ?? null,
@@ -295,24 +356,27 @@ export default function ContentLibraryPage() {
       </header>
 
       <ContentLibraryFilters
-        query={query}
-        onQueryChange={setQuery}
-        yearGroup={studentYear}
-        onYearGroupChange={setStudentYear}
-        keyStage={studentKeyStage}
-        onKeyStageChange={setStudentKeyStage}
-        examBoard={examBoardFilter}
-        onExamBoardChange={setExamBoardFilter}
-        classGroup={studentClass}
+        query={draftFilters.query}
+        onQueryChange={(value) => setDraftFilters((current) => ({ ...current, query: value }))}
+        onApplyFilters={() => applyFilters()}
+        onResetFilters={resetFilters}
+        applyingFilters={applyingFilters}
+        yearGroup={draftFilters.studentYear}
+        onYearGroupChange={(value) => setDraftFilters((current) => ({ ...current, studentYear: value }))}
+        keyStage={draftFilters.studentKeyStage}
+        onKeyStageChange={(value) => setDraftFilters((current) => ({ ...current, studentKeyStage: value }))}
+        examBoard={draftFilters.examBoardFilter}
+        onExamBoardChange={(value) => setDraftFilters((current) => ({ ...current, examBoardFilter: value }))}
+        classGroup={draftFilters.studentClass}
         classGroups={classGroups}
-        onClassGroupChange={setStudentClass}
-        parent={studentParent}
+        onClassGroupChange={(value) => setDraftFilters((current) => ({ ...current, studentClass: value }))}
+        parent={draftFilters.studentParent}
         parents={parents}
-        onParentChange={setStudentParent}
-        subject={subjectTab}
-        onSubjectChange={setSubjectTab}
-        sortMode={sortMode}
-        onSortModeChange={setSortMode}
+        onParentChange={(value) => setDraftFilters((current) => ({ ...current, studentParent: value }))}
+        subject={draftFilters.subjectTab}
+        onSubjectChange={(value) => setDraftFilters((current) => ({ ...current, subjectTab: value }))}
+        sortMode={draftFilters.sortMode}
+        onSortModeChange={(value) => setDraftFilters((current) => ({ ...current, sortMode: value }))}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />

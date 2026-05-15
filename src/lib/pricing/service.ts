@@ -121,6 +121,13 @@ function inferPlanFromLegacyKey(plans: PricingPlanView[], legacyPlanKey: string 
     return byName((name) => name.includes("starter")) ?? plans.find((plan) => plan.interval === "month" && plan.audience === "individual") ?? firstByInterval("month") ?? null
   }
 
+  if (raw.includes("standard") || raw.includes("monthly")) {
+    return byName((name) => name.includes("standard") || name.includes("monthly"))
+      ?? plans.find((plan) => plan.interval === "month" && plan.audience === "family")
+      ?? firstByInterval("month")
+      ?? null
+  }
+
   if (raw.includes("year") || raw.includes("annual")) {
     return byName((name) => name.includes("annual") || name.includes("year")) ?? firstByInterval("year") ?? null
   }
@@ -129,6 +136,13 @@ function inferPlanFromLegacyKey(plans: PricingPlanView[], legacyPlanKey: string 
     return byName((name) => name.includes("pro") || name.includes("family") || name.includes("premium"))
       ?? plans.find((plan) => plan.interval === "month" && (plan.isPopular || plan.audience === "family"))
       ?? firstByInterval("month")
+      ?? null
+  }
+
+  if (raw.includes("enterprise") || raw.includes("custom") || raw.includes("school") || raw.includes("organisation")) {
+    return byName((name) => name.includes("enterprise") || name.includes("school") || name.includes("organisation") || name.includes("custom"))
+      ?? plans.find((plan) => plan.interval === "custom")
+      ?? plans.find((plan) => plan.audience === "school" || plan.audience === "organisation")
       ?? null
   }
 
