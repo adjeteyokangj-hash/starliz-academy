@@ -34,6 +34,19 @@ function uniqueSkills(skills: SkillCode[]): SkillCode[] {
   return Array.from(new Set(skills.filter(Boolean)));
 }
 
+function isFoundationSkill(skill: SkillCode | null | undefined): boolean {
+  if (!skill) return false;
+  const subject = SKILL_MAP[skill]?.subject;
+  return subject === "foundation";
+}
+
+function firstNonFoundationSkill(skills: SkillCode[]): SkillCode | null {
+  for (const skill of skills) {
+    if (!isFoundationSkill(skill)) return skill;
+  }
+  return null;
+}
+
 export async function buildDailyJourney(studentId: string): Promise<DailyJourney> {
   const [rows, weakAreas, student] = await Promise.all([
     prisma.studentSkill.findMany({
@@ -85,11 +98,26 @@ export async function buildDailyJourney(studentId: string): Promise<DailyJourney
     fallbackSkill: isPrimaryTier ? "cvc" : "inference",
   });
 
-  const focusSkill = planned.coreSkills[0] ?? planned.warmupSkill;
-  const weakSkill = planned.weakSkill;
-  const warmupSkill = planned.warmupSkill;
-  const reviewSkills = uniqueSkills(planned.reviewSkills);
-  const bossTestSkills = uniqueSkills(planned.bossTestSkills);
+  const fallbackFocus: SkillCode = isPrimaryTier ? "cvc" : "inference";
+  const fallbackWarmup: SkillCode = isPrimaryTier ? "letter_recognition" : "retrieval";
+
+  const plannedFocus = planned.coreSkills[0] ?? planned.warmupSkill;
+  const nonFoundationFocus = firstNonFoundationSkill([plannedFocus, ...planned.coreSkills, planned.warmupSkill]);
+  const focusSkill = isPrimaryTier ? plannedFocus : (nonFoundationFocus ?? fallbackFocus);
+
+  const weakSkill = isPrimaryTier || !isFoundationSkill(planned.weakSkill)
+    ? planned.weakSkill
+    : focusSkill;
+
+  const nonFoundationWarmup = firstNonFoundationSkill([planned.warmupSkill, ...planned.reviewSkills]);
+  const warmupSkill = isPrimaryTier ? planned.warmupSkill : (nonFoundationWarmup ?? fallbackWarmup);
+
+  const reviewSkills = uniqueSkills(
+    (isPrimaryTier ? planned.reviewSkills : planned.reviewSkills.filter((skill) => !isFoundationSkill(skill))),
+  );
+  const bossTestSkills = uniqueSkills(
+    (isPrimaryTier ? planned.bossTestSkills : planned.bossTestSkills.filter((skill) => !isFoundationSkill(skill))),
+  );
 
   return {
     studentId,

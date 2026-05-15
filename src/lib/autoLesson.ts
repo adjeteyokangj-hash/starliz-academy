@@ -42,6 +42,27 @@ function parseItems(contentJson: string): LessonItem[] {
   return [];
 }
 
+function isFoundationSkill(skill: string | null | undefined): boolean {
+  if (!skill) return false;
+  return SKILL_MAP[skill]?.subject === "foundation";
+}
+
+function containsFoundationSignals(value: string | null | undefined): boolean {
+  const normalized = String(value ?? "").toLowerCase();
+  return normalized.includes("letter sound")
+    || normalized.includes("phonics")
+    || normalized.includes("letter_recognition")
+    || normalized.includes("letter_sound");
+}
+
+function hasFoundationLessonContent(items: LessonItem[]): boolean {
+  return items.some((item) => {
+    const skillFocus = String(item.skillFocus ?? "");
+    const prompt = String(item.prompt ?? item.question ?? "");
+    return containsFoundationSignals(skillFocus) || containsFoundationSignals(prompt);
+  });
+}
+
 function readingItemsFromPassage(params: { skill: string; label: string; difficulty: number }): LessonItem[] {
   return [
     {
@@ -308,14 +329,21 @@ async function getWeakSkills(studentId: string): Promise<string[]> {
     fallbackSkill: isPrimaryTier ? "cvc" : "inference",
   });
 
-  const plannedWeak = plan.weakSkillsForLesson.slice(0, 2);
+  const plannedWeak = (isPrimaryTier
+    ? plan.weakSkillsForLesson
+    : plan.weakSkillsForLesson.filter((skill) => !isFoundationSkill(skill))).slice(0, 2);
   if (plannedWeak.length) return plannedWeak;
 
-  return rows
+  const weakRows = rows
     .filter((row) => row.status === "weak")
+    .filter((row) => isPrimaryTier || !isFoundationSkill(row.skill))
     .sort((a, b) => a.accuracy - b.accuracy)
     .slice(0, 2)
     .map((row) => row.skill);
+
+  if (weakRows.length) return weakRows;
+
+  return isPrimaryTier ? ["cvc", "digraphs"] : ["inference", "word_problems"];
 }
 
 async function buildFromDatabase(studentId: string, weakSkills: string[]): Promise<LessonItem[]> {
@@ -366,11 +394,17 @@ async function buildFromDatabase(studentId: string, weakSkills: string[]): Promi
 export async function autoBuildLessonForStudent(input: BuildOptions): Promise<BuiltLesson> {
   const student = await prisma.childProfile.findUnique({
     where: { id: input.studentId },
-    select: { id: true, level: true },
+    select: { id: true, level: true, yearGroup: true, age: true },
   });
   if (!student) {
     throw new Error("Student not found.");
   }
+
+  const tier = resolveDashboardTier({
+    yearGroup: student.yearGroup,
+    ageYears: student.age,
+  });
+  const isPrimaryTier = tier === "primary";
 
   const today = todayKey();
   const existingAssignment = await prisma.assignment.findFirst({
@@ -387,6 +421,21 @@ export async function autoBuildLessonForStudent(input: BuildOptions): Promise<Bu
   });
 
   if (existingAssignment) {
+    const existingSkills = (existingAssignment.content.skills ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const existingItems = parseItems(existingAssignment.content.contentJson);
+    const existingLooksFoundational = existingSkills.some((skill) => isFoundationSkill(skill))
+      || containsFoundationSignals(existingAssignment.content.skillFocus)
+      || hasFoundationLessonContent(existingItems);
+
+    if (!isPrimaryTier && existingLooksFoundational) {
+      await prisma.assignment.update({
+        where: { id: existingAssignment.id },
+        data: { status: "completed" },
+      });
+    } else {
     const existingLesson = await prisma.lesson.findFirst({
       where: { contentRefs: { contains: existingAssignment.contentId } },
       orderBy: { updatedAt: "desc" },
@@ -400,6 +449,7 @@ export async function autoBuildLessonForStudent(input: BuildOptions): Promise<Bu
       weakSkills: existingLesson?.skills ? existingLesson.skills.split(",").map((v) => v.trim()).filter(Boolean) : [],
       reusedExisting: true,
     };
+    }
   }
 
   const weakSkills = await getWeakSkills(input.studentId);
