@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
 import { addDays, PAST_DUE_GRACE_DAYS } from "./plans";
-import { normalizePlanKey } from "./plans";
+import { planKeyFromPricingPlan, resolveCurrentPricingPlan } from "@/lib/pricing/service";
 
 type PaymentEvent = {
   type: string;
@@ -95,7 +95,11 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
   }
 
   const status = mapStatus(event.type, asString(object.status));
-  const planKey = normalizePlanKey(asString(metadata.planKey) ?? "monthly");
+  const resolvedPlan = await resolveCurrentPricingPlan({
+    pricingPlanId,
+    legacyPlanKey: asString(metadata.planKey) ?? undefined,
+  });
+  const planKey = resolvedPlan ? planKeyFromPricingPlan(resolvedPlan) : (asString(metadata.planKey) ?? "free");
   const currentPeriodEnd = asDateFromSeconds(object.current_period_end);
   const trialEndsAt = asDateFromSeconds(object.trial_end);
   const graceEndsAt = status === "past_due" ? addDays(new Date(), PAST_DUE_GRACE_DAYS) : undefined;
@@ -108,7 +112,7 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
     provider,
     providerCustomerId,
     providerSubId,
-    pricingPlanId,
+    pricingPlanId: resolvedPlan?.id ?? pricingPlanId,
     planKey,
     status,
     currentPeriodEnd,

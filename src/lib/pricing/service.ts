@@ -2,6 +2,48 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { FALLBACK_PRICING_PLANS, type PricingPlanView } from "@/lib/pricing/fallback"
 
+type StoredPricingFeatures = {
+  bullets?: unknown
+  childLimit?: unknown
+}
+
+function defaultChildLimitForAudience(audience: PricingPlanView["audience"]): number {
+  if (audience === "individual") return 1
+  if (audience === "family") return 4
+  if (audience === "school" || audience === "organisation") return 100
+  return 1
+}
+
+function parseStoredFeatures(value: Prisma.JsonValue): { features: string[]; childLimit: number | null } {
+  if (Array.isArray(value)) {
+    return {
+      features: value.map((item) => String(item)).filter(Boolean),
+      childLimit: null,
+    }
+  }
+
+  if (!value || typeof value !== "object") {
+    return { features: [], childLimit: null }
+  }
+
+  const typed = value as StoredPricingFeatures
+  const bullets = Array.isArray(typed.bullets)
+    ? typed.bullets.map((item) => String(item)).filter(Boolean)
+    : []
+  const childLimit = typeof typed.childLimit === "number" && Number.isFinite(typed.childLimit)
+    ? Math.max(1, Math.floor(typed.childLimit))
+    : null
+
+  return { features: bullets, childLimit }
+}
+
+function featuresToStorage(features: string[], childLimit: number): Prisma.InputJsonValue {
+  return {
+    bullets: features,
+    childLimit,
+  }
+}
+
 async function ensurePricingPlansSeeded(): Promise<void> {
   const existingCount = await prisma.pricingPlan.count()
   if (existingCount > 0) return
@@ -14,7 +56,7 @@ async function ensurePricingPlansSeeded(): Promise<void> {
       currency: plan.currency,
       interval: plan.interval,
       audience: plan.audience,
-      features: plan.features,
+      features: featuresToStorage(plan.features, plan.childLimit),
       priceNote: plan.priceNote,
       badge: plan.badge,
       ctaLabel: plan.ctaLabel,
@@ -25,11 +67,6 @@ async function ensurePricingPlansSeeded(): Promise<void> {
       sortOrder: plan.sortOrder,
     })),
   })
-}
-
-function toFeatureList(value: Prisma.JsonValue): string[] {
-  if (!Array.isArray(value)) return []
-  return value.map((item) => String(item)).filter(Boolean)
 }
 
 function mapPlan(plan: {
@@ -50,6 +87,8 @@ function mapPlan(plan: {
   isPopular: boolean
   sortOrder: number
 }): PricingPlanView {
+  const parsedFeatures = parseStoredFeatures(plan.features)
+  const audience = plan.audience as PricingPlanView["audience"]
   return {
     id: plan.id,
     name: plan.name,
@@ -57,8 +96,9 @@ function mapPlan(plan: {
     price: plan.price,
     currency: plan.currency,
     interval: plan.interval as PricingPlanView["interval"],
-    audience: plan.audience as PricingPlanView["audience"],
-    features: toFeatureList(plan.features),
+    audience,
+    features: parsedFeatures.features,
+    childLimit: parsedFeatures.childLimit ?? defaultChildLimitForAudience(audience),
     priceNote: plan.priceNote,
     badge: plan.badge,
     ctaLabel: plan.ctaLabel,
@@ -138,4 +178,19 @@ export async function resolveCurrentPricingPlan(options: {
 
   const plans = await getPublicPricingPlans()
   return inferPlanFromLegacyKey(plans, options.legacyPlanKey)
+}
+
+export function toPricingFeaturesStorage(input: {
+  features: string[]
+  childLimit: number
+}): Prisma.InputJsonValue {
+  return featuresToStorage(input.features, Math.max(1, Math.floor(input.childLimit || 1)))
+}
+
+export function planKeyFromPricingPlan(plan: Pick<PricingPlanView, "id" | "name">): string {
+  const slug = plan.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+  return `pricing:${slug || plan.id}`
 }

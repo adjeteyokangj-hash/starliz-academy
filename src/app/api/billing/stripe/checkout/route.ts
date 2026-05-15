@@ -3,12 +3,11 @@ import { z } from "zod"
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { getStripeClient } from "@/lib/stripe"
-import { SUBSCRIPTION_PLANS, type SubscriptionPlanKey } from "@/lib/subscription-plans"
+import { getPublicPricingPlans, planKeyFromPricingPlan } from "@/lib/pricing/service"
 import { writeAuditLog } from "@/lib/audit"
 
 const checkoutSchema = z.object({
-  planKey: z.string().optional(),
-  planId: z.string().optional(),
+  planId: z.string().min(1),
   returnUrl: z.string().optional(),
 })
 
@@ -41,57 +40,25 @@ export async function POST(request: Request) {
   }
 
   const planId = parsed.data.planId
-  const requestedPlanKey = parsed.data.planKey as SubscriptionPlanKey | undefined
   const requestedReturnUrl = parsed.data.returnUrl
+  const activePlans = await getPublicPricingPlans()
+  const selectedPlan = activePlans.find((entry) => entry.id === planId)
 
-  let planKey: string | undefined = requestedPlanKey
-  let unitAmount = 0
-  let currency = "gbp"
-  let interval: "month" | "year" = "month"
-  let childLimit = 1
-  let planName = "Starter"
-  let priceId: string | undefined
-
-  if (planId) {
-    const dynamicPlan = await prisma.pricingPlan.findUnique({ where: { id: planId } })
-    if (!dynamicPlan || !dynamicPlan.isActive) {
-      return NextResponse.json({ error: "Selected plan is unavailable." }, { status: 404 })
-    }
-
-    if (dynamicPlan.interval === "custom") {
-      return NextResponse.json({ error: "This plan uses custom pricing. Please contact support." }, { status: 400 })
-    }
-
-    if (!dynamicPlan.stripePriceId) {
-      return NextResponse.json({ error: "This plan is not configured for Stripe checkout yet. Please contact support." }, { status: 400 })
-    }
-
-    const normalizedName = dynamicPlan.name.trim().toLowerCase()
-    if (normalizedName.includes("starter")) planKey = "starter"
-    else if (normalizedName.includes("annual") || dynamicPlan.interval === "year") planKey = "premium_yearly"
-    else if (normalizedName.includes("pro")) planKey = "family"
-    else if (normalizedName.includes("family")) planKey = "family"
-    else planKey = "premium"
-
-    unitAmount = Math.round(dynamicPlan.price * 100)
-    currency = dynamicPlan.currency.toLowerCase()
-    interval = dynamicPlan.interval
-    childLimit = dynamicPlan.audience === "individual" ? 1 : 6
-    planName = dynamicPlan.name
-    priceId = dynamicPlan.stripePriceId
-  } else {
-    const fallbackPlan = requestedPlanKey ? SUBSCRIPTION_PLANS[requestedPlanKey] : null
-    if (!requestedPlanKey || !fallbackPlan) {
-      return NextResponse.json({ error: "Invalid plan" }, { status: 400 })
-    }
-
-    planKey = requestedPlanKey
-    unitAmount = fallbackPlan.price
-    currency = fallbackPlan.currency
-    interval = fallbackPlan.interval
-    childLimit = fallbackPlan.childLimit
-    planName = fallbackPlan.name
+  if (!selectedPlan) {
+    return NextResponse.json({ error: "Selected plan is unavailable." }, { status: 404 })
   }
+
+  if (selectedPlan.interval === "custom") {
+    return NextResponse.json({ error: "Unavailable online. Please contact us for this plan." }, { status: 400 })
+  }
+
+  if (!selectedPlan.stripePriceId) {
+    return NextResponse.json({ error: "Unavailable online for this plan. Please contact us." }, { status: 400 })
+  }
+
+  const planKey = planKeyFromPricingPlan(selectedPlan)
+  const childLimit = selectedPlan.childLimit
+  const planName = selectedPlan.name
 
   const appUrl = getAppUrl(request)
   const safeReturnUrl = resolveReturnUrl(requestedReturnUrl, appUrl)
@@ -130,7 +97,7 @@ export async function POST(request: Request) {
           where: { id: existingSubscription.id },
           data: {
             provider: "stripe",
-            planKey: planKey ?? "starter",
+            planKey,
             pricingPlanId: planId ?? null,
             status: "pending",
           },
@@ -139,7 +106,7 @@ export async function POST(request: Request) {
           data: {
             parentId: user.id,
             provider: "stripe",
-            planKey: planKey ?? "starter",
+            planKey,
             pricingPlanId: planId ?? null,
             status: "pending",
           },
@@ -150,49 +117,36 @@ export async function POST(request: Request) {
     payment_method_types: ["card"],
     customer_email: user.email,
     client_reference_id: user.id,
-    line_items: priceId
-      ? [
-          {
-            quantity: 1,
-            price: priceId,
-          },
-        ]
-      : [
-          {
-            quantity: 1,
-            price_data: {
-              currency,
-              unit_amount: unitAmount,
-              recurring: {
-                interval,
-              },
-              product_data: {
-                name: `StarLiz Academy ${planName}`,
-                description: `Includes up to ${childLimit} child profile(s).`,
-              },
-            },
-          },
-        ],
+    line_items: [
+      {
+        quantity: 1,
+        price: selectedPlan.stripePriceId,
+      },
+    ],
     success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: safeReturnUrl,
     metadata: {
       provider: "stripe",
       userId: user.id,
       parentId: user.id,
-      planKey: planKey ?? "starter",
+      planKey,
       childLimit: String(childLimit),
       app: "StarLiz Academy",
       pricingPlanId: planId ?? "",
+      planName,
+      planInterval: selectedPlan.interval,
     },
     subscription_data: {
       metadata: {
         provider: "stripe",
         userId: user.id,
         parentId: user.id,
-        planKey: planKey ?? "starter",
+        planKey,
         childLimit: String(childLimit),
         app: "StarLiz Academy",
         pricingPlanId: planId ?? "",
+        planName,
+        planInterval: selectedPlan.interval,
       },
     },
   })

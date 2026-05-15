@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
-import { addDays, DEFAULT_TRIAL_DAYS, getPlan, normalizePlanKey, PremiumFeature } from "./plans";
+import { planKeyFromPricingPlan, resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import { addDays, DEFAULT_TRIAL_DAYS, PremiumFeature } from "./plans";
 
 const TRIAL_SESSION_LIMIT = 3;
 
@@ -70,14 +71,27 @@ function statusDecision(subscription: Awaited<ReturnType<typeof getOrCreateSubsc
   return { allowed: false, reason: "EXPIRED" };
 }
 
-function serializeDecision(
+async function resolvePlanState(subscription: Awaited<ReturnType<typeof getOrCreateSubscription>>["subscription"]) {
+  const currentPlan = await resolveCurrentPricingPlan({
+    pricingPlanId: subscription.pricingPlanId,
+    legacyPlanKey: subscription.planKey,
+  });
+
+  return {
+    currentPlan,
+    childLimit: currentPlan?.childLimit ?? 1,
+    hasPaidSubscription: Boolean(currentPlan && currentPlan.price > 0),
+    planKey: currentPlan ? planKeyFromPricingPlan(currentPlan) : (subscription.planKey ?? "free"),
+  };
+}
+
+async function serializeDecision(
   payload: Awaited<ReturnType<typeof getOrCreateSubscription>>,
   childrenUsed: number,
   override?: Pick<SubscriptionAccessDecision, "allowed" | "reason">,
-): SubscriptionAccessDecision {
+): Promise<SubscriptionAccessDecision> {
   const subscription = payload.subscription;
-  const plan = getPlan(subscription.planKey);
-  const hasPaidSubscription = plan.key !== "free";
+  const planState = await resolvePlanState(subscription);
   const trialSessionsUsed = payload.trialSessionsUsed ?? 0;
   const trialSessionsLeft = Math.max(0, TRIAL_SESSION_LIMIT - trialSessionsUsed);
   const status = override ?? statusDecision(subscription);
@@ -87,15 +101,15 @@ function serializeDecision(
     reason: status.reason,
     upgradeRequired: !status.allowed,
     status: subscription.status,
-    planKey: normalizePlanKey(subscription.planKey),
+    planKey: planState.planKey,
     childrenUsed,
-    childrenAllowed: plan.childLimit,
+    childrenAllowed: planState.childLimit,
     trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
     currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
     trialSessionsUsed,
     trialLimit: TRIAL_SESSION_LIMIT,
     trialSessionsLeft,
-    hasPaidSubscription,
+    hasPaidSubscription: planState.hasPaidSubscription,
   };
 }
 
@@ -104,7 +118,7 @@ export async function checkSubscriptionAccess(parentId: string): Promise<Subscri
     getOrCreateSubscription(parentId),
     prisma.childProfile.count({ where: { parentId, archived: false } }),
   ]);
-  return serializeDecision(subscription, childrenUsed);
+  return await serializeDecision(subscription, childrenUsed);
 }
 
 export async function canAddChild(parentId: string): Promise<SubscriptionAccessDecision> {
@@ -112,13 +126,13 @@ export async function canAddChild(parentId: string): Promise<SubscriptionAccessD
     getOrCreateSubscription(parentId),
     prisma.childProfile.count({ where: { parentId, archived: false } }),
   ]);
-  const plan = getPlan(subscription.subscription.planKey);
+  const planState = await resolvePlanState(subscription.subscription);
   const base = statusDecision(subscription.subscription);
-  if (!base.allowed) return serializeDecision(subscription, childrenUsed, base);
-  if (childrenUsed >= plan.childLimit) {
-    return serializeDecision(subscription, childrenUsed, { allowed: false, reason: "CHILD_LIMIT_REACHED" });
+  if (!base.allowed) return await serializeDecision(subscription, childrenUsed, base);
+  if (childrenUsed >= planState.childLimit) {
+    return await serializeDecision(subscription, childrenUsed, { allowed: false, reason: "CHILD_LIMIT_REACHED" });
   }
-  return serializeDecision(subscription, childrenUsed, { allowed: true });
+  return await serializeDecision(subscription, childrenUsed, { allowed: true });
 }
 
 export async function canUseFeature(parentId: string, feature: PremiumFeature): Promise<SubscriptionAccessDecision> {
@@ -127,16 +141,23 @@ export async function canUseFeature(parentId: string, feature: PremiumFeature): 
     prisma.childProfile.count({ where: { parentId, archived: false } }),
   ]);
   const base = statusDecision(subscription.subscription);
-  if (!base.allowed) return serializeDecision(subscription, childrenUsed, base);
+  if (!base.allowed) return await serializeDecision(subscription, childrenUsed, base);
 
-  const plan = getPlan(subscription.subscription.planKey);
-  if (plan.key === "free" && subscription.trialSessionsUsed >= TRIAL_SESSION_LIMIT) {
-    return serializeDecision(subscription, childrenUsed, { allowed: false, reason: "TRIAL_LIMIT_REACHED" });
+  const planState = await resolvePlanState(subscription.subscription);
+  if (!planState.hasPaidSubscription && subscription.trialSessionsUsed >= TRIAL_SESSION_LIMIT) {
+    return await serializeDecision(subscription, childrenUsed, { allowed: false, reason: "TRIAL_LIMIT_REACHED" });
   }
-  if (!plan.features.includes(feature)) {
-    return serializeDecision(subscription, childrenUsed, { allowed: false, reason: "FEATURE_LOCKED" });
+
+  const featureTokens = (planState.currentPlan?.features ?? []).map((entry) => entry.toLowerCase());
+  const featureSearch = feature.toLowerCase();
+  const hasFeatureAccess = feature === "learning"
+    ? true
+    : featureTokens.some((token) => token.includes(featureSearch) || token.includes(featureSearch.replace("-", " ")));
+
+  if (!hasFeatureAccess) {
+    return await serializeDecision(subscription, childrenUsed, { allowed: false, reason: "FEATURE_LOCKED" });
   }
-  return serializeDecision(subscription, childrenUsed, { allowed: true });
+  return await serializeDecision(subscription, childrenUsed, { allowed: true });
 }
 
 export function getTrialSessionLimit(): number {

@@ -29,7 +29,7 @@ type SubscriptionPayload = {
   subscription: {
     id: string | null;
     pricingPlanId: string | null;
-    planKey: "free" | "monthly" | "yearly";
+    planKey: string;
     planName: string;
     status: string;
     badge: string;
@@ -41,6 +41,9 @@ type SubscriptionPayload = {
     trialEndsAt: string | null;
     renewalDate: string | null;
     paymentFailed: boolean;
+    currentPricePence: number;
+    currentInterval: PricingInterval;
+    currentCurrency: string;
   };
 };
 

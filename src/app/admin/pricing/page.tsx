@@ -15,6 +15,7 @@ type Plan = {
   interval: PricingInterval
   audience: PricingAudience
   features: string[]
+  childLimit: number
   priceNote: string | null
   badge: string | null
   ctaLabel: string
@@ -33,6 +34,7 @@ type BillingSetupStatus = {
   proPriceIdAdded: boolean
   annualFamilyPriceIdAdded: boolean
   webhookTested: boolean
+  legacyWarnings: string[]
 }
 
 const INTERVAL_OPTIONS: PricingInterval[] = ["month", "year", "custom"]
@@ -58,6 +60,7 @@ function emptyPlan(sortOrder = 0): Omit<Plan, "id"> {
     interval: "month",
     audience: "individual",
     features: [],
+    childLimit: 1,
     priceNote: null,
     badge: null,
     ctaLabel: "Start Free Trial",
@@ -244,6 +247,18 @@ export default function AdminPricingPage() {
           <SetupChecklistItem label="Annual Family price ID added" done={Boolean(setupStatus?.annualFamilyPriceIdAdded)} />
           <SetupChecklistItem label="Webhook tested" done={Boolean(setupStatus?.webhookTested)} />
         </div>
+        {setupStatus?.legacyWarnings?.length ? (
+          <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100">
+            <p className="font-semibold">Legacy pricing constants detected</p>
+            <ul className="mt-2 list-disc pl-5">
+              {setupStatus.legacyWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+            </ul>
+          </div>
+        ) : (
+          <p className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+            No legacy pricing constants detected in active parent billing and checkout surfaces.
+          </p>
+        )}
       </AdminSectionCard>
 
       <AdminSectionCard title="Create New Plan" className="space-y-4">
@@ -328,6 +343,16 @@ function PlanEditor({ plan, onChange, onSave, onDelete, saveLabel, saving, disab
             type="number"
             value={plan.sortOrder}
             onChange={(event) => onChange({ sortOrder: Number(event.target.value) || 0 })}
+            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+          />
+        </label>
+
+        <label className="text-xs font-semibold text-slate-400">Child Limit
+          <input
+            type="number"
+            min="1"
+            value={plan.childLimit}
+            onChange={(event) => onChange({ childLimit: Math.max(1, Number(event.target.value) || 1) })}
             className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
           />
         </label>

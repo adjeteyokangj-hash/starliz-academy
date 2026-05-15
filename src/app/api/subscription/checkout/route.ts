@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { getPaymentApiKey } from "@/lib/api-key-config";
-import { getPlan, normalizePlanKey } from "@/lib/subscriptions/plans";
+import { getPublicPricingPlans, planKeyFromPricingPlan } from "@/lib/pricing/service";
 
 const checkoutSchema = z.object({
   planKey: z.enum(["monthly", "yearly"]),
@@ -27,7 +27,18 @@ export async function POST(request: Request) {
 
   try {
     const body = checkoutSchema.parse(await request.json());
-    const plan = getPlan(body.planKey);
+    const plans = await getPublicPricingPlans();
+    const targetPlan = body.planKey === "yearly"
+      ? plans.find((plan) => plan.interval === "year")
+      : plans.find((plan) => plan.interval === "month" && plan.isPopular) ?? plans.find((plan) => plan.interval === "month");
+
+    if (!targetPlan) {
+      return NextResponse.json({ error: "No active pricing plan available for the selected interval." }, { status: 404 });
+    }
+
+    if (!targetPlan.stripePriceId) {
+      return NextResponse.json({ error: "Unavailable online for this plan. Please contact us." }, { status: 400 });
+    }
 
     if (body.provider === "paystack") {
       return NextResponse.json({
@@ -37,9 +48,7 @@ export async function POST(request: Request) {
     }
 
     const stripeSecret = await getPaymentApiKey();
-    const monthlyPrice = process.env.STRIPE_MONTHLY_PRICE_ID;
-    const yearlyPrice = process.env.STRIPE_YEARLY_PRICE_ID;
-    const priceId = body.planKey === "yearly" ? yearlyPrice : monthlyPrice;
+    const priceId = targetPlan.stripePriceId;
 
     if (!stripeSecret || !priceId) {
       if (process.env.NODE_ENV === "production") {
@@ -52,7 +61,8 @@ export async function POST(request: Request) {
           where: { id: existing.id },
           data: {
             provider: "stripe",
-            planKey: normalizePlanKey(body.planKey),
+            planKey: planKeyFromPricingPlan(targetPlan),
+            pricingPlanId: targetPlan.id,
             status: "active",
           },
         });
@@ -61,7 +71,8 @@ export async function POST(request: Request) {
           data: {
             parentId: parentScope.parentId,
             provider: "stripe",
-            planKey: normalizePlanKey(body.planKey),
+            planKey: planKeyFromPricingPlan(targetPlan),
+            pricingPlanId: targetPlan.id,
             status: "active",
           },
         });
@@ -83,7 +94,8 @@ export async function POST(request: Request) {
       cancel_url: `${origin}/subscription/cancel`,
       customer_email: parentScope.parentEmail,
       "metadata[parentId]": parentScope.parentId,
-      "metadata[planKey]": plan.key,
+      "metadata[planKey]": planKeyFromPricingPlan(targetPlan),
+      "metadata[pricingPlanId]": targetPlan.id,
       "metadata[provider]": "stripe",
     });
 
@@ -105,7 +117,8 @@ export async function POST(request: Request) {
     const existing = await prisma.subscription.findFirst({ where: { parentId: parentScope.parentId }, orderBy: { updatedAt: "desc" } });
     const updateData = {
       provider: "stripe",
-      planKey: plan.key,
+      planKey: planKeyFromPricingPlan(targetPlan),
+      pricingPlanId: targetPlan.id,
       status: "trialing",
       providerCustomerId: payload.customer ? String(payload.customer) : existing?.providerCustomerId ?? null,
       providerSubId: payload.id ? String(payload.id) : existing?.providerSubId ?? null,

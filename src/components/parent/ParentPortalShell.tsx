@@ -74,6 +74,9 @@ type SubscriptionPayload = {
     planName: string;
     badge: string;
     status: string;
+    currentPricePence: number;
+    currentCurrency: string;
+    currentInterval: "month" | "year" | "custom";
     childLimit: number;
     childrenUsed: number;
     upgradeRequired: boolean;
@@ -95,6 +98,7 @@ type SubscriptionPayload = {
     currency: string;
     interval: "month" | "year" | "custom";
     badge: string | null;
+    changeType?: "current" | "upgrade" | "downgrade" | "switch";
   }>;
 };
 
@@ -806,6 +810,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                 <BillingCard
                   currentPlanId={subscription.subscription.pricingPlanId}
                   planName={subscription.subscription.planName}
+                  currentPricePence={subscription.subscription.currentPricePence}
+                  currentCurrency={subscription.subscription.currentCurrency}
+                  currentInterval={subscription.subscription.currentInterval}
                   status={subscription.subscription.status}
                   childrenUsed={subscription.subscription.childrenUsed}
                   childLimit={subscription.subscription.childLimit}
@@ -823,6 +830,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     currency: plan.currency,
                     badge: plan.badge,
                     stripePriceId: plan.stripePriceId,
+                    changeType: plan.changeType,
                   }))}
                 />
               ) : (

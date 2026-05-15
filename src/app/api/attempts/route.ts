@@ -5,8 +5,7 @@ import { requireSession } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { recalculateWeakAreaFromAttempts } from "@/lib/ai/weak-area-detector";
 import { resolveParentScope } from "@/lib/parent_scope";
-import { getPlan } from "@/lib/subscriptions/plans";
-import { getTrialSessionLimit } from "@/lib/subscriptions/enforcement";
+import { checkSubscriptionAccess, getTrialSessionLimit } from "@/lib/subscriptions/enforcement";
 import { mergeWeakAreas, parseWeakAreaMetadata, stringifyWeakAreaMetadata } from "@/lib/weakAreas";
 import { updateStudentSkills } from "@/lib/skillEngine";
 import { parseSkills, skillFocusToCode } from "@/lib/skills";
@@ -152,13 +151,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
     }
 
-    const [user, subscription] = await Promise.all([
+    const [user, access] = await Promise.all([
       prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { trialSessionsUsed: true } }),
-      prisma.subscription.findFirst({ where: { parentId: parentScope.parentId }, orderBy: { updatedAt: "desc" } }),
+      checkSubscriptionAccess(parentScope.parentId),
     ]);
 
-    const plan = getPlan(subscription?.planKey);
-    const hasPaidSubscription = plan.key !== "free" && (subscription?.status ?? "active") === "active";
+    const hasPaidSubscription = access.hasPaidSubscription === true && access.allowed;
     if (!hasPaidSubscription && (user?.trialSessionsUsed ?? 0) >= getTrialSessionLimit()) {
       return NextResponse.json({ error: "Subscription required" }, { status: 403 });
     }

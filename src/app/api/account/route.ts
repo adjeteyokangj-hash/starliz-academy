@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getAuthCookieName } from "@/lib/auth";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
-import { getPlan, planBadgeText } from "@/lib/subscriptions/plans";
+import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
 import { writeAuditLog } from "@/lib/audit";
 
 const PARENT_NOTIFICATION_TYPES = {
@@ -144,6 +144,7 @@ export async function GET() {
       where: { parentId: parentScope.parentId },
       orderBy: { updatedAt: "desc" },
       select: {
+        pricingPlanId: true,
         planKey: true,
         status: true,
         provider: true,
@@ -170,7 +171,13 @@ export async function GET() {
     }
   }
 
-  const plan = getPlan(subscription?.planKey);
+  const currentPricingPlan = await resolveCurrentPricingPlan({
+    pricingPlanId: subscription?.pricingPlanId ?? null,
+    legacyPlanKey: subscription?.planKey ?? null,
+  });
+  const resolvedPlanName = currentPricingPlan?.name ?? "Free";
+  const resolvedPlanBadge = currentPricingPlan?.badge ?? resolvedPlanName;
+  const resolvedChildLimit = currentPricingPlan?.childLimit ?? 1;
 
   return NextResponse.json({
     account: {
@@ -180,11 +187,11 @@ export async function GET() {
       role: account.role,
       createdAt: account.createdAt.toISOString(),
       linkedChildrenCount: childrenCount,
-      subscriptionStatus: planBadgeText(subscription?.planKey, subscription?.status),
+      subscriptionStatus: resolvedPlanBadge,
       subscriptionState: subscription?.status ?? "active",
-      subscriptionPlanKey: plan.key,
+      subscriptionPlanKey: subscription?.planKey ?? "free",
       subscriptionProvider: subscription?.provider ?? "stripe",
-      childLimit: plan.childLimit,
+      childLimit: resolvedChildLimit,
       trialUsed: account.trialSessionsUsed,
       renewalDate: subscription?.currentPeriodEnd?.toISOString() ?? null,
       stripeCustomerId: parentProfile?.stripeCustomerId ?? null,

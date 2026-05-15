@@ -170,12 +170,15 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
 
         <div className="mt-8 grid gap-8 lg:grid-cols-2">
           <ul className="space-y-3 text-slate-300">
-            <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Multi-student management</li>
-            <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Teacher/admin dashboard</li>
-            <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Safeguarding and reports</li>
-            <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>AI learning insights</li>
-            <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Safeguarding-focused access controls</li>
-            <li className="flex items-start gap-2"><span className="text-blue-400">✓</span>Custom onboarding support</li>
+            {(orgPlans[0]?.features ?? [
+              "Multi-student management",
+              "Teacher/admin dashboard",
+              "Safeguarding and reports",
+              "AI learning insights",
+              "Custom onboarding support",
+            ]).map((feature) => (
+              <li key={feature} className="flex items-start gap-2"><span className="text-blue-400">✓</span>{feature}</li>
+            ))}
           </ul>
 
           <div className="rounded-2xl border border-slate-700 bg-slate-950 p-6 text-center lg:text-left">

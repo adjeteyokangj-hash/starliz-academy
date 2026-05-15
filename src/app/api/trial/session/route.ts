@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
-import { getPlan } from "@/lib/subscriptions/plans";
-import { getTrialSessionLimit } from "@/lib/subscriptions/enforcement";
+import { checkSubscriptionAccess, getTrialSessionLimit } from "@/lib/subscriptions/enforcement";
 
 export async function POST() {
   const { session, response } = await requireSession();
@@ -14,9 +13,9 @@ export async function POST() {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
 
-  const [user, subscription] = await Promise.all([
+  const [user, access] = await Promise.all([
     prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { id: true, trialSessionsUsed: true } }),
-    prisma.subscription.findFirst({ where: { parentId: parentScope.parentId }, orderBy: { updatedAt: "desc" } }),
+    checkSubscriptionAccess(parentScope.parentId),
   ]);
 
   if (!user) {
@@ -24,8 +23,7 @@ export async function POST() {
   }
 
   const limit = getTrialSessionLimit();
-  const plan = getPlan(subscription?.planKey);
-  const hasPaidSubscription = plan.key !== "free" && (subscription?.status ?? "active") === "active";
+  const hasPaidSubscription = access.hasPaidSubscription === true && access.allowed;
 
   if (hasPaidSubscription) {
     return NextResponse.json({ ok: true, hasPaidSubscription: true, trialSessionsUsed: user.trialSessionsUsed, trialSessionsLeft: limit });

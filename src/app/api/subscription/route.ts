@@ -4,11 +4,10 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { canAddChild } from "@/lib/subscriptions/enforcement";
-import { getPlan, normalizePlanKey, planBadgeText, SubscriptionPlanKey } from "@/lib/subscriptions/plans";
-import { getPublicPricingPlans, resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import { getPublicPricingPlans, planKeyFromPricingPlan, resolveCurrentPricingPlan } from "@/lib/pricing/service";
 
 const updateSchema = z.object({
-  planKey: z.enum(["free", "monthly", "yearly"]).optional(),
+  pricingPlanId: z.string().min(1).optional(),
   status: z.enum(["active", "trialing", "cancelled", "past_due", "blocked"]).optional(),
 });
 
@@ -30,46 +29,60 @@ export async function GET() {
     prisma.childProfile.count({ where: { parentId: parentScope.parentId, archived: false } }),
   ]);
 
-  const plan = getPlan(subscription?.planKey);
   const currentPricingPlan = await resolveCurrentPricingPlan({
     pricingPlanId: subscription?.pricingPlanId,
     legacyPlanKey: subscription?.planKey,
   });
   const pricingPlans = await getPublicPricingPlans();
-
-  const inferredChildLimit = currentPricingPlan?.audience === "individual" ? 1 : 6;
+  const currentPricePence = currentPricingPlan ? Math.round(currentPricingPlan.price * 100) : 0;
+  const currentInterval = currentPricingPlan?.interval ?? "custom";
+  const currentChildLimit = currentPricingPlan?.childLimit ?? 1;
 
   return NextResponse.json({
     subscription: {
       id: subscription?.id ?? null,
       pricingPlanId: currentPricingPlan?.id ?? subscription?.pricingPlanId ?? null,
-      planKey: plan.key,
-      planName: currentPricingPlan?.name ?? plan.name,
+      planKey: subscription?.planKey ?? (currentPricingPlan ? planKeyFromPricingPlan(currentPricingPlan) : "free"),
+      planName: currentPricingPlan?.name ?? "Free",
       status: subscription?.status ?? "active",
-      badge: currentPricingPlan?.badge ?? currentPricingPlan?.name ?? planBadgeText(subscription?.planKey, subscription?.status),
+      badge: currentPricingPlan?.badge ?? currentPricingPlan?.name ?? "Free",
       provider: subscription?.provider ?? "stripe",
-      childLimit: currentPricingPlan ? inferredChildLimit : plan.childLimit,
+      childLimit: currentChildLimit,
       childrenUsed,
       upgradeRequired: !access.allowed,
       reason: access.reason ?? null,
       trialEndsAt: subscription?.trialEndsAt?.toISOString() ?? null,
       renewalDate: subscription?.currentPeriodEnd?.toISOString() ?? null,
       paymentFailed: (subscription?.status ?? "").toLowerCase() === "past_due",
+      currentPricePence,
+      currentInterval,
+      currentCurrency: currentPricingPlan?.currency ?? "GBP",
     },
     plans: pricingPlans.map((entry) => ({
       id: entry.id,
-      key: entry.id,
+      key: planKeyFromPricingPlan(entry),
       name: entry.name,
       stripePriceId: entry.stripePriceId,
       monthlyPricePence: entry.interval === "month" ? Math.round(entry.price * 100) : null,
       yearlyPricePence: entry.interval === "year" ? Math.round(entry.price * 100) : null,
-      childLimit: entry.audience === "individual" ? 1 : 6,
+      childLimit: entry.childLimit,
       description: entry.description,
       features: entry.features,
       price: entry.price,
       currency: entry.currency,
       interval: entry.interval,
       badge: entry.badge,
+      stripeAvailable: (entry.interval === "month" || entry.interval === "year") && Boolean(entry.stripePriceId),
+      changeType:
+        currentPricingPlan?.id === entry.id
+          ? "current"
+          : currentPricingPlan
+          ? entry.price > currentPricingPlan.price
+            ? "upgrade"
+            : entry.price < currentPricingPlan.price
+            ? "downgrade"
+            : "switch"
+          : "upgrade",
     })),
   });
 }
@@ -87,11 +100,22 @@ export async function PATCH(request: Request) {
     const body = updateSchema.parse(await request.json());
     const current = await prisma.subscription.findFirst({ where: { parentId: parentScope.parentId }, orderBy: { updatedAt: "desc" } });
 
-    const planKey = normalizePlanKey(body.planKey ?? current?.planKey) as SubscriptionPlanKey;
+    let pricingPlanId = current?.pricingPlanId ?? null;
+    let planKey = current?.planKey ?? "free";
+    if (body.pricingPlanId) {
+      const selected = await prisma.pricingPlan.findFirst({
+        where: { id: body.pricingPlanId, isActive: true },
+      });
+      if (!selected) {
+        return NextResponse.json({ error: "Selected pricing plan is unavailable." }, { status: 404 });
+      }
+      pricingPlanId = selected.id;
+      planKey = planKeyFromPricingPlan({ id: selected.id, name: selected.name });
+    }
     const status = body.status ?? current?.status ?? "active";
 
     const payload = {
-      pricingPlanId: current?.pricingPlanId ?? null,
+      pricingPlanId,
       planKey,
       status,
       provider: current?.provider ?? "stripe",

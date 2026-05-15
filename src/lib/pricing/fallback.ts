@@ -11,6 +11,7 @@ export type PricingPlanView = {
   interval: PricingInterval
   audience: PricingAudience
   features: string[]
+  childLimit: number
   priceNote: string | null
   badge: string | null
   ctaLabel: string
@@ -36,6 +37,7 @@ export const FALLBACK_PRICING_PLANS: PricingPlanView[] = [
       "Voice-friendly spelling practice",
       "Parent progress insights",
     ],
+    childLimit: 1,
     priceNote: null,
     badge: null,
     ctaLabel: "Start Free Trial",
@@ -59,6 +61,7 @@ export const FALLBACK_PRICING_PLANS: PricingPlanView[] = [
       "Unlimited sessions",
       "Parent progress insights",
     ],
+    childLimit: 4,
     priceNote: null,
     badge: "Most Popular",
     ctaLabel: "Start Free Trial",
@@ -82,6 +85,7 @@ export const FALLBACK_PRICING_PLANS: PricingPlanView[] = [
       "Priority access to new learning features",
       "Best value for families",
     ],
+    childLimit: 6,
     priceNote: "Less than £0.25 per day",
     badge: "Best Value",
     ctaLabel: "Start Free Trial",
@@ -107,6 +111,7 @@ export const FALLBACK_PRICING_PLANS: PricingPlanView[] = [
       "Safeguarding-focused access controls",
       "Custom onboarding support",
     ],
+    childLimit: 100,
     priceNote: null,
     badge: "Custom Pricing",
     ctaLabel: "Contact Us for School Pricing",

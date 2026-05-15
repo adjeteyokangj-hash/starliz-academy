@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/db"
 import { requireAdmin } from "@/lib/api_guard"
+import { toPricingFeaturesStorage } from "@/lib/pricing/service"
 
 const pricingPlanUpdate = z.object({
   name: z.string().min(1),
@@ -11,6 +12,7 @@ const pricingPlanUpdate = z.object({
   interval: z.enum(["month", "year", "custom"]),
   audience: z.enum(["individual", "family", "school", "organisation"]),
   features: z.array(z.string()).default([]),
+  childLimit: z.number().int().min(1).default(1),
   priceNote: z.string().nullable().optional(),
   badge: z.string().nullable().optional(),
   ctaLabel: z.string().min(1),
@@ -43,7 +45,7 @@ export async function PUT(request: Request, context: RouteContext) {
         currency: parsed.currency,
         interval: parsed.interval,
         audience: parsed.audience,
-        features: parsed.features,
+        features: toPricingFeaturesStorage({ features: parsed.features, childLimit: parsed.childLimit }),
         priceNote: parsed.priceNote ?? null,
         badge: parsed.badge ?? null,
         ctaLabel: parsed.ctaLabel,

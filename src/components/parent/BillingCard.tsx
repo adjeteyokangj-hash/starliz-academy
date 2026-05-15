@@ -6,6 +6,9 @@ import Button from '@/components/ui/Button';
 type BillingCardProps = {
   currentPlanId: string | null;
   planName: string;
+  currentPricePence: number;
+  currentCurrency: string;
+  currentInterval: 'month' | 'year' | 'custom';
   status: string;
   childrenUsed: number;
   childLimit: number;
@@ -23,12 +26,16 @@ type BillingCardProps = {
     currency: string;
     badge: string | null;
     stripePriceId: string | null;
+    changeType?: 'current' | 'upgrade' | 'downgrade' | 'switch';
   }>;
 };
 
 export default function BillingCard({ 
   currentPlanId,
   planName, 
+  currentPricePence,
+  currentCurrency,
+  currentInterval,
   status, 
   childrenUsed, 
   childLimit, 
@@ -43,6 +50,7 @@ export default function BillingCard({
   const [portalError, setPortalError] = useState<string | null>(null);
   const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
+  const [intervalFilter, setIntervalFilter] = useState<'month' | 'year'>('month');
 
   const availableCheckoutPlans = useMemo(
     () => plans.filter((plan) => plan.interval !== 'custom' && Boolean(plan.stripePriceId)),
@@ -59,6 +67,11 @@ export default function BillingCard({
   const currencyFormat = (value: number, currency: string) => {
     return new Intl.NumberFormat('en-GB', { style: 'currency', currency: currency.toUpperCase() }).format(value);
   };
+
+  const plansByInterval = useMemo(
+    () => plans.filter((plan) => plan.interval === intervalFilter),
+    [plans, intervalFilter],
+  );
 
   async function startCheckout(plan: BillingCardProps['plans'][number]) {
     if (!plan.stripePriceId) {
@@ -148,6 +161,15 @@ export default function BillingCard({
           <p className="mt-1 text-xs text-slate-400">{childLimit - childrenUsed} available</p>
         </div>
 
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+          <p className="text-xs uppercase tracking-widest text-slate-400">Current price</p>
+          <p className="mt-1 text-lg font-bold text-white">
+            {currentPricePence > 0
+              ? `${currencyFormat(currentPricePence / 100, currentCurrency)} / ${currentInterval}`
+              : 'Free'}
+          </p>
+        </div>
+
         {trialEndsAt && (
           <div className="rounded-xl border border-white/10 bg-white/5 p-3">
             <p className="text-xs uppercase tracking-widest text-slate-400">Trial</p>
@@ -203,15 +225,9 @@ export default function BillingCard({
             disabled={openingPortal || !stripeCustomerId}
             className="bg-slate-700 hover:bg-slate-600"
           >
-            {openingPortal ? 'Opening...' : 'Manage Subscription'}
+            {openingPortal ? 'Opening...' : 'Manage billing in Stripe'}
           </Button>
         ) : null}
-
-        {!billingSetupPending && !stripeCustomerId && !upgradeRequired && (
-          <p className="text-sm text-slate-400">
-            You&apos;re on the free plan. {childrenUsed >= childLimit ? 'Upgrade to add more children.' : 'Upgrade to unlock advanced features.'}
-          </p>
-        )}
       </div>
 
       {checkoutError ? (
@@ -228,8 +244,24 @@ export default function BillingCard({
 
       {plans.length > 0 ? (
         <div className="mt-5 grid gap-2 sm:grid-cols-2">
-          {plans
-            .filter((plan) => plan.interval !== 'custom')
+          <div className="sm:col-span-2 flex gap-2 rounded-xl border border-white/10 bg-white/5 p-1">
+            <button
+              type="button"
+              onClick={() => setIntervalFilter('month')}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold ${intervalFilter === 'month' ? 'bg-cyan-600 text-white' : 'text-slate-300 hover:bg-white/5'}`}
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              onClick={() => setIntervalFilter('year')}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold ${intervalFilter === 'year' ? 'bg-cyan-600 text-white' : 'text-slate-300 hover:bg-white/5'}`}
+            >
+              Yearly
+            </button>
+          </div>
+
+          {plansByInterval
             .map((plan) => (
               <button
                 key={plan.id}
@@ -249,8 +281,11 @@ export default function BillingCard({
                   {currencyFormat(plan.price, plan.currency)} / {plan.interval}
                 </p>
                 {plan.badge ? <p className="mt-1 text-xs text-cyan-300">{plan.badge}</p> : null}
+                {plan.changeType && plan.changeType !== 'current' ? (
+                  <p className="mt-1 text-xs text-slate-300">{plan.changeType === 'upgrade' ? 'Upgrade option' : plan.changeType === 'downgrade' ? 'Downgrade option' : 'Switch plan'}</p>
+                ) : null}
                 {!plan.stripePriceId ? (
-                  <p className="mt-1 text-xs text-slate-500 italic">Plan not available yet - missing Stripe price ID.</p>
+                  <p className="mt-1 text-xs text-slate-500 italic">Unavailable online. Contact us for this plan.</p>
                 ) : null}
               </button>
             ))}
