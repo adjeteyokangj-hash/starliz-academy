@@ -5,9 +5,6 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   allowedDevOrigins: ["127.0.0.1"],
   serverExternalPackages: ["imapflow", "nodemailer"],
-  turbopack: {
-    root: process.cwd(),
-  },
   async headers() {
     return [
       {

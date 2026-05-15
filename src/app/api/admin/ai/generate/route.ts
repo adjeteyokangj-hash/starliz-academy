@@ -853,13 +853,14 @@ export async function POST(req: Request) {
   const sourceSubject = normalizedSubject as Subject;
   const requestedCount = body.numberOfItems ?? body.count;
   const requestedLevel = body.difficulty ?? body.level;
+  const rawYearGroup = typeof body.yearGroup === "string" ? body.yearGroup : "Year 1";
 
   const generationType = mapSubjectToGenerationType(sourceSubject);
   const promptType = mapGenerationTypeToPromptType(generationType);
   const validatorType = mapGenerationTypeToValidatorType(generationType);
-  const level = requestedLevel;
+  const level = typeof requestedLevel === "number" ? requestedLevel : Number(requestedLevel);
   const topic = typeof body.topic === "string" ? body.topic : "";
-  const ageGroup = typeof body.ageGroup === "string" ? body.ageGroup : ageGroupForYearGroup(body.yearGroup || "Year 1");
+  const ageGroup = typeof body.ageGroup === "string" ? body.ageGroup : ageGroupForYearGroup(rawYearGroup);
   const count = Math.max(1, Math.min(30, Number(requestedCount ?? BATCH_SIZE)));
   const keyStage = typeof body.keyStage === "string" ? body.keyStage : "KS1";
   const yearGroup = typeof body.yearGroup === "string" ? body.yearGroup : "";
