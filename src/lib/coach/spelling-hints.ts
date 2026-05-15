@@ -317,6 +317,15 @@ export function buildSpellingCoachResponse(ctx: CoachContext): CoachResponse {
       ? "Now try: look at the word for 10 seconds, cover it, write it from memory."
       : null,
     masterySignal: null,
+  emotionalTone: ctx.attemptCount > 2
+    ? "You are not giving up — that is great. Let's try a different way to remember this."
+    : ctx.hintCount >= 2
+    ? "You have been working at this — let's look at it together piece by piece."
+    : "Let's think about the sounds and patterns in this word.",
+  waitPrompt: "Before reading the hint — say the word out loud once and think about how it sounds.",
+  similarQuestion: shouldReveal
+    ? { prompt: `Cover "${ctx.correctAnswer}" and write it from memory. Then check your spelling.` }
+    : undefined,
   };
 }
 

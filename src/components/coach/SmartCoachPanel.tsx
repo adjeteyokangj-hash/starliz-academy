@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CoachResponse, CoachSubject } from "@/lib/coach/types";
+import {
+  recordCoachInteraction,
+  getSessionSummary,
+} from "@/lib/coach/session-memory";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -21,6 +25,11 @@ export type SmartCoachPanelProps = {
   skillFocus?: string;
   /** 0–1 from coaching memory. Defaults to 0.5. */
   confidenceScore?: number;
+  /**
+   * Time the student spent on the question before opening the coach, in ms.
+   * Used for emotional state detection and wait-phase skip logic.
+   */
+  responseTimeMs?: number;
   /** Called each time the student consumes a hint level. */
   onHintUsed: (newHintCount: number) => void;
   onClose: () => void;
@@ -42,6 +51,7 @@ export default function SmartCoachPanel({
   yearGroup,
   skillFocus,
   confidenceScore = 0.5,
+    responseTimeMs,
   onHintUsed,
   onClose,
 }: SmartCoachPanelProps) {
@@ -58,9 +68,19 @@ export default function SmartCoachPanel({
   const [localHintCount, setLocalHintCount] = useState(hintCount);
   const fetchedForRef = useRef<number | null>(null);
 
+  // Wait-phase: 3 seconds on first hint, skipped if student spent > 30s
+  const skipWait = (responseTimeMs ?? 0) > 30_000;
+  const isFirstHint = hintCount === 0;
+  const [waitPhase, setWaitPhase] = useState(isFirstHint && !skipWait);
+  const [waitCountdown, setWaitCountdown] = useState(3);
+
+  // Session summary (client-side, resets on page reload)
+  const sessionSummary = getSessionSummary(subject, skillFocus);
+
   // ── Fetch coach response ──────────────────────────────────────────────────
 
   useEffect(() => {
+    if (waitPhase) return; // hold during wait
     if (fetchedForRef.current === localHintCount) return;
     fetchedForRef.current = localHintCount;
 
@@ -82,6 +102,7 @@ export default function SmartCoachPanel({
       yearGroup,
       skillFocus,
       confidenceScore,
+      responseTimeMs,
     };
 
     fetch("/api/coach", {
@@ -102,6 +123,7 @@ export default function SmartCoachPanel({
         setLoading(false);
       });
   }, [
+    waitPhase,
     localHintCount,
     subject,
     question,
@@ -113,7 +135,33 @@ export default function SmartCoachPanel({
     yearGroup,
     skillFocus,
     confidenceScore,
+    responseTimeMs,
   ]);
+
+  // ── Wait-phase countdown ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!waitPhase) return;
+    if (waitCountdown <= 0) { setWaitPhase(false); return; }
+    const t = setTimeout(() => setWaitCountdown((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [waitPhase, waitCountdown]);
+
+  // ── Record interaction on reveal ─────────────────────────────────────────
+
+  useEffect(() => {
+    if (response?.shouldReveal) {
+      recordCoachInteraction({
+        questionText: question,
+        subject,
+        skillFocus,
+        hintsUsed: localHintCount,
+        correct: false,
+        responseTimeMs: responseTimeMs ?? 0,
+        timestamp: Date.now(),
+      });
+    }
+  }, [response?.shouldReveal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -133,6 +181,11 @@ export default function SmartCoachPanel({
     const newCount = localHintCount + 1;
     setLocalHintCount(newCount);
     onHintUsed(newCount);
+
+    function handleSkipWait() {
+      setWaitCountdown(0);
+      setWaitPhase(false);
+    }
   }
 
   // Can progress to next hint if:
@@ -148,6 +201,32 @@ export default function SmartCoachPanel({
   // ── Render helpers ────────────────────────────────────────────────────────
 
   const hintDots = response ? Array.from({ length: 4 }, (_, i) => i < response.hintLevel) : [];
+
+  // ── Render: wait phase ────────────────────────────────────────────────────
+
+  if (waitPhase) {
+    return (
+      <CoachShell>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-700">Smart Coach</p>
+          <CloseButton onClick={onClose} />
+        </div>
+        <div className="mt-4 text-center">
+          <p className="text-2xl">🤔</p>
+          <p className="mt-2 text-sm font-semibold text-cyan-900">
+            Take a moment to think before I help you…
+          </p>
+          <p className="mt-1 text-xs text-slate-400">Hint in {waitCountdown}s</p>
+          <button
+            onClick={handleSkipWait}
+            className="mt-3 text-xs font-medium text-slate-400 underline hover:text-slate-600"
+          >
+            Skip
+          </button>
+        </div>
+      </CoachShell>
+    );
+  }
 
   if (loading) {
     return (
@@ -206,7 +285,24 @@ export default function SmartCoachPanel({
         </button>
       </div>
 
-      {/* Main message */}
+      {/* Emotional tone — empathetic opening line */}
+      {response.emotionalTone && (
+        <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2">
+          <p className="text-sm font-medium text-indigo-800">{response.emotionalTone}</p>
+        </div>
+      )}
+
+      {/* Session continuity note */}
+      {sessionSummary.continuityNote && (
+        <div className="mt-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2">
+          <p className="text-xs text-amber-800">
+            <span className="font-bold">From earlier: </span>
+            {sessionSummary.continuityNote}
+          </p>
+        </div>
+      )}
+
+      {/* Main coaching message */}
       <p className="mt-3 text-sm leading-6 text-cyan-950">{response.message}</p>
 
       {/* Visual steps */}
@@ -267,6 +363,24 @@ export default function SmartCoachPanel({
       {/* Try-again prompt after reveal */}
       {shouldReveal && tryAgainPrompt && (
         <p className="mt-2 text-xs italic text-slate-500">{tryAgainPrompt}</p>
+
+            {/* Similar question — mastery check after reveal */}
+            {shouldReveal && response.similarQuestion && (
+              <div className="mt-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 px-4 py-3">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                  Now prove it — try this:
+                </p>
+                <p className="mt-1 text-sm font-semibold text-emerald-900">{response.similarQuestion.prompt}</p>
+                {response.similarQuestion.answer && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs font-medium text-emerald-600 hover:text-emerald-800">
+                      Check answer
+                    </summary>
+                    <p className="mt-1 font-mono text-sm font-bold text-emerald-900">{response.similarQuestion.answer}</p>
+                  </details>
+                )}
+              </div>
+            )}
       )}
 
       {/* Reinforcement note */}
@@ -313,6 +427,20 @@ function CoachShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-[1.75rem] border border-cyan-200 bg-cyan-50/80 p-4 shadow-sm">
       {children}
+
+    function CloseButton({ onClick }: { onClick: () => void }) {
+      return (
+        <button
+          onClick={onClick}
+          aria-label="Close coach"
+          className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" />
+          </svg>
+        </button>
+      );
+    }
     </div>
   );
 }

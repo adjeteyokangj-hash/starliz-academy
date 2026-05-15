@@ -46,6 +46,8 @@ export type CoachContext = {
   skillFocus?: string;      // e.g. "linear_equations", "phonics_blends"
   confidenceScore: number;  // 0–1 from coaching memory
   weakSkills?: string[];    // known weak areas from progress tracking
+  /** Time the student spent on this question before asking for help, in ms. */
+  responseTimeMs?: number;
 };
 
 /** One visible line of algebraic / logical working. */
@@ -78,6 +80,12 @@ export type CoachResponse = {
   reinforcementNote: string;     // exam tip / memory peg / encouragement
   tryAgainPrompt: string | null; // shown after reveal: "now try a similar one"
   masterySignal: MasterySignal | null;
+  /** Short empathetic opening line shown above the main coaching message. */
+  emotionalTone: string;
+  /** Prompt shown during the 2-second wait phase before hint loads. */
+  waitPrompt?: string;
+  /** Follow-up question after full reveal — mastery confirmation. */
+  similarQuestion?: { prompt: string; answer?: string };
 };
 
 /** Emitted when the student interacts with the coach — feeds tracking. */

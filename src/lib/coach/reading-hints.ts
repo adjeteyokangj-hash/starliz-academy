@@ -272,6 +272,15 @@ export function buildReadingCoachResponse(ctx: CoachContext): CoachResponse {
       ? "Now re-read that section of the passage — can you explain in your own words why that is the answer?"
       : null,
     masterySignal: null,
+  emotionalTone: ctx.attemptCount > 1
+    ? "Good persistence — let's look at this from a different angle."
+    : hintLevel >= 3
+    ? "You are working hard on this — let's break it down clearly."
+    : "Let's look for the clues in the text.",
+  waitPrompt: "Before reading the hint — re-read the relevant part of the passage first.",
+  similarQuestion: shouldReveal
+    ? { prompt: `Find another sentence in the text that relates to "${ctx.skillFocus ?? "the same skill"}" and explain it in your own words.` }
+    : undefined,
   };
 }
 

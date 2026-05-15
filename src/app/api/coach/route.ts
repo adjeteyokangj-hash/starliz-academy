@@ -57,6 +57,10 @@ function parseBody(raw: unknown): CoachContext | null {
     weakSkills: Array.isArray(b["weakSkills"])
       ? (b["weakSkills"] as unknown[]).filter((s): s is string => typeof s === "string").slice(0, 10)
       : undefined,
+    responseTimeMs:
+      typeof b["responseTimeMs"] === "number" && Number.isFinite(b["responseTimeMs"])
+        ? Math.min(Math.max(0, b["responseTimeMs"]), 300_000)
+        : undefined,
   };
 }
 

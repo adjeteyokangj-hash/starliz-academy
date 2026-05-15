@@ -6,6 +6,51 @@
 import { AgeBand, CoachContext, CoachFollowUp, CoachResponse, CoachStep } from "./types";
 
 // ── Equation parsers ──────────────────────────────────────────────────────────
+// ── Emotional field builder ───────────────────────────────────────────────────
+
+function mathsEmotionalFields(ctx: CoachContext, shouldReveal: boolean, question: string, correctAnswer: string) {
+  const hintCount = ctx.hintCount;
+  const attemptCount = ctx.attemptCount;
+
+  const emotionalTone =
+    hintCount >= 3
+      ? "You have been working hard — let's look at this from the very beginning."
+      : attemptCount >= 3
+      ? "Real persistence here. Let's find exactly where the calculation is going differently."
+      : ctx.confidenceScore < 0.35
+      ? "Take your time — there is no rush. Let's do this together."
+      : "Good effort — here is the next step to help you think it through.";
+
+  const waitPrompt = "Before reading — have another look at the equation and try to spot the first move.";
+
+  const similarQuestion: { prompt: string; answer?: string } | undefined = shouldReveal
+    ? (() => {
+        // Linear: ax + b = c  → try ax + (b+2) = c+2
+        const lm = question.match(/^(\d+)?\s*x\s*([+\-])\s*(\d+)\s*=\s*(\d+)$/i);
+        if (lm) {
+          const a = lm[1] ? Number(lm[1]) : 1;
+          const sign = lm[2]!;
+          const b = Number(lm[3]) + 2;
+          const c = Number(lm[4]) + 2;
+          return { prompt: `Now try: ${a === 1 ? "" : a}x ${sign} ${b} = ${c}`, answer: correctAnswer };
+        }
+        // Arithmetic: left OP right → (left+1) OP (right+1)
+        const am = question.match(/(-?\d+(?:\.\d+)?)\s*([+\-×x\*÷\/])\s*(-?\d+(?:\.\d+)?)/);
+        if (am) {
+          const left = Number(am[1]) + 1;
+          const op = am[2]!;
+          const right = Number(am[3]) + 1;
+          const ops: Record<string, string> = { "+": "+", "-": "−", "×": "×", "x": "×", "*": "×", "÷": "÷", "/": "÷" };
+          return { prompt: `Now try: ${left} ${ops[op] ?? op} ${right}` };
+        }
+        return { prompt: "Try a similar problem on your own using the same method." };
+      })()
+    : undefined;
+
+  return { emotionalTone, waitPrompt, similarQuestion };
+}
+
+// ── Equation parsers ──────────────────────────────────────────────────────────
 
 type LinearEq = { type: "linear"; a: number; b: number; c: number; bSign: "+" | "-" };
 type Arithmetic = { type: "arith"; left: number; right: number; op: "+" | "-" | "×" | "÷" };
@@ -31,8 +76,9 @@ function parsePattern(question: string): MathPattern {
     return { type: "bracket", outer, inner, offset, total };
   }
 
-  // Linear: (a)x ± b = c   e.g. "2x + 3 = 11",  "x - 5 = 9"
-  const linearMatch = q.match(/^(\d+)?\s*x\s*([+\-])\s*(\d+)\s*=\s*(\d+)$/i);
+                tryAgainPrompt: shouldReveal ? "Try a similar question on your own before asking for help again." : null,
+                masterySignal: null,
+                ...emotFields,
   if (linearMatch) {
     return {
       type: "linear",
@@ -223,6 +269,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
   const hintLevel = Math.min(ctx.hintCount + 1, 4);
   const shouldReveal = hintLevel >= 4;
   const { ageBand } = ctx;
+  const emotFields = mathsEmotionalFields(ctx, shouldReveal, ctx.question, ctx.correctAnswer);
 
   // ── mistake recovery takes priority ──────────────────────────────────────
   if (ctx.studentAnswer !== undefined && ctx.studentAnswer !== "") {
@@ -265,6 +312,12 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
   }
 
   // ── hint / guided mode ────────────────────────────────────────────────────
+
+      ...emotFields,
+    };
+  }
+
+  // ── hint / guided mode ────────────────────────────────────────────────────
   if (pattern.type === "linear") {
     const eq = pattern;
     const steps = linearSteps(eq, hintLevel);
@@ -296,6 +349,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
           : "Can you spot a similar equation? Try it before asking for the next hint."
         : null,
       masterySignal: null,
+      ...emotFields,
     };
   }
 
@@ -325,6 +379,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
       reinforcementNote: reinforcementNote(pattern, ageBand),
       tryAgainPrompt: shouldReveal ? "Try another bracket equation on your own." : null,
       masterySignal: null,
+      ...emotFields,
     };
   }
 
@@ -369,6 +424,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
       reinforcementNote: reinforcementNote(pattern, ageBand),
       tryAgainPrompt: shouldReveal ? "Now try a similar question without hints." : null,
       masterySignal: null,
+      ...emotFields,
     };
   }
 
@@ -396,6 +452,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
     reinforcementNote: reinforcementNote({ type: "unknown" }, ageBand),
     tryAgainPrompt: shouldReveal ? "Try reading the question again on your own now that you have seen the answer." : null,
     masterySignal: null,
+    ...emotFields,
   };
 }
 

@@ -8,6 +8,8 @@ import { AgeBand, CoachContext, CoachResponse, MasterySignal } from "./types";
 import { buildMathsCoachResponse } from "./maths-steps";
 import { buildReadingCoachResponse } from "./reading-hints";
 import { buildSpellingCoachResponse } from "./spelling-hints";
+import { buildScienceCoachResponse } from "./science-hints";
+import { buildEnglishCoachResponse } from "./english-hints";
 
 // ── Age-band resolver ─────────────────────────────────────────────────────────
 
@@ -94,7 +96,7 @@ export function computeConfidenceDelta(signal: MasterySignal | null, hintsUsed: 
 
 // ── Science fallback ──────────────────────────────────────────────────────────
 
-function buildScienceCoachResponse(ctx: CoachContext): CoachResponse {
+function buildScienceFallback(ctx: CoachContext): CoachResponse {
   const hintLevel = Math.min(ctx.hintCount + 1, 4);
   const shouldReveal = hintLevel >= 4;
   const { ageBand } = ctx;
@@ -136,6 +138,8 @@ function buildScienceCoachResponse(ctx: CoachContext): CoachResponse {
         : "Think about what you know from class: what causes this? What is the effect?",
     tryAgainPrompt: shouldReveal ? "Can you now explain this in your own words without looking?" : null,
     masterySignal: null,
+    emotionalTone: "Let's think through the science step by step.",
+    waitPrompt: "Before reading — recall what you already know about this topic.",
   };
 }
 
@@ -154,15 +158,93 @@ export function buildCoachResponse(ctx: CoachContext): CoachResponse {
     case "maths":
       return buildMathsCoachResponse(safeCtx);
     case "reading":
-    case "english":
       return buildReadingCoachResponse(safeCtx);
+    case "english":
+      return buildEnglishCoachResponse(safeCtx);
     case "spelling":
       return buildSpellingCoachResponse(safeCtx);
     case "science":
-      return buildScienceCoachResponse(safeCtx);
+      return buildScienceCoachResponse(safeCtx); // from science-hints.ts
     default:
       return buildMathsCoachResponse(safeCtx); // safe fallback
   }
+}
+
+// ── Emotional tone helper ─────────────────────────────────────────────────────
+
+/**
+ * Returns a short empathetic opening line calibrated to the student's
+ * current state. Called by the engine on every response.
+ */
+export function buildEmotionalTone(ctx: CoachContext): string {
+  const { hintCount, attemptCount, studentAnswer, correctAnswer, confidenceScore } = ctx;
+
+  // Very close to correct answer
+  if (studentAnswer && correctAnswer) {
+    const sNum = Number(studentAnswer);
+    const cNum = Number(correctAnswer);
+    if (Number.isFinite(sNum) && Number.isFinite(cNum)) {
+      if (sNum === cNum) return "That is correct — well done!";
+      if (Math.abs(sNum - cNum) <= 2) return "You are very close — just one small step away.";
+    }
+  }
+
+  if (hintCount >= 3) return "You have been working hard on this — let's look at it from the beginning together.";
+  if (attemptCount >= 3) return "Persistence is a real skill. Let's find where the thinking is going differently.";
+  if (hintCount >= 2) return "Let's go a bit deeper — you are getting closer.";
+  if (confidenceScore < 0.35) return "Take your time — let's work through this one step at a time.";
+  if (hintCount === 0 && attemptCount === 0) return "Let's think about this together.";
+  return "Good effort — here is a clue to help you think it through.";
+}
+
+// ── Similar question generator ────────────────────────────────────────────────
+
+/** Generate a mastery-check question after full reveal. Subject-aware. */
+export function buildSimilarQuestion(ctx: CoachContext): { prompt: string; answer?: string } | undefined {
+  if (!ctx.shouldReveal) return undefined;
+
+  if (ctx.subject === "maths") {
+    return generateSimilarMathQuestion(ctx.question, ctx.correctAnswer);
+  }
+  if (ctx.subject === "spelling") {
+    return { prompt: `Now try: cover the word "${ctx.correctAnswer}" and write it from memory. Then check.` };
+  }
+  if (ctx.subject === "reading" || ctx.subject === "english") {
+    return { prompt: `Find another sentence in the passage that uses the same ${ctx.skillFocus ?? "skill"} and explain its effect.` };
+  }
+  if (ctx.subject === "science") {
+    return { prompt: `Explain in your own words, without looking: ${ctx.question}` };
+  }
+  return { prompt: "Try a similar question on your own to confirm you understand." };
+}
+
+function generateSimilarMathQuestion(question: string, correctAnswer: string): { prompt: string; answer: string } | undefined {
+  // Linear: ax + b = c → ax + (b+2) = c+2 (same solution)
+  const linearMatch = question.match(/^(\d+)?\s*x\s*([+\-])\s*(\d+)\s*=\s*(\d+)$/i);
+  if (linearMatch) {
+    const a = linearMatch[1] ? Number(linearMatch[1]) : 1;
+    const sign = linearMatch[2]!;
+    const b = Number(linearMatch[3]);
+    const c = Number(linearMatch[4]);
+    const newB = b + 2;
+    const newC = c + 2;
+    return { prompt: `Now try: ${a === 1 ? "" : a}x ${sign} ${newB} = ${newC}`, answer: correctAnswer };
+  }
+  // Arithmetic: left OP right → (left+1) OP (right+1)
+  const arithMatch = question.match(/(-?\d+(?:\.\d+)?)\s*([+\-×x\*÷\/])\s*(-?\d+(?:\.\d+)?)/);
+  if (arithMatch) {
+    const left = Number(arithMatch[1]) + 1;
+    const op = arithMatch[2]!;
+    const right = Number(arithMatch[3]) + 1;
+    const displayOp: Record<string, string> = { "+": "+", "-": "−", "×": "×", "x": "×", "*": "×", "÷": "÷", "/": "÷" };
+    let newAnswer: number;
+    if (op === "+" ) newAnswer = left + right;
+    else if (op === "-") newAnswer = left - right;
+    else if (op === "×" || op === "x" || op === "*") newAnswer = left * right;
+    else newAnswer = left / right;
+    return { prompt: `Now try: ${left} ${displayOp[op] ?? op} ${right}`, answer: String(newAnswer) };
+  }
+  return { prompt: "Try a similar equation on your own.", answer: "" };
 }
 
 // ── OpenAI system prompt builder ──────────────────────────────────────────────
