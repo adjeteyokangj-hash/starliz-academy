@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession, checkRateLimit, getRequestIp } from "@/lib/api_guard";
 import { buildCoachResponse, buildAISystemPrompt, resolveAgeBand } from "@/lib/coach/engine";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
-import { validateProgressiveHelp, recommendHintLevel } from "@/lib/coach/progressive-help-gating";
+import { validateProgressiveHelp } from "@/lib/coach/progressive-help-gating";
 import { shouldEnforceMasteryCheck, buildMasteryCheckPrompt, attachMasteryCheckToResponse } from "@/lib/coach/mastery-check-enforcement";
 import { recordCoachInteraction, getSkillMastery } from "@/lib/coach/db-helpers";
 import type { CoachContext, CoachResponse, AgeBand } from "@/lib/coach/types";
@@ -15,27 +15,78 @@ import type { CoachContext, CoachResponse, AgeBand } from "@/lib/coach/types";
 const VALID_SUBJECTS = ["maths", "reading", "spelling", "science", "english"] as const;
 const VALID_AGE_BANDS = ["foundation", "primary", "secondary", "gcse"] as const;
 
-function parseBody(raw: unknown): CoachContext | null {
-  if (!raw || typeof raw !== "object") return null;
-  const b = raw as Record<string, unknown>;
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
 
-  const subject = b["subject"];
-  if (!VALID_SUBJECTS.includes(subject as (typeof VALID_SUBJECTS)[number])) return null;
+function normalizeSubject(value: unknown): CoachContext["subject"] {
+  if (value === "math") return "maths";
+  if (VALID_SUBJECTS.includes(value as (typeof VALID_SUBJECTS)[number])) {
+    return value as CoachContext["subject"];
+  }
+  return "maths";
+}
 
-  const question = typeof b["question"] === "string" ? b["question"].trim() : null;
-  const correctAnswer = typeof b["correctAnswer"] === "string" ? b["correctAnswer"].trim() : null;
-  if (!question || !correctAnswer) return null;
+function normalizeYearGroup(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.min(11, Math.max(1, Math.floor(value)));
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value.match(/\d+/)?.[0] ?? "");
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.min(11, Math.max(1, Math.floor(parsed)));
+    }
+  }
+  return undefined;
+}
 
-  const hintCount = Number(b["hintCount"]);
-  const attemptCount = Number(b["attemptCount"]);
-  if (!Number.isFinite(hintCount) || !Number.isFinite(attemptCount)) return null;
+function logValidationFailure(raw: unknown, issues: string[]): void {
+  if (!issues.length) return;
+  const keys = raw && typeof raw === "object"
+    ? Object.keys(raw as Record<string, unknown>).slice(0, 30)
+    : [];
+  console.warn("[coach.validation] payload normalized", {
+    issues,
+    keys,
+  });
+}
 
-  // Resolve age band
+function parseBody(raw: unknown): { ctx: CoachContext; issues: string[] } {
+  const issues: string[] = [];
+  const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+
+  const subject = normalizeSubject(b["subject"]);
+  const question = firstNonEmptyString(b["question"], b["prompt"]);
+  const correctAnswer = firstNonEmptyString(b["correctAnswer"], b["answer"], b["expectedAnswer"]);
+  const studentAnswer = firstNonEmptyString(b["studentAnswer"], b["currentInput"], b["answerGiven"]);
+
+  if (!question) {
+    issues.push("missing_question_or_prompt");
+  }
+  if (!correctAnswer) {
+    issues.push("missing_correct_answer");
+  }
+
+  const hintCountRaw = Number(b["hintCount"] ?? b["hintLevel"] ?? 0);
+  const attemptCountRaw = Number(b["attemptCount"] ?? b["wrongAttempts"] ?? (studentAnswer ? 1 : 0));
+  const hintCount = Number.isFinite(hintCountRaw) ? Math.min(Math.max(0, hintCountRaw), 10) : 0;
+  const attemptCount = Number.isFinite(attemptCountRaw) ? Math.min(Math.max(0, attemptCountRaw), 20) : 0;
+
+  if (!Number.isFinite(hintCountRaw)) issues.push("invalid_hint_count");
+  if (!Number.isFinite(attemptCountRaw)) issues.push("invalid_attempt_count");
+
+  const yearGroup = normalizeYearGroup(b["yearGroup"]);
+
   const ageBand: AgeBand = resolveAgeBand({
     ageBand: VALID_AGE_BANDS.includes(b["ageBand"] as AgeBand)
       ? (b["ageBand"] as AgeBand)
       : undefined,
-    yearGroup: typeof b["yearGroup"] === "number" ? b["yearGroup"] : undefined,
+    yearGroup,
     mathDifficulty: typeof b["mathDifficulty"] === "number" ? b["mathDifficulty"] : undefined,
     ageRange: typeof b["ageRange"] === "string" ? b["ageRange"] : undefined,
   });
@@ -46,24 +97,27 @@ function parseBody(raw: unknown): CoachContext | null {
       : 0.5;
 
   return {
-    subject: subject as CoachContext["subject"],
-    question,
-    correctAnswer,
-    studentAnswer: typeof b["studentAnswer"] === "string" ? b["studentAnswer"].trim() : undefined,
-    passageText: typeof b["passageText"] === "string" ? b["passageText"].slice(0, 4000) : undefined,
-    hintCount: Math.min(Math.max(0, hintCount), 10),
-    attemptCount: Math.min(Math.max(0, attemptCount), 20),
-    ageBand,
-    yearGroup: typeof b["yearGroup"] === "number" ? b["yearGroup"] : undefined,
-    skillFocus: typeof b["skillFocus"] === "string" ? b["skillFocus"].slice(0, 100) : undefined,
-    confidenceScore,
-    weakSkills: Array.isArray(b["weakSkills"])
-      ? (b["weakSkills"] as unknown[]).filter((s): s is string => typeof s === "string").slice(0, 10)
-      : undefined,
-    responseTimeMs:
-      typeof b["responseTimeMs"] === "number" && Number.isFinite(b["responseTimeMs"])
-        ? Math.min(Math.max(0, b["responseTimeMs"]), 300_000)
+    ctx: {
+      subject,
+      question: question ?? "Let's solve this step by step.",
+      correctAnswer: correctAnswer ?? "Let's work through it together.",
+      studentAnswer,
+      passageText: typeof b["passageText"] === "string" ? b["passageText"].slice(0, 4000) : undefined,
+      hintCount,
+      attemptCount,
+      ageBand,
+      yearGroup,
+      skillFocus: firstNonEmptyString(b["skillFocus"], b["topic"])?.slice(0, 100),
+      confidenceScore,
+      weakSkills: Array.isArray(b["weakSkills"])
+        ? (b["weakSkills"] as unknown[]).filter((s): s is string => typeof s === "string").slice(0, 10)
         : undefined,
+      responseTimeMs:
+        typeof b["responseTimeMs"] === "number" && Number.isFinite(b["responseTimeMs"])
+          ? Math.min(Math.max(0, b["responseTimeMs"]), 300_000)
+          : undefined,
+    },
+    issues,
   };
 }
 
@@ -83,17 +137,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // Parse + validate body
-  let rawBody: unknown;
+  let rawBody: unknown = {};
   try {
     rawBody = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    logValidationFailure(null, ["invalid_json"]);
   }
 
-  const ctx = parseBody(rawBody);
-  if (!ctx) {
-    return NextResponse.json({ error: "Invalid or incomplete request body" }, { status: 400 });
-  }
+  const { ctx, issues } = parseBody(rawBody);
+  logValidationFailure(rawBody, issues);
 
   // Deterministic engine — always runs (fast fallback)
   const deterministicResponse = buildCoachResponse(ctx);

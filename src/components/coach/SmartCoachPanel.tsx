@@ -19,7 +19,11 @@ export type SmartCoachPanelProps = {
   mathDifficulty?: number;
   ageRange?: string;
   yearGroup?: number;
+  keyStageLevel?: string;
   skillFocus?: string;
+  assignmentId?: string;
+  contentId?: string;
+  attemptCount?: number;
   /** 0–1 from coaching memory. Defaults to 0.5. */
   confidenceScore?: number;
   /**
@@ -46,7 +50,11 @@ export default function SmartCoachPanel({
   mathDifficulty,
   ageRange,
   yearGroup,
+  keyStageLevel,
   skillFocus,
+  assignmentId,
+  contentId,
+  attemptCount = 0,
   confidenceScore = 0.5,
     responseTimeMs,
   onHintUsed,
@@ -90,14 +98,21 @@ export default function SmartCoachPanel({
     const body = {
       subject,
       question,
+      prompt: question,
       correctAnswer,
+      answer: correctAnswer,
       studentAnswer,
+      currentInput: studentAnswer,
       passageText,
       hintCount: localHintCount,
+      attemptCount,
       mathDifficulty,
       ageRange,
       yearGroup,
+      keyStageLevel,
       skillFocus,
+      assignmentId,
+      contentId,
       confidenceScore,
       responseTimeMs,
     };
@@ -108,15 +123,18 @@ export default function SmartCoachPanel({
       body: JSON.stringify(body),
     })
       .then(async (res) => {
-        if (!res.ok) throw new Error("Coach unavailable");
+        if (!res.ok) {
+          const errorPayload = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+          throw new Error(errorPayload?.message ?? errorPayload?.error ?? "Coach unavailable");
+        }
         return res.json() as Promise<CoachResponse>;
       })
       .then((data) => {
         setResponse(data);
         setLoading(false);
       })
-      .catch(() => {
-        setError("Coach is temporarily unavailable. Try again.");
+      .catch((err: unknown) => {
+        setError(err instanceof Error && err.message.trim() ? err.message : "Coach is temporarily unavailable. Try again.");
         setLoading(false);
       });
   }, [
@@ -130,7 +148,11 @@ export default function SmartCoachPanel({
     mathDifficulty,
     ageRange,
     yearGroup,
+    keyStageLevel,
     skillFocus,
+    assignmentId,
+    contentId,
+    attemptCount,
     confidenceScore,
     responseTimeMs,
   ]);
@@ -139,8 +161,16 @@ export default function SmartCoachPanel({
 
   useEffect(() => {
     if (!waitPhase) return;
-    if (waitCountdown <= 0) { setWaitPhase(false); return; }
-    const t = setTimeout(() => setWaitCountdown((n) => n - 1), 1000);
+    if (waitCountdown <= 0) return;
+    const t = setTimeout(() => {
+      setWaitCountdown((n) => {
+        if (n <= 1) {
+          setWaitPhase(false);
+          return 0;
+        }
+        return n - 1;
+      });
+    }, 1000);
     return () => clearTimeout(t);
   }, [waitPhase, waitCountdown]);
 

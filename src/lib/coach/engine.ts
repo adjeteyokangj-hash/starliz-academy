@@ -175,55 +175,6 @@ export function buildCoachStrategy(ctx: CoachContext): CoachStrategy {
   };
 }
 
-// ── Science fallback ──────────────────────────────────────────────────────────
-
-function buildScienceFallback(ctx: CoachContext): CoachResponse {
-  const hintLevel = Math.min(ctx.hintCount + 1, 4);
-  const shouldReveal = hintLevel >= 4;
-  const { ageBand } = ctx;
-
-  const messages: Record<number, string> = {
-    1: "Think about cause and effect — what makes this happen?",
-    2: "Identify the key scientific concept being tested. What variable is being changed or measured?",
-    3: "Consider the explanation step by step: input → process → output.",
-    4: `The answer is "${ctx.correctAnswer}". Read the explanation to understand the mechanism.`,
-  };
-
-  return {
-    mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
-    ageBand,
-    message: messages[hintLevel] ?? messages[4]!,
-    steps:
-      hintLevel >= 3
-        ? [
-            { expression: "Identify the variable", explanation: "What is being tested or changed?" },
-            { expression: "State the relationship", explanation: "As X increases, Y…?" },
-            { expression: "Link to the concept", explanation: "Name the scientific principle that explains this." },
-          ]
-        : [],
-    followUp:
-      hintLevel === 2
-        ? {
-            question: "Is this question asking you to describe, explain, or evaluate?",
-            options: ["Explain — I need to say why or how", "Describe — I just list facts", "Evaluate — I weigh up evidence", "I'm not sure"],
-            correctIndex: 0,
-            onCorrect: "Correct — 'explain' means you must give a reason using scientific language.",
-            onWrong: "Look at the command word: 'explain' = give reasons; 'describe' = state facts; 'evaluate' = judge with evidence.",
-          }
-        : null,
-    hintLevel,
-    shouldReveal,
-    reinforcementNote:
-      ageBand === "gcse"
-        ? "Use specific scientific terminology — vague language loses marks. State the mechanism, not just the outcome."
-        : "Think about what you know from class: what causes this? What is the effect?",
-    tryAgainPrompt: shouldReveal ? "Can you now explain this in your own words without looking?" : null,
-    masterySignal: null,
-    emotionalTone: "Let's think through the science step by step.",
-    waitPrompt: "Before reading — recall what you already know about this topic.",
-  };
-}
-
 // ── Main engine ───────────────────────────────────────────────────────────────
 
 /**

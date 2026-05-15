@@ -95,7 +95,7 @@ function inferenceFollowUp(ageBand: AgeBand): CoachFollowUp {
   };
 }
 
-function vocabularyFollowUp(question: string): CoachFollowUp {
+function vocabularyFollowUp(_question: string): CoachFollowUp {
   return {
     question: `How can you work out the meaning of an unknown word?`,
     options: [

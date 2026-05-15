@@ -143,7 +143,7 @@ const ENGLISH_CONTEXTS: RealLifeContext[] = [
 
 // ─ Selector and injector ──────────────────────────────────────────────────
 
-function getContextsForSubject(subject: CoachSubject, ageBand: AgeBand): RealLifeContext[] {
+function getContextsForSubject(subject: CoachSubject, _ageBand: AgeBand): RealLifeContext[] {
   if (subject === "maths") return MATHS_CONTEXTS;
   if (subject === "reading") return READING_CONTEXTS;
   if (subject === "spelling") return SPELLING_CONTEXTS;
@@ -161,7 +161,7 @@ export function injectRealLifeContext(
   subject: CoachSubject,
   ageBand: AgeBand,
   hintLevel: number,
-  skillFocus?: string,
+  _skillFocus?: string,
 ): RealLifeContext | null {
   // Only inject at hint levels 1–2 (too early = overwhelming; too late = too late)
   if (hintLevel > 2) return null;

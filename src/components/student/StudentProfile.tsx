@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import type { ChildProfile } from "@/lib/store";
+import { VOICE_STYLE_OPTIONS } from "@/lib/voice_options";
 
 type AuthMePayload = {
   authenticated?: boolean;
@@ -53,10 +54,15 @@ function storageKey(childId: string): string {
 }
 
 function buildInitialPreferences(child: ChildProfile): StudentProfilePreferences {
+  const allowedVoiceStyles = new Set<string>(VOICE_STYLE_OPTIONS.map((item) => item.value));
+  const voiceStyle = allowedVoiceStyles.has(child.settings.voiceStyle)
+    ? child.settings.voiceStyle
+    : "friendly_coach";
+
   return {
     avatar: child.avatar,
     theme: child.theme,
-    voiceStyle: child.settings.voiceStyle,
+    voiceStyle,
     coachingStyle: child.settings.coachingStyle ?? "balanced",
     reduceMotion: child.settings.reduceMotion,
     largeText: child.settings.largeText,
@@ -216,10 +222,9 @@ export default function StudentProfile() {
                       onChange={(event) => updatePreferences({ voiceStyle: event.target.value as StudentProfilePreferences["voiceStyle"] })}
                       className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 font-medium text-slate-900 outline-none"
                     >
-                      <option value="warm">Warm</option>
-                      <option value="bright">Bright</option>
-                      <option value="calm">Calm</option>
-                      <option value="playful">Playful</option>
+                      {VOICE_STYLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
                     </select>
                   </label>
                   <label className="grid gap-2 text-sm font-semibold text-slate-700">

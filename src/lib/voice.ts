@@ -1,4 +1,5 @@
 import { ChildProfile, getProfile } from "@/lib/store";
+import { VOICE_STYLE_OPTIONS } from "@/lib/voice_options";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VOICE MODE — stored in sessionStorage so it persists across page navigations
@@ -173,8 +174,17 @@ function getAccentProfile(style: VoiceStyle): AccentProfile {
   return ACCENT_PROFILES[style] ?? ACCENT_PROFILES.friendly_coach;
 }
 
+const VALID_VOICE_STYLES = new Set<string>(VOICE_STYLE_OPTIONS.map((option) => option.value));
+
+function sanitizeVoiceStyle(style: unknown): VoiceStyle {
+  if (typeof style === "string" && VALID_VOICE_STYLES.has(style)) {
+    return style as VoiceStyle;
+  }
+  return "friendly_coach";
+}
+
 function getVoiceStyle(profile: ChildProfile | null): VoiceStyle {
-  return profile?.settings.voiceStyle ?? "friendly_coach";
+  return sanitizeVoiceStyle(profile?.settings.voiceStyle);
 }
 
 function resolveHumanVoice(profile: ChildProfile | null): NonNullable<PlayHumanVoiceOptions["voice"]> {
@@ -481,15 +491,15 @@ function speakWithSettings(message: string, profile: ChildProfile | null, onEnd?
 
   const style = getVoiceStyle(profile);
   const accentProfile = getAccentProfile(style);
-  const preset = STYLE_PRESETS[style];
+  const preset = STYLE_PRESETS[style] ?? STYLE_PRESETS.friendly_coach;
   const pacedLines = paceMessage(message);
   if (!pacedLines.length) return false;
 
   const voicePick = selectBestVoice(accentProfile.lang, accentProfile.hints);
-  const fallbackRate = Math.min(0.84, preset.rate - 0.04);
-  const fallbackPitch = Math.max(1.0, preset.pitch - 0.06);
-  const rate = voicePick.poor ? fallbackRate : preset.rate;
-  const pitch = voicePick.poor ? fallbackPitch : preset.pitch;
+  const fallbackRate = Math.min(0.84, (preset.rate ?? 0.9) - 0.04);
+  const fallbackPitch = Math.max(1.0, (preset.pitch ?? 1) - 0.06);
+  const rate = voicePick.poor ? fallbackRate : (preset.rate ?? 0.9);
+  const pitch = voicePick.poor ? fallbackPitch : (preset.pitch ?? 1);
   const volume = Math.max(0, Math.min(1, profile?.settings.volume ?? 1));
 
   window.speechSynthesis.cancel();

@@ -24,14 +24,12 @@ import { getTutorFeedbackPlan, speakTutorFeedback, hydrateCoachingMemoryFromServ
 import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
 import { awardChildRewards } from "@/lib/child_wallet";
 import {
-  getReadingClueMessage,
   getReadingHintMessage,
   getReadingHintSpeech,
   getReadingTaskInstruction,
   getTutorLine,
 } from "@/lib/tutorVoice";
 import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
-import { resolveAgeBand } from "@/lib/coach/engine";
 
 const MIN_READING_QUESTIONS = 5;
 const MAX_RECENT_READING_IDS = 24;
@@ -83,33 +81,8 @@ function normalizeReadingRetryId(passageId: string): string {
   return passageId.trim().toLowerCase().replace(/-fallback-\d+-\d+$/i, "");
 }
 
-function buildReadingClue(item: ReadingPassage): string {
-  // Find the sentence in the passage that is most relevant to the answer
-  // without directly stating the answer itself.
-  const sentences = item.passage.match(/[^.!?]+[.!?]+/g) ?? [item.passage];
-  const stopWords = new Set(["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "of", "for", "is", "was", "it", "he", "she", "so"]);
-  const answerWords = item.answer.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
-
-  let bestSentence = "";
-  let bestScore = 0;
-  for (const sentence of sentences) {
-    const lower = sentence.toLowerCase();
-    const score = answerWords.reduce((n, w) => n + (lower.includes(w) ? 1 : 0), 0);
-    if (score > bestScore) {
-      bestScore = score;
-      bestSentence = sentence.trim();
-    }
-  }
-
-  if (bestScore > 0 && bestSentence) {
-    return getReadingClueMessage({ excerpt: bestSentence });
-  }
-
-  // Fallback: guide toward the question focus without naming the answer
-  const questionFocus = item.question
-    .replace(/^(how|what|why|when|where|who)\s+(did|was|is|are|does|were|do|has|have|had)\s+/i, "")
-    .replace(/\?$/, "");
-  return getReadingClueMessage({ questionFocus });
+function getTimestampNow(): number {
+  return Date.now();
 }
 
 function ensureMinimumReadingQuestions(questions: ReadingPassage[], minCount = MIN_READING_QUESTIONS): ReadingPassage[] {
@@ -1016,7 +989,7 @@ export default function ReadingJourneyPage() {
         hintsUsed: hintLevel,
         correct: true,
         responseTimeMs: Math.round(responseMs),
-        timestamp: Date.now(),
+        timestamp: getTimestampNow(),
       });
       const improved = result.promotedDifficulty || nextLevel > prevLevel;
       const tutorPlan = getTutorFeedbackPlan({
@@ -1069,7 +1042,7 @@ export default function ReadingJourneyPage() {
         hintsUsed: hintLevel + 1,
         correct: false,
         responseTimeMs: Math.round(responseMs),
-        timestamp: Date.now(),
+        timestamp: getTimestampNow(),
       });
       setHintLevel((level) => Math.min(level + 1, 3));
       const tutorPlan = getTutorFeedbackPlan({
@@ -1378,7 +1351,11 @@ export default function ReadingJourneyPage() {
               passageText={item.passage}
               hintCount={hintLevel}
               ageRange={profile?.ageRange}
+              yearGroup={Number(profile?.yearGroup?.match(/\d+/)?.[0] ?? "") || undefined}
+              keyStageLevel={profile?.keyStageLevel}
               skillFocus={inferQuestionType(item.question)}
+              assignmentId={assignedAssignmentId}
+              contentId={assignedContentId ?? undefined}
               confidenceScore={0.5}
               onHintUsed={(newCount) => setHintLevel(newCount)}
               onClose={() => setCoachOpen(false)}

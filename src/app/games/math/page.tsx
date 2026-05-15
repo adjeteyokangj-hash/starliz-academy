@@ -25,8 +25,6 @@ import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
 import { awardChildRewards } from "@/lib/child_wallet";
 import { getTutorLine } from "@/lib/tutorVoice";
 import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
-import { buildSlowBreakdown } from "@/lib/coach/maths-steps";
-import { resolveAgeBand } from "@/lib/coach/engine";
 
 const LEVEL_LABELS: Record<number, string> = {
   1: "⭐ Level 1: Counting with visuals",
@@ -529,70 +527,6 @@ export default function MathMissionPage() {
     void speakWithContext(spokenHint, "math_hint");
   }
 
-  function buildWorkingStepsWithoutAnswer(current: MathQuestion): string {
-    const normalizedPrompt = current.prompt.replace(/\s*\n+\s*/g, " ").trim();
-    const expressionMatch = normalizedPrompt.match(/(-?\d+(?:\.\d+)?)\s*([+\-xX×*/÷])\s*(-?\d+(?:\.\d+)?)/);
-
-    if (expressionMatch) {
-      const [, left, operator, right] = expressionMatch;
-      const leftNum = Number(left);
-      const rightNum = Number(right);
-
-      if (operator === "+") {
-        const countOn = Number.isFinite(rightNum) && rightNum > 0
-          ? Array.from({ length: Math.min(6, rightNum) }, (_, idx) => `+1 (${idx + 1})`).join(", ")
-          : "count on carefully";
-        return `Let us work it out step by step. Step one: write ${left} plus ${right} equals blank. Step two: start at ${left}. Step three: count on ${right} ones: ${countOn}. Step four: the number you land on goes in the blank. Do not say it yet, choose it.`;
-      }
-
-      if (operator === "-") {
-        const countBack = Number.isFinite(rightNum) && rightNum > 0
-          ? Array.from({ length: Math.min(6, rightNum) }, (_, idx) => `-1 (${idx + 1})`).join(", ")
-          : "count back carefully";
-        return `Let us work it out step by step. Step one: write ${left} minus ${right} equals blank. Step two: start at ${left}. Step three: count back ${right} ones: ${countBack}. Step four: the number you land on goes in the blank. Do not say it yet, choose it.`;
-      }
-
-      if (operator === "x" || operator === "X" || operator === "×" || operator === "*") {
-        const groups = Number.isFinite(leftNum) ? Math.abs(leftNum) : Number(left);
-        const each = Number.isFinite(rightNum) ? Math.abs(rightNum) : Number(right);
-        return `Let us work it out step by step. Step one: write ${left} times ${right} equals blank. Step two: make ${groups} equal groups with ${each} in each group. Step three: add the groups one by one using repeated addition. Step four: the total goes in the blank. Do not say it yet, choose it.`;
-      }
-
-      return `Let us work it out step by step. Step one: write ${left} divided by ${right} equals blank. Step two: share ${left} into ${right} equal groups. Step three: count how many are in each group. Step four: that value goes in the blank. Do not say it yet, choose it.`;
-    }
-
-    const answerPattern = new RegExp(`\\b${String(current.answer).replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\b`, "g");
-    const filteredHint = current.hints
-      .map((hint) => hint.replace(answerPattern, "the answer"))
-      .find((hint) => !/\b(answer is|equals|=)\b/i.test(hint))
-      ?? "Break the problem into small parts, work each part, then check your choice.";
-
-    return `Let us do it in steps. ${filteredHint} Do not jump straight to the final answer.`;
-  }
-
-  function runCoachAction(mode: "repeat" | "slow" | "steps" | "hint") {
-    if (!question) return;
-    if (mode === "repeat") {
-      repeatQuestion();
-      return;
-    }
-    if (mode === "slow") {
-      const ageBand = resolveAgeBand({
-        mathDifficulty: profile?.adaptive.mathDifficulty,
-        ageRange: profile?.ageRange,
-      });
-      const breakdown = buildSlowBreakdown(question.prompt, ageBand);
-      void speakWithContext(breakdown, "math_hint");
-      return;
-    }
-    if (mode === "steps") {
-      setCoachOpen(true);
-      return;
-    }
-    // hint mode — open coach panel (SmartCoachPanel handles hint progression)
-    setCoachOpen(true);
-  }
-
   async function checkAnswer() {
     if (!profile || !question) return;
     if (isUsageLocked(profile)) {
@@ -1072,7 +1006,7 @@ export default function MathMissionPage() {
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Button className="w-full" onClick={checkAnswer} disabled={sessionComplete}>Check Answer</Button>
                   <Button className="w-full" variant="secondary" onClick={repeatQuestion}>Repeat Question</Button>
-                  <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)}>Coach</Button>
+                  <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)} disabled={!question}>Coach</Button>
                   <Button className="w-full" variant="secondary" onClick={makeItEasier} disabled={sessionComplete}>Make it easier</Button>
                   <Button
                     className="w-full"
@@ -1132,9 +1066,14 @@ export default function MathMissionPage() {
               correctAnswer={String(question.answer)}
               studentAnswer={answer || undefined}
               hintCount={hintLevel}
+              attemptCount={attemptCount}
               mathDifficulty={profile?.adaptive.mathDifficulty}
               ageRange={profile?.ageRange}
+              yearGroup={Number(profile?.yearGroup?.match(/\d+/)?.[0] ?? "") || undefined}
+              keyStageLevel={profile?.keyStageLevel}
               skillFocus={question.topic}
+              assignmentId={assignedAssignmentId}
+              contentId={assignedContentId ?? undefined}
               confidenceScore={0.5}
               onHintUsed={(newCount) => {
                 setHintLevel(newCount);

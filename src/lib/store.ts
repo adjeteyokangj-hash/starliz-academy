@@ -1,4 +1,4 @@
-import { VoiceStyle } from "@/lib/voice_options";
+import { VOICE_STYLE_OPTIONS, VoiceStyle } from "@/lib/voice_options";
 
 export type LearningLevel = "Beginner" | "Growing" | "Advanced";
 export type StartLevelChoice = "Beginner" | "Intermediate" | "Confident";
@@ -239,6 +239,14 @@ const LEGACY_ACTIVE_PROFILE_KEYS = ["starliz.activeProfileId", "activeChildId", 
 let profilesCache: ChildProfile[] = [];
 let activeProfileIdCache: string | null = null;
 let loaded = false;
+const VALID_VOICE_STYLES = new Set<string>(VOICE_STYLE_OPTIONS.map((option) => option.value));
+
+function normalizeVoiceStyle(value: unknown): VoiceStyle {
+  if (typeof value === "string" && VALID_VOICE_STYLES.has(value)) {
+    return value as VoiceStyle;
+  }
+  return "friendly_coach";
+}
 
 function createDefaultInsight(level = 1): LearnerSubjectInsight {
   return {
@@ -366,7 +374,7 @@ function withDefaults(profile: Partial<ChildProfile>): ChildProfile {
       voiceEnabled: profile.settings?.voiceEnabled ?? true,
       sfxEnabled: profile.settings?.sfxEnabled ?? true,
       volume: profile.settings?.volume ?? 0.9,
-      voiceStyle: profile.settings?.voiceStyle ?? "friendly_coach",
+      voiceStyle: normalizeVoiceStyle(profile.settings?.voiceStyle),
       coachingStyle: profile.settings?.coachingStyle ?? "balanced",
       reduceMotion: profile.settings?.reduceMotion ?? false,
       largeText: profile.settings?.largeText ?? false,

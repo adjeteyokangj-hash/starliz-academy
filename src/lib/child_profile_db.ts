@@ -1,8 +1,17 @@
 import { ChildProfile as PrismaChildProfile } from "@prisma/client";
 import { ChildProfile } from "@/lib/store";
 import { levelFromXp } from "@/lib/level_system";
+import { VOICE_STYLE_OPTIONS, type VoiceStyle } from "@/lib/voice_options";
 
 const DEFAULT_HUB_ORDER = ["spelling", "math", "reading", "pet", "rewards", "profiles"];
+const VALID_VOICE_STYLES = new Set<string>(VOICE_STYLE_OPTIONS.map((option) => option.value));
+
+function normalizeVoiceStyle(value: unknown): VoiceStyle {
+  if (typeof value === "string" && VALID_VOICE_STYLES.has(value)) {
+    return value as VoiceStyle;
+  }
+  return "friendly_coach";
+}
 
 function normalizeAgeRange(yearGroup: string | null | undefined): "5-7" | "8-10" {
   const lower = (yearGroup ?? "").toLowerCase();
@@ -129,7 +138,7 @@ export function withChildDefaults(profile: Partial<ChildProfile>): ChildProfile 
       voiceEnabled: profile.settings?.voiceEnabled ?? true,
       sfxEnabled: profile.settings?.sfxEnabled ?? true,
       volume: profile.settings?.volume ?? 0.9,
-      voiceStyle: profile.settings?.voiceStyle ?? "friendly_coach",
+      voiceStyle: normalizeVoiceStyle(profile.settings?.voiceStyle),
       coachingStyle: profile.settings?.coachingStyle ?? "balanced",
       subjectCoachingStyles: profile.settings?.subjectCoachingStyles ?? {
         spelling: "standard",
@@ -190,7 +199,7 @@ export function fromDbRecord(row: PrismaChildProfile): ChildProfile {
           voiceEnabled: parsed.settings?.voiceEnabled ?? true,
           sfxEnabled: parsed.settings?.sfxEnabled ?? true,
           volume: parsed.settings?.volume ?? 0.9,
-          voiceStyle: row.selectedVoice as ChildProfile["settings"]["voiceStyle"],
+          voiceStyle: normalizeVoiceStyle(row.selectedVoice ?? parsed.settings?.voiceStyle),
           coachingStyle: parsed.settings?.coachingStyle ?? "balanced",
           subjectCoachingStyles: parsed.settings?.subjectCoachingStyles ?? {
             spelling: "standard",
@@ -234,7 +243,7 @@ export function fromDbRecord(row: PrismaChildProfile): ChildProfile {
       voiceEnabled: true,
       sfxEnabled: true,
       volume: 0.9,
-      voiceStyle: row.selectedVoice as ChildProfile["settings"]["voiceStyle"],
+      voiceStyle: normalizeVoiceStyle(row.selectedVoice),
       coachingStyle: "balanced",
       subjectCoachingStyles: { spelling: "standard", math: "standard", reading: "standard" },
       reduceMotion: false,

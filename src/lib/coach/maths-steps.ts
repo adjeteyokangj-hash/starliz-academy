@@ -109,7 +109,6 @@ function parsePattern(question: string): MathPattern {
 function linearSteps(eq: LinearEq, hintLevel: number): CoachStep[] {
   const { a, b, c, bSign } = eq;
   const step1rhs = bSign === "+" ? c - b : c + b;
-  const step1op = bSign === "+" ? `− ${b}` : `+ ${b}`;
   const step1display = bSign === "+" ? `${a}x + ${b} − ${b} = ${c} − ${b}` : `${a}x − ${b} + ${b} = ${c} + ${b}`;
   const xValue = step1rhs / a;
 

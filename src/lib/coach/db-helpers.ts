@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/db";
+import type { CoachInteractionLog } from "@prisma/client";
 import { MasteryLevel } from "./types";
 
 /**
@@ -185,7 +186,7 @@ export async function getSkillInteractionsToday(
   childId: string,
   subject: string,
   skillFocus: string,
-): Promise<any[]> {
+): Promise<CoachInteractionLog[]> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 

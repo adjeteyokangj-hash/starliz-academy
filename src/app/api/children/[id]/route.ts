@@ -7,6 +7,38 @@ import { childPayloadSchema } from "@/lib/child_profile_schema";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { writeAuditLog } from "@/lib/audit";
 
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
+}
+
+function normalizeIncomingChildPayload(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") return {};
+  const source = raw as Record<string, unknown>;
+
+  const learningGoals = Array.isArray(source.learningGoals)
+    ? source.learningGoals
+    : typeof source.learningGoals === "string"
+      ? source.learningGoals.split("\n")
+      : undefined;
+
+  return {
+    ...source,
+    name: normalizeOptionalString(source.name) ?? source.name,
+    avatar: normalizeOptionalString(source.avatar) ?? source.avatar,
+    yearGroup: normalizeOptionalString(source.yearGroup) ?? source.yearGroup,
+    schoolYear: normalizeOptionalString(source.schoolYear),
+    keyStageLevel: normalizeOptionalString(source.keyStageLevel),
+    subjectLevel: normalizeOptionalString(source.subjectLevel),
+    dateOfBirth: normalizeOptionalString(source.dateOfBirth),
+    senSupportNeeds: normalizeOptionalString(source.senSupportNeeds ?? source.supportNeeds),
+    learningGoals: learningGoals
+      ?.map((goal) => (typeof goal === "string" ? goal.trim() : ""))
+      .filter(Boolean),
+  };
+}
+
 function isTransientDbSaturationError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return (
@@ -73,11 +105,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
   try {
     const rawBody = await request.json();
-    const parsed = childPayloadSchema.safeParse(rawBody);
+    const normalizedBody = normalizeIncomingChildPayload(rawBody);
+    const parsed = childPayloadSchema.safeParse(normalizedBody);
     if (!parsed.success) {
       const fieldErrors = parsed.error.flatten().fieldErrors;
       if (process.env.NODE_ENV !== "production") {
-        console.info("[children.put] validation_error", { fieldErrors, body: rawBody, childId: id });
+        console.info("[children.put] validation_error", { fieldErrors, childId: id });
       }
       return NextResponse.json({ error: "Invalid child payload.", fieldErrors }, { status: 400 });
     }

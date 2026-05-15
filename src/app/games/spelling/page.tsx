@@ -181,6 +181,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function getTimestampNow(): number {
+  return Date.now();
+}
+
 function getSkillAccuracy(skills: StudentSkillRow[], skillCode: string): number {
   const row = skills.find((entry) => entry.skill === skillCode);
   if (!row) return 0;
@@ -1343,31 +1347,6 @@ export default function SpellingQuestPage() {
     }
   }
 
-  function runCoachAction(mode: "repeat" | "slow" | "syllables" | "hint") {
-    if (!targetWord || (helpLocked && mode !== "repeat")) return;
-    if (mode === "repeat") {
-      repeatQuestion();
-      return;
-    }
-    if (mode === "slow") {
-      // Say the word slowly, stretching phonetic sounds — say it twice
-      void speakWithContext(`${targetWord.word}... ${targetWord.word}.`, "spelling_slow");
-      return;
-    }
-    if (mode === "syllables") {
-      const syllableParts = targetWord.syllables.split("-").map((s) => s.trim()).filter(Boolean);
-      if (syllableParts.length <= 1) {
-        // Single syllable — acknowledge it and say the word
-        void speakWithContext(`${targetWord.word} has just one beat. ${targetWord.word}.`, "spelling_syllables");
-      } else {
-        const parts = syllableParts.join("... ");
-        void speakWithContext(`${parts}... ${targetWord.word}.`, "spelling_syllables");
-      }
-      return;
-    }
-    makeItEasier();
-  }
-
   function skipWord() {
     if (!profile || !targetWord) return;
     setFeedback(`Skipped ${targetWord.word}. Next word ready.`);
@@ -1817,7 +1796,7 @@ export default function SpellingQuestPage() {
         hintsUsed: hintLevel,
         correct: true,
         responseTimeMs: Math.round(responseMs),
-        timestamp: Date.now(),
+        timestamp: getTimestampNow(),
       });
 
       const newSessionCorrect = sessionCorrect + 1;
@@ -2025,7 +2004,7 @@ export default function SpellingQuestPage() {
         hintsUsed: Math.max(hintLevel, 2),
         correct: false,
         responseTimeMs: Math.round(responseMs),
-        timestamp: Date.now(),
+        timestamp: getTimestampNow(),
       });
       const lockedTutorPlan = getTutorFeedbackPlan({
         childId: profile.id,
@@ -3059,7 +3038,10 @@ export default function SpellingQuestPage() {
               question={`Spell: ${targetWord.word}`}
               correctAnswer={targetWord.word}
               hintCount={hintLevel}
+              attemptCount={attemptCount}
               ageRange={profile?.ageRange}
+              yearGroup={Number(profile?.yearGroup?.match(/\d+/)?.[0] ?? "") || undefined}
+              keyStageLevel={profile?.keyStageLevel}
               skillFocus={targetWord.patterns[0] ?? undefined}
               confidenceScore={0.5}
               onHintUsed={(newCount) => setHintLevel(newCount)}

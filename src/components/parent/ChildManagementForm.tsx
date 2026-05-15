@@ -92,6 +92,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
   function validateLocal(): FieldErrors {
     const nextErrors: FieldErrors = {};
     if (!formData.name.trim()) nextErrors.name = 'Child name is required.';
+    if (formData.name.trim().length > 64) nextErrors.name = 'Child name must be 64 characters or fewer.';
     if (!formData.yearGroup.trim()) nextErrors.yearGroup = 'Please choose a year group.';
     if (!formData.schoolYear.trim()) nextErrors.schoolYear = 'Please choose a school year.';
     if (!formData.keyStageLevel.trim()) nextErrors.keyStageLevel = 'Please choose a key stage.';
@@ -105,6 +106,19 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
       if (!isNaN(dob.getTime()) && dob > new Date()) {
         nextErrors.dateOfBirth = 'Date of birth cannot be in the future.';
       }
+    }
+    const goals = formData.learningGoals
+      .split('\n')
+      .map((goal) => goal.trim())
+      .filter(Boolean);
+    if (goals.length > 8) {
+      nextErrors.learningGoals = 'Please provide no more than 8 learning goals.';
+    }
+    if (goals.some((goal) => goal.length > 120)) {
+      nextErrors.learningGoals = 'Each learning goal must be 120 characters or fewer.';
+    }
+    if (formData.supportNeeds.trim().length > 500) {
+      nextErrors.supportNeeds = 'Support needs must be 500 characters or fewer.';
     }
     return nextErrors;
   }
@@ -124,21 +138,24 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
 
     try {
       const ageYears = Number(formData.ageYears);
+      const learningGoals = formData.learningGoals
+        .split('\n')
+        .map((goal) => goal.trim())
+        .filter(Boolean)
+        .slice(0, 8);
+      const supportNeeds = formData.supportNeeds.trim();
       const payload = {
         name: formData.name.trim(),
         avatar: formData.avatar,
         ageYears,
         ageRange: getAgeRange(ageYears),
-        yearGroup: formData.yearGroup,
-        schoolYear: formData.schoolYear,
+        yearGroup: formData.yearGroup.trim(),
+        schoolYear: formData.schoolYear.trim(),
         dateOfBirth: formData.dateOfBirth || undefined,
-        keyStageLevel: formData.keyStageLevel,
-        subjectLevel: formData.subjectLevel,
-        learningGoals: formData.learningGoals
-          .split('\n')
-          .map((goal) => goal.trim())
-          .filter(Boolean),
-        senSupportNeeds: formData.supportNeeds || undefined,
+        keyStageLevel: formData.keyStageLevel.trim(),
+        subjectLevel: formData.subjectLevel.trim(),
+        learningGoals: learningGoals.length ? learningGoals : undefined,
+        senSupportNeeds: supportNeeds || undefined,
         startLevelChoice: formData.startLevelChoice,
       };
 
@@ -202,7 +219,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           placeholder="Enter child&apos;s first and last name"
           className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-          maxLength={100}
+          maxLength={64}
           required
         />
         {fieldErrors.name ? <p className="mt-1 text-xs text-red-400">{fieldErrors.name}</p> : null}
