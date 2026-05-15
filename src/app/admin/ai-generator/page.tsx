@@ -61,9 +61,12 @@ function getAvailableSkills(subject: Subject, yearGroup: string | null | undefin
   return skillsForSubjectAndYear(subject, yearGroup);
 }
 
-function normalizeYearForKeyStage(keyStage: string, yearGroup: string | null | undefined) {
+function normalizeYearForKeyStage(
+  keyStage: (typeof KEY_STAGES)[number],
+  yearGroup: string | null | undefined
+): YearGroup {
   const options = yearGroupsForKeyStage(keyStage);
-  return yearGroup && options.includes(yearGroup as (typeof YEAR_GROUPS)[number]) ? yearGroup : options[0];
+  return (yearGroup && options.includes(yearGroup as YearGroup) ? yearGroup : options[0]) as YearGroup;
 }
 
 type WeakArea = {
@@ -111,6 +114,21 @@ type AutomationStatus = {
   ok: boolean;
 };
 
+type GenerationContext = {
+  subject: Subject;
+  keyStage: (typeof KEY_STAGES)[number];
+  yearGroup: YearGroup;
+  curriculumPathway: string;
+  examBoard?: string;
+  skillFocus: string;
+  ageGroup: (typeof AGE_GROUPS)[number];
+  difficulty: number;
+  topic: string;
+  targetStudentId: string | null;
+  source: "manual" | "weak-area";
+  weakAreaId: string | null;
+};
+
 const CUSTOM_TOPIC_VALUE = "__custom_topic__";
 
 function resolvePreviewItemStatus(item: GeneratedPreviewItem, fallback: "pending" | "approved" = "approved"): "pending" | "approved" | "rejected" {
@@ -129,6 +147,20 @@ function formatSubjectLabel(value: string): string {
   if (value === "maths") return "Maths";
   if (value === "times-tables") return "Times Tables";
   return value.charAt(0).toUpperCase() + value.slice(1).replace(/-/g, " ");
+}
+
+function formatFriendlyTopic(value: string): string {
+  const normalized = value.replace(/_/g, " ").replace(/-/g, " ").trim();
+  if (!normalized) return "Targeted intervention";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function toTitleCaseWords(value: string): string {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function formatValidationSuccessMessage(subject: Subject): string {
@@ -287,6 +319,9 @@ export default function AiGeneratorPage() {
     model?: string;
     provider?: string;
   } | null>(null);
+  const [previewContext, setPreviewContext] = useState<GenerationContext | null>(null);
+  const [loadedWeakAreaId, setLoadedWeakAreaId] = useState<string | null>(null);
+  const [weakAreaFormSynced, setWeakAreaFormSynced] = useState(false);
 
   const topicSuggestions = useMemo(() => topicSuggestionsForSelection({
     yearGroup,
@@ -330,6 +365,11 @@ export default function AiGeneratorPage() {
       ? { label: "Adjusted", className: "bg-amber-500/15 text-amber-200" }
       : { label: "Perfect", className: "bg-emerald-500/15 text-emerald-200" };
 
+  const clearWeakAreaLink = () => {
+    setLoadedWeakAreaId(null);
+    setWeakAreaFormSynced(false);
+  };
+
   function formatRepairMessage(error: string) {
     const [type, word] = error.split(":");
     if (type === "duplicate") return `Removed duplicate: ${word}`;
@@ -339,20 +379,36 @@ export default function AiGeneratorPage() {
     return error;
   }
 
-  async function generatePreview(retryCount = 0) {
-    if (!subject || !keyStage || !yearGroup || !skillFocus.trim()) {
+  async function generatePreview(retryCount = 0, contextOverride?: GenerationContext) {
+    const context: GenerationContext = contextOverride ?? {
+      subject,
+      keyStage,
+      yearGroup: yearGroup as YearGroup,
+      curriculumPathway,
+      examBoard: shouldTagExamBoard ? examBoard : undefined,
+      skillFocus,
+      ageGroup: ageGroup as (typeof AGE_GROUPS)[number],
+      difficulty,
+      topic: selectedTopicTheme,
+      targetStudentId,
+      source: "manual",
+      weakAreaId: null,
+    };
+
+    if (!context.subject || !context.keyStage || !context.yearGroup || !context.skillFocus.trim()) {
       setError("Subject, key stage, year group and skill focus are required.");
       return;
     }
-    if (!topicSuggestions.length && effectiveTopicChoice !== CUSTOM_TOPIC_VALUE) {
-      setError("No topic/theme mapping exists for this year, subject and skill. Add curriculum mapping before generating.");
-      return;
-    }
-    if (!selectedTopicTheme) {
+    if (!context.topic) {
       setError("Topic/theme is required before generating content.");
       return;
     }
-    const pathValidation = isValidCurriculumPath({ yearGroup, subject, skillFocus, topic: selectedTopicTheme });
+    const pathValidation = isValidCurriculumPath({
+      yearGroup: context.yearGroup,
+      subject: context.subject,
+      skillFocus: context.skillFocus,
+      topic: context.topic,
+    });
     if (!pathValidation.ok) {
       setError(pathValidation.reason);
       return;
@@ -373,22 +429,23 @@ export default function AiGeneratorPage() {
     setSavedContentId(null);
     setPreview(null);
     setGenerationMeta(null);
+    setPreviewContext(null);
     setGenerationDiagnostics(null);
     try {
       const response = await fetch("/api/admin/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          subject,
-          keyStage,
-          yearGroup,
-          curriculumPathway,
-          examBoard: shouldTagExamBoard ? examBoard : undefined,
-          skillFocus,
-          ageGroup,
-          difficulty,
+          subject: context.subject,
+          keyStage: context.keyStage,
+          yearGroup: context.yearGroup,
+          curriculumPathway: context.curriculumPathway,
+          examBoard: context.examBoard,
+          skillFocus: context.skillFocus,
+          ageGroup: context.ageGroup,
+          difficulty: context.difficulty,
           numberOfItems: items,
-          topic: selectedTopicTheme,
+          topic: context.topic,
         }),
       });
       setGenerationPhase("repairing-response");
@@ -405,7 +462,7 @@ export default function AiGeneratorPage() {
       if (!parsed.ok || !parsed.payload) {
         if (retryCount === 0) {
           setGenerationPhase("retrying-parse");
-          await generatePreview(1);
+          await generatePreview(1, context);
           return;
         }
         setError(parsed.message ?? "The AI returned an invalid response. Please try again.");
@@ -436,18 +493,18 @@ export default function AiGeneratorPage() {
           : [];
         setPreview({
           ...(content ?? {}),
-          subject: content?.subject ?? subject,
-          keyStage: content?.keyStage ?? keyStage,
-          yearGroup: content?.yearGroup ?? yearGroup,
-          skillFocus: content?.skillFocus ?? skillFocus,
-          difficulty: content?.difficulty ?? difficulty,
+          subject: content?.subject ?? context.subject,
+          keyStage: content?.keyStage ?? context.keyStage,
+          yearGroup: content?.yearGroup ?? context.yearGroup,
+          skillFocus: content?.skillFocus ?? context.skillFocus,
+          difficulty: content?.difficulty ?? context.difficulty,
           status: "draft",
           safetyStatus: content?.safetyStatus ?? "passed",
           qualityScore: content?.qualityScore ?? 80,
           voiceScript: content?.voiceScript ?? "",
           imagePrompt: content?.imagePrompt ?? "",
-          topic: selectedTopicTheme,
-          title: content?.title ?? `${formatSubjectLabel(subject)} - ${selectedTopicTheme}`,
+          topic: context.topic,
+          title: content?.title ?? `${formatSubjectLabel(context.subject)} - ${context.topic}`,
           items: applyDefaultItemStatuses(incomingItems, "approved"),
         });
         setGenerationMeta({
@@ -457,6 +514,7 @@ export default function AiGeneratorPage() {
           estimatedTokens: payload.estimatedTokens,
           validation: payload.meta,
         });
+        setPreviewContext(context);
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unable to reach AI generator";
@@ -469,6 +527,22 @@ export default function AiGeneratorPage() {
 
   async function saveGeneratedContent() {
     if (!preview || !approvedCount) return;
+    const context = previewContext ?? {
+      subject,
+      keyStage,
+      yearGroup: yearGroup as YearGroup,
+      curriculumPathway,
+      examBoard: shouldTagExamBoard ? examBoard : undefined,
+      skillFocus,
+      ageGroup: ageGroup as (typeof AGE_GROUPS)[number],
+      difficulty,
+      topic: selectedTopicTheme,
+      targetStudentId,
+      source: "manual" as const,
+      weakAreaId: null,
+    };
+
+    const generationTypeForContext = GENERATION_CONTENT_TYPE_BY_SUBJECT[context.subject];
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -477,17 +551,17 @@ export default function AiGeneratorPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: subject,
-          generationType: selectedGenerationType,
-          ageGroup,
-          keyStage,
-          yearGroup,
-          curriculumPathway,
-          examBoard: shouldTagExamBoard ? examBoard : undefined,
-          skillFocus,
-          difficulty,
-          topic: selectedTopicTheme,
-          itemSchema: selectedGenerationType,
+          type: context.subject,
+          generationType: generationTypeForContext,
+          ageGroup: context.ageGroup,
+          keyStage: context.keyStage,
+          yearGroup: context.yearGroup,
+          curriculumPathway: context.curriculumPathway,
+          examBoard: context.examBoard,
+          skillFocus: context.skillFocus,
+          difficulty: context.difficulty,
+          topic: context.topic,
+          itemSchema: generationTypeForContext,
           items: {
             ...preview,
             items: (preview.items as GeneratedPreviewItem[]).filter((item) => item.status === "approved"),
@@ -496,6 +570,8 @@ export default function AiGeneratorPage() {
           model: generationMeta?.model,
           prompt: generationMeta?.prompt,
           estimatedCostPence: generationMeta?.estimatedCostPence,
+          generationSource: context.source,
+          weakAreaId: context.weakAreaId,
         }),
       });
       const payload = await response.json();
@@ -507,11 +583,11 @@ export default function AiGeneratorPage() {
           : [];
         setMessage(warnings.length ? `Saved to Content Library. Warning: ${warnings.join(" ")}` : "Saved to Content Library");
         setSavedContentId(payload.item?.id ?? null);
-        if (targetStudentId && payload.item?.id) {
+        if (context.targetStudentId && payload.item?.id) {
           const assignResponse = await fetch("/api/admin/assignments", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ studentId: targetStudentId, contentId: payload.item.id }),
+            body: JSON.stringify({ studentId: context.targetStudentId, contentId: payload.item.id }),
           });
           const assignPayload = await assignResponse.json().catch(() => ({} as { error?: string }));
           if (assignResponse.ok) {
@@ -724,31 +800,97 @@ export default function AiGeneratorPage() {
     }
   }
 
-  function applyWeakArea(area: WeakArea) {
-    // Map the weak area subject to an available subject
-    let nextSubject: Subject = "spelling";
-    if (area.subject === "math") nextSubject = "maths";
-    else if (area.subject === "reading") nextSubject = "reading";
-    else nextSubject = "spelling";
+  function weakAreaToGenerationContext(area: WeakArea): GenerationContext {
+    const subjectLower = area.subject.toLowerCase();
+    const skillLower = area.skillFocus.toLowerCase();
+    const inferredYearGroup = area.yearGroup ?? (skillLower.includes("algebra") ? "Year 10" : "Year 4");
+    const derivedKeyStage = (area.keyStage ?? keyStageForYearGroup(inferredYearGroup)) as typeof KEY_STAGES[number];
+    const derivedYearGroup = normalizeYearForKeyStage(derivedKeyStage, inferredYearGroup);
+    const availableForYear = getAvailableSubjects(derivedYearGroup);
 
-    const nextKeyStage = (area.keyStage ?? keyStageForYearGroup(area.yearGroup ?? "Year 1")) as typeof KEY_STAGES[number];
-    setSubject(nextSubject);
-    setKeyStage(nextKeyStage);
-    setYearGroup(normalizeYearForKeyStage(nextKeyStage, area.yearGroup));
-    setAgeGroup(ageGroupForYearGroup(area.yearGroup) as typeof AGE_GROUPS[number]);
-    setSkillFocus(area.skillFocus);
-    setDifficulty(Math.max(1, area.status === "active" ? area.currentDifficulty - 1 : area.currentDifficulty));
+    const preferredSubjects: Subject[] =
+      subjectLower === "math" || subjectLower === "maths"
+        ? (["gcse-maths", "maths", "times-tables"] as Subject[])
+        : subjectLower.includes("science")
+          ? (["gcse-science", "science"] as Subject[])
+          : subjectLower.includes("reading")
+            ? (["reading", "english-language", "grammar"] as Subject[])
+            : (["spelling", "writing", "grammar"] as Subject[]);
+
+    let mappedSubject = preferredSubjects.find((candidate) => availableForYear.includes(candidate));
+    if (!mappedSubject) {
+      mappedSubject = availableForYear[0];
+    }
+    if (!mappedSubject) {
+      mappedSubject = "spelling";
+    }
+
+    const skills = getAvailableSkills(mappedSubject, derivedYearGroup);
+    const skillExact = skills.find((skill) => skill.toLowerCase() === skillLower);
+    const skillLoose = skills.find((skill) => skill.toLowerCase().includes(skillLower) || skillLower.includes(skill.toLowerCase()));
+    const mappedSkill = skillExact ?? skillLoose ?? skills[0] ?? area.skillFocus;
+
+    const curriculum = curriculumPathwayForYearGroup(derivedYearGroup);
+    const needExamBoard = shouldApplyExamBoardTag({
+      yearGroup: derivedYearGroup,
+      keyStage: derivedKeyStage,
+      curriculumPathway: curriculum,
+      subject: mappedSubject,
+    });
+    const recommendedExamBoard = needExamBoard ? EXAM_BOARDS.find((value) => value.toUpperCase() === "AQA") ?? EXAM_BOARDS[0] ?? "" : "";
+    const baselineDifficulty = Math.max(1, Math.min(5, area.currentDifficulty || 2));
+    const recommendedDifficulty = Math.max(1, baselineDifficulty - 1);
+    const recommendedTopic = skillLower.includes("algebra")
+      ? "Algebra intervention"
+      : `${formatFriendlyTopic(area.skillFocus)} intervention`;
+
+    return {
+      subject: mappedSubject,
+      keyStage: derivedKeyStage,
+      yearGroup: derivedYearGroup,
+      curriculumPathway: curriculum,
+      examBoard: needExamBoard ? recommendedExamBoard : undefined,
+      skillFocus: mappedSkill,
+      ageGroup: ageGroupForYearGroup(derivedYearGroup),
+      difficulty: recommendedDifficulty,
+      topic: recommendedTopic,
+      targetStudentId: area.studentId,
+      source: "weak-area",
+      weakAreaId: area.id,
+    };
+  }
+
+  function applyWeakArea(area: WeakArea) {
+    const context = weakAreaToGenerationContext(area);
+    setSubject(context.subject);
+    setKeyStage(context.keyStage);
+    setYearGroup(context.yearGroup);
+    setAgeGroup(context.ageGroup);
+    setSkillFocus(context.skillFocus);
+    setDifficulty(context.difficulty);
+    setExamBoard(context.examBoard ?? "");
     setTopicChoice(CUSTOM_TOPIC_VALUE);
-    setCustomTopic(`${area.weaknessType} support for ${area.skillFocus}`);
+    setCustomTopic(context.topic);
     setTargetStudentId(area.studentId);
+    setLoadedWeakAreaId(area.id);
+    setWeakAreaFormSynced(true);
     setSavedContentId(null);
-    setAutomationMessage(`Prefilled targeted content for ${area.student.name}.`);
+    setAutomationMessage(`Loaded ${area.student.name}'s weak area into the manual generator.`);
+  }
+
+  async function generateInterventionFromWeakArea(area: WeakArea) {
+    const context = weakAreaToGenerationContext(area);
+    setTargetStudentId(area.studentId);
+    setLoadedWeakAreaId(area.id);
+    setWeakAreaFormSynced(false);
+    setAutomationMessage(`Generating direct intervention from detected weak-area analytics for ${area.student.name}.`);
+    await generatePreview(0, context);
   }
 
   return (
     <div className="relative z-0 grid items-start gap-6 xl:grid-cols-[32rem_minmax(0,1fr)]">
       <div className="xl:sticky xl:top-36 xl:z-20">
-      <AdminSectionCard title="AI Generator" eyebrow="Content">
+      <AdminSectionCard title="Manual Curriculum Generator" eyebrow="Manual AI generator">
         <div className="space-y-4 pb-6">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-bold text-slate-300">
@@ -756,6 +898,7 @@ export default function AiGeneratorPage() {
               <select
                 value={yearGroup}
                 onChange={(event) => {
+                  clearWeakAreaLink();
                   const nextYear = event.target.value;
                   setYearGroup(nextYear);
                   setKeyStage(keyStageForYearGroup(nextYear));
@@ -799,6 +942,7 @@ export default function AiGeneratorPage() {
               <select
                 value={keyStage}
                 onChange={(event) => {
+                  clearWeakAreaLink();
                   const nextKeyStage = event.target.value as typeof KEY_STAGES[number];
                   setKeyStage(nextKeyStage);
                   const options = yearGroupsForKeyStage(nextKeyStage);
@@ -834,6 +978,7 @@ export default function AiGeneratorPage() {
             <select
               value={subject}
               onChange={(event) => {
+                clearWeakAreaLink();
                 const nextSubject = event.target.value as Subject;
                 setSubject(nextSubject);
                 const nextSkills = getAvailableSkills(nextSubject, yearGroup);
@@ -856,6 +1001,7 @@ export default function AiGeneratorPage() {
             <select
               value={skillFocus}
               onChange={(event) => {
+                clearWeakAreaLink();
                 const nextSkill = event.target.value;
                 setSkillFocus(nextSkill);
                 setTopicChoice("");
@@ -885,7 +1031,10 @@ export default function AiGeneratorPage() {
               Exam board {shouldTagExamBoard ? "(recommended)" : "(not needed)"}
               <select
                 value={examBoard}
-                onChange={(event) => setExamBoard(event.target.value)}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setExamBoard(event.target.value);
+                }}
                 className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
                 disabled={!shouldTagExamBoard}
               >
@@ -905,7 +1054,10 @@ export default function AiGeneratorPage() {
               Age group
               <select
                 value={ageGroup}
-                onChange={(event) => setAgeGroup(event.target.value as typeof AGE_GROUPS[number])}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setAgeGroup(event.target.value as typeof AGE_GROUPS[number]);
+                }}
                 className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
               >
                 {AGE_GROUPS.map((group) => (
@@ -922,7 +1074,10 @@ export default function AiGeneratorPage() {
                 min={1}
                 max={5}
                 value={difficulty}
-                onChange={(event) => setDifficulty(Number(event.target.value))}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setDifficulty(Number(event.target.value));
+                }}
                 className="mt-2 w-full accent-indigo-500"
               />
             </label>
@@ -935,7 +1090,10 @@ export default function AiGeneratorPage() {
               min={1}
               max={30}
               value={items}
-              onChange={(event) => setItems(Number(event.target.value))}
+              onChange={(event) => {
+                clearWeakAreaLink();
+                setItems(Number(event.target.value));
+              }}
               className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
             />
           </label>
@@ -945,6 +1103,7 @@ export default function AiGeneratorPage() {
             <select
               value={effectiveTopicChoice}
               onChange={(event) => {
+                clearWeakAreaLink();
                 setTopicChoice(event.target.value);
                 if (event.target.value !== CUSTOM_TOPIC_VALUE) {
                   setCustomTopic("");
@@ -960,7 +1119,10 @@ export default function AiGeneratorPage() {
             {effectiveTopicChoice === CUSTOM_TOPIC_VALUE ? (
               <input
                 value={customTopic}
-                onChange={(event) => setCustomTopic(event.target.value)}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setCustomTopic(event.target.value);
+                }}
                 placeholder="Type a custom topic/theme"
                 className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600"
               />
@@ -1030,7 +1192,7 @@ export default function AiGeneratorPage() {
       </div>
 
       <div className="space-y-6 pb-24 xl:max-h-[calc(100vh-10rem)] xl:overflow-y-auto xl:pr-1">
-      <AdminSectionCard title="Automation" eyebrow="Smart content">
+      <AdminSectionCard title="AI Intervention Engine" eyebrow="Intervention analytics">
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <select
             value={weakAreaKeyStageFilter}
@@ -1123,12 +1285,39 @@ export default function AiGeneratorPage() {
           <div className="mt-4 space-y-3">
             {weakAreas.slice(0, 8).map((area, index) => (
               <div key={`${area.id}-${index}`} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-300">Detected Weak Area</p>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-bold text-white">{area.student.name}</p>
-                    <p className="text-xs text-slate-400">{area.subject} · {area.skillFocus} · {area.accuracy}% · {area.weaknessType}</p>
+                    <p className="font-bold text-white">Student: {area.student.name}</p>
+                    <p className="text-xs text-slate-300">Subject: {formatSubjectLabel(area.subject)}</p>
+                    <p className="text-xs text-slate-300">Weak topic: {formatFriendlyTopic(area.skillFocus)}</p>
+                    <p className="text-xs text-slate-300">Accuracy: {area.accuracy}%</p>
+                    <p className="mt-2 text-xs text-cyan-200">{toTitleCaseWords(formatSubjectLabel(area.subject))} · {toTitleCaseWords(formatFriendlyTopic(area.skillFocus))} Intervention</p>
+                    <p className="text-xs text-cyan-200">{area.accuracy}% accuracy detected</p>
+                    <p className="text-xs text-cyan-200">Targeted support recommended</p>
+                    <p className="mt-2 text-xs text-amber-200">This intervention is based on detected weak-area data, not the manual form above.</p>
+                    {loadedWeakAreaId === area.id ? (
+                      <p className={`mt-2 text-xs ${weakAreaFormSynced ? "text-emerald-300" : "text-slate-400"}`}>
+                        {weakAreaFormSynced
+                          ? "Loaded into manual generator."
+                          : "Previously loaded into manual generator. Manual form has changed since load."}
+                      </p>
+                    ) : null}
                   </div>
-                  <button onClick={() => applyWeakArea(area)} className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white">Generate Targeted Content</button>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <button
+                    onClick={() => applyWeakArea(area)}
+                    className="rounded-xl border border-indigo-400/70 px-3 py-2 text-xs font-black text-indigo-100"
+                  >
+                    Load into generator
+                  </button>
+                  <button
+                    onClick={() => void generateInterventionFromWeakArea(area)}
+                    className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white"
+                  >
+                    Generate Weak-Area Support
+                  </button>
                 </div>
               </div>
             ))}
