@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
+import { requireAdmin } from "@/lib/api_guard";
 import { addDays, getPlan, normalizePlanKey } from "@/lib/subscriptions/plans";
 import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
 import { writeAuditLog } from "@/lib/audit";
@@ -84,8 +84,12 @@ async function canAdminManageSubscriptions(userId: string): Promise<boolean> {
   });
 
   const role = user?.adminProfile?.role;
+  const normalizedRoleName = String(role?.name ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
   if (!role) return false;
-  if (role.name === "Super Admin") return true;
+  if (normalizedRoleName === "SUPER_ADMIN") return true;
 
   try {
     const parsed = JSON.parse(role.permissions);
@@ -186,8 +190,13 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  const { session, response } = await requireAdminPermission("parents:write");
+  const { session, response } = await requireAdmin();
   if (!session) return response;
+
+  const canManagePlans = await canAdminManageSubscriptions(session.userId);
+  if (!canManagePlans) {
+    return NextResponse.json({ error: "Forbidden: missing subscription management permission" }, { status: 403 });
+  }
 
   try {
     const body = updateSchema.parse(await request.json());

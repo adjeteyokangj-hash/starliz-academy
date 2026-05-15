@@ -99,11 +99,15 @@ export async function requireAdminPermission(permission: string) {
   });
 
   const role = user?.adminProfile?.role;
+  const normalizedRoleName = String(role?.name ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
   if (!role) {
     // Admin user with no AdminProfile row (e.g. seed-created admins) → treat as Super Admin
     return { session, response: null as NextResponse | null };
   }
-  if (role.name === "Super Admin") {
+  if (normalizedRoleName === "SUPER_ADMIN") {
     return { session, response: null as NextResponse | null };
   }
 

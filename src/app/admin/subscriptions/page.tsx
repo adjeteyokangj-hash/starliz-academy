@@ -261,8 +261,8 @@ export default function SubscriptionsPage() {
         </select>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-700/80">
-        <table className="min-w-[1280px] w-full text-left text-sm">
+      <div className="max-w-full overflow-x-auto rounded-2xl border border-slate-700/80">
+        <table className="min-w-[1040px] w-full table-auto text-left text-sm">
           <thead className="bg-slate-900/95 text-xs uppercase tracking-[0.16em] text-slate-300">
             <tr>
               <th className="px-3 py-2">Parent</th>
@@ -274,10 +274,10 @@ export default function SubscriptionsPage() {
               <th className="px-3 py-2">Child Limit</th>
               <th className="px-3 py-2">Cycle</th>
               <th className="px-3 py-2">Provider</th>
-              <th className="px-3 py-2">Payment Method</th>
-              <th className="px-3 py-2">Stripe Customer</th>
-              <th className="px-3 py-2">Last Payment</th>
-              <th className="px-3 py-2">Actions</th>
+              <th className="hidden xl:table-cell px-3 py-2">Payment Method</th>
+              <th className="hidden 2xl:table-cell px-3 py-2">Stripe Customer</th>
+              <th className="hidden lg:table-cell px-3 py-2">Last Payment</th>
+              <th className="sticky right-0 z-20 border-l border-slate-800 bg-slate-900/95 px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -294,7 +294,7 @@ export default function SubscriptionsPage() {
                       updateLocalRow(row.parentId, { planKey: event.target.value })
                     }
                     disabled={!canManagePlans || workingParentId === row.parentId}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-w-[5.5rem] w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {PLAN_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -310,7 +310,7 @@ export default function SubscriptionsPage() {
                       updateLocalRow(row.parentId, { status: event.target.value as SubscriptionRow["status"] })
                     }
                     disabled={!canManagePlans || workingParentId === row.parentId}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-w-[5.5rem] w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {STATUS_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -331,41 +331,41 @@ export default function SubscriptionsPage() {
                       });
                     }}
                     disabled={!canManagePlans || workingParentId === row.parentId}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-w-[8.5rem] w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </td>
                 <td className="px-3 py-3 text-slate-200">{row.amountLabel}</td>
                 <td className="px-3 py-3 text-slate-200">{row.childLimit}</td>
                 <td className="px-3 py-3 text-slate-200">{row.billingCycle}</td>
                 <td className="px-3 py-3 text-slate-200">{row.paymentProvider === "stripe" ? "Stripe" : "Paystack"}</td>
-                <td className="px-3 py-3 text-slate-200">{row.paymentMethod}</td>
-                <td className="px-3 py-3">
+                <td className="hidden xl:table-cell px-3 py-3 text-slate-200">{row.paymentMethod}</td>
+                <td className="hidden 2xl:table-cell px-3 py-3">
                   <p className="max-w-[220px] truncate text-xs text-slate-300">{row.stripeCustomerId ?? "-"}</p>
                 </td>
-                <td className="px-3 py-3 text-slate-200">{formatDate(row.lastPaymentDate)}</td>
-                <td className="px-3 py-3">
+                <td className="hidden lg:table-cell px-3 py-3 text-slate-200">{formatDate(row.lastPaymentDate)}</td>
+                <td className="sticky right-0 z-10 border-l border-slate-800 bg-slate-950/95 px-3 py-3">
                   <div className="grid gap-2">
                     <button
                       type="button"
                       onClick={() => void runAction(row, "change_plan")}
                       disabled={!canManagePlans || workingParentId === row.parentId}
-                      className="rounded-lg bg-indigo-500 px-2 py-1.5 text-xs font-bold text-white hover:bg-indigo-400 disabled:opacity-50"
+                      className="rounded-lg bg-indigo-500 px-2 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-400 disabled:opacity-50"
                     >
-                      Grant / Update Plan
+                      Upgrade / Update
                     </button>
                     <button
                       type="button"
                       onClick={() => void runAction(row, "extend_trial")}
                       disabled={!canManagePlans || workingParentId === row.parentId}
-                      className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs font-semibold text-slate-200"
+                      className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] font-semibold text-slate-200"
                     >
-                      Extend Trial +7d
+                      Extend +7d
                     </button>
                     <button
                       type="button"
                       onClick={() => void runAction(row, "pause_subscription")}
                       disabled={!canManagePlans || workingParentId === row.parentId}
-                      className="rounded-lg border border-amber-700 bg-amber-950/40 px-2 py-1.5 text-xs font-semibold text-amber-200"
+                      className="rounded-lg border border-amber-700 bg-amber-950/40 px-2 py-1.5 text-[11px] font-semibold text-amber-200"
                     >
                       Pause
                     </button>
@@ -373,7 +373,7 @@ export default function SubscriptionsPage() {
                       type="button"
                       onClick={() => void runAction(row, "resume_subscription")}
                       disabled={!canManagePlans || workingParentId === row.parentId}
-                      className="rounded-lg border border-emerald-700 bg-emerald-950/40 px-2 py-1.5 text-xs font-semibold text-emerald-200"
+                      className="rounded-lg border border-emerald-700 bg-emerald-950/40 px-2 py-1.5 text-[11px] font-semibold text-emerald-200"
                     >
                       Resume
                     </button>
@@ -381,7 +381,7 @@ export default function SubscriptionsPage() {
                       type="button"
                       onClick={() => void runAction(row, "cancel_subscription")}
                       disabled={!canManagePlans || workingParentId === row.parentId}
-                      className="rounded-lg border border-rose-700 bg-rose-950/40 px-2 py-1.5 text-xs font-semibold text-rose-200"
+                      className="rounded-lg border border-rose-700 bg-rose-950/40 px-2 py-1.5 text-[11px] font-semibold text-rose-200"
                     >
                       Cancel
                     </button>
@@ -389,9 +389,9 @@ export default function SubscriptionsPage() {
                       type="button"
                       onClick={() => void runAction(row, "send_payment_reminder")}
                       disabled={!canManagePlans || workingParentId === row.parentId}
-                      className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs font-semibold text-slate-200"
+                      className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] font-semibold text-slate-200"
                     >
-                      Send Reminder
+                      Remind
                     </button>
                   </div>
                 </td>
