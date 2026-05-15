@@ -214,7 +214,9 @@ async function parseApiResponse<T = Record<string, unknown>>(response: Response)
   return {
     ok: false,
     payload: null,
-    message: "The server returned an unexpected response.",
+    message: trimmed.toLowerCase().includes("<!doctype") || trimmed.toLowerCase().includes("<html")
+      ? `The server returned HTML instead of JSON (status ${response.status}). Check admin session/auth or server errors.`
+      : `The server returned a non-JSON response (status ${response.status}).`,
     diagnostics: { status: response.status, contentType, parseStage: "invalid-content-type", rawResponse: text },
   };
 }
@@ -744,8 +746,8 @@ export default function AiGeneratorPage() {
   }
 
   return (
-    <div className="grid items-start gap-6 xl:grid-cols-[32rem_minmax(0,1fr)]">
-      <div className="xl:sticky xl:top-24">
+    <div className="relative z-0 grid items-start gap-6 xl:grid-cols-[32rem_minmax(0,1fr)]">
+      <div className="xl:sticky xl:top-36 xl:z-20">
       <AdminSectionCard title="AI Generator" eyebrow="Content">
         <div className="space-y-4 pb-6">
           <div className="grid gap-3 sm:grid-cols-2">

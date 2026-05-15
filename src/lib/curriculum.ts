@@ -366,16 +366,16 @@ const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
     "Year 6": ["Selective school preparation", "Mock papers", "Timed practice"],
   },
   "gcse-english": {
-    "Year 10": ["Literature", "Language analysis", "Writing"],
-    "Year 11": ["Paper 1 language", "Paper 2 literature", "Extended writing"],
+    "Year 10": ["English Language", "English Literature", "Exam technique", "Retrieval practice", "Extended response"],
+    "Year 11": ["English Language", "English Literature", "Exam technique", "Extended response", "Retrieval practice"],
   },
   "gcse-maths": {
-    "Year 10": ["Number", "Algebra", "Geometry", "Statistics"],
-    "Year 11": ["Higher tier topics", "Problem solving", "Proof"],
+    "Year 10": ["Number", "Algebra", "Geometry", "Statistics", "Equation recall", "Calculation practice"],
+    "Year 11": ["Higher tier topics", "Problem solving", "Proof", "Equation recall", "Calculation practice", "Exam technique"],
   },
   "gcse-science": {
-    "Year 10": ["Biology", "Chemistry", "Physics"],
-    "Year 11": ["Synoptic assessment", "Calculation practice", "Practical skills"],
+    "Year 10": ["Biology", "Chemistry", "Physics", "Combined Science", "Required practicals", "Exam technique", "Equation recall"],
+    "Year 11": ["Synoptic assessment", "Calculation practice", "Required practicals", "Exam technique", "Extended response", "Retrieval practice", "Equation recall", "Biology", "Chemistry", "Physics", "Combined Science"],
   },
 };
 
@@ -529,6 +529,39 @@ function generateTopicsFromSkill(skillFocus: string, subject: Subject): readonly
   }
   
   if (subject === "science" || subject === "gcse-science") {
+    if (skill.includes("biology")) {
+      generated.push("Cell biology", "Homeostasis", "Inheritance", "Biological systems");
+    }
+    if (skill.includes("chemistry")) {
+      generated.push("Bonding and structure", "Rates of reaction", "Quantitative chemistry", "Organic chemistry");
+    }
+    if (skill.includes("physics")) {
+      generated.push("Energy transfers", "Electricity", "Forces and motion", "Waves and radiation");
+    }
+    if (skill.includes("combined")) {
+      generated.push("Combined science mixed paper", "Biology chemistry physics review", "Interleaved combined science retrieval");
+    }
+    if (skill.includes("synoptic")) {
+      generated.push("Synoptic assessment", "Inter-topic application", "Mixed GCSE science paper");
+    }
+    if (skill.includes("calculation")) {
+      generated.push("Scientific calculations", "Units and conversions", "Standard form practice", "Required equation use");
+    }
+    if (skill.includes("equation")) {
+      generated.push("Equation recall", "Formula selection", "Rearranging equations", "Substitution accuracy");
+    }
+    if (skill.includes("practical")) {
+      generated.push("Required practicals", "Method evaluation", "Variables and controls", "Experimental error analysis");
+    }
+    if (skill.includes("exam technique") || skill.includes("command words")) {
+      generated.push("Exam command words", "Structured response", "Explain vs evaluate practice", "Mark-scheme style phrasing");
+    }
+    if (skill.includes("extended response")) {
+      generated.push("6-mark response planning", "Evidence-based explanation", "Chain of reasoning");
+    }
+    if (skill.includes("retrieval")) {
+      generated.push("Low-stakes retrieval", "Knowledge recall", "Interleaved concept checks");
+    }
     if (skill.includes("living") || skill.includes("organism")) {
       generated.push("Organism classification", "Habitat adaptation", "Life process");
     }
@@ -732,10 +765,12 @@ function generateTopicsFromSkill(skillFocus: string, subject: Subject): readonly
     ],
     "gcse-science": [
       "required practicals",
-      "exam command words",
+      "exam technique",
       "calculation practice",
+      "equation recall",
+      "retrieval practice",
       "application questions",
-      "synoptic revision",
+      "synoptic assessment",
     ],
     "gcse-maths": [
       "algebra fluency",

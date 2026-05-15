@@ -25,14 +25,19 @@ const OPENAI_MODEL = "gpt-4o-mini";
 const generationCache = new Map<string, { content: unknown; meta: Record<string, unknown> }>();
 const generationRateLimit = new Map<string, { count: number; resetAt: number }>();
 
-type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" | "writing";
+type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" | "writing" | "science";
 
-function mapSubjectToGenerationType(subject: string): GenerationType {
-  return (GENERATION_CONTENT_TYPE_BY_SUBJECT[String(subject).toLowerCase() as Subject] ?? "spelling");
+function isSupportedSubject(value: string): value is Subject {
+  return Object.prototype.hasOwnProperty.call(GENERATION_CONTENT_TYPE_BY_SUBJECT, value);
+}
+
+function mapSubjectToGenerationType(subject: Subject): GenerationType {
+  return GENERATION_CONTENT_TYPE_BY_SUBJECT[subject];
 }
 
 function mapGenerationTypeToPromptType(type: GenerationType): PromptType {
-  if (type === "maths" || type === "science" || type === "exam-practice") return "maths";
+  if (type === "science") return "science";
+  if (type === "maths" || type === "exam-practice") return "maths";
   if (type === "reading" || type === "vocabulary" || type === "english-literature") return "reading";
   if (type === "punctuation") return "punctuation";
   if (type === "grammar") return "grammar";
@@ -66,6 +71,20 @@ type GeneratedPreview = {
   voiceScript: string;
   imagePrompt: string;
   items: unknown[];
+  metadata: {
+    generationType: GenerationType;
+    promptType: PromptType;
+    parser: "reading-object" | "array-items";
+  };
+  curriculumContext: {
+    pathway: string;
+    examBoard: string | null;
+    keyStage: string;
+    yearGroup: string;
+    subject: Subject;
+    skillFocus: string;
+    topic: string;
+  };
 };
 
 const SYSTEM_PROMPT: Record<PromptType, string> = {
@@ -89,6 +108,15 @@ Difficulty must increase by year group and level.
 Return a JSON array. Each item must follow this schema exactly:
 { "id": string, "question": string, "answer": number, "explanation": string, "choices": number[], "yearGroup": string, "skillFocus": string, "difficulty": number, "topic": string }
 Content type lock: maths must not generate spelling word lists or reading passages.
+Return ONLY valid JSON — no explanation, no markdown.`,
+
+  science: `You are a UK science curriculum content creator for England.
+Generate curriculum-grade science questions for KS3/KS4 and GCSE pathway where requested.
+For GCSE pathway (Years 10-11), support Biology, Chemistry, Physics and Combined Science framing.
+Include exam-board-aware wording only when exam board is provided (AQA, OCR, Edexcel), and do not claim official approval.
+Return a JSON array. Each item must follow this schema exactly:
+{ "id": string, "question": string, "answer": string, "explanation": string, "choices": string[], "yearGroup": string, "skillFocus": string, "difficulty": number, "topic": string }
+Content type lock: science must not generate spelling lists or unrelated reading passages.
 Return ONLY valid JSON — no explanation, no markdown.`,
 
   reading: `You are a UK curriculum content creator for England.
@@ -150,6 +178,7 @@ function buildUserPrompt(
   keyStage: string,
   yearGroup: string,
   skillFocus: string,
+  examBoard?: string | null,
   excludeWords: string[] = [],
   targetSkills: string[] = [],
   weakAreas: string[] = [],
@@ -266,6 +295,20 @@ Include answers and multiple choice options.
 Difficulty must increase appropriately for the selected year group and level.
 Return JSON with: id, question, answer, explanation, choices, yearGroup, skillFocus, difficulty and topic.
 Do not return spelling words or reading passages.${skillInstruction}${weakInstruction}${followUpInstruction}`;
+  }
+  if (type === "science") {
+    const isGcse = safeYearGroup === "Year 10" || safeYearGroup === "Year 11" || keyStage === "KS4";
+    const boardLine = isGcse
+      ? `Exam board context: ${examBoard || "general GCSE (no board selected)"}.`
+      : "Exam board context: not required for this stage.";
+    return `Generate ${count} UK science questions for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
+Subject: ${subject}.
+Skill focus: ${skillFocus || "Scientific reasoning"}.
+Topic: ${cleanedTopic || skillFocus || "science practice"}.
+${boardLine}
+${isGcse ? "GCSE mode guidance: include exam technique, structured response clarity, and calculation interpretation when relevant." : "KS3 mode guidance: keep explanations concise and concept-focused."}
+Return JSON array with: id, question, answer, explanation, choices, yearGroup, skillFocus, difficulty, topic.
+Do not return spelling word lists, unrelated reading passages, or non-science content.${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
   if (type === "punctuation") {
     return `Generate ${count} UK punctuation practice items for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -446,6 +489,27 @@ function normalizePreviewItems(
       };
     }
 
+    if (generationType === "science") {
+      return {
+        ...data,
+        type: generationType,
+        yearGroup: metadata.yearGroup,
+        skillFocus: metadata.skillFocus,
+        difficulty: metadata.difficulty,
+        topic: metadata.topic || metadata.skillFocus || String(data.topic ?? "science"),
+        prompt: String(data.prompt ?? data.question ?? ""),
+        question: String(data.question ?? data.prompt ?? ""),
+        answer: String(data.answer ?? ""),
+        options: Array.isArray(data.choices)
+          ? data.choices.map((value) => String(value))
+          : Array.isArray(data.options)
+            ? data.options.map((value) => String(value))
+            : [],
+        explanation: String(data.explanation ?? "Use scientific evidence and method to justify your answer."),
+        hint: String(data.hint ?? "Identify key command words and use precise scientific vocabulary."),
+      };
+    }
+
     if (promptType === "maths") {
       return {
         ...data,
@@ -501,7 +565,7 @@ function buildGeneratedPreview({
 }): GeneratedPreview {
   const items = normalizePreviewItems(generationType, promptType, subject, content, { yearGroup, skillFocus, difficulty, topic });
   const safeTopic = topic || skillFocus || generationType;
-  const titleSuffix = promptType === "maths" ? "questions" : promptType === "reading" ? "reading set" : "practice";
+  const titleSuffix = promptType === "maths" ? "questions" : promptType === "science" ? "science set" : promptType === "reading" ? "reading set" : "practice";
   return {
     title: `${yearGroup} ${skillFocus || subject} ${titleSuffix}`,
     subject,
@@ -516,8 +580,85 @@ function buildGeneratedPreview({
     safetyStatus: "passed",
     qualityScore: Math.min(100, Math.max(70, 82 + Math.min(12, items.length))),
     voiceScript: `Today we are practising ${skillFocus || subject}. Listen carefully, try your best, and use hints when you need them.`,
-    imagePrompt: `Friendly UK primary school illustration for ${yearGroup} ${subject} lesson about ${safeTopic}. Bright, safe, child-friendly style.`,
+    imagePrompt: `Friendly UK curriculum illustration for ${yearGroup} ${subject} lesson about ${safeTopic}. Bright, safe, learner-friendly style.`,
     items,
+    metadata: {
+      generationType,
+      promptType,
+      parser: promptType === "reading" ? "reading-object" : "array-items",
+    },
+    curriculumContext: {
+      pathway: curriculumPathway,
+      examBoard,
+      keyStage,
+      yearGroup,
+      subject,
+      skillFocus,
+      topic: safeTopic,
+    },
+  };
+}
+
+function buildFallbackPreview(input: {
+  subject: Subject;
+  generationType: GenerationType;
+  promptType: PromptType;
+  keyStage: string;
+  yearGroup: string;
+  curriculumPathway: string;
+  examBoard: string | null;
+  skillFocus: string;
+  difficulty: number;
+  topic: string;
+  reason: string;
+}): GeneratedPreview {
+  const safeTopic = input.topic || input.skillFocus || input.subject;
+  const placeholderItem = {
+    id: "fallback-preview-1",
+    type: input.generationType,
+    prompt: `${input.skillFocus || "Practice"}: preview unavailable`,
+    question: `${input.skillFocus || "Practice"}: preview unavailable`,
+    answer: "Awaiting regenerated content",
+    options: ["Retry generation", "Adjust skill focus", "Select another topic"],
+    explanation: `Automatic fallback preview shown. Reason: ${input.reason}`,
+    hint: "Use admin diagnostics and retry after adjusting topic, skill focus, or exam board.",
+    yearGroup: input.yearGroup,
+    skillFocus: input.skillFocus,
+    difficulty: input.difficulty,
+    topic: safeTopic,
+    status: "pending",
+  };
+
+  return {
+    title: `${input.yearGroup} ${input.skillFocus || input.subject} fallback preview`,
+    subject: input.subject,
+    keyStage: input.keyStage,
+    yearGroup: input.yearGroup,
+    curriculumPathway: input.curriculumPathway,
+    examBoard: input.examBoard,
+    skillFocus: input.skillFocus,
+    difficulty: input.difficulty,
+    topic: safeTopic,
+    status: "draft",
+    safetyStatus: "passed",
+    qualityScore: 40,
+    voiceScript: `We could not complete generation for ${input.skillFocus || input.subject}. Please review diagnostics and retry.`,
+    imagePrompt: `Educational placeholder card for ${input.yearGroup} ${input.subject} ${safeTopic}.`,
+    items: [placeholderItem],
+    metadata: {
+      generationType: input.generationType,
+      promptType: input.promptType,
+      parser: input.promptType === "reading" ? "reading-object" : "array-items",
+    },
+    curriculumContext: {
+      pathway: input.curriculumPathway,
+      examBoard: input.examBoard,
+      keyStage: input.keyStage,
+      yearGroup: input.yearGroup,
+      subject: input.subject,
+      skillFocus: input.skillFocus,
+      topic: safeTopic,
+    },
   };
 }
 
@@ -616,7 +757,7 @@ async function generateValidatedSpellingContent({
 
   for (let attempt = 0; attempt < 4 && collected.length < count; attempt += 1) {
     const needed = count - collected.length;
-    lastPrompt = buildUserPrompt("spelling", "spelling", level, topic, ageGroup, needed, keyStage, safeYearGroup, skillFocus, Array.from(excludeWords));
+    lastPrompt = buildUserPrompt("spelling", "spelling", level, topic, ageGroup, needed, keyStage, safeYearGroup, skillFocus, null, Array.from(excludeWords));
     const { parsed } = await requestOpenAiJson(apiKey, systemPrompt, lastPrompt);
     const incoming = Array.isArray(parsed) ? parsed : [];
     const combined = [...collected, ...incoming];
@@ -687,12 +828,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: "AI generation limit reached. Please wait a minute before trying again." }, { status: 429 });
   }
 
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json() as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({
+      success: false,
+      error: "Invalid JSON payload for AI generation request.",
+      details: { category: "validation", stage: "request-body" },
+    }, { status: 400 });
+  }
   const requestedSubject = (body.subject ?? body.type) as string;
+  const normalizedSubject = String(requestedSubject ?? "").toLowerCase();
+  if (!isSupportedSubject(normalizedSubject)) {
+    return NextResponse.json({
+      success: false,
+      error: `Unsupported subject: ${requestedSubject || "(empty)"}.`,
+      details: {
+        category: "unsupported_subject",
+        supportedSubjects: Object.keys(GENERATION_CONTENT_TYPE_BY_SUBJECT),
+      },
+    }, { status: 422 });
+  }
+  const sourceSubject = normalizedSubject as Subject;
   const requestedCount = body.numberOfItems ?? body.count;
   const requestedLevel = body.difficulty ?? body.level;
 
-  const generationType = mapSubjectToGenerationType(requestedSubject);
+  const generationType = mapSubjectToGenerationType(sourceSubject);
   const promptType = mapGenerationTypeToPromptType(generationType);
   const validatorType = mapGenerationTypeToValidatorType(generationType);
   const level = requestedLevel;
@@ -721,10 +883,9 @@ export async function POST(req: Request) {
     yearGroup: safeYearGroup,
     keyStage: safeKeyStage,
     curriculumPathway: safeCurriculumPathway,
-    subject: requestedSubject,
+    subject: sourceSubject,
   }) ? normalizeExamBoard(requestedExamBoard) : null;
 
-  const sourceSubject = requestedSubject as Subject;
   const pathValidation = isValidCurriculumPath({
     yearGroup: safeYearGroup,
     subject: sourceSubject,
@@ -741,8 +902,12 @@ export async function POST(req: Request) {
       success: false,
       error: pathValidation.reason,
       details: {
+        category: "unsupported_path",
         yearGroup: safeYearGroup,
+        keyStage: safeKeyStage,
         subject: sourceSubject,
+        pathway: safeCurriculumPathway,
+        examBoard: safeExamBoard,
         skillFocus: resolvedSkillFocus,
         mappedTopics,
       },
@@ -751,8 +916,28 @@ export async function POST(req: Request) {
 
   const apiKey = await getOpenAiApiKey();
   if (!apiKey) {
-    return NextResponse.json({ success: false, error: "OpenAI API key not configured. Save it in Admin Settings > API Keys." }, { status: 503 });
+    return NextResponse.json({
+      success: false,
+      error: "OpenAI API key not configured. Save it in Admin Settings > API Keys.",
+      details: {
+        category: "missing_env",
+        stage: "provider-config",
+      },
+    }, { status: 503 });
   }
+
+  const generationDiagnostics = {
+    yearGroup: safeYearGroup,
+    keyStage: safeKeyStage,
+    subject: sourceSubject,
+    pathway: safeCurriculumPathway,
+    examBoard: safeExamBoard,
+    skillFocus: resolvedSkillFocus,
+    generationType,
+    promptBuilder: promptType,
+    parserUsed: promptType === "reading" ? "reading-object" : "array-items",
+  };
+  console.info("[admin-ai-generate]", generationDiagnostics);
 
   const requestKey = cacheKey({ generationType, promptType, level, topic, ageGroup, count, keyStage: safeKeyStage, yearGroup: safeYearGroup, curriculumPathway: safeCurriculumPathway, examBoard: safeExamBoard, skillFocus });
   const cached = generationCache.get(requestKey);
@@ -778,7 +963,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const userPrompt = buildUserPrompt(promptType, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, [], targetSkills, weakAreas);
+  const userPrompt = buildUserPrompt(promptType, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, safeExamBoard, [], targetSkills, weakAreas);
   const systemPrompt = SYSTEM_PROMPT[promptType];
 
   try {
@@ -834,7 +1019,7 @@ export async function POST(req: Request) {
     });
 
     const preview = buildGeneratedPreview({
-      subject: requestedSubject as Subject,
+      subject: sourceSubject,
       generationType,
       promptType,
       keyStage: safeKeyStage,
@@ -877,6 +1062,19 @@ export async function POST(req: Request) {
       meta: validation,
     });
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to parse AI response";
+    const lowered = errorMessage.toLowerCase();
+    const category = lowered.includes("not configured")
+      ? "missing_env"
+      : lowered.includes("unsupported") || lowered.includes("not mapped")
+        ? "unsupported_path"
+        : lowered.includes("malformed") || lowered.includes("parse")
+          ? "parser_schema_failure"
+          : lowered.includes("openai")
+            ? "provider_failure"
+            : lowered.includes("validation") || lowered.includes("invalid")
+              ? "validation_error"
+              : "generation_error";
     console.error("OpenAI generation failed:", error);
     await writeAuditLog({
       actorUserId: session.userId,
@@ -884,25 +1082,78 @@ export async function POST(req: Request) {
       entityType: "ai_generation",
       metadata: {
         model: OPENAI_MODEL,
-        subject: requestedSubject,
+        subject: sourceSubject,
         keyStage: safeKeyStage,
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus,
         prompt: userPrompt,
-        error: error instanceof Error ? error.message : "Failed to parse AI response",
+        error: errorMessage,
+        category,
+        diagnostics: generationDiagnostics,
       },
     });
+
+    if (category === "parser_schema_failure" || category === "provider_failure") {
+      const fallbackPreview = buildFallbackPreview({
+        subject: sourceSubject,
+        generationType,
+        promptType,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        curriculumPathway: safeCurriculumPathway,
+        examBoard: safeExamBoard,
+        skillFocus: resolvedSkillFocus,
+        difficulty: safeLevel,
+        topic,
+        reason: errorMessage,
+      });
+      return NextResponse.json({
+        success: true,
+        warning: "Generated fallback preview due to provider/parser failure.",
+        type: promptType,
+        generationType,
+        level: safeLevel,
+        topic,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        curriculumPathway: safeCurriculumPathway,
+        examBoard: safeExamBoard,
+        skillFocus: resolvedSkillFocus,
+        model: OPENAI_MODEL,
+        prompt: userPrompt,
+        estimatedCostPence: estimateCost(count).estimatedCostPence,
+        estimatedTokens: estimateCost(count).estimatedTokens,
+        content: fallbackPreview,
+        meta: {
+          valid: false,
+          repaired: true,
+          errors: [errorMessage],
+          fixesApplied: ["Fallback preview generated"],
+          removedWords: [],
+          regeneratedCount: 0,
+          requestedCount: count,
+          finalCount: 1,
+          fallback: true,
+          category,
+          diagnostics: generationDiagnostics,
+        },
+      });
+    }
+
+    const status = category === "validation_error" || category === "unsupported_path" ? 422 : category === "missing_env" ? 503 : 502;
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to reach OpenAI",
+        error: errorMessage,
         details: {
+          category,
           provider: "openai",
           model: OPENAI_MODEL,
           stage: "generation",
+          diagnostics: generationDiagnostics,
         },
       },
-      { status: 502 },
+      { status },
     );
   }
 }
