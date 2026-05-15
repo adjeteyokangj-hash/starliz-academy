@@ -1471,7 +1471,7 @@ export default function AiGeneratorPage() {
                       <p key={`${item}-${index}`}>- {item}</p>
                     ))}
                     {generationMeta.validation.cached ? <p>- Loaded from cache</p> : null}
-                    <p className="pt-1 font-semibold">Final set: {generationMeta.validation.finalCount} valid {skillFocus} items</p>
+                    <p className="pt-1 font-semibold">Final set: {generationMeta.validation.finalCount} valid {effectiveGenerationContext.skillFocus} items</p>
                   </div>
                 </>
               ) : (
