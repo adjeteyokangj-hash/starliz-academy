@@ -29,6 +29,8 @@ import {
   getReadingTaskInstruction,
   getTutorLine,
 } from "@/lib/tutorVoice";
+import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
+import { resolveAgeBand } from "@/lib/coach/engine";
 
 const MIN_READING_QUESTIONS = 5;
 const MAX_RECENT_READING_IDS = 24;
@@ -1349,17 +1351,19 @@ export default function ReadingJourneyPage() {
                 ) : null}
               </div>
 
-          {coachOpen ? (
-            <div className="rounded-[1.75rem] border border-cyan-200 bg-cyan-50/80 p-4 shadow-sm">
-              <p className="text-sm font-black text-cyan-950">Coach support</p>
-              <p className="mt-1 text-sm text-cyan-800">Listen again or reveal a clue when the passage needs another look.</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <Button variant="secondary" onClick={() => void speakWithContext(item.passage, "reading_passage")}>Read passage aloud</Button>
-              <Button variant="secondary" onClick={() => void speakWithContext(item.question, "reading_question")}>Repeat question</Button>
-              <Button variant="secondary" onClick={() => void speakWithContext(buildReadingClue(item), "reading_question")}>Give clue</Button>
-              <Button variant="secondary" onClick={makeItEasier}>Hint support</Button>
-            </div>
-            </div>
+          {coachOpen && item ? (
+            <SmartCoachPanel
+              subject="reading"
+              question={item.question}
+              correctAnswer={item.answer}
+              passageText={item.passage}
+              hintCount={hintLevel}
+              ageRange={profile?.ageRange}
+              skillFocus={inferQuestionType(item.question)}
+              confidenceScore={0.5}
+              onHintUsed={(newCount) => setHintLevel(newCount)}
+              onClose={() => setCoachOpen(false)}
+            />
           ) : null}
           {tutorFeedback ? (
             <div className="mt-3">

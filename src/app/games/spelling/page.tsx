@@ -32,6 +32,7 @@ import {
   getSpellingModeVoiceInstruction,
   getTutorLine,
 } from "@/lib/tutorVoice";
+import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
 import { generateLetterOptions, getBlendText } from "@/lib/spellingEngine";
 import { classifySpeechMatch, type SpeechMatchResult } from "@/lib/speechCheck";
 import {
@@ -3032,17 +3033,18 @@ export default function SpellingQuestPage() {
           </div>
           </div>
 
-          {coachOpen && !helpLocked ? (
-            <div className="rounded-[1.75rem] border border-cyan-200 bg-cyan-50/80 p-4 shadow-sm">
-              <p className="text-sm font-black text-cyan-950">Coach support</p>
-              <p className="mt-1 text-sm text-cyan-800">Choose a gentle assist without leaving the question.</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <Button variant="secondary" onClick={() => runCoachAction("repeat")}>Repeat word</Button>
-              <Button variant="secondary" onClick={() => runCoachAction("slow")}>Slow pronunciation</Button>
-              <Button variant="secondary" onClick={() => runCoachAction("syllables")}>Break into syllables</Button>
-              <Button variant="secondary" onClick={() => runCoachAction("hint")}>Give hint</Button>
-            </div>
-            </div>
+          {coachOpen && !helpLocked && targetWord ? (
+            <SmartCoachPanel
+              subject="spelling"
+              question={`Spell: ${targetWord.word}`}
+              correctAnswer={targetWord.word}
+              hintCount={hintLevel}
+              ageRange={profile?.ageRange}
+              skillFocus={targetWord.patterns[0] ?? undefined}
+              confidenceScore={0.5}
+              onHintUsed={(newCount) => setHintLevel(newCount)}
+              onClose={() => setCoachOpen(false)}
+            />
           ) : null}
 
           {tutorFeedback ? (

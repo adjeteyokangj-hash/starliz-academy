@@ -23,6 +23,9 @@ import { getTutorFeedbackPlan, speakTutorFeedback, hydrateCoachingMemoryFromServ
 import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
 import { awardChildRewards } from "@/lib/child_wallet";
 import { getTutorLine } from "@/lib/tutorVoice";
+import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
+import { buildSlowBreakdown } from "@/lib/coach/maths-steps";
+import { resolveAgeBand } from "@/lib/coach/engine";
 
 const LEVEL_LABELS: Record<number, string> = {
   1: "⭐ Level 1: Counting with visuals",
@@ -573,14 +576,20 @@ export default function MathMissionPage() {
       return;
     }
     if (mode === "slow") {
-      void speakWithContext(question.prompt, "math_problem");
+      const ageBand = resolveAgeBand({
+        mathDifficulty: profile?.adaptive.mathDifficulty,
+        ageRange: profile?.ageRange,
+      });
+      const breakdown = buildSlowBreakdown(question.prompt, ageBand);
+      void speakWithContext(breakdown, "math_hint");
       return;
     }
     if (mode === "steps") {
-      void speakWithContext(buildWorkingStepsWithoutAnswer(question), "math_hint");
+      setCoachOpen(true);
       return;
     }
-    makeItEasier();
+    // hint mode — open coach panel (SmartCoachPanel handles hint progression)
+    setCoachOpen(true);
   }
 
   async function checkAnswer() {
@@ -1078,17 +1087,23 @@ export default function MathMissionPage() {
                 ) : null}
               </div>
 
-          {coachOpen ? (
-            <div className="rounded-[1.75rem] border border-cyan-200 bg-cyan-50/80 p-4 shadow-sm">
-              <p className="text-sm font-black text-cyan-950">Coach support</p>
-              <p className="mt-1 text-sm text-cyan-800">Break the problem down without changing the question.</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <Button variant="secondary" onClick={() => runCoachAction("repeat")}>Repeat question</Button>
-              <Button variant="secondary" onClick={() => runCoachAction("slow")}>Slow question</Button>
-              <Button variant="secondary" onClick={() => runCoachAction("steps")}>Show working steps</Button>
-              <Button variant="secondary" onClick={() => runCoachAction("hint")}>Give hint</Button>
-            </div>
-            </div>
+          {coachOpen && question ? (
+            <SmartCoachPanel
+              subject="maths"
+              question={question.prompt}
+              correctAnswer={String(question.answer)}
+              studentAnswer={answer || undefined}
+              hintCount={hintLevel}
+              mathDifficulty={profile?.adaptive.mathDifficulty}
+              ageRange={profile?.ageRange}
+              skillFocus={question.topic}
+              confidenceScore={0.5}
+              onHintUsed={(newCount) => {
+                setHintLevel(newCount);
+                if (newCount >= 2) setForcedChoices(true);
+              }}
+              onClose={() => setCoachOpen(false)}
+            />
           ) : null}
           {tutorFeedback ? (
             <div className="mt-3">
