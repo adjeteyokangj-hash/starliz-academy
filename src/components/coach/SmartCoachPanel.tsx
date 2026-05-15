@@ -162,11 +162,11 @@ export default function SmartCoachPanel({
     const newCount = localHintCount + 1;
     setLocalHintCount(newCount);
     onHintUsed(newCount);
+  }
 
-    function handleSkipWait() {
-      setWaitCountdown(0);
-      setWaitPhase(false);
-    }
+  function handleSkipWait() {
+    setWaitCountdown(0);
+    setWaitPhase(false);
   }
 
   // Can progress to next hint if:

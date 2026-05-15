@@ -308,6 +308,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
       reinforcementNote: reinforcementNote(pattern, ageBand),
       tryAgainPrompt: shouldReveal ? "Try a similar question on your own before asking for help again." : null,
       masterySignal: null,
+      ...emotFields,
     };
   }
 

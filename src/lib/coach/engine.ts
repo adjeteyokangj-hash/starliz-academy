@@ -201,7 +201,8 @@ export function buildEmotionalTone(ctx: CoachContext): string {
 
 /** Generate a mastery-check question after full reveal. Subject-aware. */
 export function buildSimilarQuestion(ctx: CoachContext): { prompt: string; answer?: string } | undefined {
-  if (!ctx.shouldReveal) return undefined;
+  // Reveal is reached when the next hint level would be 4 (hintCount starts at 0).
+  if (ctx.hintCount < 3) return undefined;
 
   if (ctx.subject === "maths") {
     return generateSimilarMathQuestion(ctx.question, ctx.correctAnswer);
