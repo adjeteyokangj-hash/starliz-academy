@@ -829,6 +829,11 @@ export default function AiGeneratorPage() {
     const skillExact = skills.find((skill) => skill.toLowerCase() === skillLower);
     const skillLoose = skills.find((skill) => skill.toLowerCase().includes(skillLower) || skillLower.includes(skill.toLowerCase()));
     const mappedSkill = skillExact ?? skillLoose ?? skills[0] ?? area.skillFocus;
+    const mappedTopics = topicSuggestionsForSelection({
+      yearGroup: derivedYearGroup,
+      subject: mappedSubject,
+      skillFocus: mappedSkill,
+    });
 
     const curriculum = curriculumPathwayForYearGroup(derivedYearGroup);
     const needExamBoard = shouldApplyExamBoardTag({
@@ -840,9 +845,7 @@ export default function AiGeneratorPage() {
     const recommendedExamBoard = needExamBoard ? EXAM_BOARDS.find((value) => value.toUpperCase() === "AQA") ?? EXAM_BOARDS[0] ?? "" : "";
     const baselineDifficulty = Math.max(1, Math.min(5, area.currentDifficulty || 2));
     const recommendedDifficulty = Math.max(1, baselineDifficulty - 1);
-    const recommendedTopic = skillLower.includes("algebra")
-      ? "Algebra intervention"
-      : `${formatFriendlyTopic(area.skillFocus)} intervention`;
+    const recommendedTopic = mappedTopics[0] ?? `${mappedSkill} practice`;
 
     return {
       subject: mappedSubject,
@@ -869,8 +872,8 @@ export default function AiGeneratorPage() {
     setSkillFocus(context.skillFocus);
     setDifficulty(context.difficulty);
     setExamBoard(context.examBoard ?? "");
-    setTopicChoice(CUSTOM_TOPIC_VALUE);
-    setCustomTopic(context.topic);
+    setTopicChoice(context.topic);
+    setCustomTopic("");
     setTargetStudentId(area.studentId);
     setLoadedWeakAreaId(area.id);
     setWeakAreaFormSynced(true);

@@ -402,6 +402,14 @@ function estimateCost(count: number) {
   };
 }
 
+async function writeAuditLogSafely(input: Parameters<typeof writeAuditLog>[0]) {
+  try {
+    await writeAuditLog(input);
+  } catch (error) {
+    console.error("Failed to write AI generation audit log:", error);
+  }
+}
+
 function cacheKey(input: Record<string, unknown>) {
   return JSON.stringify(input);
 }
@@ -1016,7 +1024,7 @@ export async function POST(req: Request) {
 
     const estimated = estimateCost(count);
 
-    await writeAuditLog({
+    await writeAuditLogSafely({
       actorUserId: session.userId,
       action: "ai_content.generated",
       entityType: "ai_generation",
@@ -1081,7 +1089,7 @@ export async function POST(req: Request) {
               ? "validation_error"
               : "generation_error";
     console.error("OpenAI generation failed:", error);
-    await writeAuditLog({
+    await writeAuditLogSafely({
       actorUserId: session.userId,
       action: "ai_content.malformed_generation",
       entityType: "ai_generation",
