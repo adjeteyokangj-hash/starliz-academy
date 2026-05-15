@@ -1088,7 +1088,10 @@ export async function POST(req: Request) {
             : lowered.includes("validation") || lowered.includes("invalid")
               ? "validation_error"
               : "generation_error";
-    console.error("OpenAI generation failed:", error);
+    console.error("[admin-ai-generate] OpenAI generation failed:", error);
+    console.error("[admin-ai-generate] Error category:", category);
+    console.error("[admin-ai-generate] Generation diagnostics:", generationDiagnostics);
+    
     await writeAuditLogSafely({
       actorUserId: session.userId,
       action: "ai_content.malformed_generation",
@@ -1106,60 +1109,18 @@ export async function POST(req: Request) {
       },
     });
 
-    if (category === "parser_schema_failure" || category === "provider_failure") {
-      const fallbackPreview = buildFallbackPreview({
-        subject: sourceSubject,
-        generationType,
-        promptType,
-        keyStage: safeKeyStage,
-        yearGroup: safeYearGroup,
-        curriculumPathway: safeCurriculumPathway,
-        examBoard: safeExamBoard,
-        skillFocus: resolvedSkillFocus,
-        difficulty: safeLevel,
-        topic,
-        reason: errorMessage,
-      });
-      return NextResponse.json({
-        success: true,
-        warning: "Generated fallback preview due to provider/parser failure.",
-        type: promptType,
-        generationType,
-        level: safeLevel,
-        topic,
-        keyStage: safeKeyStage,
-        yearGroup: safeYearGroup,
-        curriculumPathway: safeCurriculumPathway,
-        examBoard: safeExamBoard,
-        skillFocus: resolvedSkillFocus,
-        model: OPENAI_MODEL,
-        prompt: userPrompt,
-        estimatedCostPence: estimateCost(count).estimatedCostPence,
-        estimatedTokens: estimateCost(count).estimatedTokens,
-        content: fallbackPreview,
-        meta: {
-          valid: false,
-          repaired: true,
-          errors: [errorMessage],
-          fixesApplied: ["Fallback preview generated"],
-          removedWords: [],
-          regeneratedCount: 0,
-          requestedCount: count,
-          finalCount: 1,
-          fallback: true,
-          category,
-          diagnostics: generationDiagnostics,
-        },
-      });
-    }
-
-    const status = category === "validation_error" || category === "unsupported_path" ? 422 : category === "missing_env" ? 503 : 502;
+    // Always return JSON error responses, never return fallback placeholders
+    // This ensures GCSE Science (and all subjects) fail cleanly without HTML 502 responses
+    const status = category === "validation_error" || category === "unsupported_path" ? 422 : category === "missing_env" ? 503 : 500;
     return NextResponse.json(
       {
         success: false,
         error: errorMessage,
         details: {
           category,
+          subject: sourceSubject,
+          yearGroup: safeYearGroup,
+          skillFocus: resolvedSkillFocus,
           provider: "openai",
           model: OPENAI_MODEL,
           stage: "generation",

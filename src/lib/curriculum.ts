@@ -212,8 +212,8 @@ const SUBJECTS_BY_YEAR: Record<YearGroup, readonly Subject[]> = {
   "Year 7": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
   "Year 8": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
   "Year 9": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
-  "Year 10": ["gcse-english", "gcse-maths", "gcse-science", "english-literature", "english-language", "maths", "science"] as const,
-  "Year 11": ["gcse-english", "gcse-maths", "gcse-science", "english-literature", "english-language", "maths", "science"] as const,
+  "Year 10": ["gcse-english", "gcse-maths", "gcse-science", "english-literature"] as const,
+  "Year 11": ["gcse-english", "gcse-maths", "gcse-science", "english-literature"] as const,
 };
 
 export function subjectsForYearGroup(yearGroup: string | null | undefined): readonly Subject[] {

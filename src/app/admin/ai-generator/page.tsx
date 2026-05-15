@@ -377,10 +377,13 @@ export default function AiGeneratorPage() {
 
   const generatedItemsList = (preview?.items ?? []) as GeneratedPreviewItem[];
   const isPlaceholderGeneration = preview != null && generationMeta?.validation != null && generationMeta.validation.valid === false;
+  const hasPreviewUnavailable = generatedItemsList.some((item) => String(item.prompt ?? "").includes("preview unavailable"));
   const saveBlocked =
     !generatedItemsList.length ||
     isPlaceholderGeneration ||
-    (preview != null && preview.safetyStatus !== "passed");
+    hasPreviewUnavailable ||
+    (preview != null && preview.safetyStatus !== "passed") ||
+    (generationMeta?.validation?.valid === false);
   const approvedCount = generatedItemsList.filter((item) => item.status === "approved").length;
   const effectiveGenerationContext = previewContext ?? {
     subject,
@@ -953,7 +956,7 @@ export default function AiGeneratorPage() {
 
   return (
     <div className="relative z-0 grid items-start gap-6 xl:grid-cols-[32rem_minmax(0,1fr)]">
-      <div className="xl:sticky xl:top-36 xl:z-20">
+      <div className="xl:sticky xl:top-24 xl:z-20 xl:max-h-[calc(100vh-96px)] xl:overflow-y-auto">
       <AdminSectionCard title="Manual Curriculum Generator" eyebrow="Manual AI generator">
         <div className="space-y-4 pb-6">
           <div className="grid gap-3 sm:grid-cols-2">

@@ -1,12 +1,12 @@
 # AI Curriculum Coverage Report
 
-- Total paths: 364
-- Fully wired: 364
+- Total paths: 344
+- Fully wired: 344
 - Partially wired: 0
 - Fallback only: 0
 - Missing: 0
 
-## Fully Wired (364)
+## Fully Wired (344)
 - Reception | EYFS | age 4–5 | phonics | Sound recognition | topics=10 | notes: Using auto-generated skill-specific topics
 - Reception | EYFS | age 4–5 | phonics | Phase 2 phonics | topics=13 | notes: Using auto-generated skill-specific topics
 - Reception | EYFS | age 4–5 | phonics | Phase 3 phonics | topics=13 | notes: Using auto-generated skill-specific topics
@@ -326,16 +326,6 @@
 - Year 10 | KS4 | age 14–15 | english-literature | GCSE anthology poetry | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 10 | KS4 | age 14–15 | english-literature | Novel analysis | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 10 | KS4 | age 14–15 | english-literature | Drama texts | topics=10 | notes: Using auto-generated skill-specific topics
-- Year 10 | KS4 | age 14–15 | english-language | GCSE language analysis | topics=14 | notes: Using auto-generated skill-specific topics
-- Year 10 | KS4 | age 14–15 | english-language | Transactional writing | topics=10 | notes: Using auto-generated skill-specific topics
-- Year 10 | KS4 | age 14–15 | english-language | Persuasive techniques | topics=14 | notes: Using auto-generated skill-specific topics
-- Year 10 | KS4 | age 14–15 | maths | Quadratic equations | topics=13 | notes: Using auto-generated skill-specific topics
-- Year 10 | KS4 | age 14–15 | maths | Simultaneous equations | topics=13 | notes: Using auto-generated skill-specific topics
-- Year 10 | KS4 | age 14–15 | maths | Trigonometry | topics=13 | notes: Using auto-generated skill-specific topics
-- Year 10 | KS4 | age 14–15 | maths | Functions | topics=10 | notes: Using auto-generated skill-specific topics
-- Year 10 | KS4 | age 14–15 | science | Biology: homeostasis, reproduction | topics=14 | notes: Using auto-generated skill-specific topics
-- Year 10 | KS4 | age 14–15 | science | Chemistry: bonding, reactions | topics=14 | notes: Using auto-generated skill-specific topics
-- Year 10 | KS4 | age 14–15 | science | Physics: energy, forces | topics=21 | notes: Using auto-generated skill-specific topics
 - Year 11 | KS4 | age 15–16 | gcse-english | English Language | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 11 | KS4 | age 15–16 | gcse-english | English Literature | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 11 | KS4 | age 15–16 | gcse-english | Exam technique | topics=14 | notes: Using auto-generated skill-specific topics
@@ -361,16 +351,6 @@
 - Year 11 | KS4 | age 15–16 | english-literature | Comparative poetry | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 11 | KS4 | age 15–16 | english-literature | Extended texts | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 11 | KS4 | age 15–16 | english-literature | Literary analysis | topics=14 | notes: Using auto-generated skill-specific topics
-- Year 11 | KS4 | age 15–16 | english-language | Extended analysis | topics=14 | notes: Using auto-generated skill-specific topics
-- Year 11 | KS4 | age 15–16 | english-language | Complex writing | topics=10 | notes: Using auto-generated skill-specific topics
-- Year 11 | KS4 | age 15–16 | english-language | Stylistic devices | topics=10 | notes: Using auto-generated skill-specific topics
-- Year 11 | KS4 | age 15–16 | maths | Quadratic equations | topics=11
-- Year 11 | KS4 | age 15–16 | maths | Surds | topics=10 | notes: Using auto-generated skill-specific topics
-- Year 11 | KS4 | age 15–16 | maths | Trigonometry | topics=13 | notes: Using auto-generated skill-specific topics
-- Year 11 | KS4 | age 15–16 | maths | Calculus introduction | topics=10 | notes: Using auto-generated skill-specific topics
-- Year 11 | KS4 | age 15–16 | science | GCSE Biology | topics=14 | notes: Using auto-generated skill-specific topics
-- Year 11 | KS4 | age 15–16 | science | GCSE Chemistry | topics=14 | notes: Using auto-generated skill-specific topics
-- Year 11 | KS4 | age 15–16 | science | GCSE Physics | topics=14 | notes: Using auto-generated skill-specific topics
 
 ## Partially Wired (0)
 - None
