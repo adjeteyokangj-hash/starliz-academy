@@ -31,7 +31,7 @@ export default function PublicShell({ children }: PublicShellProps) {
             href="/signup"
             className="hidden rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold hover:bg-blue-500 sm:inline-flex"
           >
-            Start Free Trial
+            Start your child&apos;s learning journey
           </Link>
 
           <details className="relative sm:hidden">
@@ -43,7 +43,7 @@ export default function PublicShell({ children }: PublicShellProps) {
               <Link href="/pricing" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Pricing</Link>
               <Link href="/contact" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Contact</Link>
               <Link href="/login" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Login</Link>
-              <Link href="/signup" className="mt-1 block rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500">Start Free Trial</Link>
+              <Link href="/signup" className="mt-1 block rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500">Start your child&apos;s learning journey</Link>
             </div>
           </details>
         </div>

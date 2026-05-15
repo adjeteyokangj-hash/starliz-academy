@@ -2,44 +2,44 @@ import Link from "next/link"
 
 const featureList = [
   {
-    icon: "🧠",
-    title: "AI Personalised Learning",
-    desc: "Lessons adapt in real-time to match each child's ability and progress. No two children get the same experience.",
+    icon: "🧭",
+    title: "Reception to GCSE Pathways",
+    desc: "Supports England pathway stages across Reception-Year 6, KS3 (Years 7-9), and GCSE pathway aligned support.",
   },
   {
-    icon: "🔤",
-    title: "Spelling, Maths & Reading",
-    desc: "Core subjects designed to build strong foundations for primary school children aged 5 to 10.",
+    icon: "🏷️",
+    title: "Exam-board Aware GCSE Support",
+    desc: "GCSE stages include exam-board-aware tagging that supports AQA, Edexcel and OCR.",
   },
   {
-    icon: "🔊",
-    title: "Voice-Friendly Learning",
-    desc: "Children can hear words and instructions clearly, supporting different learning styles.",
+    icon: "👶",
+    title: "Age-aware Learning Experience",
+    desc: "Younger learners get playful guidance, while older learners get clearer structured revision workflows.",
   },
   {
     icon: "📊",
     title: "Parent Dashboard",
-    desc: "Track your child&apos;s progress, see session history and identify areas to improve.",
+    desc: "Track progress reports, assigned lessons, weak-topic support and GCSE readiness insights.",
   },
   {
-    icon: "⭐",
-    title: "Rewards & Motivation",
-    desc: "Stars, XP and streaks keep children engaged and excited about every session.",
+    icon: "🧑‍🏫",
+    title: "Tutor and School Friendly",
+    desc: "Supports parents, tutors and organisations coordinating structured interventions and progress checks.",
   },
   {
     icon: "🛡️",
-    title: "Safe Content",
-    desc: "All content is reviewed and designed specifically for children. No ads, no distractions.",
+    title: "Safe, Practical Delivery",
+    desc: "No overclaiming: clear pathway guidance, structured assignments and transparent progress tracking.",
   },
   {
-    icon: "📈",
-    title: "Adaptive Difficulty",
-    desc: "Questions automatically get harder or easier based on how your child responds.",
+    icon: "📘",
+    title: "Curriculum-aware Coverage",
+    desc: "National Curriculum aligned progression and staged support for key transitions through school years.",
   },
   {
-    icon: "🏆",
-    title: "Badges & Milestones",
-    desc: "Children earn badges for achievements, building a sense of pride in their progress.",
+    icon: "🎯",
+    title: "Targeted Intervention Support",
+    desc: "Weak-topic signals and assigned-content workflows make it easier to focus support where it matters.",
   },
 ]
 
@@ -52,7 +52,7 @@ export default function Features() {
             StarLiz Academy
           </Link>
           <Link href="/signup" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
-            Start Free Trial
+            Start your child&apos;s learning journey
           </Link>
         </div>
       </header>
@@ -60,7 +60,7 @@ export default function Features() {
       <div className="mx-auto max-w-6xl px-6 py-20">
         <div className="text-center mb-14">
           <h1 className="text-4xl font-black mb-4">Features</h1>
-          <p className="text-lg text-slate-400">Everything your child needs to learn with confidence.</p>
+          <p className="text-lg text-slate-400">Explore Reception to GCSE support built for families, tutors and schools.</p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-8">
@@ -74,8 +74,8 @@ export default function Features() {
         </div>
 
         <div className="mt-16 text-center">
-          <Link href="/signup" className="inline-flex rounded-xl bg-blue-600 px-8 py-4 font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-500">
-            Start Free Trial
+          <Link href="/pricing" className="inline-flex rounded-xl bg-blue-600 px-8 py-4 font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-500">
+            View GCSE pathway
           </Link>
         </div>
       </div>

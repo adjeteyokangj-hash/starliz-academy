@@ -8,55 +8,55 @@ export const dynamic = "force-dynamic"
 const features = [
   {
     icon: "🧠",
-    title: "AI-Personalised Learning",
-    desc: "Lessons adapt in real-time to match each child's ability and pace.",
+    title: "Reception to GCSE Pathways",
+    desc: "Supports England pathway stages: Reception-Year 6, KS3 (Years 7-9), and GCSE pathway (Years 10-11).",
   },
   {
-    icon: "🔤",
-    title: "Voice-Friendly Spelling",
-    desc: "Children hear words clearly and practise with guided hints and sentences.",
+    icon: "📘",
+    title: "Exam-board Aware GCSE Support",
+    desc: "GCSE pathway aligned with exam-board-aware tagging that supports AQA, Edexcel and OCR.",
   },
   {
     icon: "📊",
     title: "Parent Progress Dashboard",
-    desc: "See exactly where your child is excelling and where they need support.",
+    desc: "Track assigned lessons, weak-topic support, progress reports and GCSE readiness signals.",
   },
   {
-    icon: "⭐",
-    title: "Rewards & Streaks",
-    desc: "Stars, XP and streaks keep children motivated and coming back daily.",
+    icon: "🧭",
+    title: "Age-aware Experience",
+    desc: "Playful dashboards for younger learners, structured primary tasks, and mature secondary revision views.",
+  },
+  {
+    icon: "👨‍👩‍👧",
+    title: "Built For Families, Tutors and Schools",
+    desc: "Designed for parents across Reception to GCSE, tutors, and schools or organisations.",
   },
   {
     icon: "🛡️",
-    title: "Safe, Reviewed Content",
-    desc: "Every piece of content is reviewed and designed for primary school children.",
-  },
-  {
-    icon: "📈",
-    title: "Adaptive Difficulty",
-    desc: "Questions get harder or easier automatically based on your child's responses.",
+    title: "Safe, Structured Delivery",
+    desc: "Pathway guidance, assigned content and reporting tools help families support progress without overclaiming outcomes.",
   },
 ]
 
 const subjects = [
   {
-    title: "Spelling",
-    text: "Voice-friendly spelling practice with hints, sentences and skill focus.",
-    icon: "🔤",
+    title: "Reception-Year 6",
+    text: "National Curriculum aligned foundations with guided, age-appropriate practice.",
+    icon: "🧒",
     color: "from-blue-600/20 to-blue-600/5",
     border: "border-blue-700/40",
   },
   {
-    title: "Maths",
-    text: "Age-appropriate maths questions that adjust as children improve.",
-    icon: "➕",
+    title: "KS3 (Years 7-9)",
+    text: "KS3 pathway aligned learning with clearer progression and targeted support.",
+    icon: "🎯",
     color: "from-purple-600/20 to-purple-600/5",
     border: "border-purple-700/40",
   },
   {
-    title: "Reading",
-    text: "Short reading activities that build confidence and comprehension.",
-    icon: "📚",
+    title: "GCSE (Years 10-11)",
+    text: "GCSE pathway aligned revision support with exam-board-aware tagging.",
+    icon: "🎓",
     color: "from-emerald-600/20 to-emerald-600/5",
     border: "border-emerald-700/40",
   },
@@ -65,31 +65,31 @@ const subjects = [
 const steps = [
   {
     step: "1",
-    title: "Create your child's profile",
-    desc: "Set up a personalised profile for your child in under 2 minutes.",
+    title: "Set pathway and learner profile",
+    desc: "Choose Reception-Year 6, KS3, or GCSE pathway aligned setup.",
     icon: "👤",
   },
   {
     step: "2",
-    title: "Practise spelling, maths and reading",
-    desc: "Fun, adaptive activities that grow with your child every session.",
+    title: "Assign and track learning",
+    desc: "Run assigned lessons and monitor weak-topic support from parent tools.",
     icon: "📝",
   },
   {
     step: "3",
-    title: "Track progress and improvement",
-    desc: "See detailed insights and watch your child's confidence grow.",
+    title: "Review progress and readiness",
+    desc: "Use reports and GCSE readiness insights to guide next steps.",
     icon: "📊",
   },
 ]
 
 const roadmapItems = [
-  "🎤 AI tutor voice feedback",
-  "📧 Weekly parent progress emails",
-  "🧩 Mini-games for weak areas",
-  "📱 Mobile app improvements",
-  "🏫 School and teacher accounts",
-  "🌍 More subjects (science, writing)",
+  "🎓 Deeper GCSE pathway tooling",
+  "🏷️ Expanded exam-board tagging and reporting",
+  "📧 Parent insights and scheduling improvements",
+  "🏫 School and tutor management enhancements",
+  "📱 Improved mobile parent experience",
+  "📊 Readiness and intervention analytics",
 ]
 
 export default async function PublicHomePage() {
@@ -141,20 +141,20 @@ export default async function PublicHomePage() {
           <div>
             <Logo variant="full" size={32} className="mb-4 sm:mb-6 sm:size-48" />
             <p className="mb-4 sm:mb-5 inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-3 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm font-semibold text-blue-300">
-              AI learning for primary school children aged 5&ndash;10
+              Reception to GCSE support for families, tutors and schools
             </p>
 
             <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black leading-[1.2] tracking-tight">
-              Fun learning that{" "}
+              England pathway learning{" "}
               <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-                adapts to every child.
+                from Reception to GCSE.
               </span>
             </h1>
 
             <p className="mt-4 sm:mt-6 max-w-xl text-sm sm:text-base lg:text-lg leading-6 sm:leading-8 text-slate-300">
-              StarLiz Academy helps children build confidence in spelling, maths
-              and reading through AI-powered personalised practice, rewards and
-              real parent progress insights.
+              StarLiz Academy supports National Curriculum aligned primary learning,
+              KS3 pathway aligned progress, and GCSE pathway aligned revision with
+              exam-board-aware tagging for AQA, Edexcel and OCR.
             </p>
 
             <div className="mt-6 sm:mt-9 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
@@ -162,13 +162,13 @@ export default async function PublicHomePage() {
                 href="/signup"
                 className="rounded-lg sm:rounded-xl bg-blue-600 px-5 sm:px-7 py-3 sm:py-4 text-sm sm:text-base font-bold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500 text-center"
               >
-                Start Free Trial &mdash; It&apos;s Free
+                Start your child&apos;s learning journey
               </Link>
               <Link
-                href="/login"
+                href="/pricing"
                 className="rounded-lg sm:rounded-xl border border-slate-700 px-5 sm:px-7 py-3 sm:py-4 text-sm sm:text-base font-bold transition hover:bg-slate-900 text-center"
               >
-                Parent Login
+                Choose a plan
               </Link>
             </div>
 
@@ -179,26 +179,26 @@ export default async function PublicHomePage() {
 
           <div className="rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6 shadow-2xl backdrop-blur-sm">
             <div className="rounded-2xl bg-slate-950 p-5">
-              <p className="text-sm font-semibold text-blue-300">Today&apos;s Learning</p>
+              <p className="text-sm font-semibold text-blue-300">Today&apos;s Pathway Snapshot</p>
               <div className="mt-5 space-y-4">
                 <div className="flex items-center gap-4 rounded-2xl bg-slate-900 p-4">
                   <span className="text-3xl">🔤</span>
                   <div>
-                    <p className="font-semibold">Spelling &mdash; Silent-E words</p>
-                    <p className="text-sm text-slate-400">kite &middot; time &middot; cape &middot; note</p>
+                    <p className="font-semibold">GCSE Pathway &mdash; Algebra focus</p>
+                    <p className="text-sm text-slate-400">Exam-board aware tagging: AQA</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4 rounded-2xl bg-slate-900 p-4">
                   <span className="text-3xl">⭐</span>
                   <div>
-                    <p className="font-semibold">86 stars earned this week</p>
-                    <p className="text-sm text-slate-400">Keep going to unlock rewards!</p>
+                    <p className="font-semibold">Weak-topic support active</p>
+                    <p className="text-sm text-slate-400">Parent dashboard shows targeted intervention areas.</p>
                   </div>
                 </div>
                 <div className="rounded-2xl border border-emerald-700/40 bg-emerald-500/10 p-4">
-                  <p className="font-bold text-emerald-300">Level updated &#8593;</p>
+                  <p className="font-bold text-emerald-300">Readiness signals updated &#8593;</p>
                   <p className="mt-1 text-sm text-slate-300">
-                    Next lesson adapts to this child&apos;s progress.
+                    Next assigned lesson follows the learner&apos;s pathway profile.
                   </p>
                 </div>
               </div>
@@ -214,9 +214,9 @@ export default async function PublicHomePage() {
           <span className="hidden sm:inline text-slate-700">|</span>
           <span className="w-full sm:w-auto text-center sm:text-left">&#10003; No ads or distractions</span>
           <span className="hidden sm:inline text-slate-700">|</span>
-          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; AI-personalised</span>
+          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Reception to GCSE pathways</span>
           <span className="hidden sm:inline text-slate-700">|</span>
-          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Used by parents across the UK</span>
+          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Exam-board aware (AQA, Edexcel, OCR)</span>
           <span className="hidden sm:inline text-slate-700">|</span>
           <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Cancel anytime</span>
         </div>
@@ -225,8 +225,8 @@ export default async function PublicHomePage() {
       {/* Learning Areas */}
       <section id="subjects" className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
         <div className="text-center">
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Learning Areas</h2>
-          <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">Core subjects designed to build strong foundations.</p>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Learning Pathways</h2>
+          <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">Age-aware progression from early years to GCSE pathway aligned support.</p>
         </div>
 
         <div className="mt-8 sm:mt-12 grid gap-4 sm:gap-6 md:grid-cols-3">
@@ -238,8 +238,8 @@ export default async function PublicHomePage() {
               <p className="text-4xl sm:text-5xl">{subject.icon}</p>
               <h3 className="mt-4 sm:mt-5 text-lg sm:text-xl font-bold">{subject.title}</h3>
               <p className="mt-2 sm:mt-3 text-sm sm:text-base leading-6 sm:leading-7 text-slate-400">{subject.text}</p>
-              <Link href="/signup" className="mt-4 sm:mt-6 inline-block text-xs sm:text-sm font-semibold text-blue-400 hover:text-blue-300">
-                Try it free &#8594;
+              <Link href={subject.title.includes("GCSE") ? "/pricing" : "/signup"} className="mt-4 sm:mt-6 inline-block text-xs sm:text-sm font-semibold text-blue-400 hover:text-blue-300">
+                {subject.title.includes("GCSE") ? "View GCSE pathway \u2192" : "Explore pathway support \u2192"}
               </Link>
             </div>
           ))}
@@ -250,8 +250,8 @@ export default async function PublicHomePage() {
       <section id="features" className="bg-slate-900/40 px-4 sm:px-6 py-12 sm:py-20">
         <div className="mx-auto max-w-7xl">
           <div className="text-center">
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Why parents choose StarLiz</h2>
-            <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">Everything a child needs to learn and a parent needs to trust.</p>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Why families, tutors and schools choose StarLiz</h2>
+            <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">Pathway aligned delivery with parent visibility and practical intervention support.</p>
           </div>
 
           <div className="mt-8 sm:mt-12 grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -292,53 +292,54 @@ export default async function PublicHomePage() {
       {/* Parent Dashboard Preview */}
       <section className="bg-gradient-to-b from-slate-900/60 to-transparent px-4 sm:px-6 py-12 sm:py-20">
         <div className="mx-auto max-w-5xl text-center">
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Real insights for parents</h2>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Real parent value at every stage</h2>
           <p className="mx-auto mt-2 sm:mt-4 max-w-2xl text-xs sm:text-sm lg:text-base text-slate-400">
-            Your parent dashboard shows weekly progress, session history, strengths and areas to improve.
+            Parent dashboard tools include progress reports, assigned lessons, weak-topic support and GCSE readiness insights.
           </p>
 
           <div className="mt-8 sm:mt-12 grid gap-3 sm:gap-4 rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-4 sm:p-6 sm:grid-cols-3">
             <div className="rounded-lg sm:rounded-2xl bg-slate-950 p-4 sm:p-5">
-              <p className="text-2xl sm:text-3xl font-black text-blue-400">94%</p>
-              <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-400">Spelling accuracy this week</p>
+              <p className="text-2xl sm:text-3xl font-black text-blue-400">3 pathways</p>
+              <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-400">Reception-Year 6, KS3, GCSE</p>
             </div>
             <div className="rounded-lg sm:rounded-2xl bg-slate-950 p-4 sm:p-5">
-              <p className="text-2xl sm:text-3xl font-black text-emerald-400">7-day</p>
-              <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-400">Learning streak active</p>
+              <p className="text-2xl sm:text-3xl font-black text-emerald-400">AQA/OCR/Edexcel</p>
+              <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-400">Exam-board aware GCSE tagging</p>
             </div>
             <div className="rounded-lg sm:rounded-2xl bg-slate-950 p-4 sm:p-5">
-              <p className="text-2xl sm:text-3xl font-black text-purple-400">Level 4</p>
-              <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-400">Maths &mdash; just moved up</p>
+              <p className="text-2xl sm:text-3xl font-black text-purple-400">Readiness</p>
+              <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-400">GCSE readiness insights for parents</p>
             </div>
           </div>
 
           <Link href="/signup" className="mt-6 sm:mt-8 inline-flex rounded-lg sm:rounded-xl bg-blue-600 px-5 sm:px-7 py-3 sm:py-4 text-sm sm:text-base font-bold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500">
-            Get Started Free
+            Explore Reception to GCSE support
           </Link>
         </div>
       </section>
 
-      {/* Rewards */}
+      {/* Audience */}
       <section className="mx-auto max-w-7xl px-6 py-20">
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           <div>
-            <h2 className="text-4xl font-black">Rewards that motivate</h2>
+            <h2 className="text-4xl font-black">Who StarLiz is for</h2>
             <p className="mt-4 leading-8 text-slate-400">
-              Every correct answer earns stars. Children build streaks, level up and unlock badges.
+              StarLiz Academy is built for households, tutors and organisations supporting learners across England pathways.
             </p>
             <ul className="mt-6 space-y-3 text-slate-300">
-              <li className="flex items-center gap-3"><span className="text-yellow-400">⭐</span> Stars for every correct answer</li>
-              <li className="flex items-center gap-3"><span className="text-orange-400">🔥</span> Daily streaks to build habits</li>
-              <li className="flex items-center gap-3"><span className="text-purple-400">🏆</span> Badges for milestones</li>
-              <li className="flex items-center gap-3"><span className="text-blue-400">📈</span> XP and level progression</li>
+              <li className="flex items-center gap-3"><span className="text-yellow-400">👨‍👩‍👧</span> Parents of Reception-Year 6 children</li>
+              <li className="flex items-center gap-3"><span className="text-orange-400">🧑‍🎓</span> Parents of KS3 students</li>
+              <li className="flex items-center gap-3"><span className="text-purple-400">🎓</span> Parents of GCSE students</li>
+              <li className="flex items-center gap-3"><span className="text-blue-400">🧑‍🏫</span> Tutors and intervention providers</li>
+              <li className="flex items-center gap-3"><span className="text-blue-400">🏫</span> Schools and organisations</li>
             </ul>
           </div>
           <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center">
-            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-yellow-500/20 text-5xl ring-2 ring-yellow-500/30">⭐</div>
-            <p className="text-2xl font-black">142 stars earned</p>
-            <p className="mt-2 text-slate-400">This month</p>
+            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-yellow-500/20 text-5xl ring-2 ring-yellow-500/30">🧭</div>
+            <p className="text-2xl font-black">One platform, multiple stages</p>
+            <p className="mt-2 text-slate-400">Age-aware journeys from early years to GCSE.</p>
             <div className="mt-6 grid grid-cols-3 gap-3">
-              {["🏆 Spelling Pro", "🔥 7-day Streak", "📚 Book Worm"].map((badge) => (
+              {["📘 Curriculum aligned", "🏷️ Exam-board aware", "📊 Parent visibility"].map((badge) => (
                 <div key={badge} className="rounded-xl border border-slate-700 bg-slate-950 px-2 py-3 text-xs font-semibold">{badge}</div>
               ))}
             </div>
@@ -369,14 +370,14 @@ export default async function PublicHomePage() {
         <div className="mx-auto max-w-4xl rounded-3xl bg-gradient-to-br from-blue-700 to-indigo-800 p-12 text-center shadow-2xl shadow-blue-900/40">
           <h2 className="text-4xl font-black">Start your child&apos;s learning journey today.</h2>
           <p className="mx-auto mt-4 max-w-xl text-lg text-blue-100">
-            Build confidence in spelling, maths and reading with personalised AI-powered practice and real parent insights.
+            Explore Reception to GCSE support with pathway aligned learning, exam-board-aware GCSE tagging and parent progress visibility.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link href="/signup" className="rounded-xl bg-white px-8 py-4 font-bold text-blue-700 shadow-lg transition hover:bg-blue-50">
-              Start Free Trial
+              Start your child&apos;s learning journey
             </Link>
-            <Link href="/login" className="rounded-xl border border-white/30 bg-white/10 px-8 py-4 font-bold text-white transition hover:bg-white/20">
-              Parent Login
+            <Link href="/pricing" className="rounded-xl border border-white/30 bg-white/10 px-8 py-4 font-bold text-white transition hover:bg-white/20">
+              Choose a plan
             </Link>
           </div>
           <p className="mt-4 text-sm text-blue-200">No credit card required &middot; Cancel anytime</p>
@@ -389,7 +390,7 @@ export default async function PublicHomePage() {
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <Logo variant="full" size={28} />
-              <p className="mt-2 text-sm text-slate-400">AI-powered learning for primary school children aged 5&ndash;10.</p>
+              <p className="mt-2 text-sm text-slate-400">Reception to GCSE pathway aligned learning for families, tutors and schools.</p>
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-300">Product</p>
