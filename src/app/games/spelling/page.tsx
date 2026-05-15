@@ -17,6 +17,7 @@ import { speakEncouragement, speakWithContext } from "@/lib/voice";
 import { isUsageLocked, trackUsage } from "@/lib/screen_time";
 import { fetchProfileHistory } from "@/lib/progress_data";
 import { getNextQuestionId, markQuestionCompleted } from "@/lib/question_history";
+import { recordCoachInteraction } from "@/lib/coach/session-memory";
 import { fetchAiSpellingWord, fetchAssignedSpellingWord, resetAssignedContentCursor } from "@/lib/ai_content";
 import { syncAttemptToServer } from "@/lib/server_sync";
 import { skillFocusToCode, serializeSkills } from "@/lib/skills";
@@ -1809,6 +1810,16 @@ export default function SpellingQuestPage() {
         });
       }
 
+      recordCoachInteraction({
+        questionText: targetWord.word,
+        subject: "spelling",
+        skillFocus: targetWord.patterns?.[0] ?? targetWord.categoryHint ?? targetWord.word,
+        hintsUsed: hintLevel,
+        correct: true,
+        responseTimeMs: Math.round(responseMs),
+        timestamp: Date.now(),
+      });
+
       const newSessionCorrect = sessionCorrect + 1;
       setSessionCorrect(newSessionCorrect);
       if (displayMode === "boss_test") {
@@ -2007,6 +2018,15 @@ export default function SpellingQuestPage() {
         setFeedback(`No hints on this round. The answer was ${targetWord.word}.${mistakeNote}`);
         setReaction({ mood: "support", message: `No hints on this round. The answer was ${targetWord.word}.` });
       }
+      recordCoachInteraction({
+        questionText: targetWord.word,
+        subject: "spelling",
+        skillFocus: targetWord.patterns?.[0] ?? targetWord.categoryHint ?? targetWord.word,
+        hintsUsed: Math.max(hintLevel, 2),
+        correct: false,
+        responseTimeMs: Math.round(responseMs),
+        timestamp: Date.now(),
+      });
       const lockedTutorPlan = getTutorFeedbackPlan({
         childId: profile.id,
         subject: "spelling",

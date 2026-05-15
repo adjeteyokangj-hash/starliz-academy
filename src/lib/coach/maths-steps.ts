@@ -76,9 +76,6 @@ function parsePattern(question: string): MathPattern {
     return { type: "bracket", outer, inner, offset, total };
   }
 
-                tryAgainPrompt: shouldReveal ? "Try a similar question on your own before asking for help again." : null,
-                masterySignal: null,
-                ...emotFields,
   if (linearMatch) {
     return {
       type: "linear",

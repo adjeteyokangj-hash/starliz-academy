@@ -17,6 +17,7 @@ import { getVoiceReaction, speakProfileFeedback, speakWithContext } from "@/lib/
 import { isUsageLocked, trackUsage } from "@/lib/screen_time";
 import { fetchProfileHistory, getProfileHistory } from "@/lib/progress_data";
 import { getNextQuestionId, markQuestionCompleted } from "@/lib/question_history";
+import { recordCoachInteraction } from "@/lib/coach/session-memory";
 import { fetchAiMathQuestion, fetchAssignedMathQuestion, resetAssignedContentCursor } from "@/lib/ai_content";
 import { syncAttemptToServer } from "@/lib/server_sync";
 import { getTutorFeedbackPlan, speakTutorFeedback, hydrateCoachingMemoryFromServer } from "@/lib/tutor-voice";
@@ -675,6 +676,16 @@ export default function MathMissionPage() {
         questionId: question.id,
       });
 
+      recordCoachInteraction({
+        questionText: question.prompt,
+        subject: "math",
+        skillFocus: question.topic,
+        hintsUsed: hintLevel,
+        correct: true,
+        responseTimeMs: Math.round(responseMs),
+        timestamp: Date.now(),
+      });
+
       const newSessionCorrect = sessionCorrect + 1;
       setSessionCorrect(newSessionCorrect);
       const improved = result.promotedDifficulty || nextLevel > prevLevel || newSessionCorrect % 5 === 0;
@@ -756,6 +767,15 @@ export default function MathMissionPage() {
         : (question.hints[Math.min(question.hints.length, nextHint) - 1] ?? "Try breaking the problem into steps.");
       setFeedback("Good try. Listen again and have another go.");
       setReaction({ mood: "support", message: "Good try. Listen again and have another go." });
+      recordCoachInteraction({
+        questionText: question.prompt,
+        subject: "math",
+        skillFocus: question.topic,
+        hintsUsed: nextHint,
+        correct: false,
+        responseTimeMs: Math.round(responseMs),
+        timestamp: Date.now(),
+      });
       void speakWithContext(`Good try! Here is a clue to help you. ${clue}`, "math_hint");
       return;
     }
@@ -769,6 +789,15 @@ export default function MathMissionPage() {
         : (question.hints[Math.min(question.hints.length, nextHint) - 1] ?? "Try breaking the problem into steps.");
       setFeedback("Almost there. Here is a bigger clue.");
       setReaction({ mood: "support", message: "Almost there. Here is a bigger clue." });
+      recordCoachInteraction({
+        questionText: question.prompt,
+        subject: "math",
+        skillFocus: question.topic,
+        hintsUsed: nextHint,
+        correct: false,
+        responseTimeMs: Math.round(responseMs),
+        timestamp: Date.now(),
+      });
       void speakWithContext(`You are nearly there! Let me give you a bigger clue. ${clue}`, "math_hint");
       return;
     }
@@ -835,6 +864,15 @@ export default function MathMissionPage() {
     if (profile.settings.sfxEnabled) {
       playTryAgainSound();
     }
+    recordCoachInteraction({
+      questionText: question.prompt,
+      subject: "math",
+      skillFocus: question.topic,
+      hintsUsed: Math.max(hintLevel, 2),
+      correct: false,
+      responseTimeMs: Math.round(responseMs),
+      timestamp: Date.now(),
+    });
     void speakWithContext(`Not to worry — the answer was ${question.answer}. Let us keep going and try another one!`, "encouragement");
     setSessionAttempts((prev) => prev + 1);
     advanceSession(awardedProfile, 1200);

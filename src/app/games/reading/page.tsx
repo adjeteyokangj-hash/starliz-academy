@@ -17,6 +17,7 @@ import { getVoiceReaction, speakEncouragement, speakProfileFeedback, speakWithCo
 import { isUsageLocked, trackUsage } from "@/lib/screen_time";
 import { fetchProfileHistory, getProfileHistory } from "@/lib/progress_data";
 import { markQuestionCompleted } from "@/lib/question_history";
+import { recordCoachInteraction } from "@/lib/coach/session-memory";
 import { syncAttemptToServer } from "@/lib/server_sync";
 import { fetchAssignedReadingBatch, resetAssignedContentCursor } from "@/lib/ai_content";
 import { getTutorFeedbackPlan, speakTutorFeedback, hydrateCoachingMemoryFromServer } from "@/lib/tutor-voice";
@@ -1008,6 +1009,15 @@ export default function ReadingJourneyPage() {
       const rewardSuffix = result.surpriseReward.awarded ? ` ${getVoiceReaction("reward-earned")} ${result.surpriseReward.message}` : "";
       speakProfileFeedback(awardedProfile, "correct", `${getVoiceReaction("daily-quest")} ${dailyProgress}/${awardedProfile.dailyGoal}. ${nextLevel > prevLevel ? getVoiceReaction("level-up") : ""}${rewardSuffix}`);
       setReaction({ mood: nextLevel > prevLevel || result.surpriseReward.awarded ? "celebrate" : "happy", message: result.surpriseReward.awarded ? result.surpriseReward.message : nextLevel > prevLevel ? "Reading level up! Amazing focus!" : "Wonderful reading! Keep flowing." });
+      recordCoachInteraction({
+        questionText: item.question,
+        subject: "reading",
+        skillFocus: questionType,
+        hintsUsed: hintLevel,
+        correct: true,
+        responseTimeMs: Math.round(responseMs),
+        timestamp: Date.now(),
+      });
       const improved = result.promotedDifficulty || nextLevel > prevLevel;
       const tutorPlan = getTutorFeedbackPlan({
         childId: profile.id,
@@ -1052,6 +1062,15 @@ export default function ReadingJourneyPage() {
     } else {
       speakProfileFeedback(awardedProfile, "wrong");
       setReaction({ mood: "support", message: "You are learning. Read it once more and try again." });
+      recordCoachInteraction({
+        questionText: item.question,
+        subject: "reading",
+        skillFocus: questionType,
+        hintsUsed: hintLevel + 1,
+        correct: false,
+        responseTimeMs: Math.round(responseMs),
+        timestamp: Date.now(),
+      });
       setHintLevel((level) => Math.min(level + 1, 3));
       const tutorPlan = getTutorFeedbackPlan({
         childId: profile.id,

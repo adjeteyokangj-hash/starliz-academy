@@ -2,10 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CoachResponse, CoachSubject } from "@/lib/coach/types";
-import {
-  recordCoachInteraction,
-  getSessionSummary,
-} from "@/lib/coach/session-memory";
+import { getSessionSummary } from "@/lib/coach/session-memory";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -146,22 +143,6 @@ export default function SmartCoachPanel({
     const t = setTimeout(() => setWaitCountdown((n) => n - 1), 1000);
     return () => clearTimeout(t);
   }, [waitPhase, waitCountdown]);
-
-  // ── Record interaction on reveal ─────────────────────────────────────────
-
-  useEffect(() => {
-    if (response?.shouldReveal) {
-      recordCoachInteraction({
-        questionText: question,
-        subject,
-        skillFocus,
-        hintsUsed: localHintCount,
-        correct: false,
-        responseTimeMs: responseTimeMs ?? 0,
-        timestamp: Date.now(),
-      });
-    }
-  }, [response?.shouldReveal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -363,24 +344,24 @@ export default function SmartCoachPanel({
       {/* Try-again prompt after reveal */}
       {shouldReveal && tryAgainPrompt && (
         <p className="mt-2 text-xs italic text-slate-500">{tryAgainPrompt}</p>
+      )}
 
-            {/* Similar question — mastery check after reveal */}
-            {shouldReveal && response.similarQuestion && (
-              <div className="mt-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 px-4 py-3">
-                <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
-                  Now prove it — try this:
-                </p>
-                <p className="mt-1 text-sm font-semibold text-emerald-900">{response.similarQuestion.prompt}</p>
-                {response.similarQuestion.answer && (
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-xs font-medium text-emerald-600 hover:text-emerald-800">
-                      Check answer
-                    </summary>
-                    <p className="mt-1 font-mono text-sm font-bold text-emerald-900">{response.similarQuestion.answer}</p>
-                  </details>
-                )}
-              </div>
-            )}
+      {/* Similar question — mastery check after reveal */}
+      {shouldReveal && response.similarQuestion && (
+        <div className="mt-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 px-4 py-3">
+          <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+            Now prove it — try this:
+          </p>
+          <p className="mt-1 text-sm font-semibold text-emerald-900">{response.similarQuestion.prompt}</p>
+          {response.similarQuestion.answer && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-medium text-emerald-600 hover:text-emerald-800">
+                Check answer
+              </summary>
+              <p className="mt-1 font-mono text-sm font-bold text-emerald-900">{response.similarQuestion.answer}</p>
+            </details>
+          )}
+        </div>
       )}
 
       {/* Reinforcement note */}
