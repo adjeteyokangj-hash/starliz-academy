@@ -93,7 +93,12 @@ const roadmapItems = [
 ]
 
 export default async function PublicHomePage() {
-  const plans = await getPublicPricingPlans()
+  let plans = [] as Awaited<ReturnType<typeof getPublicPricingPlans>>;
+  try {
+    plans = await getPublicPricingPlans();
+  } catch {
+    plans = [];
+  }
 
   return (
     <main className="min-h-screen bg-[#020617] text-white">

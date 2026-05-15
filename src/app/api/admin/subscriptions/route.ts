@@ -84,7 +84,8 @@ async function canAdminManageSubscriptions(userId: string): Promise<boolean> {
   });
 
   const role = user?.adminProfile?.role;
-  if (!role || role.name === "Super Admin") return true;
+  if (!role) return false;
+  if (role.name === "Super Admin") return true;
 
   try {
     const parsed = JSON.parse(role.permissions);
