@@ -153,14 +153,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // ─ Progressive-help gating: enforce level sequencing ─────────────────────
   const gatingValidation = validateProgressiveHelp(ctx, ctx.hintCount > 0 ? ctx.hintCount : undefined);
   if (!gatingValidation.allowed) {
-    return NextResponse.json(
-      {
-        error: "gating_violation",
-        message: gatingValidation.reason || "Cannot request that hint level yet",
-        suggestedHintLevel: gatingValidation.suggestedHintLevel,
-      },
-      { status: 403 },
-    );
+    const safeHintLevel = Math.min(Math.max(gatingValidation.suggestedHintLevel ?? 1, 1), 4);
+    const gatedResponse: CoachResponse = {
+      ...deterministicResponse,
+      mode: "hint",
+      message: gatingValidation.reason || "Try one attempt first, then I can coach more precisely.",
+      steps: [],
+      followUp: null,
+      hintLevel: safeHintLevel,
+      shouldReveal: false,
+      reinforcementNote: "Submit an attempt when you are ready for more targeted hints.",
+      tryAgainPrompt: null,
+      masterySignal: null,
+      waitPrompt: "Have a go first, then ask for the next hint.",
+    };
+    return NextResponse.json(gatedResponse, { status: 200 });
   }
 
   // ─ Record interaction to database (async, non-blocking) ──────────────────

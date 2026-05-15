@@ -91,19 +91,104 @@ function normalizeMath(item: Record<string, unknown> | null): MathQuestion | nul
   const answer = Number(item.answer);
   if (!prompt || Number.isNaN(answer)) return null;
 
+  const roundChoice = (value: number): number => {
+    if (!Number.isFinite(value)) return value;
+    return Math.round(value * 100) / 100;
+  };
+
+  const parseLinearEquation = (text: string): { a: number; b: number; c: number } | null => {
+    const compact = text.replace(/[−–—]/g, "-").replace(/\s+/g, " ");
+    const expression = compact.match(/(\d*\s*x\s*[+\-]\s*\d+\s*=\s*-?\d+)/i)?.[1] ?? compact;
+    const match = expression.match(/^(\d+)?\s*x\s*([+\-])\s*(\d+)\s*=\s*(-?\d+)$/i);
+    if (!match) return null;
+    const a = Number(match[1] ?? "1");
+    const bRaw = Number(match[3]);
+    const c = Number(match[4]);
+    const b = match[2] === "-" ? -bRaw : bRaw;
+    if (![a, b, c].every(Number.isFinite) || a === 0) return null;
+    return { a, b, c };
+  };
+
+  const buildFallbackChoices = (correct: number): number[] => {
+    const candidates = [
+      correct - 1,
+      correct + 1,
+      correct - 2,
+      correct + 2,
+      correct * 2,
+      correct / 2,
+      -correct,
+    ].map(roundChoice);
+    const unique = Array.from(new Set([roundChoice(correct), ...candidates].filter((v) => Number.isFinite(v))));
+    return unique.slice(0, 4);
+  };
+
+  const linear = parseLinearEquation(prompt);
+  const isAlgebraPrompt = Boolean(linear) || /solve\s+for\s+x|\bx\b\s*=|linear\s+equation/i.test(prompt);
+
+  const buildAlgebraChoices = (correct: number): number[] => {
+    const { a, b, c } = linear ?? { a: 1, b: 0, c: correct };
+    const distractors = [
+      c / a,
+      c - b,
+      (c + b) / a,
+      correct - 1,
+      correct + 1,
+      correct + b,
+      correct - b,
+    ].map(roundChoice);
+    const merged = Array.from(new Set([roundChoice(correct), ...distractors].filter((v) => Number.isFinite(v) && v !== roundChoice(correct))));
+    return [roundChoice(correct), ...merged].slice(0, 4);
+  };
+
   const hints = Array.isArray(item.hints)
     ? item.hints.map((v) => String(v)).filter(Boolean)
     : [String(item.hint ?? "Try splitting the problem into steps.")];
 
-  const choices = Array.isArray(item.choices)
+  const sourceChoices = Array.isArray(item.choices)
     ? item.choices.map((v) => Number(v)).filter((v) => Number.isFinite(v))
     : undefined;
+  const answerOptions = Array.isArray(item.answerOptions)
+    ? item.answerOptions.map((v) => Number(v)).filter((v) => Number.isFinite(v))
+    : undefined;
+  const choiceMode = String(item.questionType ?? item.format ?? "").toLowerCase();
+  const expectsChoices = Boolean(
+    (sourceChoices?.length ?? 0) > 0
+    || (answerOptions?.length ?? 0) > 0
+    || item.multipleChoice === true
+    || choiceMode.includes("multiple")
+    || choiceMode.includes("choice"),
+  );
+
+  const choices = (() => {
+    if (!expectsChoices) {
+      return undefined;
+    }
+    const provided = [...(sourceChoices ?? []), ...(answerOptions ?? [])].map(roundChoice);
+    if (isAlgebraPrompt) {
+      const algebraChoices = buildAlgebraChoices(answer);
+      if (provided.length) {
+        return Array.from(new Set([...provided, ...algebraChoices, roundChoice(answer)])).slice(0, 4);
+      }
+      return algebraChoices;
+    }
+    if (provided.length) {
+      const merged = Array.from(new Set([...provided, roundChoice(answer)]));
+      return merged.slice(0, 4);
+    }
+    return buildFallbackChoices(answer);
+  })();
+
+  const rawTopic = String(item.topic ?? item.type ?? "mixed").trim();
+  const topic = isAlgebraPrompt
+    ? (rawTopic && rawTopic !== "mixed" ? rawTopic : "Algebra: Solving linear equations")
+    : (rawTopic || "mixed");
 
   return {
     id: String(item.id ?? `ai-math-${Math.abs(answer)}-${prompt.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 24)}`),
     prompt,
     answer,
-    topic: String(item.topic ?? item.type ?? "mixed"),
+    topic,
     hints: hints.length ? hints : ["Try splitting the problem into steps."],
     choices,
     visual: typeof item.visual === "string" ? item.visual : undefined,

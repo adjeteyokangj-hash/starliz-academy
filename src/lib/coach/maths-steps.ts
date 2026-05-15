@@ -63,8 +63,23 @@ const OP_MAP: Record<string, "+" | "-" | "×" | "÷"> = {
   "+": "+", "-": "-", "×": "×", "x": "×", "X": "×", "*": "×", "÷": "÷", "/": "÷",
 };
 
+function normalizeMathQuestionText(question: string): string {
+  const compact = question
+    .replace(/[−–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  const linearExpression = compact.match(/(\d*\s*x\s*[+\-]\s*\d+\s*=\s*-?\d+)/i)?.[1];
+  if (linearExpression) {
+    return linearExpression.replace(/\s+/g, " ").trim();
+  }
+  return compact
+    .replace(/^solve\s+for\s+x\s*[:\-]?\s*/i, "")
+    .replace(/^find\s+x\s*[:\-]?\s*/i, "")
+    .trim();
+}
+
 function parsePattern(question: string): MathPattern {
-  const q = question.trim();
+  const q = normalizeMathQuestionText(question);
 
   // Bracket expansion: a(x + b) = c  or  a(x - b) = c
   const bracketMatch = q.match(/(\d+)\s*\(\s*x\s*([+\-])\s*(\d+)\s*\)\s*=\s*(\d+)/i);
@@ -331,15 +346,17 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
     const eq = pattern;
     const steps = linearSteps(eq, hintLevel);
     const followUp = hintLevel === 2 ? linearFollowUp1(eq) : hintLevel >= 3 ? (linearFollowUp2(eq) ?? linearFollowUp1(eq)) : null;
+    const firstStepText = `${eq.bSign === "+" ? "subtract" : "add"} ${eq.b}`;
+    const step1rhs = eq.bSign === "+" ? eq.c - eq.b : eq.c + eq.b;
 
     const messages: Record<number, string> = {
       1: ageBand === "foundation" || ageBand === "primary"
-        ? `We need x on its own. Can you spot what is being added or taken away from x?`
-        : `We need to isolate x. Think about what operation would undo the ${eq.bSign === "+" ? "addition" : "subtraction"} of ${eq.b}.`,
-      2: `Good — let's work it out. ${eq.bSign === "+" ? "Subtracting" : "Adding"} ${eq.b} from both sides is the first move.`,
+        ? `To isolate x, start by ${firstStepText} on both sides.`
+        : `Start by ${firstStepText} on both sides to keep the equation balanced.`,
+      2: `After that first move, the equation simplifies to ${eq.a === 1 ? "x" : `${eq.a}x`} = ${step1rhs}.`,
       3: ageBand === "gcse"
-        ? `Here is the working so far. Each step keeps the equation balanced. What comes next?`
-        : `Look at the steps. Each one gets us closer to x. Can you complete the final step?`,
+        ? `Now undo the multiplication by ${eq.a}. Divide both sides by ${eq.a} to isolate x.`
+        : `Now divide both sides by ${eq.a} so x is on its own.`,
       4: `Here is the complete solution. Study each step, then try a similar problem without help.`,
     };
 

@@ -47,6 +47,39 @@ function normalizeMathRetryId(questionId: string): string {
   return questionId.trim().toLowerCase().replace(/-session-\d+-\d+$/i, "");
 }
 
+function isAlgebraPrompt(prompt: string): boolean {
+  return /solve\s+for\s+x|\d*\s*x\s*[+\-]\s*\d+\s*=\s*-?\d+|\bx\s*=|linear\s+equation/i.test(prompt);
+}
+
+function parseLinearEquation(prompt: string): { a: number; b: number; c: number } | null {
+  const compact = prompt.replace(/[−–—]/g, "-").replace(/\s+/g, " ").trim();
+  const expression = compact.match(/(\d*\s*x\s*[+\-]\s*\d+\s*=\s*-?\d+)/i)?.[1] ?? compact;
+  const match = expression.match(/^(\d+)?\s*x\s*([+\-])\s*(\d+)\s*=\s*(-?\d+)$/i);
+  if (!match) return null;
+  const a = Number(match[1] ?? "1");
+  const bRaw = Number(match[3]);
+  const c = Number(match[4]);
+  const b = match[2] === "-" ? -bRaw : bRaw;
+  if (![a, b, c].every(Number.isFinite) || a === 0) return null;
+  return { a, b, c };
+}
+
+function buildSimplifiedAlgebraPrompt(prompt: string): string | null {
+  const eq = parseLinearEquation(prompt);
+  if (!eq) return null;
+  if (Math.abs(eq.a) > 1) {
+    const reducedA = eq.a > 1 ? eq.a - 1 : eq.a;
+    const reducedB = eq.b > 0 ? Math.max(1, eq.b - 1) : Math.min(-1, eq.b + 1);
+    const reducedC = reducedA * 2 + reducedB;
+    const sign = reducedB >= 0 ? "+" : "-";
+    return `Try this easier version first: ${reducedA === 1 ? "x" : `${reducedA}x`} ${sign} ${Math.abs(reducedB)} = ${reducedC}`;
+  }
+  const reducedB = eq.b > 0 ? Math.max(1, eq.b - 1) : Math.min(-1, eq.b + 1);
+  const reducedC = 4 + reducedB;
+  const sign = reducedB >= 0 ? "+" : "-";
+  return `Try this easier version first: x ${sign} ${Math.abs(reducedB)} = ${reducedC}`;
+}
+
 type PersistedMathState = {
   currentQuestion: MathQuestion | null;
   sessionStep: number;
@@ -77,6 +110,7 @@ export default function MathMissionPage() {
   const [sessionCorrect, setSessionCorrect] = useState(0);
   const [insightMessage, setInsightMessage] = useState<string | null>(null);
   const [attemptCount, setAttemptCount] = useState(0);
+  const [submittedAttempts, setSubmittedAttempts] = useState(0);
   const [recentQuestionIds, setRecentQuestionIds] = useState<string[]>([]);
   const [contentSource, setContentSource] = useState<"assigned" | "ai-cache" | "static">("static");
   const [usingAssignedContent, setUsingAssignedContent] = useState(false);
@@ -98,6 +132,7 @@ export default function MathMissionPage() {
   } | null>(null);
   const restoreAttemptedRef = useRef(false);
   const lastAutoSelectionContextRef = useRef<string | null>(null);
+  const coachPanelRef = useRef<HTMLDivElement | null>(null);
 
   const sessionComplete = sessionMode === "completed_base" || sessionMode === "completed_retry";
   const retryPackMode = sessionMode === "retry_pack";
@@ -182,6 +217,7 @@ export default function MathMissionPage() {
       setRetryInitialCount(parsed.retryInitialCount ?? 0);
       setHintLevel(0);
       setAttemptCount(0);
+      setSubmittedAttempts(0);
       setAnswer("");
       setForcedChoices(false);
       setQuestionStartedAt(Date.now());
@@ -298,6 +334,7 @@ export default function MathMissionPage() {
     setUsingAssignedContent(nextSource === "assigned");
     setHintLevel(0);
     setAttemptCount(0);
+    setSubmittedAttempts(0);
     setCoachOpen(false);
     setAnswer("");
     setForcedChoices(false);
@@ -367,11 +404,43 @@ export default function MathMissionPage() {
   }, [profile]);
 
   const mathDifficulty = profile?.adaptive.mathDifficulty ?? 1;
-  const levelLabel = LEVEL_LABELS[mathDifficulty] ?? LEVEL_LABELS[1];
+  const yearGroupNum = Number(profile?.yearGroup?.match(/\d+/)?.[0] ?? "0");
+  const isOlderLearner = yearGroupNum >= 9 || Boolean(profile?.keyStageLevel?.toLowerCase().includes("gcse")) || (profile?.ageYears ?? 0) >= 14;
+  const isAlgebraQuestion = Boolean(question?.prompt && isAlgebraPrompt(question.prompt));
+  const levelLabel = isAlgebraQuestion
+    ? (isOlderLearner ? "📘 GCSE Algebra: Linear equations" : "📘 Algebra: Solving linear equations")
+    : (LEVEL_LABELS[mathDifficulty] ?? LEVEL_LABELS[1]);
   const sessionQuestionTarget = retryPackMode ? Math.max(1, retryInitialCount) : MATH_SESSION_TARGET;
   const currentQuestionNumber = Math.min(sessionStep + 1, sessionQuestionTarget);
-  const showVisualSupport = profile?.ageRange === "5-7" || mathDifficulty <= 2;
-  const showChoices = showVisualSupport || forcedChoices;
+  const showVisualSupport = !isAlgebraQuestion && (profile?.ageRange === "5-7" || mathDifficulty <= 2);
+  const displayChoices = useMemo(() => {
+    if (!question) return [] as number[];
+    const sourceChoices = Array.isArray(question.choices) ? question.choices : [];
+    if (!sourceChoices.length) return [] as number[];
+    if (!isAlgebraQuestion) return sourceChoices;
+
+    const eq = parseLinearEquation(question.prompt);
+    const correct = question.answer;
+    const round = (value: number) => Math.round(value * 100) / 100;
+    const distractors = [
+      eq ? eq.c / eq.a : correct - 1,
+      eq ? (eq.c - eq.b) : correct + 1,
+      eq ? (eq.c + eq.b) / eq.a : correct + 2,
+      correct - 1,
+      correct + 1,
+    ]
+      .map(round)
+      .filter((value) => Number.isFinite(value) && value !== round(correct));
+    return Array.from(new Set([round(correct), ...distractors])).slice(0, 4);
+  }, [isAlgebraQuestion, question]);
+  const showChoices = displayChoices.length > 0 && (Boolean(question?.choices?.length) || (!isOlderLearner && (showVisualSupport || forcedChoices)));
+  const smartSupportCopy = isAlgebraQuestion
+    ? (isOlderLearner
+      ? "Use equation steps first: isolate x, then check by substitution. Visual buttons appear only when this question is configured for choices."
+      : "Use one step at a time: move constants first, then divide by the x coefficient.")
+    : (showVisualSupport
+      ? "Visual answers and concrete models are shown to support counting and operation sense."
+      : "Read carefully, estimate first, then solve and verify your final number.");
   const displayPrompt = useMemo(() => {
     if (!question) return "";
     // Normalize generated line breaks and keep arithmetic chunks together.
@@ -518,8 +587,23 @@ export default function MathMissionPage() {
     speakMathPrompt(question);
   }
 
+  useEffect(() => {
+    if (!coachOpen || !coachPanelRef.current) return;
+    coachPanelRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [coachOpen]);
+
   function makeItEasier() {
     if (!question) return;
+    if (isAlgebraQuestion && isOlderLearner) {
+      const easierPrompt = buildSimplifiedAlgebraPrompt(question.prompt);
+      if (easierPrompt) {
+        setHintLevel(Math.min(hintLevel + 1, question?.hints.length ?? 3));
+        setFeedback(easierPrompt);
+        setReaction({ mood: "support", message: "Let us simplify first, then solve the original question." });
+        void speakWithContext(`${easierPrompt}. Then use the same steps on your main question.`, "math_hint");
+        return;
+      }
+    }
     const newLevel = Math.min(hintLevel + 1, question?.hints.length ?? 3);
     setHintLevel(newLevel);
     if (newLevel >= 2) setForcedChoices(true);
@@ -534,6 +618,13 @@ export default function MathMissionPage() {
       return;
     }
 
+    const trimmedAnswer = answer.trim();
+    if (!trimmedAnswer) {
+      setFeedback("Type an answer or pick one of the options first.");
+      setReaction({ mood: "support", message: "Try an answer first, then I can help." });
+      return;
+    }
+
     const responseMs = questionStartedAt > 0 ? Date.now() - questionStartedAt : 0;
     const questionDifficulty = inferMathDifficulty(question.id);
     const difficultyBand = questionDifficulty < profile.adaptive.mathDifficulty
@@ -541,7 +632,10 @@ export default function MathMissionPage() {
       : questionDifficulty > profile.adaptive.mathDifficulty
         ? "challenge"
         : "core";
-    const isCorrect = Number(answer) === question.answer;
+    setSubmittedAttempts((prev) => prev + 1);
+    setSessionAttempts((prev) => prev + 1);
+    const parsedAnswer = Number(trimmedAnswer);
+    const isCorrect = Number.isFinite(parsedAnswer) && Math.abs(parsedAnswer - question.answer) < 0.000001;
 
     if (isCorrect) {
       const prevLevel = levelFromXp(profile.xp);
@@ -562,7 +656,7 @@ export default function MathMissionPage() {
         contentId: attemptContentId,
         assignmentId: attemptAssignmentId,
         questionText: question.prompt,
-        answerGiven: answer,
+        answerGiven: trimmedAnswer,
         correctAnswer: String(question.answer),
         correct: true,
         responseTimeMs: Math.round(responseMs),
@@ -593,6 +687,7 @@ export default function MathMissionPage() {
       }
       setProfile(awardedProfile);
       setAttemptCount(0);
+      setSubmittedAttempts(0);
       setAnswer("");
 
       const nextLevel = levelFromXp(awardedProfile.xp);
@@ -640,7 +735,7 @@ export default function MathMissionPage() {
         correct: true,
         improvement: improved,
         answer: String(question.answer),
-        response: answer,
+        response: trimmedAnswer,
         consecutiveCorrect: newSessionCorrect,
         consecutiveMistakes: 0,
         responseMs,
@@ -679,7 +774,6 @@ export default function MathMissionPage() {
         setInsightMessage(insight ?? "You are on fire! Keep solving — you are getting sharper every question!");
       }
 
-      setSessionAttempts((prev) => prev + 1);
       advanceSession(awardedProfile, 350);
       return;
     }
@@ -688,7 +782,7 @@ export default function MathMissionPage() {
     setAttemptCount(nextAttempt);
     setAnswer("");
 
-    const errorType = detectErrorType(answer, question.answer, question);
+    const errorType = detectErrorType(trimmedAnswer, question.answer, question);
     const errorHint = buildErrorSpecificHint(errorType, question);
     const inMathSupport = profile.mathSupport?.mode === "math_support";
 
@@ -753,7 +847,7 @@ export default function MathMissionPage() {
       contentId: attemptContentId,
       assignmentId: attemptAssignmentId,
       questionText: question.prompt,
-      answerGiven: answer,
+      answerGiven: trimmedAnswer,
       correctAnswer: String(question.answer),
       correct: false,
       responseTimeMs: Math.round(responseMs),
@@ -779,6 +873,7 @@ export default function MathMissionPage() {
     }
     setProfile(awardedProfile);
     setAttemptCount(0);
+    setSubmittedAttempts(0);
     setFeedback(`The answer was ${question.answer}. Let's try a new one.`);
     setReaction({ mood: "support", message: `The answer was ${question.answer}. Let's try a new one.` });
     const tutorPlan = getTutorFeedbackPlan({
@@ -786,7 +881,7 @@ export default function MathMissionPage() {
       subject: "math",
       correct: false,
       answer: String(question.answer),
-      response: answer,
+      response: trimmedAnswer,
       consecutiveCorrect: 0,
       consecutiveMistakes: nextAttempt,
       responseMs,
@@ -808,7 +903,6 @@ export default function MathMissionPage() {
       timestamp: Date.now(),
     });
     void speakWithContext(`Not to worry — the answer was ${question.answer}. Let us keep going and try another one!`, "encouragement");
-    setSessionAttempts((prev) => prev + 1);
     advanceSession(awardedProfile, 1200);
   }
 
@@ -816,7 +910,7 @@ export default function MathMissionPage() {
 
   return (
     <PremiumAccessGate>
-    <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+    <main className="min-h-screen bg-[#f6f8ff] pt-2 text-slate-900">
       <Navbar />
       <div className="relative overflow-hidden">
         <div className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-emerald-200/50 blur-3xl" />
@@ -898,8 +992,9 @@ export default function MathMissionPage() {
                   Solve, reason, and level up.
                 </h1>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-cyan-100">
-                  Adaptive maths practice with visual support, smart hints, and rewards
-                  that build confident number thinking.
+                  {isAlgebraQuestion
+                    ? "Algebra coaching with step-by-step scaffolds, confidence checks, and targeted feedback."
+                    : "Adaptive maths practice with visual support, smart hints, and rewards that build confident number thinking."}
                 </p>
               </div>
 
@@ -959,12 +1054,12 @@ export default function MathMissionPage() {
                         {displayPrompt}
                       </h2>
                       <p className="mt-2 text-sm leading-6 text-cyan-100">
-                        Work it out, then choose or type your answer.
+                        {showChoices ? "Work it out, then choose or type your answer." : "Work it out, then type your answer."}
                       </p>
                     </div>
                     <div className="rounded-2xl bg-white/10 px-4 py-3 text-center">
                       <p className="text-xs font-bold uppercase tracking-wide text-cyan-100">Topic</p>
-                      <p className="mt-1 text-sm font-black">{question.topic}</p>
+                      <p className="mt-1 text-sm font-black">{isAlgebraQuestion ? "Algebra" : question.topic}</p>
                     </div>
                   </div>
                   {showVisualSupport && question.visual ? (
@@ -995,9 +1090,9 @@ export default function MathMissionPage() {
                   inputMode="numeric"
                 />
 
-                {showChoices && question.choices?.length ? (
+                {showChoices ? (
                   <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                    {question.choices.map((choice) => (
+                    {displayChoices.map((choice) => (
                       <Button className="w-full text-lg" key={`${question.id}-${choice}`} variant="secondary" onClick={() => setAnswer(String(choice))}>{choice}</Button>
                     ))}
                   </div>
@@ -1007,7 +1102,7 @@ export default function MathMissionPage() {
                   <Button className="w-full" onClick={checkAnswer} disabled={sessionComplete}>Check Answer</Button>
                   <Button className="w-full" variant="secondary" onClick={repeatQuestion}>Repeat Question</Button>
                   <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)} disabled={!question}>Coach</Button>
-                  <Button className="w-full" variant="secondary" onClick={makeItEasier} disabled={sessionComplete}>Make it easier</Button>
+                  <Button className="w-full" variant="secondary" onClick={makeItEasier} disabled={sessionComplete}>{isAlgebraQuestion && isOlderLearner ? "Need a scaffold" : "Make it easier"}</Button>
                   <Button
                     className="w-full"
                     variant="secondary"
@@ -1060,27 +1155,29 @@ export default function MathMissionPage() {
               </div>
 
           {coachOpen && question ? (
-            <SmartCoachPanel
-              subject="maths"
-              question={question.prompt}
-              correctAnswer={String(question.answer)}
-              studentAnswer={answer || undefined}
-              hintCount={hintLevel}
-              attemptCount={attemptCount}
-              mathDifficulty={profile?.adaptive.mathDifficulty}
-              ageRange={profile?.ageRange}
-              yearGroup={Number(profile?.yearGroup?.match(/\d+/)?.[0] ?? "") || undefined}
-              keyStageLevel={profile?.keyStageLevel}
-              skillFocus={question.topic}
-              assignmentId={assignedAssignmentId}
-              contentId={assignedContentId ?? undefined}
-              confidenceScore={0.5}
-              onHintUsed={(newCount) => {
-                setHintLevel(newCount);
-                if (newCount >= 2) setForcedChoices(true);
-              }}
-              onClose={() => setCoachOpen(false)}
-            />
+            <div ref={coachPanelRef} className="scroll-mt-24 relative z-20">
+              <SmartCoachPanel
+                subject="maths"
+                question={question.prompt}
+                correctAnswer={String(question.answer)}
+                studentAnswer={answer || undefined}
+                hintCount={hintLevel}
+                attemptCount={Math.max(submittedAttempts, attemptCount)}
+                mathDifficulty={profile?.adaptive.mathDifficulty}
+                ageRange={profile?.ageRange}
+                yearGroup={Number(profile?.yearGroup?.match(/\d+/)?.[0] ?? "") || undefined}
+                keyStageLevel={profile?.keyStageLevel}
+                skillFocus={isAlgebraQuestion ? "algebra" : question.topic}
+                assignmentId={assignedAssignmentId}
+                contentId={assignedContentId ?? undefined}
+                confidenceScore={0.5}
+                onHintUsed={(newCount) => {
+                  setHintLevel(newCount);
+                  if (newCount >= 2) setForcedChoices(true);
+                }}
+                onClose={() => setCoachOpen(false)}
+              />
+            </div>
           ) : null}
           {tutorFeedback ? (
             <div className="mt-3">
@@ -1128,7 +1225,7 @@ export default function MathMissionPage() {
                     </div>
                     <div className="rounded-2xl bg-white/10 p-3">
                       <p className="text-cyan-100">Attempts</p>
-                      <p className="mt-1 text-xl font-black">{attemptCount}</p>
+                      <p className="mt-1 text-xl font-black">{submittedAttempts}</p>
                     </div>
                   </div>
                 </div>
@@ -1137,7 +1234,7 @@ export default function MathMissionPage() {
               <div className="rounded-[1.75rem] border border-emerald-200 bg-linear-to-br from-emerald-50 to-white p-5 shadow-sm">
                 <p className="text-sm font-black text-emerald-950">Smart support</p>
                 <p className="mt-2 text-sm leading-6 text-emerald-800">
-                  Visual answers appear for younger learners and after hints when extra support helps.
+                  {smartSupportCopy}
                 </p>
               </div>
 
