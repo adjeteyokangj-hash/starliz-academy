@@ -88,6 +88,7 @@ export default function SubscriptionsPage() {
   const [search, setSearch] = useState(() => requestedParentId ?? "");
   const [statusFilter, setStatusFilter] = useState("all");
   const [planFilter, setPlanFilter] = useState("all");
+  const [canManagePlans, setCanManagePlans] = useState(false);
 
   const loadRows = useCallback(async (withLoading = true) => {
     if (withLoading) setLoading(true);
@@ -98,9 +99,10 @@ export default function SubscriptionsPage() {
         setError("Unable to load subscriptions.");
         return;
       }
-      const payload = (await response.json()) as { rows: SubscriptionRow[]; metrics: Metrics };
+      const payload = (await response.json()) as { rows: SubscriptionRow[]; metrics: Metrics; canManagePlans?: boolean };
       setRows(payload.rows ?? []);
       setMetrics(payload.metrics ?? DEFAULT_METRICS);
+      setCanManagePlans(Boolean(payload.canManagePlans));
     } catch {
       setError("Unable to load subscriptions.");
     } finally {
@@ -171,7 +173,11 @@ export default function SubscriptionsPage() {
   }, [loadRows]);
 
   return (
-    <AdminSectionCard title="Subscriptions Operations" eyebrow="Billing">
+    <AdminSectionCard
+      title="Subscriptions"
+      eyebrow="Billing & Access"
+      className="border-slate-700/80 bg-gradient-to-b from-slate-900/95 via-slate-900/85 to-slate-950/90"
+    >
       {loading ? <p className="text-sm text-slate-400">Loading subscriptions...</p> : null}
       {error ? (
         <p className="mb-3 rounded-xl border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
@@ -184,48 +190,55 @@ export default function SubscriptionsPage() {
         </p>
       ) : null}
 
-      <div className="mb-4 rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-300">
-        Stripe is enabled for operations and checkout. Paystack values are retained in data but operational actions remain hidden.
+      <div className="mb-4 rounded-2xl border border-slate-700/80 bg-slate-950/70 p-4 text-xs text-slate-300">
+        <p className="font-semibold text-slate-200">Subscription operations</p>
+        <p className="mt-1">Stripe is enabled for operations and checkout. Paystack values are retained in data but operational actions remain hidden.</p>
       </div>
 
+      {!canManagePlans ? (
+        <div className="mb-4 rounded-2xl border border-amber-500/45 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+          You have read-only access. Ask a Super Admin to grant the <span className="font-semibold">parents:write</span> permission to update parent plans.
+        </div>
+      ) : null}
+
       <section className="mb-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-          <p className="text-xs text-slate-400">MRR</p>
+        <article className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">MRR</p>
           <p className="mt-1 text-xl font-bold text-white">{metrics.mrrLabel}</p>
         </article>
-        <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-          <p className="text-xs text-slate-400">Revenue (Month)</p>
+        <article className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Revenue (Month)</p>
           <p className="mt-1 text-xl font-bold text-white">{metrics.monthRevenueLabel}</p>
         </article>
-        <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-          <p className="text-xs text-slate-400">Active</p>
+        <article className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Active</p>
           <p className="mt-1 text-xl font-bold text-white">{metrics.activeSubscriptions}</p>
         </article>
-        <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-          <p className="text-xs text-slate-400">Trials</p>
+        <article className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Trials</p>
           <p className="mt-1 text-xl font-bold text-white">{metrics.trialSubscriptions}</p>
         </article>
-        <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-          <p className="text-xs text-slate-400">Churned</p>
+        <article className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Churned</p>
           <p className="mt-1 text-xl font-bold text-white">{metrics.churnedSubscriptions}</p>
         </article>
-        <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-          <p className="text-xs text-slate-400">Failed/Past Due</p>
+        <article className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Failed / Past Due</p>
           <p className="mt-1 text-xl font-bold text-white">{metrics.failedPayments}</p>
         </article>
       </section>
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid gap-3 rounded-2xl border border-slate-700/70 bg-slate-950/55 p-3 sm:grid-cols-3">
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search parent email or name"
-          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+          placeholder="Search by parent email, name, or parent ID"
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
         />
         <select
           value={planFilter}
           onChange={(event) => setPlanFilter(event.target.value)}
-          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
         >
           <option value="all">All plans</option>
           {PLAN_OPTIONS.map((option) => (
@@ -237,7 +250,7 @@ export default function SubscriptionsPage() {
         <select
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value)}
-          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
         >
           <option value="all">All statuses</option>
           {STATUS_OPTIONS.map((option) => (
@@ -248,9 +261,9 @@ export default function SubscriptionsPage() {
         </select>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-700">
+      <div className="overflow-x-auto rounded-2xl border border-slate-700/80">
         <table className="min-w-[1280px] w-full text-left text-sm">
-          <thead className="bg-slate-900/90 text-xs uppercase tracking-wide text-slate-300">
+          <thead className="bg-slate-900/95 text-xs uppercase tracking-[0.16em] text-slate-300">
             <tr>
               <th className="px-3 py-2">Parent</th>
               <th className="px-3 py-2">Plan</th>
@@ -280,7 +293,8 @@ export default function SubscriptionsPage() {
                     onChange={(event) =>
                       updateLocalRow(row.parentId, { planKey: event.target.value })
                     }
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                    disabled={!canManagePlans || workingParentId === row.parentId}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {PLAN_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -295,7 +309,8 @@ export default function SubscriptionsPage() {
                     onChange={(event) =>
                       updateLocalRow(row.parentId, { status: event.target.value as SubscriptionRow["status"] })
                     }
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                    disabled={!canManagePlans || workingParentId === row.parentId}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {STATUS_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -315,7 +330,8 @@ export default function SubscriptionsPage() {
                         renewalDate: value ? new Date(`${value}T00:00:00.000Z`).toISOString() : null,
                       });
                     }}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                    disabled={!canManagePlans || workingParentId === row.parentId}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </td>
                 <td className="px-3 py-3 text-slate-200">{row.amountLabel}</td>
@@ -332,15 +348,15 @@ export default function SubscriptionsPage() {
                     <button
                       type="button"
                       onClick={() => void runAction(row, "change_plan")}
-                      disabled={workingParentId === row.parentId}
+                      disabled={!canManagePlans || workingParentId === row.parentId}
                       className="rounded-lg bg-indigo-500 px-2 py-1.5 text-xs font-bold text-white hover:bg-indigo-400 disabled:opacity-50"
                     >
-                      Save Plan/Status
+                      Grant / Update Plan
                     </button>
                     <button
                       type="button"
                       onClick={() => void runAction(row, "extend_trial")}
-                      disabled={workingParentId === row.parentId}
+                      disabled={!canManagePlans || workingParentId === row.parentId}
                       className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs font-semibold text-slate-200"
                     >
                       Extend Trial +7d
@@ -348,7 +364,7 @@ export default function SubscriptionsPage() {
                     <button
                       type="button"
                       onClick={() => void runAction(row, "pause_subscription")}
-                      disabled={workingParentId === row.parentId}
+                      disabled={!canManagePlans || workingParentId === row.parentId}
                       className="rounded-lg border border-amber-700 bg-amber-950/40 px-2 py-1.5 text-xs font-semibold text-amber-200"
                     >
                       Pause
@@ -356,7 +372,7 @@ export default function SubscriptionsPage() {
                     <button
                       type="button"
                       onClick={() => void runAction(row, "resume_subscription")}
-                      disabled={workingParentId === row.parentId}
+                      disabled={!canManagePlans || workingParentId === row.parentId}
                       className="rounded-lg border border-emerald-700 bg-emerald-950/40 px-2 py-1.5 text-xs font-semibold text-emerald-200"
                     >
                       Resume
@@ -364,7 +380,7 @@ export default function SubscriptionsPage() {
                     <button
                       type="button"
                       onClick={() => void runAction(row, "cancel_subscription")}
-                      disabled={workingParentId === row.parentId}
+                      disabled={!canManagePlans || workingParentId === row.parentId}
                       className="rounded-lg border border-rose-700 bg-rose-950/40 px-2 py-1.5 text-xs font-semibold text-rose-200"
                     >
                       Cancel
@@ -372,7 +388,7 @@ export default function SubscriptionsPage() {
                     <button
                       type="button"
                       onClick={() => void runAction(row, "send_payment_reminder")}
-                      disabled={workingParentId === row.parentId}
+                      disabled={!canManagePlans || workingParentId === row.parentId}
                       className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs font-semibold text-slate-200"
                     >
                       Send Reminder

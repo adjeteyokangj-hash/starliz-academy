@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdminPermission } from "@/lib/api_guard";
+import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
 import { addDays, getPlan, normalizePlanKey } from "@/lib/subscriptions/plans";
 import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
 import { writeAuditLog } from "@/lib/audit";
@@ -71,9 +71,35 @@ function toStoredPlanKey(adminPlanKey: string): string {
   return adminPlanKey;
 }
 
+async function canAdminManageSubscriptions(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      adminProfile: {
+        select: {
+          role: { select: { name: true, permissions: true } },
+        },
+      },
+    },
+  });
+
+  const role = user?.adminProfile?.role;
+  if (!role || role.name === "Super Admin") return true;
+
+  try {
+    const parsed = JSON.parse(role.permissions);
+    const permissions = Array.isArray(parsed) ? parsed.map(String) : [];
+    return permissions.includes("parents:write");
+  } catch {
+    return false;
+  }
+}
+
 export async function GET() {
-  const { session, response } = await requireAdminPermission("parents:write");
+  const { session, response } = await requireAdmin();
   if (!session) return response;
+
+  const canManagePlans = await canAdminManageSubscriptions(session.userId);
 
   const parents = await prisma.user.findMany({
     where: { role: "parent" },
@@ -155,7 +181,7 @@ export async function GET() {
     monthRevenueLabel: currency(rows.reduce((sum, row) => sum + row.amountPence, 0)),
   };
 
-  return NextResponse.json({ rows, metrics });
+  return NextResponse.json({ rows, metrics, canManagePlans });
 }
 
 export async function PATCH(request: Request) {

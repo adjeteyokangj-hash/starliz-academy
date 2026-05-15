@@ -6,6 +6,7 @@ import { adaptiveDifficultyFromSignals, buildSkillStatesForStudent } from "@/lib
 import { composeDailyLessonPlan } from "@/lib/dailyLessonPlanner";
 import { extractForcedWarmupSkills } from "@/lib/retentionScheduler";
 import { buildLiteracyBridgeItem, buildWeakWordRecoveryBridgeItem } from "@/lib/readingBridge";
+import { resolveDashboardTier } from "@/lib/dashboardResolver";
 
 type LessonItem = Record<string, unknown>;
 
@@ -269,7 +270,7 @@ export async function generateTargetedItems(input: {
 }
 
 async function getWeakSkills(studentId: string): Promise<string[]> {
-  const [rows, weakAreas, skillStates] = await Promise.all([
+  const [rows, weakAreas, skillStates, student] = await Promise.all([
     prisma.studentSkill.findMany({
       where: { studentId },
       orderBy: [{ status: "asc" }, { accuracy: "asc" }],
@@ -279,18 +280,32 @@ async function getWeakSkills(studentId: string): Promise<string[]> {
       select: { skillFocus: true, metadataJson: true },
     }),
     buildSkillStatesForStudent(studentId),
+    prisma.childProfile.findUnique({
+      where: { id: studentId },
+      select: { yearGroup: true, age: true },
+    }),
   ]);
 
+  const tier = resolveDashboardTier({
+    yearGroup: student?.yearGroup,
+    ageYears: student?.age ?? null,
+  });
+  const isPrimaryTier = tier === "primary";
+
   const letterSound = rows.find((row) => row.skill === "letter_sound");
-  if (!letterSound || letterSound.accuracy < 60 || skillStates.length === 0) {
+  if (isPrimaryTier && (!letterSound || letterSound.accuracy < 60 || skillStates.length === 0)) {
     return ["letter_sound", "letter_recognition"];
+  }
+
+  if (!isPrimaryTier && skillStates.length === 0) {
+    return ["inference", "word_problems"];
   }
 
   const forcedWarmupSkills = extractForcedWarmupSkills(weakAreas);
   const plan = composeDailyLessonPlan({
     skillStates,
     forcedWarmupSkills,
-    fallbackSkill: "cvc",
+    fallbackSkill: isPrimaryTier ? "cvc" : "inference",
   });
 
   const plannedWeak = plan.weakSkillsForLesson.slice(0, 2);

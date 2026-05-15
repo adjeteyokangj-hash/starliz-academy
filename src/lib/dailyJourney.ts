@@ -3,6 +3,7 @@ import { SKILL_MAP, type SkillCode } from "@/lib/skills";
 import { buildSkillStatesForStudent } from "@/lib/learningEngineV2";
 import { composeDailyLessonPlan } from "@/lib/dailyLessonPlanner";
 import { extractForcedWarmupSkills } from "@/lib/retentionScheduler";
+import { resolveDashboardTier } from "@/lib/dashboardResolver";
 
 type JourneyMode = "alphabet_foundation" | "spelling" | "maths" | "reading";
 
@@ -34,7 +35,7 @@ function uniqueSkills(skills: SkillCode[]): SkillCode[] {
 }
 
 export async function buildDailyJourney(studentId: string): Promise<DailyJourney> {
-  const [rows, weakAreas] = await Promise.all([
+  const [rows, weakAreas, student] = await Promise.all([
     prisma.studentSkill.findMany({
       where: { studentId },
       orderBy: { accuracy: "asc" },
@@ -43,7 +44,17 @@ export async function buildDailyJourney(studentId: string): Promise<DailyJourney
       where: { studentId, status: "active" },
       select: { skillFocus: true, metadataJson: true },
     }),
+    prisma.childProfile.findUnique({
+      where: { id: studentId },
+      select: { yearGroup: true, age: true },
+    }),
   ]);
+
+  const tier = resolveDashboardTier({
+    yearGroup: student?.yearGroup,
+    ageYears: student?.age ?? null,
+  });
+  const isPrimaryTier = tier === "primary";
 
   const letterRecognition = rows.find((row) => row.skill === "letter_recognition");
   const letterSound = rows.find((row) => row.skill === "letter_sound");
@@ -53,7 +64,7 @@ export async function buildDailyJourney(studentId: string): Promise<DailyJourney
     || letterRecognition.accuracy < 70
     || letterSound.accuracy < 70;
 
-  if (hasWeakFoundation) {
+  if (isPrimaryTier && hasWeakFoundation) {
     return {
       studentId,
       date: todayKey(),
@@ -71,7 +82,7 @@ export async function buildDailyJourney(studentId: string): Promise<DailyJourney
   const planned = composeDailyLessonPlan({
     skillStates,
     forcedWarmupSkills,
-    fallbackSkill: "cvc",
+    fallbackSkill: isPrimaryTier ? "cvc" : "inference",
   });
 
   const focusSkill = planned.coreSkills[0] ?? planned.warmupSkill;
