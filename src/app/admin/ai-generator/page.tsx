@@ -413,7 +413,6 @@ export default function AiGeneratorPage() {
     ? weakAreasWithMatch
     : weakAreasWithMatch.filter((entry) => entry.contextMatches);
   const showDeveloperDetails = process.env.NEXT_PUBLIC_ADMIN_DEBUG === "1";
-  const previewBadge = generationMeta?.validation?.valid === false
   const previewBadge = isPlaceholderGeneration
     ? { label: "Generation Failed", className: "bg-rose-600/30 text-rose-100" }
     : generationMeta?.validation?.repaired
