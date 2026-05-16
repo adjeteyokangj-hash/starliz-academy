@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import { getProfile } from "@/lib/store";
-import { stopVoicePlayback } from "@/lib/voice";
+import { beginStudentTurn, endStudentTurn, stopVoicePlayback } from "@/lib/voice";
 import { syncAttemptToServer } from "@/lib/server_sync";
 import { serializeSkills, skillFocusToCode } from "@/lib/skills";
 import { getTutorToneLine } from "@/lib/tutorVoice";
@@ -1486,6 +1486,7 @@ export default function DailyLessonGamePage() {
     if (typeof window === "undefined") return;
     stopRecognition();
     cancelTutorSpeech();
+    beginStudentTurn("lesson_mic_start");
 
     const win = window as Window & {
       SpeechRecognition?: new () => BrowserSpeechRecognition;
@@ -1530,6 +1531,7 @@ export default function DailyLessonGamePage() {
     };
 
     recognition.onerror = (event: { error?: string }) => {
+      endStudentTurn("lesson_mic_error");
       recognitionRef.current = null;
       setSpeechListening(false);
       const code = event?.error ?? "unknown";
@@ -1570,6 +1572,7 @@ export default function DailyLessonGamePage() {
     };
 
     recognition.onend = () => {
+      endStudentTurn("lesson_mic_end");
       if (recognitionRef.current === recognition) recognitionRef.current = null;
       recognitionStoppingRef.current = false;
       setSpeechListening(false);
@@ -1614,6 +1617,7 @@ export default function DailyLessonGamePage() {
     if (typeof window === "undefined") return;
     stopRecognition();
     cancelTutorSpeech();
+    beginStudentTurn("lesson_warmup_start");
 
     const win = window as Window & {
       SpeechRecognition?: new () => BrowserSpeechRecognition;
@@ -1665,12 +1669,14 @@ export default function DailyLessonGamePage() {
       }, 450);
     };
     recognition.onerror = (event: { error?: string }) => {
+      endStudentTurn("lesson_warmup_error");
       recognitionRef.current = null;
       setWarmupPhase("idle");
       setWarmupFailedAttempts((current) => current + 1);
       setWarmupStatus(event.error === "not-allowed" ? "Please allow microphone access so Star can hear you." : "Could not hear clearly. Try again.");
     };
     recognition.onend = () => {
+      endStudentTurn("lesson_warmup_end");
       if (recognitionRef.current === recognition) recognitionRef.current = null;
       recognitionStoppingRef.current = false;
       window.speechSynthesis.resume();

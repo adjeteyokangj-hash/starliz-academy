@@ -13,7 +13,7 @@ import GameSuccessBurst from "@/components/game/GameSuccessBurst";
 import { getReadingPassages, type ReadingPassage } from "@/lib/adaptive";
 import { applyReadingFluencyAssessment, levelFromXp, processReadingAttempt } from "@/lib/progress";
 import { ChildProfile, getProfile, hydrateActiveProfileFromServer, saveProfile, resolveCoachingPace } from "@/lib/store";
-import { getVoiceReaction, speakEncouragement, speakProfileFeedback, speakWithContext, stopVoicePlayback } from "@/lib/voice";
+import { beginStudentTurn, endStudentTurn, getVoiceReaction, speakEncouragement, speakProfileFeedback, speakWithContext, stopVoicePlayback } from "@/lib/voice";
 import { isUsageLocked, trackUsage } from "@/lib/screen_time";
 import { fetchProfileHistory, getProfileHistory } from "@/lib/progress_data";
 import { markQuestionCompleted } from "@/lib/question_history";
@@ -583,6 +583,7 @@ export default function ReadingJourneyPage() {
   function startReadAloudAssessment(): void {
     if (!item) return;
     if (typeof window === "undefined") return;
+    beginStudentTurn("reading_read_aloud_start");
 
     const win = window as Window & {
       SpeechRecognition?: new () => SpeechRecognitionLike;
@@ -622,6 +623,7 @@ export default function ReadingJourneyPage() {
 
     // @ts-expect-error SpeechRecognition.onerror event type varies across browser typings
     recognition.onerror = (event: { error: string }) => {
+      endStudentTurn("reading_read_aloud_error");
       setIsListeningToChild(false);
       speechRecognitionRef.current = null;
       if (event.error === "not-allowed" || event.error === "audio-capture") {
@@ -637,6 +639,7 @@ export default function ReadingJourneyPage() {
     };
 
     recognition.onend = () => {
+      endStudentTurn("reading_read_aloud_end");
       setIsListeningToChild(false);
       speechRecognitionRef.current = null;
       if (!transcript.trim()) {
@@ -1345,6 +1348,7 @@ export default function ReadingJourneyPage() {
 
           {coachOpen && item ? (
             <SmartCoachPanel
+              studentId={profile?.id}
               subject="reading"
               question={item.question}
               correctAnswer={item.answer}

@@ -13,7 +13,7 @@ import GameSuccessBurst from "@/components/game/GameSuccessBurst";
 import { SpellingWord, getSpellingWordPool, getWeightedSpellingWordId, getReviewWords, getSpellingPatternInsight } from "@/lib/adaptive";
 import { levelFromXp, processSpellingAttempt } from "@/lib/progress";
 import { ChildProfile, getProfile, hydrateActiveProfileFromServer, saveProfile, resolveCoachingPace } from "@/lib/store";
-import { speakEncouragement, speakWithContext } from "@/lib/voice";
+import { beginStudentTurn, endStudentTurn, speakEncouragement, speakWithContext } from "@/lib/voice";
 import { isUsageLocked, trackUsage } from "@/lib/screen_time";
 import { fetchProfileHistory } from "@/lib/progress_data";
 import { getNextQuestionId, markQuestionCompleted } from "@/lib/question_history";
@@ -1544,6 +1544,7 @@ export default function SpellingQuestPage() {
 
   function startListening(): void {
     if (typeof window === "undefined") return;
+    beginStudentTurn("spelling_mic_start");
     const AnyWindow = window as unknown as {
       SpeechRecognition?: new () => {
         lang: string;
@@ -1594,6 +1595,7 @@ export default function SpellingQuestPage() {
       handleSpeechResult(transcript, "speech");
     };
     recognition.onerror = (event: { error?: string }) => {
+      endStudentTurn("spelling_mic_error");
       setSpeechListening(false);
       console.log("Speech recognition error:", event?.error ?? "unknown");
       const code = event?.error ?? "unknown";
@@ -1621,6 +1623,7 @@ export default function SpellingQuestPage() {
       setSpeechFallbackReason(null);
     };
     recognition.onend = () => {
+      endStudentTurn("spelling_mic_end");
       setSpeechListening(false);
     };
     recognition.start();
@@ -3034,6 +3037,7 @@ export default function SpellingQuestPage() {
 
           {coachOpen && !helpLocked && targetWord ? (
             <SmartCoachPanel
+              studentId={profile?.id}
               subject="spelling"
               question={`Spell: ${targetWord.word}`}
               correctAnswer={targetWord.word}

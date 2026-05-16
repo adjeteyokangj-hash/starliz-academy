@@ -9,6 +9,87 @@ import { VOICE_STYLE_OPTIONS } from "@/lib/voice_options";
 export type VoiceMode = "human" | "browser";
 
 const VOICE_MODE_KEY = "starliz_voice_mode";
+const VOICE_TURN_STATE_KEY = "starliz_voice_turn_state";
+
+export type VoiceTurnActor = "tutor" | "student" | "idle";
+
+export type VoiceTurnState = {
+  actor: VoiceTurnActor;
+  lastTutorTurnAt: number | null;
+  lastStudentTurnAt: number | null;
+  interruptionCount: number;
+  lastReason: string | null;
+};
+
+function defaultVoiceTurnState(): VoiceTurnState {
+  return {
+    actor: "idle",
+    lastTutorTurnAt: null,
+    lastStudentTurnAt: null,
+    interruptionCount: 0,
+    lastReason: null,
+  };
+}
+
+function readVoiceTurnState(): VoiceTurnState {
+  if (typeof window === "undefined") return defaultVoiceTurnState();
+  try {
+    const raw = window.sessionStorage.getItem(VOICE_TURN_STATE_KEY);
+    if (!raw) return defaultVoiceTurnState();
+    const parsed = JSON.parse(raw) as Partial<VoiceTurnState>;
+    return {
+      actor: parsed.actor === "tutor" || parsed.actor === "student" || parsed.actor === "idle" ? parsed.actor : "idle",
+      lastTutorTurnAt: typeof parsed.lastTutorTurnAt === "number" ? parsed.lastTutorTurnAt : null,
+      lastStudentTurnAt: typeof parsed.lastStudentTurnAt === "number" ? parsed.lastStudentTurnAt : null,
+      interruptionCount: typeof parsed.interruptionCount === "number" ? Math.max(0, parsed.interruptionCount) : 0,
+      lastReason: typeof parsed.lastReason === "string" ? parsed.lastReason : null,
+    };
+  } catch {
+    return defaultVoiceTurnState();
+  }
+}
+
+function writeVoiceTurnState(state: VoiceTurnState): void {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(VOICE_TURN_STATE_KEY, JSON.stringify(state));
+}
+
+export function getVoiceTurnState(): VoiceTurnState {
+  return readVoiceTurnState();
+}
+
+export function beginTutorTurn(reason?: string): void {
+  const state = readVoiceTurnState();
+  writeVoiceTurnState({
+    ...state,
+    actor: "tutor",
+    lastTutorTurnAt: Date.now(),
+    lastReason: reason ?? state.lastReason,
+  });
+}
+
+export function beginStudentTurn(reason?: string): void {
+  const state = readVoiceTurnState();
+  const interruptedTutor = state.actor === "tutor";
+  ++playbackToken;
+  stopCurrentAudio();
+  writeVoiceTurnState({
+    ...state,
+    actor: "student",
+    lastStudentTurnAt: Date.now(),
+    interruptionCount: interruptedTutor ? state.interruptionCount + 1 : state.interruptionCount,
+    lastReason: reason ?? state.lastReason,
+  });
+}
+
+export function endStudentTurn(reason?: string): void {
+  const state = readVoiceTurnState();
+  writeVoiceTurnState({
+    ...state,
+    actor: "idle",
+    lastReason: reason ?? state.lastReason,
+  });
+}
 
 export function getVoiceMode(): VoiceMode {
   if (typeof window === "undefined") return "browser";
@@ -60,8 +141,14 @@ function stopCurrentAudio(): void {
 }
 
 export function stopVoicePlayback(): void {
+  const state = readVoiceTurnState();
   ++playbackToken;
   stopCurrentAudio();
+  writeVoiceTurnState({
+    ...state,
+    actor: "idle",
+    interruptionCount: state.actor === "tutor" ? state.interruptionCount + 1 : state.interruptionCount,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,6 +316,7 @@ export async function playHumanVoice(
   if (typeof window === "undefined") return;
   const { voice = "nova", instructions, fallbackProfile, volume = 1, onEnd } = options;
   const token = ++playbackToken;
+  beginTutorTurn("human_voice");
 
   const playBrowserFallback = async (): Promise<void> => {
     await new Promise<void>((resolve) => {
@@ -308,6 +396,7 @@ export async function playHumanVoice(
   await new Promise<void>((resolve) => {
     audio.onended = () => {
       if (currentAudio === audio) currentAudio = null;
+      writeVoiceTurnState({ ...readVoiceTurnState(), actor: "idle" });
       onEnd?.();
       resolve();
     };
@@ -501,6 +590,7 @@ function speakWithSettings(message: string, profile: ChildProfile | null, onEnd?
   const rate = voicePick.poor ? fallbackRate : (preset.rate ?? 0.9);
   const pitch = voicePick.poor ? fallbackPitch : (preset.pitch ?? 1);
   const volume = Math.max(0, Math.min(1, profile?.settings.volume ?? 1));
+  beginTutorTurn("browser_tts");
 
   window.speechSynthesis.cancel();
 
@@ -527,6 +617,9 @@ function speakWithSettings(message: string, profile: ChildProfile | null, onEnd?
     idx += 1;
     utterance.onend = () => {
       if (idx >= pacedLines.length && onEnd) onEnd();
+      if (idx >= pacedLines.length) {
+        writeVoiceTurnState({ ...readVoiceTurnState(), actor: "idle" });
+      }
       speakNext();
     };
     window.speechSynthesis.speak(utterance);

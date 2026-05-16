@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/db";
 import { assignContentToStudent } from "@/lib/assignments";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
-import { SKILL_MAP, serializeSkills } from "@/lib/skills";
+import { SKILL_MAP, serializeSkills, skillFocusToCode } from "@/lib/skills";
 import { adaptiveDifficultyFromSignals, buildSkillStatesForStudent } from "@/lib/learningEngineV2";
 import { composeDailyLessonPlan } from "@/lib/dailyLessonPlanner";
 import { extractForcedWarmupSkills } from "@/lib/retentionScheduler";
 import { buildLiteracyBridgeItem, buildWeakWordRecoveryBridgeItem } from "@/lib/readingBridge";
 import { resolveDashboardTier } from "@/lib/dashboardResolver";
+import { extractLearningDnaFromProfileJson } from "@/lib/learning_dna";
 
 type LessonItem = Record<string, unknown>;
 
@@ -291,7 +292,7 @@ export async function generateTargetedItems(input: {
 }
 
 async function getWeakSkills(studentId: string): Promise<string[]> {
-  const [rows, weakAreas, skillStates, student] = await Promise.all([
+  const [rows, weakAreas, skillStates, student, studentProfile] = await Promise.all([
     prisma.studentSkill.findMany({
       where: { studentId },
       orderBy: [{ status: "asc" }, { accuracy: "asc" }],
@@ -305,7 +306,33 @@ async function getWeakSkills(studentId: string): Promise<string[]> {
       where: { id: studentId },
       select: { yearGroup: true, age: true },
     }),
+    prisma.studentProfile.findUnique({
+      where: { childId: studentId },
+      select: { aiLearningProfileJson: true },
+    }),
   ]);
+
+  const learningDna = extractLearningDnaFromProfileJson(studentProfile?.aiLearningProfileJson ?? null);
+  const dnaWeakSkillCodes = (() => {
+    if (!learningDna) return [] as string[];
+    const fromMistakes = Object.entries(learningDna.recurringMistakes)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([key]) => key.split(":")[1] ?? "")
+      .map((skill) => skillFocusToCode(skill) ?? skill)
+      .filter((skill): skill is string => Boolean(skill && SKILL_MAP[skill]));
+
+    const fromSubjects = Object.entries(learningDna.subjectStates)
+      .filter(([, state]) => state.attempts >= 4 && state.accuracy < 68)
+      .flatMap(([subject]) => {
+        if (subject === "math") return ["word_problems", "addition_basic"];
+        if (subject === "reading") return ["inference", "retrieval"];
+        return ["cvc", "digraphs"];
+      })
+      .filter((skill): skill is string => Boolean(SKILL_MAP[skill]));
+
+    return Array.from(new Set([...fromMistakes, ...fromSubjects])).slice(0, 5);
+  })();
 
   const tier = resolveDashboardTier({
     yearGroup: student?.yearGroup,
@@ -332,7 +359,9 @@ async function getWeakSkills(studentId: string): Promise<string[]> {
   const plannedWeak = (isPrimaryTier
     ? plan.weakSkillsForLesson
     : plan.weakSkillsForLesson.filter((skill) => !isFoundationSkill(skill))).slice(0, 2);
-  if (plannedWeak.length) return plannedWeak;
+  if (plannedWeak.length) {
+    return Array.from(new Set([...plannedWeak, ...dnaWeakSkillCodes])).slice(0, 3);
+  }
 
   const weakRows = rows
     .filter((row) => row.status === "weak")
@@ -341,7 +370,13 @@ async function getWeakSkills(studentId: string): Promise<string[]> {
     .slice(0, 2)
     .map((row) => row.skill);
 
-  if (weakRows.length) return weakRows;
+  if (weakRows.length) {
+    return Array.from(new Set([...weakRows, ...dnaWeakSkillCodes])).slice(0, 3);
+  }
+
+  if (dnaWeakSkillCodes.length) {
+    return dnaWeakSkillCodes.slice(0, 3);
+  }
 
   return isPrimaryTier ? ["cvc", "digraphs"] : ["inference", "word_problems"];
 }

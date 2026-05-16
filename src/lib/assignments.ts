@@ -3,6 +3,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { evaluateStudentAssignmentAccess, type SchoolLicenceBlockedReason } from "@/lib/schools/licensing";
 import { ageGroupForYearGroup, keyStageForYearGroup, shouldApplyExamBoardTag } from "@/lib/curriculum";
 import { readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
+import { extractLearningDnaFromProfileJson } from "@/lib/learning_dna";
 
 export class SchoolLicenceAccessError extends Error {
   reason: SchoolLicenceBlockedReason;
@@ -108,6 +109,24 @@ function isValidContentJson(contentJson: string): boolean {
   } catch {
     return false;
   }
+}
+
+function deriveLearningDnaWeakSignals(aiLearningProfileJson: string | null | undefined): string[] {
+  const snapshot = extractLearningDnaFromProfileJson(aiLearningProfileJson);
+  if (!snapshot) return [];
+
+  const fromMistakes = Object.entries(snapshot.recurringMistakes)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([key]) => key.split(":")[1] ?? "")
+    .map((value) => normalizeSubject(value))
+    .filter(Boolean);
+
+  const fromSubjectState = Object.entries(snapshot.subjectStates)
+    .filter(([, state]) => state.attempts >= 4 && state.accuracy < 70)
+    .map(([subject]) => normalizeSubject(subject));
+
+  return Array.from(new Set([...fromMistakes, ...fromSubjectState])).slice(0, 10);
 }
 
 export async function getAssignmentSafetyAndRecommendation(input: {
@@ -258,6 +277,7 @@ export async function getAssignmentSafetyAndRecommendation(input: {
   }
 
   const studentSubjectFocus = normalizeSubject(student.studentProfile?.subjectFocus);
+  const learningDnaSignals = deriveLearningDnaWeakSignals(student.studentProfile?.aiLearningProfileJson ?? null);
   const contentSkillFocus = normalizeSubject(meta.skillFocus);
   const contentTopic = normalizeSubject(meta.topic);
   const matchedWeakAreas = student.weakAreas
@@ -291,6 +311,28 @@ export async function getAssignmentSafetyAndRecommendation(input: {
         level: "recommended",
         reason: "Recommended match: this content aligns with the student's subject focus.",
         matchedWeakAreas: [],
+      },
+    };
+  }
+
+  const dnaMatchedSignals = learningDnaSignals.filter((signal) => {
+    if (!signal) return false;
+    if (!contentSkillFocus && !contentTopic && !contentSubject) return false;
+    return contentSkillFocus.includes(signal)
+      || contentTopic.includes(signal)
+      || contentSubject.includes(signal)
+      || signal.includes(contentSkillFocus)
+      || signal.includes(contentTopic);
+  });
+
+  if (dnaMatchedSignals.length > 0) {
+    return {
+      safe: true,
+      meta,
+      recommendation: {
+        level: "recommended",
+        reason: "Recommended by Learning DNA: this content targets predicted support needs.",
+        matchedWeakAreas: dnaMatchedSignals,
       },
     };
   }
