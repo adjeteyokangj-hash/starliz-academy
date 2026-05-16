@@ -46,7 +46,19 @@ export default function AdminSidebar() {
   const activeItemRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
-  const [isVisible, setIsVisible] = useState(true);
+  const [isVisible, setIsVisible] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
+      if (raw !== null) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === "boolean") return parsed;
+      }
+    } catch {
+      // Ignore storage read errors.
+    }
+    return window.matchMedia("(min-width: 1024px)").matches;
+  });
   const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
@@ -154,7 +166,7 @@ export default function AdminSidebar() {
       {/* Mobile backdrop — closes sidebar when clicking outside */}
       {sidebarVisible && !isDesktop && (
         <div
-          className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden"
+          className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden lg:pointer-events-none"
           aria-hidden="true"
           onClick={toggleVisibility}
         />
@@ -164,7 +176,7 @@ export default function AdminSidebar() {
           sidebarVisible
             ? "translate-x-0 lg:w-72 lg:px-4 lg:py-5 lg:border-r lg:opacity-100 lg:pointer-events-auto"
             : "-translate-x-full pointer-events-none lg:translate-x-0 lg:w-0 lg:px-0 lg:py-0 lg:border-r-0 lg:opacity-0 lg:pointer-events-none"
-        } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-slate-800 bg-slate-950/92 transition-all duration-300 lg:relative lg:z-auto`}
+        } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-slate-800 bg-slate-950/92 transition-all duration-300`}
       >
         <div className="relative">
           <Link href="/admin" className="flex items-center gap-3 px-2">
