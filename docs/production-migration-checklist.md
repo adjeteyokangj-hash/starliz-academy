@@ -108,3 +108,19 @@ Then rerun smoke checks.
 
 Next priority:
 - Execute live smoke tests for `Science` and `English` content flows in production (not only Year 4 Maths), and append proof with URLs, student, subject/year pairs, and outcomes.
+
+### 2026-05-16: Science production smoke test
+
+- Production URL tested: `https://www.starlizacademy.com/admin/ai`
+- Flow executed: Admin AI Generator, `Year 8` + `Science` + `Photosynthesis`
+- Generation proof: `Generated Preview` rendered with `Science - Photosynthesis practice`, quality/safety shown, and approved items listed.
+- Save proof: `Saved to Content Library` banner displayed with `View in Content Library` link.
+- Outcome: PASS (Science generation and save path verified live in production).
+
+### 2026-05-16: English production smoke test
+
+- Production URL tested: `https://www.starlizacademy.com/admin/ai`
+- Flow executed: Admin AI Generator, `Year 8` + `English language` + `Persuasion`
+- Generation proof: `Generated Preview` rendered with `English language - Persuasion practice`, quality/safety shown, and approved items listed.
+- Save proof: `Saved to Content Library` banner displayed with `View in Content Library` link.
+- Outcome: PASS (English generation and save path verified live in production).
