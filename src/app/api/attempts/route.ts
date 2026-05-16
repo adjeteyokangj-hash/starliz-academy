@@ -245,7 +245,7 @@ export async function POST(request: Request) {
           );
 
         if (attemptedAssignedItem && assignment.status === "assigned") {
-          await prisma.assignment.update({ where: { id: assignment.id }, data: { status: "in_progress" } });
+          await prisma.assignment.update({ where: { id: assignment.id }, data: { status: "in_progress", completedAt: null } });
           await writeAuditLog({
             actorUserId: session.userId,
             action: "assignment.in_progress",
@@ -264,7 +264,7 @@ export async function POST(request: Request) {
           });
 
           if (completed) {
-            await prisma.assignment.update({ where: { id: assignment.id }, data: { status: "completed" } });
+            await prisma.assignment.update({ where: { id: assignment.id }, data: { status: "completed", completedAt: new Date() } });
             await writeAuditLog({
               actorUserId: session.userId,
               action: "assignment.completed",

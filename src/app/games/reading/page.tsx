@@ -289,6 +289,7 @@ export default function ReadingJourneyPage() {
   const restoreAttemptedRef = useRef(false);
   const restoredFromStorageRef = useRef(false);
   const lastAutoSessionContextRef = useRef<string | null>(null);
+  const completionWritebackKeyRef = useRef<string | null>(null);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   const sessionComplete = sessionMode === "completed_base" || sessionMode === "completed_retry";
@@ -425,6 +426,22 @@ export default function ReadingJourneyPage() {
     if (!profile || !sessionComplete || typeof window === "undefined") return;
     window.sessionStorage.removeItem(getResumeStateKey(profile.id));
   }, [profile, sessionComplete]);
+
+  useEffect(() => {
+    if (!assignedAssignmentId || !sessionComplete) return;
+    const writebackKey = `${assignedAssignmentId}:${sessionMode}`;
+    if (completionWritebackKeyRef.current === writebackKey) return;
+    completionWritebackKeyRef.current = writebackKey;
+
+    void fetch(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ status: "completed" }),
+    }).catch(() => {
+      completionWritebackKeyRef.current = null;
+    });
+  }, [assignedAssignmentId, sessionComplete, sessionMode]);
 
   useEffect(() => {
     if (assignedAssignmentId || assignedContentId) {

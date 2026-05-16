@@ -12,6 +12,8 @@ import { calculateConfidence, isBossUnlockEligibleV2, skillStatusFromConfidence,
 const progressSchema = z.object({
   studentId: z.string().min(1),
   assignmentId: z.string().optional(),
+  assignmentCompleted: z.boolean().optional(),
+  completedAt: z.string().optional().nullable(),
   contentId: z.string().optional(),
   subject: z.string().min(1),
   type: z.string().optional(),
@@ -303,9 +305,15 @@ export async function POST(request: Request) {
     }
 
     if (body.assignmentId) {
+      const markAssignmentCompleted = body.assignmentCompleted ?? true;
+      const parsedCompletedAt = body.completedAt ? new Date(body.completedAt) : new Date();
+      const completionTime = Number.isNaN(parsedCompletedAt.getTime()) ? new Date() : parsedCompletedAt;
       await prisma.assignment.updateMany({
         where: { id: body.assignmentId, studentId: body.studentId },
-        data: { status: "completed" },
+        data: {
+          status: markAssignmentCompleted ? "completed" : "in_progress",
+          completedAt: markAssignmentCompleted ? completionTime : null,
+        },
       });
     }
 

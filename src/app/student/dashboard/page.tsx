@@ -316,6 +316,14 @@ export default function StudentDashboardPage() {
     if (loading || !weakAssignment || !weakSkill) return;
     if (!isInterventionEligibleSkill(weakSkill) || weakAccuracy > 60) return;
     if (typeof window === "undefined") return;
+    // Do not auto-force intervention when explicit assignments are already present.
+    if (visibleAssignments.length > 0) return;
+
+    // Only auto-launch intervention when the assigned content is explicitly letter-sound support.
+    const weakPath = subjectPath(weakAssignment.subject, weakAssignment.title, weakAssignment.skillFocus);
+    const weakSkillFocus = normalize(weakAssignment.skillFocus);
+    const isExplicitLetterSound = weakSkillFocus.includes("letter_sound") || weakSkillFocus.includes("letter sound");
+    if (weakPath === "reading" || weakPath === "math" || !isExplicitLetterSound) return;
 
     const key = `starliz:intervention:${new Date().toISOString().slice(0, 10)}:${weakSkill}`;
     if (window.sessionStorage.getItem(key) === "done") return;
@@ -327,7 +335,7 @@ export default function StudentDashboardPage() {
       supportSkill,
       accuracy: weakAccuracy,
     }));
-  }, [loading, router, supportSkill, weakAccuracy, weakAssignment, weakSkill]);
+  }, [loading, router, supportSkill, visibleAssignments.length, weakAccuracy, weakAssignment, weakSkill]);
 
   return (
     <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
