@@ -78,3 +78,13 @@ Then rerun smoke checks.
 - Import script defaults to dry-run unless --apply is provided.
 - sync:prod script requires --confirm-live YES_I_UNDERSTAND for production writes.
 - Keep migration dump and backup artifacts until sign-off is complete.
+
+## 9. Deployment Proof Log
+
+### 2026-05-16: Assignment completion persistence
+
+- Applied migration: `20260516120000_add_assignment_completed_at` on production Postgres.
+- Re-tested `GET /api/admin/assignments`: returned 200.
+- Assigned a fresh task to smoke learner and completed it via student flow.
+- Verified Admin Assignments shows `completed` for the fresh assignment.
+- Verified `completedAt` is populated and visible in admin UI.
