@@ -134,7 +134,6 @@ export default function MathMissionPage() {
   } | null>(null);
   const restoreAttemptedRef = useRef(false);
   const lastAutoSelectionContextRef = useRef<string | null>(null);
-  const completionWritebackKeyRef = useRef<string | null>(null);
   const coachPanelRef = useRef<HTMLDivElement | null>(null);
 
   const sessionComplete = sessionMode === "completed_base" || sessionMode === "completed_retry";
@@ -250,22 +249,6 @@ export default function MathMissionPage() {
     if (!profile || !sessionComplete || typeof window === "undefined") return;
     window.sessionStorage.removeItem(getResumeStateKey(profile.id));
   }, [profile, sessionComplete]);
-
-  useEffect(() => {
-    if (!assignedAssignmentId || !sessionComplete) return;
-    const writebackKey = `${assignedAssignmentId}:${sessionMode}`;
-    if (completionWritebackKeyRef.current === writebackKey) return;
-    completionWritebackKeyRef.current = writebackKey;
-
-    void fetch(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ status: "completed" }),
-    }).catch(() => {
-      completionWritebackKeyRef.current = null;
-    });
-  }, [assignedAssignmentId, sessionComplete, sessionMode]);
 
   async function moveToNextQuestion(
     currentProfile: ChildProfile,

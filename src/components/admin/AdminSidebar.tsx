@@ -46,21 +46,26 @@ export default function AdminSidebar() {
   const activeItemRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
-  const [isVisible, setIsVisible] = useState(() => {
-    if (typeof window === "undefined") return true;
-    try {
-      const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
-      if (raw !== null) {
-        const parsed = JSON.parse(raw);
-        if (typeof parsed === "boolean") return parsed;
-      }
-    } catch {
-      // Ignore storage read issues.
+  const [isVisible, setIsVisible] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+
+    function updateDesktopState() {
+      setIsDesktop(media.matches);
     }
-    return window.matchMedia("(min-width: 1024px)").matches;
-  });
+
+    updateDesktopState();
+    media.addEventListener("change", updateDesktopState);
+
+    return () => {
+      media.removeEventListener("change", updateDesktopState);
+    };
+  }, []);
 
   function toggleVisibility() {
+    if (isDesktop) return;
     const nextVisible = !isVisible;
     setIsVisible(nextVisible);
     try {
@@ -133,23 +138,23 @@ export default function AdminSidebar() {
     }
   }
 
-  const sidebarVisible = isVisible;
+  const sidebarVisible = isDesktop ? true : isVisible;
 
   return (
     <>
       {!sidebarVisible && (
         <button
           onClick={toggleVisibility}
-          className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 lg:hidden"
+          className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-500"
           title="Show sidebar"
         >
           ☰
         </button>
       )}
       {/* Mobile backdrop — closes sidebar when clicking outside */}
-      {sidebarVisible && (
+      {sidebarVisible && !isDesktop && (
         <div
-          className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden lg:pointer-events-none"
+          className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden"
           aria-hidden="true"
           onClick={toggleVisibility}
         />
@@ -158,8 +163,8 @@ export default function AdminSidebar() {
         className={`${
           sidebarVisible
             ? "translate-x-0 lg:w-72 lg:px-4 lg:py-5 lg:border-r lg:opacity-100 lg:pointer-events-auto"
-            : "-translate-x-full pointer-events-none lg:translate-x-0 lg:w-72 lg:px-4 lg:py-5 lg:border-r lg:opacity-100 lg:pointer-events-auto"
-        } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-slate-800 bg-slate-950/92 transition-all duration-300`}
+            : "-translate-x-full pointer-events-none lg:translate-x-0 lg:w-0 lg:px-0 lg:py-0 lg:border-r-0 lg:opacity-0 lg:pointer-events-none"
+        } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-slate-800 bg-slate-950/92 transition-all duration-300 lg:relative lg:z-auto`}
       >
         <div className="relative">
           <Link href="/admin" className="flex items-center gap-3 px-2">
@@ -174,7 +179,7 @@ export default function AdminSidebar() {
 
           <button
             onClick={toggleVisibility}
-            className="absolute right-2 top-1 rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden"
+            className="absolute right-2 top-1 rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
             title="Hide sidebar"
           >
             ✕

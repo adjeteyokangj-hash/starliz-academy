@@ -878,7 +878,6 @@ model Assignment {
   contentId String
   content   AIContentCache @relation(fields: [contentId], references: [id], onDelete: Cascade)
   status    String         @default("assigned")
-  completedAt DateTime?
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 

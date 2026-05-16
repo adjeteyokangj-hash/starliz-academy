@@ -1,36 +1,8 @@
 import { existsSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
-
-type SqliteStatementLike = {
-  get: () => Record<string, unknown> | undefined;
-};
-
-type SqliteDbLike = {
-  exec: (sql: string) => void;
-  prepare: (query: string) => SqliteStatementLike;
-  close: () => void;
-};
-
-type DatabaseSyncConstructor = new (dbFile: string) => SqliteDbLike;
-
-function loadDatabaseSync(): DatabaseSyncConstructor {
-  try {
-    const dynamicRequire = eval("require") as (id: string) => unknown;
-    const sqliteModule = dynamicRequire("node:sqlite") as { DatabaseSync?: DatabaseSyncConstructor };
-    if (typeof sqliteModule.DatabaseSync === "function") {
-      return sqliteModule.DatabaseSync;
-    }
-  } catch {
-    // Ignore and throw a clearer compatibility error below.
-  }
-
-  throw new Error(
-    "E2E sqlite helper requires runtime support for node:sqlite. "
-    + "Use a Node.js build that provides node:sqlite to run this spec in this environment.",
-  );
-}
 
 const PROJECT_ROOT = (() => {
   const cwd = process.cwd();
@@ -44,7 +16,6 @@ function runSqlFile(filePath: string) {
   const sqlFile = resolve(PROJECT_ROOT, filePath);
   const dbFile = resolve(PROJECT_ROOT, "prisma", "dev.db");
   const sql = readFileSync(sqlFile, "utf-8");
-  const DatabaseSync = loadDatabaseSync();
   const db = new DatabaseSync(dbFile);
   try {
     db.exec(sql);
@@ -55,10 +26,9 @@ function runSqlFile(filePath: string) {
 
 function querySqlCount(query: string): number {
   const dbFile = resolve(PROJECT_ROOT, "prisma", "dev.db");
-  const DatabaseSync = loadDatabaseSync();
   const db = new DatabaseSync(dbFile);
   try {
-    const row = db.prepare(query).get();
+    const row = db.prepare(query).get() as Record<string, unknown> | undefined;
     if (!row) return 0;
     const firstValue = Object.values(row)[0];
     const parsed = Number.parseInt(String(firstValue ?? "0"), 10);

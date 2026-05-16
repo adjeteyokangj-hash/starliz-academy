@@ -1,31 +1,8 @@
 import { existsSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
-
-type SqliteDbLike = {
-  exec: (sql: string) => void;
-  close: () => void;
-};
-
-type DatabaseSyncConstructor = new (dbFile: string) => SqliteDbLike;
-
-function loadDatabaseSync(): DatabaseSyncConstructor {
-  try {
-    const dynamicRequire = eval("require") as (id: string) => unknown;
-    const sqliteModule = dynamicRequire("node:sqlite") as { DatabaseSync?: DatabaseSyncConstructor };
-    if (typeof sqliteModule.DatabaseSync === "function") {
-      return sqliteModule.DatabaseSync;
-    }
-  } catch {
-    // Ignore and throw a clearer compatibility error below.
-  }
-
-  throw new Error(
-    "E2E sqlite helper requires runtime support for node:sqlite. "
-    + "Use a Node.js build that provides node:sqlite to run this spec in this environment.",
-  );
-}
 
 const OPS_ADMIN_EMAIL = process.env.E2E_OPS_ADMIN_EMAIL ?? "ops-owner@starliz.dev";
 const OPS_ADMIN_PASSWORD = process.env.E2E_OPS_ADMIN_PASSWORD ?? "OpsAdmin#2026";
@@ -42,7 +19,6 @@ function runSqlFile(filePath: string) {
   const sqlFile = resolve(PROJECT_ROOT, filePath);
   const dbFile = resolve(PROJECT_ROOT, "prisma", "dev.db");
   const sql = readFileSync(sqlFile, "utf-8");
-  const DatabaseSync = loadDatabaseSync();
   const db = new DatabaseSync(dbFile);
   try {
     db.exec(sql);
