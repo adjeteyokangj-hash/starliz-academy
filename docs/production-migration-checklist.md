@@ -91,7 +91,7 @@ Then rerun smoke checks.
 
 ### 2026-05-16: Assignment duplicate handling close-out proof
 
-- Commit hash: `f9df9d0` (baseline validated before this proof append).
+- Commit hash: `1b2d83b` (proof commit pushed to `origin/main`; baseline validated on `f9df9d0`).
 - Production URL tested: `https://www.starlizacademy.com/admin/assignments` and `https://www.starlizacademy.com/games/lesson?assignmentId=cmp8k2he1007xi6041d4nsi8z`.
 - Test student used: `Smoke Learner`.
 - Content subject/year tested: `Year 4 Maths` (current live smoke lane).
