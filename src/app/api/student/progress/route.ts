@@ -305,7 +305,7 @@ export async function POST(request: Request) {
     if (body.assignmentId) {
       await prisma.assignment.updateMany({
         where: { id: body.assignmentId, studentId: body.studentId },
-        data: { status: "completed" },
+        data: { status: "completed", completedAt: new Date() },
       });
     }
 

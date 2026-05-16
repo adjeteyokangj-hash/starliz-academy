@@ -107,6 +107,7 @@ export async function GET(request: Request) {
       return {
         id: assignment.id,
         status: assignment.status,
+        completedAt: assignment.completedAt?.toISOString() ?? null,
         createdAt: assignment.createdAt.toISOString(),
         updatedAt: assignment.updatedAt.toISOString(),
         student: assignment.student,
@@ -236,7 +237,9 @@ export async function PATCH(request: Request) {
     const body = assignmentStatusSchema.parse(await request.json());
     const assignment = await prisma.assignment.update({
       where: { id: body.assignmentId },
-      data: { status: body.status },
+      data: body.status === "completed"
+        ? { status: body.status, completedAt: new Date() }
+        : { status: body.status },
       include: {
         student: { select: { id: true, name: true } },
         content: { select: { id: true, contentType: true, topic: true, skillFocus: true } },

@@ -264,7 +264,10 @@ export async function POST(request: Request) {
           });
 
           if (completed) {
-            await prisma.assignment.update({ where: { id: assignment.id }, data: { status: "completed" } });
+            await prisma.assignment.update({
+              where: { id: assignment.id },
+              data: { status: "completed", completedAt: new Date() },
+            });
             await writeAuditLog({
               actorUserId: session.userId,
               action: "assignment.completed",

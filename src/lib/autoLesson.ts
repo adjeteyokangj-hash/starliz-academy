@@ -468,7 +468,7 @@ export async function autoBuildLessonForStudent(input: BuildOptions): Promise<Bu
     if (!isPrimaryTier && existingLooksFoundational) {
       await prisma.assignment.update({
         where: { id: existingAssignment.id },
-        data: { status: "completed" },
+        data: { status: "completed", completedAt: new Date() },
       });
     } else {
     const existingLesson = await prisma.lesson.findFirst({

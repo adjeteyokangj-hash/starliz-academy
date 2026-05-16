@@ -7,6 +7,7 @@ import { EXAM_BOARDS, KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsF
 type AssignmentRow = {
   id: string;
   status: string;
+  completedAt: string | null;
   createdAt: string;
   updatedAt: string;
   attempts: number;
@@ -227,6 +228,12 @@ export default function AdminAssignmentsPage() {
               <div className="rounded-2xl bg-slate-950 p-3">
                 <p className="text-xs text-slate-500">Updated</p>
                 <p className="mt-1 text-sm font-bold text-white">{new Date(assignment.updatedAt).toLocaleDateString()}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-950 p-3">
+                <p className="text-xs text-slate-500">Completed</p>
+                <p className="mt-1 text-sm font-bold text-white">
+                  {assignment.completedAt ? new Date(assignment.completedAt).toLocaleString() : "-"}
+                </p>
               </div>
             </div>
 
