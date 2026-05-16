@@ -143,7 +143,7 @@ const ENGLISH_CONTEXTS: RealLifeContext[] = [
 
 // ─ Selector and injector ──────────────────────────────────────────────────
 
-function getContextsForSubject(subject: CoachSubject, _ageBand: AgeBand): RealLifeContext[] {
+function getContextsForSubject(subject: CoachSubject): RealLifeContext[] {
   if (subject === "maths") return MATHS_CONTEXTS;
   if (subject === "reading") return READING_CONTEXTS;
   if (subject === "spelling") return SPELLING_CONTEXTS;
@@ -161,14 +161,13 @@ export function injectRealLifeContext(
   subject: CoachSubject,
   ageBand: AgeBand,
   hintLevel: number,
-  _skillFocus?: string,
 ): RealLifeContext | null {
   // Only inject at hint levels 1–2 (too early = overwhelming; too late = too late)
   if (hintLevel > 2) return null;
 
   // Foundation students respond better to concrete examples
   if (ageBand === "foundation" && hintLevel === 1) {
-    const contexts = getContextsForSubject(subject, ageBand);
+    const contexts = getContextsForSubject(subject);
     if (contexts.length === 0) return null;
     // Pick one at random or based on skill
     return contexts[Math.floor(Math.random() * contexts.length)] || null;
@@ -176,14 +175,14 @@ export function injectRealLifeContext(
 
   // Primary students benefit from real-world connection at level 2
   if (ageBand === "primary" && hintLevel === 2) {
-    const contexts = getContextsForSubject(subject, ageBand);
+    const contexts = getContextsForSubject(subject);
     if (contexts.length === 0) return null;
     return contexts[Math.floor(Math.random() * contexts.length)] || null;
   }
 
   // Secondary/GCSE less often (they want direct method instruction)
   if ((ageBand === "secondary" || ageBand === "gcse") && hintLevel === 1 && subject === "science") {
-    const contexts = getContextsForSubject(subject, ageBand);
+    const contexts = getContextsForSubject(subject);
     return contexts.length > 0 ? contexts[0]! : null;
   }
 

@@ -82,7 +82,6 @@ export function evaluateMasteryCheck(
 export function getMasteryCheckFeedback(
   passed: boolean,
   hintsUsed: number,
-  _responseTimeMs?: number,
 ): string {
   if (passed && hintsUsed === 0) {
     return (

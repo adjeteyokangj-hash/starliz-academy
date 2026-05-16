@@ -1157,6 +1157,7 @@ export default function MathMissionPage() {
           {coachOpen && question ? (
             <div ref={coachPanelRef} className="scroll-mt-24 relative z-20">
               <SmartCoachPanel
+                studentId={profile?.id}
                 subject="maths"
                 question={question.prompt}
                 correctAnswer={String(question.answer)}

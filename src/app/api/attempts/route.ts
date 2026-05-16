@@ -9,6 +9,7 @@ import { checkSubscriptionAccess, getTrialSessionLimit } from "@/lib/subscriptio
 import { mergeWeakAreas, parseWeakAreaMetadata, stringifyWeakAreaMetadata } from "@/lib/weakAreas";
 import { updateStudentSkills } from "@/lib/skillEngine";
 import { parseSkills, skillFocusToCode } from "@/lib/skills";
+import { updateLearningDnaFromAttempt } from "@/lib/learning_dna";
 
 const attemptSchema = z.object({
   studentId: z.string().min(1),
@@ -315,6 +316,42 @@ export async function POST(request: Request) {
           }),
         },
       }).catch(() => undefined);
+    }
+
+    // Learning DNA update: aggregate cognitive, pacing, and emotional learning signals.
+    try {
+      const existingStudentProfile = await prisma.studentProfile.findUnique({
+        where: { childId: body.studentId },
+        select: { id: true, aiLearningProfileJson: true },
+      });
+
+      const { nextProfileJson } = updateLearningDnaFromAttempt(existingStudentProfile?.aiLearningProfileJson, {
+        subject: body.subject,
+        skillFocus: body.skillFocus,
+        correct: body.correct,
+        responseTimeMs: body.responseTimeMs,
+        hintsUsed: body.hintsUsed,
+        difficulty: body.difficulty,
+        errorType,
+      });
+
+      if (existingStudentProfile) {
+        await prisma.studentProfile.update({
+          where: { id: existingStudentProfile.id },
+          data: { aiLearningProfileJson: nextProfileJson },
+        });
+      } else {
+        await prisma.studentProfile.create({
+          data: {
+            childId: body.studentId,
+            aiLearningProfileJson: nextProfileJson,
+          },
+        });
+      }
+    } catch (learningDnaError) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("Learning DNA update skipped:", learningDnaError);
+      }
     }
 
     return NextResponse.json({ ok: true, attempt, weakArea, skills: skillsToUpdate, message: "Attempt saved." }, { status: 201 });

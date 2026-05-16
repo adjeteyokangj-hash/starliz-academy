@@ -95,7 +95,7 @@ function inferenceFollowUp(ageBand: AgeBand): CoachFollowUp {
   };
 }
 
-function vocabularyFollowUp(_question: string): CoachFollowUp {
+function vocabularyFollowUp(): CoachFollowUp {
   return {
     question: `How can you work out the meaning of an unknown word?`,
     options: [
@@ -254,7 +254,7 @@ export function buildReadingCoachResponse(ctx: CoachContext): CoachResponse {
   const followUpMap: Record<ReadingSkill, CoachFollowUp | null> = {
     literal: hintLevel >= 2 ? literalFollowUp(ctx.question, passageSentence) : null,
     inference: hintLevel >= 2 ? inferenceFollowUp(ageBand) : null,
-    vocabulary: hintLevel >= 2 ? vocabularyFollowUp(ctx.question) : null,
+    vocabulary: hintLevel >= 2 ? vocabularyFollowUp() : null,
     structure: hintLevel >= 2 ? structureFollowUp() : null,
     summary: null,
   };

@@ -9,6 +9,7 @@ import { getSessionSummary } from "@/lib/coach/session-memory";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type SmartCoachPanelProps = {
+  studentId?: string;
   subject: CoachSubject;
   question: string;
   correctAnswer: string;
@@ -41,6 +42,7 @@ export type SmartCoachPanelProps = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function SmartCoachPanel({
+  studentId,
   subject,
   question,
   correctAnswer,
@@ -96,6 +98,7 @@ export default function SmartCoachPanel({
     setFollowUpAnswered(false);
 
     const body = {
+      studentId,
       subject,
       question,
       prompt: question,
@@ -141,6 +144,7 @@ export default function SmartCoachPanel({
     waitPhase,
     localHintCount,
     subject,
+    studentId,
     question,
     correctAnswer,
     studentAnswer,

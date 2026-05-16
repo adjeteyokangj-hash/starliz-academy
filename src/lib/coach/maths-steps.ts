@@ -286,7 +286,7 @@ function foundationVisual(a: Arithmetic): string | null {
 function applyContextToMessage(msg: string, ctx: CoachContext, hintLevel: number): string {
   if (hintLevel > 2) return msg; // Only at early hints
   
-  const context = injectRealLifeContext("maths", ctx.ageBand, hintLevel, ctx.skillFocus);
+  const context = injectRealLifeContext("maths", ctx.ageBand, hintLevel);
   if (!context) return msg;
   
   const contextLine = formatContextAsCoachingLine(context);

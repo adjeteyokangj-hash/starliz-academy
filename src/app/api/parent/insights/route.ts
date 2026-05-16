@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
+import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from "@/lib/learning_dna";
 
 export async function GET() {
   const { session, response } = await requireSession();
@@ -62,6 +63,27 @@ export async function GET() {
     .map(([mode]) => mode)
     .slice(0, 1)[0] ?? null;
 
+  const studentProfiles = await prisma.studentProfile.findMany({
+    where: { child: { parentId: parentScope.parentId } },
+    select: {
+      childId: true,
+      aiLearningProfileJson: true,
+      child: { select: { name: true } },
+    },
+  });
+
+  const learningDna = studentProfiles
+    .map((entry) => {
+      const snapshot = extractLearningDnaFromProfileJson(entry.aiLearningProfileJson);
+      if (!snapshot) return null;
+      return {
+        childId: entry.childId,
+        childName: entry.child.name,
+        ...buildParentLearningDnaSummary(snapshot),
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
   // Calculate daily activity for the past 30 days
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -96,5 +118,6 @@ export async function GET() {
     learningMode: modeStruggles,
     activity,
     lastActivityAt: lastActivityAt?.toISOString() ?? null,
+    learningDna,
   });
 }

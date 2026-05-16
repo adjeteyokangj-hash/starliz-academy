@@ -11,6 +11,9 @@ import { validateProgressiveHelp } from "@/lib/coach/progressive-help-gating";
 import { shouldEnforceMasteryCheck, buildMasteryCheckPrompt, attachMasteryCheckToResponse } from "@/lib/coach/mastery-check-enforcement";
 import { recordCoachInteraction, getSkillMastery } from "@/lib/coach/db-helpers";
 import type { CoachContext, CoachResponse, AgeBand } from "@/lib/coach/types";
+import { resolveParentScope } from "@/lib/parent_scope";
+import { prisma } from "@/lib/db";
+import { extractLearningDnaFromProfileJson, buildCoachDirectiveFromLearningDna } from "@/lib/learning_dna";
 
 const VALID_SUBJECTS = ["maths", "reading", "spelling", "science", "english"] as const;
 const VALID_AGE_BANDS = ["foundation", "primary", "secondary", "gcse"] as const;
@@ -56,7 +59,7 @@ function logValidationFailure(raw: unknown, issues: string[]): void {
   });
 }
 
-function parseBody(raw: unknown): { ctx: CoachContext; issues: string[] } {
+function parseBody(raw: unknown): { ctx: CoachContext; issues: string[]; studentId?: string } {
   const issues: string[] = [];
   const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
@@ -95,6 +98,7 @@ function parseBody(raw: unknown): { ctx: CoachContext; issues: string[] } {
     typeof b["confidenceScore"] === "number"
       ? Math.min(1, Math.max(0, b["confidenceScore"]))
       : 0.5;
+  const studentId = firstNonEmptyString(b["studentId"], b["childId"]);
 
   return {
     ctx: {
@@ -118,6 +122,7 @@ function parseBody(raw: unknown): { ctx: CoachContext; issues: string[] } {
           : undefined,
     },
     issues,
+    studentId,
   };
 }
 
@@ -144,11 +149,51 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     logValidationFailure(null, ["invalid_json"]);
   }
 
-  const { ctx, issues } = parseBody(rawBody);
+  const { ctx: parsedCtx, issues, studentId } = parseBody(rawBody);
+  let ctx = parsedCtx;
   logValidationFailure(rawBody, issues);
 
+  let learningDnaDirective: ReturnType<typeof buildCoachDirectiveFromLearningDna> | null = null;
+  if (studentId) {
+    try {
+      const parentScope = await resolveParentScope(session);
+      if (parentScope) {
+        const child = await prisma.childProfile.findFirst({
+          where: { id: studentId, parentId: parentScope.parentId },
+          select: { studentProfile: { select: { aiLearningProfileJson: true } } },
+        });
+        const dna = extractLearningDnaFromProfileJson(child?.studentProfile?.aiLearningProfileJson ?? null);
+        if (dna) {
+          learningDnaDirective = buildCoachDirectiveFromLearningDna(dna);
+          ctx = {
+            ...ctx,
+            confidenceScore: Math.min(1, Math.max(0, (ctx.confidenceScore + learningDnaDirective.confidenceScore) / 2)),
+            weakSkills: ctx.weakSkills?.length
+              ? ctx.weakSkills
+              : learningDnaDirective.priorityWeakSkills.map((key) => key.split(":").slice(-1)[0] ?? key),
+          };
+        }
+      }
+    } catch {
+      // Learning DNA enrichment is best-effort only.
+    }
+  }
+
   // Deterministic engine — always runs (fast fallback)
-  const deterministicResponse = buildCoachResponse(ctx);
+  const deterministicBase = buildCoachResponse(ctx);
+  const deterministicResponse: CoachResponse = learningDnaDirective
+    ? {
+        ...deterministicBase,
+        adaptationSummary: learningDnaDirective.summary,
+        reinforcementNote: `${deterministicBase.reinforcementNote} ${learningDnaDirective.reinforcementTip}`.trim(),
+        emotionalTone:
+          learningDnaDirective.tone === "calm"
+            ? "You are safe here. We can take this one step at a time."
+            : learningDnaDirective.tone === "stretch"
+              ? "You are ready for a stronger challenge. Show me your next step."
+              : deterministicBase.emotionalTone,
+      }
+    : deterministicBase;
 
   // ─ Progressive-help gating: enforce level sequencing ─────────────────────
   const gatingValidation = validateProgressiveHelp(ctx, ctx.hintCount > 0 ? ctx.hintCount : undefined);
