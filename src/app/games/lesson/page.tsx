@@ -2027,16 +2027,17 @@ export default function DailyLessonGamePage() {
   }
 
   if (loading || (assignment && !sessionHydrated)) {
-    return <main className="min-h-screen bg-[#f6f8ff]"><Navbar /><div className="mx-auto max-w-4xl px-6 py-10 text-slate-600">Loading lesson...</div></main>;
+    return (<><Navbar /><main className="min-h-screen bg-[#f6f8ff]"><div className="mx-auto max-w-4xl px-6 py-10 text-slate-600">Loading lesson...</div></main></>);
   }
 
   if (error || !assignment || !activeAssignment) {
-    return <main className="min-h-screen bg-[#f6f8ff]"><Navbar /><div className="mx-auto max-w-4xl px-6 py-10 text-rose-600">{error || "Lesson not found."}</div></main>;
+    return (<><Navbar /><main className="min-h-screen bg-[#f6f8ff]"><div className="mx-auto max-w-4xl px-6 py-10 text-rose-600">{error || "Lesson not found."}</div></main></>);
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f8ff] text-slate-950">
+    <>
       <Navbar />
+      <main className="min-h-screen bg-[#f6f8ff] text-slate-950">
       <section className="mx-auto max-w-5xl px-6 py-10">
         <div className="rounded-4xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/70">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -2520,5 +2521,6 @@ export default function DailyLessonGamePage() {
         </div>
       </section>
     </main>
+    </>
   );
 }

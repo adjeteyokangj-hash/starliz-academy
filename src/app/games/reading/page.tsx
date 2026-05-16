@@ -1134,8 +1134,9 @@ export default function ReadingJourneyPage() {
 
   return (
     <PremiumAccessGate>
-    <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+    <>
       <Navbar />
+      <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
       <div className="relative overflow-hidden">
         <div className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-violet-200/50 blur-3xl" />
         <div className="pointer-events-none absolute right-0 top-20 h-80 w-80 rounded-full bg-cyan-200/40 blur-3xl" />
@@ -1426,6 +1427,7 @@ export default function ReadingJourneyPage() {
       </div>
       </div>
     </main>
+    </>
     </PremiumAccessGate>
   );
 }

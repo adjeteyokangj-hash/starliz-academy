@@ -10,7 +10,9 @@ import PremiumAccessGate from "@/components/subscriptions/PremiumAccessGate";
 import RewardToast from "@/components/rewards/RewardToast";
 import AITutorFeedback from "@/components/tutor/AITutorFeedback";
 import GameSuccessBurst from "@/components/game/GameSuccessBurst";
+import ContentMismatchFallback from "@/components/ContentMismatchFallback";
 import { MathQuestion, getMathQuestions, getWeightedMathQuestions, getMathInsight } from "@/lib/adaptive";
+import { validateContentItem } from "@/lib/content_validator";
 import { levelFromXp, processMathAttempt } from "@/lib/progress";
 import { ChildProfile, getProfile, hydrateActiveProfileFromServer, saveProfile, resolveCoachingPace } from "@/lib/store";
 import { getVoiceReaction, speakProfileFeedback, speakWithContext } from "@/lib/voice";
@@ -908,10 +910,17 @@ export default function MathMissionPage() {
 
   if (!profile || !question) return <main className="min-h-screen bg-background" />;
 
+  // Validate content subject matches route
+  const contentValidation = validateContentItem(question as Record<string, unknown>, "math");
+  if (!contentValidation.valid) {
+    return <ContentMismatchFallback subject="Maths" message={contentValidation.error ?? "Content does not match Maths."} />;
+  }
+
   return (
     <PremiumAccessGate>
-    <main className="min-h-screen bg-[#f6f8ff] pt-2 text-slate-900">
+    <>
       <Navbar />
+      <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
       <div className="relative overflow-hidden">
         <div className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-emerald-200/50 blur-3xl" />
         <div className="pointer-events-none absolute right-0 top-20 h-80 w-80 rounded-full bg-cyan-200/40 blur-3xl" />
@@ -1251,6 +1260,7 @@ export default function MathMissionPage() {
       </div>
       </div>
     </main>
+    </>
     </PremiumAccessGate>
   );
 }
