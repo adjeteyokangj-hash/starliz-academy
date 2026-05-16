@@ -124,3 +124,31 @@ Next priority:
 - Generation proof: `Generated Preview` rendered with `English language - Persuasion practice`, quality/safety shown, and approved items listed.
 - Save proof: `Saved to Content Library` banner displayed with `View in Content Library` link.
 - Outcome: PASS (English generation and save path verified live in production).
+
+### 2026-05-16: Student dashboard UX smoke test (assigned/open/progress/completion)
+
+- Production URLs tested:
+  - `https://www.starlizacademy.com/dashboard`
+  - `https://www.starlizacademy.com/admin/assignments`
+  - `https://www.starlizacademy.com/games/math?assignmentId=cmp86kh110003ju043f8aihle`
+  - `https://www.starlizacademy.com/games/lesson?assignmentId=cmp8k2he1007xi6041d4nsi8z`
+- Test student observed: `Smoke Learner`.
+
+Results:
+- Assigned content opens cleanly: PASS.
+  - From dashboard task CTA, navigation opened assigned Maths game URL successfully and rendered gameplay UI (`Question 1 of 10`, answer options, topic shown).
+- Progress updates correctly: BLOCKED.
+  - Maths assignment UI showed an `Unlock Full Learning` overlay that intercepted pointer events, preventing answer submission and blocking in-flow progress mutation verification for this route.
+- Completed task behavior (disappear/show completed): PARTIAL PASS.
+  - Admin assignments for Smoke Learner showed 5 assignments with one explicit `Completed` row.
+  - Dashboard actionable task list showed 4 tasks (`Start`/`Continue`), which is consistent with completed work being removed from actionable cards.
+
+Issues found:
+- Session/dashboard consistency issue:
+  - Dashboard state was inconsistent across live sessions: one view showed `Hi Smoke Learner` with assigned tasks, while another showed `Hi Learner` + `No assigned tasks yet` + loading/errors, despite active assignments existing in admin.
+- Additional UX noise observed:
+  - Intermittent `402` resource errors on learner pages.
+  - Learner dashboard occasionally surfaced journey loading/error states while assignments existed.
+
+Outcome:
+- Mixed result. Open-path works and completion hiding appears partially correct, but progress verification is blocked by paywall overlay and session consistency needs follow-up.
