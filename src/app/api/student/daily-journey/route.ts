@@ -31,22 +31,27 @@ export async function GET() {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const [journey, lesson] = await Promise.all([
-    buildDailyJourney(student.id),
-    autoBuildLessonForStudent({ studentId: student.id, actorUserId: session.userId }),
-  ]);
+  try {
+    const [journey, lesson] = await Promise.all([
+      buildDailyJourney(student.id),
+      autoBuildLessonForStudent({ studentId: student.id, actorUserId: session.userId }),
+    ]);
 
-  return NextResponse.json({
-    ok: true,
-    student,
-    journey,
-    lesson,
-    structure: [
-      "1 warm-up",
-      "2 core practice tasks",
-      "1 weak-area repair",
-      "1 mixed reinforcement",
-      "1 boss gate",
-    ],
-  });
+    return NextResponse.json({
+      ok: true,
+      student,
+      journey,
+      lesson,
+      structure: [
+        "1 warm-up",
+        "2 core practice tasks",
+        "1 weak-area repair",
+        "1 mixed reinforcement",
+        "1 boss gate",
+      ],
+    });
+  } catch (err) {
+    console.error("[daily-journey]", err);
+    return NextResponse.json({ error: "Unable to build daily journey." }, { status: 500 });
+  }
 }
