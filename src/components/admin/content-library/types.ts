@@ -64,11 +64,13 @@ export type StudentAssignmentCandidate = {
 export type AssignmentPayload = {
   count?: number;
   error?: string;
+  allDuplicates?: boolean;
   blocked?: Array<{
     studentId: string;
     reason: string;
     schoolName?: string;
     code?: string;
+    assignmentId?: string;
   }>;
 };
 

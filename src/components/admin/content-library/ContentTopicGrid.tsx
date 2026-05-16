@@ -13,6 +13,7 @@ type Props = {
   onDuplicate: (item: ContentItem) => void;
   onArchive: (item: ContentItem) => void;
   onPublish: (item: ContentItem) => void;
+  onReview: (item: ContentItem) => void;
 };
 
 export default function ContentTopicGrid({
@@ -23,6 +24,7 @@ export default function ContentTopicGrid({
   onDuplicate,
   onArchive,
   onPublish,
+  onReview,
   viewMode,
 }: Props) {
   const grouped = items.reduce<Record<string, ContentItem[]>>((acc, item) => {
@@ -61,6 +63,7 @@ export default function ContentTopicGrid({
                 onDuplicate={onDuplicate}
                 onArchive={onArchive}
                 onPublish={onPublish}
+                onReview={onReview}
               />
             ))}
           </div>

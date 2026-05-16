@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
 
 const PROJECT_ROOT = (() => {
@@ -14,39 +15,27 @@ const PROJECT_ROOT = (() => {
 function runSqlFile(filePath: string) {
   const sqlFile = resolve(PROJECT_ROOT, filePath);
   const dbFile = resolve(PROJECT_ROOT, "prisma", "dev.db");
-  const script = [
-    "import pathlib",
-    "import sqlite3",
-    `sql = pathlib.Path(${JSON.stringify(sqlFile)}).read_text(encoding='utf-8')`,
-    `conn = sqlite3.connect(${JSON.stringify(dbFile)})`,
-    "conn.executescript(sql)",
-    "conn.commit()",
-    "conn.close()",
-  ].join("\n");
-
-  execFileSync("python", ["-c", script], {
-    cwd: PROJECT_ROOT,
-    stdio: "pipe",
-  });
+  const sql = readFileSync(sqlFile, "utf-8");
+  const db = new DatabaseSync(dbFile);
+  try {
+    db.exec(sql);
+  } finally {
+    db.close();
+  }
 }
 
 function querySqlCount(query: string): number {
-  const script = [
-    "import sqlite3",
-    "conn = sqlite3.connect('prisma/dev.db')",
-    "cur = conn.cursor()",
-    `row = cur.execute(${JSON.stringify(query)}).fetchone()`,
-    "print(int(row[0]) if row and row[0] is not None else 0)",
-    "conn.close()",
-  ].join("\n");
-
-  const output = execFileSync("python", ["-c", script], {
-    cwd: PROJECT_ROOT,
-    encoding: "utf-8",
-  }).trim();
-
-  const parsed = Number.parseInt(output, 10);
-  return Number.isNaN(parsed) ? 0 : parsed;
+  const dbFile = resolve(PROJECT_ROOT, "prisma", "dev.db");
+  const db = new DatabaseSync(dbFile);
+  try {
+    const row = db.prepare(query).get() as Record<string, unknown> | undefined;
+    if (!row) return 0;
+    const firstValue = Object.values(row)[0];
+    const parsed = Number.parseInt(String(firstValue ?? "0"), 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  } finally {
+    db.close();
+  }
 }
 
 test.describe("Admin Schools Operations Data Hygiene", () => {

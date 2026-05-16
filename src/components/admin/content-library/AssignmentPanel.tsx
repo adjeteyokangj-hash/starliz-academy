@@ -31,6 +31,22 @@ export default function AssignmentPanel(props: Props) {
   const meta = getContentMeta(props.selectedContent);
   const summary = getContentJsonSummary(props.selectedContent.contentJson);
   const hasEligibleStudents = props.recommended.length > 0 || props.eligibleManual.length > 0;
+  const isDraftOrGenerated = ["draft", "generated"].includes(props.selectedContent.status);
+
+  if (isDraftOrGenerated) {
+    return (
+      <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm">
+        <h3 className="font-black text-amber-100">Content not yet reviewable</h3>
+        <p className="mt-1 text-amber-200/80">
+          <strong>{meta.title}</strong> has status <strong>{props.selectedContent.status}</strong>.
+          Review or publish this content before assigning it to students.
+        </p>
+        <p className="mt-2 text-xs text-amber-300/70">
+          Use the <strong>Review to assign</strong> button on the content card to mark it as reviewed, then you can assign it.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-5">

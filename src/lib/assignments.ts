@@ -353,6 +353,7 @@ export async function assignContentToStudent(input: {
   contentId: string;
   actorUserId?: string;
   reason?: string;
+  forceResend?: boolean;
 }) {
   const safety = await getAssignmentSafetyAndRecommendation({ studentId: input.studentId, contentId: input.contentId });
   if (!safety.safe) {
@@ -372,7 +373,7 @@ export async function assignContentToStudent(input: {
     where: { studentId_contentId: { studentId: input.studentId, contentId: input.contentId } },
     select: { id: true, status: true },
   });
-  if (existing && existing.status !== "archived" && existing.status !== "completed") {
+  if (existing && existing.status !== "archived" && existing.status !== "completed" && !input.forceResend) {
     throw new DuplicateAssignmentError(existing.id);
   }
 

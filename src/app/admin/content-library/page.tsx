@@ -71,6 +71,7 @@ export default function ContentLibraryPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [showBlocked, setShowBlocked] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [pendingResendIds, setPendingResendIds] = useState<string[] | null>(null);
   const [localDuplicateByContent, setLocalDuplicateByContent] = useState<Record<string, Set<string>>>({});
   const [viewModalContent, setViewModalContent] = useState<ContentItem | null>(null);
 
@@ -229,7 +230,7 @@ export default function ContentLibraryPage() {
     void applyAssignment(ids, mode);
   }
 
-  async function applyAssignment(ids: string[], modeLabel: string) {
+  async function applyAssignment(ids: string[], modeLabel: string, resend = false) {
     if (!selectedContent || ids.length === 0) return;
 
     setAssigning(true);
@@ -238,13 +239,30 @@ export default function ContentLibraryPage() {
       const response = await fetch("/api/admin/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contentId: selectedContent.id, studentIds: ids }),
+        body: JSON.stringify({ contentId: selectedContent.id, studentIds: ids, resend }),
       });
       const payload = await response.json() as AssignmentPayload;
 
       if (!response.ok) {
-        const reason = payload.blocked?.map((entry) => entry.reason).join(", ") || payload.error || "Assignment failed.";
-        setMessage(`Assignment blocked: ${reason}`);
+        const duplicateBlocked = payload.blocked?.filter((b) => b.code === "DUPLICATE_ASSIGNMENT") ?? [];
+        const otherBlocked = payload.blocked?.filter((b) => b.code !== "DUPLICATE_ASSIGNMENT") ?? [];
+        if (otherBlocked.length) {
+          const reason = otherBlocked.map((entry) => entry.reason).join(", ") || payload.error || "Assignment failed.";
+          setMessage(`Assignment blocked: ${reason}`);
+        } else if (duplicateBlocked.length) {
+          // All blocked are duplicates — surface resend option
+          setPendingResendIds(ids);
+          setMessage(`Content is already assigned to these students. Use \u201cResend\u201d to re-notify them.`);
+        } else {
+          setMessage(payload.error ?? "Assignment failed.");
+        }
+        return;
+      }
+
+      // 200 all-duplicate case: API returns ok but allDuplicates flag set
+      if (payload.allDuplicates) {
+        setPendingResendIds(ids);
+        setMessage(`Content is already assigned to these students. Use \u201cResend\u201d to re-notify them.`);
         return;
       }
 
@@ -258,7 +276,19 @@ export default function ContentLibraryPage() {
         return next;
       });
 
-      if (ids.length === 1) {
+      // Partial success: some assigned, some blocked
+      if (payload.blocked?.length) {
+        const dupBlocked = payload.blocked.filter((b) => b.code === "DUPLICATE_ASSIGNMENT");
+        const otherBl = payload.blocked.filter((b) => b.code !== "DUPLICATE_ASSIGNMENT");
+        const parts: string[] = [`${count} assigned`];
+        if (dupBlocked.length) parts.push(`${dupBlocked.length} already assigned`);
+        if (otherBl.length) parts.push(`${otherBl.length} blocked: ${otherBl.map((b) => b.reason).join(", ")}`);
+        setMessage(parts.join(", ") + ".");
+      } else if (resend) {
+        const name = ids.length === 1 ? (selectedCandidate?.student.name || "student") : `${count} students`;
+        setMessage(`Resent to ${name} successfully.`);
+        setPendingResendIds(null);
+      } else if (ids.length === 1) {
         const name = selectedCandidate?.student.name || "student";
         setMessage(`Assigned to ${name} successfully.`);
       } else {
@@ -279,6 +309,28 @@ export default function ContentLibraryPage() {
     if (!pendingAction) return;
     await applyAssignment([pendingAction.candidate.student.id], "single");
     setPendingAction(null);
+  }
+
+  async function handleReview(item: ContentItem) {
+    setOperating(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/content/${item.id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const result = await response.json() as { id: string; status: string };
+      if (!response.ok) {
+        setMessage((result as { error?: string }).error ?? "Failed to mark content as reviewed");
+        return;
+      }
+      setMessage(`Content marked as reviewed. You can now assign or publish it.`);
+      setItems((current) => current.map((c) => c.id === item.id ? { ...c, status: "reviewed" } : c));
+    } catch {
+      setMessage("Review request failed");
+    } finally {
+      setOperating(false);
+    }
   }
 
   async function handleDuplicate(item: ContentItem) {
@@ -382,7 +434,19 @@ export default function ContentLibraryPage() {
       />
 
       {message ? (
-        <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">{message}</p>
+        <div className="space-y-2">
+          <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">{message}</p>
+          {pendingResendIds && pendingResendIds.length > 0 && selectedContent ? (
+            <button
+              type="button"
+              disabled={assigning}
+              onClick={() => void applyAssignment(pendingResendIds, "resend", true)}
+              className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs font-black text-amber-100 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {assigning ? "Resending..." : `Resend to ${pendingResendIds.length} already-assigned student${pendingResendIds.length === 1 ? "" : "s"}`}
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
@@ -397,6 +461,7 @@ export default function ContentLibraryPage() {
               onDuplicate={handleDuplicate}
               onArchive={handleArchive}
               onPublish={handlePublish}
+              onReview={handleReview}
             />
           )}
         </AdminSectionCard>

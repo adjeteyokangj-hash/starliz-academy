@@ -151,11 +151,19 @@ export default function AdminSidebar() {
           ☰
         </button>
       )}
+      {/* Mobile backdrop — closes sidebar when clicking outside */}
+      {sidebarVisible && !isDesktop && (
+        <div
+          className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden"
+          aria-hidden="true"
+          onClick={toggleVisibility}
+        />
+      )}
       <aside
         className={`${
           sidebarVisible
-            ? "translate-x-0 lg:w-72 lg:px-4 lg:py-5 lg:border-r lg:opacity-100"
-            : "-translate-x-full lg:translate-x-0 lg:w-0 lg:px-0 lg:py-0 lg:border-r-0 lg:opacity-0"
+            ? "translate-x-0 lg:w-72 lg:px-4 lg:py-5 lg:border-r lg:opacity-100 lg:pointer-events-auto"
+            : "-translate-x-full pointer-events-none lg:translate-x-0 lg:w-0 lg:px-0 lg:py-0 lg:border-r-0 lg:opacity-0 lg:pointer-events-none"
         } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-slate-800 bg-slate-950/92 transition-all duration-300 lg:relative lg:z-auto`}
       >
         <div className="relative">

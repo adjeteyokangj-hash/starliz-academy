@@ -10,6 +10,51 @@
 				"dev"
 			],
 			"isBackground": true
+		},
+		{
+			"label": "lint-check",
+			"type": "shell",
+			"command": "npm run lint -- --max-warnings=0",
+			"isBackground": false,
+			"problemMatcher": [
+				"$eslint-stylish"
+			]
+		},
+		{
+			"label": "tsc-check",
+			"type": "shell",
+			"command": "npx tsc --noEmit",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			]
+		},
+		{
+			"label": "build-check",
+			"type": "shell",
+			"command": "npm run build",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			]
+		},
+		{
+			"label": "git-commit",
+			"type": "shell",
+			"command": "git add -A && git commit -m \"fix: assignment duplicate handling, draft content gating, sidebar pointer-events\\n\\n- API: duplicate assignments return 200 (not 409) when all blocked are duplicates\\n- API: add resend flag to bypass duplicate check and re-assign existing assignments\\n- API: new POST /api/admin/content/[id]/review route (draft/generated -> reviewed)\\n- UI: ContentCard shows 'Review to assign' button for draft/generated content\\n- UI: AssignmentPanel shows warning banner when selected content is draft/generated\\n- UI: content-library page handles allDuplicates response with Resend action\\n- UI: admin assignments page passes resend:true when reassigning existing assignments\\n- UI: AdminSidebar adds pointer-events-none when hidden, adds mobile backdrop overlay\\n- Tests: assignment_duplicate_flow.test.ts with 10 pure-function coverage cases\"",
+			"isBackground": false
+		},
+		{
+			"label": "git-commit-2",
+			"type": "shell",
+			"command": "git add -A && git commit -m \"fix: assignment duplicate handling, draft content gating, sidebar pointer-events\"",
+			"isBackground": false
+		},
+		{
+			"label": "git-commit-3",
+			"type": "shell",
+			"command": "git add -A && git commit -F tmp_commit_msg.txt && Remove-Item tmp_commit_msg.txt",
+			"isBackground": false
 		}
 	]
 }

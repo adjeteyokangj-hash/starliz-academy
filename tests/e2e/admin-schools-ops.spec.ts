@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
 
 const OPS_ADMIN_EMAIL = process.env.E2E_OPS_ADMIN_EMAIL ?? "ops-owner@starliz.dev";
@@ -17,20 +18,13 @@ const PROJECT_ROOT = (() => {
 function runSqlFile(filePath: string) {
   const sqlFile = resolve(PROJECT_ROOT, filePath);
   const dbFile = resolve(PROJECT_ROOT, "prisma", "dev.db");
-  const script = [
-    "import pathlib",
-    "import sqlite3",
-    `sql = pathlib.Path(${JSON.stringify(sqlFile)}).read_text(encoding='utf-8')`,
-    `conn = sqlite3.connect(${JSON.stringify(dbFile)})`,
-    "conn.executescript(sql)",
-    "conn.commit()",
-    "conn.close()",
-  ].join("\n");
-
-  execFileSync("python", ["-c", script], {
-    cwd: PROJECT_ROOT,
-    stdio: "pipe",
-  });
+  const sql = readFileSync(sqlFile, "utf-8");
+  const db = new DatabaseSync(dbFile);
+  try {
+    db.exec(sql);
+  } finally {
+    db.close();
+  }
 }
 
 async function loginAsAdmin(page: import("@playwright/test").Page) {

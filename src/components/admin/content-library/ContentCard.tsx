@@ -12,6 +12,7 @@ type Props = {
   onDuplicate: (item: ContentItem) => void;
   onArchive: (item: ContentItem) => void;
   onPublish: (item: ContentItem) => void;
+  onReview: (item: ContentItem) => void;
   viewMode: "grid" | "list";
 };
 
@@ -23,13 +24,20 @@ export default function ContentCard({
   onDuplicate,
   onArchive,
   onPublish,
+  onReview,
   viewMode,
 }: Props) {
   const [showMenu, setShowMenu] = useState(false);
   const summary = getContentJsonSummary(item.contentJson);
   const meta = getContentMeta(item);
+  const isDraftOrGenerated = ["draft", "generated"].includes(item.status);
   const assignDisabled = !["reviewed", "published"].includes(item.status) || !summary.valid;
   const canPublish = ["reviewed", "published"].includes(item.status);
+  const assignTitle = isDraftOrGenerated
+    ? "Review or publish this content before assigning."
+    : !summary.valid
+      ? "Content JSON is invalid and cannot be assigned."
+      : undefined;
 
   return (
     <article className={`rounded-2xl border p-4 ${selected ? "border-indigo-400 bg-indigo-500/5" : "border-slate-800 bg-slate-950/45"}`}>
@@ -57,14 +65,25 @@ export default function ContentCard({
         >
           View
         </button>
-        <button
-          type="button"
-          onClick={() => onSelect(item)}
-          disabled={assignDisabled}
-          className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Assign
-        </button>
+        {isDraftOrGenerated ? (
+          <button
+            type="button"
+            onClick={() => onReview(item)}
+            className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-100 hover:bg-amber-500/20"
+          >
+            Review to assign
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSelect(item)}
+            disabled={assignDisabled}
+            title={assignTitle}
+            className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Assign
+          </button>
+        )}
         <div className="relative">
           <button
             type="button"

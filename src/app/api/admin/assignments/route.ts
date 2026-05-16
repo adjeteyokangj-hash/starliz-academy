@@ -18,6 +18,7 @@ const assignmentSchema = z.object({
   yearGroup: z.string().trim().optional(),
   dueDate: z.string().optional(),
   repeatMode: z.string().optional(),
+  resend: z.boolean().optional(),
 });
 
 const assignmentStatusSchema = z.object({
@@ -176,6 +177,7 @@ export async function POST(request: Request) {
           contentId: body.contentId,
           actorUserId: session.userId,
           reason: body.yearGroup ? `manual_year_group_assignment:${body.yearGroup}` : "manual_admin_assignment",
+          forceResend: body.resend ?? false,
         });
         assignments.push(assignment);
       } catch (error) {
@@ -212,6 +214,11 @@ export async function POST(request: Request) {
     }
 
     if (!assignments.length && blocked.length) {
+      const allDuplicates = blocked.every((b) => b.code === "DUPLICATE_ASSIGNMENT");
+      if (allDuplicates) {
+        // All students already have this content assigned — return 200 so the UI can offer a resend
+        return NextResponse.json({ assignments: [], blocked, count: 0, allDuplicates: true }, { status: 200 });
+      }
       return NextResponse.json({ error: "All assignments were blocked.", blocked }, { status: 409 });
     }
 

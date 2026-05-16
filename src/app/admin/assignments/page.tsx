@@ -78,7 +78,7 @@ export default function AdminAssignmentsPage() {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contentId: row.content.id, studentIds: [row.student.id] }),
+      body: JSON.stringify({ contentId: row.content.id, studentIds: [row.student.id], resend: true }),
     });
     const payload = await response.json();
     setMessage(response.ok ? "Assignment resent." : payload.error ?? "Could not reassign.");
