@@ -8,6 +8,7 @@ import { parseWalletMetadata, summarizeWalletTransactions } from "@/lib/wallet_l
 import { parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { keyStageForYearGroup } from "@/lib/curriculum";
 import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
+import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from "@/lib/learning_dna";
 
 const updateStudentSchema = z.object({
   name: z.string().trim().min(1).optional(),
@@ -68,6 +69,14 @@ export async function GET(_request: Request, context: Context) {
     keyStageLevel: student.studentProfile?.keyStageLevel ?? null,
     aiLearningProfileJson: student.studentProfile?.aiLearningProfileJson ?? null,
   });
+  const learningDna = extractLearningDnaFromProfileJson(student.studentProfile?.aiLearningProfileJson ?? null);
+  const adaptiveTutor = learningDna
+    ? buildParentLearningDnaSummary(learningDna)
+    : {
+        enoughHistory: false,
+        readinessLabel: "Not enough learning history yet",
+        fallbackMessage: "Not enough learning history yet. The tutor will adapt as more activities are completed.",
+      };
   const walletSummary = summarizeWalletTransactions(student.walletTransactions, student.coins);
 
   return NextResponse.json({
@@ -103,6 +112,7 @@ export async function GET(_request: Request, context: Context) {
       updatedAt: student.updatedAt.toISOString(),
       recentLevelDecisions: [...(normalizedStudent.levelDecisions ?? [])].slice(-12).reverse(),
       recommendedNextActivity: normalizedStudent.adaptive.nextBestActivity,
+      adaptiveTutor,
       walletSummary,
       ownedItems: student.rewards.map((reward) => ({
         id: reward.rewardId,

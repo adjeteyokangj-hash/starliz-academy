@@ -9,7 +9,7 @@ import { checkSubscriptionAccess, getTrialSessionLimit } from "@/lib/subscriptio
 import { mergeWeakAreas, parseWeakAreaMetadata, stringifyWeakAreaMetadata } from "@/lib/weakAreas";
 import { updateStudentSkills } from "@/lib/skillEngine";
 import { parseSkills, skillFocusToCode } from "@/lib/skills";
-import { updateLearningDnaFromAttempt } from "@/lib/learning_dna";
+import { resolveAttemptStudentIdentity, upsertLearningDnaProfileFromAttempt } from "@/lib/attempts/learning_dna_pipeline";
 
 const attemptSchema = z.object({
   studentId: z.string().min(1),
@@ -162,8 +162,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Subscription required" }, { status: 403 });
     }
 
+    const { resolvedStudentId, assignment } = await resolveAttemptStudentIdentity(prisma, {
+      assignmentId: body.assignmentId,
+      requestedStudentId: body.studentId,
+      parentId: parentScope.parentId,
+    });
+
     const student = await prisma.childProfile.findFirst({
-      where: { id: body.studentId, parentId: parentScope.parentId },
+      where: { id: resolvedStudentId, parentId: parentScope.parentId },
       select: { id: true },
     });
     if (!student) return NextResponse.json({ error: "Student not found." }, { status: 404 });
@@ -177,7 +183,15 @@ export async function POST(request: Request) {
       errorType,
       ...attemptData
     } = body;
-    const attempt = await prisma.attempt.create({ data: { ...attemptData, skills: skillsRaw } });
+    const attempt = await prisma.attempt.create({
+      data: {
+        ...attemptData,
+        studentId: resolvedStudentId,
+        assignmentId: assignment?.id ?? attemptData.assignmentId,
+        contentId: assignment?.contentId ?? attemptData.contentId,
+        skills: skillsRaw,
+      },
+    });
 
     if (pronunciationAttempted || pronunciationPassed !== undefined || spokenText || targetText || errorType) {
       await writeAuditLog({
@@ -187,6 +201,7 @@ export async function POST(request: Request) {
         entityId: attempt.id,
         metadata: {
           studentId: body.studentId,
+          resolvedStudentId,
           subject: body.subject,
           skillFocus: body.skillFocus,
           pronunciationAttempted: Boolean(pronunciationAttempted),
@@ -207,25 +222,10 @@ export async function POST(request: Request) {
         ? [inferredSkill]
         : [];
     if (skillsToUpdate.length) {
-      void updateStudentSkills({ studentId: body.studentId, skills: skillsToUpdate, isCorrect: body.correct });
+      void updateStudentSkills({ studentId: resolvedStudentId, skills: skillsToUpdate, isCorrect: body.correct });
     }
 
-    if (body.assignmentId) {
-      const assignment = await prisma.assignment.findFirst({
-        where: {
-          id: body.assignmentId,
-          studentId: body.studentId,
-          student: { parentId: parentScope.parentId },
-        },
-        select: {
-          id: true,
-          status: true,
-          contentId: true,
-          content: { select: { contentType: true, contentJson: true } },
-        },
-      });
-
-      if (assignment) {
+    if (assignment) {
         const contentTypeMatchesSubject = assignment.content.contentType === body.subject;
         const matchesAssignedContent = !body.contentId || body.contentId === assignment.contentId;
         const assignedItems = parseAssignedItems(assignment.content.contentJson);
@@ -251,14 +251,14 @@ export async function POST(request: Request) {
             action: "assignment.in_progress",
             entityType: "assignment",
             entityId: assignment.id,
-            metadata: { studentId: body.studentId, attemptId: attempt.id },
+            metadata: { studentId: resolvedStudentId, attemptId: attempt.id },
           });
         }
 
         if (attemptedAssignedItem && body.correct && assignment.status !== "completed") {
           const completed = await assignmentBatchCompleted({
             assignmentId: assignment.id,
-            studentId: body.studentId,
+            studentId: resolvedStudentId,
             subject: body.subject,
             contentJson: assignment.content.contentJson,
           });
@@ -270,15 +270,14 @@ export async function POST(request: Request) {
               action: "assignment.completed",
               entityType: "assignment",
               entityId: assignment.id,
-              metadata: { studentId: body.studentId, attemptId: attempt.id, contentId: body.contentId },
+              metadata: { studentId: resolvedStudentId, attemptId: attempt.id, contentId: assignment.contentId },
             });
           }
         }
-      }
     }
 
     const weakArea = await recalculateWeakAreaFromAttempts({
-      studentId: body.studentId,
+      studentId: resolvedStudentId,
       subject: body.subject,
       skillFocus: body.skillFocus,
       actorUserId: session.userId,
@@ -320,12 +319,7 @@ export async function POST(request: Request) {
 
     // Learning DNA update: aggregate cognitive, pacing, and emotional learning signals.
     try {
-      const existingStudentProfile = await prisma.studentProfile.findUnique({
-        where: { childId: body.studentId },
-        select: { id: true, aiLearningProfileJson: true },
-      });
-
-      const { nextProfileJson } = updateLearningDnaFromAttempt(existingStudentProfile?.aiLearningProfileJson, {
+      await upsertLearningDnaProfileFromAttempt(prisma, resolvedStudentId, {
         subject: body.subject,
         skillFocus: body.skillFocus,
         correct: body.correct,
@@ -334,27 +328,23 @@ export async function POST(request: Request) {
         difficulty: body.difficulty,
         errorType,
       });
-
-      if (existingStudentProfile) {
-        await prisma.studentProfile.update({
-          where: { id: existingStudentProfile.id },
-          data: { aiLearningProfileJson: nextProfileJson },
-        });
-      } else {
-        await prisma.studentProfile.create({
-          data: {
-            childId: body.studentId,
-            aiLearningProfileJson: nextProfileJson,
-          },
-        });
-      }
     } catch (learningDnaError) {
       if (process.env.NODE_ENV !== "production") {
         console.warn("Learning DNA update skipped:", learningDnaError);
       }
     }
 
-    return NextResponse.json({ ok: true, attempt, weakArea, skills: skillsToUpdate, message: "Attempt saved." }, { status: 201 });
+    return NextResponse.json({
+      ok: true,
+      attempt,
+      weakArea,
+      skills: skillsToUpdate,
+      learningDnaUpdatedForChildId: resolvedStudentId,
+      studentResolution: assignment
+        ? { source: "assignment", assignmentId: assignment.id, clientStudentId: body.studentId, resolvedStudentId }
+        : { source: "client", clientStudentId: body.studentId, resolvedStudentId },
+      message: "Attempt saved.",
+    }, { status: 201 });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.error("Attempt submission failed:", error);

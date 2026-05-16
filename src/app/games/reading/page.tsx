@@ -10,7 +10,9 @@ import PremiumAccessGate from "@/components/subscriptions/PremiumAccessGate";
 import RewardToast from "@/components/rewards/RewardToast";
 import AITutorFeedback from "@/components/tutor/AITutorFeedback";
 import GameSuccessBurst from "@/components/game/GameSuccessBurst";
+import ContentMismatchFallback from "@/components/ContentMismatchFallback";
 import { getReadingPassages, type ReadingPassage } from "@/lib/adaptive";
+import { validateContentItem } from "@/lib/content_validator";
 import { applyReadingFluencyAssessment, levelFromXp, processReadingAttempt } from "@/lib/progress";
 import { ChildProfile, getProfile, hydrateActiveProfileFromServer, saveProfile, resolveCoachingPace } from "@/lib/store";
 import { beginStudentTurn, endStudentTurn, getVoiceReaction, speakEncouragement, speakProfileFeedback, speakWithContext, stopVoicePlayback } from "@/lib/voice";
@@ -1093,11 +1095,19 @@ export default function ReadingJourneyPage() {
 
   if (!profile) return <main className="min-h-screen bg-background" />;
 
+  if (item) {
+    const contentValidation = validateContentItem(item as Record<string, unknown>, "reading");
+    if (!contentValidation.valid) {
+      return <ContentMismatchFallback subject="Reading" message={contentValidation.error ?? "This activity does not match Reading."} />;
+    }
+  }
+
   if (assignmentLoadError && !item) {
     return (
       <PremiumAccessGate>
-        <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+        <>
           <Navbar />
+          <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
           <section className="mx-auto flex min-h-[70vh] max-w-3xl items-center px-4 py-10">
             <div className="w-full rounded-3xl border border-rose-200 bg-white p-6 shadow-xl">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-rose-600">Content Load Error</p>
@@ -1110,7 +1120,8 @@ export default function ReadingJourneyPage() {
               </div>
             </div>
           </section>
-        </main>
+          </main>
+        </>
       </PremiumAccessGate>
     );
   }

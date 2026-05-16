@@ -345,6 +345,11 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
   if (pattern.type === "linear") {
     const eq = pattern;
     const steps = linearSteps(eq, hintLevel);
+    const gatedSteps = shouldReveal
+      ? linearSteps(eq, 4)
+      : ctx.attemptCount > 0
+        ? steps
+        : steps.slice(0, Math.max(1, steps.length - 1));
     const followUp = hintLevel === 2 ? linearFollowUp1(eq) : hintLevel >= 3 ? (linearFollowUp2(eq) ?? linearFollowUp1(eq)) : null;
     const firstStepText = `${eq.bSign === "+" ? "subtract" : "add"} ${eq.b}`;
     const step1rhs = eq.bSign === "+" ? eq.c - eq.b : eq.c + eq.b;
@@ -364,7 +369,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
       mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
       ageBand,
       message: applyContextToMessage(messages[hintLevel] ?? messages[4]!, ctx, hintLevel),
-      steps: shouldReveal ? linearSteps(eq, 4) : steps,
+      steps: gatedSteps,
       followUp,
       hintLevel,
       shouldReveal,

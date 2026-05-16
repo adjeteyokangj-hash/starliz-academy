@@ -10,7 +10,9 @@ import PremiumAccessGate from "@/components/subscriptions/PremiumAccessGate";
 import RewardToast from "@/components/rewards/RewardToast";
 import AITutorFeedback from "@/components/tutor/AITutorFeedback";
 import GameSuccessBurst from "@/components/game/GameSuccessBurst";
+import ContentMismatchFallback from "@/components/ContentMismatchFallback";
 import { SpellingWord, getSpellingWordPool, getWeightedSpellingWordId, getReviewWords, getSpellingPatternInsight } from "@/lib/adaptive";
+import { validateContentItem } from "@/lib/content_validator";
 import { levelFromXp, processSpellingAttempt } from "@/lib/progress";
 import { ChildProfile, getProfile, hydrateActiveProfileFromServer, saveProfile, resolveCoachingPace } from "@/lib/store";
 import { beginStudentTurn, endStudentTurn, speakEncouragement, speakWithContext } from "@/lib/voice";
@@ -2315,6 +2317,13 @@ export default function SpellingQuestPage() {
 
   if (!profile) {
     return <main className="min-h-screen bg-background" />;
+  }
+
+  if (targetWord) {
+    const contentValidation = validateContentItem(targetWord as Record<string, unknown>, "spelling");
+    if (!contentValidation.valid) {
+      return <ContentMismatchFallback subject="Spelling" message={contentValidation.error ?? "This activity does not match Spelling."} />;
+    }
   }
 
   return (

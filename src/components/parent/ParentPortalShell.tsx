@@ -175,6 +175,17 @@ type InsightsPayload = {
   learningMode: string | null;
   activity: Array<{ date: string; count: number }>;
   lastActivityAt: string | null;
+  learningDna?: Array<{
+    childId: string;
+    childName: string;
+    totalAttempts?: number;
+    enoughHistory?: boolean;
+    readinessLabel?: string;
+    fallbackMessage?: string | null;
+    confidenceTrend?: number;
+    preferredPace?: string;
+    recommendations?: string[];
+  }>;
 };
 
 type ChildAssignment = {
@@ -390,6 +401,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     }
     return section;
   }, [pathname, section]);
+
+  const activeLearningDna = useMemo(() => {
+    if (!selectedChildId || !insights?.learningDna?.length) return null;
+    return insights.learningDna.find((entry) => entry.childId === selectedChildId) ?? null;
+  }, [insights, selectedChildId]);
 
   const modeAdd = activeSection === "children" && searchParams.get("mode") === "add";
   const formVisible = modeAdd || showChildForm;
@@ -660,6 +676,20 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     <Metric label="Average accuracy" value={`${insights.averageAccuracy}%`} />
                     <Metric label="Total attempts" value={String(insights.totalAttempts)} />
                     <Metric label="Learning mode" value={insights.learningMode ?? "Standard"} />
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-300">Adaptive tutor</p>
+                    {activeLearningDna?.enoughHistory ? (
+                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        <Metric label="Status" value={activeLearningDna.readinessLabel ?? "Active"} />
+                        <Metric label="Confidence trend" value={`${activeLearningDna.confidenceTrend ?? 0}%`} />
+                        <Metric label="Best pace" value={activeLearningDna.preferredPace ?? "Balanced"} />
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-sm text-slate-200">
+                        {activeLearningDna?.fallbackMessage ?? "Not enough learning history yet. The tutor will adapt as more activities are completed."}
+                      </p>
+                    )}
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button type="button" onClick={() => void downloadProgressReport("pdf")} disabled={reportDownloading}>

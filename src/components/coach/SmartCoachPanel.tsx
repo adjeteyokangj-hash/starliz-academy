@@ -206,11 +206,12 @@ export default function SmartCoachPanel({
   // Can progress to next hint if:
   // - follow-up has been answered (or there is no follow-up)
   // - not already at shouldReveal
+  const effectiveShouldReveal = response?.shouldReveal === true && (attemptCount > 0 || localHintCount >= 3);
   const canNextHint =
     !loading &&
     !error &&
     response !== null &&
-    !response.shouldReveal &&
+    !effectiveShouldReveal &&
     (followUpAnswered || !response.followUp);
 
   // ── Render helpers ────────────────────────────────────────────────────────
@@ -368,7 +369,7 @@ export default function SmartCoachPanel({
       )}
 
       {/* Full reveal answer */}
-      {shouldReveal && (
+      {effectiveShouldReveal && (
         <div className="mt-4 rounded-xl border-2 border-cyan-300 bg-cyan-50 px-4 py-3">
           <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-600">Answer</p>
           <p className="mt-1 text-lg font-black text-cyan-900">{correctAnswer}</p>
@@ -376,12 +377,12 @@ export default function SmartCoachPanel({
       )}
 
       {/* Try-again prompt after reveal */}
-      {shouldReveal && tryAgainPrompt && (
+      {effectiveShouldReveal && tryAgainPrompt && (
         <p className="mt-2 text-xs italic text-slate-500">{tryAgainPrompt}</p>
       )}
 
       {/* Similar question — mastery check after reveal */}
-      {shouldReveal && response.similarQuestion && (
+      {effectiveShouldReveal && response.similarQuestion && (
         <div className="mt-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 px-4 py-3">
           <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
             Now prove it — try this:
@@ -406,9 +407,15 @@ export default function SmartCoachPanel({
         </div>
       )}
 
+      {shouldReveal && !effectiveShouldReveal && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Try the question once first, or work through one more scaffolded hint before the full answer is shown.
+        </div>
+      )}
+
       {/* Footer actions */}
       <div className="mt-4 flex flex-wrap gap-2">
-        {!shouldReveal && (
+        {!effectiveShouldReveal && (
           <button
             disabled={!canNextHint}
             onClick={handleNextHint}
@@ -421,7 +428,7 @@ export default function SmartCoachPanel({
             {!followUpAnswered && followUp ? "Answer the question first ↑" : "Next hint →"}
           </button>
         )}
-        {shouldReveal && (
+        {effectiveShouldReveal && (
           <button
             onClick={onClose}
             className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-900"

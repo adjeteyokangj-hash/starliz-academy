@@ -36,6 +36,15 @@ type StudentDetail = {
   accuracy: number | null;
   totalSessions: number;
   recommendedNextActivity: string;
+  adaptiveTutor?: {
+    enoughHistory?: boolean;
+    readinessLabel?: string;
+    fallbackMessage?: string | null;
+    totalAttempts?: number;
+    confidenceTrend?: number;
+    frustrationRisk?: number;
+    updatedAt?: string;
+  };
   recentLevelDecisions: { ts: string; subject: string; previousLevel: number; nextLevel: number; confidenceScore: number; reasons: string[] }[];
   walletSummary: {
     balance: number;
@@ -166,6 +175,19 @@ export default function StudentDetailPage() {
             <p>Guardian Permissions: {student.studentProfile?.guardianPermissions ?? "Not set"}</p>
             <p>School Information: {student.studentProfile?.schoolInformation ?? "Not set"}</p>
           </div>
+        </AdminSectionCard>
+
+        <AdminSectionCard title="Adaptive Tutor Readiness">
+          {student.adaptiveTutor?.enoughHistory ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Status: {student.adaptiveTutor.readinessLabel ?? "Active"}</div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Attempts used: {student.adaptiveTutor.totalAttempts ?? 0}</div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Confidence signal: {student.adaptiveTutor.confidenceTrend ?? 0}%</div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Frustration risk: {student.adaptiveTutor.frustrationRisk ?? 0}%</div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-300">{student.adaptiveTutor?.fallbackMessage ?? "Not enough learning history yet. The tutor will adapt as more activities are completed."}</p>
+          )}
         </AdminSectionCard>
 
         {showDevAttemptSeeding ? (

@@ -14,6 +14,30 @@ function normalizeSubject(subject: unknown): ContentSubject | null {
   return null;
 }
 
+function inferSubjectFromItem(item: Record<string, unknown>): ContentSubject | null {
+  if ((typeof item.word === "string" && item.word.trim().length > 0) || Array.isArray(item.patterns)) {
+    return "spelling";
+  }
+
+  if (
+    typeof item.passage === "string"
+    && typeof item.question === "string"
+    && Array.isArray(item.choices)
+  ) {
+    return "reading";
+  }
+
+  if (
+    (typeof item.prompt === "string" || typeof item.question === "string")
+    && (typeof item.answer === "number" || typeof item.answer === "string")
+    && Array.isArray(item.hints)
+  ) {
+    return "math";
+  }
+
+  return null;
+}
+
 export function validateContentSubject(
   contentSubject: unknown,
   expectedSubject: ContentSubject,
@@ -55,7 +79,7 @@ export function validateContentItem(
   }
 
   // Check for explicit subject field
-  const subject = item.subject ?? item.contentType ?? item.type;
+  const subject = item.subject ?? item.contentType ?? item.type ?? inferSubjectFromItem(item);
   return validateContentSubject(subject, expectedSubject);
 }
 

@@ -432,8 +432,15 @@ export function buildCoachDirectiveFromLearningDna(snapshot: LearningDnaSnapshot
 }
 
 export function buildParentLearningDnaSummary(snapshot: LearningDnaSnapshot): Record<string, unknown> {
+  const enoughHistory = snapshot.totalAttempts >= 3;
   return {
     updatedAt: snapshot.updatedAt,
+    totalAttempts: snapshot.totalAttempts,
+    enoughHistory,
+    readinessLabel: enoughHistory ? "Active" : "Not enough learning history yet",
+    fallbackMessage: enoughHistory
+      ? null
+      : "Not enough learning history yet. The tutor will adapt as more activities are completed.",
     confidenceTrend: Math.round(snapshot.confidenceEma * 100),
     frustrationRisk: Math.round(snapshot.frustrationEma * 100),
     independenceLevel: Math.round(snapshot.independenceEma * 100),
