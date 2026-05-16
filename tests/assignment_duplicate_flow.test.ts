@@ -172,6 +172,6 @@ test("student not in localDuplicates is not blocked as duplicate", () => {
   const result = evaluateAssignmentCandidate(item, student, new Set(["student-other"]));
 
   // Must not be blocked for duplicate reasons (may still be eligible)
-  const isDuplicateBlock = result.hardBlockReason?.toLowerCase().includes("duplicate");
+  const isDuplicateBlock = Boolean(result.hardBlockReason?.toLowerCase().includes("duplicate"));
   assert.equal(isDuplicateBlock, false);
 });

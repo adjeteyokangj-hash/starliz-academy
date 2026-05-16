@@ -15,6 +15,7 @@ import {
   GENERATION_CONTENT_TYPE_BY_SUBJECT,
   isValidCurriculumPath,
   keyStageForYearGroup,
+  normalizeSubject as normalizeCurriculumSubject,
   yearGroupsForKeyStage,
   ageGroupForYearGroup,
   shouldApplyExamBoardTag,
@@ -155,9 +156,27 @@ function formatSubjectLabel(value: string): string {
 }
 
 function subjectFamily(value: string): "maths" | "science" | "english" | "other" {
+  const canonical = normalizeCurriculumSubject(value);
+  if (canonical === "science" || canonical === "gcse-science") return "science";
+  if (canonical === "maths" || canonical === "times-tables" || canonical === "gcse-maths" || canonical === "11-plus-practice" || canonical === "sats-practice") return "maths";
+  if (
+    canonical === "english-language"
+    || canonical === "english-literature"
+    || canonical === "gcse-english"
+    || canonical === "reading"
+    || canonical === "writing"
+    || canonical === "grammar"
+    || canonical === "punctuation"
+    || canonical === "spelling"
+    || canonical === "phonics"
+    || canonical === "vocabulary"
+  ) {
+    return "english";
+  }
+
   const normalized = value.trim().toLowerCase();
-  if (normalized.includes("math")) return "maths";
   if (normalized.includes("science")) return "science";
+  if (normalized.includes("math")) return "maths";
   if (
     normalized.includes("english")
     || normalized.includes("reading")
@@ -869,6 +888,7 @@ export default function AiGeneratorPage() {
 
   function weakAreaToGenerationContext(area: WeakArea): GenerationContext {
     const subjectLower = area.subject.toLowerCase();
+    const normalizedWeakSubject = normalizeCurriculumSubject(area.subject);
     const skillLower = area.skillFocus.toLowerCase();
     const inferredYearGroup = area.yearGroup ?? (skillLower.includes("algebra") ? "Year 10" : "Year 4");
     const derivedKeyStage = (area.keyStage ?? keyStageForYearGroup(inferredYearGroup)) as typeof KEY_STAGES[number];
@@ -876,11 +896,11 @@ export default function AiGeneratorPage() {
     const availableForYear = getAvailableSubjects(derivedYearGroup);
 
     const preferredSubjects: Subject[] =
-      subjectLower === "math" || subjectLower === "maths"
+      normalizedWeakSubject === "maths" || normalizedWeakSubject === "gcse-maths" || normalizedWeakSubject === "times-tables"
         ? (["gcse-maths", "maths", "times-tables"] as Subject[])
-        : subjectLower.includes("science")
+        : normalizedWeakSubject === "science" || normalizedWeakSubject === "gcse-science" || subjectLower.includes("science")
           ? (["gcse-science", "science"] as Subject[])
-          : subjectLower.includes("reading")
+          : normalizedWeakSubject === "reading" || normalizedWeakSubject === "english-language" || normalizedWeakSubject === "english-literature" || normalizedWeakSubject === "gcse-english" || subjectLower.includes("reading")
             ? (["reading", "english-language", "grammar"] as Subject[])
             : (["spelling", "writing", "grammar"] as Subject[]);
 

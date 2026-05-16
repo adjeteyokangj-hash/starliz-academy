@@ -10,6 +10,7 @@ import {
   GENERATION_CONTENT_TYPE_BY_SUBJECT,
   keyStageForYearGroup,
   normalizeExamBoard,
+  normalizeSubject,
   normalizeYearGroup as normalizeCurriculumYearGroup,
   shouldApplyExamBoardTag,
   yearGroupsForKeyStage,
@@ -26,14 +27,6 @@ const generationCache = new Map<string, { content: unknown; meta: Record<string,
 const generationRateLimit = new Map<string, { count: number; resetAt: number }>();
 
 type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" | "writing" | "science";
-
-function isSupportedSubject(value: string): value is Subject {
-  return Object.prototype.hasOwnProperty.call(GENERATION_CONTENT_TYPE_BY_SUBJECT, value);
-}
-
-function normalizeSubjectKey(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
 
 function mapSubjectToGenerationType(subject: Subject): GenerationType {
   return GENERATION_CONTENT_TYPE_BY_SUBJECT[subject];
@@ -831,8 +824,8 @@ export async function POST(req: Request) {
     }, { status: 400 });
   }
   const requestedSubject = (body.subject ?? body.type) as string;
-  const normalizedSubject = normalizeSubjectKey(String(requestedSubject ?? ""));
-  if (!isSupportedSubject(normalizedSubject)) {
+  const normalizedSubject = normalizeSubject(String(requestedSubject ?? ""));
+  if (!normalizedSubject) {
     return NextResponse.json({
       success: false,
       error: `Unsupported subject: ${requestedSubject || "(empty)"}.`,
@@ -842,7 +835,7 @@ export async function POST(req: Request) {
       },
     }, { status: 422 });
   }
-  const sourceSubject = normalizedSubject as Subject;
+  const sourceSubject = normalizedSubject;
   const requestedCount = body.numberOfItems ?? body.count;
   const requestedLevel = body.difficulty ?? body.level;
   const rawYearGroup = typeof body.yearGroup === "string" ? body.yearGroup : "Year 1";

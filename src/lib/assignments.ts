@@ -1,7 +1,19 @@
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
 import { evaluateStudentAssignmentAccess, type SchoolLicenceBlockedReason } from "@/lib/schools/licensing";
-import { ageGroupForYearGroup, keyStageForYearGroup, shouldApplyExamBoardTag } from "@/lib/curriculum";
+import {
+  ageGroupForYearGroup,
+  deriveAgeRangeFromCurriculumTags,
+  keyStageForYearGroup,
+  mapSubjectToLegacyContentType,
+  normalizeKeyStage,
+  parseYearGroupRange,
+  normalizeSubject as normalizeCurriculumSubject,
+  normalizeYearGroup,
+  parseAgeGroupRange,
+  yearGroupToOrdinal,
+  shouldApplyExamBoardTag,
+} from "@/lib/curriculum";
 import { readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 import { extractLearningDnaFromProfileJson } from "@/lib/learning_dna";
 
@@ -67,11 +79,13 @@ function parseContentMetadata(raw: string | null | undefined): {
   curriculumPathway: string | null;
   examBoard: string | null;
   ageGroup: string | null;
+  yearGroup: string | null;
+  keyStage: string | null;
   topic: string | null;
   skillFocus: string | null;
   schoolId: string | null;
 } {
-  if (!raw) return { subject: null, curriculumPathway: null, examBoard: null, ageGroup: null, topic: null, skillFocus: null, schoolId: null };
+  if (!raw) return { subject: null, curriculumPathway: null, examBoard: null, ageGroup: null, yearGroup: null, keyStage: null, topic: null, skillFocus: null, schoolId: null };
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
@@ -79,27 +93,19 @@ function parseContentMetadata(raw: string | null | undefined): {
       curriculumPathway: typeof parsed.curriculumPathway === "string" ? parsed.curriculumPathway : null,
       examBoard: typeof parsed.examBoard === "string" ? parsed.examBoard : null,
       ageGroup: typeof parsed.ageGroup === "string" ? parsed.ageGroup : null,
+      yearGroup: typeof parsed.yearGroup === "string" ? parsed.yearGroup : null,
+      keyStage: typeof parsed.keyStage === "string" ? parsed.keyStage : null,
       topic: typeof parsed.topic === "string" ? parsed.topic : null,
       skillFocus: typeof parsed.skillFocus === "string" ? parsed.skillFocus : null,
       schoolId: typeof parsed.schoolId === "string" ? parsed.schoolId : null,
     };
   } catch {
-    return { subject: null, curriculumPathway: null, examBoard: null, ageGroup: null, topic: null, skillFocus: null, schoolId: null };
+    return { subject: null, curriculumPathway: null, examBoard: null, ageGroup: null, yearGroup: null, keyStage: null, topic: null, skillFocus: null, schoolId: null };
   }
 }
 
-function normalizeSubject(value: string | null | undefined): string {
+function normalizeText(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
-}
-
-function parseAgeGroupRange(ageGroup: string | null | undefined): { min: number; max: number } | null {
-  if (!ageGroup) return null;
-  const match = ageGroup.match(/(\d{1,2})\s*[\u2013\-]\s*(\d{1,2})/);
-  if (!match) return null;
-  const min = Number(match[1]);
-  const max = Number(match[2]);
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-  return { min, max };
 }
 
 function isValidContentJson(contentJson: string): boolean {
@@ -119,12 +125,12 @@ function deriveLearningDnaWeakSignals(aiLearningProfileJson: string | null | und
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([key]) => key.split(":")[1] ?? "")
-    .map((value) => normalizeSubject(value))
+    .map((value) => normalizeText(value))
     .filter(Boolean);
 
   const fromSubjectState = Object.entries(snapshot.subjectStates)
     .filter(([, state]) => state.attempts >= 4 && state.accuracy < 70)
-    .map(([subject]) => normalizeSubject(subject));
+    .map(([subject]) => normalizeText(subject));
 
   return Array.from(new Set([...fromMistakes, ...fromSubjectState])).slice(0, 10);
 }
@@ -199,23 +205,30 @@ export async function getAssignmentSafetyAndRecommendation(input: {
   }
 
   const parsedMeta = parseContentMetadata(content.metadataJson);
-  const contentSubject = normalizeSubject(parsedMeta.subject) || "unknown";
-  const contentYearGroup = content.yearGroup ?? null;
-  const contentKeyStage = content.keyStage ?? null;
+  const contentSubject = normalizeCurriculumSubject(parsedMeta.subject) ?? "unknown";
+  const contentYearGroup = content.yearGroup ?? parsedMeta.yearGroup ?? null;
+  const contentYearRange = parseYearGroupRange(contentYearGroup)
+    ?? parseYearGroupRange(parsedMeta.keyStage)
+    ?? parseYearGroupRange(parsedMeta.ageGroup)
+    ?? parseYearGroupRange(parsedMeta.curriculumPathway);
+  const normalizedContentYearGroup = normalizeYearGroup(contentYearGroup) ?? contentYearRange?.min ?? null;
+  const rawContentKeyStage = content.keyStage ?? parsedMeta.keyStage ?? null;
+  const normalizedContentKeyStage = normalizeKeyStage(rawContentKeyStage) ?? (normalizedContentYearGroup ? keyStageForYearGroup(normalizedContentYearGroup) : null);
   const contentPathway = parsedMeta.curriculumPathway ?? null;
   const contentExamBoard = parsedMeta.examBoard ?? null;
-  const contentAgeGroup = parsedMeta.ageGroup ?? (contentYearGroup ? ageGroupForYearGroup(contentYearGroup) : null);
-  const studentKeyStage = student.studentProfile?.keyStageLevel || (student.yearGroup ? keyStageForYearGroup(student.yearGroup) : null);
+  const contentAgeGroup = parsedMeta.ageGroup ?? contentYearGroup ?? rawContentKeyStage ?? (normalizedContentYearGroup ? ageGroupForYearGroup(normalizedContentYearGroup) : null);
+  const studentYearGroup = normalizeYearGroup(student.yearGroup);
+  const studentKeyStage = normalizeKeyStage(student.studentProfile?.keyStageLevel) ?? (studentYearGroup ? keyStageForYearGroup(studentYearGroup) : null);
   const studentCurriculum = readStudentCurriculumProfile({
-    yearGroup: student.yearGroup,
+    yearGroup: studentYearGroup,
     keyStageLevel: studentKeyStage,
     aiLearningProfileJson: student.studentProfile?.aiLearningProfileJson ?? null,
   });
   const studentSchoolIds = student.schoolLinks.map((link) => link.schoolId);
   const meta: AssignmentSafetyMeta = {
     subject: contentSubject,
-    yearGroup: contentYearGroup,
-    keyStage: contentKeyStage,
+    yearGroup: normalizedContentYearGroup,
+    keyStage: normalizedContentKeyStage,
     curriculumPathway: contentPathway,
     examBoard: contentExamBoard,
     ageGroup: contentAgeGroup,
@@ -224,6 +237,17 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     status: content.status,
     schoolId: parsedMeta.schoolId,
   };
+
+  if (contentSubject !== "unknown") {
+    const inferredLegacyType = mapSubjectToLegacyContentType(contentSubject);
+    if (inferredLegacyType && inferredLegacyType !== content.contentType) {
+      return {
+        safe: false,
+        reason: `Content subject/type mismatch detected (${contentSubject} vs ${content.contentType}).`,
+        meta,
+      };
+    }
+  }
 
   if (!["reviewed", "published"].includes(content.status)) {
     return { safe: false, reason: "Only Reviewed or Published content can be assigned.", meta };
@@ -241,27 +265,36 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     return { safe: false, reason: "Student has no active school context for this school-scoped content.", meta };
   }
 
-  if (contentYearGroup && student.yearGroup && contentYearGroup !== student.yearGroup) {
+  const studentYearOrdinal = yearGroupToOrdinal(studentYearGroup);
+  if (contentYearRange && studentYearOrdinal !== null && (studentYearOrdinal < contentYearRange.minOrdinal || studentYearOrdinal > contentYearRange.maxOrdinal)) {
     return {
       safe: false,
-      reason: `This content is for ${contentYearGroup} / ${contentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
+      reason: `This content is for ${contentYearRange.min}${contentYearRange.min !== contentYearRange.max ? `-${contentYearRange.max}` : ""} / ${normalizedContentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
       meta,
     };
   }
 
-  if (contentKeyStage && studentKeyStage && contentKeyStage !== studentKeyStage) {
+  if (!contentYearRange && normalizedContentYearGroup && studentYearGroup && normalizedContentYearGroup !== studentYearGroup) {
     return {
       safe: false,
-      reason: `This content is for ${contentYearGroup ?? "specific year"} / ${contentKeyStage} and cannot be assigned to this student.`,
+      reason: `This content is for ${normalizedContentYearGroup} / ${normalizedContentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
+      meta,
+    };
+  }
+
+  if (normalizedContentKeyStage && studentKeyStage && normalizedContentKeyStage !== studentKeyStage) {
+    return {
+      safe: false,
+      reason: `This content is for ${normalizedContentYearGroup ?? "specific year"} / ${normalizedContentKeyStage} and cannot be assigned to this student.`,
       meta,
     };
   }
 
   const shouldCheckExamBoard = shouldApplyExamBoardTag({
-    yearGroup: contentYearGroup,
-    keyStage: contentKeyStage,
+    yearGroup: normalizedContentYearGroup,
+    keyStage: normalizedContentKeyStage,
     curriculumPathway: contentPathway,
-    subject: parsedMeta.subject ?? content.contentType,
+    subject: contentSubject,
   });
   if (shouldCheckExamBoard && contentExamBoard && studentCurriculum.examBoard && contentExamBoard !== studentCurriculum.examBoard) {
     return {
@@ -271,17 +304,17 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     };
   }
 
-  const strictAgeRange = parseAgeGroupRange(contentAgeGroup);
+  const strictAgeRange = parseAgeGroupRange(contentAgeGroup) ?? deriveAgeRangeFromCurriculumTags(contentAgeGroup);
   if (strictAgeRange && typeof student.age === "number" && (student.age < strictAgeRange.min || student.age > strictAgeRange.max)) {
     return { safe: false, reason: `This content is designed for age group ${contentAgeGroup}.`, meta };
   }
 
-  const studentSubjectFocus = normalizeSubject(student.studentProfile?.subjectFocus);
+  const studentSubjectFocus = normalizeText(student.studentProfile?.subjectFocus);
   const learningDnaSignals = deriveLearningDnaWeakSignals(student.studentProfile?.aiLearningProfileJson ?? null);
-  const contentSkillFocus = normalizeSubject(meta.skillFocus);
-  const contentTopic = normalizeSubject(meta.topic);
+  const contentSkillFocus = normalizeText(meta.skillFocus);
+  const contentTopic = normalizeText(meta.topic);
   const matchedWeakAreas = student.weakAreas
-    .map((area) => normalizeSubject(area.skillFocus))
+    .map((area) => normalizeText(area.skillFocus))
     .filter((skill) => {
       if (!skill) return false;
       const hasNeedle = Boolean(contentSkillFocus) || Boolean(contentTopic);

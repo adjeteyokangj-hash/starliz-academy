@@ -88,3 +88,23 @@ Then rerun smoke checks.
 - Assigned a fresh task to smoke learner and completed it via student flow.
 - Verified Admin Assignments shows `completed` for the fresh assignment.
 - Verified `completedAt` is populated and visible in admin UI.
+
+### 2026-05-16: Assignment duplicate handling close-out proof
+
+- Commit hash: `f9df9d0` (baseline validated before this proof append).
+- Production URL tested: `https://www.starlizacademy.com/admin/assignments` and `https://www.starlizacademy.com/games/lesson?assignmentId=cmp8k2he1007xi6041d4nsi8z`.
+- Test student used: `Smoke Learner`.
+- Content subject/year tested: `Year 4 Maths` (current live smoke lane).
+- Blocked mismatch examples: `Subject/type mismatch`, `Year mismatch`, `Key stage mismatch`, `Age mismatch`, `School mismatch`, `Exam board mismatch`.
+- Duplicate detection proof:
+  - Local gating blocks existing recipients with `Duplicate assignment`.
+  - API duplicate-only blocked path supports resend flow (`allDuplicates` + resend handling).
+  - Unit proof: `tests/assignment_duplicate_flow.test.ts` covers duplicate and non-duplicate candidate handling.
+- Lint/test results:
+  - `npm run lint -- --max-warnings=0`: PASS.
+  - `npx tsx --test tests/assignment_duplicate_flow.test.ts`: PASS (10/10 after assertion fix).
+  - `npx tsc --noEmit`: FAIL (existing `node:sqlite` typing issue in e2e tests, outside this close-out scope).
+- Final `git status --short` clean: confirmed after commit and push for this close-out.
+
+Next priority:
+- Execute live smoke tests for `Science` and `English` content flows in production (not only Year 4 Maths), and append proof with URLs, student, subject/year pairs, and outcomes.

@@ -1,4 +1,16 @@
-import { ageGroupForYearGroup, keyStageForYearGroup, shouldApplyExamBoardTag } from "@/lib/curriculum";
+import {
+  ageGroupForYearGroup,
+  deriveAgeRangeFromCurriculumTags,
+  keyStageForYearGroup,
+  mapSubjectToLegacyContentType,
+  normalizeKeyStage,
+  normalizeSubject,
+  parseYearGroupRange,
+  normalizeYearGroup,
+  parseAgeGroupRange,
+  yearGroupToOrdinal,
+  shouldApplyExamBoardTag,
+} from "@/lib/curriculum";
 import type { ContentItem, ContentMeta, ContentSummary, StudentAssignmentCandidate, StudentOption } from "./types";
 
 export function normalizeText(value: string | null | undefined): string {
@@ -46,9 +58,15 @@ export function getContentMeta(item: ContentItem): ContentMeta {
       ? metadata.name
       : item.topic || `${item.contentType} practice`;
   const subjectRaw = typeof metadata.subject === "string" ? metadata.subject : item.contentType;
-  const subject = normalizeText(subjectRaw) || "unknown";
-  const keyStage = item.keyStage ?? (typeof metadata.keyStage === "string" ? metadata.keyStage : null);
-  const yearGroup = item.yearGroup ?? (typeof metadata.yearGroup === "string" ? metadata.yearGroup : null);
+  const subject = normalizeSubject(subjectRaw) ?? "unknown";
+  const rawYearGroup = item.yearGroup ?? (typeof metadata.yearGroup === "string" ? metadata.yearGroup : null);
+  const yearRange = parseYearGroupRange(rawYearGroup)
+    ?? parseYearGroupRange(typeof metadata.keyStage === "string" ? metadata.keyStage : null)
+    ?? parseYearGroupRange(typeof metadata.ageGroup === "string" ? metadata.ageGroup : null)
+    ?? parseYearGroupRange(typeof metadata.curriculumPathway === "string" ? metadata.curriculumPathway : null);
+  const yearGroup = normalizeYearGroup(rawYearGroup) ?? yearRange?.min ?? null;
+  const rawKeyStage = item.keyStage ?? (typeof metadata.keyStage === "string" ? metadata.keyStage : null);
+  const keyStage = normalizeKeyStage(rawKeyStage) ?? (yearGroup ? keyStageForYearGroup(yearGroup) : null);
   const curriculumPathway = typeof metadata.curriculumPathway === "string" ? metadata.curriculumPathway : null;
   const examBoard = typeof metadata.examBoard === "string" ? metadata.examBoard : null;
   const ageGroup = typeof metadata.ageGroup === "string"
@@ -71,22 +89,12 @@ export function getContentMeta(item: ContentItem): ContentMeta {
   };
 }
 
-function parseAgeGroupRange(ageGroup: string | null | undefined): { min: number; max: number } | null {
-  if (!ageGroup) return null;
-  const match = ageGroup.match(/(\d{1,2})\s*[\u2013\-]\s*(\d{1,2})/);
-  if (!match) return null;
-  const min = Number(match[1]);
-  const max = Number(match[2]);
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-  return { min, max };
-}
-
 export function evaluateAssignmentCandidate(item: ContentItem, student: StudentOption, localDuplicates: Set<string>): StudentAssignmentCandidate {
   const summary = getContentJsonSummary(item.contentJson);
   const meta = getContentMeta(item);
-  const studentYear = student.yearGroup ?? null;
-  const studentKeyStage = student.keyStageLevel || (studentYear ? keyStageForYearGroup(studentYear) : null);
-  const strictAgeRange = parseAgeGroupRange(meta.ageGroup);
+  const studentYear = normalizeYearGroup(student.yearGroup ?? null);
+  const studentKeyStage = normalizeKeyStage(student.keyStageLevel) ?? (studentYear ? keyStageForYearGroup(studentYear) : null);
+  const strictAgeRange = parseAgeGroupRange(meta.ageGroup) ?? deriveAgeRangeFromCurriculumTags(meta.ageGroup);
   const studentSchoolIds = student.schoolIds ?? [];
   const shouldCheckExamBoard = shouldApplyExamBoardTag({
     yearGroup: meta.yearGroup,
@@ -118,6 +126,21 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
       recommendationScore: 0,
     };
   }
+
+  if (meta.subject !== "unknown") {
+    const inferredLegacyType = mapSubjectToLegacyContentType(meta.subject);
+    if (inferredLegacyType && inferredLegacyType !== item.contentType) {
+      return {
+        student,
+        hardEligible: false,
+        hardBlockReason: "Subject/type mismatch",
+        recommendationLevel: "eligible_manual",
+        recommendationReason: "Blocked by hard safety checks.",
+        matchedWeakAreas: [],
+        recommendationScore: 0,
+      };
+    }
+  }
   if (!summary.valid) {
     return {
       student,
@@ -129,7 +152,24 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
       recommendationScore: 0,
     };
   }
-  if (meta.yearGroup && studentYear && meta.yearGroup !== studentYear) {
+  const contentYearRange = parseYearGroupRange(meta.yearGroup)
+    ?? parseYearGroupRange(meta.keyStage)
+    ?? parseYearGroupRange(meta.ageGroup)
+    ?? parseYearGroupRange(meta.curriculumPathway);
+  const studentYearOrdinal = yearGroupToOrdinal(studentYear);
+  if (contentYearRange && studentYearOrdinal !== null && (studentYearOrdinal < contentYearRange.minOrdinal || studentYearOrdinal > contentYearRange.maxOrdinal)) {
+    return {
+      student,
+      hardEligible: false,
+      hardBlockReason: "Year mismatch",
+      recommendationLevel: "eligible_manual",
+      recommendationReason: "Blocked by hard safety checks.",
+      matchedWeakAreas: [],
+      recommendationScore: 0,
+    };
+  }
+
+  if (!contentYearRange && meta.yearGroup && studentYear && meta.yearGroup !== studentYear) {
     return {
       student,
       hardEligible: false,

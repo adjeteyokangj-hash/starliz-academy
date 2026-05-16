@@ -23,15 +23,143 @@ export type KeyStage = (typeof KEY_STAGES)[number];
 export type CurriculumPathway = (typeof CURRICULUM_PATHWAYS)[number];
 export type ExamBoard = (typeof EXAM_BOARDS)[number];
 
+export type LegacyContentType = "spelling" | "math" | "reading" | "science";
+
+const YEAR_GROUP_ORDINAL: Record<YearGroup, number> = {
+  "Reception": 0,
+  "Year 1": 1,
+  "Year 2": 2,
+  "Year 3": 3,
+  "Year 4": 4,
+  "Year 5": 5,
+  "Year 6": 6,
+  "Year 7": 7,
+  "Year 8": 8,
+  "Year 9": 9,
+  "Year 10": 10,
+  "Year 11": 11,
+};
+
+const ORDINAL_TO_YEAR_GROUP: Record<number, YearGroup> = {
+  0: "Reception",
+  1: "Year 1",
+  2: "Year 2",
+  3: "Year 3",
+  4: "Year 4",
+  5: "Year 5",
+  6: "Year 6",
+  7: "Year 7",
+  8: "Year 8",
+  9: "Year 9",
+  10: "Year 10",
+  11: "Year 11",
+};
+
+export type YearGroupRange = {
+  min: YearGroup;
+  max: YearGroup;
+  minOrdinal: number;
+  maxOrdinal: number;
+};
+
+export function yearGroupToOrdinal(value: string | null | undefined): number | null {
+  const normalized = normalizeYearGroup(value);
+  if (!normalized) return null;
+  return YEAR_GROUP_ORDINAL[normalized] ?? null;
+}
+
+function ordinalToYearGroup(value: number): YearGroup | null {
+  return ORDINAL_TO_YEAR_GROUP[value] ?? null;
+}
+
+function keyStageToYearRange(value: KeyStage): YearGroupRange {
+  switch (value) {
+    case "EYFS":
+      return { min: "Reception", max: "Reception", minOrdinal: 0, maxOrdinal: 0 };
+    case "KS1":
+      return { min: "Year 1", max: "Year 2", minOrdinal: 1, maxOrdinal: 2 };
+    case "KS2":
+      return { min: "Year 3", max: "Year 6", minOrdinal: 3, maxOrdinal: 6 };
+    case "KS3":
+      return { min: "Year 7", max: "Year 9", minOrdinal: 7, maxOrdinal: 9 };
+    case "KS4":
+      return { min: "Year 10", max: "Year 11", minOrdinal: 10, maxOrdinal: 11 };
+  }
+}
+
+export function parseYearGroupRange(value: string | null | undefined): YearGroupRange | null {
+  if (!value) return null;
+
+  const direct = normalizeYearGroup(value);
+  if (direct) {
+    const ordinal = YEAR_GROUP_ORDINAL[direct];
+    return { min: direct, max: direct, minOrdinal: ordinal, maxOrdinal: ordinal };
+  }
+
+  const compact = value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (compact === "eyfs") return keyStageToYearRange("EYFS");
+  if (compact === "ks1" || compact === "keystage1") return keyStageToYearRange("KS1");
+  if (compact === "ks2" || compact === "keystage2") return keyStageToYearRange("KS2");
+  if (compact === "ks3" || compact === "keystage3") return keyStageToYearRange("KS3");
+  if (compact === "ks4" || compact === "keystage4" || compact === "gcse") return keyStageToYearRange("KS4");
+
+  const cleaned = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2012\u2013\u2014\u2015]/g, "-")
+    .replace(/\s+to\s+/g, "-")
+    .replace(/\band\b/g, "-")
+    .replace(/\//g, "-")
+    .replace(/\s+/g, " ");
+
+  const match = cleaned.match(/(?:year|y)?\s*(\d{1,2})(?:\s*-\s*(?:year|y)?\s*(\d{1,2}))?/i);
+  if (!match) return null;
+
+  const first = Number(match[1]);
+  const second = Number(match[2] ?? match[1]);
+  if (!Number.isFinite(first) || !Number.isFinite(second)) return null;
+  if (first < 1 || first > 11 || second < 1 || second > 11) return null;
+
+  const minOrdinal = Math.min(first, second);
+  const maxOrdinal = Math.max(first, second);
+  const min = ordinalToYearGroup(minOrdinal);
+  const max = ordinalToYearGroup(maxOrdinal);
+  if (!min || !max) return null;
+
+  return { min, max, minOrdinal, maxOrdinal };
+}
+
 export function normalizeYearGroup(value: string | null | undefined): YearGroup | null {
   if (!value) return null;
   const cleaned = value.trim().toLowerCase();
-  if (cleaned === "reception") return "Reception";
-  const yearMatch = cleaned.match(/^year\s*(\d{1,2})$/);
+  if (cleaned === "reception" || cleaned === "eyfs") return "Reception";
+
+  const compact = cleaned.replace(/[^a-z0-9]/g, "");
+  const yearMatch = compact.match(/^(?:year|y)?(\d{1,2})$/);
   if (!yearMatch) return null;
+
   const yearNumber = Number(yearMatch[1]);
   if (!Number.isFinite(yearNumber) || yearNumber < 1 || yearNumber > 11) return null;
   return `Year ${yearNumber}` as YearGroup;
+}
+
+export function normalizeKeyStage(value: string | null | undefined): KeyStage | null {
+  if (!value) return null;
+  const compact = value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (compact === "eyfs") return "EYFS";
+  if (compact === "ks1" || compact === "keystage1") return "KS1";
+  if (compact === "ks2" || compact === "keystage2") return "KS2";
+  if (compact === "ks3" || compact === "keystage3") return "KS3";
+  if (compact === "ks4" || compact === "keystage4" || compact === "gcse") return "KS4";
+
+  const range = parseYearGroupRange(value);
+  if (!range) return null;
+  const minStage = keyStageForYearGroup(range.min);
+  const maxStage = keyStageForYearGroup(range.max);
+  if (minStage === maxStage) return minStage;
+
+  if (range.minOrdinal >= 10 && range.maxOrdinal <= 11) return "KS4";
+  return null;
 }
 
 export function keyStageForYearGroup(yearGroup: string | null | undefined): KeyStage {
@@ -44,8 +172,61 @@ export function keyStageForYearGroup(yearGroup: string | null | undefined): KeyS
   return "KS4";
 }
 
+export function parseAgeGroupRange(ageGroup: string | null | undefined): { min: number; max: number } | null {
+  if (!ageGroup) return null;
+  const cleaned = ageGroup
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2012\u2013\u2014\u2015]/g, "-")
+    .replace(/\s+to\s+/g, "-")
+    .replace(/\//g, "-")
+    .replace(/\s+/g, " ");
+  if (/\byear\b|\bks\d\b|\bgcse\b/.test(cleaned)) return null;
+  const match = cleaned.match(/(?:ages?\s*)?(\d{1,2})\s*-\s*(\d{1,2})(?:\s*(?:years?|yrs?))?/);
+  if (!match) return null;
+  const min = Number(match[1]);
+  const max = Number(match[2]);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  if (min < 3 || max > 19 || min > max) return null;
+  return { min, max };
+}
+
+function inferAgeRangeFromKeyStage(value: KeyStage): { min: number; max: number } {
+  switch (value) {
+    case "EYFS":
+      return { min: 4, max: 5 };
+    case "KS1":
+      return { min: 5, max: 7 };
+    case "KS2":
+      return { min: 7, max: 11 };
+    case "KS3":
+      return { min: 11, max: 14 };
+    case "KS4":
+      return { min: 14, max: 16 };
+  }
+}
+
+export function deriveAgeRangeFromCurriculumTags(value: string | null | undefined): { min: number; max: number } | null {
+  if (!value) return null;
+
+  const explicit = parseAgeGroupRange(value);
+  if (explicit) return explicit;
+
+  const stage = normalizeKeyStage(value);
+  if (stage) return inferAgeRangeFromKeyStage(stage);
+
+  const yearRange = parseYearGroupRange(value);
+  if (!yearRange) return null;
+
+  const minAge = Number(ageGroupForYearGroup(yearRange.min).split(/[\u2012\u2013\u2014\u2015-]/)[0]);
+  const maxAge = Number(ageGroupForYearGroup(yearRange.max).split(/[\u2012\u2013\u2014\u2015-]/)[1]);
+  if (!Number.isFinite(minAge) || !Number.isFinite(maxAge)) return null;
+  return { min: minAge, max: maxAge };
+}
+
 export function yearGroupsForKeyStage(keyStage: string | null | undefined): YearGroup[] {
-  switch (keyStage) {
+  const normalized = normalizeKeyStage(keyStage);
+  switch (normalized) {
     case "EYFS":
       return ["Reception"];
     case "KS1":
@@ -99,9 +280,10 @@ export function shouldApplyExamBoardTag(input: {
   subject?: string | null;
 }): boolean {
   const pathway = normalizeCurriculumPathway(input.curriculumPathway);
-  const subject = (input.subject ?? "").trim().toLowerCase();
+  const keyStage = normalizeKeyStage(input.keyStage);
+  const subject = normalizeSubject(input.subject) ?? (input.subject ?? "").trim().toLowerCase();
   return isGcseYearGroup(input.yearGroup)
-    || (input.keyStage ?? "").toUpperCase() === "KS4"
+    || keyStage === "KS4"
     || pathway === "gcse"
     || subject.startsWith("gcse-");
 }
@@ -165,6 +347,61 @@ export function ageGroupForYearGroup(yearGroup: string | null | undefined): AgeG
 
 // Subject types
 export type Subject = "phonics" | "spelling" | "reading" | "writing" | "grammar" | "punctuation" | "vocabulary" | "maths" | "times-tables" | "science" | "english-literature" | "english-language" | "sats-practice" | "11-plus-practice" | "gcse-english" | "gcse-maths" | "gcse-science";
+
+export function normalizeSubject(value: string | null | undefined): Subject | null {
+  if (!value) return null;
+  const cleaned = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (Object.prototype.hasOwnProperty.call(GENERATION_CONTENT_TYPE_BY_SUBJECT, cleaned)) {
+    return cleaned as Subject;
+  }
+
+  const aliasMap: Record<string, Subject> = {
+    math: "maths",
+    mathematics: "maths",
+    algebra: "maths",
+    english: "english-language",
+    literature: "english-literature",
+    lang: "english-language",
+    "english-lang": "english-language",
+    "english-lit": "english-literature",
+    "gcse-math": "gcse-maths",
+    "gcse-maths": "gcse-maths",
+    "gcse-english-language": "gcse-english",
+    "gcse-english-literature": "gcse-english",
+    "gcse-biology": "gcse-science",
+    "gcse-chemistry": "gcse-science",
+    "gcse-physics": "gcse-science",
+  };
+  const directAlias = aliasMap[cleaned];
+  if (directAlias) return directAlias;
+
+  if (cleaned.includes("gcse") && cleaned.includes("science")) return "gcse-science";
+  if (cleaned.includes("gcse") && (cleaned.includes("math") || cleaned.includes("algebra") || cleaned.includes("geometry"))) return "gcse-maths";
+  if (cleaned.includes("gcse") && cleaned.includes("english")) return "gcse-english";
+  if (cleaned.includes("science")) return "science";
+  if (cleaned.includes("times") && cleaned.includes("table")) return "times-tables";
+  if (cleaned.includes("math") || cleaned.includes("algebra") || cleaned.includes("geometry") || cleaned.includes("arithmetic")) return "maths";
+  if (cleaned.includes("english") && cleaned.includes("literature")) return "english-literature";
+  if (cleaned.includes("english") && cleaned.includes("language")) return "english-language";
+  if (cleaned.includes("english")) return "english-language";
+  if (cleaned.includes("reading")) return "reading";
+  if (cleaned.includes("spelling")) return "spelling";
+  if (cleaned.includes("phonics")) return "phonics";
+  if (cleaned.includes("grammar")) return "grammar";
+  if (cleaned.includes("punctuation")) return "punctuation";
+  if (cleaned.includes("vocabulary")) return "vocabulary";
+  if (cleaned.includes("writing")) return "writing";
+  return null;
+}
+
+export function mapSubjectToLegacyContentType(subject: string | null | undefined): LegacyContentType | null {
+  const normalized = normalizeSubject(subject);
+  if (!normalized) return null;
+  if (normalized === "science" || normalized === "gcse-science") return "science";
+  if (normalized === "maths" || normalized === "times-tables" || normalized === "gcse-maths" || normalized === "sats-practice" || normalized === "11-plus-practice") return "math";
+  if (normalized === "reading" || normalized === "vocabulary" || normalized === "english-language" || normalized === "english-literature" || normalized === "gcse-english") return "reading";
+  return "spelling";
+}
 
 export type GenerationType =
   | "phonics"

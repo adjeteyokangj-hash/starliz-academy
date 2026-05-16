@@ -7,26 +7,15 @@ import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import {
   GCSE_EXAM_BOARD_WARNING,
   GENERATION_CONTENT_TYPE_BY_SUBJECT,
+  mapSubjectToLegacyContentType,
   normalizeExamBoard,
+  normalizeSubject,
   shouldApplyExamBoardTag,
   type Subject,
 } from "@/lib/curriculum";
 
-// Maps new 17-subject system to legacy 3-type system for backward compatibility
-function mapSubjectToLegacy(subject: string): "spelling" | "math" | "reading" | "science" {
-  const s = String(subject).toLowerCase();
-  if (s === "phonics" || s === "spelling") return "spelling";
-  if (s === "times-tables" || s === "maths") return "math";
-  if (s === "reading" || s === "vocabulary" || s === "english-language" ||
-      s === "english-literature" || s === "gcse-english") return "reading";
-  if (s === "writing" || s === "grammar" || s === "punctuation") return "spelling";
-  if (s === "science" || s === "gcse-science") return "science";
-  if (s === "gcse-maths" || s === "sats-practice" || s === "11-plus-practice") return "math";
-  return "spelling";
-}
-
-function mapSubjectToGenerationType(subject: string): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" {
-  const mapped = GENERATION_CONTENT_TYPE_BY_SUBJECT[String(subject).toLowerCase() as Subject];
+function mapSubjectToGenerationType(subject: Subject): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" {
+  const mapped = GENERATION_CONTENT_TYPE_BY_SUBJECT[subject];
   if (mapped === "phonics") return "phonics";
   if (mapped === "spelling") return "spelling";
   if (mapped === "punctuation") return "punctuation";
@@ -146,20 +135,34 @@ export async function POST(req: Request) {
   try {
     const body = saveContentSchema.parse(await req.json());
     
-    // Map new Subject type to legacy type for validation and storage
-    const legacyType = mapSubjectToLegacy(body.type);
-    const generationType = mapSubjectToGenerationType(body.type);
+    const normalizedSubject = normalizeSubject(body.type);
+    if (!normalizedSubject) {
+      return NextResponse.json(
+        { error: `Unsupported subject type: ${body.type}` },
+        { status: 422 },
+      );
+    }
+
+    // Map explicit subject into legacy content type used by student routes.
+    const legacyType = mapSubjectToLegacyContentType(normalizedSubject);
+    if (!legacyType) {
+      return NextResponse.json(
+        { error: `Unable to map subject to content type: ${body.type}` },
+        { status: 422 },
+      );
+    }
+    const generationType = mapSubjectToGenerationType(normalizedSubject);
     const maxDifficulty = legacyType === "reading" ? 10 : 5;
     
     if (body.difficulty > maxDifficulty) {
       return NextResponse.json(
-        { error: `Difficulty must be between 1 and ${maxDifficulty} for ${body.type}.` },
+        { error: `Difficulty must be between 1 and ${maxDifficulty} for ${normalizedSubject}.` },
         { status: 422 },
       );
     }
     const status = body.status === "review" ? "reviewed" : body.status;
     const contentItems = attachSelectedMetadataToItems(extractGeneratedItems(body.items), {
-      subject: body.type,
+      subject: normalizedSubject,
       yearGroup: body.yearGroup,
       keyStage: body.keyStage,
       curriculumPathway: body.curriculumPathway,
@@ -183,7 +186,7 @@ export async function POST(req: Request) {
       yearGroup: body.yearGroup,
       keyStage: body.keyStage,
       curriculumPathway: body.curriculumPathway,
-      subject: body.type,
+      subject: normalizedSubject,
     });
     const normalizedExamBoard = shouldTagExamBoard ? normalizeExamBoard(body.examBoard) : null;
     const warnings: string[] = [];
@@ -212,7 +215,7 @@ export async function POST(req: Request) {
           ageGroup: body.ageGroup,
           source: "ai-generator",
           version: 2,
-          subject: body.type,
+          subject: normalizedSubject,
           legacyType: legacyType,
           generationType,
           itemSchema: body.itemSchema ?? generationType,
@@ -237,7 +240,7 @@ export async function POST(req: Request) {
       entityType: "AIContentCache",
       entityId: item.id,
       metadata: {
-        subject: body.type,
+        subject: normalizedSubject,
         legacyType,
         generationType,
         status,
