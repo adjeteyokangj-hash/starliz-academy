@@ -11,8 +11,10 @@ import RewardToast from "@/components/rewards/RewardToast";
 import AITutorFeedback from "@/components/tutor/AITutorFeedback";
 import GameSuccessBurst from "@/components/game/GameSuccessBurst";
 import ContentMismatchFallback from "@/components/ContentMismatchFallback";
+import StudentContextStrip from "@/components/student/StudentContextStrip";
 import { getReadingPassages, type ReadingPassage } from "@/lib/adaptive";
 import { validateContentItem } from "@/lib/content_validator";
+import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
 import { applyReadingFluencyAssessment, levelFromXp, processReadingAttempt } from "@/lib/progress";
 import { ChildProfile, getProfile, hydrateActiveProfileFromServer, saveProfile, resolveCoachingPace } from "@/lib/store";
 import { beginStudentTurn, endStudentTurn, getVoiceReaction, speakEncouragement, speakProfileFeedback, speakWithContext, stopVoicePlayback } from "@/lib/voice";
@@ -258,6 +260,7 @@ export default function ReadingJourneyPage() {
   const assignedAssignmentId = searchParams.get("assignmentId") ?? undefined;
   const requestedMode = searchParams.get("mode");
   const [profile, setProfile] = useState<ChildProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const profileId = profile?.id ?? null;
   const [sessionQuestions, setSessionQuestions] = useState<ReadingPassage[]>([]);
   const [sessionIndex, setSessionIndex] = useState(0);
@@ -309,6 +312,7 @@ export default function ReadingJourneyPage() {
     void hydrateActiveProfileFromServer().then((serverProfile) => {
       const p = serverProfile ?? getProfile();
       if (!p) {
+        setProfileLoading(false);
         router.replace("/onboarding");
         return;
       }
@@ -317,9 +321,25 @@ export default function ReadingJourneyPage() {
       setReadingVoiceEnabled(usageUpdated.settings.voiceEnabled);
       setSessionStartStats({ stars: usageUpdated.stars, xp: usageUpdated.xp, coins: usageUpdated.coins });
       void hydrateCoachingMemoryFromServer(p.id);
+      setProfileLoading(false);
+    }).catch(() => {
+      setProfileLoading(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const profileYearGroup = profile?.yearGroup?.trim() || undefined;
+  const profileContext = useMemo(() => {
+    if (!profile) return null;
+    const yearGroup = profileYearGroup;
+    return {
+      studentName: profile.name,
+      ageGroup: yearGroup ? ageGroupForYearGroup(yearGroup) : undefined,
+      yearGroup,
+      keyStage: profile.keyStageLevel?.trim() || (yearGroup ? keyStageForYearGroup(yearGroup) : undefined),
+      curriculum: "National Curriculum UK",
+    };
+  }, [profile, profileYearGroup]);
 
   useEffect(() => {
     if (!profileId) return;
@@ -1093,7 +1113,35 @@ export default function ReadingJourneyPage() {
     }
   }
 
-  if (!profile) return <main className="min-h-screen bg-background" />;
+  if (profileLoading) {
+    return (
+      <PremiumAccessGate>
+        <>
+          <Navbar />
+          <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+            <section className="mx-auto flex min-h-[50vh] max-w-6xl items-center justify-center px-4 py-8">
+              <p className="text-lg font-semibold text-slate-500">Loading your learning profile...</p>
+            </section>
+          </main>
+        </>
+      </PremiumAccessGate>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <PremiumAccessGate>
+        <>
+          <Navbar />
+          <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+            <section className="mx-auto flex min-h-[50vh] max-w-6xl items-center justify-center px-4 py-8">
+              <p className="text-lg font-semibold text-rose-600">Unable to load your learning profile.</p>
+            </section>
+          </main>
+        </>
+      </PremiumAccessGate>
+    );
+  }
 
   if (item) {
     const contentValidation = validateContentItem(item as Record<string, unknown>, "reading");
@@ -1108,6 +1156,17 @@ export default function ReadingJourneyPage() {
         <>
           <Navbar />
           <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+          {profileContext ? (
+            <section className="mx-auto max-w-6xl px-4 pt-4 sm:pt-6">
+              <StudentContextStrip
+                studentName={profileContext.studentName}
+                ageGroup={profileContext.ageGroup}
+                yearGroup={profileContext.yearGroup}
+                keyStage={profileContext.keyStage}
+                curriculum={profileContext.curriculum}
+              />
+            </section>
+          ) : null}
           <section className="mx-auto flex min-h-[70vh] max-w-3xl items-center px-4 py-10">
             <div className="w-full rounded-3xl border border-rose-200 bg-white p-6 shadow-xl">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-rose-600">Content Load Error</p>
@@ -1131,6 +1190,17 @@ export default function ReadingJourneyPage() {
       <PremiumAccessGate>
         <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
           <Navbar />
+          {profileContext ? (
+            <section className="mx-auto max-w-6xl px-4 pt-4 sm:pt-6">
+              <StudentContextStrip
+                studentName={profileContext.studentName}
+                ageGroup={profileContext.ageGroup}
+                yearGroup={profileContext.yearGroup}
+                keyStage={profileContext.keyStage}
+                curriculum={profileContext.curriculum}
+              />
+            </section>
+          ) : null}
           <section className="mx-auto flex min-h-[70vh] max-w-3xl items-center px-4 py-10">
             <div className="w-full rounded-3xl border border-slate-200 bg-white p-6 shadow-xl">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-600">Preparing Session</p>
@@ -1148,6 +1218,17 @@ export default function ReadingJourneyPage() {
     <>
       <Navbar />
       <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+      {profileContext ? (
+        <section className="mx-auto max-w-6xl px-4 pt-4 sm:pt-6">
+          <StudentContextStrip
+            studentName={profileContext.studentName}
+            ageGroup={profileContext.ageGroup}
+            yearGroup={profileContext.yearGroup}
+            keyStage={profileContext.keyStage}
+            curriculum={profileContext.curriculum}
+          />
+        </section>
+      ) : null}
       <div className="relative overflow-hidden">
         <div className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-violet-200/50 blur-3xl" />
         <div className="pointer-events-none absolute right-0 top-20 h-80 w-80 rounded-full bg-cyan-200/40 blur-3xl" />

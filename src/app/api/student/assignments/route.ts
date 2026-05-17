@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
-import { taskHrefForContentType } from "@/lib/assignments";
+import { getAssignmentSafetyAndRecommendation, taskHrefForContentType } from "@/lib/assignments";
 import { mergeWeakAreas, parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { normalizeExamBoard } from "@/lib/curriculum";
 
@@ -15,15 +15,39 @@ function parseItems(contentJson: string): unknown[] {
   }
 }
 
-function parseContentMetadata(raw: string | null): { examBoard: string | null } {
-  if (!raw) return { examBoard: null };
+function parseContentMetadata(raw: string | null): {
+  examBoard: string | null;
+  yearGroup: string | null;
+  keyStage: string | null;
+  ageGroup: string | null;
+  subject: string | null;
+} {
+  if (!raw) {
+    return {
+      examBoard: null,
+      yearGroup: null,
+      keyStage: null,
+      ageGroup: null,
+      subject: null,
+    };
+  }
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
       examBoard: normalizeExamBoard(typeof parsed.examBoard === "string" ? parsed.examBoard : null),
+      yearGroup: typeof parsed.yearGroup === "string" ? parsed.yearGroup : null,
+      keyStage: typeof parsed.keyStage === "string" ? parsed.keyStage : null,
+      ageGroup: typeof parsed.ageGroup === "string" ? parsed.ageGroup : null,
+      subject: typeof parsed.subject === "string" ? parsed.subject : null,
     };
   } catch {
-    return { examBoard: null };
+    return {
+      examBoard: null,
+      yearGroup: null,
+      keyStage: null,
+      ageGroup: null,
+      subject: null,
+    };
   }
 }
 
@@ -57,6 +81,21 @@ export async function GET(request: Request) {
 
       if (!assignment) {
         return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
+      }
+
+      const safety = await getAssignmentSafetyAndRecommendation({
+        studentId,
+        contentId: assignment.contentId,
+      });
+      if (!safety.safe) {
+        return NextResponse.json(
+          {
+            error: "Assignment context mismatch.",
+            reason: safety.reason,
+            meta: safety.meta,
+          },
+          { status: 409 },
+        );
       }
 
       const items = parseItems(assignment.content.contentJson);
@@ -93,6 +132,16 @@ export async function GET(request: Request) {
           topic: assignment.content.topic,
           skillFocus: assignment.content.skillFocus,
           examBoard: contentMeta.examBoard,
+          yearGroup: assignment.content.yearGroup,
+          keyStage: assignment.content.keyStage,
+          ageGroup: contentMeta.ageGroup,
+          metadata: {
+            examBoard: contentMeta.examBoard,
+            yearGroup: contentMeta.yearGroup,
+            keyStage: contentMeta.keyStage,
+            ageGroup: contentMeta.ageGroup,
+            subject: contentMeta.subject,
+          },
           items,
         },
       });
@@ -128,6 +177,16 @@ export async function GET(request: Request) {
         skillFocus: assignment.content.skillFocus,
         difficulty: assignment.content.level,
         examBoard: contentMeta.examBoard,
+        yearGroup: assignment.content.yearGroup,
+        keyStage: assignment.content.keyStage,
+        ageGroup: contentMeta.ageGroup,
+        metadata: {
+          examBoard: contentMeta.examBoard,
+          yearGroup: contentMeta.yearGroup,
+          keyStage: contentMeta.keyStage,
+          ageGroup: contentMeta.ageGroup,
+          subject: contentMeta.subject,
+        },
         items: parseItems(assignment.content.contentJson),
         href: taskHrefForContentType(assignment.content.contentType, assignment.id),
         createdAt: assignment.createdAt.toISOString(),

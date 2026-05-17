@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
+import { getAssignmentSafetyAndRecommendation } from "@/lib/assignments";
 
 function toArray(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
@@ -62,6 +63,21 @@ export async function GET(request: Request) {
 
   if (!assignment) {
     return NextResponse.json({ error: "Assigned content not found." }, { status: 404 });
+  }
+
+  const safety = await getAssignmentSafetyAndRecommendation({
+    studentId: assignment.student.id,
+    contentId: assignment.contentId,
+  });
+  if (!safety.safe) {
+    return NextResponse.json(
+      {
+        error: "Assignment context mismatch.",
+        reason: safety.reason,
+        meta: safety.meta,
+      },
+      { status: 409 },
+    );
   }
 
   let parsed: unknown;

@@ -6,8 +6,10 @@ import Navbar from "@/components/layout/Navbar";
 import { SKILL_MAP } from "@/lib/skills";
 import { isInterventionEligibleSkill } from "@/lib/interventionMission";
 import { resolveDashboardTier } from "@/lib/dashboardResolver";
+import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
 import PrimaryDashboard from "@/components/student/PrimaryDashboard";
 import SecondaryDashboard from "@/components/student/SecondaryDashboard";
+import StudentContextStrip from "@/components/student/StudentContextStrip";
 
 type StudentAssignment = {
   id: string;
@@ -146,6 +148,7 @@ export default function StudentDashboardPage() {
   const [childName, setChildName] = useState("Learner");
   const [stats, setStats] = useState({ stars: 0, xp: 0, coins: 0, streak: 0 });
   const [dashboardTier, setDashboardTier] = useState<"primary" | "ks3" | "gcse">("primary");
+  const [profileContext, setProfileContext] = useState<{ yearGroup: string; ageGroup: string; keyStage: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [startingJourney, setStartingJourney] = useState(false);
   const [bossUnlocked, setBossUnlocked] = useState(false);
@@ -206,6 +209,13 @@ export default function StudentDashboardPage() {
           ageYears: childPayload.child.ageYears,
           dateOfBirth: childPayload.child.dateOfBirth,
         }));
+        if (childPayload.child.yearGroup) {
+          setProfileContext({
+            yearGroup: childPayload.child.yearGroup,
+            ageGroup: ageGroupForYearGroup(childPayload.child.yearGroup),
+            keyStage: keyStageForYearGroup(childPayload.child.yearGroup),
+          });
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load dashboard.");
@@ -333,60 +343,87 @@ export default function StudentDashboardPage() {
     <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
       <Navbar />
       <section className="mx-auto max-w-6xl px-6 py-8">
-        <div className="rounded-4xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 md:p-8">
-          {dashboardTier === "primary" && (
-            <PrimaryDashboard
-              childName={childName}
-              stats={stats}
-              visibleAssignments={visibleAssignments}
-              skills={skills}
-              coachRows={coachRows}
-              focusSkill={focusSkill}
-              weakSkill={weakSkill}
-              strongSkill={strongSkill}
-              focusAssignment={focusAssignment}
-              weakAssignment={weakAssignment}
-              reviewAssignment={reviewAssignment}
-              bossUnlocked={bossUnlocked}
-              bossPlayedToday={bossPlayedToday}
-              ownedBadges={ownedBadges}
-              sessionSummary={sessionSummary ?? null}
-              loading={loading}
-              error={error}
-              startingJourney={startingJourney}
-              onStartJourney={startTodayJourney}
-              onStartAssignment={startAssignment}
-              onOpenStore={() => router.push("/shop")}
-            />
-          )}
-          {(dashboardTier === "ks3" || dashboardTier === "gcse") && (
-            <SecondaryDashboard
-              childName={childName}
-              stats={stats}
-              visibleAssignments={visibleAssignments}
-              skills={skills}
-              coachRows={coachRows}
-              focusSkill={focusSkill}
-              weakSkill={weakSkill}
-              strongSkill={strongSkill}
-              focusAssignment={focusAssignment}
-              weakAssignment={weakAssignment}
-              reviewAssignment={reviewAssignment}
-              bossUnlocked={bossUnlocked}
-              bossPlayedToday={bossPlayedToday}
-              ownedBadges={ownedBadges}
-              sessionSummary={sessionSummary ?? null}
-              loading={loading}
-              error={error}
-              startingJourney={startingJourney}
-              pathway={dashboardTier}
-              allAssignments={assignments}
-              onStartJourney={startTodayJourney}
-              onStartAssignment={startAssignment}
-              onOpenStore={() => router.push("/shop")}
-            />
-          )}
-        </div>
+        {loading ? (
+          <div className="flex min-h-[50vh] items-center justify-center">
+            <p className="text-lg font-semibold text-slate-500">Loading your learning profile...</p>
+          </div>
+        ) : error && !assignments.length ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center">
+            <p className="font-bold text-rose-700">Unable to load your dashboard</p>
+            <p className="mt-1 text-sm text-rose-600">{error}</p>
+            <button
+              type="button"
+              onClick={() => void loadDashboard()}
+              className="mt-4 rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-500"
+            >
+              Try again
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-4xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 md:p-8">
+            {profileContext ? (
+              <StudentContextStrip
+                ageGroup={profileContext.ageGroup}
+                yearGroup={profileContext.yearGroup}
+                keyStage={profileContext.keyStage}
+                curriculum="National Curriculum UK"
+                className="mb-6"
+              />
+            ) : null}
+            {dashboardTier === "primary" && (
+              <PrimaryDashboard
+                childName={childName}
+                stats={stats}
+                visibleAssignments={visibleAssignments}
+                skills={skills}
+                coachRows={coachRows}
+                focusSkill={focusSkill}
+                weakSkill={weakSkill}
+                strongSkill={strongSkill}
+                focusAssignment={focusAssignment}
+                weakAssignment={weakAssignment}
+                reviewAssignment={reviewAssignment}
+                bossUnlocked={bossUnlocked}
+                bossPlayedToday={bossPlayedToday}
+                ownedBadges={ownedBadges}
+                sessionSummary={sessionSummary ?? null}
+                loading={loading}
+                error={error}
+                startingJourney={startingJourney}
+                onStartJourney={startTodayJourney}
+                onStartAssignment={startAssignment}
+                onOpenStore={() => router.push("/shop")}
+              />
+            )}
+            {(dashboardTier === "ks3" || dashboardTier === "gcse") && (
+              <SecondaryDashboard
+                childName={childName}
+                stats={stats}
+                visibleAssignments={visibleAssignments}
+                skills={skills}
+                coachRows={coachRows}
+                focusSkill={focusSkill}
+                weakSkill={weakSkill}
+                strongSkill={strongSkill}
+                focusAssignment={focusAssignment}
+                weakAssignment={weakAssignment}
+                reviewAssignment={reviewAssignment}
+                bossUnlocked={bossUnlocked}
+                bossPlayedToday={bossPlayedToday}
+                ownedBadges={ownedBadges}
+                sessionSummary={sessionSummary ?? null}
+                loading={loading}
+                error={error}
+                startingJourney={startingJourney}
+                pathway={dashboardTier}
+                allAssignments={assignments}
+                onStartJourney={startTodayJourney}
+                onStartAssignment={startAssignment}
+                onOpenStore={() => router.push("/shop")}
+              />
+            )}
+          </div>
+        )}
       </section>
     </main>
   );
