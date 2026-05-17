@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
-import { getProfile } from "@/lib/store";
+import StudentContextStrip from "@/components/student/StudentContextStrip";
+import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
+import { type ChildProfile, getProfile, hydrateActiveProfileFromServer } from "@/lib/store";
 import { beginStudentTurn, endStudentTurn, stopVoicePlayback } from "@/lib/voice";
 import { syncAttemptToServer } from "@/lib/server_sync";
 import { serializeSkills, skillFocusToCode } from "@/lib/skills";
@@ -178,7 +180,7 @@ function withWarmupReadyInstruction(reply: string): string {
   return `${reply} ${WARMUP_READY_INSTRUCTION}`;
 }
 
-function detectWarmupMood(transcript: string, childName = "Learner"): WarmupResult {
+function detectWarmupMood(transcript: string, childName = "there"): WarmupResult {
   const text = decodeLessonText(transcript).toLowerCase();
   const has = (parts: string[]) => parts.some((part) => text.includes(part));
   const likesMaths = has(["i like maths", "i like math", "love maths", "love math", "maths is fun", "math is fun"]);
@@ -548,6 +550,8 @@ export default function DailyLessonGamePage() {
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const recognitionStoppingRef = useRef(false);
+  const [profile, setProfile] = useState<ChildProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [assignment, setAssignment] = useState<LessonAssignment | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionHydrated, setSessionHydrated] = useState(false);
@@ -607,6 +611,23 @@ export default function DailyLessonGamePage() {
   const [welcomeVoiceStarted, setWelcomeVoiceStarted] = useState(false);
   const [welcomeSpeechFinished, setWelcomeSpeechFinished] = useState(false);
   const [lastWarmupMemory, setLastWarmupMemory] = useState<{ mood: WarmupMood; date: string } | null>(null);
+
+  useEffect(() => {
+    void hydrateActiveProfileFromServer()
+      .then((serverProfile) => {
+        const nextProfile = serverProfile ?? getProfile();
+        if (!nextProfile) {
+          setProfileLoading(false);
+          router.replace("/onboarding");
+          return;
+        }
+        setProfile(nextProfile);
+        setProfileLoading(false);
+      })
+      .catch(() => {
+        setProfileLoading(false);
+      });
+  }, [router]);
 
   const buildInterventionPath = useCallback(function buildInterventionPath(input: { assignmentId: string; skill: string; supportSkill: string; accuracy: number; launchedAt?: string }): string {
     const params = new URLSearchParams({
@@ -673,7 +694,7 @@ export default function DailyLessonGamePage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const profileId = getProfile()?.id;
+    const profileId = profile?.id;
     if (!profileId) return;
     try {
       const raw = window.localStorage.getItem(`starliz:warmup:last:${profileId}`);
@@ -685,7 +706,7 @@ export default function DailyLessonGamePage() {
     } catch {
       // ignore
     }
-  }, []);
+  }, [profile?.id]);
 
   useEffect(() => {
     if (!online || !assignmentId) return;
@@ -722,11 +743,23 @@ export default function DailyLessonGamePage() {
   const incorrectCount = records.length - correctCount;
   const score = records.length ? Math.round((correctCount / records.length) * 100) : 0;
   const attemptIndicator = Math.min(3, Math.max(1, attemptCount + 1));
-  const childLevel = levelFromXp(getProfile()?.xp ?? 0);
+  const childLevel = levelFromXp(profile?.xp ?? 0);
   const childName = useMemo(() => {
-    const raw = String(getProfile()?.name ?? "").trim();
-    return raw || "Learner";
-  }, []);
+    const raw = String(profile?.name ?? "").trim();
+    return raw || "there";
+  }, [profile?.name]);
+  const profileYearGroup = profile?.yearGroup?.trim() || undefined;
+  const profileContext = useMemo(() => {
+    if (!profile) return null;
+    const yearGroup = profileYearGroup;
+    return {
+      studentName: profile.name,
+      ageGroup: yearGroup ? ageGroupForYearGroup(yearGroup) : undefined,
+      yearGroup,
+      keyStage: profile.keyStageLevel?.trim() || (yearGroup ? keyStageForYearGroup(yearGroup) : undefined),
+      curriculum: "National Curriculum UK",
+    };
+  }, [profile, profileYearGroup]);
   const interventionLevel = Math.min(3, 1 + Math.floor(correctCount / 2));
 
   const practicingNow = feedbackMode === "retry" || feedbackMode === "skip_choice";
@@ -1422,7 +1455,7 @@ export default function DailyLessonGamePage() {
     setSpeechLastMatchResult(matchResult);
 
     await syncAttemptToServer({
-      studentId: activeAssignment.studentId || getProfile()?.id || "",
+      studentId: activeAssignment.studentId || profile?.id || "",
       subject: "spelling",
       spellingMode: isAlphabet ? "alphabet_assess" : "word_assess",
       assignmentId: activeAssignment.id,
@@ -1773,8 +1806,6 @@ export default function DailyLessonGamePage() {
     const skippedCount = skippedQuestionKeys.length;
     const masteryReady = unresolvedSkipped === 0 && skippedCount === 0 && finalScore >= 80;
     setLessonMasteryReady(masteryReady);
-    const profile = getProfile();
-
     const normalizedWeakSkill = weakSkills[0] ?? String(activeAssignment.skillFocus ?? "");
     const primarySkillCode = skillFocusToCode(normalizedWeakSkill)
       ?? (activeAssignment.subject === "reading"
@@ -1869,7 +1900,7 @@ export default function DailyLessonGamePage() {
       if (response.ok) {
         setSaveResult((await response.json()) as ProgressSaveResponse);
         if (warmupResult && typeof window !== "undefined") {
-          const profileId = getProfile()?.id;
+          const profileId = profile?.id;
           if (profileId) {
             window.localStorage.setItem(`starliz:warmup:last:${profileId}`, JSON.stringify({
               mood: warmupResult.mood,
@@ -1895,7 +1926,7 @@ export default function DailyLessonGamePage() {
     const skillFocus = String(currentItem.skillFocus ?? activeAssignment.skillFocus ?? currentSection);
     const derivedSkillCode = skillFocusToCode(skillFocus);
     await syncAttemptToServer({
-      studentId: activeAssignment.studentId || getProfile()?.id || "",
+      studentId: activeAssignment.studentId || profile?.id || "",
       subject: currentSection,
       assignmentId: activeAssignment.id,
       contentId: activeAssignment.contentId,
@@ -2026,6 +2057,32 @@ export default function DailyLessonGamePage() {
     advanceAfterResolved(records);
   }
 
+  if (profileLoading) {
+    return (
+      <>
+        <Navbar />
+        <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+          <section className="mx-auto flex min-h-[50vh] max-w-6xl items-center justify-center px-4 py-8">
+            <p className="text-lg font-semibold text-slate-500">Loading your learning profile...</p>
+          </section>
+        </main>
+      </>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <>
+        <Navbar />
+        <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+          <section className="mx-auto flex min-h-[50vh] max-w-6xl items-center justify-center px-4 py-8">
+            <p className="text-lg font-semibold text-rose-600">Unable to load your learning profile.</p>
+          </section>
+        </main>
+      </>
+    );
+  }
+
   if (loading || (assignment && !sessionHydrated)) {
     return (<><Navbar /><main className="min-h-screen bg-[#f6f8ff]"><div className="mx-auto max-w-4xl px-6 py-10 text-slate-600">Loading lesson...</div></main></>);
   }
@@ -2038,6 +2095,17 @@ export default function DailyLessonGamePage() {
     <>
       <Navbar />
       <main className="min-h-screen bg-[#f6f8ff] text-slate-950">
+      {profileContext ? (
+        <section className="mx-auto max-w-6xl px-4 pt-4 sm:pt-6">
+          <StudentContextStrip
+            studentName={profileContext.studentName}
+            ageGroup={profileContext.ageGroup}
+            yearGroup={profileContext.yearGroup}
+            keyStage={profileContext.keyStage}
+            curriculum={profileContext.curriculum}
+          />
+        </section>
+      ) : null}
       <section className="mx-auto max-w-5xl px-6 py-10">
         <div className="rounded-4xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/70">
           <div className="flex flex-wrap items-start justify-between gap-4">

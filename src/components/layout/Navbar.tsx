@@ -143,7 +143,7 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-10 border-b border-(--ring-color) bg-(--surface) backdrop-blur">
+    <header className="relative z-20 border-b border-(--ring-color) bg-(--surface) backdrop-blur">
       <div className="mx-auto max-w-6xl px-3 py-3 sm:px-4">
         <div className="flex items-center justify-between">
           <Logo href={dashboardHref} variant="wordmark" size={30} textClassName="text-slate-900 dark:text-white" />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 
@@ -18,10 +19,11 @@ export default function ParentPinPage() {
   const [hasPin, setHasPin] = useState<boolean | null>(null);
   const [setPinDraft, setSetPinDraft] = useState("");
   const [setPinConfirm, setSetPinConfirm] = useState("");
-  const [failedAttempts, setFailedAttempts] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
+  const [lockCountdown, setLockCountdown] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const justReset = searchParams.get("reset") === "1";
 
   useEffect(() => {
     const loadStatus = async () => {
@@ -50,6 +52,22 @@ export default function ParentPinPage() {
     void loadStatus();
   }, [router, searchParams]);
 
+  // Countdown timer for lockout
+  useEffect(() => {
+    if (lockCountdown <= 0) return;
+    const id = setTimeout(() => {
+      setLockCountdown((prev) => {
+        const next = prev - 1;
+        if (next <= 0) {
+          setIsLocked(false);
+          setError(null);
+        }
+        return Math.max(0, next);
+      });
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [lockCountdown]);
+
   const pushDigit = useCallback((digit: string) => {
     setPin((prev) => (prev.length >= 4 ? prev : `${prev}${digit}`));
   }, []);
@@ -60,10 +78,7 @@ export default function ParentPinPage() {
 
   const verifyPin = useCallback(async () => {
     if (pin.length !== 4) return;
-    if (isLocked) {
-      setError("Too many attempts. Please wait a moment.");
-      return;
-    }
+    if (isLocked) return;
 
     setLoading(true);
     setError(null);
@@ -88,15 +103,17 @@ export default function ParentPinPage() {
         return;
       }
 
-      const attempts = failedAttempts + 1;
-      setFailedAttempts(attempts);
-      if (attempts >= 3) {
+      const payload = await response.json().catch(() => null) as {
+        locked?: boolean;
+        retryAfterSeconds?: number;
+        error?: string;
+      } | null;
+
+      if (payload?.locked) {
+        const seconds = payload.retryAfterSeconds ?? 900;
         setIsLocked(true);
-        setTimeout(() => {
-          setIsLocked(false);
-          setFailedAttempts(0);
-        }, 15000);
-        setError("Too many attempts. Try again in 15 seconds.");
+        setLockCountdown(seconds);
+        setError("Too many incorrect attempts. Please wait before trying again.");
       } else {
         setError("Incorrect PIN. Try again.");
       }
@@ -106,7 +123,7 @@ export default function ParentPinPage() {
     } finally {
       setLoading(false);
     }
-  }, [failedAttempts, isLocked, pin, router, searchParams]);
+  }, [isLocked, pin, router, searchParams]);
 
   useEffect(() => {
     if (!hasPin) return;
@@ -115,52 +132,23 @@ export default function ParentPinPage() {
       if (loading) return;
 
       const digitByCode: Record<string, string> = {
-        Numpad0: "0",
-        Numpad1: "1",
-        Numpad2: "2",
-        Numpad3: "3",
-        Numpad4: "4",
-        Numpad5: "5",
-        Numpad6: "6",
-        Numpad7: "7",
-        Numpad8: "8",
-        Numpad9: "9",
+        Numpad0: "0", Numpad1: "1", Numpad2: "2", Numpad3: "3", Numpad4: "4",
+        Numpad5: "5", Numpad6: "6", Numpad7: "7", Numpad8: "8", Numpad9: "9",
       };
 
       const digit = /^\d$/.test(event.key) ? event.key : digitByCode[event.code];
-      if (digit) {
-        event.preventDefault();
-        pushDigit(digit);
-        return;
-      }
-
-      if (event.key === "Backspace" || event.key === "Delete") {
-        event.preventDefault();
-        clearDigit();
-        return;
-      }
-
-      if (event.key === "Enter" || event.code === "NumpadEnter") {
-        event.preventDefault();
-        void verifyPin();
-      }
+      if (digit) { event.preventDefault(); pushDigit(digit); return; }
+      if (event.key === "Backspace" || event.key === "Delete") { event.preventDefault(); clearDigit(); return; }
+      if (event.key === "Enter" || event.code === "NumpadEnter") { event.preventDefault(); void verifyPin(); }
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => { window.removeEventListener("keydown", handleKeyDown); };
   }, [clearDigit, hasPin, loading, pushDigit, verifyPin]);
 
   async function savePin() {
-    if (!/^\d{4}$/.test(setPinDraft)) {
-      setError("PIN must be exactly 4 digits.");
-      return;
-    }
-    if (setPinDraft !== setPinConfirm) {
-      setError("PIN values do not match.");
-      return;
-    }
+    if (!/^\d{4}$/.test(setPinDraft)) { setError("PIN must be exactly 4 digits."); return; }
+    if (setPinDraft !== setPinConfirm) { setError("PIN values do not match."); return; }
 
     setLoading(true);
     setError(null);
@@ -171,10 +159,8 @@ export default function ParentPinPage() {
         credentials: "include",
         body: JSON.stringify({ pin: setPinDraft }),
       });
-      if (!response.ok) {
-        setError("Could not set PIN.");
-        return;
-      }
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) { setError(payload?.error ?? "Could not set PIN."); return; }
       setHasPin(true);
       setSetPinDraft("");
       setSetPinConfirm("");
@@ -194,11 +180,19 @@ export default function ParentPinPage() {
     );
   }
 
+  const nextParam = searchParams.get("next");
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
       <section className="w-full max-w-md rounded-3xl bg-white/90 p-6 shadow-xl ring-1 ring-slate-200">
         <h1 className="text-3xl font-black text-slate-900">Parent Access 🔒</h1>
         <p className="mt-2 text-slate-600">Enter your 4-digit PIN</p>
+
+        {justReset && (
+          <p className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200">
+            Your Parent PIN has been reset. Please enter your new PIN.
+          </p>
+        )}
 
         {!hasPin ? (
           <div className="mt-5 space-y-3">
@@ -226,52 +220,79 @@ export default function ParentPinPage() {
           </div>
         ) : (
           <>
-            <div className="mt-5 flex justify-center gap-2">
-              {[0, 1, 2, 3].map((idx) => (
-                <span
-                  key={idx}
-                  className={`inline-flex h-4 w-4 rounded-full ${pin.length > idx ? "bg-slate-900" : "bg-slate-300"}`}
-                />
-              ))}
-            </div>
-
-            <div className="mt-5 grid grid-cols-3 gap-2">
-              {KEYS.map((key) => {
-                const label = key === "back" ? "⌫" : key === "submit" ? "✓" : key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-4 text-xl font-black text-slate-800"
-                    onClick={() => {
-                      if (key === "back") {
-                        clearDigit();
-                        return;
-                      }
-                      if (key === "submit") {
-                        void verifyPin();
-                        return;
-                      }
-                      pushDigit(key);
-                    }}
-                    disabled={loading}
+            {isLocked ? (
+              <div className="mt-5 rounded-xl bg-rose-50 px-4 py-4 text-sm font-semibold text-rose-700 ring-1 ring-rose-200">
+                <p>Too many incorrect attempts. Please wait before trying again.</p>
+                {lockCountdown > 0 && (
+                  <p className="mt-1 text-xs font-normal text-rose-500">
+                    Try again in {Math.floor(lockCountdown / 60)}:{String(lockCountdown % 60).padStart(2, "0")}
+                  </p>
+                )}
+                <p className="mt-3">
+                  <Link
+                    href={`/parent-pin/forgot${nextParam ? `?next=${encodeURIComponent(nextParam)}` : ""}`}
+                    className="font-bold text-rose-700 underline underline-offset-2"
                   >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+                    Reset using parent email
+                  </Link>
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="mt-5 flex justify-center gap-2">
+                  {[0, 1, 2, 3].map((idx) => (
+                    <span
+                      key={idx}
+                      className={`inline-flex h-4 w-4 rounded-full ${pin.length > idx ? "bg-slate-900" : "bg-slate-300"}`}
+                    />
+                  ))}
+                </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => router.replace("/profiles")}>Cancel</Button>
-              <Button onClick={() => void verifyPin()} disabled={loading || pin.length !== 4}>Unlock</Button>
-            </div>
-            <p className="mt-2 text-xs text-slate-500">Tip: use keyboard or numpad digits, Backspace to delete, Enter to unlock.</p>
+                <div className="mt-5 grid grid-cols-3 gap-2">
+                  {KEYS.map((key) => {
+                    const label = key === "back" ? "⌫" : key === "submit" ? "✓" : key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-4 text-xl font-black text-slate-800 disabled:opacity-50"
+                        onClick={() => {
+                          if (key === "back") { clearDigit(); return; }
+                          if (key === "submit") { void verifyPin(); return; }
+                          pushDigit(key);
+                        }}
+                        disabled={loading}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button variant="secondary" onClick={() => router.replace("/profiles")}>Cancel</Button>
+                  <Button onClick={() => void verifyPin()} disabled={loading || pin.length !== 4}>Unlock</Button>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">Tip: use keyboard or numpad digits, Backspace to delete, Enter to unlock.</p>
+              </>
+            )}
           </>
         )}
 
-        <p className="mt-3 text-sm text-slate-500">Forgot PIN? Ask a parent to reset from account settings.</p>
-        {error ? <p className="mt-2 text-sm font-semibold text-rose-700">{error}</p> : null}
+        {error && !isLocked ? <p className="mt-3 text-sm font-semibold text-rose-700">{error}</p> : null}
+
+        {hasPin && !isLocked && (
+          <p className="mt-4 text-sm text-slate-500">
+            Forgot PIN?{" "}
+            <Link
+              href={`/parent-pin/forgot${nextParam ? `?next=${encodeURIComponent(nextParam)}` : ""}`}
+              className="font-semibold text-indigo-600 underline underline-offset-2"
+            >
+              Reset using parent email
+            </Link>
+            .
+          </p>
+        )}
       </section>
     </main>
   );

@@ -27,16 +27,20 @@ export async function GET() {
     return NextResponse.json({ branding: defaultBranding })
   }
 
-  const branding = await brandingSettings.findFirst({
-    orderBy: { updatedAt: "desc" },
-    select: {
-      siteName: true,
-      tagline: true,
-      logoUrl: true,
-      iconUrl: true,
-      faviconUrl: true,
-    },
-  })
+  try {
+    const branding = await brandingSettings.findFirst({
+      orderBy: { updatedAt: "desc" },
+      select: {
+        siteName: true,
+        tagline: true,
+        logoUrl: true,
+        iconUrl: true,
+        faviconUrl: true,
+      },
+    })
 
-  return NextResponse.json({ branding: branding ?? defaultBranding })
+    return NextResponse.json({ branding: branding ?? defaultBranding })
+  } catch {
+    return NextResponse.json({ branding: defaultBranding })
+  }
 }
