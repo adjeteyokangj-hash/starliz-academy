@@ -323,6 +323,22 @@ function getItemSection(item: LessonItem, fallback: string): "spelling" | "math"
   return "spelling";
 }
 
+function lessonSubjectBadge(subject: string | null | undefined): string {
+  const normalized = String(subject ?? "").toLowerCase();
+  if (normalized.includes("science")) return "Science";
+  if (normalized.includes("math")) return "Maths";
+  if (normalized.includes("english") || normalized.includes("reading") || normalized.includes("language") || normalized.includes("literature")) return "English";
+  if (normalized.includes("history")) return "History";
+  if (normalized.includes("geography")) return "Geography";
+  if (normalized.includes("french")) return "French";
+  if (normalized.includes("german")) return "German";
+  if (normalized.includes("spanish")) return "Spanish";
+  if (normalized.startsWith("gcse-")) {
+    return normalized.replace("gcse-", "").split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+  }
+  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : "Lesson";
+}
+
 function getPrompt(item: LessonItem, section: string): string {
   if (section === "spelling") return decodeLessonText(String(item.word ?? item.answer ?? item.prompt ?? ""));
   return decodeLessonText(String(item.prompt ?? item.question ?? item.word ?? ""));
@@ -738,6 +754,7 @@ export default function DailyLessonGamePage() {
   const lessonItems = useMemo(() => activeAssignment?.items ?? [], [activeAssignment]);
   const currentItem = lessonItems[index] ?? null;
   const currentSection = currentItem ? getItemSection(currentItem, activeAssignment?.subject ?? "spelling") : "spelling";
+  const currentSubjectBadge = lessonSubjectBadge(activeAssignment?.subject);
   const progress = lessonItems.length ? Math.round((records.length / lessonItems.length) * 100) : 0;
   const correctCount = records.filter((record) => record.correct).length;
   const incorrectCount = records.length - correctCount;
@@ -876,12 +893,12 @@ export default function DailyLessonGamePage() {
     }
   }
 
-  async function speakTutor(line: string, force = false): Promise<void> {
+  async function speakTutor(line: string): Promise<void> {
     const cleanLine = decodeLessonText(line).trim();
     if (!cleanLine) return;
     setLastTutorMessage(cleanLine);
     setVoiceLine(cleanLine);
-    if (!force && !voiceEnabled) return;
+    if (!voiceEnabled) return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       setVoiceUnavailable(VOICE_UNAVAILABLE_MESSAGE);
       return;
@@ -989,14 +1006,19 @@ export default function DailyLessonGamePage() {
     setWelcomeSpeechFinished(false);
     setWarmupStatus("Star is speaking...");
     setVoiceStatus("Star is speaking...");
+    if (!voiceEnabled) {
+      setVoiceStatus("");
+      setWarmupStatus("Tap the microphone and tell me how you feel.");
+      setWelcomeSpeechFinished(true);
+      return;
+    }
     await unlockTutorVoice();
     await preloadTutorVoices();
-    await speakTutor(welcomeLine, true);
+    await speakTutor(welcomeLine);
     setVoiceStatus("");
     setWarmupStatus("Tap the microphone and tell me how you feel.");
     setWelcomeSpeechFinished(true);
   }
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     const timer = window.setTimeout(() => {
@@ -1074,7 +1096,8 @@ export default function DailyLessonGamePage() {
         setWarmupPrompt(String(saved.warmupPrompt ?? "How are you feeling today?"));
         setWarmupPhase(saved.warmupPhase ?? "idle");
         setWarmupStatus(String(saved.warmupStatus ?? ""));
-        setVoiceEnabled(saved.voiceEnabled ?? window.localStorage.getItem(LESSON_VOICE_KEY) !== "false");
+        const localVoiceOverride = window.localStorage.getItem(LESSON_VOICE_KEY);
+        setVoiceEnabled(localVoiceOverride === "false" ? false : (saved.voiceEnabled ?? true));
         setVoiceLine(decodeLessonText(String(saved.tutorMessage ?? saved.lastTutorMessage ?? "I am ready when you are.")));
         setLastTutorMessage(decodeLessonText(String(saved.lastTutorMessage ?? saved.tutorMessage ?? "I am ready when you are.")));
         setRestoredMessage("Welcome back — your lesson has been restored.");
@@ -1923,11 +1946,12 @@ export default function DailyLessonGamePage() {
     const given = selected ?? answer;
     const expected = getAnswer(currentItem);
     const correct = normalise(given) === normalise(expected);
+    const attemptSubject = getItemSection(currentItem, activeAssignment.subject || currentSection);
     const skillFocus = String(currentItem.skillFocus ?? activeAssignment.skillFocus ?? currentSection);
     const derivedSkillCode = skillFocusToCode(skillFocus);
     await syncAttemptToServer({
       studentId: activeAssignment.studentId || profile?.id || "",
-      subject: currentSection,
+      subject: attemptSubject,
       assignmentId: activeAssignment.id,
       contentId: activeAssignment.contentId,
       skillFocus,
@@ -2062,8 +2086,24 @@ export default function DailyLessonGamePage() {
       <>
         <Navbar />
         <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
-          <section className="mx-auto flex min-h-[50vh] max-w-6xl items-center justify-center px-4 py-8">
+          <section className="mx-auto flex min-h-[50vh] max-w-6xl items-center justify-between gap-4 px-4 py-8">
             <p className="text-lg font-semibold text-slate-500">Loading your learning profile...</p>
+            <button
+              type="button"
+              onClick={() => {
+                const nextEnabled = !voiceEnabled;
+                setVoiceEnabled(nextEnabled);
+                if (!nextEnabled) {
+                  cancelTutorSpeech();
+                  if (typeof window !== "undefined" && window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                  }
+                }
+              }}
+              className="rounded-2xl border border-slate-200 px-4 py-3 font-bold text-slate-700"
+            >
+              {voiceEnabled ? "Voice on" : "Voice off"}
+            </button>
           </section>
         </main>
       </>
@@ -2084,7 +2124,32 @@ export default function DailyLessonGamePage() {
   }
 
   if (loading || (assignment && !sessionHydrated)) {
-    return (<><Navbar /><main className="min-h-screen bg-[#f6f8ff]"><div className="mx-auto max-w-4xl px-6 py-10 text-slate-600">Loading lesson...</div></main></>);
+    return (
+      <>
+        <Navbar />
+        <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+          <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-6 py-10">
+            <div className="text-slate-600">Loading lesson...</div>
+            <button
+              type="button"
+              onClick={() => {
+                const nextEnabled = !voiceEnabled;
+                setVoiceEnabled(nextEnabled);
+                if (!nextEnabled) {
+                  cancelTutorSpeech();
+                  if (typeof window !== "undefined" && window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                  }
+                }
+              }}
+              className="rounded-2xl border border-slate-200 px-4 py-3 font-bold text-slate-700"
+            >
+              {voiceEnabled ? "Voice on" : "Voice off"}
+            </button>
+          </div>
+        </main>
+      </>
+    );
   }
 
   if (error || !assignment || !activeAssignment) {
@@ -2118,8 +2183,14 @@ export default function DailyLessonGamePage() {
             <button
               type="button"
               onClick={() => {
-                setVoiceEnabled((enabled) => !enabled);
-                if (voiceEnabled) stopVoicePlayback();
+                const nextEnabled = !voiceEnabled;
+                setVoiceEnabled(nextEnabled);
+                if (!nextEnabled) {
+                  cancelTutorSpeech();
+                  if (typeof window !== "undefined" && window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                  }
+                }
               }}
               className="rounded-2xl border border-slate-200 px-4 py-3 font-bold text-slate-700"
             >
@@ -2336,7 +2407,7 @@ export default function DailyLessonGamePage() {
             <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_14rem]">
               <div className="rounded-3xl bg-slate-50 p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="rounded-full bg-indigo-100 px-4 py-2 text-sm font-black capitalize text-indigo-700">{currentSection}</span>
+                  <span className="rounded-full bg-indigo-100 px-4 py-2 text-sm font-black text-indigo-700">{currentSubjectBadge}</span>
                   <div className="flex items-center gap-2">
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-800">
                       Attempt {attemptIndicator}/3
@@ -2374,6 +2445,20 @@ export default function DailyLessonGamePage() {
                       <p className="text-xs font-black uppercase tracking-[0.25em] text-cyan-200">Passage</p>
                       <p className="mt-3 text-lg leading-8">{decodeLessonText(String(currentItem.passage))}</p>
                     </div>
+                  </div>
+                ) : null}
+
+                {Boolean(currentItem.visualRequired) ? (
+                  <div className="mt-6 rounded-3xl border border-violet-200 bg-violet-50 p-5">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-700">
+                      Visual support {currentItem.visualType ? `• ${decodeLessonText(String(currentItem.visualType))}` : ""}
+                    </p>
+                    <p className="mt-2 text-sm font-bold text-violet-900">
+                      {decodeLessonText(String(currentItem.visualPrompt ?? "Use the visual guide to reason before answering."))}
+                    </p>
+                    <p className="mt-2 rounded-2xl border border-violet-200 bg-white px-4 py-3 text-sm text-violet-800">
+                      {decodeLessonText(String(currentItem.visualAltText ?? "Diagram placeholder for this question."))}
+                    </p>
                   </div>
                 ) : null}
 

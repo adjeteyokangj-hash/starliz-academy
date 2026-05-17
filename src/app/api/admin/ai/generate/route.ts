@@ -26,7 +26,47 @@ const OPENAI_MODEL = "gpt-4o-mini";
 const generationCache = new Map<string, { content: unknown; meta: Record<string, unknown> }>();
 const generationRateLimit = new Map<string, { count: number; resetAt: number }>();
 
-type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" | "writing" | "science";
+const GCSE_LANGUAGE_SUBJECTS: Subject[] = ["gcse-french", "gcse-german", "gcse-spanish"];
+
+const DIFFICULTY_PROFILE: Record<number, {
+  difficultyLabel: string;
+  cognitiveDemand: string;
+  scaffoldingLevel: string;
+  guidance: string;
+}> = {
+  1: {
+    difficultyLabel: "Foundation / easy recall",
+    cognitiveDemand: "basic recall and recognition",
+    scaffoldingLevel: "high scaffolding",
+    guidance: "Use simple wording, one-step answers, strong hints, and concrete examples.",
+  },
+  2: {
+    difficultyLabel: "Developing understanding",
+    cognitiveDemand: "light reasoning",
+    scaffoldingLevel: "supported practice",
+    guidance: "Mostly one-step tasks with light reasoning and moderate subject vocabulary.",
+  },
+  3: {
+    difficultyLabel: "Standard expected level",
+    cognitiveDemand: "mixed recall and application",
+    scaffoldingLevel: "balanced support",
+    guidance: "Expected year-level challenge with mixed retrieval and application.",
+  },
+  4: {
+    difficultyLabel: "Higher challenge",
+    cognitiveDemand: "multi-step reasoning",
+    scaffoldingLevel: "reduced scaffolding",
+    guidance: "Use exam-style wording, multi-step logic, and less scaffolding.",
+  },
+  5: {
+    difficultyLabel: "Exam stretch / advanced",
+    cognitiveDemand: "complex higher-order reasoning",
+    scaffoldingLevel: "minimal hints",
+    guidance: "Use complex multi-part prompts with exam technique and minimal hints.",
+  },
+};
+
+type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" | "writing" | "science" | "languages";
 
 function mapSubjectToGenerationType(subject: Subject): GenerationType {
   return GENERATION_CONTENT_TYPE_BY_SUBJECT[subject];
@@ -34,6 +74,7 @@ function mapSubjectToGenerationType(subject: Subject): GenerationType {
 
 function mapGenerationTypeToPromptType(type: GenerationType): PromptType {
   if (type === "science") return "science";
+  if (type === "languages") return "languages";
   if (type === "maths" || type === "exam-practice") return "maths";
   if (type === "reading" || type === "vocabulary" || type === "english-literature") return "reading";
   if (type === "punctuation") return "punctuation";
@@ -48,6 +89,7 @@ function mapGenerationTypeToValidatorType(type: GenerationType): "spelling" | "p
   if (type === "punctuation") return "punctuation";
   if (type === "grammar") return "grammar";
   if (type === "writing" || type === "english-language") return "writing";
+  if (type === "languages") return "reading";
   if (type === "reading" || type === "vocabulary" || type === "english-literature") return "reading";
   return "maths";
 }
@@ -114,6 +156,14 @@ Include exam-board-aware wording only when exam board is provided (AQA, OCR, Ede
 Return a JSON array. Each item must follow this schema exactly:
 { "id": string, "question": string, "answer": string, "explanation": string, "choices": string[], "yearGroup": string, "skillFocus": string, "difficulty": number, "topic": string }
 Content type lock: science must not generate spelling lists or unrelated reading passages.
+Return ONLY valid JSON — no explanation, no markdown.`,
+
+  languages: `You are a UK GCSE modern languages content creator for England.
+Generate curriculum-grade GCSE language tasks for French, German, or Spanish.
+Question styles must include language-specific modes where relevant: vocabulary, translation, reading, listening-style, grammar, speaking prompts, writing tasks, role play, photo card, sentence building, verb conjugation, and tense practice.
+Return a JSON array. Each item must follow this schema exactly:
+{ "id": string, "question": string, "answer": string, "explanation": string, "choices": string[], "yearGroup": string, "skillFocus": string, "difficulty": number, "topic": string, "activityMode": string, "difficultyLevel": number, "difficultyLabel": string, "cognitiveDemand": string, "scaffoldingLevel": string, "visualRequired": boolean, "visualType": "diagram" | "chart" | "image" | "number_line" | "graph" | "table" | "map" | "timeline" | "none", "visualPrompt": string, "visualAltText": string }
+Content type lock: language generation must not produce generic maths/science-only content.
 Return ONLY valid JSON — no explanation, no markdown.`,
 
   reading: `You are a UK curriculum content creator for England.
@@ -197,6 +247,15 @@ FOLLOW-UP PRACTICE:
 - Keep wording encouraging and parent-friendly.`
     : "";
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
+  const safeLevel = Math.max(1, Math.min(5, level));
+  const difficultyProfile = DIFFICULTY_PROFILE[safeLevel] ?? DIFFICULTY_PROFILE[3];
+  const difficultyLines = `
+Difficulty profile:
+- Difficulty level: ${safeLevel}
+- Difficulty label: ${difficultyProfile.difficultyLabel}
+- Cognitive demand: ${difficultyProfile.cognitiveDemand}
+- Scaffolding level: ${difficultyProfile.scaffoldingLevel}
+- Guidance: ${difficultyProfile.guidance}`;
   if (subject === "punctuation") {
     return `Generate ${count} UK Year ${safeYearGroup.replace("Year ", "")} punctuation practice items.
 Selection context:
@@ -235,7 +294,7 @@ Return JSON array only using this schema:
   "yearGroup": "${safeYearGroup}",
   "skillFocus": "${skillFocus}",
   "difficulty": ${level}
-}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+}${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
 
   if (type === "spelling") {
@@ -282,7 +341,7 @@ Each item must include:
   "yearGroup": "${safeYearGroup}",
   "skillFocus": "${skillFocus || "Silent e"}",
   "difficulty": ${level}
-}${followUpInstruction}`.trim();
+}${difficultyLines}${followUpInstruction}`.trim();
   }
   if (type === "maths") {
     return `Generate ${count} KS1/KS2-style maths questions for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -291,7 +350,8 @@ Topic: ${cleanedTopic || skillFocus || "mixed arithmetic"}.
 Include answers and multiple choice options.
 Difficulty must increase appropriately for the selected year group and level.
 Return JSON with: id, question, answer, explanation, choices, yearGroup, skillFocus, difficulty and topic.
-Do not return spelling words or reading passages.${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Do not return spelling words or reading passages.
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
   if (type === "science") {
     const isGcse = safeYearGroup === "Year 10" || safeYearGroup === "Year 11" || keyStage === "KS4";
@@ -305,28 +365,44 @@ Topic: ${cleanedTopic || skillFocus || "science practice"}.
 ${boardLine}
 ${isGcse ? "GCSE mode guidance: include exam technique, structured response clarity, and calculation interpretation when relevant." : "KS3 mode guidance: keep explanations concise and concept-focused."}
 Return JSON array with: id, question, answer, explanation, choices, yearGroup, skillFocus, difficulty, topic.
-Do not return spelling word lists, unrelated reading passages, or non-science content.${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Do not return spelling word lists, unrelated reading passages, or non-science content.
+Prefer helpful visuals for science where appropriate (diagram, graph, table).
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+  }
+  if (type === "languages") {
+    const languageSubject = GCSE_LANGUAGE_SUBJECTS.includes(subject) ? subject.replace("gcse-", "").toUpperCase() : "language";
+    return `Generate ${count} GCSE ${languageSubject} tasks for ${keyStage}, ${safeYearGroup}, difficulty ${safeLevel}.
+Subject: ${subject}.
+Skill focus: ${skillFocus || "Vocabulary"}.
+Topic/theme: ${cleanedTopic || skillFocus || "Identity and culture"}.
+Exam board: ${examBoard || "General GCSE"}.
+Use language-specific activity modes only: vocabulary, translation, listening-style, reading comprehension, grammar, speaking prompts, writing tasks, role play, photo card, sentence building, verb conjugation, tenses, exam practice.
+Every item must include: activityMode, difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.
+Do not return generic maths/science-only formats.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
   if (type === "punctuation") {
     return `Generate ${count} UK punctuation practice items for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
 Skill focus: ${skillFocus || "Sentence punctuation"}.
 Topic/theme: ${cleanedTopic || skillFocus || "punctuation practice"}.
 Return JSON array with: id, question, answer, options, explanation, hint, yearGroup, skillFocus, difficulty.
-Do not return spelling word lists, reading passages, or maths questions.${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Do not return spelling word lists, reading passages, or maths questions.
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
   if (type === "grammar") {
     return `Generate ${count} UK grammar practice items for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
 Skill focus: ${skillFocus || "Grammar accuracy"}.
 Topic/theme: ${cleanedTopic || skillFocus || "grammar practice"}.
 Return JSON array with: id, question, answer, options, explanation, hint, yearGroup, skillFocus, difficulty.
-Do not return spelling-only word lists, reading passages, or maths questions.${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Do not return spelling-only word lists, reading passages, or maths questions.
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
   if (type === "writing") {
     return `Generate ${count} UK writing practice tasks for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
 Skill focus: ${skillFocus || "Sentence composition"}.
 Topic/theme: ${cleanedTopic || skillFocus || "writing practice"}.
 Return JSON array with: id, prompt, answer, options, explanation, hint, yearGroup, skillFocus, difficulty.
-Do not return isolated spelling word lists or maths questions.${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Do not return isolated spelling word lists or maths questions.
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
   if (type === "reading") {
     return `Generate a short reading passage for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -334,7 +410,8 @@ Skill focus: ${skillFocus || "Retrieval questions"}.
 Theme/topic: ${cleanedTopic || "friendly adventure"}.
 Include comprehension questions.
 Return JSON with: id, title, passage, vocabularyWords, questions, answers, yearGroup, skillFocus and difficulty.
-Do not return spelling word lists or maths questions.${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Do not return spelling word lists or maths questions.
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
   return "";
 }
@@ -459,10 +536,33 @@ function normalizePreviewItems(
     }));
   }
   const records = Array.isArray(content) ? content : content && typeof content === "object" ? [content] : [];
+  const safeDifficulty = Math.max(1, Math.min(5, metadata.difficulty));
+  const difficultyProfile = DIFFICULTY_PROFILE[safeDifficulty] ?? DIFFICULTY_PROFILE[3];
+  const withCommonFields = (row: Record<string, unknown>) => {
+    const visualTypeRaw = String(row.visualType ?? "").toLowerCase();
+    const visualType = ["diagram", "chart", "image", "number_line", "graph", "table", "map", "timeline", "none"].includes(visualTypeRaw)
+      ? visualTypeRaw
+      : "none";
+    const inferredVisualRequired = Boolean(row.visualRequired)
+      || (generationType === "science" && /(electric|force|wave|cell|energy)/i.test(metadata.topic || metadata.skillFocus))
+      || (generationType === "maths" && /(graph|geometry|number line|table|chart)/i.test(metadata.topic || metadata.skillFocus))
+      || (generationType === "languages" && /(photo|role play|vocab)/i.test(metadata.skillFocus));
+    return {
+      ...row,
+      difficultyLevel: Number(row.difficultyLevel ?? safeDifficulty),
+      difficultyLabel: String(row.difficultyLabel ?? difficultyProfile.difficultyLabel),
+      cognitiveDemand: String(row.cognitiveDemand ?? difficultyProfile.cognitiveDemand),
+      scaffoldingLevel: String(row.scaffoldingLevel ?? difficultyProfile.scaffoldingLevel),
+      visualRequired: inferredVisualRequired,
+      visualType: inferredVisualRequired ? visualType : "none",
+      visualPrompt: String(row.visualPrompt ?? (inferredVisualRequired ? `Create a ${visualType === "none" ? "diagram" : visualType} for ${metadata.topic || metadata.skillFocus}.` : "")),
+      visualAltText: String(row.visualAltText ?? (inferredVisualRequired ? `${metadata.skillFocus} visual support` : "")),
+    };
+  };
   return records.map((item, index) => {
     const data = item as Record<string, unknown>;
     if (generationType === "punctuation" || generationType === "grammar" || generationType === "writing" || generationType === "english-language") {
-      return {
+      return withCommonFields({
         ...data,
         id: String(data.id ?? `lang-${index + 1}`),
         type: generationType,
@@ -476,11 +576,11 @@ function normalizePreviewItems(
         sentence: String(data.sentence ?? data.sentenceContext ?? ""),
         explanation: String(data.explanation ?? "Explain the language choice clearly."),
         hint: String(data.hint ?? "Read the sentence and apply the selected language skill."),
-      };
+      });
     }
 
     if (generationType === "spelling" || generationType === "phonics") {
-      return {
+      return withCommonFields({
         ...data,
         type: generationType,
         yearGroup: metadata.yearGroup,
@@ -491,11 +591,11 @@ function normalizePreviewItems(
         sentence: String(data.sentenceContext ?? data.sentence ?? ""),
         explanation: String(data.explanation ?? `Practise the ${data.skillFocus ?? "spelling"} pattern.`),
         hint: String(data.hint ?? "Listen carefully and think about the sounds."),
-      };
+      });
     }
 
     if (generationType === "science") {
-      return {
+      return withCommonFields({
         ...data,
         type: generationType,
         yearGroup: metadata.yearGroup,
@@ -512,11 +612,33 @@ function normalizePreviewItems(
             : [],
         explanation: String(data.explanation ?? "Use scientific evidence and method to justify your answer."),
         hint: String(data.hint ?? "Identify key command words and use precise scientific vocabulary."),
-      };
+      });
+    }
+
+    if (generationType === "languages") {
+      return withCommonFields({
+        ...data,
+        type: generationType,
+        yearGroup: metadata.yearGroup,
+        skillFocus: metadata.skillFocus,
+        difficulty: metadata.difficulty,
+        topic: metadata.topic || metadata.skillFocus || String(data.topic ?? "language"),
+        prompt: String(data.prompt ?? data.question ?? ""),
+        question: String(data.question ?? data.prompt ?? ""),
+        answer: String(data.answer ?? ""),
+        options: Array.isArray(data.choices)
+          ? data.choices.map((value) => String(value))
+          : Array.isArray(data.options)
+            ? data.options.map((value) => String(value))
+            : [],
+        explanation: String(data.explanation ?? "Use accurate language structures and meaning in context."),
+        hint: String(data.hint ?? "Check tense, agreement, and translation meaning."),
+        activityMode: String(data.activityMode ?? metadata.skillFocus),
+      });
     }
 
     if (promptType === "maths") {
-      return {
+      return withCommonFields({
         ...data,
         type: generationType,
         yearGroup: metadata.yearGroup,
@@ -529,17 +651,17 @@ function normalizePreviewItems(
         options: Array.isArray(data.choices) ? data.choices : Array.isArray(data.options) ? data.options : [],
         explanation: String(data.explanation ?? "Use the steps to solve the problem."),
         hint: String(data.hint ?? "Break the question into smaller parts."),
-      };
+      });
     }
 
-    return {
+    return withCommonFields({
       ...data,
       id: String(data.id ?? `reading-${index + 1}`),
       type: sourceSubject,
       yearGroup: metadata.yearGroup,
       skillFocus: metadata.skillFocus,
       difficulty: metadata.difficulty,
-    };
+    });
   });
 }
 
@@ -608,12 +730,16 @@ function attachSelectedMetadataToGeneratedItems(
   content: unknown,
   meta: {
     subject: Subject;
+    contentType: GenerationType;
     yearGroup: string;
     keyStage: string;
     curriculumPathway: string;
     examBoard: string | null;
     skillFocus: string;
     difficulty: number;
+    difficultyLabel: string;
+    cognitiveDemand: string;
+    scaffoldingLevel: string;
     topic: string;
   },
 ): unknown[] {
@@ -623,13 +749,19 @@ function attachSelectedMetadataToGeneratedItems(
     return {
       ...row,
       subject: meta.subject,
+      contentType: meta.contentType,
       yearGroup: meta.yearGroup,
       keyStage: meta.keyStage,
       curriculumPathway: meta.curriculumPathway,
       examBoard: meta.examBoard,
       skillFocus: meta.skillFocus,
       difficulty: meta.difficulty,
+      difficultyLevel: meta.difficulty,
+      difficultyLabel: meta.difficultyLabel,
+      cognitiveDemand: meta.cognitiveDemand,
+      scaffoldingLevel: meta.scaffoldingLevel,
       topic: meta.topic || row.topic,
+      topicTheme: meta.topic || row.topic,
     };
   });
 }
@@ -846,7 +978,7 @@ export async function POST(req: Request) {
   const level = typeof requestedLevel === "number" ? requestedLevel : Number(requestedLevel);
   const topic = typeof body.topic === "string" ? body.topic : "";
   const ageGroup = typeof body.ageGroup === "string" ? body.ageGroup : ageGroupForYearGroup(rawYearGroup);
-  const count = Math.max(1, Math.min(30, Number(requestedCount ?? BATCH_SIZE)));
+  const count = Math.max(1, Math.min(10, Number(requestedCount ?? BATCH_SIZE)));
   const keyStage = typeof body.keyStage === "string" ? body.keyStage : "KS1";
   const yearGroup = typeof body.yearGroup === "string" ? body.yearGroup : "";
   const requestedCurriculumPathway = typeof body.curriculumPathway === "string"
@@ -871,6 +1003,24 @@ export async function POST(req: Request) {
     curriculumPathway: safeCurriculumPathway,
     subject: sourceSubject,
   }) ? normalizeExamBoard(requestedExamBoard) : null;
+
+  const examBoardRequired = shouldApplyExamBoardTag({
+    yearGroup: safeYearGroup,
+    keyStage: safeKeyStage,
+    curriculumPathway: safeCurriculumPathway,
+    subject: sourceSubject,
+  });
+  if (examBoardRequired && !safeExamBoard) {
+    return NextResponse.json({
+      success: false,
+      error: "GCSE content requires an exam board.",
+      details: {
+        category: "validation_error",
+        field: "examBoard",
+        allowed: ["AQA", "Edexcel", "OCR", "WJEC / Eduqas", "CCEA", "General GCSE"],
+      },
+    }, { status: 422 });
+  }
 
   const pathValidation = isValidCurriculumPath({
     yearGroup: safeYearGroup,
@@ -979,14 +1129,19 @@ export async function POST(req: Request) {
     } else {
       const response = await requestOpenAiJson(apiKey, systemPrompt, userPrompt);
       generatedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(response.parsed) ? response.parsed[0] : response.parsed);
+      const difficultyProfile = DIFFICULTY_PROFILE[safeLevel] ?? DIFFICULTY_PROFILE[3];
       const normalizedBeforeValidation = attachSelectedMetadataToGeneratedItems(response.parsed, {
         subject: sourceSubject,
+        contentType: generationType,
         yearGroup: safeYearGroup,
         keyStage: safeKeyStage,
         curriculumPathway: safeCurriculumPathway,
         examBoard: safeExamBoard,
         skillFocus: resolvedSkillFocus,
         difficulty: safeLevel,
+        difficultyLabel: difficultyProfile.difficultyLabel,
+        cognitiveDemand: difficultyProfile.cognitiveDemand,
+        scaffoldingLevel: difficultyProfile.scaffoldingLevel,
         topic,
       });
       parsed = response.parsed;

@@ -137,6 +137,33 @@ type GenerationContext = {
 
 const CUSTOM_TOPIC_VALUE = "__custom_topic__";
 
+const GCSE_SUBJECT_GROUPS: Array<{ label: string; subjects: Subject[] }> = [
+  {
+    label: "Core",
+    subjects: ["gcse-english-language", "gcse-english-literature", "gcse-maths", "gcse-science", "gcse-combined-science", "gcse-biology", "gcse-chemistry", "gcse-physics"],
+  },
+  {
+    label: "Languages",
+    subjects: ["gcse-french", "gcse-german", "gcse-spanish", "gcse-italian", "gcse-mandarin", "gcse-arabic", "gcse-urdu", "gcse-polish", "gcse-latin"],
+  },
+  {
+    label: "Humanities",
+    subjects: ["gcse-history", "gcse-geography", "gcse-religious-studies", "gcse-citizenship-studies"],
+  },
+  {
+    label: "Technology and Business",
+    subjects: ["gcse-computer-science", "gcse-business-studies", "gcse-economics"],
+  },
+  {
+    label: "Creative and Practical",
+    subjects: ["gcse-art-and-design", "gcse-design-and-technology", "gcse-food-preparation-and-nutrition", "gcse-drama", "gcse-music", "gcse-media-studies", "gcse-physical-education"],
+  },
+  {
+    label: "Social Sciences",
+    subjects: ["gcse-psychology", "gcse-sociology"],
+  },
+];
+
 function resolvePreviewItemStatus(item: GeneratedPreviewItem): "pending" | "approved" | "rejected" {
   return item.status === "approved" || item.status === "rejected" || item.status === "pending" ? item.status : "approved";
 }
@@ -149,10 +176,54 @@ function applyDefaultItemStatuses(items: GeneratedPreviewItem[]): GeneratedPrevi
 }
 
 function formatSubjectLabel(value: string): string {
-  if (value === "math") return "Maths";
-  if (value === "maths") return "Maths";
-  if (value === "times-tables") return "Times Tables";
-  return value.charAt(0).toUpperCase() + value.slice(1).replace(/-/g, " ");
+  const labels: Partial<Record<Subject | "math", string>> = {
+    math: "Maths",
+    maths: "Maths",
+    "times-tables": "Times Tables",
+    "gcse-english-language": "GCSE English Language",
+    "gcse-english-literature": "GCSE English Literature",
+    "gcse-maths": "GCSE Maths",
+    "gcse-science": "GCSE Science",
+    "gcse-combined-science": "GCSE Combined Science",
+    "gcse-biology": "GCSE Biology",
+    "gcse-chemistry": "GCSE Chemistry",
+    "gcse-physics": "GCSE Physics",
+    "gcse-french": "GCSE French",
+    "gcse-german": "GCSE German",
+    "gcse-spanish": "GCSE Spanish",
+    "gcse-italian": "GCSE Italian",
+    "gcse-mandarin": "GCSE Mandarin",
+    "gcse-arabic": "GCSE Arabic",
+    "gcse-urdu": "GCSE Urdu",
+    "gcse-polish": "GCSE Polish",
+    "gcse-latin": "GCSE Latin",
+    "gcse-history": "GCSE History",
+    "gcse-geography": "GCSE Geography",
+    "gcse-religious-studies": "GCSE Religious Studies",
+    "gcse-citizenship-studies": "GCSE Citizenship Studies",
+    "gcse-computer-science": "GCSE Computer Science",
+    "gcse-business-studies": "GCSE Business Studies",
+    "gcse-economics": "GCSE Economics",
+    "gcse-art-and-design": "GCSE Art and Design",
+    "gcse-design-and-technology": "GCSE Design and Technology",
+    "gcse-food-preparation-and-nutrition": "GCSE Food Preparation and Nutrition",
+    "gcse-drama": "GCSE Drama",
+    "gcse-music": "GCSE Music",
+    "gcse-media-studies": "GCSE Media Studies",
+    "gcse-physical-education": "GCSE Physical Education",
+    "gcse-psychology": "GCSE Psychology",
+    "gcse-sociology": "GCSE Sociology",
+    "english-language": "English Language",
+    "english-literature": "English Literature",
+  };
+  const maybe = labels[value as Subject | "math"];
+  if (maybe) return maybe;
+  return value
+    .replace(/-/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function subjectFamily(value: string): "maths" | "science" | "english" | "other" {
@@ -326,7 +397,7 @@ export default function AiGeneratorPage() {
   const [difficulty, setDifficulty] = useState(
     Number.isFinite(prefillDifficulty) && prefillDifficulty >= 1 ? prefillDifficulty : prefillWords ? 1 : 2
   );
-  const [items, setItems] = useState(12);
+  const [items, setItems] = useState(5);
   const [topicChoice, setTopicChoice] = useState<string>(prefillWords ? CUSTOM_TOPIC_VALUE : "");
   const [customTopic, setCustomTopic] = useState(prefillWords ? `Focus practice on: ${prefillWords}` : "");
   const [loading, setLoading] = useState(false);
@@ -387,7 +458,7 @@ export default function AiGeneratorPage() {
     subject,
   });
 
-  const canGenerate = Boolean(subject && keyStage && yearGroup && skillFocus.trim() && selectedTopicTheme);
+  const canGenerate = Boolean(subject && keyStage && yearGroup && skillFocus.trim() && selectedTopicTheme && (!shouldTagExamBoard || Boolean(examBoard)));
 
   const automationDurationLabel = automationDurationMs === null
     ? null
@@ -490,8 +561,8 @@ export default function AiGeneratorPage() {
       setError(pathValidation.reason);
       return;
     }
-    if (items < 1 || items > 30) {
-      setError("Number of items must be between 1 and 30.");
+    if (items < 1 || items > 10) {
+      setError("Number of preview items must be between 1 and 10.");
       return;
     }
     const maxDifficulty = 5;
@@ -1035,37 +1106,11 @@ export default function AiGeneratorPage() {
             </label>
             <label className="block text-sm font-bold text-slate-300">
               Key stage
-              <select
+              <input
                 value={keyStage}
-                onChange={(event) => {
-                  clearWeakAreaLink();
-                  const nextKeyStage = event.target.value as typeof KEY_STAGES[number];
-                  setKeyStage(nextKeyStage);
-                  const options = yearGroupsForKeyStage(nextKeyStage);
-                  const nextYear = options.includes(yearGroup as (typeof YEAR_GROUPS)[number])
-                    ? yearGroup
-                    : options[0];
-                  setYearGroup(nextYear);
-                  setAgeGroup(ageGroupForYearGroup(nextYear));
-                  if (!shouldApplyExamBoardTag({
-                    yearGroup: nextYear,
-                    keyStage: nextKeyStage,
-                    curriculumPathway: curriculumPathwayForYearGroup(nextYear),
-                    subject,
-                  })) {
-                    setExamBoard("");
-                  }
-                  setTopicChoice("");
-                  setCustomTopic("");
-                }}
-                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
-              >
-                {KEY_STAGES.map((stage) => (
-                  <option key={stage} value={stage}>
-                    {stage}
-                  </option>
-                ))}
-              </select>
+                readOnly
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-white"
+              />
             </label>
           </div>
 
@@ -1084,11 +1129,24 @@ export default function AiGeneratorPage() {
               }}
               className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
             >
-              {availableSubjects.map((s) => (
-                <option key={s} value={s}>
-                  {s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, " ")}
-                </option>
-              ))}
+              {GCSE_SUBJECT_GROUPS.map((group) => {
+                const options = group.subjects.filter((candidate) => availableSubjects.includes(candidate));
+                if (!options.length) return null;
+                return (
+                  <optgroup key={group.label} label={group.label}>
+                    {options.map((s) => (
+                      <option key={s} value={s}>{formatSubjectLabel(s)}</option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+              {availableSubjects.filter((s) => !GCSE_SUBJECT_GROUPS.some((group) => group.subjects.includes(s))).length ? (
+                <optgroup label="Other">
+                  {availableSubjects.filter((s) => !GCSE_SUBJECT_GROUPS.some((group) => group.subjects.includes(s))).map((s) => (
+                    <option key={s} value={s}>{formatSubjectLabel(s)}</option>
+                  ))}
+                </optgroup>
+              ) : null}
             </select>
           </label>
 
@@ -1124,7 +1182,7 @@ export default function AiGeneratorPage() {
               />
             </label>
             <label className="block text-sm font-bold text-slate-300">
-              Exam board {shouldTagExamBoard ? "(recommended)" : "(not needed)"}
+              Exam board {shouldTagExamBoard ? "(required)" : "(not needed)"}
               <select
                 value={examBoard}
                 onChange={(event) => {
@@ -1134,7 +1192,7 @@ export default function AiGeneratorPage() {
                 className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
                 disabled={!shouldTagExamBoard}
               >
-                <option value="">None</option>
+                <option value="">{shouldTagExamBoard ? "Select exam board" : "Not required"}</option>
                 {EXAM_BOARDS.map((board) => (
                   <option key={board} value={board}>{board}</option>
                 ))}
@@ -1148,20 +1206,11 @@ export default function AiGeneratorPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-bold text-slate-300">
               Age group
-              <select
+              <input
                 value={ageGroup}
-                onChange={(event) => {
-                  clearWeakAreaLink();
-                  setAgeGroup(event.target.value as typeof AGE_GROUPS[number]);
-                }}
-                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
-              >
-                {AGE_GROUPS.map((group) => (
-                  <option key={group} value={group}>
-                    {group}
-                  </option>
-                ))}
-              </select>
+                readOnly
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-white"
+              />
             </label>
             <label className="block text-sm font-bold text-slate-300">
               Difficulty: {difficulty} / 5
@@ -1184,11 +1233,11 @@ export default function AiGeneratorPage() {
             <input
               type="number"
               min={1}
-              max={30}
+              max={10}
               value={items}
               onChange={(event) => {
                 clearWeakAreaLink();
-                setItems(Number(event.target.value));
+                setItems(Math.max(1, Math.min(10, Number(event.target.value))));
               }}
               className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
             />
@@ -1545,8 +1594,16 @@ export default function AiGeneratorPage() {
                       {String(item.phonicsStage)}
                     </p>
                   ) : null}
+                  {Boolean(item.visualRequired) ? (
+                    <p className="mt-1 inline-flex w-fit rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-100">
+                      Visual required: {String(item.visualType ?? "diagram")}
+                    </p>
+                  ) : null}
                   <p className="mt-1 line-clamp-3 text-xs text-slate-300">{String(item.hint ?? item.explanation ?? "Review this item before saving.")}</p>
                   <p className="mt-1 line-clamp-3 text-xs text-slate-400">{String(item.sentence ?? item.sentenceContext ?? item.passage ?? "")}</p>
+                  {typeof item.visualPrompt === "string" && item.visualPrompt ? (
+                    <p className="mt-1 line-clamp-2 text-[11px] text-violet-200">Visual prompt: {String(item.visualPrompt)}</p>
+                  ) : null}
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button type="button" onClick={() => markPreviewItem(index, "approved")} className={`min-w-24 flex-1 rounded-lg px-2 py-1.5 text-[11px] font-black text-white ${item.status === "approved" ? "bg-emerald-400 ring-2 ring-emerald-200" : "bg-emerald-500 hover:bg-emerald-400"}`}>Approve</button>
                     <button type="button" onClick={() => markPreviewItem(index, "rejected")} className={`min-w-24 flex-1 rounded-lg px-2 py-1.5 text-[11px] font-black text-white ${item.status === "rejected" ? "bg-rose-400 ring-2 ring-rose-200" : "bg-rose-500 hover:bg-rose-400"}`}>Reject</button>
@@ -1559,6 +1616,9 @@ export default function AiGeneratorPage() {
                       {Array.isArray(item.options) && item.options.length ? <p><span className="font-semibold text-slate-200">Options:</span> {item.options.map((option) => String(option)).join(", ")}</p> : null}
                       {typeof item.explanation === "string" && item.explanation ? <p><span className="font-semibold text-slate-200">Explanation:</span> {item.explanation}</p> : null}
                       {typeof item.hint === "string" && item.hint ? <p><span className="font-semibold text-slate-200">Hint:</span> {item.hint}</p> : null}
+                      {typeof item.visualType === "string" && item.visualType ? <p><span className="font-semibold text-slate-200">Visual type:</span> {item.visualType}</p> : null}
+                      {typeof item.visualPrompt === "string" && item.visualPrompt ? <p><span className="font-semibold text-slate-200">Visual prompt:</span> {item.visualPrompt}</p> : null}
+                      {typeof item.visualAltText === "string" && item.visualAltText ? <p><span className="font-semibold text-slate-200">Visual alt text:</span> {item.visualAltText}</p> : null}
                     </div>
                   </details>
                   {showDeveloperDetails ? (

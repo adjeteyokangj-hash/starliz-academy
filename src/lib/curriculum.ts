@@ -15,7 +15,7 @@ export const YEAR_GROUPS = [
 
 export const KEY_STAGES = ["EYFS", "KS1", "KS2", "KS3", "KS4"] as const;
 export const CURRICULUM_PATHWAYS = ["primary", "ks3", "gcse"] as const;
-export const EXAM_BOARDS = ["AQA", "Edexcel", "OCR"] as const;
+export const EXAM_BOARDS = ["AQA", "Edexcel", "OCR", "WJEC / Eduqas", "CCEA", "General GCSE"] as const;
 export const GCSE_EXAM_BOARD_WARNING = "GCSE content should be tagged with an exam board for accurate alignment.";
 
 export type YearGroup = (typeof YEAR_GROUPS)[number];
@@ -266,10 +266,13 @@ export function normalizeCurriculumPathway(value: string | null | undefined): Cu
 
 export function normalizeExamBoard(value: string | null | undefined): ExamBoard | null {
   if (!value) return null;
-  const normalized = value.trim().toLowerCase();
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
   if (normalized === "aqa") return "AQA";
   if (normalized === "edexcel") return "Edexcel";
   if (normalized === "ocr") return "OCR";
+  if (normalized === "wjec" || normalized === "eduqas" || normalized === "wjec/eduqas" || normalized === "wjec / eduqas") return "WJEC / Eduqas";
+  if (normalized === "ccea") return "CCEA";
+  if (normalized === "general gcse" || normalized === "general") return "General GCSE";
   return null;
 }
 
@@ -346,7 +349,55 @@ export function ageGroupForYearGroup(yearGroup: string | null | undefined): AgeG
 }
 
 // Subject types
-export type Subject = "phonics" | "spelling" | "reading" | "writing" | "grammar" | "punctuation" | "vocabulary" | "maths" | "times-tables" | "science" | "english-literature" | "english-language" | "sats-practice" | "11-plus-practice" | "gcse-english" | "gcse-maths" | "gcse-science";
+export type Subject =
+  | "phonics"
+  | "spelling"
+  | "reading"
+  | "writing"
+  | "grammar"
+  | "punctuation"
+  | "vocabulary"
+  | "maths"
+  | "times-tables"
+  | "science"
+  | "english-literature"
+  | "english-language"
+  | "sats-practice"
+  | "11-plus-practice"
+  | "gcse-english"
+  | "gcse-english-language"
+  | "gcse-english-literature"
+  | "gcse-maths"
+  | "gcse-science"
+  | "gcse-combined-science"
+  | "gcse-biology"
+  | "gcse-chemistry"
+  | "gcse-physics"
+  | "gcse-french"
+  | "gcse-german"
+  | "gcse-spanish"
+  | "gcse-italian"
+  | "gcse-mandarin"
+  | "gcse-arabic"
+  | "gcse-urdu"
+  | "gcse-polish"
+  | "gcse-latin"
+  | "gcse-history"
+  | "gcse-geography"
+  | "gcse-religious-studies"
+  | "gcse-citizenship-studies"
+  | "gcse-computer-science"
+  | "gcse-business-studies"
+  | "gcse-economics"
+  | "gcse-art-and-design"
+  | "gcse-design-and-technology"
+  | "gcse-food-preparation-and-nutrition"
+  | "gcse-drama"
+  | "gcse-music"
+  | "gcse-media-studies"
+  | "gcse-physical-education"
+  | "gcse-psychology"
+  | "gcse-sociology";
 
 export function normalizeSubject(value: string | null | undefined): Subject | null {
   if (!value) return null;
@@ -368,6 +419,12 @@ export function normalizeSubject(value: string | null | undefined): Subject | nu
     "gcse-maths": "gcse-maths",
     "gcse-english-language": "gcse-english",
     "gcse-english-literature": "gcse-english",
+    "gcse-french-language": "gcse-french",
+    "gcse-german-language": "gcse-german",
+    "gcse-spanish-language": "gcse-spanish",
+    "gcse-combined": "gcse-combined-science",
+    "gcse-rs": "gcse-religious-studies",
+    "gcse-cs": "gcse-computer-science",
     "gcse-biology": "gcse-science",
     "gcse-chemistry": "gcse-science",
     "gcse-physics": "gcse-science",
@@ -375,7 +432,36 @@ export function normalizeSubject(value: string | null | undefined): Subject | nu
   const directAlias = aliasMap[cleaned];
   if (directAlias) return directAlias;
 
+  if (cleaned.includes("gcse") && cleaned.includes("combined") && cleaned.includes("science")) return "gcse-combined-science";
+  if (cleaned.includes("gcse") && cleaned.includes("biology")) return "gcse-biology";
+  if (cleaned.includes("gcse") && cleaned.includes("chemistry")) return "gcse-chemistry";
+  if (cleaned.includes("gcse") && cleaned.includes("physics")) return "gcse-physics";
   if (cleaned.includes("gcse") && cleaned.includes("science")) return "gcse-science";
+  if (cleaned.includes("gcse") && cleaned.includes("french")) return "gcse-french";
+  if (cleaned.includes("gcse") && cleaned.includes("german")) return "gcse-german";
+  if (cleaned.includes("gcse") && cleaned.includes("spanish")) return "gcse-spanish";
+  if (cleaned.includes("gcse") && cleaned.includes("italian")) return "gcse-italian";
+  if (cleaned.includes("gcse") && cleaned.includes("mandarin")) return "gcse-mandarin";
+  if (cleaned.includes("gcse") && cleaned.includes("arabic")) return "gcse-arabic";
+  if (cleaned.includes("gcse") && cleaned.includes("urdu")) return "gcse-urdu";
+  if (cleaned.includes("gcse") && cleaned.includes("polish")) return "gcse-polish";
+  if (cleaned.includes("gcse") && cleaned.includes("latin")) return "gcse-latin";
+  if (cleaned.includes("gcse") && cleaned.includes("history")) return "gcse-history";
+  if (cleaned.includes("gcse") && cleaned.includes("geography")) return "gcse-geography";
+  if (cleaned.includes("gcse") && (cleaned.includes("religious") || cleaned.includes("rs"))) return "gcse-religious-studies";
+  if (cleaned.includes("gcse") && cleaned.includes("citizenship")) return "gcse-citizenship-studies";
+  if (cleaned.includes("gcse") && cleaned.includes("computer")) return "gcse-computer-science";
+  if (cleaned.includes("gcse") && cleaned.includes("business")) return "gcse-business-studies";
+  if (cleaned.includes("gcse") && cleaned.includes("economics")) return "gcse-economics";
+  if (cleaned.includes("gcse") && cleaned.includes("art")) return "gcse-art-and-design";
+  if (cleaned.includes("gcse") && cleaned.includes("design") && cleaned.includes("technology")) return "gcse-design-and-technology";
+  if (cleaned.includes("gcse") && cleaned.includes("food")) return "gcse-food-preparation-and-nutrition";
+  if (cleaned.includes("gcse") && cleaned.includes("drama")) return "gcse-drama";
+  if (cleaned.includes("gcse") && cleaned.includes("music")) return "gcse-music";
+  if (cleaned.includes("gcse") && cleaned.includes("media")) return "gcse-media-studies";
+  if (cleaned.includes("gcse") && (cleaned.includes("physical-education") || cleaned.includes("pe"))) return "gcse-physical-education";
+  if (cleaned.includes("gcse") && cleaned.includes("psychology")) return "gcse-psychology";
+  if (cleaned.includes("gcse") && cleaned.includes("sociology")) return "gcse-sociology";
   if (cleaned.includes("gcse") && (cleaned.includes("math") || cleaned.includes("algebra") || cleaned.includes("geometry"))) return "gcse-maths";
   if (cleaned.includes("gcse") && cleaned.includes("english")) return "gcse-english";
   if (cleaned.includes("science")) return "science";
@@ -397,9 +483,10 @@ export function normalizeSubject(value: string | null | undefined): Subject | nu
 export function mapSubjectToLegacyContentType(subject: string | null | undefined): LegacyContentType | null {
   const normalized = normalizeSubject(subject);
   if (!normalized) return null;
-  if (normalized === "science" || normalized === "gcse-science") return "science";
+  if (normalized === "science" || normalized === "gcse-science" || normalized === "gcse-combined-science" || normalized === "gcse-biology" || normalized === "gcse-chemistry" || normalized === "gcse-physics") return "science";
   if (normalized === "maths" || normalized === "times-tables" || normalized === "gcse-maths" || normalized === "sats-practice" || normalized === "11-plus-practice") return "math";
-  if (normalized === "reading" || normalized === "vocabulary" || normalized === "english-language" || normalized === "english-literature" || normalized === "gcse-english") return "reading";
+  if (normalized === "reading" || normalized === "vocabulary" || normalized === "english-language" || normalized === "english-literature" || normalized === "gcse-english" || normalized === "gcse-english-language" || normalized === "gcse-english-literature") return "reading";
+  if (normalized.startsWith("gcse-")) return "reading";
   return "spelling";
 }
 
@@ -413,6 +500,7 @@ export type GenerationType =
   | "vocabulary"
   | "maths"
   | "science"
+  | "languages"
   | "english-language"
   | "english-literature"
   | "exam-practice";
@@ -433,8 +521,39 @@ export const GENERATION_CONTENT_TYPE_BY_SUBJECT: Record<Subject, GenerationType>
   "sats-practice": "exam-practice",
   "11-plus-practice": "exam-practice",
   "gcse-english": "english-language",
+  "gcse-english-language": "english-language",
+  "gcse-english-literature": "english-literature",
   "gcse-maths": "maths",
   "gcse-science": "science",
+  "gcse-combined-science": "science",
+  "gcse-biology": "science",
+  "gcse-chemistry": "science",
+  "gcse-physics": "science",
+  "gcse-french": "languages",
+  "gcse-german": "languages",
+  "gcse-spanish": "languages",
+  "gcse-italian": "languages",
+  "gcse-mandarin": "languages",
+  "gcse-arabic": "languages",
+  "gcse-urdu": "languages",
+  "gcse-polish": "languages",
+  "gcse-latin": "languages",
+  "gcse-history": "reading",
+  "gcse-geography": "reading",
+  "gcse-religious-studies": "reading",
+  "gcse-citizenship-studies": "reading",
+  "gcse-computer-science": "reading",
+  "gcse-business-studies": "reading",
+  "gcse-economics": "reading",
+  "gcse-art-and-design": "reading",
+  "gcse-design-and-technology": "reading",
+  "gcse-food-preparation-and-nutrition": "reading",
+  "gcse-drama": "reading",
+  "gcse-music": "reading",
+  "gcse-media-studies": "reading",
+  "gcse-physical-education": "reading",
+  "gcse-psychology": "reading",
+  "gcse-sociology": "reading",
 };
 
 // Subject availability by year group
@@ -449,8 +568,76 @@ const SUBJECTS_BY_YEAR: Record<YearGroup, readonly Subject[]> = {
   "Year 7": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
   "Year 8": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
   "Year 9": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
-  "Year 10": ["gcse-english", "gcse-maths", "gcse-science", "english-literature"] as const,
-  "Year 11": ["gcse-english", "gcse-maths", "gcse-science", "english-literature"] as const,
+  "Year 10": [
+    "gcse-english-language",
+    "gcse-english-literature",
+    "gcse-maths",
+    "gcse-science",
+    "gcse-combined-science",
+    "gcse-biology",
+    "gcse-chemistry",
+    "gcse-physics",
+    "gcse-french",
+    "gcse-german",
+    "gcse-spanish",
+    "gcse-italian",
+    "gcse-mandarin",
+    "gcse-arabic",
+    "gcse-urdu",
+    "gcse-polish",
+    "gcse-latin",
+    "gcse-history",
+    "gcse-geography",
+    "gcse-religious-studies",
+    "gcse-citizenship-studies",
+    "gcse-computer-science",
+    "gcse-business-studies",
+    "gcse-economics",
+    "gcse-art-and-design",
+    "gcse-design-and-technology",
+    "gcse-food-preparation-and-nutrition",
+    "gcse-drama",
+    "gcse-music",
+    "gcse-media-studies",
+    "gcse-physical-education",
+    "gcse-psychology",
+    "gcse-sociology",
+  ] as const,
+  "Year 11": [
+    "gcse-english-language",
+    "gcse-english-literature",
+    "gcse-maths",
+    "gcse-science",
+    "gcse-combined-science",
+    "gcse-biology",
+    "gcse-chemistry",
+    "gcse-physics",
+    "gcse-french",
+    "gcse-german",
+    "gcse-spanish",
+    "gcse-italian",
+    "gcse-mandarin",
+    "gcse-arabic",
+    "gcse-urdu",
+    "gcse-polish",
+    "gcse-latin",
+    "gcse-history",
+    "gcse-geography",
+    "gcse-religious-studies",
+    "gcse-citizenship-studies",
+    "gcse-computer-science",
+    "gcse-business-studies",
+    "gcse-economics",
+    "gcse-art-and-design",
+    "gcse-design-and-technology",
+    "gcse-food-preparation-and-nutrition",
+    "gcse-drama",
+    "gcse-music",
+    "gcse-media-studies",
+    "gcse-physical-education",
+    "gcse-psychology",
+    "gcse-sociology",
+  ] as const,
 };
 
 export function subjectsForYearGroup(yearGroup: string | null | undefined): readonly Subject[] {
@@ -460,7 +647,46 @@ export function subjectsForYearGroup(yearGroup: string | null | undefined): read
 }
 
 // Skill focus options by subject and year group
-type SkillsBySubjectAndYear = Record<Subject, Record<string, readonly string[]>>;
+type SkillsBySubjectAndYear = Partial<Record<Subject, Record<string, readonly string[]>>>;
+
+const GCSE_LANGUAGE_SKILLS = [
+  "Vocabulary",
+  "Grammar",
+  "Translation",
+  "Reading comprehension",
+  "Listening comprehension",
+  "Speaking practice",
+  "Writing practice",
+  "Role play",
+  "Photo card",
+  "Sentence building",
+  "Verb conjugation",
+  "Tenses",
+  "Exam practice",
+] as const;
+
+const GCSE_SCIENCE_SKILLS = [
+  "Biology",
+  "Chemistry",
+  "Physics",
+  "Working scientifically",
+  "Required practicals",
+  "Exam technique",
+  "Data analysis",
+  "Equations and calculations",
+  "Scientific vocabulary",
+] as const;
+
+const GCSE_MATHS_SKILLS = [
+  "Number",
+  "Algebra",
+  "Ratio and proportion",
+  "Geometry",
+  "Probability",
+  "Statistics",
+  "Problem solving",
+  "Exam technique",
+] as const;
 
 const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
   "phonics": {
@@ -606,13 +832,137 @@ const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
     "Year 10": ["English Language", "English Literature", "Exam technique", "Retrieval practice", "Extended response"],
     "Year 11": ["English Language", "English Literature", "Exam technique", "Extended response", "Retrieval practice"],
   },
+  "gcse-english-language": {
+    "Year 10": ["Language analysis", "Reading comprehension", "Writing practice", "Exam practice", "Transactional writing", "Creative writing"],
+    "Year 11": ["Language analysis", "Reading comprehension", "Writing practice", "Exam practice", "Transactional writing", "Creative writing"],
+  },
+  "gcse-english-literature": {
+    "Year 10": ["Theme analysis", "Character analysis", "Poetry analysis", "Comparative analysis", "Essay planning", "Exam practice"],
+    "Year 11": ["Theme analysis", "Character analysis", "Poetry analysis", "Comparative analysis", "Essay planning", "Exam practice"],
+  },
   "gcse-maths": {
-    "Year 10": ["Number", "Algebra", "Geometry", "Statistics", "Equation recall", "Calculation practice"],
-    "Year 11": ["Higher tier topics", "Problem solving", "Proof", "Equation recall", "Calculation practice", "Exam technique"],
+    "Year 10": GCSE_MATHS_SKILLS,
+    "Year 11": GCSE_MATHS_SKILLS,
   },
   "gcse-science": {
-    "Year 10": ["Biology", "Chemistry", "Physics", "Combined Science", "Required practicals", "Exam technique", "Equation recall"],
-    "Year 11": ["Synoptic assessment", "Calculation practice", "Required practicals", "Exam technique", "Extended response", "Retrieval practice", "Equation recall", "Biology", "Chemistry", "Physics", "Combined Science"],
+    "Year 10": GCSE_SCIENCE_SKILLS,
+    "Year 11": GCSE_SCIENCE_SKILLS,
+  },
+  "gcse-combined-science": {
+    "Year 10": GCSE_SCIENCE_SKILLS,
+    "Year 11": GCSE_SCIENCE_SKILLS,
+  },
+  "gcse-biology": {
+    "Year 10": ["Cell biology", "Organisation", "Infection and response", "Bioenergetics", "Working scientifically", "Exam technique"],
+    "Year 11": ["Homeostasis", "Inheritance", "Ecology", "Required practicals", "Data analysis", "Exam technique"],
+  },
+  "gcse-chemistry": {
+    "Year 10": ["Atomic structure", "Bonding", "Quantitative chemistry", "Chemical changes", "Working scientifically", "Exam technique"],
+    "Year 11": ["Energy changes", "Rates of reaction", "Organic chemistry", "Required practicals", "Data analysis", "Exam technique"],
+  },
+  "gcse-physics": {
+    "Year 10": ["Forces", "Energy", "Waves", "Electricity", "Working scientifically", "Exam technique"],
+    "Year 11": ["Magnetism", "Particle model", "Atomic structure", "Required practicals", "Equations and calculations", "Exam technique"],
+  },
+  "gcse-french": {
+    "Year 10": GCSE_LANGUAGE_SKILLS,
+    "Year 11": GCSE_LANGUAGE_SKILLS,
+  },
+  "gcse-german": {
+    "Year 10": GCSE_LANGUAGE_SKILLS,
+    "Year 11": GCSE_LANGUAGE_SKILLS,
+  },
+  "gcse-spanish": {
+    "Year 10": GCSE_LANGUAGE_SKILLS,
+    "Year 11": GCSE_LANGUAGE_SKILLS,
+  },
+  "gcse-italian": {
+    "Year 10": GCSE_LANGUAGE_SKILLS,
+    "Year 11": GCSE_LANGUAGE_SKILLS,
+  },
+  "gcse-mandarin": {
+    "Year 10": GCSE_LANGUAGE_SKILLS,
+    "Year 11": GCSE_LANGUAGE_SKILLS,
+  },
+  "gcse-arabic": {
+    "Year 10": GCSE_LANGUAGE_SKILLS,
+    "Year 11": GCSE_LANGUAGE_SKILLS,
+  },
+  "gcse-urdu": {
+    "Year 10": GCSE_LANGUAGE_SKILLS,
+    "Year 11": GCSE_LANGUAGE_SKILLS,
+  },
+  "gcse-polish": {
+    "Year 10": GCSE_LANGUAGE_SKILLS,
+    "Year 11": GCSE_LANGUAGE_SKILLS,
+  },
+  "gcse-latin": {
+    "Year 10": GCSE_LANGUAGE_SKILLS,
+    "Year 11": GCSE_LANGUAGE_SKILLS,
+  },
+  "gcse-history": {
+    "Year 10": ["Source analysis", "Interpretations", "Causation", "Change and continuity", "Essay structure", "Exam technique"],
+    "Year 11": ["Source analysis", "Interpretations", "Causation", "Change and continuity", "Essay structure", "Exam technique"],
+  },
+  "gcse-geography": {
+    "Year 10": ["Physical geography", "Human geography", "Fieldwork", "Data interpretation", "Case studies", "Exam technique"],
+    "Year 11": ["Physical geography", "Human geography", "Fieldwork", "Data interpretation", "Case studies", "Exam technique"],
+  },
+  "gcse-religious-studies": {
+    "Year 10": ["Beliefs and teachings", "Practices", "Ethical themes", "Source interpretation", "Extended response", "Exam technique"],
+    "Year 11": ["Beliefs and teachings", "Practices", "Ethical themes", "Source interpretation", "Extended response", "Exam technique"],
+  },
+  "gcse-citizenship-studies": {
+    "Year 10": ["Rights and responsibilities", "Law and justice", "Politics", "Participation", "Source analysis", "Exam technique"],
+    "Year 11": ["Rights and responsibilities", "Law and justice", "Politics", "Participation", "Source analysis", "Exam technique"],
+  },
+  "gcse-computer-science": {
+    "Year 10": ["Algorithms", "Programming", "Data representation", "Computer systems", "Networks", "Exam technique"],
+    "Year 11": ["Algorithms", "Programming", "Data representation", "Computer systems", "Networks", "Exam technique"],
+  },
+  "gcse-business-studies": {
+    "Year 10": ["Business activity", "Marketing", "Operations", "Finance", "Human resources", "Exam technique"],
+    "Year 11": ["Business activity", "Marketing", "Operations", "Finance", "Human resources", "Exam technique"],
+  },
+  "gcse-economics": {
+    "Year 10": ["Microeconomics", "Macroeconomics", "Markets", "Government policy", "Data analysis", "Exam technique"],
+    "Year 11": ["Microeconomics", "Macroeconomics", "Markets", "Government policy", "Data analysis", "Exam technique"],
+  },
+  "gcse-art-and-design": {
+    "Year 10": ["Visual analysis", "Artist research", "Developing ideas", "Experimentation", "Portfolio refinement", "Evaluation"],
+    "Year 11": ["Visual analysis", "Artist research", "Developing ideas", "Experimentation", "Portfolio refinement", "Evaluation"],
+  },
+  "gcse-design-and-technology": {
+    "Year 10": ["Design process", "Materials", "Manufacturing", "Iterative design", "Evaluation", "Exam technique"],
+    "Year 11": ["Design process", "Materials", "Manufacturing", "Iterative design", "Evaluation", "Exam technique"],
+  },
+  "gcse-food-preparation-and-nutrition": {
+    "Year 10": ["Nutrition", "Food science", "Food safety", "Technical skills", "Menu planning", "Evaluation"],
+    "Year 11": ["Nutrition", "Food science", "Food safety", "Technical skills", "Menu planning", "Evaluation"],
+  },
+  "gcse-drama": {
+    "Year 10": ["Performance skills", "Devising", "Script analysis", "Theatre makers", "Evaluation", "Exam technique"],
+    "Year 11": ["Performance skills", "Devising", "Script analysis", "Theatre makers", "Evaluation", "Exam technique"],
+  },
+  "gcse-music": {
+    "Year 10": ["Listening and appraising", "Performance", "Composition", "Music theory", "Analysis", "Exam technique"],
+    "Year 11": ["Listening and appraising", "Performance", "Composition", "Music theory", "Analysis", "Exam technique"],
+  },
+  "gcse-media-studies": {
+    "Year 10": ["Media language", "Representation", "Audience", "Industry", "Context", "Exam technique"],
+    "Year 11": ["Media language", "Representation", "Audience", "Industry", "Context", "Exam technique"],
+  },
+  "gcse-physical-education": {
+    "Year 10": ["Anatomy and physiology", "Movement analysis", "Physical training", "Sport psychology", "Socio-cultural influences", "Exam technique"],
+    "Year 11": ["Anatomy and physiology", "Movement analysis", "Physical training", "Sport psychology", "Socio-cultural influences", "Exam technique"],
+  },
+  "gcse-psychology": {
+    "Year 10": ["Memory", "Perception", "Development", "Research methods", "Data analysis", "Exam technique"],
+    "Year 11": ["Memory", "Perception", "Development", "Research methods", "Data analysis", "Exam technique"],
+  },
+  "gcse-sociology": {
+    "Year 10": ["Families", "Education", "Crime and deviance", "Social stratification", "Research methods", "Exam technique"],
+    "Year 11": ["Families", "Education", "Crime and deviance", "Social stratification", "Research methods", "Exam technique"],
   },
 };
 
@@ -1001,13 +1351,59 @@ function generateTopicsFromSkill(skillFocus: string, subject: Subject): readonly
       "Misconception repair",
     ],
     "gcse-science": [
-      "required practicals",
-      "exam technique",
-      "calculation practice",
-      "equation recall",
-      "retrieval practice",
-      "application questions",
-      "synoptic assessment",
+      "Cell biology",
+      "Organisation",
+      "Infection and response",
+      "Bioenergetics",
+      "Atomic structure",
+      "Bonding",
+      "Quantitative chemistry",
+      "Chemical changes",
+      "Energy changes",
+      "Forces",
+      "Energy",
+      "Waves",
+      "Electricity",
+      "Magnetism",
+      "Required practicals",
+      "Working scientifically",
+      "Exam technique practice",
+    ],
+    "gcse-combined-science": [
+      "Cell biology",
+      "Atomic structure",
+      "Forces",
+      "Energy",
+      "Waves",
+      "Required practicals",
+      "Exam technique practice",
+    ],
+    "gcse-biology": [
+      "Cell biology",
+      "Organisation",
+      "Infection and response",
+      "Bioenergetics",
+      "Homeostasis",
+      "Inheritance",
+      "Ecology",
+    ],
+    "gcse-chemistry": [
+      "Atomic structure",
+      "Bonding",
+      "Quantitative chemistry",
+      "Chemical changes",
+      "Energy changes",
+      "Rates of reaction",
+      "Organic chemistry",
+    ],
+    "gcse-physics": [
+      "Forces",
+      "Energy",
+      "Waves",
+      "Electricity",
+      "Magnetism",
+      "Particle model",
+      "Atomic structure",
     ],
     "gcse-maths": [
       "algebra fluency",
@@ -1015,6 +1411,66 @@ function generateTopicsFromSkill(skillFocus: string, subject: Subject): readonly
       "geometry and measure",
       "statistics interpretation",
       "exam non-calculator practice",
+    ],
+    "gcse-french": [
+      "Identity and culture",
+      "Family and relationships",
+      "Free time",
+      "Technology",
+      "School",
+      "Education",
+      "Future plans",
+      "Jobs and careers",
+      "Home and local area",
+      "Town and region",
+      "Travel and tourism",
+      "Holidays",
+      "Food and drink",
+      "Health and lifestyle",
+      "Environment",
+      "Social issues",
+      "Global issues",
+      "Festivals and traditions",
+    ],
+    "gcse-german": [
+      "Identity and culture",
+      "Family and relationships",
+      "Free time",
+      "Technology",
+      "School",
+      "Education",
+      "Future plans",
+      "Jobs and careers",
+      "Home and local area",
+      "Town and region",
+      "Travel and tourism",
+      "Holidays",
+      "Food and drink",
+      "Health and lifestyle",
+      "Environment",
+      "Social issues",
+      "Global issues",
+      "Festivals and traditions",
+    ],
+    "gcse-spanish": [
+      "Identity and culture",
+      "Family and relationships",
+      "Free time",
+      "Technology",
+      "School",
+      "Education",
+      "Future plans",
+      "Jobs and careers",
+      "Home and local area",
+      "Town and region",
+      "Travel and tourism",
+      "Holidays",
+      "Food and drink",
+      "Health and lifestyle",
+      "Environment",
+      "Social issues",
+      "Global issues",
+      "Festivals and traditions",
     ],
     "sats-practice": [
       "arithmetic fluency",
