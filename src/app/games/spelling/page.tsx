@@ -758,6 +758,8 @@ export default function SpellingQuestPage() {
     setSpeechFallbackReason(null);
     setSpeechLastMatchResult(null);
     setPendingAdvance(null);
+    setFeedback("");
+    setTutorFeedback("");
     setTutorEmotion("thinking");
     setLessonStage("ASSESS_SPEECH");
     setBuildSelection([]);
@@ -1750,11 +1752,16 @@ export default function SpellingQuestPage() {
       const baseCoinsEarned = result.rewardDelta.coins;
       const targetCoinsEarned = displayMode === "boss_test" ? 5 : displayMode === "recall_test" ? 2 : 0;
       const bonusCoins = targetCoinsEarned ? Math.max(0, targetCoinsEarned - baseCoinsEarned) : 0;
-      const rewardedProfileRaw = await awardCoinBonus(
-        attemptProfile,
-        bonusCoins,
-        displayMode === "boss_test" ? "boss_test" : "recall_test",
-      );
+      let rewardedProfileRaw: ChildProfile;
+      try {
+        rewardedProfileRaw = await awardCoinBonus(
+          attemptProfile,
+          bonusCoins,
+          displayMode === "boss_test" ? "boss_test" : "recall_test",
+        );
+      } catch {
+        rewardedProfileRaw = attemptProfile;
+      }
       const rewardedProfile = (!skillMasteryReady && result.promotedDifficulty)
         ? {
             ...rewardedProfileRaw,
@@ -2689,7 +2696,7 @@ export default function SpellingQuestPage() {
                 </p>
                 {displayMode === "boss_test" ? (
                   <div className="mt-3 space-y-1">
-                    <p className="text-sm font-bold text-amber-100">{showBossCelebration ? "Challenge finished." : "You&apos;re almost finished!"}</p>
+                    <p className="text-sm font-bold text-amber-100">{showBossCelebration ? "Challenge finished." : "You're almost finished!"}</p>
                     <p className="text-sm text-blue-100">{showBossCelebration ? "Choose whether to continue to the next level or practise this one again." : "No help this time — try your best."}</p>
                   </div>
                 ) : null}
@@ -3096,14 +3103,14 @@ export default function SpellingQuestPage() {
               Check Answer
             </Button>
             <Button className="w-full" variant="secondary" onClick={repeatQuestion}>Repeat Question</Button>
-            {!helpLocked && <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)}>Coach</Button>}
+            {targetWord ? <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)}>Coach</Button> : null}
             <Button className="w-full" variant="secondary" onClick={makeItEasier} disabled={helpLocked}>Make it easier</Button>
             <Button className="w-full" variant="secondary" onClick={skipWord}>Skip</Button>
             <Link href="/dashboard" className="block"><Button className="w-full" variant="secondary">Dashboard</Button></Link>
           </div>
           </div>
 
-          {coachOpen && !helpLocked && targetWord ? (
+          {coachOpen && targetWord ? (
             <SmartCoachPanel
               studentId={profile?.id}
               subject="spelling"

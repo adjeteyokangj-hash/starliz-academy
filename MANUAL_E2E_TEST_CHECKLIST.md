@@ -274,6 +274,32 @@
 
 ---
 
+## Test 11: Admin-Controlled Assignment Flow (No Auto-Lesson) ⏳
+
+### Steps
+1. [ ] Log in as admin and create a brand-new student
+2. [ ] Log out and log in as that student
+3. [ ] Navigate to `/student/dashboard`
+4. [ ] Verify dashboard shows:
+   - [ ] "Awaiting Admin Assignment"
+   - [ ] "No lesson assigned yet"
+   - [ ] "Your teacher/admin has not assigned any work yet. Once work is assigned, it will appear here."
+5. [ ] Verify no automatic Spelling/Maths/Reading lesson appears
+6. [ ] Log back in as admin
+7. [ ] Assign one specific content item to that student from `/admin/content-library` or `/admin/assignments`
+8. [ ] Log in again as the student
+9. [ ] Verify only the assigned task appears
+10. [ ] Complete the assigned task
+11. [ ] Verify assignment status changes to `completed`
+
+### ✓ Test Passed If
+- New student receives no automatic assignment
+- Dashboard shows clear waiting state before assignment
+- Assigned task appears only after admin action
+- Completion updates assignment status to `completed`
+
+---
+
 ## Summary Checklist
 
 ### All Tests Complete?
@@ -287,6 +313,7 @@
 - [ ] Test 8: Student Attempt Tracking ✓
 - [ ] Test 9: Weak Areas Detection ✓
 - [ ] Test 10: Parent Dashboard ✓
+- [ ] Test 11: Admin-Controlled Assignment Flow ✓
 
 ### No Errors?
 - [ ] No console errors (check DevTools)

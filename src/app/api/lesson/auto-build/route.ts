@@ -3,7 +3,6 @@ import { z } from "zod";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
-import { autoBuildLessonForStudent } from "@/lib/autoLesson";
 
 const bodySchema = z.object({
   studentId: z.string().min(1).optional(),
@@ -40,10 +39,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  try {
-    const lesson = await autoBuildLessonForStudent({ studentId, actorUserId: session.userId });
-    return NextResponse.json({ ok: true, ...lesson });
-  } catch {
-    return NextResponse.json({ error: "Unable to auto-build lesson." }, { status: 500 });
-  }
+  return NextResponse.json({ ok: false, error: "Automatic lesson generation is disabled. Admin must assign content manually." }, { status: 410 });
 }

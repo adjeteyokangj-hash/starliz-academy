@@ -94,8 +94,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
     if (!formData.name.trim()) nextErrors.name = 'Child name is required.';
     if (formData.name.trim().length > 64) nextErrors.name = 'Child name must be 64 characters or fewer.';
     if (!formData.yearGroup.trim()) nextErrors.yearGroup = 'Please choose a year group.';
-    if (!formData.schoolYear.trim()) nextErrors.schoolYear = 'Please choose a school year.';
-    if (!formData.keyStageLevel.trim()) nextErrors.keyStageLevel = 'Please choose a key stage.';
+    if (!formData.keyStageLevel.trim()) nextErrors.keyStageLevel = 'Key stage is required.';
     if (!formData.subjectLevel.trim()) nextErrors.subjectLevel = 'Please choose a subject level.';
     if (!formData.ageYears) nextErrors.ageYears = 'Enter a date of birth to calculate age automatically.';
     if (typeof formData.ageYears === 'number' && (formData.ageYears < 3 || formData.ageYears > 18)) {
@@ -237,6 +236,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
               setFormData({
                 ...formData,
                 yearGroup: nextYear,
+                schoolYear: nextYear,
                 keyStageLevel: nextYear ? keyStageForYearGroup(nextYear) : formData.keyStageLevel,
               });
             }}
@@ -252,26 +252,26 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
 
         <div>
           <label className="block text-sm font-semibold text-slate-300 mb-2">
-            School year
+            Key Stage
           </label>
           <select
-            value={formData.schoolYear}
+            value={formData.keyStageLevel}
             onChange={(e) => {
-              const nextYear = e.target.value;
               setFormData({
                 ...formData,
-                schoolYear: nextYear,
-                keyStageLevel: nextYear ? keyStageForYearGroup(nextYear) : formData.keyStageLevel,
+                keyStageLevel: e.target.value,
               });
             }}
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+            disabled
           >
-            <option value="">Select school year...</option>
-            {yearGroups.map((year) => (
-              <option key={year} value={year}>{year}</option>
+            <option value="">Select key stage...</option>
+            {keyStages.map((stage) => (
+              <option key={stage} value={stage}>{stage}</option>
             ))}
           </select>
-          {fieldErrors.schoolYear ? <p className="mt-1 text-xs text-red-400">{fieldErrors.schoolYear}</p> : null}
+          <p className="mt-1 text-xs text-slate-400">Auto-calculated from year group</p>
+          {fieldErrors.keyStageLevel ? <p className="mt-1 text-xs text-red-400">{fieldErrors.keyStageLevel}</p> : null}
         </div>
       </div>
 

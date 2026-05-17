@@ -49,7 +49,7 @@ export default function SecondaryDashboard({
       return Boolean(assignment) && array.findIndex((candidate) => candidate?.id === assignment?.id) === index;
     })
     .slice(0, 3);
-  const sessionAssignments = priorityAssignments.length > 0 ? priorityAssignments : visibleAssignments.slice(0, 3);
+  const sessionAssignments = priorityAssignments;
   const examReadiness = Math.max(0, Math.min(100, Math.round((masteredCount * 2 + improvingCount - weakCount) * 8)));
   const weakTopics = coachRows.filter((row) => row.status === "weak").map((row) => row.label).slice(0, 4);
   const revisionTasks = visibleAssignments.filter((assignment) => {
@@ -150,14 +150,14 @@ export default function SecondaryDashboard({
           </div>
         ) : (
           <p className="mt-1 text-sm text-indigo-200">
-            No assigned tasks are queued yet. Starting this session will open adaptive revision for today.
+            No assigned tasks are queued yet. Ask your teacher/admin to assign work.
           </p>
         )}
         <p className="mt-3 text-sm text-indigo-200">Estimated time: {Math.max(7, sessionAssignments.length * 4)} minutes.</p>
         <button
           type="button"
           onClick={() => void onStartJourney()}
-          disabled={startingJourney || loading}
+          disabled={startingJourney || loading || sessionAssignments.length === 0}
           className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-indigo-400 px-5 py-3 font-black text-indigo-950 hover:bg-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {startingJourney ? "Starting session..." : "Begin Session"}
@@ -224,7 +224,7 @@ export default function SecondaryDashboard({
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Assigned Work</p>
         <h2 className="mt-1 text-lg font-black text-slate-900">Your Study Tasks</h2>
         {!loading && visibleAssignments.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">No tasks assigned yet. Your study session above will cover adaptive revision.</p>
+          <p className="mt-4 text-sm text-slate-500">No tasks assigned yet. Ask your teacher/admin to assign work.</p>
         ) : (
           <div className="mt-4 divide-y divide-slate-100">
             {visibleAssignments.slice(0, 8).map((assignment) => (

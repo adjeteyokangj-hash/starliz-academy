@@ -144,7 +144,7 @@ export default function StudentDashboardPage() {
   const router = useRouter();
   const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
   const [skills, setSkills] = useState<StudentSkill[]>([]);
-  const [journey, setJourney] = useState<DailyJourneyPayload["journey"] | null>(null);
+  const [journey] = useState<DailyJourneyPayload["journey"] | null>(null);
   const [childName, setChildName] = useState("Learner");
   const [stats, setStats] = useState({ stars: 0, xp: 0, coins: 0, streak: 0 });
   const [dashboardTier, setDashboardTier] = useState<"primary" | "ks3" | "gcse">("primary");
@@ -161,10 +161,9 @@ export default function StudentDashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const [assignmentsRes, skillsRes, journeyRes, childRes, bossStatusRes, sessionSummaryRes] = await Promise.all([
+      const [assignmentsRes, skillsRes, childRes, bossStatusRes, sessionSummaryRes] = await Promise.all([
         fetch("/api/student/assignments", { credentials: "include" }),
         fetch("/api/student/skills", { credentials: "include" }),
-        fetch("/api/student/daily-journey", { credentials: "include" }),
         fetch("/api/children/active", { credentials: "include" }),
         fetch("/api/student/boss-battle", { credentials: "include" }),
         fetch("/api/student/session-summary", { credentials: "include" }),
@@ -172,7 +171,6 @@ export default function StudentDashboardPage() {
 
       const assignmentsPayload = (await assignmentsRes.json()) as StudentAssignmentsPayload;
       const skillsPayload = (await skillsRes.json()) as StudentSkill[];
-      const journeyPayload = (await journeyRes.json()) as DailyJourneyPayload;
       const childPayload = (await childRes.json()) as ActiveChildPayload;
       const bossStatusPayload = (await bossStatusRes.json()) as BossBattleStatusPayload;
       const sessionSummaryPayload = (await sessionSummaryRes.json()) as SessionSummaryPayload;
@@ -183,7 +181,6 @@ export default function StudentDashboardPage() {
 
       setAssignments(assignmentsPayload.assignments ?? []);
       setSkills(Array.isArray(skillsPayload) ? skillsPayload : []);
-      setJourney(journeyPayload.journey ?? null);
       setBossUnlocked(Boolean(bossStatusPayload.unlocked));
       setBossPlayedToday(Boolean(bossStatusPayload.alreadyPlayedToday));
       setSessionSummary(sessionSummaryPayload.summary ?? null);
@@ -275,7 +272,7 @@ export default function StudentDashboardPage() {
         return assignment;
       }
     }
-    return visibleAssignments[0] ?? null;
+    return null;
   }
 
   function startAssignment(assignment: StudentAssignment | null) {
@@ -308,7 +305,10 @@ export default function StudentDashboardPage() {
         throw new Error(payload.error ?? "Unable to start today's journey.");
       }
       const assignmentId = payload.lesson?.assignmentId;
-      router.push(assignmentId ? `/games/lesson?assignmentId=${assignmentId}` : "/games/lesson");
+      if (!assignmentId) {
+        throw new Error("No lesson assigned yet. Ask your teacher/admin to assign work.");
+      }
+      router.push(`/games/lesson?assignmentId=${assignmentId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to start today's journey.");
     } finally {
@@ -369,6 +369,15 @@ export default function StudentDashboardPage() {
                 curriculum="National Curriculum UK"
                 className="mb-6"
               />
+            ) : null}
+            {!loading && visibleAssignments.length === 0 ? (
+              <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
+                <p className="text-sm font-black uppercase tracking-[0.18em] text-amber-700">Awaiting Admin Assignment</p>
+                <h2 className="mt-1 text-lg font-black">No lesson assigned yet</h2>
+                <p className="mt-1 text-sm font-semibold text-amber-800">
+                  Your teacher/admin has not assigned any work yet. Once work is assigned, it will appear here.
+                </p>
+              </div>
             ) : null}
             {dashboardTier === "primary" && (
               <PrimaryDashboard

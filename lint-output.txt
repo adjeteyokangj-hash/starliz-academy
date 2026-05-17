@@ -1,0 +1,14 @@
+
+> starliz-academy@0.1.0 lint
+> eslint --max-warnings=0
+
+
+C:\Users\edwar\Documents\Projects\starliz-academy\src\app\admin\content-library\page.tsx
+  107:9   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+  109:9   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+  114:11  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+
+Ô£û 3 problems (0 errors, 3 warnings)
+  0 errors and 3 warnings potentially fixable with the `--fix` option.
+
+ESLint found too many warnings (maximum: 0).

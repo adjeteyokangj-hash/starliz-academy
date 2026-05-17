@@ -1,8 +1,6 @@
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
-import { assignContentToStudent } from "@/lib/assignments";
 import { logDifficultyChange, nextDifficulty, yearDifficultyRange } from "./adaptive-difficulty";
-import { generateDraftContent } from "./generate-content";
 
 function inferSkillFocus(record: { notes: string | null; activityName: string }) {
   return (record.notes || record.activityName || "General practice").slice(0, 80);
@@ -95,21 +93,6 @@ export async function detectAndStoreWeakAreas(actorUserId?: string) {
       reason: `accuracy ${accuracy}% status ${status}`,
     });
 
-    if (accuracy < 60) {
-      const contentType = subject === "math" || subject === "reading" ? subject : "spelling";
-      const generated = await generateDraftContent({
-        type: contentType,
-        level: Math.max(range.min, currentDifficulty - 1),
-        topic: `${weaknessType} support for ${skillFocus}`,
-        createdBy: "weak-area-detector",
-      });
-      await assignContentToStudent({
-        studentId,
-        contentId: generated.record.id,
-        actorUserId,
-        reason: `auto_assigned_weak_area_${accuracy}`,
-      });
-    }
     weakAreas.push(weakArea);
   }
 
@@ -203,21 +186,6 @@ export async function recalculateWeakAreaFromAttempts(input: {
     nextDifficulty: currentDifficulty,
     reason: `attempt accuracy ${accuracy}% status ${status}`,
   });
-
-  if (status === "active" && accuracy < 60) {
-    const generated = await generateDraftContent({
-      type: input.subject === "math" || input.subject === "reading" ? input.subject : "spelling",
-      level: Math.max(range.min, currentDifficulty - 1),
-      topic: `${weaknessType} support for ${input.skillFocus}`,
-      createdBy: "attempt-recalculation",
-    });
-    await assignContentToStudent({
-      studentId: input.studentId,
-      contentId: generated.record.id,
-      actorUserId: input.actorUserId,
-      reason: `auto_assigned_attempt_accuracy_${accuracy}`,
-    });
-  }
 
   await writeAuditLog({
     actorUserId: input.actorUserId,

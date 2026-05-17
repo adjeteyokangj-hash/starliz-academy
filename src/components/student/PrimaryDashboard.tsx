@@ -44,12 +44,7 @@ export default function PrimaryDashboard({
       return Boolean(assignment) && array.findIndex((candidate) => candidate?.id === assignment?.id) === index;
     })
     .slice(0, 3);
-
-  const fallbackAssignments = visibleAssignments
-    .filter((assignment) => !journeyAssignments.some((candidate) => candidate.id === assignment.id))
-    .slice(0, Math.max(0, 3 - journeyAssignments.length));
-
-  const todayJourney = [...journeyAssignments, ...fallbackAssignments];
+  const todayJourney = journeyAssignments;
 
   return (
     <div className="space-y-6">
@@ -115,13 +110,13 @@ export default function PrimaryDashboard({
             ))}
           </div>
         ) : (
-          <p className="mt-4 text-sm text-slate-600">No assigned tasks yet. Your journey button will open adaptive practice for today.</p>
+          <p className="mt-4 text-sm text-slate-600">No assigned tasks yet. Ask your teacher/admin to assign work.</p>
         )}
         <p className="mt-4 text-sm text-slate-600">Estimated time: {Math.max(7, todayJourney.length * 4)} minutes</p>
         <button
           type="button"
           onClick={() => void onStartJourney()}
-          disabled={startingJourney || loading}
+          disabled={startingJourney || loading || todayJourney.length === 0}
           className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-5 py-4 text-lg font-black text-white shadow-lg shadow-indigo-200 hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {startingJourney ? "Starting..." : "Start Today's Journey"}

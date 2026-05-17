@@ -158,6 +158,11 @@ export async function GET(request: Request) {
       where: {
         studentId,
         student: { parentId: parentScope.parentId },
+        content: {
+          NOT: {
+            createdBy: "auto_lesson_engine",
+          },
+        },
       },
       orderBy: { updatedAt: "desc" },
       include: { content: true },

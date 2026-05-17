@@ -3,7 +3,6 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { buildDailyJourney } from "@/lib/dailyJourney";
-import { autoBuildLessonForStudent } from "@/lib/autoLesson";
 
 export async function GET() {
   const { session, response } = await requireSession();
@@ -32,16 +31,13 @@ export async function GET() {
   }
 
   try {
-    const [journey, lesson] = await Promise.all([
-      buildDailyJourney(student.id),
-      autoBuildLessonForStudent({ studentId: student.id, actorUserId: session.userId }),
-    ]);
+    const journey = await buildDailyJourney(student.id);
 
     return NextResponse.json({
       ok: true,
       student,
       journey,
-      lesson,
+      lesson: null,
       structure: [
         "1 warm-up",
         "2 core practice tasks",

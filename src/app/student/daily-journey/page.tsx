@@ -89,7 +89,14 @@ export default function StudentDailyJourneyPage() {
             >
               {"Start Today's Lesson"}
             </Link>
-          ) : null}
+          ) : (
+            !loading && !error ? (
+              <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
+                <p className="text-sm font-black uppercase tracking-[0.18em] text-amber-700">Awaiting Admin Assignment</p>
+                <p className="mt-1 text-sm font-semibold">No lesson assigned yet. Ask your teacher/admin to assign work.</p>
+              </div>
+            ) : null
+          )}
         </div>
       </section>
     </main>

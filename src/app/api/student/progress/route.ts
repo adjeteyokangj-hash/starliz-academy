@@ -5,7 +5,6 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { mergeWeakAreas, parseWeakAreaMetadata, stringifyWeakAreaMetadata } from "@/lib/weakAreas";
 import { sendEmail } from "@/lib/email-provider";
-import { autoBuildLessonForStudent } from "@/lib/autoLesson";
 import { applyRetentionRules, parseRetentionMetadata } from "@/lib/retentionScheduler";
 import { calculateConfidence, isBossUnlockEligibleV2, skillStatusFromConfidence, toLegacyStudentSkillStatus } from "@/lib/learningEngineV2";
 
@@ -306,22 +305,6 @@ export async function POST(request: Request) {
       await prisma.assignment.updateMany({
         where: { id: body.assignmentId, studentId: body.studentId },
         data: { status: "completed", completedAt: new Date() },
-      });
-    }
-
-    const weakStill = await prisma.studentSkill.findMany({
-      where: {
-        studentId: body.studentId,
-        status: "weak",
-      },
-      select: { id: true },
-      take: 1,
-    });
-
-    if (weakStill.length > 0) {
-      await autoBuildLessonForStudent({
-        studentId: body.studentId,
-        actorUserId: session.userId,
       });
     }
 

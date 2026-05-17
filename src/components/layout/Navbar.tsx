@@ -8,7 +8,6 @@ import { clearProfile, saveLastPage } from "@/lib/store";
 import {
   ageGroupForYearGroup,
   keyStageForYearGroup,
-  subjectsForYearGroup,
 } from "@/lib/curriculum";
 
 type AuthMePayload = {
@@ -28,12 +27,6 @@ type ActiveChildPayload = {
   } | null;
 };
 
-function buildContextHref(basePath: string, studentId?: string | null): string {
-  if (!studentId) return basePath;
-  const params = new URLSearchParams({ studentId });
-  return `${basePath}?${params.toString()}`;
-}
-
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -52,21 +45,10 @@ export default function Navbar() {
   const dashboardHref = isStudentContext ? "/student/dashboard" : "/dashboard";
   const profileHref = isStudentContext ? "/student/profile" : role === "parent" ? "/parent/profile" : "/my-profile";
   const showParentAccess = authResolved && role === "parent";
-  const studentId = activeChild?.id ?? null;
   const studentYearGroup = activeChild?.yearGroup ?? null;
   const studentKeyStage = activeChild?.keyStageLevel?.trim() || (studentYearGroup ? keyStageForYearGroup(studentYearGroup) : null);
   const studentAgeLabel = studentYearGroup ? ageGroupForYearGroup(studentYearGroup) : activeChild?.ageYears ? `${activeChild.ageYears}` : "-";
   const curriculumLabel = "National Curriculum UK";
-
-  const availableSubjects = subjectsForYearGroup(studentYearGroup);
-  const spellingEnabled = availableSubjects.some((subject) => subject === "spelling" || subject === "phonics");
-  const mathEnabled = availableSubjects.some((subject) => subject === "maths" || subject === "times-tables" || subject === "gcse-maths");
-  const readingEnabled = availableSubjects.some((subject) =>
-    subject === "reading"
-    || subject === "english-language"
-    || subject === "english-literature"
-    || subject === "gcse-english"
-  );
 
   useEffect(() => {
     let active = true;
@@ -165,33 +147,6 @@ export default function Navbar() {
             <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={profileHref}>
               My Profile
             </Link>
-            {spellingEnabled ? (
-              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={buildContextHref("/games/spelling", studentId)}>
-                Spelling
-              </Link>
-            ) : (
-              <span className="cursor-not-allowed rounded-xl px-3 py-2 text-slate-400" title="Unavailable for this year group">
-                Spelling
-              </span>
-            )}
-            {mathEnabled ? (
-              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={buildContextHref("/games/math", studentId)}>
-                Maths
-              </Link>
-            ) : (
-              <span className="cursor-not-allowed rounded-xl px-3 py-2 text-slate-400" title="Unavailable for this year group">
-                Maths
-              </span>
-            )}
-            {readingEnabled ? (
-              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={buildContextHref("/games/reading", studentId)}>
-                Reading
-              </Link>
-            ) : (
-              <span className="cursor-not-allowed rounded-xl px-3 py-2 text-slate-400" title="Unavailable for this year group">
-                Reading
-              </span>
-            )}
             {showParentAccess && (isStudentPage ? (
               <Link className="rounded-xl px-3 py-2 text-slate-500 hover:bg-slate-100" href="/parent-pin">
                 Parent View
@@ -233,27 +188,6 @@ export default function Navbar() {
           <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={profileHref} onClick={closeMobileMenu}>
             My Profile
           </Link>
-          {spellingEnabled ? (
-            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={buildContextHref("/games/spelling", studentId)} onClick={closeMobileMenu}>
-              Spelling
-            </Link>
-          ) : (
-            <span className="cursor-not-allowed rounded-xl px-3 py-2 text-slate-400">Spelling</span>
-          )}
-          {mathEnabled ? (
-            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={buildContextHref("/games/math", studentId)} onClick={closeMobileMenu}>
-              Maths
-            </Link>
-          ) : (
-            <span className="cursor-not-allowed rounded-xl px-3 py-2 text-slate-400">Maths</span>
-          )}
-          {readingEnabled ? (
-            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={buildContextHref("/games/reading", studentId)} onClick={closeMobileMenu}>
-              Reading
-            </Link>
-          ) : (
-            <span className="cursor-not-allowed rounded-xl px-3 py-2 text-slate-400">Reading</span>
-          )}
           {showParentAccess && (isStudentPage ? (
             <Link className="rounded-xl px-3 py-2 text-slate-500 hover:bg-slate-100" href="/parent-pin" onClick={closeMobileMenu}>
               Parent View

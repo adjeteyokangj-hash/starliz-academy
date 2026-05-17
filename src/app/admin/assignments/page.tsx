@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { EXAM_BOARDS, KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
 
@@ -56,23 +56,28 @@ export default function AdminAssignmentsPage() {
 
   const loadAssignments = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (queryFilter.trim()) params.set("query", queryFilter.trim());
-    if (keyStageFilter) params.set("keyStage", keyStageFilter);
-    if (yearGroupFilter) params.set("yearGroup", yearGroupFilter);
-    if (examBoardFilter) params.set("examBoard", examBoardFilter);
-    const response = await fetch(`/api/admin/assignments?${params.toString()}`, { credentials: "include" });
+    const response = await fetch("/api/admin/assignments", { credentials: "include" });
     const payload = await response.json();
     setAssignments(payload.assignments ?? []);
     setLoading(false);
-  }, [queryFilter, keyStageFilter, yearGroupFilter, examBoardFilter]);
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAssignments();
   }, [loadAssignments]);
 
-  const filteredAssignments = assignments;
+  const filteredAssignments = useMemo(() => {
+    return assignments.filter((assignment) => {
+      const yearGroup = assignment.student.yearGroup ?? "";
+      const matchesYearGroup = !yearGroupFilter || yearGroup === yearGroupFilter;
+      const matchesKeyStage = !keyStageFilter || (yearGroup && keyStageForYearGroup(yearGroup) === keyStageFilter);
+      const matchesExamBoard = !examBoardFilter || assignment.content.examBoard === examBoardFilter;
+      const haystack = `${assignment.student.name} ${assignment.student.parent.email} ${assignment.content.contentType} ${assignment.content.topic} ${assignment.content.skillFocus ?? ""}`.toLowerCase();
+      const matchesQuery = !queryFilter.trim() || haystack.includes(queryFilter.trim().toLowerCase());
+      return matchesYearGroup && matchesKeyStage && matchesExamBoard && matchesQuery;
+    });
+  }, [assignments, queryFilter, keyStageFilter, yearGroupFilter, examBoardFilter]);
 
   async function reassign(row: AssignmentRow) {
     const response = await fetch("/api/admin/assignments", {
@@ -86,14 +91,16 @@ export default function AdminAssignmentsPage() {
     await loadAssignments();
   }
 
-  async function generateFollowUp(row: AssignmentRow) {
-    const response = await fetch("/api/lesson/auto-build", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ studentId: row.student.id }),
+  async function removeAssignment(row: AssignmentRow) {
+    if (!window.confirm(`Remove "${row.content.topic || row.content.skillFocus || "this assignment"}" from ${row.student.name}?`)) {
+      return;
+    }
+    const response = await fetch(`/api/admin/assignments/${row.id}`, {
+      method: "DELETE",
+      credentials: "include",
     });
-    const payload = await response.json().catch(() => ({}));
-    setMessage(response.ok ? "Follow-up lesson generated and assigned." : payload.error ?? "Could not generate follow-up lesson.");
+    const payload = await response.json();
+    setMessage(response.ok ? `Assignment removed from ${row.student.name}.` : payload.error ?? "Could not remove assignment.");
     await loadAssignments();
   }
 
@@ -239,32 +246,23 @@ export default function AdminAssignmentsPage() {
 
             {(assignment.weakAreas.length || assignment.weakWords.length) ? (
               <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-amber-200">Weak Areas</h3>
-                    <div className="mt-3 space-y-2">
-                      {(assignment.weakAreas.length ? assignment.weakAreas : [{
-                        subject: assignment.content.contentType,
-                        skillFocus: assignment.content.skillFocus ?? "Practice",
-                        weaknessType: "follow_up_needed",
-                        accuracy: assignment.score ?? 0,
-                        currentDifficulty: assignment.content.level,
-                        weakWords: assignment.weakWords,
-                      }]).map((area, index) => (
-                        <div key={`${area.skillFocus}-${index}`} className="text-sm text-amber-50">
-                          <span className="font-bold">{area.skillFocus}</span>
-                          <span className="text-amber-200"> - {area.weakWords.length ? area.weakWords.join(", ") : area.weaknessType}</span>
-                        </div>
-                      ))}
-                    </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-amber-200">Weak Areas</h3>
+                  <div className="mt-3 space-y-2">
+                    {(assignment.weakAreas.length ? assignment.weakAreas : [{
+                      subject: assignment.content.contentType,
+                      skillFocus: assignment.content.skillFocus ?? "Practice",
+                      weaknessType: "follow_up_needed",
+                      accuracy: assignment.score ?? 0,
+                      currentDifficulty: assignment.content.level,
+                      weakWords: assignment.weakWords,
+                    }]).map((area, index) => (
+                      <div key={`${area.skillFocus}-${index}`} className="text-sm text-amber-50">
+                        <span className="font-bold">{area.skillFocus}</span>
+                        <span className="text-amber-200"> - {area.weakWords.length ? area.weakWords.join(", ") : area.weaknessType}</span>
+                      </div>
+                    ))}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void generateFollowUp(assignment)}
-                    className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black text-slate-950 hover:bg-amber-300"
-                  >
-                    Generate Follow-Up for Student
-                  </button>
                 </div>
               </div>
             ) : null}
@@ -276,8 +274,11 @@ export default function AdminAssignmentsPage() {
               <Link href={`/admin/students/${assignment.student.id}`} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800">
                 View Student
               </Link>
-              <button type="button" onClick={() => void reassign(assignment)} className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white">
+              <button type="button" onClick={() => void reassign(assignment)} className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white hover:bg-indigo-400">
                 Resend
+              </button>
+              <button type="button" onClick={() => void removeAssignment(assignment)} className="rounded-xl bg-red-500 px-3 py-2 text-xs font-black text-white hover:bg-red-400">
+                Remove
               </button>
             </div>
           </div>

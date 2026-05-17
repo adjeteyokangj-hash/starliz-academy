@@ -75,28 +75,56 @@ export default function ContentLibraryPage() {
   const [localDuplicateByContent, setLocalDuplicateByContent] = useState<Record<string, Set<string>>>({});
   const [viewModalContent, setViewModalContent] = useState<ContentItem | null>(null);
 
+  const fetchData = useCallback(async () => {
+    const [contentRes, studentsRes] = await Promise.all([
+      fetch("/api/admin/content"),
+      fetch("/api/admin/students"),
+    ]);
+    const contentPayload = await contentRes.json() as { items?: ContentItem[] };
+    const studentsPayload = await studentsRes.json() as { students?: StudentOption[] };
+    return {
+      items: contentPayload.items ?? [],
+      students: studentsPayload.students ?? [],
+    };
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [contentRes, studentsRes] = await Promise.all([
-        fetch("/api/admin/content"),
-        fetch("/api/admin/students"),
-      ]);
-      const contentPayload = await contentRes.json() as { items?: ContentItem[] };
-      const studentsPayload = await studentsRes.json() as { students?: StudentOption[] };
-      setItems(contentPayload.items ?? []);
-      setStudents(studentsPayload.students ?? []);
+      const data = await fetchData();
+      setItems(data.items);
+      setStudents(data.students);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchData]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadData();
-  }, [loadData]);
+    let cancelled = false;
+    void fetchData()
+      .then((data) => {
+        if (cancelled) return;
+        queueMicrotask(() => {
+          if (cancelled) return;
+          setItems(data.items);
+          setStudents(data.students);
+        });
+      })
+      .finally(() => {
+        if (!cancelled) {
+          queueMicrotask(() => {
+            if (!cancelled) {
+              setLoading(false);
+            }
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchData]);
 
-  const appliedFilters = useMemo(() => parseFiltersFromSearchParams(searchParams), [searchParams]);
+  const activeFilters = draftFilters;
 
   function applyFilters(nextFilters?: FilterState) {
     const resolved = nextFilters ?? draftFilters;
@@ -140,7 +168,7 @@ export default function ContentLibraryPage() {
   }, [students]);
 
   const filteredStudents = useMemo(() => {
-    const needle = normalizeText(appliedFilters.query);
+    const needle = normalizeText(activeFilters.query);
     return students.filter((student) => {
       const studentYearValue = student.yearGroup ?? "";
       const stage = student.keyStageLevel || (studentYearValue ? keyStageForYearGroup(studentYearValue) : "");
@@ -148,32 +176,35 @@ export default function ContentLibraryPage() {
         || normalizeText(student.name).includes(needle)
         || normalizeText(student.parentName).includes(needle)
         || normalizeText(student.classGroup).includes(needle);
-      const matchesYear = !appliedFilters.studentYear || studentYearValue === appliedFilters.studentYear;
-      const matchesStage = !appliedFilters.studentKeyStage || stage === appliedFilters.studentKeyStage;
-      const matchesClass = !appliedFilters.studentClass || student.classGroup === appliedFilters.studentClass || (student.classGroups ?? []).includes(appliedFilters.studentClass);
-      const matchesParent = !appliedFilters.studentParent || student.parentName === appliedFilters.studentParent;
+      const matchesYear = !activeFilters.studentYear || studentYearValue === activeFilters.studentYear;
+      const matchesStage = !activeFilters.studentKeyStage || stage === activeFilters.studentKeyStage;
+      const matchesClass = !activeFilters.studentClass || student.classGroup === activeFilters.studentClass || (student.classGroups ?? []).includes(activeFilters.studentClass);
+      const matchesParent = !activeFilters.studentParent || student.parentName === activeFilters.studentParent;
       return matchesSearch && matchesYear && matchesStage && matchesClass && matchesParent;
     });
-  }, [students, appliedFilters]);
+  }, [students, activeFilters]);
 
   const filteredItems = useMemo(() => {
     const bySubject = items.filter((item) => {
-      if (appliedFilters.subjectTab === "all") return true;
-      return getContentMeta(item).subject === appliedFilters.subjectTab;
+      if (activeFilters.subjectTab === "all") return true;
+      return getContentMeta(item).subject === activeFilters.subjectTab;
     });
 
-    const byExamBoard = bySubject.filter((item) => {
-      if (!appliedFilters.examBoardFilter) return true;
-      return getContentMeta(item).examBoard === appliedFilters.examBoardFilter;
+    const byCurriculum = bySubject.filter((item) => {
+      const meta = getContentMeta(item);
+      const matchesExamBoard = !activeFilters.examBoardFilter || meta.examBoard === activeFilters.examBoardFilter;
+      const matchesYear = !activeFilters.studentYear || normalizeText(meta.yearGroup).includes(normalizeText(activeFilters.studentYear));
+      const matchesKeyStage = !activeFilters.studentKeyStage || normalizeText(meta.keyStage).includes(normalizeText(activeFilters.studentKeyStage));
+      return matchesExamBoard && matchesYear && matchesKeyStage;
     });
 
-    return [...byExamBoard].sort((a, b) => {
-      if (appliedFilters.sortMode === "newest") return Date.parse(b.createdAt) - Date.parse(a.createdAt);
-      if (appliedFilters.sortMode === "oldest") return Date.parse(a.createdAt) - Date.parse(b.createdAt);
-      if (appliedFilters.sortMode === "most-used") return b.usedCount - a.usedCount;
+    return [...byCurriculum].sort((a, b) => {
+      if (activeFilters.sortMode === "newest") return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+      if (activeFilters.sortMode === "oldest") return Date.parse(a.createdAt) - Date.parse(b.createdAt);
+      if (activeFilters.sortMode === "most-used") return b.usedCount - a.usedCount;
       return (b.usedCount - a.usedCount) || (Date.parse(b.createdAt) - Date.parse(a.createdAt));
     });
-  }, [items, appliedFilters]);
+  }, [items, activeFilters]);
 
   const selectedContent = useMemo(
     () => filteredItems.find((item) => item.id === selectedContentId) ?? null,

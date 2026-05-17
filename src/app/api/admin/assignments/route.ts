@@ -57,22 +57,39 @@ export async function GET(request: Request) {
     },
   });
 
+  if (!assignments.length) {
+    return NextResponse.json({ assignments: [] });
+  }
+
+  const assignmentIds = assignments.map((assignment) => assignment.id);
+  const studentIds = [...new Set(assignments.map((assignment) => assignment.studentId))];
+
   const attempts = await prisma.attempt.findMany({
-    where: { assignmentId: { in: assignments.map((assignment) => assignment.id) } },
+    where: { assignmentId: { in: assignmentIds } },
     select: { assignmentId: true, correct: true, questionText: true, answerGiven: true, correctAnswer: true },
   });
   const attemptMap = new Map<string, { attempts: number; correct: number }>();
+  const weakWordsFromAttemptsMap = new Map<string, string[]>();
   for (const attempt of attempts) {
     if (!attempt.assignmentId) continue;
     const current = attemptMap.get(attempt.assignmentId) ?? { attempts: 0, correct: 0 };
     current.attempts += 1;
     if (attempt.correct) current.correct += 1;
     attemptMap.set(attempt.assignmentId, current);
+
+    if (!attempt.correct) {
+      const weakWord = attempt.correctAnswer || attempt.questionText || attempt.answerGiven || "";
+      if (weakWord) {
+        const existing = weakWordsFromAttemptsMap.get(attempt.assignmentId) ?? [];
+        existing.push(weakWord);
+        weakWordsFromAttemptsMap.set(attempt.assignmentId, existing);
+      }
+    }
   }
 
   const weakAreas = await prisma.weakArea.findMany({
     where: {
-      studentId: { in: assignments.map((assignment) => assignment.studentId) },
+      studentId: { in: studentIds },
       status: "active",
     },
     select: {
@@ -86,20 +103,24 @@ export async function GET(request: Request) {
     },
   });
 
+  const weakAreasByStudentSubject = new Map<string, typeof weakAreas>();
+  for (const area of weakAreas) {
+    const key = `${area.studentId}|${area.subject}`;
+    const existing = weakAreasByStudentSubject.get(key) ?? [];
+    existing.push(area);
+    weakAreasByStudentSubject.set(key, existing);
+  }
+
   const mappedAssignments = assignments.map((assignment) => {
       const stats = attemptMap.get(assignment.id);
       const attemptsCount = stats?.attempts ?? 0;
       const correctCount = stats?.correct ?? 0;
       const contentMeta = parseContentMetadata(assignment.content.metadataJson);
-      const relatedWeakAreas = weakAreas.filter((area) =>
-        area.studentId === assignment.studentId
-        && area.subject === assignment.content.contentType
-        && (!assignment.content.skillFocus || area.skillFocus === assignment.content.skillFocus)
-      );
-      const assignmentAttempts = attempts.filter((attempt) => attempt.assignmentId === assignment.id && !attempt.correct);
-      const weakWordsFromAttempts = assignmentAttempts
-        .map((attempt) => attempt.correctAnswer || attempt.questionText || attempt.answerGiven || "")
-        .filter(Boolean);
+      const relatedBySubject = weakAreasByStudentSubject.get(`${assignment.studentId}|${assignment.content.contentType}`) ?? [];
+      const relatedWeakAreas = assignment.content.skillFocus
+        ? relatedBySubject.filter((area) => area.skillFocus === assignment.content.skillFocus)
+        : relatedBySubject;
+      const weakWordsFromAttempts = weakWordsFromAttemptsMap.get(assignment.id) ?? [];
       const weakWords = relatedWeakAreas.reduce<string[]>(
         (all, area) => mergeWeakAreas(all, parseWeakAreaMetadata(area.metadataJson).weakWords),
         weakWordsFromAttempts,
