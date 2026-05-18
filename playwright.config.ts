@@ -1,6 +1,10 @@
 import { defineConfig } from "@playwright/test";
+import * as dotenv from "dotenv";
 import * as os from "os";
 import * as path from "path";
+
+// Load .env.local so Prisma clients in test workers have DATABASE_URL / DIRECT_URL
+dotenv.config({ path: path.resolve(__dirname, ".env.local") });
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
 
