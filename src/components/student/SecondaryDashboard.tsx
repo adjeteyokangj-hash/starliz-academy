@@ -1,6 +1,8 @@
 "use client";
 
 import type { DashboardProps } from "./dashboardTypes";
+import StudyPlanBadge from "@/components/learning/StudyPlanBadge";
+import { deriveStudyPlanProgress } from "@/lib/study-plan";
 
 function accuracyBand(accuracy: number): { label: string; color: string } {
   if (accuracy >= 80) return { label: "Strong", color: "text-emerald-700 bg-emerald-100" };
@@ -234,6 +236,12 @@ export default function SecondaryDashboard({
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-slate-800 truncate">{assignment.title}</p>
                   <p className="mt-0.5 text-xs text-slate-400">{subjectLabel(assignment.subject)}{assignment.skillFocus ? ` · ${assignment.skillFocus}` : ""}</p>
+                  <div className="mt-1">
+                    <StudyPlanBadge
+                      compact
+                      progress={deriveStudyPlanProgress({ status: assignment.status })}
+                    />
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${

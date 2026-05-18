@@ -14,6 +14,18 @@ import { getTutorToneLine } from "@/lib/tutorVoice";
 import { classifySpeechMatch, type SpeechMatchResult } from "@/lib/speechCheck";
 import { levelFromXp } from "@/lib/level_system";
 import { buildInterventionMission, isInterventionEligibleSkill } from "@/lib/interventionMission";
+import {
+  buildFinalRevealMessage,
+  buildProgressiveSupportMessage,
+  buildQuestionFormulaScaffold,
+  buildRestoredLessonMessage,
+  buildTutorPanelPrompt,
+  buildWorkedSuccessMessage,
+  computeAttemptWeightedScore,
+  scoreForResolvedQuestion,
+  type QuestionAttemptSummary,
+} from "@/lib/starliz-question-formula";
+import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
 
 type LessonItem = Record<string, unknown> & {
   id?: string;
@@ -135,6 +147,7 @@ type LessonSessionSnapshot = {
   memoryFeedback: string;
   skippedQuestionKeys: string[];
   questionStatuses: Record<string, QuestionLearningStatus>;
+  questionAttemptSummary: Record<string, QuestionAttemptSummary>;
   lessonMasteryReady: boolean;
   showReviewIntro: boolean;
   showReviewComplete: boolean;
@@ -467,27 +480,6 @@ function buildSpellingTeachMessage(expected: string, attempt: number, isAlphabet
   return `${opener}\n\nLet us learn it:\n${letters}\n${sounds}\n\nTogether: ${clean}\n\nNow type ${clean} again.`;
 }
 
-function buildMathTeachMessage(prompt: string, expected: string, attempt: number, inReviewRound: boolean): string {
-  const opener = attempt >= 2 || inReviewRound
-    ? "That one is tricky. Let us solve it slowly together."
-    : "Good try. Let us solve it step by step.";
-  const cleanPrompt = prompt.trim();
-  const cleanExpected = expected.trim();
-
-  return `${opener}\n\nQuestion: ${cleanPrompt || "Maths question"}\nFind the numbers and signs first.\nSolve one small step at a time.\n\nAnswer: ${cleanExpected}\n\nNow try ${cleanExpected} again.`;
-}
-
-function buildReadingTeachMessage(item: LessonItem, expected: string, attempt: number, inReviewRound: boolean): string {
-  const opener = attempt >= 2 || inReviewRound
-    ? "This one needs careful reading. Let us work it out together."
-    : "Good try. Let us learn how to find the best answer.";
-  const passage = String(item.passage ?? "").trim();
-  const excerpt = passage ? `\n\nRe-read this part:\n${passage.slice(0, 180)}${passage.length > 180 ? "..." : ""}` : "";
-  const cleanExpected = expected.trim();
-
-  return `${opener}${excerpt}\n\nLook for key words in the question.\nMatch them to the passage.\n\nBest answer: ${cleanExpected}\n\nNow choose ${cleanExpected} again.`;
-}
-
 function buildTeachMessage(input: {
   section: "spelling" | "math" | "reading";
   item: LessonItem;
@@ -499,11 +491,14 @@ function buildTeachMessage(input: {
     return buildSpellingTeachMessage(input.expected, input.attempt, isAlphabetLessonItem(input.item), input.inReviewRound);
   }
 
-  if (input.section === "math") {
-    return buildMathTeachMessage(getPrompt(input.item, input.section), input.expected, input.attempt, input.inReviewRound);
-  }
-
-  return buildReadingTeachMessage(input.item, input.expected, input.attempt, input.inReviewRound);
+  return buildProgressiveSupportMessage({
+    section: input.section,
+    item: input.item,
+    prompt: getPrompt(input.item, input.section),
+    expected: input.expected,
+    attempt: input.attempt,
+    inReviewRound: input.inReviewRound,
+  });
 }
 
 function lessonCacheKey(assignmentId: string) {
@@ -606,6 +601,7 @@ export default function DailyLessonGamePage() {
   const [skippedQuestionKeys, setSkippedQuestionKeys] = useState<string[]>([]);
   const [lessonMasteryReady, setLessonMasteryReady] = useState(false);
   const [questionStatuses, setQuestionStatuses] = useState<Record<string, QuestionLearningStatus>>({});
+  const [questionAttemptSummary, setQuestionAttemptSummary] = useState<Record<string, QuestionAttemptSummary>>({});
   const [lessonStage, setLessonStage] = useState<LessonStage>("ASSESS_SPEECH");
   const [speechAttempts, setSpeechAttempts] = useState(0);
   const [speechListening, setSpeechListening] = useState(false);
@@ -758,8 +754,12 @@ export default function DailyLessonGamePage() {
   const progress = lessonItems.length ? Math.round((records.length / lessonItems.length) * 100) : 0;
   const correctCount = records.filter((record) => record.correct).length;
   const incorrectCount = records.length - correctCount;
-  const score = records.length ? Math.round((correctCount / records.length) * 100) : 0;
+  const score = computeAttemptWeightedScore(questionAttemptSummary);
   const attemptIndicator = Math.min(3, Math.max(1, attemptCount + 1));
+  const questionFormula = currentItem
+    ? buildQuestionFormulaScaffold({ item: currentItem, section: currentSection, subjectLabel: currentSubjectBadge })
+    : null;
+  const currentQuestionOutcome = currentItem ? questionAttemptSummary[questionStatusKey(currentItem, index)] : null;
   const childLevel = levelFromXp(profile?.xp ?? 0);
   const childName = useMemo(() => {
     const raw = String(profile?.name ?? "").trim();
@@ -781,6 +781,8 @@ export default function DailyLessonGamePage() {
 
   const practicingNow = feedbackMode === "retry" || feedbackMode === "skip_choice";
   const speechDebugEnabled = process.env.NODE_ENV === "development" && searchParams.get("debugSpeech") === "1";
+  const microphoneVisible = started && currentSection === "spelling" && !feedback && (lessonStage === "ASSESS_SPEECH" || lessonStage === "TEACH_RETRY");
+  const idleTutorPrompt = buildTutorPanelPrompt({ voiceEnabled, microphoneVisible, speechListening });
 
   const markActivity = useCallback(() => {
     lastActivityAtRef.current = performance.now();
@@ -1086,6 +1088,7 @@ export default function DailyLessonGamePage() {
         setMemoryFeedback(String(saved.memoryFeedback ?? ""));
         setSkippedQuestionKeys(Array.isArray(saved.skippedQuestionKeys) ? saved.skippedQuestionKeys : []);
         setQuestionStatuses(saved.questionStatuses && typeof saved.questionStatuses === "object" ? saved.questionStatuses : {});
+        setQuestionAttemptSummary(saved.questionAttemptSummary && typeof saved.questionAttemptSummary === "object" ? saved.questionAttemptSummary as Record<string, QuestionAttemptSummary> : {});
         setLessonMasteryReady(Boolean(saved.lessonMasteryReady));
         setShowReviewIntro(Boolean(saved.showReviewIntro));
         setShowReviewComplete(Boolean(saved.showReviewComplete));
@@ -1100,7 +1103,7 @@ export default function DailyLessonGamePage() {
         setVoiceEnabled(localVoiceOverride === "false" ? false : (saved.voiceEnabled ?? true));
         setVoiceLine(decodeLessonText(String(saved.tutorMessage ?? saved.lastTutorMessage ?? "I am ready when you are.")));
         setLastTutorMessage(decodeLessonText(String(saved.lastTutorMessage ?? saved.tutorMessage ?? "I am ready when you are.")));
-        setRestoredMessage("Welcome back — your lesson has been restored.");
+        setRestoredMessage(buildRestoredLessonMessage());
       } catch {
         window.localStorage.removeItem(lessonSessionKey(assignmentId));
       } finally {
@@ -1150,6 +1153,7 @@ export default function DailyLessonGamePage() {
       memoryFeedback,
       skippedQuestionKeys,
       questionStatuses,
+      questionAttemptSummary,
       lessonMasteryReady,
       showReviewIntro,
       showReviewComplete,
@@ -1196,6 +1200,7 @@ export default function DailyLessonGamePage() {
     pendingRecordsAfterReview,
     progress,
     questionStatuses,
+    questionAttemptSummary,
     records,
     reviewImproved,
     reviewNotice,
@@ -1242,12 +1247,12 @@ export default function DailyLessonGamePage() {
     const timer = window.setInterval(() => {
       if (performance.now() - lastActivityAtRef.current < 25000) return;
       lastActivityAtRef.current = performance.now();
-      const line = speechListening ? "Let's try this together." : "Need help? Tap the microphone and talk to me.";
+      const line = buildTutorPanelPrompt({ voiceEnabled, microphoneVisible, speechListening });
       void speakTutor(line);
     }, 5000);
     return () => window.clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completed, speechListening, started]);
+  }, [completed, microphoneVisible, speechListening, started, voiceEnabled]);
 
   function questionStatusKey(item: LessonItem, itemIndex: number): string {
     return String(item.id ?? `index-${itemIndex}`);
@@ -1344,8 +1349,7 @@ export default function DailyLessonGamePage() {
   function finishLesson(nextRecords: AnswerRecord[]) {
     markActivity();
     setCompleted(true);
-    const finalCorrect = nextRecords.filter((record) => record.correct).length;
-    const finalScore = nextRecords.length ? Math.round((finalCorrect / nextRecords.length) * 100) : 0;
+    const finalScore = computeAttemptWeightedScore(questionAttemptSummary);
     const line = interventionMission
       ? interventionMission.outroLine
       : finalScore === 100
@@ -1822,7 +1826,7 @@ export default function DailyLessonGamePage() {
     const weakSkills = Array.from(new Set(weakRecords.map((record) => String(record.item.skillFocus ?? activeAssignment?.skillFocus ?? record.section)).filter(Boolean)));
     const finalCorrect = finalRecords.filter((record) => record.correct).length;
     const finalIncorrect = finalRecords.length - finalCorrect;
-    const finalScore = finalRecords.length ? Math.round((finalCorrect / finalRecords.length) * 100) : 0;
+    const finalScore = computeAttemptWeightedScore(questionAttemptSummary);
     const unresolvedSkipped = Object.values(questionStatuses).filter((status) => status === "skipped_needs_reteach").length;
     const firstTryCorrect = Object.values(questionStatuses).filter((status) => status === "correct").length;
     const retryCorrect = Object.values(questionStatuses).filter((status) => status === "reteach_complete").length;
@@ -1905,6 +1909,7 @@ export default function DailyLessonGamePage() {
           adaptation: warmupResult.adaptation,
         }
         : null,
+      // eslint-disable-next-line react-hooks/purity
       timeSpent: Math.round((performance.now() - startedAtRef.current) / 1000),
     });
 
@@ -1971,6 +1976,15 @@ export default function DailyLessonGamePage() {
     if (!correct) {
       const nextAttempt = attemptCount + 1;
       setAttemptCount(nextAttempt);
+      setQuestionAttemptSummary((current) => ({
+        ...current,
+        [statusKey]: {
+          attempts: nextAttempt,
+          outcome: current[statusKey]?.outcome ?? "pending",
+          score: current[statusKey]?.score ?? null,
+          usedHints: nextAttempt > 1,
+        },
+      }));
       const teachLine = buildTeachMessage({
         section: currentSection,
         item: currentItem,
@@ -1978,9 +1992,7 @@ export default function DailyLessonGamePage() {
         attempt: nextAttempt,
         inReviewRound: isReviewRound,
       });
-      const retryVoice = nextAttempt >= 3
-        ? getTutorToneLine("skip") + " Try once more first, or skip for now."
-        : getTutorToneLine("retry");
+      const retryVoice = getTutorToneLine("retry");
 
       setTutorState("try_again");
       setVoiceLine(retryVoice);
@@ -2000,14 +2012,39 @@ export default function DailyLessonGamePage() {
       }
 
       if (!isReviewRound && nextAttempt >= 3) {
+        const skippedRecord: AnswerRecord = {
+          item: currentItem,
+          section: currentSection,
+          correct: false,
+          given,
+        };
+        const nextRecords = [...records, skippedRecord];
+        const finalReveal = buildFinalRevealMessage({
+          section: currentSection,
+          item: currentItem,
+          prompt: getPrompt(currentItem, currentSection),
+          expected,
+        });
         cancelTutorSpeech();
         if (voiceEnabled) {
-          speakTutorLine(getTutorToneLine("skip") + " Try once more first, or skip for now.");
+          speakTutorLine(finalReveal);
         }
-        setFeedback("That one is tricky. We will come back to it at the end. You can try once more or skip for now.");
-        setFeedbackMode("skip_choice");
+        setRecords(nextRecords);
+        setFeedback(finalReveal);
+        setFeedbackMode("continue");
         setQuestionStatuses((current) => ({ ...current, [statusKey]: "skipped_needs_reteach" }));
+        setQuestionAttemptSummary((current) => ({
+          ...current,
+          [statusKey]: {
+            attempts: nextAttempt,
+            outcome: "final_wrong",
+            score: scoreForResolvedQuestion(nextAttempt, false),
+            usedHints: true,
+          },
+        }));
+        setSkippedQuestionKeys((current) => (current.includes(statusKey) ? current : [...current, statusKey]));
         setReviewQueue((current) => (current.includes(index) ? current : [...current, index]));
+        setAnswer("");
         return;
       }
 
@@ -2023,16 +2060,18 @@ export default function DailyLessonGamePage() {
     const priorStatus = questionStatuses[statusKey];
     const keepOriginalSkipScore = isReviewRound && priorStatus === "skipped_needs_reteach";
     const nextRecords = keepOriginalSkipScore ? records : [...records, { item: currentItem, section: currentSection, correct, given }];
+    const resolvedAttempts = Math.min(3, Math.max(1, attemptCount + 1));
     setRecords(nextRecords);
     setAttemptCount(0);
 
-    const learnedLine = priorStatus === "wrong_retrying" || priorStatus === "skipped_needs_reteach"
-      ? spellingQuestion
-        ? `Great! Now you know ${expected.trim().toLowerCase()}.`
-        : currentSection === "math"
-          ? `Great! You solved it. The answer is ${expected.trim()}.`
-          : "Great! You found the best answer by reading carefully."
-      : getTutorToneLine("correct_first_try");
+    const learnedLine = spellingQuestion && priorStatus !== "wrong_retrying" && priorStatus !== "skipped_needs_reteach"
+      ? getTutorToneLine("correct_first_try")
+      : buildWorkedSuccessMessage({
+          section: currentSection,
+          item: currentItem,
+          prompt: getPrompt(currentItem, currentSection),
+          expected,
+        });
 
     if ((priorStatus === "wrong_retrying" || priorStatus === "skipped_needs_reteach") && correct) {
       setQuestionStatuses((current) => ({ ...current, [statusKey]: "reteach_complete" }));
@@ -2042,6 +2081,15 @@ export default function DailyLessonGamePage() {
       setQuestionStatuses((current) => ({ ...current, [statusKey]: "correct" }));
     }
 
+    setQuestionAttemptSummary((current) => ({
+      ...current,
+      [statusKey]: {
+        attempts: resolvedAttempts,
+        outcome: "correct",
+        score: scoreForResolvedQuestion(resolvedAttempts, true),
+        usedHints: resolvedAttempts > 1,
+      },
+    }));
     setFeedback(learnedLine);
     setFeedbackMode("continue");
     setTutorState(correct ? "celebrate" : "try_again");
@@ -2050,6 +2098,7 @@ export default function DailyLessonGamePage() {
     setAnswer("");
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function skipForNow() {
     markActivity();
     if (!currentItem) return;
@@ -2063,6 +2112,15 @@ export default function DailyLessonGamePage() {
     const nextRecords = [...records, skippedRecord];
     setRecords(nextRecords);
     setQuestionStatuses((current) => ({ ...current, [statusKey]: "skipped_needs_reteach" }));
+    setQuestionAttemptSummary((current) => ({
+      ...current,
+      [statusKey]: {
+        attempts: Math.max(3, current[statusKey]?.attempts ?? 3),
+        outcome: "final_wrong",
+        score: scoreForResolvedQuestion(3, false),
+        usedHints: true,
+      },
+    }));
     setSkippedQuestionKeys((current) => (current.includes(statusKey) ? current : [...current, statusKey]));
     setReviewQueue((current) => (current.includes(index) ? current : [...current, index]));
     setAnswer("");
@@ -2405,268 +2463,254 @@ export default function DailyLessonGamePage() {
             </div>
           ) : currentItem ? (
             <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_14rem]">
-              <div className="rounded-3xl bg-slate-50 p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="rounded-full bg-indigo-100 px-4 py-2 text-sm font-black text-indigo-700">{currentSubjectBadge}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-800">
-                      Attempt {attemptIndicator}/3
-                    </span>
-                    <span className="text-sm font-bold text-slate-500">
-                      {isReviewRound ? `${reviewPointer + 1}/${reviewQueue.length} (Review)` : `${index + 1}/${lessonItems.length}`}
-                    </span>
-                  </div>
-                </div>
-
-                <p className="mt-3 text-xs font-black uppercase tracking-[0.15em] text-indigo-700">{questionContextLabel(currentItem)}</p>
-
-                {reviewNotice ? (
-                  <p className="mt-4 rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm font-bold text-cyan-900">{reviewNotice}</p>
-                ) : null}
-
-                {interventionMission && currentSection === "spelling" ? (
-                  <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-black">
-                    <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-700">Sound Builder Mission</span>
-                    <span className="rounded-full bg-cyan-100 px-3 py-1 text-cyan-700">Level {interventionLevel}</span>
-                    <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">{decodeLessonText(String(currentItem.missionGroup ?? "Targeted practice"))}</span>
-                  </div>
-                ) : null}
-
-                {currentSection === "reading" && currentItem.passage ? (
-                  <div className="mt-6 space-y-3">
-                    {currentItem.bridgeWord ? (
-                      <p className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">
-                        {currentItem.bridgeMode === "weak_recovery"
-                          ? <><span className="text-emerald-600">Recovery word:</span> {decodeLessonText(String(currentItem.bridgeWord))}. Read carefully and spot it in the story.</>
-                          : <>⭐ You learned this word in spelling: <span className="text-emerald-600">{decodeLessonText(String(currentItem.bridgeWord))}</span> — now find it in the story!</>}
-                      </p>
-                    ) : null}
-                    <div className="rounded-3xl bg-indigo-950 p-6 text-white">
-                      <p className="text-xs font-black uppercase tracking-[0.25em] text-cyan-200">Passage</p>
-                      <p className="mt-3 text-lg leading-8">{decodeLessonText(String(currentItem.passage))}</p>
+              <StarLizQuestionCard
+                subjectBadge={
+                  <span className="rounded-full bg-indigo-100 px-4 py-2 text-sm font-black text-indigo-700">
+                    {currentSubjectBadge}
+                  </span>
+                }
+                attemptNumber={attemptIndicator}
+                maxAttempts={3}
+                progressLabel={
+                  isReviewRound
+                    ? `${reviewPointer + 1}/${reviewQueue.length} (Review)`
+                    : `${index + 1}/${lessonItems.length}`
+                }
+                contextLabel={questionContextLabel(currentItem)}
+                reviewNotice={reviewNotice || null}
+                learningFocus={questionFormula?.learningFocus ?? null}
+                keyInformation={questionFormula?.keyInformation ?? []}
+                hint={
+                  questionFormula?.hint ??
+                  (currentItem.hint
+                    ? decodeLessonText(String(currentItem.hint))
+                    : needsGentleStart && index === findGentleStartIndex()
+                      ? getSupportPrompt(currentItem)
+                      : null)
+                }
+                unitReminder={questionFormula?.unitLabel ?? null}
+                visual={questionFormula?.visual ?? null}
+                aboveQuestionSlot={
+                  interventionMission && currentSection === "spelling" ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-black">
+                      <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-700">Sound Builder Mission</span>
+                      <span className="rounded-full bg-cyan-100 px-3 py-1 text-cyan-700">Level {interventionLevel}</span>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">
+                        {decodeLessonText(String(currentItem.missionGroup ?? "Targeted practice"))}
+                      </span>
                     </div>
-                  </div>
-                ) : null}
-
-                {Boolean(currentItem.visualRequired) ? (
-                  <div className="mt-6 rounded-3xl border border-violet-200 bg-violet-50 p-5">
-                    <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-700">
-                      Visual support {currentItem.visualType ? `• ${decodeLessonText(String(currentItem.visualType))}` : ""}
-                    </p>
-                    <p className="mt-2 text-sm font-bold text-violet-900">
-                      {decodeLessonText(String(currentItem.visualPrompt ?? "Use the visual guide to reason before answering."))}
-                    </p>
-                    <p className="mt-2 rounded-2xl border border-violet-200 bg-white px-4 py-3 text-sm text-violet-800">
-                      {decodeLessonText(String(currentItem.visualAltText ?? "Diagram placeholder for this question."))}
-                    </p>
-                  </div>
-                ) : null}
-
-                <h2 className="mt-6 text-3xl font-black">
-                  {currentSection === "spelling"
+                  ) : null
+                }
+                passageSlot={
+                  currentSection === "reading" && currentItem.passage ? (
+                    <div className="mt-6 space-y-3">
+                      {currentItem.bridgeWord ? (
+                        <p className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">
+                          {currentItem.bridgeMode === "weak_recovery"
+                            ? <><span className="text-emerald-600">Recovery word:</span> {decodeLessonText(String(currentItem.bridgeWord))}. Read carefully and spot it in the story.</>
+                            : <>⭐ You learned this word in spelling: <span className="text-emerald-600">{decodeLessonText(String(currentItem.bridgeWord))}</span> — now find it in the story!</>}
+                        </p>
+                      ) : null}
+                      <div className="rounded-3xl bg-indigo-950 p-6 text-white">
+                        <p className="text-xs font-black uppercase tracking-[0.25em] text-cyan-200">Passage</p>
+                        <p className="mt-3 text-lg leading-8">{decodeLessonText(String(currentItem.passage))}</p>
+                      </div>
+                    </div>
+                  ) : null
+                }
+                visualRequiredSlot={
+                  Boolean(currentItem.visualRequired) ? (
+                    <div className="mt-6 rounded-3xl border border-violet-200 bg-violet-50 p-5">
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-700">
+                        Visual support {currentItem.visualType ? `• ${decodeLessonText(String(currentItem.visualType))}` : ""}
+                      </p>
+                      <p className="mt-2 text-sm font-bold text-violet-900">
+                        {decodeLessonText(String(currentItem.visualPrompt ?? "Use the visual guide to reason before answering."))}
+                      </p>
+                      <p className="mt-2 rounded-2xl border border-violet-200 bg-white px-4 py-3 text-sm text-violet-800">
+                        {decodeLessonText(String(currentItem.visualAltText ?? "Diagram placeholder for this question."))}
+                      </p>
+                    </div>
+                  ) : null
+                }
+                questionPrompt={
+                  currentSection === "spelling"
                     ? getSpellingConversationTitle(currentItem, lessonStage)
-                    : getPrompt(currentItem, currentSection)}
-                </h2>
-
-                {currentSection === "spelling" ? (
-                  <p className="mt-3 text-lg text-slate-600">
-                    {lessonStage === "ASSESS_SPEECH"
-                      ? needsGentleStart ? "Say this one when you are ready." : interventionMission ? "Listen to the tutor, say it aloud, then keep going until you get it right." : "Say the letter or word you see on the screen."
-                      : lessonStage === "TEACH_RETRY"
-                        ? "Listen to the tutor, then try saying it again."
-                        : interventionMission ? "Use the visual clue to lock it in, then answer correctly to continue." : "Now choose or type the answer."}
-                  </p>
-                ) : null}
-
-                {needsGentleStart && index === findGentleStartIndex() ? (
-                  <p className="mt-3 rounded-2xl bg-cyan-50 p-4 text-sm font-bold text-cyan-900">
-                    {"Let's start gently. Take your time, and I can help if you get stuck."}
-                  </p>
-                ) : null}
-                {(currentItem.hint || (needsGentleStart && index === findGentleStartIndex())) ? (
-                  <p className="mt-3 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-800">
-                    {currentItem.hint ? decodeLessonText(String(currentItem.hint)) : getSupportPrompt(currentItem)}
-                  </p>
-                ) : null}
-
-                {!feedback ? (
-                  <div className="mt-6 space-y-4">
-                    {currentSection === "spelling" ? (
-                      <>
-                        {(lessonStage === "ASSESS_SPEECH" || lessonStage === "TEACH_RETRY") && (
-                          <div className="flex flex-col items-center gap-4 rounded-3xl bg-indigo-50 p-6 text-center">
-                            <div className="text-[140px] font-black leading-none text-slate-950 md:text-[180px]">
-                              {decodeLessonText(String(currentItem.word ?? currentItem.answer ?? ""))}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => void startListening()}
-                              className="rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500"
-                            >
-                              {speechButtonState === "listening" ? "Listening..." : speechButtonState === "try_again" ? "Try again" : "Say it out loud"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void speakCurrent()}
-                              className="rounded-2xl border border-slate-200 px-5 py-3 font-bold text-slate-700"
-                            >
-                              Repeat prompt
-                            </button>
-                            <p className="text-xs font-bold text-slate-500">Microphone ready. Click Say it out loud.</p>
-                            {speechStatusMessage ? (
-                              <p className="text-sm font-bold text-slate-700">{speechStatusMessage}</p>
-                            ) : null}
-                            {speechFallbackReason && !interventionMission ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setLessonStage("TAP_SELECT");
-                                  setSpeechFallbackReason(null);
-                                  setSpeechListening(false);
-                                  setSpeechStatusMessage("Parent/teacher continue enabled for this step.");
-                                }}
-                                className="rounded-2xl bg-amber-500 px-5 py-3 font-black text-amber-950 hover:bg-amber-400"
-                              >
-                                Parent/Teacher Continue
-                              </button>
-                            ) : null}
-                            {lessonStage === "TEACH_RETRY" ? (
-                              <p className="max-w-xl text-sm font-bold text-amber-700">{getSupportPrompt(currentItem)}</p>
-                            ) : null}
-                            {speechDebugEnabled ? (
-                              <div className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-left font-mono text-xs text-amber-900">
-                                <p className="font-black uppercase tracking-wide">Dev: Speech Debug</p>
-                                <p>Target: {getAnswer(currentItem)}</p>
-                                <p>Heard: {spokenAnswer || "(none)"}</p>
-                                <p>Match: {speechLastMatchResult ?? "—"}</p>
-                                <p>Attempts: {speechAttempts}/3</p>
-                                <p>Service: {speechListening ? "listening" : (speechFallbackReason ?? "ready")}</p>
-                              </div>
-                            ) : null}
+                    : getPrompt(currentItem, currentSection)
+                }
+                questionInstruction={
+                  currentSection === "spelling" ? (
+                    <p className="mt-3 text-lg text-slate-600">
+                      {lessonStage === "ASSESS_SPEECH"
+                        ? needsGentleStart
+                          ? "Say this one when you are ready."
+                          : interventionMission
+                            ? "Listen to the tutor, say it aloud, then keep going until you get it right."
+                            : "Say the letter or word you see on the screen."
+                        : lessonStage === "TEACH_RETRY"
+                          ? "Listen to the tutor, then try saying it again."
+                          : interventionMission
+                            ? "Use the visual clue to lock it in, then answer correctly to continue."
+                            : "Now choose or type the answer."}
+                    </p>
+                  ) : null
+                }
+                gentleStartNotice={
+                  needsGentleStart && index === findGentleStartIndex() ? (
+                    <p className="mt-3 rounded-2xl bg-cyan-50 p-4 text-sm font-bold text-cyan-900">
+                      {"Let's start gently. Take your time, and I can help if you get stuck."}
+                    </p>
+                  ) : null
+                }
+                customAnswerArea={
+                  currentSection === "spelling" ? (
+                    <>
+                      {(lessonStage === "ASSESS_SPEECH" || lessonStage === "TEACH_RETRY") && (
+                        <div className="flex flex-col items-center gap-4 rounded-3xl bg-indigo-50 p-6 text-center">
+                          <div className="text-[140px] font-black leading-none text-slate-950 md:text-[180px]">
+                            {decodeLessonText(String(currentItem.word ?? currentItem.answer ?? ""))}
                           </div>
-                        )}
-                        {lessonStage === "TAP_SELECT" && isAlphabetLessonItem(currentItem) && (
-                          <div className="flex flex-col gap-4 rounded-3xl bg-cyan-50 p-6">
-                            <p className="text-sm font-black uppercase tracking-[0.15em] text-cyan-700">Tap the letter</p>
-                            {getOptions(currentItem).length ? (
-                              <div className="grid gap-3">
-                                {getOptions(currentItem).map((option, optionIndex) => (
-                                  <button
-                                    key={`${option}-${optionIndex}`}
-                                    onClick={() => submitAnswer(option)}
-                                    className="rounded-2xl bg-cyan-500 px-5 py-4 text-left font-black text-white hover:bg-cyan-400"
-                                  >
-                                    {option}
-                                  </button>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="flex flex-col gap-3 sm:flex-row">
-                                <input
-                                  value={answer}
-                                  onChange={(event) => setAnswer(event.target.value)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter") void submitAnswer();
-                                  }}
-                                  className="min-w-0 flex-1 rounded-2xl border border-slate-200 px-5 py-4 text-lg outline-none focus:border-indigo-400"
-                                  placeholder="Type the letter"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={() => void submitAnswer()}
-                                  className="rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500"
-                                >
-                                  Check
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {lessonStage === "TAP_SELECT" && !isAlphabetLessonItem(currentItem) && (
-                          <div className="flex flex-col gap-3 sm:flex-row">
-                            <input
-                              value={answer}
-                              onChange={(event) => setAnswer(event.target.value)}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") void submitAnswer();
-                              }}
-                              className="min-w-0 flex-1 rounded-2xl border border-slate-200 px-5 py-4 text-lg outline-none focus:border-indigo-400"
-                              placeholder="Type the word"
-                              autoFocus
-                            />
-                            <button
-                              onClick={() => void submitAnswer()}
-                              className="rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500"
-                            >
-                              Check
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    ) : getOptions(currentItem).length ? (
-                      <div className="grid gap-3">
-                        {getOptions(currentItem).map((option, optionIndex) => (
                           <button
-                            key={`${option}-${optionIndex}`}
-                            onClick={() => submitAnswer(option)}
-                            className="rounded-2xl bg-cyan-500 px-5 py-4 text-left font-black text-white hover:bg-cyan-400"
+                            type="button"
+                            onClick={() => void startListening()}
+                            className="rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500"
                           >
-                            {option}
+                            {speechButtonState === "listening" ? "Listening..." : speechButtonState === "try_again" ? "Try again" : "Say it out loud"}
                           </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-3 sm:flex-row">
-                        <input
-                          value={answer}
-                          onChange={(event) => setAnswer(event.target.value)}
-                          className="min-w-0 flex-1 rounded-2xl border border-slate-200 px-5 py-4 text-lg outline-none focus:border-indigo-400"
-                          placeholder="Type your answer"
-                        />
-                        <button onClick={() => submitAnswer()} className="rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500">
-                          Check
-                        </button>
-                      </div>
-                    )}
-                    {currentSection !== "spelling" && (
-                      <button onClick={() => void speakCurrent()} className="rounded-2xl border border-slate-200 px-5 py-3 font-bold text-slate-700">
-                        Repeat voice
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="mt-6 rounded-3xl bg-white p-5 shadow-sm">
-                    <p className="whitespace-pre-line text-lg font-black">{feedback}</p>
-                    {feedbackMode === "skip_choice" ? (
-                      <div className="mt-4 flex flex-wrap gap-3">
-                        <button onClick={clearFeedbackForRetry} className="rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500">
-                          Try again
-                        </button>
-                        {!interventionMission ? (
-                          <button onClick={skipForNow} className="rounded-2xl bg-amber-500 px-6 py-4 font-black text-amber-950 hover:bg-amber-400">
-                            Skip for now
+                          <button
+                            type="button"
+                            onClick={() => void speakCurrent()}
+                            className="rounded-2xl border border-slate-200 px-5 py-3 font-bold text-slate-700"
+                          >
+                            Repeat prompt
                           </button>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <button onClick={continueLesson} className="mt-4 rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500">
-                        {feedbackMode === "retry" ? "Try again" : "Continue"}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+                          <p className="text-xs font-bold text-slate-500">Microphone ready. Click Say it out loud.</p>
+                          {speechStatusMessage ? (
+                            <p className="text-sm font-bold text-slate-700">{speechStatusMessage}</p>
+                          ) : null}
+                          {speechFallbackReason && !interventionMission ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLessonStage("TAP_SELECT");
+                                setSpeechFallbackReason(null);
+                                setSpeechListening(false);
+                                setSpeechStatusMessage("Parent/teacher continue enabled for this step.");
+                              }}
+                              className="rounded-2xl bg-amber-500 px-5 py-3 font-black text-amber-950 hover:bg-amber-400"
+                            >
+                              Parent/Teacher Continue
+                            </button>
+                          ) : null}
+                          {lessonStage === "TEACH_RETRY" ? (
+                            <p className="max-w-xl text-sm font-bold text-amber-700">{getSupportPrompt(currentItem)}</p>
+                          ) : null}
+                          {speechDebugEnabled ? (
+                            <div className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-left font-mono text-xs text-amber-900">
+                              <p className="font-black uppercase tracking-wide">Dev: Speech Debug</p>
+                              <p>Target: {getAnswer(currentItem)}</p>
+                              <p>Heard: {spokenAnswer || "(none)"}</p>
+                              <p>Match: {speechLastMatchResult ?? "—"}</p>
+                              <p>Attempts: {speechAttempts}/3</p>
+                              <p>Service: {speechListening ? "listening" : (speechFallbackReason ?? "ready")}</p>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                      {lessonStage === "TAP_SELECT" && isAlphabetLessonItem(currentItem) && (
+                        <div className="flex flex-col gap-4 rounded-3xl bg-cyan-50 p-6">
+                          <p className="text-sm font-black uppercase tracking-[0.15em] text-cyan-700">Tap the letter</p>
+                          {getOptions(currentItem).length ? (
+                            <div className="grid gap-3">
+                              {getOptions(currentItem).map((option, optionIndex) => (
+                                <button
+                                  key={`${option}-${optionIndex}`}
+                                  onClick={() => submitAnswer(option)}
+                                  className="rounded-2xl bg-cyan-500 px-5 py-4 text-left font-black text-white hover:bg-cyan-400"
+                                >
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-3 sm:flex-row">
+                              <input
+                                value={answer}
+                                onChange={(event) => setAnswer(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") void submitAnswer();
+                                }}
+                                className="min-w-0 flex-1 rounded-2xl border border-slate-200 px-5 py-4 text-lg outline-none focus:border-indigo-400"
+                                placeholder="Type the letter"
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => void submitAnswer()}
+                                className="rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500"
+                              >
+                                Submit
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {lessonStage === "TAP_SELECT" && !isAlphabetLessonItem(currentItem) && (
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                          <input
+                            value={answer}
+                            onChange={(event) => setAnswer(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") void submitAnswer();
+                            }}
+                            className="min-w-0 flex-1 rounded-2xl border border-slate-200 px-5 py-4 text-lg outline-none focus:border-indigo-400"
+                            placeholder="Type the word"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => void submitAnswer()}
+                            className="rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500"
+                          >
+                            Submit
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : null
+                }
+                answerOptions={currentSection !== "spelling" ? getOptions(currentItem) : undefined}
+                onSelectAnswer={(option) => submitAnswer(option)}
+                answerValue={answer}
+                onAnswerChange={(value) => setAnswer(value)}
+                onAnswerKeyDown={(event) => {
+                  if (event.key === "Enter") void submitAnswer();
+                }}
+                onSubmit={() => void submitAnswer()}
+                belowAnswerSlot={
+                  currentSection !== "spelling" ? (
+                    <button
+                      onClick={() => void speakCurrent()}
+                      className="rounded-2xl border border-slate-200 px-5 py-3 font-bold text-slate-700"
+                    >
+                      Repeat voice
+                    </button>
+                  ) : null
+                }
+                feedback={feedback || null}
+                feedbackMode={feedbackMode}
+                isFinalWrong={currentQuestionOutcome?.outcome === "final_wrong"}
+                onContinue={continueLesson}
+              />
 
               <aside className="rounded-3xl bg-indigo-950 p-6 text-center text-white">
                 <p className="text-xs font-black uppercase tracking-[0.25em] text-cyan-200">Tutor</p>
                 <div className="mt-6">
                   <TutorAvatar state={tutorState} />
                 </div>
-                <p className="mt-4 text-sm text-indigo-100">{tutorState === "thinking" ? "Star is thinking..." : decodeLessonText(voiceLine)}</p>
+                <p className="mt-4 text-sm text-indigo-100">{tutorState === "thinking" ? idleTutorPrompt : decodeLessonText(voiceLine)}</p>
                 <div className="mt-6 rounded-2xl bg-white/10 p-4 text-sm">
                   {practicingNow
                     ? "Progress: practising"
-                    : `Score now: ${records.length ? Math.round((correctCount / records.length) * 100) : 0}%`}
+                    : `Score now: ${score}%`}
                 </div>
               </aside>
             </div>

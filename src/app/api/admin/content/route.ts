@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
+import { validateQuestionBatch } from "@/lib/starliz-question-validator";
 import {
   GCSE_EXAM_BOARD_WARNING,
   GENERATION_CONTENT_TYPE_BY_SUBJECT,
@@ -202,6 +203,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: quality.error }, { status: 422 });
     }
 
+    // ── StarLiz question formula validation ──────────────────────────────────
+    // Applied to maths/reading/science question-style content.
+    // Blocks hard errors (missing prompt/answer/explanation).
+    // Warnings are collected and returned alongside the saved item.
+    const questionFormulaWarnings: string[] = [];
+    if (
+      Array.isArray(contentItems) &&
+      (generationType === "maths" || generationType === "reading")
+    ) {
+      const formulaResult = validateQuestionBatch(contentItems, { mode: "warn" });
+      if (!formulaResult.ok) {
+        // Hard errors: missing prompt or answer — block the save.
+        const hardErrors = formulaResult.invalid.flatMap(({ errors }) =>
+          errors.filter(
+            (e) =>
+              e.includes("missing a prompt") ||
+              e.includes("missing the correct answer"),
+          ),
+        );
+        if (hardErrors.length > 0) {
+          return NextResponse.json(
+            {
+              error: `Question formula validation failed: ${hardErrors.join("; ")}`,
+              formulaErrors: hardErrors,
+            },
+            { status: 422 },
+          );
+        }
+      }
+      // Soft warnings (missing explanation, hints, workedSolution) — pass through.
+      if (formulaResult.errors.length > 0) {
+        questionFormulaWarnings.push(...formulaResult.errors);
+      }
+    }
+
     const shouldTagExamBoard = shouldApplyExamBoardTag({
       yearGroup: body.yearGroup,
       keyStage: body.keyStage,
@@ -273,7 +309,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ item, warnings }, { status: 201 });
+    return NextResponse.json({ item, warnings: [...warnings, ...questionFormulaWarnings] }, { status: 201 });
   } catch (error) {
     console.error("Content save error:", error);
     return NextResponse.json({ error: "Invalid content payload." }, { status: 400 });

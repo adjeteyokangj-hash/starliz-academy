@@ -1,6 +1,8 @@
 "use client";
 
 import type { DashboardProps } from "./dashboardTypes";
+import StudyPlanBadge from "@/components/learning/StudyPlanBadge";
+import { deriveStudyPlanProgress } from "@/lib/study-plan";
 
 function tagTone(status: string): string {
   if (status === "mastered") return "bg-emerald-100 text-emerald-700";
@@ -151,6 +153,12 @@ export default function PrimaryDashboard({
                 {assignment.skillFocus && (
                   <p className="mt-1 text-xs text-slate-500">{assignment.skillFocus}</p>
                 )}
+                <div className="mt-2">
+                  <StudyPlanBadge
+                    compact
+                    progress={deriveStudyPlanProgress({ status: assignment.status })}
+                  />
+                </div>
               </button>
             ))}
           </div>
