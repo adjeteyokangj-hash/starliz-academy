@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { createSessionToken, getAccessTokenMaxAgeSeconds, getAuthCookieName, getRefreshCookieName, verifyPassword } from "@/lib/auth";
+import {
+  createSessionToken,
+  getAccessTokenMaxAgeSeconds,
+  getAuthCookieName,
+  getChildSelectionCookieName,
+  getParentUnlockCookieName,
+  getRefreshCookieName,
+  verifyPassword,
+} from "@/lib/auth";
 import { checkRateLimit, getRequestIp } from "@/lib/api_guard";
 import { evaluateUserSchoolLoginAccess } from "@/lib/schools/licensing";
 import { writeSchoolAuditLog, writeSchoolLoginHistory } from "@/lib/schools/audit";
@@ -166,6 +174,20 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: getAccessTokenMaxAgeSeconds(),
+    });
+    response.cookies.set(getParentUnlockCookieName(), "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+    response.cookies.set(getChildSelectionCookieName(), "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
     });
     if (refresh) {
       response.cookies.set(getRefreshCookieName(), refresh.token, {

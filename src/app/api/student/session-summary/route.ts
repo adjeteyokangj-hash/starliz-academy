@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
+import { resolveParentActiveChildId } from "@/lib/activeChild";
 
 type SessionSignals = {
   learningConfidence?: string;
@@ -29,8 +30,8 @@ export async function GET() {
     });
   }
 
-  const user = await prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { activeChildId: true } });
-  if (!user?.activeChildId) {
+  const activeChildId = await resolveParentActiveChildId(parentScope.parentId);
+  if (!activeChildId) {
     return NextResponse.json({
       ok: true,
       summary: {
@@ -45,7 +46,7 @@ export async function GET() {
 
   const records = await prisma.progressRecord.findMany({
     where: {
-      childId: user.activeChildId,
+      childId: activeChildId,
       completed: true,
     },
     orderBy: { createdAt: "desc" },

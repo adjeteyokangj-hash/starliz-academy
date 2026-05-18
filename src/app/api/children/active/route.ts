@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { fromDbRecord } from "@/lib/child_profile_db";
+import { resolveParentActiveChildId } from "@/lib/activeChild";
 
 const schema = z.object({
   childId: z.string().min(1),
@@ -18,13 +19,13 @@ export async function GET() {
     return NextResponse.json({ child: null });
   }
 
-  const user = await prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { activeChildId: true } });
-  if (!user?.activeChildId) {
+  const activeChildId = await resolveParentActiveChildId(parentScope.parentId);
+  if (!activeChildId) {
     return NextResponse.json({ child: null });
   }
 
   const child = await prisma.childProfile.findFirst({
-    where: { id: user.activeChildId, parentId: parentScope.parentId, archived: false },
+    where: { id: activeChildId, parentId: parentScope.parentId, archived: false },
   });
 
   return NextResponse.json({ child: child ? fromDbRecord(child) : null });

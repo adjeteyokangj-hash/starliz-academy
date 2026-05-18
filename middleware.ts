@@ -5,6 +5,7 @@ import type { NextRequest } from "next/server";
 const COOKIE_NAME = "starliz_session";
 const REFRESH_COOKIE_NAME = "starliz_refresh";
 const PARENT_UNLOCK_COOKIE = "starliz_parent_unlock";
+const CHILD_SELECTION_COOKIE = "starliz_child_selection";
 
 const PUBLIC_PATHS = [
   "/",
@@ -67,8 +68,23 @@ async function hasParentUnlock(request: NextRequest): Promise<boolean> {
   const token = request.cookies.get(PARENT_UNLOCK_COOKIE)?.value;
   if (!token) return false;
   try {
-    await jwtVerify(token, getSecret());
-    return true;
+    const { payload } = await jwtVerify(token, getSecret());
+    return String(payload.scope ?? "") === "parent-unlock";
+  } catch {
+    return false;
+  }
+}
+
+async function hasChildSelection(request: NextRequest, expectedUserId: string): Promise<boolean> {
+  const token = request.cookies.get(CHILD_SELECTION_COOKIE)?.value;
+  if (!token) return false;
+  try {
+    const { payload } = await jwtVerify(token, getSecret());
+    return (
+      String(payload.scope ?? "") === "child-selection"
+      && String(payload.userId ?? "") === expectedUserId
+      && String(payload.childId ?? "").trim().length > 0
+    );
   } catch {
     return false;
   }
@@ -107,6 +123,25 @@ export async function middleware(request: NextRequest) {
   const hasRefreshToken = Boolean(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
   const shouldAttemptRefresh = hasRefreshToken && request.method === "GET" && isDocumentNavigation && !isPrefetch;
   const adminLoginTarget = request.nextUrl.searchParams.get("next")?.startsWith("/admin") ?? false;
+  const shouldClearParentUnlock = Boolean(
+    authenticated
+      && session?.role === "parent"
+      && request.cookies.get(PARENT_UNLOCK_COOKIE)?.value
+      && (pathname.startsWith("/parent/profiles") || !pathname.startsWith("/parent"))
+  );
+
+  const finalize = (response: NextResponse): NextResponse => {
+    if (shouldClearParentUnlock) {
+      response.cookies.set(PARENT_UNLOCK_COOKIE, "", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 0,
+      });
+    }
+    return withSecurityHeaders(response);
+  };
 
   if (pathname.startsWith("/admin")) {
     if (!authenticated) {
@@ -115,15 +150,15 @@ export async function middleware(request: NextRequest) {
         const next = `${pathname}${request.nextUrl.search}`;
         if (shouldAttemptRefresh) {
           const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
-          return withSecurityHeaders(NextResponse.redirect(refreshTarget));
+          return finalize(NextResponse.redirect(refreshTarget));
         }
         const target = new URL(`/admin/login?next=${encodeURIComponent(next)}`, request.url);
-        return withSecurityHeaders(NextResponse.redirect(target));
+        return finalize(NextResponse.redirect(target));
       }
     } else if (session.role !== "admin") {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/dashboard", request.url)));
+      return finalize(NextResponse.redirect(new URL("/dashboard", request.url)));
     } else if (pathname === "/admin/login") {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/admin", request.url)));
+      return finalize(NextResponse.redirect(new URL("/admin", request.url)));
     }
   }
 
@@ -131,63 +166,81 @@ export async function middleware(request: NextRequest) {
     if (shouldAttemptRefresh) {
       const next = `${pathname}${request.nextUrl.search}`;
       const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
-      return withSecurityHeaders(NextResponse.redirect(refreshTarget));
+      return finalize(NextResponse.redirect(refreshTarget));
     }
-    return withSecurityHeaders(NextResponse.redirect(new URL("/login", request.url)));
+    return finalize(NextResponse.redirect(new URL("/login", request.url)));
   }
 
   if (authenticated && (pathname === "/login" || pathname === "/signup" || pathname === "/auth/login" || pathname === "/auth/signup") && !adminLoginTarget) {
-    return withSecurityHeaders(NextResponse.redirect(new URL("/profiles", request.url)));
+    if (session.role === "admin") {
+      return finalize(NextResponse.redirect(new URL("/admin", request.url)));
+    }
+    if (session.role === "student") {
+      return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+    }
+    return finalize(NextResponse.redirect(new URL("/parent/profiles", request.url)));
   }
 
   if (authenticated && session.role === "student") {
     if (pathname === "/my-profile") {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/student/profile", request.url)));
+      return finalize(NextResponse.redirect(new URL("/student/profile", request.url)));
     }
 
     if (pathname.startsWith("/parent/profile")) {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/student/profile", request.url)));
+      return finalize(NextResponse.redirect(new URL("/student/profile", request.url)));
     }
 
     if (pathname.startsWith("/parent") || pathname.startsWith("/parent-pin")) {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+      return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
     }
 
     if (pathname.startsWith("/billing") || pathname.startsWith("/subscription")) {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+      return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
     }
   }
 
   if (authenticated && pathname.startsWith("/student/profile") && session.role !== "student") {
     const fallback = session.role === "admin" ? "/admin" : "/my-profile";
-    return withSecurityHeaders(NextResponse.redirect(new URL(fallback, request.url)));
+    return finalize(NextResponse.redirect(new URL(fallback, request.url)));
   }
 
   if (authenticated && pathname === "/my-profile") {
     if (session.role === "parent") {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/parent/profile", request.url)));
+      return finalize(NextResponse.redirect(new URL("/parent/profile", request.url)));
     }
     if (session.role === "admin") {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/admin", request.url)));
+      return finalize(NextResponse.redirect(new URL("/admin", request.url)));
     }
   }
 
   // Teacher portal: must be authenticated (role check happens in each page/layout)
   if (pathname.startsWith("/teacher") && !authenticated) {
-    return withSecurityHeaders(NextResponse.redirect(new URL(`/auth/login?next=${encodeURIComponent(pathname)}`, request.url)));
+    return finalize(NextResponse.redirect(new URL(`/auth/login?next=${encodeURIComponent(pathname)}`, request.url)));
   }
 
-  if (authenticated && pathname.startsWith("/parent") && !pathname.startsWith("/parent-pin")) {
+  const parentProtectedRoute =
+    pathname === "/parent"
+    || (pathname.startsWith("/parent/") && !pathname.startsWith("/parent/profiles"));
+
+  if (authenticated && parentProtectedRoute) {
     if (session.role !== "parent") {
       const fallback = session.role === "admin" ? "/admin" : "/student/dashboard";
-      return withSecurityHeaders(NextResponse.redirect(new URL(fallback, request.url)));
+      return finalize(NextResponse.redirect(new URL(fallback, request.url)));
     }
 
     const unlocked = await hasParentUnlock(request);
     if (!unlocked) {
       const next = `${pathname}${request.nextUrl.search}`;
-      const pinUrl = new URL(`/parent-pin?next=${encodeURIComponent(next)}`, request.url);
-      return withSecurityHeaders(NextResponse.redirect(pinUrl));
+      const profilesUrl = new URL(`/parent/profiles?intent=parent&next=${encodeURIComponent(next)}`, request.url);
+      return finalize(NextResponse.redirect(profilesUrl));
+    }
+  }
+
+  if (authenticated && session.role === "parent" && (pathname === "/dashboard" || pathname.startsWith("/student"))) {
+    const selectedChild = await hasChildSelection(request, session.userId);
+    if (!selectedChild) {
+      const profilesUrl = new URL("/parent/profiles?intent=child", request.url);
+      return finalize(NextResponse.redirect(profilesUrl));
     }
   }
 
@@ -198,10 +251,10 @@ export async function middleware(request: NextRequest) {
     session.role !== "parent" &&
     session.role !== "admin"
   ) {
-    return withSecurityHeaders(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+    return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
   }
 
-  return withSecurityHeaders(NextResponse.next());
+  return finalize(NextResponse.next());
 }
 
 export const config = {

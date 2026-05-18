@@ -1,12 +1,19 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import Button from '@/components/ui/Button';
 
 type SecuritySettingsProps = {
   currentName: string;
   lastPasswordChangedAt?: string | null;
   onUpdate: () => void;
+};
+
+type ChildPinProfile = {
+  id: string;
+  name: string;
+  yearGroup: string | null;
+  pinEnabled: boolean;
 };
 
 function passwordStrength(password: string): { score: number; label: string } {
@@ -44,6 +51,26 @@ export default function SecuritySettings({ currentName, lastPasswordChangedAt, o
   const [nameError, setNameError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [childProfiles, setChildProfiles] = useState<ChildPinProfile[]>([]);
+  const [childPinDrafts, setChildPinDrafts] = useState<Record<string, string>>({});
+  const [childPinSavingId, setChildPinSavingId] = useState<string | null>(null);
+  const [childPinMessage, setChildPinMessage] = useState<string | null>(null);
+  const [childPinError, setChildPinError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await fetch('/api/parent/profiles', { credentials: 'include' });
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as { children?: ChildPinProfile[] };
+        setChildProfiles(payload.children ?? []);
+      } catch {
+        // Keep security page usable even if child PIN section fails to load.
+      }
+    })();
+  }, []);
 
   const validatePassword = (password: string) => {
     if (password.length < 8) return 'Password must be at least 8 characters';
@@ -128,6 +155,45 @@ export default function SecuritySettings({ currentName, lastPasswordChangedAt, o
       setPasswordError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function updateChildPin(childId: string, enablePin: boolean) {
+    setChildPinError(null);
+    setChildPinMessage(null);
+    setChildPinSavingId(childId);
+
+    const pin = (childPinDrafts[childId] ?? '').trim();
+    if (enablePin && !/^\d{4}$/.test(pin)) {
+      setChildPinError('Child PIN must be exactly 4 digits.');
+      setChildPinSavingId(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/parent/children/${encodeURIComponent(childId)}/pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(enablePin ? { pin, enablePin: true } : { enablePin: false }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string; pinEnabled?: boolean } | null;
+      if (!response.ok) {
+        setChildPinError(payload?.error ?? 'Could not update child PIN.');
+        setChildPinSavingId(null);
+        return;
+      }
+
+      setChildProfiles((prev) => prev.map((child) => (
+        child.id === childId ? { ...child, pinEnabled: Boolean(payload?.pinEnabled) } : child
+      )));
+      setChildPinDrafts((prev) => ({ ...prev, [childId]: '' }));
+      setChildPinMessage(enablePin ? 'Child PIN updated.' : 'Child PIN removed.');
+    } catch {
+      setChildPinError('Could not update child PIN.');
+    } finally {
+      setChildPinSavingId(null);
     }
   }
 
@@ -284,6 +350,83 @@ export default function SecuritySettings({ currentName, lastPasswordChangedAt, o
             {saving ? 'Updating...' : 'Change password'}
           </Button>
         </form>
+      </div>
+
+      {/* Password Requirements Info */}
+      <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-6">
+        <h3 className="text-lg font-bold text-white mb-4">Child PIN controls</h3>
+        <p className="mb-4 text-sm text-slate-400">
+          Set, change, or remove a PIN for each child profile. Child PIN is optional and only requested when enabled.
+        </p>
+
+        {childPinError ? (
+          <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+            {childPinError}
+          </div>
+        ) : null}
+
+        {childPinMessage ? (
+          <div className="mb-3 rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-400">
+            {childPinMessage}
+          </div>
+        ) : null}
+
+        {!childProfiles.length ? (
+          <p className="text-sm text-slate-400">No child profiles available yet.</p>
+        ) : (
+          <div className="space-y-4">
+            {childProfiles.map((child) => (
+              <div key={child.id} className="rounded-2xl border border-white/10 bg-white/5 p-4" data-testid={`child-pin-row-${child.id}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold text-white">{child.name}</p>
+                    <p className="text-xs text-slate-400">{child.yearGroup ?? 'Year group not set'}</p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-xs font-bold ${child.pinEnabled ? 'bg-cyan-500/20 text-cyan-200' : 'bg-slate-700 text-slate-300'}`}>
+                    {child.pinEnabled ? 'PIN enabled' : 'PIN disabled'}
+                  </span>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={childPinDrafts[child.id] ?? ''}
+                    onChange={(event) => {
+                      const next = event.target.value.replace(/\D/g, '').slice(0, 4);
+                      setChildPinDrafts((prev) => ({ ...prev, [child.id]: next }));
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+                    placeholder={child.pinEnabled ? 'Enter new 4-digit PIN' : 'Set 4-digit PIN'}
+                    data-testid={`child-pin-input-${child.id}`}
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => void updateChildPin(child.id, true)}
+                    disabled={childPinSavingId === child.id}
+                    className="sm:w-auto"
+                    data-testid={`child-pin-save-${child.id}`}
+                  >
+                    {childPinSavingId === child.id ? 'Saving...' : child.pinEnabled ? 'Change PIN' : 'Set PIN'}
+                  </Button>
+                  {child.pinEnabled ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void updateChildPin(child.id, false)}
+                      disabled={childPinSavingId === child.id}
+                      className="sm:w-auto"
+                      data-testid={`child-pin-remove-${child.id}`}
+                    >
+                      Remove PIN
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Password Requirements Info */}

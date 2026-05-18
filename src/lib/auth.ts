@@ -6,9 +6,11 @@ import { prisma } from "@/lib/db";
 const AUTH_COOKIE = "starliz_session";
 const REFRESH_COOKIE = "starliz_refresh";
 const PARENT_UNLOCK_COOKIE = "starliz_parent_unlock";
+const CHILD_SELECTION_COOKIE = "starliz_child_selection";
 const ONE_WEEK = 60 * 60 * 24 * 7;
 const FIFTEEN_MINUTES = 60 * 15;
 const PARENT_UNLOCK_SECONDS = 60 * 10;
+const CHILD_SELECTION_SECONDS = 60 * 60 * 12;
 
 function getJwtSecret(): Uint8Array {
   const raw = process.env.AUTH_SECRET;
@@ -92,11 +94,27 @@ export function getParentUnlockMaxAgeSeconds(): number {
   return PARENT_UNLOCK_SECONDS;
 }
 
+export function getChildSelectionCookieName(): string {
+  return CHILD_SELECTION_COOKIE;
+}
+
+export function getChildSelectionMaxAgeSeconds(): number {
+  return CHILD_SELECTION_SECONDS;
+}
+
 export async function createParentUnlockToken(userId: string): Promise<string> {
   return new SignJWT({ userId, scope: "parent-unlock" })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${PARENT_UNLOCK_SECONDS}s`)
+    .sign(getJwtSecret());
+}
+
+export async function createChildSelectionToken(userId: string, childId: string): Promise<string> {
+  return new SignJWT({ userId, childId, scope: "child-selection" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${CHILD_SELECTION_SECONDS}s`)
     .sign(getJwtSecret());
 }
 
@@ -108,5 +126,20 @@ export async function readParentUnlockFromCookie(expectedUserId: string): Promis
     return String(payload.userId ?? "") === expectedUserId && String(payload.scope ?? "") === "parent-unlock";
   } catch {
     return false;
+  }
+}
+
+export async function readChildSelectionFromCookie(expectedUserId: string): Promise<string | null> {
+  const token = (await cookies()).get(CHILD_SELECTION_COOKIE)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecret());
+    if (String(payload.userId ?? "") !== expectedUserId || String(payload.scope ?? "") !== "child-selection") {
+      return null;
+    }
+    const childId = String(payload.childId ?? "").trim();
+    return childId || null;
+  } catch {
+    return null;
   }
 }

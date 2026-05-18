@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
+import { resolveParentActiveChildId } from "@/lib/activeChild";
 
 export async function GET() {
   const { session, response } = await requireSession();
@@ -12,11 +13,7 @@ export async function GET() {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
 
-  const activeUser = await prisma.user.findUnique({
-    where: { id: parentScope.parentId },
-    select: { activeChildId: true },
-  });
-  const studentId = activeUser?.activeChildId;
+  const studentId = await resolveParentActiveChildId(parentScope.parentId);
   if (!studentId) {
     return NextResponse.json({ skills: [] });
   }

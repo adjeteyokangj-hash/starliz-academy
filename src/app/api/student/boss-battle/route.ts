@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { isBossUnlockEligibleV2 } from "@/lib/learningEngineV2";
+import { resolveParentActiveChildId } from "@/lib/activeChild";
 
 type ProgressNotes = {
   assignmentId?: string;
@@ -36,14 +37,11 @@ function parseNotes(notes: string | null): ProgressNotes {
 const RARE_BOSS_BADGE_ID = "badge-boss-slayer";
 
 async function resolveActiveChild(parentId: string): Promise<{ id: string; name: string; xp: number; coins: number; stars: number } | null> {
-  const user = await prisma.user.findUnique({
-    where: { id: parentId },
-    select: { activeChildId: true },
-  });
-  if (!user?.activeChildId) return null;
+  const activeChildId = await resolveParentActiveChildId(parentId);
+  if (!activeChildId) return null;
 
   return prisma.childProfile.findFirst({
-    where: { id: user.activeChildId, parentId, archived: false },
+    where: { id: activeChildId, parentId, archived: false },
     select: { id: true, name: true, xp: true, coins: true, stars: true },
   });
 }

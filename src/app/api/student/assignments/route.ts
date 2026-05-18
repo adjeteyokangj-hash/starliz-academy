@@ -5,6 +5,7 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { getAssignmentSafetyAndRecommendation, taskHrefForContentType } from "@/lib/assignments";
 import { mergeWeakAreas, parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { normalizeExamBoard } from "@/lib/curriculum";
+import { resolveParentActiveChildId } from "@/lib/activeChild";
 
 function parseItems(contentJson: string): unknown[] {
   try {
@@ -63,8 +64,8 @@ export async function GET(request: Request) {
 
     const params = new URL(request.url).searchParams;
     const assignmentId = params.get("id");
-    const activeUser = await prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { activeChildId: true } });
-    const studentId = params.get("studentId") ?? activeUser?.activeChildId;
+    const requestedStudentId = params.get("studentId");
+    let studentId = requestedStudentId ?? await resolveParentActiveChildId(parentScope.parentId);
     if (!studentId) {
       return NextResponse.json({ error: "No active student selected." }, { status: 400 });
     }
@@ -73,7 +74,7 @@ export async function GET(request: Request) {
       const assignment = await prisma.assignment.findFirst({
         where: {
           id: assignmentId,
-          studentId,
+          ...(requestedStudentId ? { studentId: requestedStudentId } : {}),
           student: { parentId: parentScope.parentId },
         },
         include: { content: true },
@@ -81,6 +82,14 @@ export async function GET(request: Request) {
 
       if (!assignment) {
         return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
+      }
+
+      if (!requestedStudentId && assignment.studentId !== studentId) {
+        studentId = assignment.studentId;
+        await prisma.user.update({
+          where: { id: parentScope.parentId },
+          data: { activeChildId: studentId },
+        });
       }
 
       const safety = await getAssignmentSafetyAndRecommendation({

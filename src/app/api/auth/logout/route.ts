@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getAuthCookieName, getParentUnlockCookieName, getRefreshCookieName, readSessionFromCookie } from "@/lib/auth";
+import { getAuthCookieName, getChildSelectionCookieName, getParentUnlockCookieName, getRefreshCookieName, readSessionFromCookie } from "@/lib/auth";
 import { hashOpaqueToken, revokeRefreshRecord, getRefreshRecord } from "@/lib/auth_sessions";
 
 export async function POST() {
@@ -34,6 +34,13 @@ export async function POST() {
     maxAge: 0,
   });
   response.cookies.set(getParentUnlockCookieName(), "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
+  response.cookies.set(getChildSelectionCookieName(), "", {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
