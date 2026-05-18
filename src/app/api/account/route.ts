@@ -6,6 +6,14 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
 import { writeAuditLog } from "@/lib/audit";
+import {
+  isPhoneLinkedToAnotherParent,
+  normalizeUkPhone,
+  parseStoredAddress,
+  serializeUkAddress,
+  toStoredAddress,
+  validateParentFullName,
+} from "@/lib/uk_contact";
 
 const PARENT_NOTIFICATION_TYPES = {
   emailWeeklyReport: "parent_weekly_report",
@@ -17,6 +25,17 @@ const PARENT_NOTIFICATION_TYPES = {
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
+  contact: z
+    .object({
+      phone: z.string().trim().min(1),
+      addressLine1: z.string().trim().min(1).max(160),
+      addressLine2: z.string().trim().max(160).optional(),
+      townCity: z.string().trim().min(1).max(120),
+      county: z.string().trim().max(120).optional(),
+      postcode: z.string().trim().min(1).max(12),
+      country: z.string().trim().optional(),
+    })
+    .optional(),
   notifications: z
     .object({
       emailWeeklyReport: z.boolean().optional(),
@@ -153,7 +172,7 @@ export async function GET() {
     }),
     prisma.parentProfile.findUnique({
       where: { userId: parentScope.parentId },
-      select: { stripeCustomerId: true, deviceTrackingJson: true },
+      select: { stripeCustomerId: true, deviceTrackingJson: true, phone: true, address: true, country: true },
     }),
   ]);
 
@@ -175,6 +194,15 @@ export async function GET() {
     pricingPlanId: subscription?.pricingPlanId ?? null,
     legacyPlanKey: subscription?.planKey ?? null,
   });
+  const parsedAddress = parseStoredAddress(parentProfile?.address, parentProfile?.country);
+  let parsedPhone: { display: string; e164: string } | null = null;
+  if (parentProfile?.phone) {
+    try {
+      parsedPhone = normalizeUkPhone(parentProfile.phone);
+    } catch {
+      parsedPhone = { display: parentProfile.phone, e164: parentProfile.phone };
+    }
+  }
   const resolvedPlanName = currentPricingPlan?.name ?? "Free";
   const resolvedPlanBadge = currentPricingPlan?.badge ?? resolvedPlanName;
   const resolvedChildLimit = currentPricingPlan?.childLimit ?? 1;
@@ -201,6 +229,16 @@ export async function GET() {
     },
     activeChild,
     notifications,
+    contact: {
+      phone: parsedPhone?.display ?? "",
+      phoneE164: parsedPhone?.e164 ?? "",
+      addressLine1: parsedAddress.addressLine1,
+      addressLine2: parsedAddress.addressLine2,
+      townCity: parsedAddress.townCity,
+      county: parsedAddress.county,
+      postcode: parsedAddress.postcode,
+      country: parsedAddress.country,
+    },
   });
 }
 
@@ -217,9 +255,51 @@ export async function PATCH(request: Request) {
     const body = updateSchema.parse(await request.json());
 
     if (body.name) {
+      const validatedName = validateParentFullName(body.name);
       await prisma.user.update({
         where: { id: parentScope.parentId },
-        data: { name: body.name },
+        data: { name: validatedName },
+      });
+    }
+
+    if (body.contact) {
+      const normalizedPhone = normalizeUkPhone(body.contact.phone);
+      const existingPhone = await prisma.parentProfile.findFirst({
+        where: { phone: normalizedPhone.e164 },
+        select: { userId: true },
+      });
+      if (isPhoneLinkedToAnotherParent(existingPhone?.userId, parentScope.parentId)) {
+        return NextResponse.json(
+          {
+            error: "This phone number is already linked to a StarLiz Academy parent account. Please log in, reset your password, or contact support if you need help.",
+          },
+          { status: 409 },
+        );
+      }
+
+      const normalizedAddress = serializeUkAddress({
+        addressLine1: body.contact.addressLine1,
+        addressLine2: body.contact.addressLine2,
+        townCity: body.contact.townCity,
+        county: body.contact.county,
+        postcode: body.contact.postcode,
+        country: body.contact.country,
+      });
+
+      await prisma.parentProfile.upsert({
+        where: { userId: parentScope.parentId },
+        create: {
+          userId: parentScope.parentId,
+          phone: normalizedPhone.e164,
+          address: toStoredAddress(normalizedAddress),
+          country: normalizedAddress.country,
+          status: "active",
+        },
+        update: {
+          phone: normalizedPhone.e164,
+          address: toStoredAddress(normalizedAddress),
+          country: normalizedAddress.country,
+        },
       });
     }
 
@@ -260,7 +340,10 @@ export async function PATCH(request: Request) {
       },
       notifications: nextNotifications,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json({ error: "Invalid account update payload." }, { status: 400 });
   }
 }

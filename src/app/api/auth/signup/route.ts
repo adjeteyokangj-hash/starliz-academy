@@ -5,12 +5,28 @@ import { prisma } from "@/lib/db";
 import { createSessionToken, getAuthCookieName, getSessionMaxAgeSeconds, hashPassword } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
 import { canAddSchoolStudent } from "@/lib/schools/licensing";
+import {
+  isPhoneLinkedToAnotherParent,
+  normalizeUkPhone,
+  serializeUkAddress,
+  toStoredAddress,
+  validateParentEmailQuality,
+  validateParentFullName,
+} from "@/lib/uk_contact";
 
 const bodySchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
-  name: z.string().trim().min(1).max(120).optional(),
-  phone: z.string().trim().regex(/^\+?[0-9\s()\-]{8,20}$/).optional(),
+  name: z.string().trim().min(1).max(120),
+  phone: z.string().trim().min(1),
+  address: z.object({
+    addressLine1: z.string().trim().min(1).max(160),
+    addressLine2: z.string().trim().max(160).optional(),
+    townCity: z.string().trim().min(1).max(120),
+    county: z.string().trim().max(120).optional(),
+    postcode: z.string().trim().min(1).max(12),
+    country: z.string().trim().optional(),
+  }),
   marketingOptIn: z.boolean().optional(),
   child: z.object({
     name: z.string().trim().min(1).max(64),
@@ -31,13 +47,30 @@ const bodySchema = z.object({
 export async function POST(request: Request) {
   try {
     const body = bodySchema.parse(await request.json());
+    const validatedName = validateParentFullName(body.name);
+    const normalizedEmail = validateParentEmailQuality(body.email);
+    const normalizedPhone = normalizeUkPhone(body.phone);
+    const normalizedAddress = serializeUkAddress(body.address);
     if (body.schoolEnrollment && !body.child) {
       return NextResponse.json({ error: "School enrolment requires a child profile." }, { status: 400 });
     }
 
-    const existing = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() } });
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
       return NextResponse.json({ error: "Email already in use." }, { status: 409 });
+    }
+
+    const existingPhone = await prisma.parentProfile.findFirst({
+      where: { phone: normalizedPhone.e164 },
+      select: { userId: true },
+    });
+    if (isPhoneLinkedToAnotherParent(existingPhone?.userId)) {
+      return NextResponse.json(
+        {
+          error: "This phone number is already linked to a StarLiz Academy parent account. Please log in, reset your password, or contact support if you need help.",
+        },
+        { status: 409 },
+      );
     }
 
     if (body.schoolEnrollment) {
@@ -63,12 +96,14 @@ export async function POST(request: Request) {
 
     const user = await prisma.user.create({
       data: {
-        email: body.email.toLowerCase(),
+        email: normalizedEmail,
         passwordHash: await hashPassword(body.password),
-        name: body.name,
+        name: validatedName,
         parentProfile: {
           create: {
-            phone: body.phone || "",
+            phone: normalizedPhone.e164,
+            address: toStoredAddress(normalizedAddress),
+            country: normalizedAddress.country,
             status: "active",
           },
         },
@@ -120,6 +155,7 @@ export async function POST(request: Request) {
       entityId: user.id,
       metadata: {
         phoneProvided: Boolean(body.phone),
+        postcode: normalizedAddress.postcode,
         marketingOptIn: body.marketingOptIn ?? false,
         childProvided: Boolean(body.child),
         schoolEnrollment: body.schoolEnrollment?.schoolId ?? null,
@@ -136,7 +172,10 @@ export async function POST(request: Request) {
       maxAge: getSessionMaxAgeSeconds(),
     });
     return response;
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json({ error: "Invalid sign up request." }, { status: 400 });
   }
 }

@@ -4,6 +4,13 @@ import Link from "next/link"
 import { FormEvent, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { generatePassword as generateSecurePassword } from "@/lib/password"
+import {
+  normalizeUkPhone,
+  normalizeUkPostcode,
+  serializeUkAddress,
+  validateParentEmailQuality,
+  validateParentFullName,
+} from "@/lib/uk_contact"
 import PublicShell from "@/components/layout/PublicShell"
 
 type Toast = { type: "success" | "error"; message: string } | null
@@ -14,6 +21,9 @@ type SignupErrors = Partial<Record<
   | "phone"
   | "password"
   | "confirmPassword"
+  | "addressLine1"
+  | "townCity"
+  | "postcode"
   | "childName"
   | "childAge"
   | "yearGroup"
@@ -33,8 +43,22 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
 
-function isValidPhone(value: string): boolean {
-  return /^\+?[0-9\s()\-]{8,20}$/.test(value.trim())
+function isValidUkPhone(value: string): boolean {
+  try {
+    normalizeUkPhone(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isValidUkPostcode(value: string): boolean {
+  try {
+    normalizeUkPostcode(value)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function progressWidthClass(value: number): string {
@@ -56,6 +80,12 @@ export default function SignupPage() {
   const [parentName, setParentName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
+  const [addressLine1, setAddressLine1] = useState("")
+  const [addressLine2, setAddressLine2] = useState("")
+  const [townCity, setTownCity] = useState("")
+  const [county, setCounty] = useState("")
+  const [postcode, setPostcode] = useState("")
+  const [country, setCountry] = useState("United Kingdom")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -80,7 +110,10 @@ export default function SignupPage() {
     const checks = [
       parentName.trim().length > 0,
       isValidEmail(email),
-      isValidPhone(phone),
+      isValidUkPhone(phone),
+      addressLine1.trim().length > 0,
+      townCity.trim().length > 0,
+      isValidUkPostcode(postcode),
       password.length >= 8,
       confirmPassword === password && confirmPassword.length > 0,
       childName.trim().length > 0,
@@ -89,7 +122,7 @@ export default function SignupPage() {
     ]
     const done = checks.filter(Boolean).length
     return Math.round((done / checks.length) * 100)
-  }, [acceptedTerms, childAge, childName, confirmPassword, email, parentName, password, phone])
+  }, [acceptedTerms, addressLine1, childAge, childName, confirmPassword, email, parentName, password, phone, postcode, townCity])
 
   useEffect(() => {
     if (!toast) return
@@ -99,9 +132,45 @@ export default function SignupPage() {
 
   function validateStepOne(): SignupErrors {
     const next: SignupErrors = {}
-    if (!parentName.trim()) next.parentName = "Parent full name is required."
-    if (!email.trim() || !isValidEmail(email)) next.email = "Enter a valid email address."
-    if (!phone.trim() || !isValidPhone(phone)) next.phone = "Enter a valid phone number."
+    if (!parentName.trim()) {
+      next.parentName = "Please enter your real full name."
+    } else {
+      try {
+        validateParentFullName(parentName)
+      } catch {
+        next.parentName = "Please enter your real full name."
+      }
+    }
+
+    if (!email.trim() || !isValidEmail(email)) {
+      next.email = "Enter a valid email address."
+    } else {
+      try {
+        validateParentEmailQuality(email)
+      } catch {
+        next.email = "Please use a real email address."
+      }
+    }
+
+    if (!phone.trim() || !isValidUkPhone(phone)) next.phone = "Please enter a valid UK phone number."
+
+    try {
+      serializeUkAddress({
+        addressLine1,
+        addressLine2,
+        townCity,
+        county,
+        postcode,
+        country,
+      })
+    } catch {
+      next.addressLine1 = "Please enter a valid UK address."
+      next.townCity = "Please enter a valid UK address."
+      if (!isValidUkPostcode(postcode)) {
+        next.postcode = "Enter a valid UK postcode."
+      }
+    }
+
     if (!password || password.length < 8) next.password = "Password must be at least 8 characters."
     if (!confirmPassword) next.confirmPassword = "Confirm your password."
     if (password && confirmPassword && password !== confirmPassword) {
@@ -167,7 +236,16 @@ export default function SignupPage() {
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
       setToast({ type: "error", message: "Please complete all required fields." })
-      if (nextErrors.parentName || nextErrors.email || nextErrors.phone || nextErrors.password || nextErrors.confirmPassword) {
+      if (
+        nextErrors.parentName ||
+        nextErrors.email ||
+        nextErrors.phone ||
+        nextErrors.addressLine1 ||
+        nextErrors.townCity ||
+        nextErrors.postcode ||
+        nextErrors.password ||
+        nextErrors.confirmPassword
+      ) {
         setStep(1)
       } else if (nextErrors.childName || nextErrors.childAge || nextErrors.yearGroup || nextErrors.focus) {
         setStep(2)
@@ -188,6 +266,14 @@ export default function SignupPage() {
           name: parentName,
           email,
           phone,
+          address: {
+            addressLine1,
+            addressLine2,
+            townCity,
+            county,
+            postcode,
+            country,
+          },
           password,
           marketingOptIn,
           child: {
@@ -338,7 +424,7 @@ export default function SignupPage() {
                   </label>
 
                   <label className="sm:col-span-2">
-                    <span className="text-sm font-semibold text-slate-300">Phone number</span>
+                    <span className="text-sm font-semibold text-slate-300">Telephone</span>
                     <input
                       name="phone"
                       type="tel"
@@ -348,8 +434,86 @@ export default function SignupPage() {
                       className={inputCls}
                       placeholder="+44 7000 000000"
                     />
+                    <p className="mt-1 text-xs text-slate-400">Enter a UK mobile or landline number</p>
                     {errors.phone ? <p className="mt-1 text-xs font-semibold text-rose-300">{errors.phone}</p> : null}
                   </label>
+
+                  <label className="sm:col-span-2">
+                    <span className="text-sm font-semibold text-slate-300">Address line 1</span>
+                    <input
+                      name="addressLine1"
+                      autoComplete="address-line1"
+                      value={addressLine1}
+                      onChange={(event) => setAddressLine1(event.target.value)}
+                      className={inputCls}
+                      placeholder="Flat, house number and street"
+                    />
+                    {errors.addressLine1 ? <p className="mt-1 text-xs font-semibold text-rose-300">{errors.addressLine1}</p> : null}
+                  </label>
+
+                  <label className="sm:col-span-2">
+                    <span className="text-sm font-semibold text-slate-300">Address line 2 (optional)</span>
+                    <input
+                      name="addressLine2"
+                      autoComplete="address-line2"
+                      value={addressLine2}
+                      onChange={(event) => setAddressLine2(event.target.value)}
+                      className={inputCls}
+                      placeholder="Apartment, suite, unit, building"
+                    />
+                  </label>
+
+                  <label>
+                    <span className="text-sm font-semibold text-slate-300">Town/City</span>
+                    <input
+                      name="townCity"
+                      autoComplete="address-level2"
+                      value={townCity}
+                      onChange={(event) => setTownCity(event.target.value)}
+                      className={inputCls}
+                      placeholder="Town or city"
+                    />
+                    {errors.townCity ? <p className="mt-1 text-xs font-semibold text-rose-300">{errors.townCity}</p> : null}
+                  </label>
+
+                  <label>
+                    <span className="text-sm font-semibold text-slate-300">County (optional)</span>
+                    <input
+                      name="county"
+                      autoComplete="address-level1"
+                      value={county}
+                      onChange={(event) => setCounty(event.target.value)}
+                      className={inputCls}
+                      placeholder="County"
+                    />
+                  </label>
+
+                  <label>
+                    <span className="text-sm font-semibold text-slate-300">Postcode</span>
+                    <input
+                      name="postcode"
+                      autoComplete="postal-code"
+                      value={postcode}
+                      onChange={(event) => setPostcode(event.target.value.toUpperCase())}
+                      className={inputCls}
+                      placeholder="SW1A 1AA"
+                    />
+                    {errors.postcode ? <p className="mt-1 text-xs font-semibold text-rose-300">{errors.postcode}</p> : null}
+                  </label>
+
+                  <label>
+                    <span className="text-sm font-semibold text-slate-300">Country</span>
+                    <select
+                      name="country"
+                      value={country}
+                      onChange={(event) => setCountry(event.target.value)}
+                      className={inputCls}
+                    >
+                      <option>United Kingdom</option>
+                    </select>
+                  </label>
+
+                  {/* TODO: postcode lookup API can plug into this section while keeping manual entry as fallback. */}
 
                   <label>
                     <span className="text-sm font-semibold text-slate-300">Password</span>
@@ -492,6 +656,12 @@ export default function SignupPage() {
                     <p className="font-bold text-white">Review before creating account</p>
                     <p className="mt-2">Parent: {parentName || "-"} ({email || "-"})</p>
                     <p className="mt-1">Phone: {phone || "-"}</p>
+                    <p className="mt-1">Address: {addressLine1 || "-"}</p>
+                    {addressLine2 ? <p className="mt-1">Address line 2: {addressLine2}</p> : null}
+                    <p className="mt-1">Town/City: {townCity || "-"}</p>
+                    {county ? <p className="mt-1">County: {county}</p> : null}
+                    <p className="mt-1">Postcode: {postcode || "-"}</p>
+                    <p className="mt-1">Country: {country || "United Kingdom"}</p>
                     <p className="mt-1">Child: {avatar} {childName || "-"}, age {childAge || "-"}, {yearGroup}</p>
                     <p className="mt-1">Focus: {focus}</p>
                   </div>
