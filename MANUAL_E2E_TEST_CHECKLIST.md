@@ -8,6 +8,33 @@
 
 ---
 
+## Parent Registration and Profile Contact Checks ⏳
+
+### Parent signup form checks
+1. [ ] Navigate to `/signup`
+2. [ ] Confirm labels use **Town/City** and **Postcode**
+3. [ ] Confirm Country defaults to **United Kingdom**
+4. [ ] Confirm phone helper text says: **Enter a UK mobile or landline number**
+5. [ ] Submit with a valid UK mobile and valid postcode
+   - Expected: account is created successfully
+6. [ ] Submit with invalid postcode (example: `12345`)
+   - Expected: clear postcode validation error message
+7. [ ] Submit with invalid phone (example: `+1 202 555 0100`)
+   - Expected: clear phone validation error message
+
+### Parent profile edit checks
+1. [ ] Log in as a parent and navigate to `/parent/profile`
+2. [ ] Update address fields and telephone with valid UK values
+   - Expected: profile saves and keeps normalized values (postcode uppercase, UK phone normalized)
+3. [ ] Try invalid postcode and save
+   - Expected: clear validation error from server
+4. [ ] Try invalid phone and save
+   - Expected: clear validation error from server
+5. [ ] Navigate to `/parent/profiles` and complete parent PIN flow
+   - Expected: parent profile gate still works after profile changes
+
+---
+
 ## Test 1: Reception Phonics Generation ⏳
 
 ### Steps
