@@ -60,4 +60,6 @@ export type DashboardProps = {
   onStartJourney: () => Promise<void>;
   onStartAssignment: (assignment: StudentAssignment | null) => void;
   onOpenStore: () => void;
+  pendingAssignmentId?: string | null;
+  openingStore?: boolean;
 };

@@ -64,26 +64,48 @@ export async function GET(request: Request) {
   const assignmentIds = assignments.map((assignment) => assignment.id);
   const studentIds = [...new Set(assignments.map((assignment) => assignment.studentId))];
 
-  const attempts = await prisma.attempt.findMany({
-    where: { assignmentId: { in: assignmentIds } },
-    select: { assignmentId: true, correct: true, questionText: true, answerGiven: true, correctAnswer: true },
-  });
-  const attemptMap = new Map<string, { attempts: number; correct: number }>();
-  const weakWordsFromAttemptsMap = new Map<string, string[]>();
-  for (const attempt of attempts) {
-    if (!attempt.assignmentId) continue;
-    const current = attemptMap.get(attempt.assignmentId) ?? { attempts: 0, correct: 0 };
-    current.attempts += 1;
-    if (attempt.correct) current.correct += 1;
-    attemptMap.set(attempt.assignmentId, current);
+  const [attemptTotals, correctAttemptTotals, weakWordAttempts] = await Promise.all([
+    prisma.attempt.groupBy({
+      by: ["assignmentId"],
+      where: { assignmentId: { in: assignmentIds } },
+      _count: { id: true },
+    }),
+    prisma.attempt.groupBy({
+      by: ["assignmentId"],
+      where: { assignmentId: { in: assignmentIds }, correct: true },
+      _count: { id: true },
+    }),
+    prisma.attempt.findMany({
+      where: { assignmentId: { in: assignmentIds }, correct: false },
+      select: { assignmentId: true, questionText: true, correctAnswer: true },
+    }),
+  ]);
 
-    if (!attempt.correct) {
-      const weakWord = attempt.correctAnswer || attempt.questionText || attempt.answerGiven || "";
-      if (weakWord) {
-        const existing = weakWordsFromAttemptsMap.get(attempt.assignmentId) ?? [];
-        existing.push(weakWord);
-        weakWordsFromAttemptsMap.set(attempt.assignmentId, existing);
-      }
+  const attemptMap = new Map<string, { attempts: number; correct: number }>();
+  for (const row of attemptTotals) {
+    const assignmentId = row.assignmentId;
+    if (assignmentId == null) continue;
+    attemptMap.set(assignmentId, {
+      attempts: row._count.id,
+      correct: 0,
+    });
+  }
+  for (const row of correctAttemptTotals) {
+    const assignmentId = row.assignmentId;
+    if (assignmentId == null) continue;
+    const current = attemptMap.get(assignmentId) ?? { attempts: 0, correct: 0 };
+    current.correct = row._count.id;
+    attemptMap.set(assignmentId, current);
+  }
+
+  const weakWordsFromAttemptsMap = new Map<string, string[]>();
+  for (const attempt of weakWordAttempts) {
+    if (!attempt.assignmentId) continue;
+    const weakWord = attempt.correctAnswer || attempt.questionText || "";
+    if (weakWord) {
+      const existing = weakWordsFromAttemptsMap.get(attempt.assignmentId) ?? [];
+      existing.push(weakWord);
+      weakWordsFromAttemptsMap.set(attempt.assignmentId, existing);
     }
   }
 

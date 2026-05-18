@@ -61,7 +61,7 @@ export default function ContentLibraryPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
-  const [, setOperating] = useState(false);
+  const [operating, setOperating] = useState<{ id: string; action: "view" | "select" | "duplicate" | "archive" | "publish" | "review" } | null>(null);
 
   const [draftFilters, setDraftFilters] = useState<FilterState>(() => parseFiltersFromSearchParams(searchParams));
   const [applyingFilters, setApplyingFilters] = useState(false);
@@ -78,7 +78,7 @@ export default function ContentLibraryPage() {
   const fetchData = useCallback(async () => {
     const [contentRes, studentsRes] = await Promise.all([
       fetch("/api/admin/content"),
-      fetch("/api/admin/students"),
+      fetch("/api/admin/students?context=assignment"),
     ]);
     const contentPayload = await contentRes.json() as { items?: ContentItem[] };
     const studentsPayload = await studentsRes.json() as { students?: StudentOption[] };
@@ -236,9 +236,11 @@ export default function ContentLibraryPage() {
   }, [filteredItems]);
 
   function selectContent(item: ContentItem) {
+    setOperating({ id: item.id, action: "select" });
     setSelectedContentId(item.id);
     setSelectedStudentId(null);
     setShowBlocked(false);
+    window.setTimeout(() => setOperating(null), 180);
   }
 
   function openSingleAssignment() {
@@ -343,7 +345,7 @@ export default function ContentLibraryPage() {
   }
 
   async function handleReview(item: ContentItem) {
-    setOperating(true);
+    setOperating({ id: item.id, action: "review" });
     setMessage(null);
     try {
       const response = await fetch(`/api/admin/content/${item.id}/review`, {
@@ -360,12 +362,12 @@ export default function ContentLibraryPage() {
     } catch {
       setMessage("Review request failed");
     } finally {
-      setOperating(false);
+      setOperating(null);
     }
   }
 
   async function handleDuplicate(item: ContentItem) {
-    setOperating(true);
+    setOperating({ id: item.id, action: "duplicate" });
     setMessage(null);
     try {
       const response = await fetch(`/api/admin/content/${item.id}/duplicate`, {
@@ -382,12 +384,12 @@ export default function ContentLibraryPage() {
     } catch {
       setMessage("Duplicate request failed");
     } finally {
-      setOperating(false);
+      setOperating(null);
     }
   }
 
   async function handleArchive(item: ContentItem) {
-    setOperating(true);
+    setOperating({ id: item.id, action: "archive" });
     setMessage(null);
     try {
       const response = await fetch(`/api/admin/content/${item.id}/archive`, {
@@ -406,12 +408,12 @@ export default function ContentLibraryPage() {
     } catch {
       setMessage("Archive request failed");
     } finally {
-      setOperating(false);
+      setOperating(null);
     }
   }
 
   async function handlePublish(item: ContentItem) {
-    setOperating(true);
+    setOperating({ id: item.id, action: "publish" });
     setMessage(null);
     try {
       const response = await fetch(`/api/admin/content/${item.id}/publish`, {
@@ -427,8 +429,14 @@ export default function ContentLibraryPage() {
     } catch {
       setMessage("Publish request failed");
     } finally {
-      setOperating(false);
+      setOperating(null);
     }
+  }
+
+  function handleOpenView(item: ContentItem) {
+    setOperating({ id: item.id, action: "view" });
+    setViewModalContent(item);
+    window.setTimeout(() => setOperating(null), 180);
   }
 
   return (
@@ -482,17 +490,26 @@ export default function ContentLibraryPage() {
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         <AdminSectionCard title="Content by Topic" eyebrow="Library">
-          {loading ? <p className="text-sm text-slate-400">Loading content...</p> : (
+          {loading ? (
+            <div className="grid gap-3 xl:grid-cols-2">
+              {[0, 1, 2, 3].map((idx) => (
+                <div key={idx} className="h-40 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />
+              ))}
+            </div>
+          ) : (
             <ContentTopicGrid
               items={filteredItems}
               selectedContentId={selectedContentId}
               viewMode={viewMode}
               onSelect={selectContent}
-              onView={setViewModalContent}
+              onView={handleOpenView}
               onDuplicate={handleDuplicate}
               onArchive={handleArchive}
               onPublish={handlePublish}
               onReview={handleReview}
+              operatingAction={operating?.action ?? null}
+              operatingId={operating?.id ?? null}
+              assigning={assigning}
             />
           )}
         </AdminSectionCard>

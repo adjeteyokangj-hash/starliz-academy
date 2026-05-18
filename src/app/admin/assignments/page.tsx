@@ -48,18 +48,25 @@ function levelCapForSubject(subject: string): number {
 export default function AdminAssignmentsPage() {
   const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [pendingRowAction, setPendingRowAction] = useState<{ id: string; action: "reassign" | "remove" } | null>(null);
   const [queryFilter, setQueryFilter] = useState("");
   const [keyStageFilter, setKeyStageFilter] = useState("");
   const [yearGroupFilter, setYearGroupFilter] = useState("");
   const [examBoardFilter, setExamBoardFilter] = useState("");
 
-  const loadAssignments = useCallback(async () => {
-    setLoading(true);
+  const loadAssignments = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     const response = await fetch("/api/admin/assignments", { credentials: "include" });
     const payload = await response.json();
     setAssignments(payload.assignments ?? []);
     setLoading(false);
+    setRefreshing(false);
   }, []);
 
   useEffect(() => {
@@ -80,6 +87,8 @@ export default function AdminAssignmentsPage() {
   }, [assignments, queryFilter, keyStageFilter, yearGroupFilter, examBoardFilter]);
 
   async function reassign(row: AssignmentRow) {
+    if (pendingRowAction) return;
+    setPendingRowAction({ id: row.id, action: "reassign" });
     const response = await fetch("/api/admin/assignments", {
       method: "POST",
       credentials: "include",
@@ -88,20 +97,33 @@ export default function AdminAssignmentsPage() {
     });
     const payload = await response.json();
     setMessage(response.ok ? "Assignment resent." : payload.error ?? "Could not reassign.");
-    await loadAssignments();
+    setPendingRowAction(null);
+    await loadAssignments(false);
   }
 
   async function removeAssignment(row: AssignmentRow) {
+    if (pendingRowAction) return;
     if (!window.confirm(`Remove "${row.content.topic || row.content.skillFocus || "this assignment"}" from ${row.student.name}?`)) {
       return;
     }
+    const previousAssignments = assignments;
+    setPendingRowAction({ id: row.id, action: "remove" });
+    setAssignments((current) => current.filter((entry) => entry.id !== row.id));
+    setMessage(`Removing assignment from ${row.student.name}...`);
+
     const response = await fetch(`/api/admin/assignments/${row.id}`, {
       method: "DELETE",
       credentials: "include",
     });
     const payload = await response.json();
-    setMessage(response.ok ? `Assignment removed from ${row.student.name}.` : payload.error ?? "Could not remove assignment.");
-    await loadAssignments();
+    if (response.ok) {
+      setMessage(`Assignment removed from ${row.student.name}.`);
+    } else {
+      setAssignments(previousAssignments);
+      setMessage(payload.error ?? "Could not remove assignment.");
+    }
+    setPendingRowAction(null);
+    await loadAssignments(false);
   }
 
   return (
@@ -116,24 +138,31 @@ export default function AdminAssignmentsPage() {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => void loadAssignments()}
-            className="rounded-2xl border border-slate-700 px-5 py-3 font-semibold text-slate-200 hover:bg-slate-800"
+            onClick={() => void loadAssignments(false)}
+            disabled={loading || refreshing}
+            className="rounded-2xl border border-slate-700 px-5 py-3 font-semibold text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            🔄 Refresh
+            {refreshing ? "Loading..." : "Refresh"}
           </button>
-          <Link href="/admin/content-library" className="rounded-2xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-500">
+          <Link prefetch href="/admin/content-library" className="rounded-2xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-500">
             Assign from Library
           </Link>
         </div>
       </div>
 
       {message ? <p className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-bold text-blue-200">{message}</p> : null}
-      {loading ? <p className="text-sm text-slate-400">Loading assignments...</p> : null}
+      {loading ? (
+        <div className="grid gap-4">
+          {[0, 1, 2].map((idx) => (
+            <div key={idx} className="h-44 animate-pulse rounded-3xl border border-slate-800 bg-slate-900/60" />
+          ))}
+        </div>
+      ) : null}
 
       {!loading && assignments.length === 0 ? (
         <div className="rounded-2xl border border-slate-700 bg-slate-900/50 p-8 text-center">
           <p className="text-slate-400">No assignments yet.</p>
-          <Link href="/admin/content-library" className="mt-4 inline-block rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500">
+          <Link prefetch href="/admin/content-library" className="mt-4 inline-block rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500">
             Create your first assignment
           </Link>
         </div>
@@ -268,17 +297,17 @@ export default function AdminAssignmentsPage() {
             ) : null}
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link href={`/admin/content-library/${assignment.content.id}`} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800">
+              <Link prefetch href={`/admin/content-library/${assignment.content.id}`} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800">
                 Review Content
               </Link>
-              <Link href={`/admin/students/${assignment.student.id}`} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800">
+              <Link prefetch href={`/admin/students/${assignment.student.id}`} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800">
                 View Student
               </Link>
-              <button type="button" onClick={() => void reassign(assignment)} className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white hover:bg-indigo-400">
-                Resend
+              <button type="button" disabled={pendingRowAction?.id === assignment.id} onClick={() => void reassign(assignment)} className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60">
+                {pendingRowAction?.id === assignment.id && pendingRowAction?.action === "reassign" ? "Assigning..." : "Resend"}
               </button>
-              <button type="button" onClick={() => void removeAssignment(assignment)} className="rounded-xl bg-red-500 px-3 py-2 text-xs font-black text-white hover:bg-red-400">
-                Remove
+              <button type="button" disabled={pendingRowAction?.id === assignment.id} onClick={() => void removeAssignment(assignment)} className="rounded-xl bg-red-500 px-3 py-2 text-xs font-black text-white hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60">
+                {pendingRowAction?.id === assignment.id && pendingRowAction?.action === "remove" ? "Loading..." : "Remove"}
               </button>
             </div>
           </div>

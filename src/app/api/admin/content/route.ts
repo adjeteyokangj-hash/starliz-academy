@@ -102,6 +102,26 @@ export async function GET(req: Request) {
     },
     orderBy: { createdAt: "desc" },
     take: 100,
+    select: {
+      id: true,
+      contentType: true,
+      level: true,
+      topic: true,
+      contentJson: true,
+      usedCount: true,
+      createdAt: true,
+      createdBy: true,
+      status: true,
+      model: true,
+      prompt: true,
+      keyStage: true,
+      yearGroup: true,
+      skillFocus: true,
+      metadataJson: true,
+      reviewedAt: true,
+      approvedAt: true,
+      publishedAt: true,
+    },
   });
 
   return NextResponse.json({

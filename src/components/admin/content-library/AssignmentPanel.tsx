@@ -96,7 +96,7 @@ export default function AssignmentPanel(props: Props) {
               disabled={props.assigning || props.recommended.length === 0}
               className="w-full rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {props.recommended.length === 0 ? "No recommended students" : `Smart assign (${props.recommended.length})`}
+              {props.assigning ? "Assigning..." : props.recommended.length === 0 ? "No recommended students" : `Smart assign (${props.recommended.length})`}
             </button>
             <button
               type="button"
@@ -104,7 +104,7 @@ export default function AssignmentPanel(props: Props) {
               disabled={props.assigning || (props.recommended.length + props.eligibleManual.length) === 0}
               className="w-full rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs font-black text-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Assign all eligible ({props.recommended.length + props.eligibleManual.length})
+              {props.assigning ? "Assigning..." : `Assign all eligible (${props.recommended.length + props.eligibleManual.length})`}
             </button>
             <button
               type="button"
@@ -112,7 +112,7 @@ export default function AssignmentPanel(props: Props) {
               disabled={props.assigning || !props.selectedStudentId}
               className="w-full rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Assign selected student
+              {props.assigning ? "Assigning..." : "Assign selected student"}
             </button>
           </div>
         </div>

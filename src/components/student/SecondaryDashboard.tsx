@@ -39,6 +39,7 @@ export default function SecondaryDashboard({
   allAssignments,
   onStartJourney,
   onStartAssignment,
+  pendingAssignmentId,
 }: DashboardProps) {
   const isGcse = pathway === "gcse";
   const masteredCount = skills.filter((s) => s.status === "mastered").length;
@@ -137,10 +138,11 @@ export default function SecondaryDashboard({
                 key={assignment.id}
                 type="button"
                 onClick={() => onStartAssignment(assignment)}
-                className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-800 bg-indigo-900/70 px-4 py-3 text-left transition hover:bg-indigo-900"
+                disabled={pendingAssignmentId === assignment.id}
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-800 bg-indigo-900/70 px-4 py-3 text-left transition hover:bg-indigo-900 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <span>
-                  {index + 1}. {assignmentSessionLabel(assignment.title, assignment.skillFocus)}
+                  {index + 1}. {pendingAssignmentId === assignment.id ? "Opening..." : assignmentSessionLabel(assignment.title, assignment.skillFocus)}
                 </span>
                 <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-indigo-300">
                   {subjectLabel(assignment.subject)}
@@ -246,9 +248,10 @@ export default function SecondaryDashboard({
                   <button
                     type="button"
                     onClick={() => onStartAssignment(assignment)}
-                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-700"
+                    disabled={pendingAssignmentId === assignment.id}
+                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    {assignment.status === "in_progress" ? "Continue" : "Start"}
+                    {pendingAssignmentId === assignment.id ? "Opening..." : assignment.status === "in_progress" ? "Continue" : "Start"}
                   </button>
                 </div>
               </div>

@@ -156,6 +156,8 @@ export default function StudentDashboardPage() {
   const [ownedBadges, setOwnedBadges] = useState<ShopOwnedItem[]>([]);
   const [sessionSummary, setSessionSummary] = useState<SessionSummaryPayload["summary"] | null>(null);
   const [error, setError] = useState("");
+  const [pendingAssignmentId, setPendingAssignmentId] = useState<string | null>(null);
+  const [openingStore, setOpeningStore] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -226,6 +228,11 @@ export default function StudentDashboardPage() {
     void loadDashboard();
   }, [loadDashboard]);
 
+  useEffect(() => {
+    router.prefetch("/shop");
+    router.prefetch("/games/lesson");
+  }, [router]);
+
   const visibleAssignments = useMemo(
     () => assignments.filter((assignment) => {
       const title = normalize(assignment.title);
@@ -276,6 +283,8 @@ export default function StudentDashboardPage() {
   }
 
   function startAssignment(assignment: StudentAssignment | null) {
+    if (pendingAssignmentId) return;
+    setPendingAssignmentId(assignment?.id ?? "direct");
     if (!assignment) {
       router.push("/games/lesson");
       return;
@@ -293,6 +302,12 @@ export default function StudentDashboardPage() {
       params.set("mode", "literature");
     }
     router.push(`/games/${route}?${params.toString()}`);
+  }
+
+  function openStore() {
+    if (openingStore) return;
+    setOpeningStore(true);
+    router.push("/shop");
   }
 
   async function startTodayJourney() {
@@ -344,8 +359,19 @@ export default function StudentDashboardPage() {
       <Navbar />
       <section className="mx-auto max-w-6xl px-6 py-8">
         {loading ? (
-          <div className="flex min-h-[50vh] items-center justify-center">
-            <p className="text-lg font-semibold text-slate-500">Loading your learning profile...</p>
+          <div className="space-y-6">
+            <div className="h-16 animate-pulse rounded-2xl bg-slate-200/80" />
+            <div className="grid gap-3 sm:grid-cols-4">
+              {[0, 1, 2, 3].map((idx) => (
+                <div key={idx} className="h-20 animate-pulse rounded-2xl bg-slate-100" />
+              ))}
+            </div>
+            <div className="h-56 animate-pulse rounded-3xl bg-slate-100" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              {[0, 1, 2, 3].map((idx) => (
+                <div key={idx} className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+              ))}
+            </div>
           </div>
         ) : error && !assignments.length ? (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center">
@@ -401,7 +427,9 @@ export default function StudentDashboardPage() {
                 startingJourney={startingJourney}
                 onStartJourney={startTodayJourney}
                 onStartAssignment={startAssignment}
-                onOpenStore={() => router.push("/shop")}
+                onOpenStore={openStore}
+                pendingAssignmentId={pendingAssignmentId}
+                openingStore={openingStore}
               />
             )}
             {(dashboardTier === "ks3" || dashboardTier === "gcse") && (
@@ -428,7 +456,9 @@ export default function StudentDashboardPage() {
                 allAssignments={assignments}
                 onStartJourney={startTodayJourney}
                 onStartAssignment={startAssignment}
-                onOpenStore={() => router.push("/shop")}
+                onOpenStore={openStore}
+                pendingAssignmentId={pendingAssignmentId}
+                openingStore={openingStore}
               />
             )}
           </div>

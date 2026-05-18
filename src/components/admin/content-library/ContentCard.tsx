@@ -14,6 +14,9 @@ type Props = {
   onPublish: (item: ContentItem) => void;
   onReview: (item: ContentItem) => void;
   viewMode: "grid" | "list";
+  operatingAction?: "view" | "select" | "duplicate" | "archive" | "publish" | "review" | null;
+  operatingId?: string | null;
+  assigning?: boolean;
 };
 
 export default function ContentCard({
@@ -26,6 +29,9 @@ export default function ContentCard({
   onPublish,
   onReview,
   viewMode,
+  operatingAction,
+  operatingId,
+  assigning,
 }: Props) {
   const [showMenu, setShowMenu] = useState(false);
   const summary = getContentJsonSummary(item.contentJson);
@@ -38,6 +44,7 @@ export default function ContentCard({
     : !summary.valid
       ? "Content JSON is invalid and cannot be assigned."
       : undefined;
+  const isOperating = operatingId === item.id;
 
   return (
     <article className={`rounded-2xl border p-4 ${selected ? "border-indigo-400 bg-indigo-500/5" : "border-slate-800 bg-slate-950/45"}`}>
@@ -61,34 +68,37 @@ export default function ContentCard({
         <button
           type="button"
           onClick={() => onView(item)}
-          className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800"
+          disabled={isOperating || Boolean(assigning)}
+          className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          View
+          {isOperating && operatingAction === "view" ? "Opening..." : "View"}
         </button>
         {isDraftOrGenerated ? (
           <button
             type="button"
             onClick={() => onReview(item)}
-            className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-100 hover:bg-amber-500/20"
+            disabled={isOperating || Boolean(assigning)}
+            className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-100 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Review to assign
+            {isOperating && operatingAction === "review" ? "Loading..." : "Review to assign"}
           </button>
         ) : (
           <button
             type="button"
             onClick={() => onSelect(item)}
-            disabled={assignDisabled}
+            disabled={assignDisabled || isOperating || Boolean(assigning)}
             title={assignTitle}
             className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Assign
+            {isOperating && operatingAction === "select" ? "Opening..." : assigning ? "Assigning..." : "Assign"}
           </button>
         )}
         <div className="relative">
           <button
             type="button"
             onClick={() => setShowMenu(!showMenu)}
-            className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-300 hover:bg-slate-800"
+            disabled={isOperating || Boolean(assigning)}
+            className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             More
           </button>
@@ -102,7 +112,7 @@ export default function ContentCard({
                 }}
                 className="block w-full px-4 py-2 text-left text-xs font-black text-slate-200 hover:bg-slate-800"
               >
-                Duplicate
+                {isOperating && operatingAction === "duplicate" ? "Loading..." : "Duplicate"}
               </button>
               <button
                 type="button"
@@ -112,7 +122,7 @@ export default function ContentCard({
                 }}
                 className="block w-full px-4 py-2 text-left text-xs font-black text-slate-200 hover:bg-slate-800"
               >
-                Archive
+                {isOperating && operatingAction === "archive" ? "Loading..." : "Archive"}
               </button>
               <button
                 type="button"
@@ -120,10 +130,10 @@ export default function ContentCard({
                   onPublish(item);
                   setShowMenu(false);
                 }}
-                disabled={!canPublish}
+                disabled={!canPublish || isOperating || Boolean(assigning)}
                 className="block w-full px-4 py-2 text-left text-xs font-black text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800"
               >
-                {item.status === "published" ? "Unpublish" : "Publish"}
+                {isOperating && operatingAction === "publish" ? "Loading..." : item.status === "published" ? "Unpublish" : "Publish"}
               </button>
             </div>
           ) : null}

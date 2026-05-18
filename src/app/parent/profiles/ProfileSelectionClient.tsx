@@ -152,6 +152,8 @@ export default function ProfileSelectionClient() {
   const [childPinError, setChildPinError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
+  const [pendingProfileId, setPendingProfileId] = useState<string | "parent" | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -172,6 +174,11 @@ export default function ProfileSelectionClient() {
     })();
   }, []);
 
+  useEffect(() => {
+    router.prefetch("/parent/dashboard");
+    router.prefetch("/student/dashboard");
+  }, [router]);
+
   const intent = searchParams.get("intent");
   const bannerMessage = useMemo(() => {
     if (intent === "parent") {
@@ -184,6 +191,8 @@ export default function ProfileSelectionClient() {
   }, [intent]);
 
   async function logout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => undefined);
     router.replace("/auth/login");
   }
@@ -195,6 +204,7 @@ export default function ProfileSelectionClient() {
     }
 
     setSubmitting(true);
+    setPendingProfileId("parent");
     setParentPinError(null);
 
     try {
@@ -208,6 +218,7 @@ export default function ProfileSelectionClient() {
       if (!response.ok) {
         setParentPinError("Incorrect PIN.");
         setSubmitting(false);
+        setPendingProfileId(null);
         return;
       }
 
@@ -215,11 +226,14 @@ export default function ProfileSelectionClient() {
     } catch {
       setParentPinError("Could not verify PIN.");
       setSubmitting(false);
+      setPendingProfileId(null);
     }
   }
 
   async function continueAsChild(childId: string, pin?: string) {
+    if (submitting) return;
     setSubmitting(true);
+    setPendingProfileId(childId);
     setChildPinError(null);
 
     try {
@@ -234,6 +248,7 @@ export default function ProfileSelectionClient() {
         const failure = (await response.json().catch(() => null)) as { error?: string } | null;
         setChildPinError(failure?.error ?? "Could not open child profile.");
         setSubmitting(false);
+        setPendingProfileId(null);
         return;
       }
 
@@ -241,13 +256,28 @@ export default function ProfileSelectionClient() {
     } catch {
       setChildPinError("Could not open child profile.");
       setSubmitting(false);
+      setPendingProfileId(null);
     }
   }
 
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#1b2359_0%,_#070b24_42%,_#030512_100%)] px-4 text-white">
-        <p className="text-sm font-semibold text-slate-200">Loading profiles...</p>
+        <section className="w-full max-w-6xl rounded-[2rem] border border-white/10 bg-slate-950/45 p-5 shadow-[0_24px_80px_rgba(2,6,23,0.72)] backdrop-blur md:p-8">
+          <div className="h-12 w-40 animate-pulse rounded-2xl bg-white/10" />
+          <div className="mt-7 h-6 w-48 animate-pulse rounded-xl bg-white/10" />
+          <div className="mt-3 h-12 w-3/4 animate-pulse rounded-xl bg-white/10" />
+          <div className="mt-8 grid gap-3 md:grid-cols-3">
+            {[0, 1, 2].map((idx) => (
+              <div key={idx} className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/5" />
+            ))}
+          </div>
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            {[0, 1, 2].map((idx) => (
+              <div key={idx} className="h-44 animate-pulse rounded-[1.6rem] border border-white/10 bg-white/5" />
+            ))}
+          </div>
+        </section>
       </main>
     );
   }
@@ -292,12 +322,13 @@ export default function ProfileSelectionClient() {
           <button
             type="button"
             onClick={() => void logout()}
+            disabled={loggingOut}
             className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-slate-950/60 px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 text-white/80">
               <path d="M12 2l7 3v6c0 4.4-2.8 8.3-7 9.7C7.8 19.3 5 15.4 5 11V5l7-3zm0 2.2L7 6.3V11c0 3.3 2 6.2 5 7.4 3-1.2 5-4.1 5-7.4V6.3l-5-2.1z" fill="currentColor" />
             </svg>
-            Safe logout
+            {loggingOut ? "Loading..." : "Safe logout"}
           </button>
         </header>
 
@@ -338,11 +369,14 @@ export default function ProfileSelectionClient() {
           <button
             type="button"
             onClick={() => {
+              if (submitting) return;
+              setPendingProfileId("parent");
               setParentPin("");
               setParentPinError(null);
               setShowParentPinModal(true);
             }}
-            className="group relative overflow-hidden rounded-[1.6rem] border border-fuchsia-300/45 bg-[linear-gradient(135deg,rgba(88,28,135,0.38),rgba(79,70,229,0.22))] p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-fuchsia-300/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 sm:p-6"
+            disabled={submitting}
+            className={`group relative overflow-hidden rounded-[1.6rem] border border-fuchsia-300/45 bg-[linear-gradient(135deg,rgba(88,28,135,0.38),rgba(79,70,229,0.22))] p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-fuchsia-300/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 disabled:cursor-not-allowed disabled:opacity-80 sm:p-6 ${pendingProfileId === "parent" ? "scale-[0.995]" : ""}`}
             data-testid="profile-card-parent"
           >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_28%,rgba(255,255,255,0.16),transparent_24%),radial-gradient(circle_at_18%_82%,rgba(255,255,255,0.08),transparent_18%)]" />
@@ -360,7 +394,7 @@ export default function ProfileSelectionClient() {
                   </div>
                   <p className="mt-3 text-3xl font-black text-white">{payload.parent.name}</p>
                   <p className="mt-2 text-base text-slate-200">Parent dashboard is PIN protected.</p>
-                  <p className="mt-3 text-sm font-semibold text-fuchsia-200">PIN required to access</p>
+                  <p className="mt-3 text-sm font-semibold text-fuchsia-200">{pendingProfileId === "parent" ? "Opening..." : "PIN required to access"}</p>
                 </div>
               </div>
             </div>
@@ -371,6 +405,8 @@ export default function ProfileSelectionClient() {
               key={child.id}
               type="button"
               onClick={() => {
+                if (submitting) return;
+                setPendingProfileId(child.id);
                 setChildPin("");
                 setChildPinError(null);
                 if (child.pinEnabled) {
@@ -379,7 +415,8 @@ export default function ProfileSelectionClient() {
                 }
                 void continueAsChild(child.id);
               }}
-              className="group relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-slate-950/55 p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-cyan-300/65 hover:bg-slate-900/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:p-6"
+              disabled={submitting}
+              className={`group relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-slate-950/55 p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-cyan-300/65 hover:bg-slate-900/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-80 sm:p-6 ${pendingProfileId === child.id ? "scale-[0.995] border-cyan-300/65" : ""}`}
               data-testid={`profile-card-child-${child.id}`}
             >
               <div className="relative flex h-full items-center justify-between gap-4">
@@ -389,7 +426,7 @@ export default function ProfileSelectionClient() {
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300">Child</p>
                     <p className="mt-2 truncate text-2xl font-black text-white">{child.name}</p>
                     <p className="mt-1 text-base text-slate-300">{child.yearGroup ?? "Year group not set"}</p>
-                    <p className="mt-3 text-sm font-medium text-slate-300">{child.pinEnabled ? "PIN required" : "No PIN required"}</p>
+                    <p className="mt-3 text-sm font-medium text-slate-300">{pendingProfileId === child.id ? "Opening..." : child.pinEnabled ? "PIN required" : "No PIN required"}</p>
                   </div>
                 </div>
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-indigo-300/45 bg-indigo-400/5 text-cyan-200 transition group-hover:border-cyan-300 group-hover:text-white">
@@ -435,6 +472,7 @@ export default function ProfileSelectionClient() {
           onClose={() => {
             if (submitting) return;
             setShowParentPinModal(false);
+            setPendingProfileId(null);
           }}
         >
           <input
@@ -467,6 +505,7 @@ export default function ProfileSelectionClient() {
           onClose={() => {
             if (submitting) return;
             setChildPinModal(null);
+            setPendingProfileId(null);
           }}
         >
           <input

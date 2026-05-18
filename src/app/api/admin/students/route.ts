@@ -32,9 +32,87 @@ const createStudentSchema = z.object({
   targetGrades: z.record(z.string(), z.string()).optional(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   const { session, response } = await requireAdmin();
   if (!session) return response;
+
+  const context = new URL(request.url).searchParams.get("context")?.trim();
+
+  if (context === "assignment") {
+    const children = await prisma.childProfile.findMany({
+      where: { archived: false },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        age: true,
+        yearGroup: true,
+        snapshotJson: true,
+        parent: { select: { email: true, name: true } },
+        studentProfile: {
+          select: {
+            keyStageLevel: true,
+            subjectFocus: true,
+            aiLearningProfileJson: true,
+          },
+        },
+        schoolLinks: {
+          where: { status: "active" },
+          select: {
+            school: { select: { id: true } },
+            classroom: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    const students = children.map((child) => {
+      let weakPatterns: string[] = [];
+      if (child.snapshotJson) {
+        try {
+          const snap = JSON.parse(child.snapshotJson) as { spellingPatterns?: Record<string, number> };
+          const patterns = snap.spellingPatterns;
+          if (patterns) {
+            weakPatterns = Object.entries(patterns)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3)
+              .map(([key]) => key);
+          }
+        } catch {
+          weakPatterns = [];
+        }
+      }
+
+      const normalizedKeyStage = child.studentProfile?.keyStageLevel ?? (child.yearGroup ? keyStageForYearGroup(child.yearGroup) : null);
+      const curriculumProfile = readStudentCurriculumProfile({
+        yearGroup: child.yearGroup,
+        keyStageLevel: normalizedKeyStage,
+        aiLearningProfileJson: child.studentProfile?.aiLearningProfileJson ?? null,
+      });
+      const classGroups = child.schoolLinks
+        .map((link) => link.classroom?.name)
+        .filter((name): name is string => Boolean(name));
+
+      return {
+        id: child.id,
+        name: child.name,
+        age: child.age,
+        yearGroup: child.yearGroup,
+        keyStageLevel: normalizedKeyStage,
+        curriculumPathway: curriculumProfile.curriculumPathway,
+        examBoard: curriculumProfile.examBoard,
+        classGroup: classGroups[0] ?? null,
+        classGroups,
+        schoolIds: child.schoolLinks.map((link) => link.school.id),
+        parentEmail: child.parent.email,
+        parentName: child.parent.name,
+        subjectFocus: child.studentProfile?.subjectFocus ?? null,
+        weakPatterns,
+      };
+    });
+
+    return NextResponse.json({ students });
+  }
 
   const children = await prisma.childProfile.findMany({
     where: { archived: false },

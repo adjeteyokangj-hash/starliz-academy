@@ -14,6 +14,9 @@ type Props = {
   onArchive: (item: ContentItem) => void;
   onPublish: (item: ContentItem) => void;
   onReview: (item: ContentItem) => void;
+  operatingAction?: "view" | "select" | "duplicate" | "archive" | "publish" | "review" | null;
+  operatingId?: string | null;
+  assigning?: boolean;
 };
 
 export default function ContentTopicGrid({
@@ -26,6 +29,9 @@ export default function ContentTopicGrid({
   onPublish,
   onReview,
   viewMode,
+  operatingAction,
+  operatingId,
+  assigning,
 }: Props) {
   const grouped = items.reduce<Record<string, ContentItem[]>>((acc, item) => {
     const meta = getContentMeta(item);
@@ -64,6 +70,9 @@ export default function ContentTopicGrid({
                 onArchive={onArchive}
                 onPublish={onPublish}
                 onReview={onReview}
+                operatingAction={operatingAction}
+                operatingId={operatingId}
+                assigning={assigning}
               />
             ))}
           </div>

@@ -38,6 +38,8 @@ export default function PrimaryDashboard({
   onStartJourney,
   onStartAssignment,
   onOpenStore,
+  pendingAssignmentId,
+  openingStore,
 }: DashboardProps) {
   const journeyAssignments = [focusAssignment, weakAssignment, reviewAssignment]
     .filter((assignment, index, array): assignment is NonNullable<typeof assignment> => {
@@ -100,10 +102,11 @@ export default function PrimaryDashboard({
                 key={assignment.id}
                 type="button"
                 onClick={() => onStartAssignment(assignment)}
-                className="flex w-full items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 text-left transition hover:bg-indigo-100"
+                disabled={pendingAssignmentId === assignment.id}
+                className="flex w-full items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 text-left transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <span>
-                  {index + 1}. {assignmentStepLabel(assignment.title, assignment.skillFocus)}
+                  {index + 1}. {pendingAssignmentId === assignment.id ? "Opening..." : assignmentStepLabel(assignment.title, assignment.skillFocus)}
                 </span>
                 <span className="shrink-0 text-lg">{subjectEmoji(assignment.subject)}</span>
               </button>
@@ -133,14 +136,15 @@ export default function PrimaryDashboard({
                 key={assignment.id}
                 type="button"
                 onClick={() => onStartAssignment(assignment)}
-                className="rounded-2xl border border-sky-200 bg-white p-4 text-left transition hover:bg-sky-100"
+                disabled={pendingAssignmentId === assignment.id}
+                className="rounded-2xl border border-sky-200 bg-white p-4 text-left transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xl">{subjectEmoji(assignment.subject)}</span>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
                     assignment.status === "in_progress" ? "bg-amber-100 text-amber-700" : "bg-sky-100 text-sky-700"
                   }`}>
-                    {assignment.status === "in_progress" ? "Continue" : "Start"}
+                    {pendingAssignmentId === assignment.id ? "Opening..." : assignment.status === "in_progress" ? "Continue" : "Start"}
                   </span>
                 </div>
                 <p className="mt-2 font-bold text-slate-800">{assignment.title}</p>
@@ -225,9 +229,10 @@ export default function PrimaryDashboard({
         <button
           type="button"
           onClick={onOpenStore}
-          className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-yellow-400 px-6 py-3 font-black text-yellow-900 shadow-md hover:bg-yellow-300"
+          disabled={Boolean(openingStore)}
+          className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-yellow-400 px-6 py-3 font-black text-yellow-900 shadow-md hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          🛍 Open Store
+          {openingStore ? "Opening..." : "🛍 Open Store"}
         </button>
       </section>
 

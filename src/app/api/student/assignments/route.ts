@@ -174,7 +174,25 @@ export async function GET(request: Request) {
         },
       },
       orderBy: { updatedAt: "desc" },
-      include: { content: true },
+      select: {
+        id: true,
+        status: true,
+        contentId: true,
+        createdAt: true,
+        updatedAt: true,
+        content: {
+          select: {
+            id: true,
+            contentType: true,
+            topic: true,
+            skillFocus: true,
+            level: true,
+            yearGroup: true,
+            keyStage: true,
+            metadataJson: true,
+          },
+        },
+      },
     });
 
     return NextResponse.json({
@@ -201,7 +219,6 @@ export async function GET(request: Request) {
           ageGroup: contentMeta.ageGroup,
           subject: contentMeta.subject,
         },
-        items: parseItems(assignment.content.contentJson),
         href: taskHrefForContentType(assignment.content.contentType, assignment.id),
         createdAt: assignment.createdAt.toISOString(),
         updatedAt: assignment.updatedAt.toISOString(),
