@@ -19,6 +19,16 @@ type AccountPayload = {
     childLimit: number;
     renewalDate: string | null;
   };
+  contact: {
+    phone: string;
+    phoneE164: string;
+    addressLine1: string;
+    addressLine2: string;
+    townCity: string;
+    county: string;
+    postcode: string;
+    country: string;
+  };
   activeChild: { id: string; name: string; avatar: string | null } | null;
   notifications: {
     emailWeeklyReport: boolean;
@@ -47,6 +57,13 @@ export default function ParentAccountProfile() {
   const [message, setMessage] = useState<string | null>(null);
   const [data, setData] = useState<AccountPayload | null>(null);
   const [displayName, setDisplayName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [townCity, setTownCity] = useState("");
+  const [county, setCounty] = useState("");
+  const [postcode, setPostcode] = useState("");
+  const [country, setCountry] = useState("United Kingdom");
   const [editingName, setEditingName] = useState(false);
   const [notifications, setNotifications] = useState({
     emailWeeklyReport: true,
@@ -65,6 +82,13 @@ export default function ParentAccountProfile() {
       }
       setData(payload);
       setDisplayName(payload.account.name);
+      setPhone(payload.contact?.phone ?? "");
+      setAddressLine1(payload.contact?.addressLine1 ?? "");
+      setAddressLine2(payload.contact?.addressLine2 ?? "");
+      setTownCity(payload.contact?.townCity ?? "");
+      setCounty(payload.contact?.county ?? "");
+      setPostcode(payload.contact?.postcode ?? "");
+      setCountry(payload.contact?.country ?? "United Kingdom");
       setNotifications(payload.notifications);
       setLoading(false);
     };
@@ -80,10 +104,38 @@ export default function ParentAccountProfile() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name: displayName, notifications }),
+        body: JSON.stringify({
+          name: displayName,
+          notifications,
+          contact: {
+            phone,
+            addressLine1,
+            addressLine2,
+            townCity,
+            county,
+            postcode,
+            country,
+          },
+        }),
       });
       if (!res.ok) { setError("Could not save account settings."); return; }
-      if (data) setData({ ...data, account: { ...data.account, name: displayName }, notifications });
+      if (data) {
+        setData({
+          ...data,
+          account: { ...data.account, name: displayName },
+          notifications,
+          contact: {
+            ...data.contact,
+            phone,
+            addressLine1,
+            addressLine2,
+            townCity,
+            county,
+            postcode,
+            country,
+          },
+        });
+      }
       setMessage("Settings saved.");
       setEditingName(false);
     } catch {
@@ -197,6 +249,83 @@ export default function ParentAccountProfile() {
               style={{ marginTop: 6, display: "block", width: "100%", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", fontSize: 14, boxSizing: "border-box", outline: "none" }}
             />
           </label>
+
+          <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+            <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#374151" }}>
+              Telephone
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                style={{ marginTop: 6, display: "block", width: "100%", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", fontSize: 14, boxSizing: "border-box", outline: "none" }}
+              />
+              <span style={{ marginTop: 4, display: "block", fontSize: 12, color: "#6b7280" }}>Enter a UK mobile or landline number</span>
+            </label>
+
+            <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#374151" }}>
+              Address line 1
+              <input
+                type="text"
+                value={addressLine1}
+                onChange={(e) => setAddressLine1(e.target.value)}
+                style={{ marginTop: 6, display: "block", width: "100%", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", fontSize: 14, boxSizing: "border-box", outline: "none" }}
+              />
+            </label>
+
+            <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#374151" }}>
+              Address line 2 (optional)
+              <input
+                type="text"
+                value={addressLine2}
+                onChange={(e) => setAddressLine2(e.target.value)}
+                style={{ marginTop: 6, display: "block", width: "100%", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", fontSize: 14, boxSizing: "border-box", outline: "none" }}
+              />
+            </label>
+
+            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+              <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                Town/City
+                <input
+                  type="text"
+                  value={townCity}
+                  onChange={(e) => setTownCity(e.target.value)}
+                  style={{ marginTop: 6, display: "block", width: "100%", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", fontSize: 14, boxSizing: "border-box", outline: "none" }}
+                />
+              </label>
+
+              <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                County (optional)
+                <input
+                  type="text"
+                  value={county}
+                  onChange={(e) => setCounty(e.target.value)}
+                  style={{ marginTop: 6, display: "block", width: "100%", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", fontSize: 14, boxSizing: "border-box", outline: "none" }}
+                />
+              </label>
+
+              <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                Postcode
+                <input
+                  type="text"
+                  value={postcode}
+                  onChange={(e) => setPostcode(e.target.value.toUpperCase())}
+                  style={{ marginTop: 6, display: "block", width: "100%", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", fontSize: 14, boxSizing: "border-box", outline: "none" }}
+                />
+              </label>
+
+              <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                Country
+                <select
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  style={{ marginTop: 6, display: "block", width: "100%", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", fontSize: 14, boxSizing: "border-box", outline: "none", background: "white" }}
+                >
+                  <option>United Kingdom</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
           {error ? <p style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>{error}</p> : null}
           {message ? <p style={{ color: "#059669", fontSize: 13, fontWeight: 600, marginTop: 10 }}>{message}</p> : null}
           <button

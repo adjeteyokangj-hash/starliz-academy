@@ -37,7 +37,7 @@ export default function LoginPage() {
         return
       }
 
-      router.replace("/profiles")
+      router.replace("/parent/profiles")
     } catch {
       setError("Unable to login right now.")
     } finally {

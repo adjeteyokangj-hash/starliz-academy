@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import ParentPortalShell from "@/components/parent/ParentPortalShell";
 
 const sections = new Set([
@@ -10,13 +10,16 @@ const sections = new Set([
   "rewards",
   "consent",
   "messages",
-  "notifications",
   "support",
-  "security",
 ]);
+
+const retiredToDashboard = new Set(["notifications", "security", "profile"]);
 
 export default async function ParentSectionPage({ params }: { params: Promise<{ section: string }> }) {
   const { section } = await params;
+  if (retiredToDashboard.has(section)) {
+    redirect("/parent/dashboard");
+  }
   if (!sections.has(section)) {
     notFound();
   }

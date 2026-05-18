@@ -21,9 +21,7 @@ type PortalSection =
   | "rewards"
   | "consent"
   | "messages"
-  | "notifications"
-  | "support"
-  | "security";
+  | "support";
 
 type AccountPayload = {
   account: {
@@ -47,6 +45,16 @@ type AccountPayload = {
     lessonReminders: boolean;
     rewardNotifications: boolean;
     productUpdates: boolean;
+  };
+  contact: {
+    phone: string;
+    phoneE164: string;
+    addressLine1: string;
+    addressLine2: string;
+    townCity: string;
+    county: string;
+    postcode: string;
+    country: string;
   };
 };
 
@@ -211,9 +219,7 @@ const sections: Array<{ id: PortalSection; label: string }> = [
   { id: "rewards", label: "Rewards" },
   { id: "consent", label: "Consent" },
   { id: "messages", label: "Messages" },
-  { id: "notifications", label: "Notifications" },
   { id: "support", label: "Support" },
-  { id: "security", label: "Security" },
 ];
 
 const sectionHref: Record<PortalSection, string> = {
@@ -225,9 +231,7 @@ const sectionHref: Record<PortalSection, string> = {
   rewards: "/parent/rewards",
   consent: "/parent/consent",
   messages: "/parent/messages",
-  notifications: "/parent/notifications",
   support: "/parent/support",
-  security: "/parent/security",
 };
 
 const pathToSection = new Map<string, PortalSection>(
@@ -294,11 +298,40 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [showChildForm, setShowChildForm] = useState(false);
   const [editingChildId, setEditingChildId] = useState<string | null>(null);
   const [childFormMessage, setChildFormMessage] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [accountNameDraft, setAccountNameDraft] = useState("");
+  const [accountContactDraft, setAccountContactDraft] = useState({
+    phone: "",
+    addressLine1: "",
+    addressLine2: "",
+    townCity: "",
+    county: "",
+    postcode: "",
+    country: "United Kingdom",
+  });
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountMessage, setAccountMessage] = useState<string | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      const pinStatusResponse = await fetch("/api/pin/status", { credentials: "include" });
+      if (cancelled) return;
+      if (pinStatusResponse.status === 401) {
+        router.replace("/auth/login");
+        return;
+      }
+      if (pinStatusResponse.ok) {
+        const pinStatus = (await pinStatusResponse.json()) as { unlocked?: boolean };
+        if (!pinStatus.unlocked) {
+          const next = pathname ?? `/parent/${section}`;
+          router.replace(`/parent/profiles?intent=parent&next=${encodeURIComponent(next)}`);
+          return;
+        }
+      }
+
       setLoading(true);
       const [accountRes, childrenRes, subscriptionRes, consentRes, ticketsRes, messagesRes] = await Promise.all([
         fetch("/api/account", { credentials: "include" }),
@@ -316,6 +349,16 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         setAccount(payload);
         setNotificationsDraft(payload.notifications);
         setSelectedChildId(payload.activeChild?.id ?? null);
+        setAccountNameDraft(payload.account.name ?? "");
+        setAccountContactDraft({
+          phone: payload.contact?.phone ?? "",
+          addressLine1: payload.contact?.addressLine1 ?? "",
+          addressLine2: payload.contact?.addressLine2 ?? "",
+          townCity: payload.contact?.townCity ?? "",
+          county: payload.contact?.county ?? "",
+          postcode: payload.contact?.postcode ?? "",
+          country: payload.contact?.country ?? "United Kingdom",
+        });
       }
 
       if (childrenRes.ok) {
@@ -350,7 +393,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pathname, router, section]);
 
   useEffect(() => {
     if (!selectedChildId) return;
@@ -482,6 +525,67 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     }
   }
 
+  async function logout() {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } finally {
+      router.replace("/auth/login");
+      setLoggingOut(false);
+    }
+  }
+
+  async function saveAccountDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAccountSaving(true);
+    setAccountError(null);
+    setAccountMessage(null);
+    try {
+      const response = await fetch("/api/account", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: accountNameDraft,
+          contact: {
+            ...accountContactDraft,
+            postcode: accountContactDraft.postcode.toUpperCase(),
+          },
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        setAccountError(payload?.error ?? "Unable to save account details right now.");
+        return;
+      }
+
+      const accountRefresh = await fetch("/api/account", { credentials: "include" });
+      if (accountRefresh.ok) {
+        const refreshed = (await accountRefresh.json()) as AccountPayload;
+        setAccount(refreshed);
+        setNotificationsDraft(refreshed.notifications);
+        setAccountNameDraft(refreshed.account.name ?? "");
+        setAccountContactDraft({
+          phone: refreshed.contact?.phone ?? "",
+          addressLine1: refreshed.contact?.addressLine1 ?? "",
+          addressLine2: refreshed.contact?.addressLine2 ?? "",
+          townCity: refreshed.contact?.townCity ?? "",
+          county: refreshed.contact?.county ?? "",
+          postcode: refreshed.contact?.postcode ?? "",
+          country: refreshed.contact?.country ?? "United Kingdom",
+        });
+      }
+      setAccountMessage("Account details saved.");
+    } catch {
+      setAccountError("Unable to save account details right now.");
+    } finally {
+      setAccountSaving(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.22),_transparent_35%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]">
@@ -498,6 +602,17 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
               <StatCard label="Children" value={account?.account.linkedChildrenCount ?? 0} />
               <StatCard label="Subscription" value={account?.account.subscriptionStatus ?? "loading"} />
               <StatCard label="Consent" value={consent?.accepted ? "Accepted" : "Pending"} />
+            </div>
+            <div className="flex justify-start lg:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                className="bg-rose-500/20 text-rose-100 hover:bg-rose-500/35"
+                onClick={() => void logout()}
+                disabled={loggingOut}
+              >
+                {loggingOut ? "Logging out..." : "Logout"}
+              </Button>
             </div>
           </div>
 
@@ -575,6 +690,114 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                   </div>
                 </Panel>
               </div>
+
+              <div className="grid gap-6 xl:grid-cols-2">
+                <Panel title="Account & Contact Details" description="Manage your parent profile, telephone, and UK address.">
+                  <form className="space-y-3" onSubmit={saveAccountDetails}>
+                    <label className="block text-sm font-semibold text-slate-300">
+                      Parent full name
+                      <input
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                        value={accountNameDraft}
+                        onChange={(event) => setAccountNameDraft(event.target.value)}
+                        autoComplete="name"
+                      />
+                    </label>
+                    <label className="block text-sm font-semibold text-slate-300">
+                      Telephone
+                      <input
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                        value={accountContactDraft.phone}
+                        onChange={(event) => setAccountContactDraft((prev) => ({ ...prev, phone: event.target.value }))}
+                        autoComplete="tel"
+                      />
+                      <span className="mt-1 block text-xs text-slate-400">Enter a UK mobile or landline number</span>
+                    </label>
+                    <label className="block text-sm font-semibold text-slate-300">
+                      Address line 1
+                      <input
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                        value={accountContactDraft.addressLine1}
+                        onChange={(event) => setAccountContactDraft((prev) => ({ ...prev, addressLine1: event.target.value }))}
+                        autoComplete="address-line1"
+                      />
+                    </label>
+                    <label className="block text-sm font-semibold text-slate-300">
+                      Address line 2 (optional)
+                      <input
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                        value={accountContactDraft.addressLine2}
+                        onChange={(event) => setAccountContactDraft((prev) => ({ ...prev, addressLine2: event.target.value }))}
+                        autoComplete="address-line2"
+                      />
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block text-sm font-semibold text-slate-300">
+                        Town/City
+                        <input
+                          className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                          value={accountContactDraft.townCity}
+                          onChange={(event) => setAccountContactDraft((prev) => ({ ...prev, townCity: event.target.value }))}
+                          autoComplete="address-level2"
+                        />
+                      </label>
+                      <label className="block text-sm font-semibold text-slate-300">
+                        County (optional)
+                        <input
+                          className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                          value={accountContactDraft.county}
+                          onChange={(event) => setAccountContactDraft((prev) => ({ ...prev, county: event.target.value }))}
+                          autoComplete="address-level1"
+                        />
+                      </label>
+                      <label className="block text-sm font-semibold text-slate-300">
+                        Postcode
+                        <input
+                          className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                          value={accountContactDraft.postcode}
+                          onChange={(event) => setAccountContactDraft((prev) => ({ ...prev, postcode: event.target.value.toUpperCase() }))}
+                          autoComplete="postal-code"
+                        />
+                      </label>
+                      <label className="block text-sm font-semibold text-slate-300">
+                        Country
+                        <select
+                          className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                          value={accountContactDraft.country}
+                          onChange={(event) => setAccountContactDraft((prev) => ({ ...prev, country: event.target.value }))}
+                        >
+                          <option>United Kingdom</option>
+                        </select>
+                      </label>
+                    </div>
+                    {accountError ? <p className="text-sm text-red-400">{accountError}</p> : null}
+                    {accountMessage ? <p className="text-sm text-green-400">{accountMessage}</p> : null}
+                    <Button type="submit" disabled={accountSaving}>{accountSaving ? "Saving..." : "Save account details"}</Button>
+                  </form>
+                </Panel>
+
+                <Panel title="Notification Preferences" description="Choose what updates you receive from StarLiz.">
+                  <NotificationPreferences
+                    preferences={notificationsDraft}
+                    onUpdate={(prefs) => {
+                      setNotificationsDraft(prefs);
+                    }}
+                  />
+                </Panel>
+              </div>
+
+              <SecuritySettings
+                currentName={account?.account.name ?? ""}
+                lastPasswordChangedAt={account?.account.security?.lastPasswordChangedAt ?? null}
+                onUpdate={() => {
+                  fetch("/api/account", { credentials: "include" })
+                    .then(r => r.ok ? r.json() as Promise<AccountPayload> : null)
+                    .then((data) => {
+                      if (!data) return;
+                      setAccount(data);
+                    });
+                }}
+              />
 
               {(children?.children ?? []).length === 0 ? (
                 <Panel title="Parent setup checklist" description="Complete these steps to start your first lesson.">
@@ -1115,17 +1338,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </div>
           ) : null}
 
-          {activeSection === "notifications" ? (
-            <Panel title="Notifications" description="Control weekly reports and alert preferences.">
-              <NotificationPreferences
-                preferences={notificationsDraft}
-                onUpdate={(prefs) => {
-                  setNotificationsDraft(prefs);
-                }}
-              />
-            </Panel>
-          ) : null}
-
           {activeSection === "support" ? (
             <Panel title="Support" description="Submit a ticket or review the latest ones.">
               <form className="space-y-3" onSubmit={submitSupport}>
@@ -1147,20 +1359,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </Panel>
           ) : null}
 
-          {activeSection === "security" ? (
-            <SecuritySettings
-              currentName={account?.account.name ?? ""}
-              lastPasswordChangedAt={account?.account.security?.lastPasswordChangedAt ?? null}
-              onUpdate={() => {
-                // Reload account data
-                fetch("/api/account", { credentials: "include" })
-                  .then(r => r.json())
-                  .then(data => {
-                    setAccount(data);
-                  });
-              }}
-            />
-          ) : null}
         </div>
 
         <aside className="space-y-6">

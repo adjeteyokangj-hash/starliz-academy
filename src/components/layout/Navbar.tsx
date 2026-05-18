@@ -43,7 +43,7 @@ export default function Navbar() {
   );
   const isStudentContext = role === "student" || (!authResolved && isStudentPage);
   const dashboardHref = isStudentContext ? "/student/dashboard" : "/dashboard";
-  const profileHref = isStudentContext ? "/student/profile" : role === "parent" ? "/parent/profile" : "/my-profile";
+  const profileHref = isStudentContext ? "/student/profile" : "/my-profile";
   const showParentAccess = authResolved && role === "parent";
   const studentYearGroup = activeChild?.yearGroup ?? null;
   const studentKeyStage = activeChild?.keyStageLevel?.trim() || (studentYearGroup ? keyStageForYearGroup(studentYearGroup) : null);
@@ -141,21 +141,28 @@ export default function Navbar() {
           </button>
 
           <nav className="hidden items-center gap-2 text-sm font-semibold text-slate-700 md:flex" aria-label="Primary">
-            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={dashboardHref}>
-              Dashboard
-            </Link>
-            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={profileHref}>
-              My Profile
-            </Link>
-            {showParentAccess && (isStudentPage ? (
-              <Link className="rounded-xl px-3 py-2 text-slate-500 hover:bg-slate-100" href="/parent-pin">
-                Parent View
-              </Link>
+            {showParentAccess ? (
+              <>
+                <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent/dashboard">
+                  Dashboard
+                </Link>
+                <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/dashboard">
+                  Child Dashboard
+                </Link>
+                <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent/profiles?intent=parent">
+                  Parent Area
+                </Link>
+              </>
             ) : (
-              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent-pin">
-                Parent Area
-              </Link>
-            ))}
+              <>
+                <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={dashboardHref}>
+                  Dashboard
+                </Link>
+                <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={profileHref}>
+                  My Profile
+                </Link>
+              </>
+            )}
             <button
               type="button"
               className="rounded-xl px-3 py-2 font-bold text-rose-700 hover:bg-rose-50"
@@ -182,21 +189,28 @@ export default function Navbar() {
           className={`${mobileOpen ? "mt-3 grid" : "hidden"} gap-1 text-sm font-semibold text-slate-700 md:hidden`}
           aria-label="Primary"
         >
-          <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={dashboardHref} onClick={closeMobileMenu}>
-            Dashboard
-          </Link>
-          <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={profileHref} onClick={closeMobileMenu}>
-            My Profile
-          </Link>
-          {showParentAccess && (isStudentPage ? (
-            <Link className="rounded-xl px-3 py-2 text-slate-500 hover:bg-slate-100" href="/parent-pin" onClick={closeMobileMenu}>
-              Parent View
-            </Link>
+          {showParentAccess ? (
+            <>
+              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent/dashboard" onClick={closeMobileMenu}>
+                Dashboard
+              </Link>
+              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/dashboard" onClick={closeMobileMenu}>
+                Child Dashboard
+              </Link>
+              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent/profiles?intent=parent" onClick={closeMobileMenu}>
+                Parent Area
+              </Link>
+            </>
           ) : (
-            <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent-pin" onClick={closeMobileMenu}>
-              Parent Area
-            </Link>
-          ))}
+            <>
+              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={dashboardHref} onClick={closeMobileMenu}>
+                Dashboard
+              </Link>
+              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={profileHref} onClick={closeMobileMenu}>
+                My Profile
+              </Link>
+            </>
+          )}
           <button
             type="button"
             className="rounded-xl px-3 py-2 text-left font-bold text-rose-700 hover:bg-rose-50"
