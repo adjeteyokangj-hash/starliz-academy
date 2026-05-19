@@ -11,24 +11,43 @@ import { beginStudentTurn, endStudentTurn, stopVoicePlayback } from "@/lib/voice
 import { syncAttemptToServer } from "@/lib/server_sync";
 import { serializeSkills, skillFocusToCode } from "@/lib/skills";
 import { getTutorToneLine } from "@/lib/tutorVoice";
-import { classifySpeechMatch, type SpeechMatchResult } from "@/lib/speechCheck";
+import { type SpeechMatchResult } from "@/lib/speechCheck";
 import { assessWarmupTranscript } from "@/lib/warmup-response";
 import { levelFromXp } from "@/lib/level_system";
 import { buildInterventionMission, isInterventionEligibleSkill } from "@/lib/interventionMission";
 import { normalizeLessonContentItems, type NormalizedLessonItem } from "@/lib/lesson-runtime-normalizer";
 import {
+  decodeLessonText,
+  classifySpokenVsTarget,
+  describeTargetForTutor,
+  fallbackVisualFromItem,
+  getAnswer,
+  getItemSection,
+  getOptions,
+  getPrompt,
+  isAlphabetLessonItem,
+  lessonSubjectBadge,
+  normalise,
+  normalizeSpokenText,
+} from "@/lib/tutor-runtime/utils";
+import {
   buildCoachSupportMessage,
   buildFinalRevealMessage,
-  buildProgressiveSupportMessage,
   buildQuestionFormulaScaffold,
   buildRestoredLessonMessage,
   buildTutorPanelPrompt,
   buildWorkedSuccessMessage,
   computeAttemptWeightedScore,
   scoreForResolvedQuestion,
-  type QuestionVisualSupport,
+  buildTeachMessage,
+  getAssessmentPrompt,
+  getSpellingConversationTitle,
+  getSupportPrompt,
+  type LessonStage,
   type QuestionAttemptSummary,
-} from "@/lib/starliz-question-formula";
+} from "@/lib/engines/coaching-engine";
+import { computeMasteryReady, type QuestionLearningStatus } from "@/lib/engines/mastery-engine";
+import { reviewReason } from "@/lib/engines/review-engine";
 import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
 
 type LessonItem = NormalizedLessonItem;
@@ -62,10 +81,8 @@ type AnswerRecord = {
   given: string;
 };
 
-type QuestionLearningStatus = "correct" | "wrong_retrying" | "skipped_needs_reteach" | "reteach_complete";
 type FeedbackMode = "none" | "continue" | "retry" | "skip_choice";
 type LevelTag = "challenge" | "review" | "repair";
-type LessonStage = "ASSESS_SPEECH" | "TEACH_RETRY" | "TAP_SELECT" | "COMPLETE";
 type SpeechFallbackReason = "network" | "not-allowed" | "unsupported" | null;
 type WarmupPhase = "idle" | "listening" | "thinking" | "responding" | "celebrating";
 type WarmupMood = "happy" | "excited" | "tired" | "sad" | "not_well" | "nervous" | "confused" | "neutral";
@@ -158,16 +175,6 @@ type LessonSessionSnapshot = {
   timeSpentSeconds: number;
   savedAt: string;
 };
-
-function decodeLessonText(value: string): string {
-  return value
-    .replace(/&apos;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&rsquo;/g, "'")
-    .replace(/&lsquo;/g, "'")
-    .replace(/&quot;/g, "\"")
-    .replace(/&amp;/g, "&");
-}
 
 function lessonSessionKey(assignmentId: string) {
   return `starliz_lesson_${assignmentId}`;
@@ -301,216 +308,6 @@ function detectWarmupMood(transcript: string, childName = "there"): WarmupResult
     adaptation,
     tutorReply,
   };
-}
-
-function getItemSection(item: LessonItem, fallback: string): "spelling" | "math" | "reading" {
-  const type = String(item.questionType ?? item.type ?? fallback).toLowerCase();
-  if (
-    type === "math" ||
-    type === "maths" ||
-    type === "times-tables" ||
-    type === "gcse-maths" ||
-    type === "science" ||
-    type === "gcse-science"
-  ) return "math";
-  if (
-    type === "reading" ||
-    type === "english-language" ||
-    type === "english-literature" ||
-    type === "gcse-english" ||
-    type === "vocabulary" ||
-    item.passage
-  ) return "reading";
-  return "spelling";
-}
-
-function lessonSubjectBadge(subject: string | null | undefined): string {
-  const normalized = String(subject ?? "").toLowerCase();
-  if (normalized.includes("science")) return "Science";
-  if (normalized.includes("math")) return "Maths";
-  if (normalized.includes("english") || normalized.includes("reading") || normalized.includes("language") || normalized.includes("literature")) return "English";
-  if (normalized.includes("history")) return "History";
-  if (normalized.includes("geography")) return "Geography";
-  if (normalized.includes("french")) return "French";
-  if (normalized.includes("german")) return "German";
-  if (normalized.includes("spanish")) return "Spanish";
-  if (normalized.startsWith("gcse-")) {
-    return normalized.replace("gcse-", "").split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
-  }
-  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : "Lesson";
-}
-
-function fallbackVisualFromItem(item: LessonItem | null): QuestionVisualSupport | null {
-  if (!item || !item.visuals.required) return null;
-  const body = item.visuals.body
-    .map((line) => decodeLessonText(String(line)))
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (!body.length && item.visuals.prompt) {
-    body.push(decodeLessonText(String(item.visuals.prompt)));
-  }
-  if (!body.length) return null;
-
-  const visualType: QuestionVisualSupport["type"] = item.visuals.type === "passage"
-    ? "passage"
-    : item.visuals.type === "formula_card"
-      ? "formula_card"
-      : "diagram";
-
-  return {
-    type: visualType,
-    title: decodeLessonText(String(item.visuals.title || (visualType === "formula_card" ? "Formula help" : "Visual support"))),
-    altText: decodeLessonText(String(item.visuals.altText || item.visuals.prompt || "Question support")),
-    body,
-  };
-}
-
-function getPrompt(item: LessonItem, section: string): string {
-  if (section === "spelling") return decodeLessonText(String(item.question ?? item.prompt ?? item.word ?? item.correctAnswer ?? item.answer ?? ""));
-  return decodeLessonText(String(item.question ?? item.prompt ?? item.word ?? item.passage ?? ""));
-}
-
-function getAnswer(item: LessonItem): string {
-  return decodeLessonText(String(item.correctAnswer ?? item.answer ?? item.word ?? "")).trim();
-}
-
-function getOptions(item: LessonItem): string[] {
-  return (item.options ?? item.choices ?? []).map((option) => decodeLessonText(String(option))).filter(Boolean);
-}
-
-function getSpellingConversationTitle(
-  item: LessonItem,
-  step: LessonStage,
-): string {
-  const isAlphabet = isAlphabetLessonItem(item);
-  const target = decodeLessonText(String(item.word ?? item.answer ?? "")).trim();
-  const customAssessmentPrompt = decodeLessonText(String(item.assessmentPrompt ?? "")).trim();
-  const customSupportPrompt = decodeLessonText(String(item.supportPrompt ?? "")).trim();
-  const customTapPrompt = decodeLessonText(String(item.tapPrompt ?? "")).trim();
-  if (step === "ASSESS_SPEECH" && customAssessmentPrompt) return customAssessmentPrompt;
-  if (step === "ASSESS_SPEECH") return isAlphabet ? "What letter do you see on the screen?" : "What word do you see on the screen?";
-  if (step === "TEACH_RETRY" && customSupportPrompt) return customSupportPrompt;
-  if (step === "TEACH_RETRY") return "Good try. Look again.";
-  if (step === "TAP_SELECT") {
-    if (customTapPrompt) return customTapPrompt;
-    if (isAlphabet) {
-      const targetName = target && target === target.toLowerCase() ? `lowercase ${target}` : `capital ${target}`;
-      return `Now tap ${targetName}.`;
-    }
-    return "Now type the word.";
-  }
-  return "Complete";
-}
-
-function normalizeSpokenText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function describeTargetForTutor(item: LessonItem): string {
-  const target = decodeLessonText(String(item.word ?? item.answer ?? "")).trim();
-  if (!target) return "that";
-  if (!isAlphabetLessonItem(item)) return target;
-  const lower = target === target.toLowerCase() && target !== target.toUpperCase();
-  return lower ? `lowercase ${target}` : `capital ${target}`;
-}
-
-function classifySpokenVsTarget(spoken: string, target: string, isAlphabet: boolean): SpeechMatchResult {
-  const base = classifySpeechMatch(spoken, target);
-  if (base === "exact") return "exact";
-
-  // For alphabet items, also accept "lowercase a" / "capital A" / "uppercase a" as exact
-  if (isAlphabet) {
-    const s = spoken.toLowerCase().trim().replace(/[.,!?'"]/g, "").trim();
-    const t = target.toLowerCase().trim();
-    const alphaVariants = [`lowercase ${t}`, `capital ${t}`, `uppercase ${t}`];
-    if (alphaVariants.includes(s)) return "exact";
-  }
-
-  return base;
-}
-
-function isAlphabetLessonItem(item: LessonItem): boolean {
-  const word = decodeLessonText(String(item.word ?? item.answer ?? "")).trim();
-  const skillFocus = decodeLessonText(String(item.skillFocus ?? "")).toLowerCase();
-  const alphabetWord = word.length === 1 && /^[a-zA-Z]$/.test(word);
-  const alphabetSkill = skillFocus.includes("letter_sound") || skillFocus.includes("letter sounds") || skillFocus.includes("letter_recognition") || skillFocus.includes("letter recognition");
-  return alphabetWord || alphabetSkill;
-}
-
-function normalise(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function soundForLetter(letter: string): string {
-  const lower = letter.toLowerCase();
-  const map: Record<string, string> = {
-    a: "/a/",
-    e: "/e/",
-    i: "/i/",
-    o: "/o/",
-    u: "/u/",
-  };
-  return map[lower] ?? `/${lower}/`;
-}
-
-function phonicsExampleForLetter(letter: string): string {
-  const lower = letter.toLowerCase();
-  const map: Record<string, string> = {
-    a: "apple",
-    m: "moon",
-    c: "cat",
-    d: "dog",
-    t: "tap",
-    s: "sun",
-  };
-  return map[lower] ?? "sun";
-}
-
-function buildSpellingTeachMessage(expected: string, attempt: number, isAlphabet: boolean, inReviewRound: boolean): string {
-  const clean = expected.trim().toLowerCase();
-  if (!clean) return "Good try. Let us learn it together, then try again.";
-
-  if (isAlphabet) {
-    const letter = clean[0] ?? "a";
-    const opener = attempt >= 2 || inReviewRound ? "Let us practise this carefully." : "Good try.";
-    return `${opener}\n\nThis is lowercase ${letter}.\n${letter} says ${soundForLetter(letter)} like ${phonicsExampleForLetter(letter)}.\n\nTap ${letter} again.`;
-  }
-
-  const letters = clean.split("").join("-");
-  const sounds = clean
-    .split("")
-    .map((letter) => `${letter} says ${soundForLetter(letter)}`)
-    .join("\n");
-  const opener = attempt >= 2 || inReviewRound
-    ? "That one is tricky. Let us break it down together."
-    : `Good try. The word is ${clean}.`;
-
-  return `${opener}\n\nLet us learn it:\n${letters}\n${sounds}\n\nTogether: ${clean}\n\nNow type ${clean} again.`;
-}
-
-function buildTeachMessage(input: {
-  section: "spelling" | "math" | "reading";
-  item: LessonItem;
-  expected: string;
-  attempt: number;
-  inReviewRound: boolean;
-}): string {
-  if (input.section === "spelling") {
-    return buildSpellingTeachMessage(input.expected, input.attempt, isAlphabetLessonItem(input.item), input.inReviewRound);
-  }
-
-  return buildProgressiveSupportMessage({
-    section: input.section,
-    item: input.item,
-    prompt: getPrompt(input.item, input.section),
-    expected: input.expected,
-    attempt: input.attempt,
-    inReviewRound: input.inReviewRound,
-  });
 }
 
 function lessonCacheKey(assignmentId: string) {
@@ -1335,15 +1132,6 @@ export default function DailyLessonGamePage() {
     return easyIndex >= 0 ? easyIndex : 0;
   }
 
-  function reviewReason(item: LessonItem): string {
-    const skill = String(item.skillFocus ?? "").toLowerCase();
-    if (skill.includes("vowel") || skill.includes("cvc")) return "short vowel practice";
-    if (skill.includes("letter") || isAlphabetLessonItem(item)) return "letter sound repair";
-    if (skill.includes("read")) return "reading comprehension repair";
-    if (skill.includes("math")) return "maths strategy repair";
-    return "targeted skill repair";
-  }
-
   function lessonLabelText(): string {
     const skill = assignment?.skillFocus ? String(assignment.skillFocus) : "Core practice";
     const hasBasicSpelling = lessonItems.some((item) => {
@@ -1447,24 +1235,6 @@ export default function DailyLessonGamePage() {
     }
 
     finishLesson(nextRecords);
-  }
-
-  function getAssessmentPrompt(item: LessonItem): string {
-    const customPrompt = decodeLessonText(String(item.assessmentPrompt ?? "")).trim();
-    if (customPrompt) return customPrompt;
-    return isAlphabetLessonItem(item)
-      ? "What letter do you see on the screen?"
-      : "What word do you see on the screen?";
-  }
-
-  function getSupportPrompt(item: LessonItem): string {
-    const customPrompt = decodeLessonText(String(item.supportPrompt ?? "")).trim();
-    if (customPrompt) return customPrompt;
-    const target = decodeLessonText(String(item.word ?? item.answer ?? "")).trim();
-    const targetDescription = describeTargetForTutor(item);
-    return isAlphabetLessonItem(item)
-      ? `Good try. Look again. This is the letter ${targetDescription}. Say ${target}.`
-      : `Good try. Look again. This is the word ${target}. Say ${target}.`;
   }
 
   async function speakCurrent() {
@@ -1889,12 +1659,8 @@ export default function DailyLessonGamePage() {
     const weakSkills = Array.from(new Set(weakRecords.map((record) => String(record.item.skillFocus ?? activeAssignment?.skillFocus ?? record.section)).filter(Boolean)));
     const finalCorrect = finalRecords.filter((record) => record.correct).length;
     const finalIncorrect = finalRecords.length - finalCorrect;
-    const finalScore = computeAttemptWeightedScore(questionAttemptSummary);
-    const unresolvedSkipped = Object.values(questionStatuses).filter((status) => status === "skipped_needs_reteach").length;
-    const firstTryCorrect = Object.values(questionStatuses).filter((status) => status === "correct").length;
-    const retryCorrect = Object.values(questionStatuses).filter((status) => status === "reteach_complete").length;
-    const skippedCount = skippedQuestionKeys.length;
-    const masteryReady = unresolvedSkipped === 0 && skippedCount === 0 && finalScore >= 80;
+    const masteryResult = computeMasteryReady(questionStatuses, skippedQuestionKeys, questionAttemptSummary);
+    const { masteryReady, unresolvedSkipped, firstTryCorrect, retryCorrect, skippedCount, finalScore } = masteryResult;
     setLessonMasteryReady(masteryReady);
     const normalizedWeakSkill = weakSkills[0] ?? String(activeAssignment.skillFocus ?? "");
     const primarySkillCode = skillFocusToCode(normalizedWeakSkill)
