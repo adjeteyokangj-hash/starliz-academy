@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createInitialTutorRuntimeContext, createTutorEngineStore } from "@/hooks/useTutorEngine";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
@@ -434,6 +435,12 @@ export default function DailyLessonGamePage() {
   const [welcomeSpeechFinished, setWelcomeSpeechFinished] = useState(false);
   const [lastWarmupMemory, setLastWarmupMemory] = useState<{ mood: WarmupMood; date: string } | null>(null);
 
+  // ── Runtime state machine (additive: runs in parallel, never blocks lesson logic) ──
+  const [tutorEngine] = useState(() =>
+    createTutorEngineStore(createInitialTutorRuntimeContext(assignmentId ?? "pending", 0)),
+  );
+  const tutorEngineLoadedRef = useRef(false);
+
   useEffect(() => {
     void hydrateActiveProfileFromServer()
       .then((serverProfile) => {
@@ -502,6 +509,33 @@ export default function DailyLessonGamePage() {
     void loadLesson();
   }, [assignmentId]);
 
+  const activeAssignment = (() => {
+    if (!assignment) return null;
+    if (!interventionMission) return assignment;
+    return {
+      ...assignment,
+      subject: interventionMission.subject,
+      title: interventionMission.title,
+      skillFocus: interventionSkill ?? assignment.skillFocus,
+      items: normalizeLessonContentItems(interventionMission.items, {
+        contentType: interventionMission.subject,
+        subject: interventionMission.subject,
+        topic: interventionMission.title,
+        skillFocus: interventionSkill ?? assignment.skillFocus ?? interventionMission.badge,
+        difficulty: assignment.difficulty ?? 1,
+      }),
+    };
+  })();
+
+  useEffect(() => {
+    if (!activeAssignment || tutorEngineLoadedRef.current) return;
+    tutorEngineLoadedRef.current = true;
+    tutorEngine.dispatch({
+      name: "ASSIGNMENT_LOADED",
+      data: { assignmentId: activeAssignment.id, itemCount: activeAssignment.items.length },
+    });
+  }, [activeAssignment, tutorEngine]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const goOnline = () => setOnline(true);
@@ -545,24 +579,6 @@ export default function DailyLessonGamePage() {
       })
       .catch(() => undefined);
   }, [assignmentId, online]);
-
-  const activeAssignment = useMemo(() => {
-    if (!assignment) return null;
-    if (!interventionMission) return assignment;
-    return {
-      ...assignment,
-      subject: interventionMission.subject,
-      title: interventionMission.title,
-      skillFocus: interventionSkill ?? assignment.skillFocus,
-      items: normalizeLessonContentItems(interventionMission.items, {
-        contentType: interventionMission.subject,
-        subject: interventionMission.subject,
-        topic: interventionMission.title,
-        skillFocus: interventionSkill ?? assignment.skillFocus ?? interventionMission.badge,
-        difficulty: assignment.difficulty ?? 1,
-      }),
-    };
-  }, [assignment, interventionMission, interventionSkill]);
   const lessonItems = useMemo(() => activeAssignment?.items ?? [], [activeAssignment]);
   const currentItem = lessonItems[index] ?? null;
   const currentSection = currentItem ? getItemSection(currentItem, activeAssignment?.subject ?? "spelling") : "spelling";
@@ -1164,6 +1180,7 @@ export default function DailyLessonGamePage() {
 
   function startReviewRoundIfNeeded(): boolean {
     if (!reviewQueue.length) return false;
+    tutorEngine.dispatch({ name: "REVIEW_TRIGGERED", data: { reviewQueue: [...reviewQueue] } });
     setShowReviewIntro(true);
     return true;
   }
@@ -1173,6 +1190,7 @@ export default function DailyLessonGamePage() {
     if (!reviewQueue.length) return;
     setShowReviewIntro(false);
     setIsReviewRound(true);
+    tutorEngine.dispatch({ name: "REVIEW_BEGAN", data: { itemCount: reviewQueue.length } });
     setReviewPointer(0);
     goToQuestion(reviewQueue[0] ?? 0);
     setReviewNotice("Let's fix the tricky ones before we finish.");
@@ -1183,6 +1201,7 @@ export default function DailyLessonGamePage() {
     markActivity();
     setCompleted(true);
     const finalScore = computeAttemptWeightedScore(questionAttemptSummary);
+    tutorEngine.dispatch({ name: "LESSON_COMPLETED", data: { finalScore, masteryReady: lessonMasteryReady } });
     const line = interventionMission
       ? interventionMission.outroLine
       : finalScore === 100
@@ -1215,6 +1234,7 @@ export default function DailyLessonGamePage() {
       ).length;
       const improved = fixedCount > 0 || reviewQueue.length > 0;
       setReviewImproved(improved);
+      tutorEngine.dispatch({ name: "REVIEW_COMPLETE", data: { improved } });
       setMemoryFeedback(
         improved
           ? "You've improved these tricky questions!"
@@ -1226,6 +1246,7 @@ export default function DailyLessonGamePage() {
     }
 
     if (index + 1 < lessonItems.length) {
+      tutorEngine.dispatch({ name: "NEXT_ITEM", data: { currentIndex: index, nextIndex: index + 1 } });
       goToQuestion(index + 1);
       return;
     }
@@ -1477,6 +1498,7 @@ export default function DailyLessonGamePage() {
     setStarted(true);
     startedAtRef.current = startedAtMs;
     const firstIndex = findGentleStartIndex();
+    tutorEngine.dispatch({ name: "LESSON_STARTED", data: { startIndex: firstIndex, gentleStart: needsGentleStart } });
     if (firstIndex !== index) {
       goToQuestion(firstIndex);
     }
@@ -1805,6 +1827,8 @@ export default function DailyLessonGamePage() {
     const spellingQuestion = currentSection === "spelling";
     const statusKey = questionStatusKey(currentItem, index);
 
+    tutorEngine.dispatch({ name: "ANSWER_SUBMITTED", data: { questionIndex: index, answer: given, attemptNumber: attemptCount + 1 } });
+
     if (!correct) {
       const nextAttempt = attemptCount + 1;
       setAttemptCount(nextAttempt);
@@ -1841,6 +1865,7 @@ export default function DailyLessonGamePage() {
         setQuestionStatuses((current) => ({ ...current, [statusKey]: "wrong_retrying" }));
         setLessonStage("TAP_SELECT");
         setSpeechStatusMessage("Use the visual clue, then answer again.");
+        tutorEngine.dispatch({ name: "ANSWER_WRONG_RETRY", data: { questionIndex: index, attemptNumber: nextAttempt } });
         return;
       }
 
@@ -1879,6 +1904,7 @@ export default function DailyLessonGamePage() {
         setReviewQueue((current) => (current.includes(index) ? current : [...current, index]));
         setAnswer("");
         setCoachOpen(false);
+        tutorEngine.dispatch({ name: "ANSWER_FINAL_WRONG", data: { questionIndex: index, attemptNumber: nextAttempt } });
         return;
       }
 
@@ -1889,6 +1915,7 @@ export default function DailyLessonGamePage() {
       setFeedbackMode("retry");
       setCoachOpen(false);
       setQuestionStatuses((current) => ({ ...current, [statusKey]: "wrong_retrying" }));
+      tutorEngine.dispatch({ name: "ANSWER_WRONG_RETRY", data: { questionIndex: index, attemptNumber: nextAttempt } });
       return;
     }
 
@@ -1932,6 +1959,10 @@ export default function DailyLessonGamePage() {
     setVoiceLine(learnedLine);
     if (voiceEnabled) speakTutorLine(learnedLine);
     setAnswer("");
+    tutorEngine.dispatch({
+      name: "ANSWER_CORRECT",
+      data: { questionIndex: index, firstTry: attemptCount === 0, score: scoreForResolvedQuestion(resolvedAttempts, true) },
+    });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
