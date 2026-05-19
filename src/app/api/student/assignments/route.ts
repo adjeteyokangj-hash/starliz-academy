@@ -6,15 +6,7 @@ import { getAssignmentSafetyAndRecommendation, taskHrefForContentType } from "@/
 import { mergeWeakAreas, parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { normalizeExamBoard } from "@/lib/curriculum";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
-
-function parseItems(contentJson: string): unknown[] {
-  try {
-    const parsed = JSON.parse(contentJson) as unknown;
-    return Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" ? [parsed] : [];
-  } catch {
-    return [];
-  }
-}
+import { normalizeLessonContentJson } from "@/lib/lesson-runtime-normalizer";
 
 function parseContentMetadata(raw: string | null): {
   examBoard: string | null;
@@ -107,8 +99,19 @@ export async function GET(request: Request) {
         );
       }
 
-      const items = parseItems(assignment.content.contentJson);
       const contentMeta = parseContentMetadata(assignment.content.metadataJson);
+      const items = normalizeLessonContentJson(assignment.content.contentJson, {
+        contentType: assignment.content.contentType,
+        subject: contentMeta.subject ?? assignment.content.contentType,
+        topic: assignment.content.topic,
+        skillFocus: assignment.content.skillFocus,
+        difficulty: assignment.content.level,
+        yearGroup: assignment.content.yearGroup,
+        keyStage: assignment.content.keyStage,
+        ageGroup: contentMeta.ageGroup,
+        contentId: assignment.content.id,
+        assignmentId: assignment.id,
+      });
       return NextResponse.json({
         id: assignment.id,
         status: assignment.status,

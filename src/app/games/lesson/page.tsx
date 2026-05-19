@@ -14,7 +14,9 @@ import { getTutorToneLine } from "@/lib/tutorVoice";
 import { classifySpeechMatch, type SpeechMatchResult } from "@/lib/speechCheck";
 import { levelFromXp } from "@/lib/level_system";
 import { buildInterventionMission, isInterventionEligibleSkill } from "@/lib/interventionMission";
+import { normalizeLessonContentItems, type NormalizedLessonItem } from "@/lib/lesson-runtime-normalizer";
 import {
+  buildCoachSupportMessage,
   buildFinalRevealMessage,
   buildProgressiveSupportMessage,
   buildQuestionFormulaScaffold,
@@ -27,23 +29,7 @@ import {
 } from "@/lib/starliz-question-formula";
 import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
 
-type LessonItem = Record<string, unknown> & {
-  id?: string;
-  type?: string;
-  word?: string;
-  prompt?: string;
-  question?: string;
-  passage?: string;
-  answer?: unknown;
-  options?: unknown[];
-  choices?: unknown[];
-  hint?: string;
-  skillFocus?: string;
-  assessmentPrompt?: string;
-  supportPrompt?: string;
-  tapPrompt?: string;
-  missionGroup?: string;
-};
+type LessonItem = NormalizedLessonItem;
 
 type LessonAssignment = {
   id: string;
@@ -316,7 +302,7 @@ function detectWarmupMood(transcript: string, childName = "there"): WarmupResult
 }
 
 function getItemSection(item: LessonItem, fallback: string): "spelling" | "math" | "reading" {
-  const type = String(item.type ?? fallback).toLowerCase();
+  const type = String(item.questionType ?? item.type ?? fallback).toLowerCase();
   if (
     type === "math" ||
     type === "maths" ||
@@ -353,17 +339,16 @@ function lessonSubjectBadge(subject: string | null | undefined): string {
 }
 
 function getPrompt(item: LessonItem, section: string): string {
-  if (section === "spelling") return decodeLessonText(String(item.word ?? item.answer ?? item.prompt ?? ""));
-  return decodeLessonText(String(item.prompt ?? item.question ?? item.word ?? ""));
+  if (section === "spelling") return decodeLessonText(String(item.question ?? item.prompt ?? item.word ?? item.correctAnswer ?? item.answer ?? ""));
+  return decodeLessonText(String(item.question ?? item.prompt ?? item.word ?? item.passage ?? ""));
 }
 
 function getAnswer(item: LessonItem): string {
-  return decodeLessonText(String(item.answer ?? item.word ?? "")).trim();
+  return decodeLessonText(String(item.correctAnswer ?? item.answer ?? item.word ?? "")).trim();
 }
 
 function getOptions(item: LessonItem): string[] {
-  const options = Array.isArray(item.options) ? item.options : Array.isArray(item.choices) ? item.choices : [];
-  return options.map((option) => decodeLessonText(String(option))).filter(Boolean);
+  return (item.options ?? item.choices ?? []).map((option) => decodeLessonText(String(option))).filter(Boolean);
 }
 
 function getSpellingConversationTitle(
@@ -589,6 +574,7 @@ export default function DailyLessonGamePage() {
   const [offlineNotice, setOfflineNotice] = useState("");
   const [feedbackMode, setFeedbackMode] = useState<FeedbackMode>("none");
   const [attemptCount, setAttemptCount] = useState(0);
+  const [coachOpen, setCoachOpen] = useState(false);
   const [reviewQueue, setReviewQueue] = useState<number[]>([]);
   const [isReviewRound, setIsReviewRound] = useState(false);
   const [showReviewIntro, setShowReviewIntro] = useState(false);
@@ -744,7 +730,13 @@ export default function DailyLessonGamePage() {
       subject: interventionMission.subject,
       title: interventionMission.title,
       skillFocus: interventionSkill ?? assignment.skillFocus,
-      items: interventionMission.items,
+      items: normalizeLessonContentItems(interventionMission.items, {
+        contentType: interventionMission.subject,
+        subject: interventionMission.subject,
+        topic: interventionMission.title,
+        skillFocus: interventionSkill ?? assignment.skillFocus ?? interventionMission.badge,
+        difficulty: assignment.difficulty ?? 1,
+      }),
     };
   }, [assignment, interventionMission, interventionSkill]);
   const lessonItems = useMemo(() => activeAssignment?.items ?? [], [activeAssignment]);
@@ -760,6 +752,9 @@ export default function DailyLessonGamePage() {
     ? buildQuestionFormulaScaffold({ item: currentItem, section: currentSection, subjectLabel: currentSubjectBadge })
     : null;
   const currentQuestionOutcome = currentItem ? questionAttemptSummary[questionStatusKey(currentItem, index)] : null;
+  const coachPromptText = currentItem
+    ? buildCoachSupportMessage({ section: currentSection, item: currentItem, prompt: getPrompt(currentItem, currentSection) })
+    : "";
   const childLevel = levelFromXp(profile?.xp ?? 0);
   const childName = useMemo(() => {
     const raw = String(profile?.name ?? "").trim();
@@ -782,7 +777,17 @@ export default function DailyLessonGamePage() {
   const practicingNow = feedbackMode === "retry" || feedbackMode === "skip_choice";
   const speechDebugEnabled = process.env.NODE_ENV === "development" && searchParams.get("debugSpeech") === "1";
   const microphoneVisible = started && currentSection === "spelling" && !feedback && (lessonStage === "ASSESS_SPEECH" || lessonStage === "TEACH_RETRY");
-  const idleTutorPrompt = buildTutorPanelPrompt({ voiceEnabled, microphoneVisible, speechListening });
+  const hasMultipleChoiceOptions = Boolean(currentItem && getOptions(currentItem).length > 0 && currentSection !== "spelling");
+  const tutorPrompt = buildTutorPanelPrompt({
+    voiceEnabled,
+    microphoneVisible,
+    speechListening,
+    coachOpen,
+    feedbackMode: feedbackMode === "none" ? null : feedbackMode,
+    hasAnswerOptions: hasMultipleChoiceOptions,
+    answerSubmitted: Boolean(feedback),
+    correctAnswerVisible: feedbackMode === "continue" && Boolean(feedback),
+  });
 
   const markActivity = useCallback(() => {
     lastActivityAtRef.current = performance.now();
@@ -1247,12 +1252,21 @@ export default function DailyLessonGamePage() {
     const timer = window.setInterval(() => {
       if (performance.now() - lastActivityAtRef.current < 25000) return;
       lastActivityAtRef.current = performance.now();
-      const line = buildTutorPanelPrompt({ voiceEnabled, microphoneVisible, speechListening });
+      const line = buildTutorPanelPrompt({
+        voiceEnabled,
+        microphoneVisible,
+        speechListening,
+        coachOpen,
+        feedbackMode: feedbackMode === "none" ? null : feedbackMode,
+        hasAnswerOptions: hasMultipleChoiceOptions,
+        answerSubmitted: Boolean(feedback),
+        correctAnswerVisible: feedbackMode === "continue" && Boolean(feedback),
+      });
       void speakTutor(line);
     }, 5000);
     return () => window.clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completed, microphoneVisible, speechListening, started, voiceEnabled]);
+  }, [completed, coachOpen, feedback, feedbackMode, hasMultipleChoiceOptions, microphoneVisible, speechListening, started, voiceEnabled]);
 
   function questionStatusKey(item: LessonItem, itemIndex: number): string {
     return String(item.id ?? `index-${itemIndex}`);
@@ -1263,11 +1277,13 @@ export default function DailyLessonGamePage() {
     setFeedbackMode("none");
     setTutorState("thinking");
     setVoiceLine("Take your time. You can do this.");
+    setCoachOpen(false);
   }
 
   function goToQuestion(nextIndex: number) {
     setIndex(nextIndex);
     setAttemptCount(0);
+    setCoachOpen(false);
     setFeedback("");
     setFeedbackMode("none");
     setAnswer("");
@@ -1310,7 +1326,8 @@ export default function DailyLessonGamePage() {
     });
 
     if (hasBasicSpelling && childLevel >= 6) {
-      return `Level ${childLevel} • Review: ${reviewReason(lessonItems.find((item) => getItemSection(item, assignment?.subject ?? "spelling") === "spelling") ?? {})}`;
+      const reviewItem = lessonItems.find((item) => getItemSection(item, assignment?.subject ?? "spelling") === "spelling");
+      return `Level ${childLevel} • Review: ${reviewReason(reviewItem ?? lessonItems[0] ?? { questionType: "generic", question: "", options: [], correctAnswer: "", explanation: "", hint: "", coachSteps: [], guidedSteps: [], workedSolution: "", visuals: { required: false, type: "none", title: "", altText: "", body: [], prompt: "" }, learningFocus: "", retryPrompts: [], reviewPrompt: "", weakSkillTags: [], difficulty: 1, masterySignals: { firstTryCorrect: false, retryCorrect: false, attemptCount: 0, hintsUsed: 0, mastered: false, reviewed: false } })}`;
     }
 
     return `Level ${childLevel} • Challenge: ${skill}`;
@@ -2005,6 +2022,7 @@ export default function DailyLessonGamePage() {
         }
         setFeedback("Let us slow down and use the visual clue. You need to get this one right before we move on.");
         setFeedbackMode("retry");
+        setCoachOpen(false);
         setQuestionStatuses((current) => ({ ...current, [statusKey]: "wrong_retrying" }));
         setLessonStage("TAP_SELECT");
         setSpeechStatusMessage("Use the visual clue, then answer again.");
@@ -2045,6 +2063,7 @@ export default function DailyLessonGamePage() {
         setSkippedQuestionKeys((current) => (current.includes(statusKey) ? current : [...current, statusKey]));
         setReviewQueue((current) => (current.includes(index) ? current : [...current, index]));
         setAnswer("");
+        setCoachOpen(false);
         return;
       }
 
@@ -2053,6 +2072,7 @@ export default function DailyLessonGamePage() {
       }
       setFeedback(teachLine);
       setFeedbackMode("retry");
+      setCoachOpen(false);
       setQuestionStatuses((current) => ({ ...current, [statusKey]: "wrong_retrying" }));
       return;
     }
@@ -2090,6 +2110,7 @@ export default function DailyLessonGamePage() {
         usedHints: resolvedAttempts > 1,
       },
     }));
+    setCoachOpen(false);
     setFeedback(learnedLine);
     setFeedbackMode("continue");
     setTutorState(correct ? "celebrate" : "try_again");
@@ -2533,6 +2554,15 @@ export default function DailyLessonGamePage() {
                     </div>
                   ) : null
                 }
+                coachButtonLabel={currentSection === "math" ? "Coach me" : "Help me understand"}
+                coachOpen={coachOpen}
+                onToggleCoach={hasMultipleChoiceOptions ? () => setCoachOpen((current) => !current) : undefined}
+                coachPanel={hasMultipleChoiceOptions ? (
+                  <div className="rounded-3xl border border-cyan-200 bg-cyan-50 p-4 text-sm font-semibold text-cyan-950">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-700">Coach me</p>
+                    <p className="mt-2 whitespace-pre-line">{coachPromptText}</p>
+                  </div>
+                ) : null}
                 questionPrompt={
                   currentSection === "spelling"
                     ? getSpellingConversationTitle(currentItem, lessonStage)
@@ -2706,7 +2736,11 @@ export default function DailyLessonGamePage() {
                 <div className="mt-6">
                   <TutorAvatar state={tutorState} />
                 </div>
-                <p className="mt-4 text-sm text-indigo-100">{tutorState === "thinking" ? idleTutorPrompt : decodeLessonText(voiceLine)}</p>
+                <p className="mt-4 text-sm text-indigo-100">
+                  {feedbackMode === "none"
+                    ? (tutorState === "thinking" ? tutorPrompt : decodeLessonText(voiceLine))
+                    : tutorPrompt}
+                </p>
                 <div className="mt-6 rounded-2xl bg-white/10 p-4 text-sm">
                   {practicingNow
                     ? "Progress: practising"
