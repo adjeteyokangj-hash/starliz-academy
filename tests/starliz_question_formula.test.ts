@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildCoachSupportMessage,
   buildFinalRevealMessage,
   buildProgressiveSupportMessage,
   buildQuestionFormulaScaffold,
   buildTutorPanelPrompt,
   buildWorkedSuccessMessage,
+  classifyQuestionIntent,
   computeAttemptWeightedScore,
   scoreForResolvedQuestion,
   type QuestionAttemptSummary,
@@ -31,13 +33,50 @@ test("computeAttemptWeightedScore averages resolved question scores", () => {
 
 test("buildTutorPanelPrompt only mentions microphone when it is visible", () => {
   assert.equal(
-    buildTutorPanelPrompt({ voiceEnabled: false, microphoneVisible: false }),
-    "Need help? Use the answer box or choose an option below.",
+    buildTutorPanelPrompt({ voiceEnabled: false, microphoneVisible: false, hasAnswerOptions: true }),
+    "Need help? Click Coach me to break the question down.",
+  );
+  assert.equal(
+    buildTutorPanelPrompt({ voiceEnabled: false, microphoneVisible: false, feedbackMode: "continue", correctAnswerVisible: true }),
+    "Great work. Read the explanation, then click Continue for the next question.",
+  );
+  assert.equal(
+    buildTutorPanelPrompt({ voiceEnabled: false, microphoneVisible: false, feedbackMode: "retry" }),
+    "Try the steps again. Use the hint and have another go.",
   );
   assert.equal(
     buildTutorPanelPrompt({ voiceEnabled: true, microphoneVisible: true, speechListening: false }),
     "Tap the microphone and say your answer.",
   );
+});
+
+test("coach support message guides without revealing the answer", () => {
+  const message = buildCoachSupportMessage({
+    section: "math",
+    item: {
+      prompt: "What happens to the total resistance in a parallel circuit if one resistor is removed?",
+      skillFocus: "circuits",
+    },
+    prompt: "What happens to the total resistance in a parallel circuit if one resistor is removed?",
+  });
+
+  assert.ok(message.includes("key words".toLowerCase()) || message.includes("Key words"));
+  assert.ok(message.includes("compare what is happening before and after") || message.includes("Compare what is happening before and after"));
+  assert.ok(!message.includes("The total resistance increases"));
+});
+
+test("science parallel circuit explanation is concept-led", () => {
+  const explanation = buildFinalRevealMessage({
+    section: "math",
+    item: {
+      prompt: "What happens to the total resistance in a parallel circuit if one resistor is removed?",
+    },
+    prompt: "What happens to the total resistance in a parallel circuit if one resistor is removed?",
+    expected: "The total resistance increases.",
+  });
+
+  assert.ok(explanation.includes("The correct answer is The total resistance increases."));
+  assert.ok(explanation.includes("fewer paths"));
 });
 
 test("science circuit questions get scaffolded visual, key information, and hint", () => {
@@ -216,4 +255,30 @@ test("progressive support messages do not reveal answer before final attempt", (
   assert.ok(!attempt1.includes("3A"), "Attempt 1 hint must not reveal the answer");
   assert.ok(!attempt2.includes("The correct answer is 3A"), "Attempt 2 hint must not use reveal phrasing");
   assert.ok(attempt2.includes("6 ÷ 2"), "Attempt 2 hint should show worked calculation steps");
+});
+
+test("series resistance coaching gives additive formula steps", () => {
+  const coach = buildCoachSupportMessage({
+    section: "math",
+    item: {
+      prompt: "In a series circuit, the resistors are 3 ohms and 5 ohms. Find the total resistance.",
+    },
+    prompt: "In a series circuit, the resistors are 3 ohms and 5 ohms. Find the total resistance.",
+  });
+
+  assert.ok(coach.includes("series circuit"));
+  assert.ok(coach.includes("R_total = 3 + 5"));
+  assert.ok(!coach.includes("Compare what is happening before and after"));
+});
+
+test("question intent classification detects formula application", () => {
+  const intent = classifyQuestionIntent({
+    section: "math",
+    item: {
+      prompt: "In a series circuit, the resistors are 3 ohms and 5 ohms. Find the total resistance.",
+    },
+    prompt: "In a series circuit, the resistors are 3 ohms and 5 ohms. Find the total resistance.",
+  });
+
+  assert.equal(intent, "formula_application");
 });

@@ -12,6 +12,7 @@ import { syncAttemptToServer } from "@/lib/server_sync";
 import { serializeSkills, skillFocusToCode } from "@/lib/skills";
 import { getTutorToneLine } from "@/lib/tutorVoice";
 import { classifySpeechMatch, type SpeechMatchResult } from "@/lib/speechCheck";
+import { assessWarmupTranscript } from "@/lib/warmup-response";
 import { levelFromXp } from "@/lib/level_system";
 import { buildInterventionMission, isInterventionEligibleSkill } from "@/lib/interventionMission";
 import { normalizeLessonContentItems, type NormalizedLessonItem } from "@/lib/lesson-runtime-normalizer";
@@ -25,6 +26,7 @@ import {
   buildWorkedSuccessMessage,
   computeAttemptWeightedScore,
   scoreForResolvedQuestion,
+  type QuestionVisualSupport,
   type QuestionAttemptSummary,
 } from "@/lib/starliz-question-formula";
 import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
@@ -76,7 +78,7 @@ type BrowserSpeechRecognition = {
   interimResults: boolean;
   continuous: boolean;
   maxAlternatives: number;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>>; timeStamp?: number }) => void) | null;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string; confidence?: number }>>; timeStamp?: number }) => void) | null;
   onerror: ((event: { error?: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void;
@@ -336,6 +338,31 @@ function lessonSubjectBadge(subject: string | null | undefined): string {
     return normalized.replace("gcse-", "").split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
   }
   return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : "Lesson";
+}
+
+function fallbackVisualFromItem(item: LessonItem | null): QuestionVisualSupport | null {
+  if (!item || !item.visuals.required) return null;
+  const body = item.visuals.body
+    .map((line) => decodeLessonText(String(line)))
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!body.length && item.visuals.prompt) {
+    body.push(decodeLessonText(String(item.visuals.prompt)));
+  }
+  if (!body.length) return null;
+
+  const visualType: QuestionVisualSupport["type"] = item.visuals.type === "passage"
+    ? "passage"
+    : item.visuals.type === "formula_card"
+      ? "formula_card"
+      : "diagram";
+
+  return {
+    type: visualType,
+    title: decodeLessonText(String(item.visuals.title || (visualType === "formula_card" ? "Formula help" : "Visual support"))),
+    altText: decodeLessonText(String(item.visuals.altText || item.visuals.prompt || "Question support")),
+    body,
+  };
 }
 
 function getPrompt(item: LessonItem, section: string): string {
@@ -751,6 +778,7 @@ export default function DailyLessonGamePage() {
   const questionFormula = currentItem
     ? buildQuestionFormulaScaffold({ item: currentItem, section: currentSection, subjectLabel: currentSubjectBadge })
     : null;
+  const resolvedQuestionVisual = questionFormula?.visual ?? fallbackVisualFromItem(currentItem);
   const currentQuestionOutcome = currentItem ? questionAttemptSummary[questionStatusKey(currentItem, index)] : null;
   const coachPromptText = currentItem
     ? buildCoachSupportMessage({ section: currentSection, item: currentItem, prompt: getPrompt(currentItem, currentSection) })
@@ -1498,7 +1526,7 @@ export default function DailyLessonGamePage() {
     setSpeechFallbackReason(null);
     setSpeechLastMatchResult(matchResult);
 
-    await syncAttemptToServer({
+    const attemptSyncResult = await syncAttemptToServer({
       studentId: activeAssignment.studentId || profile?.id || "",
       subject: "spelling",
       spellingMode: isAlphabet ? "alphabet_assess" : "word_assess",
@@ -1519,6 +1547,9 @@ export default function DailyLessonGamePage() {
       targetText: target,
       errorType: matchResult === "exact" ? undefined : matchResult === "close" ? "close_match" : "spoken_mismatch",
     });
+    if ((attemptSyncResult.status === "unauthorized" || attemptSyncResult.status === "unauthorized_paused") && !offlineNotice) {
+      setOfflineNotice("Your session changed, so answers are being saved on this device for now.");
+    }
 
     if (matchResult === "exact") {
       setSpeechStatusMessage("");
@@ -1724,10 +1755,25 @@ export default function DailyLessonGamePage() {
     recognition.maxAlternatives = 1;
     recognition.onresult = (event) => {
       const transcript = decodeLessonText(event.results[0]?.[0]?.transcript?.trim() ?? "");
+      const confidenceCandidate = Number(event.results[0]?.[0]?.confidence);
+      const confidence = Number.isFinite(confidenceCandidate) ? confidenceCandidate : null;
       heardWarmup = Boolean(transcript);
       setWarmupTranscript(transcript);
       setWarmupPhase("thinking");
       setWarmupStatus("Thinking...");
+
+      const completeness = assessWarmupTranscript({ transcript, confidence });
+      if (!completeness.complete) {
+        setWarmupResult(null);
+        setWarmupPhase("idle");
+        setWarmupFailedAttempts((current) => current + 1);
+        setWarmupStatus(completeness.prompt);
+        setVoiceLine(completeness.prompt);
+        if (voiceEnabled) {
+          void speakTutor(completeness.prompt);
+        }
+        return;
+      }
 
       const result = detectWarmupMood(transcript, childName);
       result.hesitationMs = Math.max(0, (event.timeStamp ?? startAt) - startAt);
@@ -1971,7 +2017,7 @@ export default function DailyLessonGamePage() {
     const attemptSubject = getItemSection(currentItem, activeAssignment.subject || currentSection);
     const skillFocus = String(currentItem.skillFocus ?? activeAssignment.skillFocus ?? currentSection);
     const derivedSkillCode = skillFocusToCode(skillFocus);
-    await syncAttemptToServer({
+    const attemptSyncResult = await syncAttemptToServer({
       studentId: activeAssignment.studentId || profile?.id || "",
       subject: attemptSubject,
       assignmentId: activeAssignment.id,
@@ -1986,6 +2032,9 @@ export default function DailyLessonGamePage() {
       difficulty: Math.max(1, Math.min(5, activeAssignment.difficulty ?? 1)),
       skills: derivedSkillCode ? serializeSkills([derivedSkillCode]) : undefined,
     });
+    if ((attemptSyncResult.status === "unauthorized" || attemptSyncResult.status === "unauthorized_paused") && !offlineNotice) {
+      setOfflineNotice("Your session changed, so answers are being saved on this device for now.");
+    }
 
     const spellingQuestion = currentSection === "spelling";
     const statusKey = questionStatusKey(currentItem, index);
@@ -2510,7 +2559,7 @@ export default function DailyLessonGamePage() {
                       : null)
                 }
                 unitReminder={questionFormula?.unitLabel ?? null}
-                visual={questionFormula?.visual ?? null}
+                visual={resolvedQuestionVisual}
                 aboveQuestionSlot={
                   interventionMission && currentSection === "spelling" ? (
                     <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-black">
@@ -2539,21 +2588,7 @@ export default function DailyLessonGamePage() {
                     </div>
                   ) : null
                 }
-                visualRequiredSlot={
-                  Boolean(currentItem.visualRequired) ? (
-                    <div className="mt-6 rounded-3xl border border-violet-200 bg-violet-50 p-5">
-                      <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-700">
-                        Visual support {currentItem.visualType ? `• ${decodeLessonText(String(currentItem.visualType))}` : ""}
-                      </p>
-                      <p className="mt-2 text-sm font-bold text-violet-900">
-                        {decodeLessonText(String(currentItem.visualPrompt ?? "Use the visual guide to reason before answering."))}
-                      </p>
-                      <p className="mt-2 rounded-2xl border border-violet-200 bg-white px-4 py-3 text-sm text-violet-800">
-                        {decodeLessonText(String(currentItem.visualAltText ?? "Diagram placeholder for this question."))}
-                      </p>
-                    </div>
-                  ) : null
-                }
+                visualRequiredSlot={null}
                 coachButtonLabel={currentSection === "math" ? "Coach me" : "Help me understand"}
                 coachOpen={coachOpen}
                 onToggleCoach={hasMultipleChoiceOptions ? () => setCoachOpen((current) => !current) : undefined}

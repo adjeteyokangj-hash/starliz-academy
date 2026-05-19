@@ -26,6 +26,10 @@ type QuestionFormulaSource = {
   prompt?: unknown;
   question?: unknown;
   answer?: unknown;
+  explanation?: unknown;
+  rationale?: unknown;
+  answerExplanation?: unknown;
+  workedSolution?: unknown;
   word?: unknown;
   hint?: unknown;
   skillFocus?: unknown;
@@ -35,12 +39,25 @@ type QuestionFormulaSource = {
   visualType?: unknown;
   given?: unknown;
   keyInformation?: unknown;
+  keyWords?: unknown;
+  keywords?: unknown;
+  coachHint?: unknown;
 };
 
 type CircuitQuestionData = {
   voltage: string;
   resistance: string;
 };
+
+export type QuestionIntent =
+  | "formula_application"
+  | "word_problem_calculation"
+  | "comparison_reasoning"
+  | "conceptual_reasoning"
+  | "sequence_ordering"
+  | "pattern_recognition"
+  | "diagram_interpretation"
+  | "general";
 
 function text(value: unknown): string {
   return String(value ?? "").trim();
@@ -54,6 +71,180 @@ function linesFromValue(value: unknown): string[] {
   return single ? [single] : [];
 }
 
+function firstText(...values: unknown[]): string {
+  for (const value of values) {
+    const result = text(value);
+    if (result) return result;
+  }
+  return "";
+}
+
+function explanationText(item: QuestionFormulaSource): string {
+  return firstText(item.explanation, item.rationale, item.answerExplanation, item.workedSolution);
+}
+
+function keywordsFromItem(item: QuestionFormulaSource): string[] {
+  return [...linesFromValue(item.keyWords), ...linesFromValue(item.keywords)].slice(0, 6);
+}
+
+function isScienceCircuitQuestion(prompt: string): boolean {
+  const lower = prompt.toLowerCase();
+  return lower.includes("circuit") || lower.includes("resistance") || lower.includes("current") || lower.includes("voltage") || lower.includes("ohm");
+}
+
+function scienceParallelCircuitExplanation(prompt: string, expected: string): string | null {
+  const lower = prompt.toLowerCase();
+  if (!lower.includes("parallel circuit") || !lower.includes("removed")) return null;
+  return [
+    "In a parallel circuit, each resistor gives the current another path.",
+    "More paths means lower total resistance.",
+    "If one resistor is removed, there are fewer paths for current to take.",
+    "Fewer paths means the total resistance goes up.",
+    `Therefore, ${expected.toLowerCase().startsWith("the ") ? expected : `the answer is ${expected}`}.`,
+  ].join("\n");
+}
+
+function buildConceptExplanation(input: {
+  section: LessonFlowSection;
+  item: QuestionFormulaSource;
+  prompt: string;
+  expected: string;
+}): string {
+  const { section, item, prompt, expected } = input;
+  const directExplanation = explanationText(item);
+  if (directExplanation) return directExplanation;
+
+  const keyInformation = linesFromValue(item.keyInformation);
+  const keywords = keywordsFromItem(item);
+  const learningFocus = text(item.skillFocus);
+  const intent = classifyQuestionIntent({ section, item, prompt });
+
+  if (section === "math" && isScienceCircuitQuestion(prompt)) {
+    const circuitExplanation = scienceParallelCircuitExplanation(prompt, expected);
+    if (circuitExplanation) return circuitExplanation;
+  }
+
+  if (section === "math" && isSeriesResistancePrompt(prompt)) {
+    const values = extractSeriesResistanceValues(prompt);
+    if (values.length >= 2) {
+      return [
+        `Great! The answer is ${expected}.`,
+        "In a series circuit, total resistance is the sum of all resistors.",
+        `R_total = ${values.join(" + ")}`,
+        `R_total = ${expected}`,
+      ].join("\n");
+    }
+  }
+
+  if (section === "math") {
+    const formulaLine = firstText(item.coachHint, item.hint);
+    const promptLine = prompt ? `Question: ${prompt}` : "Question: work through the calculation carefully.";
+    return [
+      `Great! The answer is ${expected}.`,
+      promptLine,
+      formulaLine || intent === "formula_application" || intent === "word_problem_calculation"
+        ? `Formula: ${formulaLine || "Choose the correct formula and substitute the numbers."}`
+        : null,
+      keyInformation.length ? `Key information: ${keyInformation.join("; ")}` : null,
+      `Work it out step by step, then check that ${expected} fits the question.`,
+    ].filter((line): line is string => Boolean(line)).join("\n");
+  }
+
+  if (section === "reading") {
+    return [
+      `Great! The answer is ${expected}.`,
+      prompt ? `The question is asking you to match the clue in the passage: ${prompt}` : "The question is asking you to match the clue in the passage.",
+      keywords.length ? `Key words: ${keywords.join(", ")}.` : null,
+      `Use the clue, the passage and the meaning of the words to show why ${expected} is the best answer.`,
+    ].filter((line): line is string => Boolean(line)).join("\n");
+  }
+
+
+  if (section === "spelling") {
+    return [
+      `Great! The correct spelling is ${expected}.`,
+      learningFocus ? learningFocus : null,
+      "Say each sound slowly, then blend them together to spell the word.",
+    ].filter((line): line is string => Boolean(line)).join("\n");
+  }
+
+  return [
+    `Great! The answer is ${expected}.`,
+    prompt ? `We solve the question step by step: ${prompt}` : null,
+    keyInformation.length ? `Key information: ${keyInformation.join("; ")}` : null,
+    keywords.length ? `Key words: ${keywords.join(", ")}.` : null,
+    "Check the method carefully and make sure it matches the question.",
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function buildCoachBreakdown(input: {
+  section: LessonFlowSection;
+  item: QuestionFormulaSource;
+  prompt: string;
+}): string {
+  const { section, item, prompt } = input;
+  const keyInformation = linesFromValue(item.keyInformation);
+  const keywords = keywordsFromItem(item);
+  const circuit = extractCircuitQuestionData(item);
+  const intent = classifyQuestionIntent(input);
+
+  if (section === "math" && circuit) {
+      return [
+        "We need to find the current.",
+        "Use Power = Voltage × Current.",
+        "Rearrange it: Current = Power ÷ Voltage.",
+        `Put in the numbers: Current = ${numberPart(circuit.voltage)} ÷ ${numberPart(circuit.resistance)}.`,
+        "Now work out the calculation and choose the matching answer.",
+      ].join("\n");
+  }
+
+  if (section === "math" && isSeriesResistancePrompt(prompt)) {
+    const values = extractSeriesResistanceValues(prompt);
+    if (values.length >= 2) {
+      return [
+        "This is a series circuit question.",
+        "In series, resistances add together.",
+        `Set it up: R_total = ${values.join(" + ")}`,
+        "Now add them carefully and choose the matching total resistance.",
+      ].join("\n");
+    }
+  }
+
+  if (intent === "comparison_reasoning") {
+    return [
+      "Read the key words carefully.",
+      keywords.length ? `Key words: ${keywords.join(", ")}.` : "Key words: before, after, and what changed.",
+      prompt ? `What is the question asking? ${prompt}` : null,
+      "Compare what is happening before and after the change.",
+      "Use the science idea, not a guess, to choose the best answer.",
+    ].filter((line): line is string => Boolean(line)).join("\n");
+  }
+
+  if (section === "math" && (intent === "formula_application" || intent === "word_problem_calculation")) {
+    return [
+      "Find what the question wants first.",
+      prompt ? `Question: ${prompt}` : null,
+      keyInformation.length ? `Given values: ${keyInformation.join("; ")}` : null,
+      "Pick the formula or operation that links those values.",
+      "Substitute numbers carefully, then calculate.",
+    ].filter((line): line is string => Boolean(line)).join("\n");
+  }
+
+  if (section === "reading") {
+    return [
+      "Read the question again and find the clue that matches the passage.",
+      keywords.length ? `Key words: ${keywords.join(", ")}.` : null,
+      "Use the clue in the text, then choose the answer that fits best.",
+    ].filter((line): line is string => Boolean(line)).join("\n");
+  }
+
+  return [
+    prompt ? `What is this question asking? ${prompt}` : "What is this question asking?",
+    keyInformation.length ? `Key information: ${keyInformation.join("; ")}` : null,
+    "Look for the rule or pattern before you answer.",
+    "Use the coach steps, then choose the best answer.",
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
 function questionText(item: QuestionFormulaSource): string {
   return text(item.prompt) || text(item.question) || text(item.word);
 }
@@ -105,7 +296,24 @@ export function buildTutorPanelPrompt(options: {
   voiceEnabled: boolean;
   microphoneVisible: boolean;
   speechListening?: boolean;
+  coachOpen?: boolean;
+  feedbackMode?: "none" | "continue" | "retry" | "skip_choice" | null;
+  hasAnswerOptions?: boolean;
+  correctAnswerVisible?: boolean;
+  answerSubmitted?: boolean;
 }): string {
+  if (options.correctAnswerVisible || options.feedbackMode === "continue") {
+    return "Great work. Read the explanation, then click Continue for the next question.";
+  }
+  if (options.feedbackMode === "retry") {
+    return options.speechListening ? "Try the steps again. I’ll help you get it." : "Try the steps again. Use the hint and have another go.";
+  }
+  if (options.coachOpen) {
+    return "Use the coach steps, then choose the best answer.";
+  }
+  if (options.hasAnswerOptions && !options.answerSubmitted) {
+    return "Need help? Click Coach me to break the question down.";
+  }
   if (options.voiceEnabled && options.microphoneVisible) {
     return options.speechListening ? "Let's try this together." : "Tap the microphone and say your answer.";
   }
@@ -158,6 +366,8 @@ export function buildQuestionFormulaScaffold(input: {
     };
   }
 
+  const visualType = text(item.passage) ? "passage" : "formula_card";
+
   return {
     learningFocus,
     keyInformation,
@@ -165,8 +375,8 @@ export function buildQuestionFormulaScaffold(input: {
     unitLabel: null,
     visual: text(item.visualPrompt) || text(item.visualAltText)
       ? {
-          type: text(item.passage) ? "passage" : "formula_card",
-          title: text(item.visualType) || "Visual support",
+          type: visualType,
+          title: text(item.visualType) || (visualType === "formula_card" ? "Formula help" : "Visual support"),
           altText: text(item.visualAltText) || text(item.visualPrompt) || "Question support",
           body: [text(item.visualPrompt) || text(item.visualAltText)].filter(Boolean),
         }
@@ -182,34 +392,82 @@ export function buildProgressiveSupportMessage(input: {
   attempt: number;
   inReviewRound: boolean;
 }): string {
-  const { section, item, prompt, expected, attempt, inReviewRound } = input;
+  const { section, item, prompt, attempt, inReviewRound } = input;
   const circuit = extractCircuitQuestionData(item);
+  const keyInformation = linesFromValue(item.keyInformation);
+  const formulaLine = firstText(item.coachHint, item.hint);
+  const intent = classifyQuestionIntent({ section, item, prompt });
 
   if (section === "math" && circuit) {
     if (attempt <= 1 && !inReviewRound) {
       return `Not quite. Let's find the important numbers first.\n\nVoltage = ${circuit.voltage}\nResistance = ${circuit.resistance}\n\nWhich formula helps us find current?`;
     }
 
-    return `Almost. We use Ohm's Law.\n\nCurrent = Voltage ÷ Resistance\n\nNow put the numbers in:\nCurrent = ${numberPart(circuit.voltage)} ÷ ${numberPart(circuit.resistance)}\n\nWhat is ${numberPart(circuit.voltage)} ÷ ${numberPart(circuit.resistance)}?`;
+    return [
+      "Almost. We use Ohm's Law.",
+      "Current = Voltage ÷ Resistance",
+      `Now put the numbers in: Current = ${numberPart(circuit.voltage)} ÷ ${numberPart(circuit.resistance)}`,
+      `Work out ${numberPart(circuit.voltage)} ÷ ${numberPart(circuit.resistance)} and choose the matching answer.`,
+    ].join("\n");
+  }
+
+  if (section === "math" && isSeriesResistancePrompt(prompt)) {
+    const values = extractSeriesResistanceValues(prompt);
+    if (values.length >= 2) {
+      if (attempt <= 1 && !inReviewRound) {
+        return [
+          "Not quite. In a series circuit we add resistances.",
+          `Start with: R_total = ${values.join(" + ")}`,
+          "Now add those values carefully.",
+        ].join("\n");
+      }
+      return [
+        "Almost. Keep the same series rule.",
+        `R_total = ${values.join(" + ")}`,
+        "Add them and select the matching total resistance.",
+      ].join("\n");
+    }
   }
 
   if (section === "math") {
     if (attempt <= 1 && !inReviewRound) {
-      return `Not quite. Let's find the important numbers first.\n\nQuestion: ${prompt || "Maths question"}\n\nLook for the numbers and choose the operation you need.`;
+      return [
+        "Not quite. Let's find the important numbers first.",
+        prompt ? `Question: ${prompt}` : "Question: maths problem",
+        formulaLine || intent === "formula_application" || intent === "word_problem_calculation"
+          ? `Formula: ${formulaLine || "Choose the formula that connects the values in the question."}`
+          : null,
+        "Look for the numbers and choose the operation you need.",
+      ].join("\n");
     }
 
-    return `Almost. Let's solve it step by step.\n\nQuestion: ${prompt || "Maths question"}\n\nSet up the calculation carefully before you answer.`;
+    return [
+      "Almost. Let's solve it step by step.",
+      prompt ? `Question: ${prompt}` : "Question: maths problem",
+      formulaLine ? `Formula: ${formulaLine}` : "Find the formula or rule that matches the question.",
+      keyInformation.length ? `Numbers to use: ${keyInformation.join("; ")}` : "Put the numbers into the formula.",
+      "Now calculate the final answer and choose the matching option.",
+    ].join("\n");
   }
 
   if (section === "reading") {
     if (attempt <= 1 && !inReviewRound) {
-      return "Not quite. Let's look for the key words first.\n\nRead the question again and find the matching clue in the passage.";
+      return [
+        "Not quite. Let's look for the key words first.",
+        "Read the question again and find the matching clue in the passage.",
+      ].join("\n");
     }
 
-    return `Almost. Read the clue again and match it to the passage.\n\nThen choose the answer that fits best: ${expected}.`;
+    return [
+      "Almost. Read the clue again and match it to the passage.",
+      "Think about which answer best fits the evidence in the text.",
+    ].join("\n");
   }
 
-  return `Good try. Let's learn it together, then try again.\n\nNow answer ${expected} again.`;
+  return [
+    "Good try. Let's learn it together, then try again.",
+    "Find the key information, then use it to choose the answer.",
+  ].join("\n");
 }
 
 export function buildFinalRevealMessage(input: {
@@ -219,19 +477,39 @@ export function buildFinalRevealMessage(input: {
   expected: string;
 }): string {
   const { section, item, prompt, expected } = input;
-  const circuit = extractCircuitQuestionData(item);
+  const explanation = buildConceptExplanation({ section, item, prompt, expected });
 
-  if (section === "math" && circuit) {
-    const voltageNumber = numberPart(circuit.voltage);
-    const resistanceNumber = numberPart(circuit.resistance);
-    return `The correct answer is ${expected}.\n\nCurrent = Voltage ÷ Resistance\nCurrent = ${voltageNumber} ÷ ${resistanceNumber}\nCurrent = ${expected}\n\nSo the current flowing through the circuit is ${expected}.`;
+  if (section === "math") {
+    const circuit = extractCircuitQuestionData(item);
+    if (circuit) {
+      const voltageNumber = numberPart(circuit.voltage);
+      const resistanceNumber = numberPart(circuit.resistance);
+      return [
+        `The correct answer is ${expected}.`,
+        "Current = Voltage ÷ Resistance",
+        `Current = ${voltageNumber} ÷ ${resistanceNumber}`,
+        `Current = ${expected}`,
+        explanation,
+      ].join("\n\n");
+    }
+
+    return [
+      `The correct answer is ${expected}.`,
+      explanation,
+    ].join("\n\n");
   }
 
   if (section === "reading") {
-    return `The correct answer is ${expected}.\n\nGo back to the question and match each key word to the passage. That shows why ${expected} is the best answer.`;
+    return [
+      `The correct answer is ${expected}.`,
+      explanation,
+    ].join("\n\n");
   }
 
-  return `The correct answer is ${expected}.\n\nQuestion: ${prompt || "This question"}\nAnswer: ${expected}`;
+  return [
+    `The correct answer is ${expected}.`,
+    explanation,
+  ].join("\n\n");
 }
 
 export function buildWorkedSuccessMessage(input: {
@@ -240,22 +518,88 @@ export function buildWorkedSuccessMessage(input: {
   prompt: string;
   expected: string;
 }): string {
-  const { section, item, prompt, expected } = input;
-  const circuit = extractCircuitQuestionData(item);
+  const { section, item, expected } = input;
+  const explanation = buildConceptExplanation(input);
 
-  if (section === "math" && circuit) {
-    const voltageNumber = numberPart(circuit.voltage);
-    const resistanceNumber = numberPart(circuit.resistance);
-    return `Great! The answer is ${expected}.\n\nWe use Ohm's Law:\nCurrent = Voltage ÷ Resistance\n\nThe battery is ${circuit.voltage} and the resistor is ${circuit.resistance}.\n\nSo:\n${voltageNumber} ÷ ${resistanceNumber} = ${numberPart(expected)}\n\nSo the current flowing through the circuit is ${expected}.`;
-  }
-
-  if (section === "reading") {
-    return `Great! The answer is ${expected}.\n\nWe find the best answer by reading the question carefully, spotting the key clue, and matching it to the passage.`;
+  if (section === "math") {
+    const circuit = extractCircuitQuestionData(item);
+    if (circuit) {
+      const voltageNumber = numberPart(circuit.voltage);
+      const resistanceNumber = numberPart(circuit.resistance);
+      return [
+        `Great! The answer is ${expected}.`,
+        "We use Ohm's Law:",
+        "Current = Voltage ÷ Resistance",
+        `The battery is ${circuit.voltage} and the resistor is ${circuit.resistance}.`,
+        `So ${voltageNumber} ÷ ${resistanceNumber} = ${numberPart(expected)}.`,
+        `So the current flowing through the circuit is ${expected}.`,
+      ].join("\n\n");
+    }
   }
 
   if (section === "spelling") {
-    return `Great! The correct spelling is ${expected}.\n\nSay each sound slowly, then blend them together to spell the word.`;
+    return [
+      `Great! The correct spelling is ${expected}.`,
+      "Say each sound slowly, then blend them together to spell the word.",
+    ].join("\n\n");
   }
 
-  return `Great! The answer is ${expected}.\n\nWe solve the question step by step and check that the method fits the question: ${prompt || "this question"}.`;
+  return explanation.startsWith("Great!")
+    ? explanation
+    : [`Great! The answer is ${expected}.`, explanation].join("\n\n");
+}
+
+export function buildCoachSupportMessage(input: {
+  section: LessonFlowSection;
+  item: QuestionFormulaSource;
+  prompt: string;
+}): string {
+  return buildCoachBreakdown(input);
+}
+
+function isSeriesResistancePrompt(prompt: string): boolean {
+  const lower = prompt.toLowerCase();
+  return lower.includes("series") && lower.includes("resistance");
+}
+
+function extractSeriesResistanceValues(prompt: string): string[] {
+  const matches = [...prompt.matchAll(/(\d+(?:\.\d+)?)\s*(?:Ω|ohm|ohms)/gi)];
+  return matches.map((match) => match[1] ?? "").filter(Boolean);
+}
+
+export function classifyQuestionIntent(input: {
+  section: LessonFlowSection;
+  item: QuestionFormulaSource;
+  prompt: string;
+}): QuestionIntent {
+  const lower = input.prompt.toLowerCase();
+  const hasNumbers = /\d/.test(input.prompt);
+  const asksToCalculate = /(calculate|work out|find|determine|solve|total|sum|difference|product|quotient)/i.test(lower);
+  const hasFormulaWords = /(formula|equation|ohm|resistance|voltage|current|rate|area|perimeter|series|parallel)/i.test(lower);
+
+  if (/(diagram|graph|chart|table|pictured|shown|image)/i.test(lower)) {
+    return "diagram_interpretation";
+  }
+  if (/(compare|difference|before and after|increase|decrease|changes|what happens|happens when|happens if)/i.test(lower)) {
+    return "comparison_reasoning";
+  }
+  if (/(why|explain|reason)/i.test(lower)) {
+    return "conceptual_reasoning";
+  }
+  if (/(order|sequence|first|next|then|arrange)/i.test(lower)) {
+    return "sequence_ordering";
+  }
+  if (/(pattern|next number|rule)/i.test(lower)) {
+    return "pattern_recognition";
+  }
+  if (asksToCalculate && (hasNumbers || hasFormulaWords)) {
+    return "formula_application";
+  }
+  if (hasNumbers && /(how many|how much|altogether|left|remain|shared equally)/i.test(lower)) {
+    return "word_problem_calculation";
+  }
+  if (input.section === "math" && hasNumbers && hasFormulaWords) {
+    return "formula_application";
+  }
+  return "general";
 }

@@ -1,5 +1,43 @@
 import { queueOfflineEvent } from "@/lib/offline_queue";
 
+const ATTEMPT_QUEUE_KEY = "starliz.offlineAttemptQueue";
+let attemptSyncUnauthorized = false;
+
+type QueuedAttempt = {
+  id: string;
+  queuedAt: string;
+  reason: "network" | "server" | "unauthorized" | "paused";
+  payload: AttemptPayload;
+};
+
+function readOfflineAttemptQueue(): QueuedAttempt[] {
+  if (typeof window === "undefined") return [];
+  const raw = window.localStorage.getItem(ATTEMPT_QUEUE_KEY);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as QueuedAttempt[];
+  } catch {
+    return [];
+  }
+}
+
+function writeOfflineAttemptQueue(queue: QueuedAttempt[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ATTEMPT_QUEUE_KEY, JSON.stringify(queue.slice(-500)));
+}
+
+function queueOfflineAttempt(payload: AttemptPayload, reason: QueuedAttempt["reason"]): void {
+  if (typeof window === "undefined") return;
+  const queue = readOfflineAttemptQueue();
+  queue.push({
+    id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    queuedAt: new Date().toISOString(),
+    reason,
+    payload,
+  });
+  writeOfflineAttemptQueue(queue);
+}
+
 export type ProgressEventPayload = {
   childId: string;
   activityType: string;
@@ -59,8 +97,21 @@ export type AttemptPayload = {
   errorType?: string;
 };
 
-export async function syncAttemptToServer(payload: AttemptPayload): Promise<void> {
-  if (typeof window === "undefined") return;
+export type AttemptSyncResult = {
+  ok: boolean;
+  status: "synced" | "network_queued" | "server_queued" | "unauthorized" | "unauthorized_paused";
+};
+
+export async function syncAttemptToServer(payload: AttemptPayload): Promise<AttemptSyncResult> {
+  if (typeof window === "undefined") {
+    return { ok: false, status: "network_queued" };
+  }
+
+  if (attemptSyncUnauthorized) {
+    queueOfflineAttempt(payload, "paused");
+    return { ok: false, status: "unauthorized_paused" };
+  }
+
   try {
     const response = await fetch("/api/attempts", {
       method: "POST",
@@ -68,12 +119,24 @@ export async function syncAttemptToServer(payload: AttemptPayload): Promise<void
       body: JSON.stringify(payload),
       credentials: "include",
     });
-    if (!response.ok && process.env.NODE_ENV !== "production") {
-      console.error("Attempt submission failed", await response.text());
+
+    if (response.ok) {
+      return { ok: true, status: "synced" };
     }
-  } catch (error) {
+
+    if (response.status === 401 || response.status === 403) {
+      attemptSyncUnauthorized = true;
+      queueOfflineAttempt(payload, "unauthorized");
+      return { ok: false, status: "unauthorized" };
+    }
+
+    queueOfflineAttempt(payload, "server");
     if (process.env.NODE_ENV !== "production") {
-      console.error("Attempt submission failed", error);
+      console.warn("Attempt submission queued", response.status);
     }
+    return { ok: false, status: "server_queued" };
+  } catch {
+    queueOfflineAttempt(payload, "network");
+    return { ok: false, status: "network_queued" };
   }
 }

@@ -341,9 +341,17 @@ function normalizeVisuals(input: {
 }): LessonVisuals {
   const { item, questionType, learningFocus, question, correctAnswer, scaffoldVisual } = input;
   const rawType = text(item.visualType).toLowerCase();
-  const resolvedType = rawType
+  const validRawType = rawType && ["none", "diagram", "formula_card", "passage", "chart", "table"].includes(rawType)
     ? (rawType as LessonVisualType)
-    : scaffoldVisual?.type ?? (questionType === "reading" ? "passage" : questionType === "math" ? "formula_card" : "none");
+    : null;
+  const explicitVisualContent = Boolean(validRawType)
+    || Boolean(text(item.visualPrompt))
+    || Boolean(text(item.visualAltText))
+    || textArray(item.visualBody).length > 0
+    || Boolean(item.visualRequired);
+  const resolvedType = scaffoldVisual?.type
+    ?? validRawType
+    ?? (explicitVisualContent ? (questionType === "reading" ? "passage" : "formula_card") : "none");
   const title = firstText(item.visualTitle, scaffoldVisual?.title, resolvedType === "passage" ? "Passage support" : "Visual support");
   const altText = firstText(item.visualAltText, scaffoldVisual?.altText, item.visualPrompt, question || learningFocus || "Question support");
   const prompt = firstText(item.visualPrompt, scaffoldVisual?.body?.[0], learningFocus || question || altText);
@@ -356,7 +364,7 @@ function normalizeVisuals(input: {
         : [];
 
   return {
-    required: Boolean(item.visualRequired) || resolvedType !== "none" || Boolean(scaffoldVisual),
+    required: Boolean(item.visualRequired) || Boolean(scaffoldVisual) || explicitVisualContent,
     type: resolvedType,
     title,
     altText,

@@ -93,3 +93,18 @@ test("normalizes fallback-style content and fills safe defaults", () => {
   assert.equal(items[1]?.questionType, "spelling");
   assert.equal(items[1]?.learningFocus.length > 0, true);
 });
+
+test("does not force visual-required for generic maths items", () => {
+  const items = normalizeLessonContentItems([
+    {
+      id: "math-generic-1",
+      prompt: "9 + 4",
+      answer: 13,
+      options: [12, 13, 14],
+    },
+  ], { contentType: "math", subject: "Maths" });
+
+  const item = first(items);
+  assert.equal(item.visuals.required, false);
+  assert.equal(item.visuals.type, "none");
+});
