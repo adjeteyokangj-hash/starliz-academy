@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { refreshAuthSession } from "@/lib/refresh_client";
 
 const KEEP_ALIVE_MS = 2 * 60 * 1000;
 
@@ -15,11 +16,10 @@ export default function ParentSessionKeepAlive() {
       if (!mounted || runningRef.current) return;
       runningRef.current = true;
       try {
-        await fetch("/api/auth/refresh", {
-          method: "POST",
-          credentials: "include",
-          cache: "no-store",
-        });
+        const refreshed = await refreshAuthSession({ retryOnce: true });
+        if (!refreshed.ok) {
+          return;
+        }
 
         if (!pinRefreshDisabledRef.current) {
           const pinResponse = await fetch("/api/pin/refresh", {

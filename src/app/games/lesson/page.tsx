@@ -90,6 +90,8 @@ type WarmupMood = "happy" | "excited" | "tired" | "sad" | "not_well" | "nervous"
 type WarmupLevel = "low" | "medium" | "high";
 type SupportLevel = "standard" | "extra" | "challenge";
 type SpeechButtonState = "idle" | "listening" | "try_again";
+type LessonPhase = "warmup" | "lesson" | "review" | "boss_battle" | "complete";
+type BossBattleStage = "transition" | "battle" | "result";
 
 type BrowserSpeechRecognition = {
   lang: string;
@@ -124,6 +126,7 @@ type WarmupResult = {
 
 type LessonSessionSnapshot = {
   assignmentId: string;
+  lessonPhase: LessonPhase;
   completed?: boolean;
   started: boolean;
   welcomeVoiceStarted: boolean;
@@ -173,12 +176,146 @@ type LessonSessionSnapshot = {
   engagementLevel: "low" | "steady" | "high";
   currentItemSnapshot: LessonItem | null;
   rewardsEarned: ProgressSaveResponse["rewards"] | null;
+  bossStage: BossBattleStage;
+  bossQuestions: BossQuestion[];
+  bossQuestionIndex: number;
+  bossCorrectAnswers: number;
+  bossHeartsLeft: number;
+  bossAnswer: string;
+  bossQuestionMisses: Record<string, number>;
+  bossResult: BossResult | null;
   timeSpentSeconds: number;
   savedAt: string;
 };
 
+type BossQuestion = {
+  id: string;
+  slot: "warmup" | "focus" | "weak" | "mixed" | "final";
+  slotLabel: string;
+  item: LessonItem;
+  section: "spelling" | "math" | "reading";
+};
+
+type BossResult = {
+  win: boolean;
+  perfectWin: boolean;
+  rewards: {
+    xpEarned: number;
+    coinsEarned: number;
+    starsEarned: number;
+  };
+  badge: string | null;
+};
+
+type BossCompletePayload = {
+  ok?: boolean;
+  alreadyClaimed?: boolean;
+  rewards?: {
+    xpEarned: number;
+    coinsEarned: number;
+    starsEarned: number;
+  };
+  win?: boolean;
+  perfectWin?: boolean;
+  badge?: string | null;
+  error?: string;
+};
+
 function lessonSessionKey(assignmentId: string) {
   return `starliz_lesson_${assignmentId}`;
+}
+
+function toBossQuestionId(item: LessonItem, index: number): string {
+  const id = String(item.id ?? "").trim();
+  if (id) return id;
+  return `lesson-item-${index}`;
+}
+
+function pickBossAnswer(item: LessonItem): string {
+  return getAnswer(item);
+}
+
+function buildBossChallengeItem(section: "spelling" | "math" | "reading", slot: BossQuestion["slot"], source: LessonItem): LessonItem {
+  if (section === "spelling") {
+    const sourceAnswer = pickBossAnswer(source).toLowerCase();
+    if (sourceAnswer.length === 1) {
+      const letter = ["m", "s", "t", "c", "d", "a"].find((entry) => entry !== sourceAnswer) ?? "m";
+      const upper = letter.toUpperCase();
+      return {
+        id: `boss-letter-${slot}`,
+        type: "spelling",
+        word: letter,
+        answer: letter,
+        prompt: `Tap the letter ${upper}`,
+        options: [upper, "A", "S", "M"].filter((value, index, array) => array.indexOf(value) === index),
+      } as unknown as LessonItem;
+    }
+
+    const longerWords = ["clock", "storm", "blend", "crust", "flight", "throne", "sprint", "bread"];
+    const sourceLen = sourceAnswer.length;
+    const scaledPool = longerWords.filter((word) => word.length >= Math.max(sourceLen, 4));
+    const word = scaledPool[0] ?? "blend";
+    return {
+      id: `boss-word-${slot}`,
+      type: "spelling",
+      word,
+      answer: word,
+      prompt: `Spell the word ${word}`,
+      options: [word, word.slice(0, -1) + "s", word[0] + "a" + word.slice(2), word.split("").reverse().join("")]
+        .filter((value, index, array) => array.indexOf(value) === index)
+        .slice(0, 4),
+    } as unknown as LessonItem;
+  }
+
+  if (section === "math") {
+    const sourcePrompt = getPrompt(source, "math");
+    const match = sourcePrompt.match(/(\d+)\s*([+\-x*])\s*(\d+)/i);
+    const left = match ? Math.min(20, Number(match[1]) + 3) : 7;
+    const operator = match ? match[2] : "+";
+    const right = match ? Math.min(12, Number(match[3]) + 2) : 5;
+    const answerValue = operator === "-"
+      ? left - right
+      : operator.toLowerCase() === "x" || operator === "*"
+        ? left * right
+        : left + right;
+    return {
+      id: `boss-math-${slot}`,
+      type: "math",
+      prompt: `What is ${left} ${operator} ${right}?`,
+      answer: String(answerValue),
+      options: [String(answerValue), String(answerValue + 2), String(Math.max(0, answerValue - 2)), String(answerValue + 1)]
+        .filter((value, index, array) => array.indexOf(value) === index)
+        .slice(0, 4),
+    } as unknown as LessonItem;
+  }
+
+  if (slot === "mixed") {
+    return {
+      id: "boss-reading-mixed",
+      type: "reading",
+      passage: "Sam packed a red ball, a blue hat, and a green book for the park.",
+      prompt: "What did Sam pack for the park?",
+      answer: "A red ball, a blue hat, and a green book",
+      options: [
+        "A red ball, a blue hat, and a green book",
+        "Only a green book",
+        "A yellow kite and a snack",
+      ],
+    } as unknown as LessonItem;
+  }
+
+  return {
+    id: "boss-reading-final",
+    type: "reading",
+    passage: "Mina read three pages before dinner and two pages after dinner.",
+    prompt: "How many pages did Mina read in total?",
+    answer: "5",
+    options: ["5", "3", "2"],
+  } as unknown as LessonItem;
+}
+
+function heartsLabel(value: number): string {
+  return Array.from({ length: 3 }, (_, index) => (index < value ? "❤️" : "🖤")).join(" ");
 }
 
 const LESSON_VOICE_KEY = "lessonVoiceEnabled";
@@ -357,6 +494,8 @@ export default function DailyLessonGamePage() {
   const searchParams = useSearchParams();
   const assignmentId = searchParams.get("assignmentId");
   const interventionEnabled = searchParams.get("intervention") === "1";
+  const requestedPhase = searchParams.get("phase");
+  const requestedBossPhase = requestedPhase === "boss_battle";
   const interventionSkill = searchParams.get("skill");
   const interventionSupportSkill = searchParams.get("supportSkill");
   const interventionAccuracy = Number(searchParams.get("accuracy") ?? "");
@@ -371,12 +510,14 @@ export default function DailyLessonGamePage() {
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const recognitionStoppingRef = useRef(false);
+  const bossEntryHandledRef = useRef(false);
   const [profile, setProfile] = useState<ChildProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [assignment, setAssignment] = useState<LessonAssignment | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionHydrated, setSessionHydrated] = useState(false);
   const [error, setError] = useState("");
+  const [lessonPhase, setLessonPhase] = useState<LessonPhase>(requestedBossPhase ? "boss_battle" : "warmup");
   const [started, setStarted] = useState(false);
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState("");
@@ -400,6 +541,7 @@ export default function DailyLessonGamePage() {
   const [feedbackMode, setFeedbackMode] = useState<FeedbackMode>("none");
   const [attemptCount, setAttemptCount] = useState(0);
   const [coachOpen, setCoachOpen] = useState(false);
+  const [coachOpenCount, setCoachOpenCount] = useState(0);
   const [reviewQueue, setReviewQueue] = useState<number[]>([]);
   const [isReviewRound, setIsReviewRound] = useState(false);
   const [showReviewIntro, setShowReviewIntro] = useState(false);
@@ -434,6 +576,15 @@ export default function DailyLessonGamePage() {
   const [welcomeVoiceStarted, setWelcomeVoiceStarted] = useState(false);
   const [welcomeSpeechFinished, setWelcomeSpeechFinished] = useState(false);
   const [lastWarmupMemory, setLastWarmupMemory] = useState<{ mood: WarmupMood; date: string } | null>(null);
+  const [bossStage, setBossStage] = useState<BossBattleStage>("transition");
+  const [bossQuestions, setBossQuestions] = useState<BossQuestion[]>([]);
+  const [bossQuestionIndex, setBossQuestionIndex] = useState(0);
+  const [bossCorrectAnswers, setBossCorrectAnswers] = useState(0);
+  const [bossHeartsLeft, setBossHeartsLeft] = useState(3);
+  const [bossAnswer, setBossAnswer] = useState("");
+  const [bossQuestionMisses, setBossQuestionMisses] = useState<Record<string, number>>({});
+  const [bossSubmitting, setBossSubmitting] = useState(false);
+  const [bossResult, setBossResult] = useState<BossResult | null>(null);
 
   // ── Runtime state machine (additive: runs in parallel, never blocks lesson logic) ──
   const [tutorEngine] = useState(() =>
@@ -580,6 +731,7 @@ export default function DailyLessonGamePage() {
       .catch(() => undefined);
   }, [assignmentId, online]);
   const lessonItems = useMemo(() => activeAssignment?.items ?? [], [activeAssignment]);
+
   const currentItem = lessonItems[index] ?? null;
   const currentSection = currentItem ? getItemSection(currentItem, activeAssignment?.subject ?? "spelling") : "spelling";
   const currentSubjectBadge = lessonSubjectBadge(activeAssignment?.subject);
@@ -593,8 +745,51 @@ export default function DailyLessonGamePage() {
     : null;
   const resolvedQuestionVisual = questionFormula?.visual ?? fallbackVisualFromItem(currentItem);
   const currentQuestionOutcome = currentItem ? questionAttemptSummary[questionStatusKey(currentItem, index)] : null;
+  const tutorSupportLevel = useMemo(() => {
+    let nextLevel = 1;
+    if (attemptCount >= 1 || coachOpenCount >= 1 || speechAttempts >= 1) nextLevel = 2;
+    if (attemptCount >= 2 || coachOpenCount >= 2) nextLevel = 3;
+    if (attemptCount >= 2 && speechAttempts >= 1) nextLevel = 4;
+    if (feedbackMode === "retry" || feedbackMode === "skip_choice") nextLevel = Math.max(nextLevel, 5);
+    if (warmupResult?.confidence === "low" || warmupResult?.mood === "confused") nextLevel = Math.max(nextLevel, 6);
+    if (speechLastMatchResult === "no-speech") nextLevel = Math.max(nextLevel, 7);
+    if (attemptCount >= 3) nextLevel = Math.max(nextLevel, 8);
+    if (attemptCount >= 3 && speechAttempts >= 2) nextLevel = 9;
+    return nextLevel;
+  }, [attemptCount, coachOpenCount, feedbackMode, speechAttempts, speechLastMatchResult, warmupResult?.confidence, warmupResult?.mood]);
+  const simplifiedQuestion = currentItem
+    ? [
+      "Given:",
+      ...(questionFormula?.keyInformation?.length
+        ? questionFormula.keyInformation
+        : [getPrompt(currentItem, currentSection)]),
+      "Need:",
+      "Find the missing answer.",
+    ].join("\n")
+    : "";
+  const guidedQuestion = currentItem
+    ? [
+      "Which value is given?",
+      "What are we trying to find?",
+      "Which formula or rule fits this question?",
+    ].join("\n")
+    : "";
+  const recoveryPrompt = currentItem
+    ? [
+      "Recovery mode:",
+      "1) Identify one key value.",
+      "2) Match it to the formula/rule.",
+      "3) Solve one step only.",
+    ].join("\n")
+    : "";
   const coachPromptText = currentItem
-    ? buildCoachSupportMessage({ section: currentSection, item: currentItem, prompt: getPrompt(currentItem, currentSection) })
+    ? tutorSupportLevel >= 8
+      ? `${recoveryPrompt}\n\n${buildCoachSupportMessage({ section: currentSection, item: currentItem, prompt: getPrompt(currentItem, currentSection) })}`
+      : tutorSupportLevel >= 5
+        ? `${guidedQuestion}\n\n${buildCoachSupportMessage({ section: currentSection, item: currentItem, prompt: getPrompt(currentItem, currentSection) })}`
+        : tutorSupportLevel >= 2
+          ? `${simplifiedQuestion}\n\n${buildCoachSupportMessage({ section: currentSection, item: currentItem, prompt: getPrompt(currentItem, currentSection) })}`
+          : buildCoachSupportMessage({ section: currentSection, item: currentItem, prompt: getPrompt(currentItem, currentSection) })
     : "";
   const childLevel = levelFromXp(profile?.xp ?? 0);
   const childName = useMemo(() => {
@@ -912,6 +1107,7 @@ export default function DailyLessonGamePage() {
         }
 
         setStarted(Boolean(saved.started));
+        setLessonPhase(saved.lessonPhase ?? "warmup");
         setWelcomeVoiceStarted(Boolean(saved.welcomeVoiceStarted));
         setWelcomeSpeechFinished(Boolean(saved.welcomeSpeechFinished));
         startedAtRef.current = performance.now();
@@ -945,6 +1141,14 @@ export default function DailyLessonGamePage() {
         setWarmupPrompt(String(saved.warmupPrompt ?? "How are you feeling today?"));
         setWarmupPhase(saved.warmupPhase ?? "idle");
         setWarmupStatus(String(saved.warmupStatus ?? ""));
+        setBossStage(saved.bossStage ?? "transition");
+        setBossQuestions(Array.isArray(saved.bossQuestions) ? saved.bossQuestions : []);
+        setBossQuestionIndex(Number(saved.bossQuestionIndex ?? 0));
+        setBossCorrectAnswers(Number(saved.bossCorrectAnswers ?? 0));
+        setBossHeartsLeft(Number(saved.bossHeartsLeft ?? 3));
+        setBossAnswer(String(saved.bossAnswer ?? ""));
+        setBossQuestionMisses(saved.bossQuestionMisses && typeof saved.bossQuestionMisses === "object" ? saved.bossQuestionMisses : {});
+        setBossResult(saved.bossResult ?? null);
         const localVoiceOverride = window.localStorage.getItem(LESSON_VOICE_KEY);
         setVoiceEnabled(localVoiceOverride === "false" ? false : (saved.voiceEnabled ?? true));
         setVoiceLine(decodeLessonText(String(saved.tutorMessage ?? saved.lastTutorMessage ?? "I am ready when you are.")));
@@ -971,6 +1175,7 @@ export default function DailyLessonGamePage() {
       : "steady";
     const snapshot: LessonSessionSnapshot = {
       assignmentId,
+      lessonPhase,
       started,
       welcomeVoiceStarted,
       welcomeSpeechFinished,
@@ -1019,6 +1224,14 @@ export default function DailyLessonGamePage() {
       engagementLevel,
       currentItemSnapshot: currentItem,
       rewardsEarned: saveResult?.rewards ?? null,
+      bossStage,
+      bossQuestions,
+      bossQuestionIndex,
+      bossCorrectAnswers,
+      bossHeartsLeft,
+      bossAnswer,
+      bossQuestionMisses,
+      bossResult,
       timeSpentSeconds: startedAtRef.current ? Math.round((performance.now() - startedAtRef.current) / 1000) : 0,
       savedAt: new Date().toISOString(),
     };
@@ -1031,6 +1244,14 @@ export default function DailyLessonGamePage() {
     activeAssignment,
     answer,
     assignmentId,
+    bossAnswer,
+    bossCorrectAnswers,
+    bossHeartsLeft,
+    bossQuestionIndex,
+    bossQuestionMisses,
+    bossQuestions,
+    bossResult,
+    bossStage,
     attemptCount,
     completed,
     currentItem,
@@ -1040,6 +1261,7 @@ export default function DailyLessonGamePage() {
     index,
     isReviewRound,
     lastTutorMessage,
+    lessonPhase,
     lessonMasteryReady,
     lessonStage,
     memoryFeedback,
@@ -1124,6 +1346,7 @@ export default function DailyLessonGamePage() {
   function goToQuestion(nextIndex: number) {
     setIndex(nextIndex);
     setAttemptCount(0);
+    setCoachOpenCount(0);
     setCoachOpen(false);
     setFeedback("");
     setFeedbackMode("none");
@@ -1178,9 +1401,186 @@ export default function DailyLessonGamePage() {
     return `Level ${childLevel} • Challenge`;
   }
 
+  const buildBossQuestionsFromRuntime = useCallback((): BossQuestion[] => {
+    const used = new Set<string>();
+    const weakIndexes = Object.entries(questionAttemptSummary)
+      .filter(([, summary]) => summary.outcome === "final_wrong" || summary.score === 0)
+      .map(([key]) => lessonItems.findIndex((item, itemIndex) => questionStatusKey(item, itemIndex) === key))
+      .filter((itemIndex) => itemIndex >= 0);
+    const uniqueWeakIndexes = Array.from(new Set(weakIndexes));
+
+    const pick = (
+      slot: BossQuestion["slot"],
+      slotLabel: string,
+      predicate: (item: LessonItem, itemIndex: number) => boolean,
+    ): BossQuestion => {
+      let selectedIndex = -1;
+      for (let itemIndex = 0; itemIndex < lessonItems.length; itemIndex += 1) {
+        const item = lessonItems[itemIndex];
+        const candidateId = toBossQuestionId(item, itemIndex);
+        if (used.has(candidateId)) continue;
+        if (!predicate(item, itemIndex)) continue;
+        selectedIndex = itemIndex;
+        break;
+      }
+
+      if (selectedIndex < 0) {
+        for (let itemIndex = 0; itemIndex < lessonItems.length; itemIndex += 1) {
+          const item = lessonItems[itemIndex];
+          const candidateId = toBossQuestionId(item, itemIndex);
+          if (used.has(candidateId)) continue;
+          selectedIndex = itemIndex;
+          break;
+        }
+      }
+
+      const source = selectedIndex >= 0 ? lessonItems[selectedIndex] : (lessonItems[0] ?? null);
+      const sourceId = source ? toBossQuestionId(source, Math.max(0, selectedIndex)) : `${slot}-fallback`;
+      if (source) used.add(sourceId);
+
+      const sourceItem = source ?? {
+        id: `${slot}-fallback`,
+        type: "spelling",
+        word: "cat",
+        answer: "cat",
+        prompt: "Spell the word cat",
+        options: ["cat", "cot", "cut"],
+      };
+      const sourceSection = getItemSection(sourceItem, activeAssignment?.subject ?? "spelling");
+      const item = buildBossChallengeItem(sourceSection, slot, sourceItem);
+
+      return {
+        id: `${slot}-${sourceId}`,
+        slot,
+        slotLabel,
+        item,
+        section: sourceSection,
+      };
+    };
+
+    return [
+      pick("warmup", "Question 1/5 • Warm-up", (_, itemIndex) => !uniqueWeakIndexes.includes(itemIndex)),
+      pick("focus", "Question 2/5 • Focus Skill", (item) => {
+        const skill = String(item.skillFocus ?? "").toLowerCase();
+        return Boolean(activeAssignment?.skillFocus) && skill.includes(String(activeAssignment?.skillFocus ?? "").toLowerCase());
+      }),
+      pick("weak", "Question 3/5 • Weak Area", (_, itemIndex) => uniqueWeakIndexes.includes(itemIndex)),
+      pick("mixed", "Question 4/5 • Mixed Review", (item) => {
+        const section = getItemSection(item, activeAssignment?.subject ?? "spelling");
+        return section === "math" || section === "reading";
+      }),
+      pick("final", "Question 5/5 • Final Boss", () => true),
+    ];
+  }, [activeAssignment?.skillFocus, activeAssignment?.subject, lessonItems, questionAttemptSummary]);
+
+  function activateBossBattle() {
+    const questions = buildBossQuestionsFromRuntime();
+    setBossQuestions(questions);
+    setBossQuestionIndex(0);
+    setBossCorrectAnswers(0);
+    setBossHeartsLeft(3);
+    setBossAnswer("");
+    setBossQuestionMisses({});
+    setBossResult(null);
+    setBossStage("transition");
+    setLessonPhase("boss_battle");
+    setTutorState("thinking");
+  }
+
+  useEffect(() => {
+    if (!requestedBossPhase || bossEntryHandledRef.current) return;
+    if (!activeAssignment || lessonItems.length === 0) return;
+    bossEntryHandledRef.current = true;
+    const questions = buildBossQuestionsFromRuntime();
+    const timer = window.setTimeout(() => {
+      setStarted(true);
+      setCompleted(true);
+      setLessonMasteryReady(true);
+      setBossQuestions(questions);
+      setBossQuestionIndex(0);
+      setBossCorrectAnswers(0);
+      setBossHeartsLeft(3);
+      setBossAnswer("");
+      setBossQuestionMisses({});
+      setBossResult(null);
+      setBossStage("transition");
+      setLessonPhase("boss_battle");
+      setTutorState("thinking");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeAssignment, buildBossQuestionsFromRuntime, lessonItems.length, requestedBossPhase]);
+
+  async function completeBossBattle(finalCorrect: number, finalHearts: number, answeredCount: number) {
+    setBossSubmitting(true);
+    try {
+      const response = await fetch("/api/student/boss-battle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          correctAnswers: finalCorrect,
+          heartsLeft: finalHearts,
+          questionsAnswered: answeredCount,
+        }),
+      });
+      const payload = (await response.json()) as BossCompletePayload;
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to complete Boss Battle.");
+      }
+
+      setBossResult({
+        win: Boolean(payload.win),
+        perfectWin: Boolean(payload.perfectWin),
+        rewards: {
+          xpEarned: payload.rewards?.xpEarned ?? 0,
+          coinsEarned: payload.rewards?.coinsEarned ?? 0,
+          starsEarned: payload.rewards?.starsEarned ?? 0,
+        },
+        badge: payload.badge ?? null,
+      });
+      setBossStage("result");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to complete Boss Battle.");
+    } finally {
+      setBossSubmitting(false);
+    }
+  }
+
+  function submitBossAnswer(selected?: string) {
+    const currentQuestion = bossQuestions[bossQuestionIndex] ?? null;
+    if (!currentQuestion) return;
+    const expected = pickBossAnswer(currentQuestion.item);
+    const given = (selected ?? bossAnswer).trim();
+    if (!given) return;
+
+    const correct = normalise(given) === normalise(expected);
+    const nextCorrectAnswers = correct ? bossCorrectAnswers + 1 : bossCorrectAnswers;
+    const nextHeartsLeft = correct ? bossHeartsLeft : Math.max(0, bossHeartsLeft - 1);
+    const nextIndex = bossQuestionIndex + 1;
+    const answeredCount = nextIndex;
+    const currentQuestionId = currentQuestion.id;
+
+    if (!correct) {
+      setBossQuestionMisses((current) => ({ ...current, [currentQuestionId]: (current[currentQuestionId] ?? 0) + 1 }));
+    }
+
+    setBossCorrectAnswers(nextCorrectAnswers);
+    setBossHeartsLeft(nextHeartsLeft);
+    setBossAnswer("");
+
+    const isOver = nextIndex >= bossQuestions.length || nextHeartsLeft <= 0;
+    if (isOver) {
+      void completeBossBattle(nextCorrectAnswers, nextHeartsLeft, answeredCount);
+      return;
+    }
+
+    setBossQuestionIndex(nextIndex);
+  }
+
   function startReviewRoundIfNeeded(): boolean {
     if (!reviewQueue.length) return false;
     tutorEngine.dispatch({ name: "REVIEW_TRIGGERED", data: { reviewQueue: [...reviewQueue] } });
+    setLessonPhase("review");
     setShowReviewIntro(true);
     return true;
   }
@@ -1189,6 +1589,7 @@ export default function DailyLessonGamePage() {
     markActivity();
     if (!reviewQueue.length) return;
     setShowReviewIntro(false);
+    setLessonPhase("review");
     setIsReviewRound(true);
     tutorEngine.dispatch({ name: "REVIEW_BEGAN", data: { itemCount: reviewQueue.length } });
     setReviewPointer(0);
@@ -1200,6 +1601,7 @@ export default function DailyLessonGamePage() {
   function finishLesson(nextRecords: AnswerRecord[]) {
     markActivity();
     setCompleted(true);
+    setLessonPhase("complete");
     const finalScore = computeAttemptWeightedScore(questionAttemptSummary);
     tutorEngine.dispatch({ name: "LESSON_COMPLETED", data: { finalScore, masteryReady: lessonMasteryReady } });
     const line = interventionMission
@@ -1496,6 +1898,7 @@ export default function DailyLessonGamePage() {
       return;
     }
     setStarted(true);
+    setLessonPhase("lesson");
     startedAtRef.current = startedAtMs;
     const firstIndex = findGentleStartIndex();
     tutorEngine.dispatch({ name: "LESSON_STARTED", data: { startIndex: firstIndex, gentleStart: needsGentleStart } });
@@ -1760,7 +2163,6 @@ export default function DailyLessonGamePage() {
           adaptation: warmupResult.adaptation,
         }
         : null,
-      // eslint-disable-next-line react-hooks/purity
       timeSpent: Math.round((performance.now() - startedAtRef.current) / 1000),
     });
 
@@ -2282,6 +2684,159 @@ export default function DailyLessonGamePage() {
                 Continue to Results
               </button>
             </div>
+          ) : lessonPhase === "boss_battle" ? (
+            <div className="mt-8 rounded-3xl border border-rose-200 bg-gradient-to-br from-rose-50 via-orange-50 to-white p-8">
+              {bossStage === "transition" ? (
+                <div className="text-center">
+                  <p className="text-sm font-black uppercase tracking-[0.25em] text-rose-700">Boss Battle Activated</p>
+                  <h2 className="mt-3 text-4xl font-black text-slate-950">Mastery Mode: Final Challenge</h2>
+                  <p className="mx-auto mt-3 max-w-2xl text-slate-700">
+                    You completed your lesson. This final phase targets your weak areas with mastery-pressure questions.
+                  </p>
+                  <div className="mx-auto mt-5 grid max-w-2xl gap-3 text-left sm:grid-cols-2">
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">Strengths</p>
+                      <p className="mt-2 text-sm font-semibold text-slate-700">{correctCount} strong answers in lesson phase.</p>
+                    </div>
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Mastery Warning</p>
+                      <p className="mt-2 text-sm font-semibold text-slate-700">Hints are shorter. Accuracy expectations are higher.</p>
+                    </div>
+                  </div>
+                  <p className="mt-5 text-sm font-bold text-rose-800">You have this. Stay calm, think clearly, and finish strong.</p>
+                  <button
+                    type="button"
+                    onClick={() => setBossStage("battle")}
+                    className="mt-6 rounded-2xl bg-rose-600 px-6 py-4 font-black text-white hover:bg-rose-500"
+                  >
+                    Start Boss Battle
+                  </button>
+                </div>
+              ) : null}
+
+              {bossStage === "battle" ? (() => {
+                const currentBossQuestion = bossQuestions[bossQuestionIndex] ?? null;
+                if (!currentBossQuestion) {
+                  return (
+                    <div className="text-center">
+                      <p className="text-sm font-bold text-rose-700">No boss questions available.</p>
+                      <button
+                        type="button"
+                        onClick={() => setLessonPhase("complete")}
+                        className="mt-4 rounded-2xl bg-indigo-600 px-5 py-3 font-black text-white"
+                      >
+                        Back to Results
+                      </button>
+                    </div>
+                  );
+                }
+
+                const options = getOptions(currentBossQuestion.item);
+                const misses = bossQuestionMisses[currentBossQuestion.id] ?? 0;
+                const bossHp = Math.max(0, 100 - bossCorrectAnswers * 20);
+                const tutorLine = misses >= 2
+                  ? "Recovery mode: identify the key value first, then answer in one step."
+                  : misses === 1
+                    ? "Good effort. One short hint: focus on what the question is asking for."
+                    : "Mastery mode: quick thinking, clear steps, confident answer.";
+
+                return (
+                  <div>
+                    <p className="text-sm font-black uppercase tracking-[0.2em] text-rose-700">Boss Battle</p>
+                    <h2 className="mt-2 text-3xl font-black text-slate-950">{currentBossQuestion.slotLabel}</h2>
+                    <div className="mt-4 rounded-2xl bg-white p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-sm font-black text-slate-700">Boss HP: {bossHp}%</p>
+                        <p className="text-sm font-black text-slate-700">Hearts: {heartsLabel(bossHeartsLeft)}</p>
+                      </div>
+                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-200">
+                        <div className="h-3 rounded-full bg-gradient-to-r from-rose-600 to-orange-400" style={{ width: `${bossHp}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl border border-rose-200 bg-white p-5">
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">Tutor</p>
+                      <p className="mt-2 text-sm font-bold text-slate-700">{tutorLine}</p>
+                      {currentBossQuestion.section === "reading" && currentBossQuestion.item.passage ? (
+                        <div className="mt-4 rounded-2xl bg-slate-50 p-4 italic text-slate-700">{String(currentBossQuestion.item.passage)}</div>
+                      ) : null}
+                      <h3 className="mt-4 text-2xl font-black text-slate-950">{getPrompt(currentBossQuestion.item, currentBossQuestion.section)}</h3>
+
+                      {options.length > 0 ? (
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                          {options.map((option) => (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => submitBossAnswer(option)}
+                              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left font-bold text-slate-800 hover:bg-slate-100"
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                          <input
+                            value={bossAnswer}
+                            onChange={(event) => setBossAnswer(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" && bossAnswer.trim()) submitBossAnswer();
+                            }}
+                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-lg font-bold outline-none ring-indigo-400 focus:ring-2"
+                            placeholder="Type your answer"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => submitBossAnswer()}
+                            disabled={!bossAnswer.trim()}
+                            className="rounded-2xl bg-indigo-600 px-6 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Submit
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })() : null}
+
+              {bossStage === "result" && bossResult ? (
+                <div className="text-center">
+                  <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-600">
+                    {bossResult.win ? "Boss Defeated" : "Boss Battle Complete"}
+                  </p>
+                  <h2 className="mt-3 text-5xl font-black text-slate-950">
+                    {bossResult.win ? "Victory!" : "Strong effort!"}
+                  </h2>
+                  <p className="mt-3 text-lg font-bold text-slate-700">
+                    {bossResult.win ? "You handled mastery pressure brilliantly." : "You pushed through the final challenge and learned more."}
+                  </p>
+                  <div className="mx-auto mt-6 grid max-w-xl gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl bg-indigo-50 p-4 font-black text-indigo-700">+{bossResult.rewards.xpEarned} XP</div>
+                    <div className="rounded-2xl bg-amber-50 p-4 font-black text-amber-700">+{bossResult.rewards.coinsEarned} Coins</div>
+                    <div className="rounded-2xl bg-rose-50 p-4 font-black text-rose-700">+{bossResult.rewards.starsEarned} Stars</div>
+                  </div>
+                  {bossResult.badge ? (
+                    <p className="mt-4 rounded-2xl bg-violet-50 px-4 py-3 font-black text-violet-700">+1 rare badge unlocked: Boss Slayer</p>
+                  ) : null}
+                  <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setLessonPhase("complete")}
+                      className="rounded-2xl bg-slate-200 px-5 py-3 font-black text-slate-800 hover:bg-slate-300"
+                    >
+                      Review Results
+                    </button>
+                    <Link href="/student/dashboard" className="rounded-2xl bg-indigo-600 px-6 py-3 font-black text-white">
+                      Continue to Dashboard
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
+
+              {bossSubmitting ? <p className="mt-4 text-sm text-slate-500">Saving battle rewards...</p> : null}
+            </div>
           ) : completed ? (
             <div className="mt-8 rounded-3xl bg-slate-50 p-8 text-center">
               <p className="text-sm font-black uppercase tracking-[0.25em] text-emerald-600">{interventionMission ? "Mission Complete" : "Lesson Complete"}</p>
@@ -2317,9 +2872,14 @@ export default function DailyLessonGamePage() {
               {lessonMasteryReady ? (
                 <>
                   <p className="mt-4 text-sm font-black text-rose-700">{"You've mastered today's lesson. Ready to challenge the Boss?"}</p>
-                  <Link href="/games/boss-battle" className="mt-3 inline-flex rounded-2xl bg-rose-600 px-6 py-4 font-black text-white">
-                    Start Boss Battle
-                  </Link>
+                  <button
+                    type="button"
+                    onClick={activateBossBattle}
+                    disabled={saving || bossSubmitting}
+                    className="mt-3 inline-flex rounded-2xl bg-rose-600 px-6 py-4 font-black text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {saving ? "Finalizing lesson..." : "Start Boss Battle"}
+                  </button>
                 </>
               ) : (
                 <button type="button" disabled className="mt-3 inline-flex cursor-not-allowed rounded-2xl bg-amber-200 px-6 py-4 font-black text-amber-800">
@@ -2388,10 +2948,16 @@ export default function DailyLessonGamePage() {
                 visualRequiredSlot={null}
                 coachButtonLabel={currentSection === "math" ? "Coach me" : "Help me understand"}
                 coachOpen={coachOpen}
-                onToggleCoach={hasMultipleChoiceOptions ? () => setCoachOpen((current) => !current) : undefined}
+                onToggleCoach={hasMultipleChoiceOptions ? () => {
+                  setCoachOpen((current) => {
+                    const next = !current;
+                    if (next) setCoachOpenCount((count) => count + 1);
+                    return next;
+                  });
+                } : undefined}
                 coachPanel={hasMultipleChoiceOptions ? (
                   <div className="rounded-3xl border border-cyan-200 bg-cyan-50 p-4 text-sm font-semibold text-cyan-950">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-700">Coach me</p>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-700">Coach me • Level {tutorSupportLevel}</p>
                     <p className="mt-2 whitespace-pre-line">{coachPromptText}</p>
                   </div>
                 ) : null}

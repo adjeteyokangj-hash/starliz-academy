@@ -39,6 +39,8 @@ export default function PrimaryDashboard({
   startingJourney,
   onStartJourney,
   onStartAssignment,
+  onStartBossBattle,
+  bossLaunching,
   onOpenStore,
   pendingAssignmentId,
   openingStore,
@@ -200,12 +202,17 @@ export default function PrimaryDashboard({
           ) : (
             <>
               <p className="mt-2 text-slate-700">You have unlocked the boss battle. Can you beat it?</p>
-              <a
-                href="/games/boss-battle"
+              <button
+                type="button"
+                onClick={() => {
+                  if (!onStartBossBattle) return;
+                  void onStartBossBattle();
+                }}
+                disabled={Boolean(bossLaunching) || !onStartBossBattle}
                 className="mt-4 inline-flex rounded-2xl bg-rose-500 px-5 py-3 font-black text-white hover:bg-rose-400"
               >
-                Fight Now
-              </a>
+                {bossLaunching ? "Preparing Boss Battle..." : "Fight Now"}
+              </button>
             </>
           )}
         </section>

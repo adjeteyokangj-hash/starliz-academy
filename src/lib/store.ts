@@ -471,18 +471,22 @@ export async function hydrateProfilesFromServer(): Promise<void> {
     return;
   }
 
-  const dbProfiles = payload.children.map(withDefaults);
+  const serverChildren = Array.isArray(payload.children) ? payload.children : [];
+  const serverActiveChildId = typeof payload.activeChildId === "string" || payload.activeChildId === null
+    ? payload.activeChildId
+    : null;
+  const dbProfiles = serverChildren.map(withDefaults);
   const legacy = readLegacyProfilesFromLocalStorage();
 
   if (dbProfiles.length > 0) {
-    setCache(dbProfiles, payload.activeChildId);
-    syncLegacyProfilesToLocalStorage(dbProfiles, payload.activeChildId);
+    setCache(dbProfiles, serverActiveChildId);
+    syncLegacyProfilesToLocalStorage(dbProfiles, serverActiveChildId);
     return;
   }
 
   if (!legacy.profiles.length) {
-    setCache([], payload.activeChildId);
-    syncLegacyProfilesToLocalStorage([], payload.activeChildId);
+    setCache([], serverActiveChildId);
+    syncLegacyProfilesToLocalStorage([], serverActiveChildId);
     return;
   }
 
@@ -491,7 +495,7 @@ export async function hydrateProfilesFromServer(): Promise<void> {
     mergedById.set(profile.id, withDefaults(profile));
   }
   const mergedProfiles = [...mergedById.values()];
-  const mergedActiveChildId = payload.activeChildId ?? legacy.activeProfileId ?? mergedProfiles[0]?.id ?? null;
+  const mergedActiveChildId = serverActiveChildId ?? legacy.activeProfileId ?? mergedProfiles[0]?.id ?? null;
 
   setCache(mergedProfiles, mergedActiveChildId);
 

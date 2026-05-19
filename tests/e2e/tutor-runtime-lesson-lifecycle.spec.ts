@@ -289,7 +289,7 @@ test.describe("lesson runtime lifecycle event flow", () => {
         interimResults = false;
         continuous = false;
         maxAlternatives = 1;
-        onresult: ((event: { results: Array<Array<{ transcript: string; confidence?: number }>>; timeStamp: number }) => void) | null = null;
+        onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string; confidence?: number }>>; timeStamp?: number }) => void) | null = null;
         onerror: ((event: { error?: string }) => void) | null = null;
         onend: (() => void) | null = null;
 

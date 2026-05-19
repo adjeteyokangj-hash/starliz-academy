@@ -59,6 +59,8 @@ export type DashboardProps = {
   allAssignments?: StudentAssignment[];
   onStartJourney: () => Promise<void>;
   onStartAssignment: (assignment: StudentAssignment | null) => void;
+  onStartBossBattle?: () => Promise<void>;
+  bossLaunching?: boolean;
   onOpenStore: () => void;
   pendingAssignmentId?: string | null;
   openingStore?: boolean;

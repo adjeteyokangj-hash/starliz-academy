@@ -4,9 +4,9 @@ import path from "node:path";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const RUN_ID = Date.now().toString(36);
-const PARENT_EMAIL = process.env.E2E_PARENT_EMAIL ?? `portal-parent+${RUN_ID}@starliz.dev`;
+const PARENT_EMAIL = process.env.E2E_PARENT_EMAIL ?? `portal.guardian+${RUN_ID}@gmail.com`;
 const PARENT_PASSWORD = process.env.E2E_PARENT_PASSWORD ?? "Parent#2026";
-const PARENT_NAME = process.env.E2E_PARENT_NAME ?? "Portal Parent";
+const PARENT_NAME = process.env.E2E_PARENT_NAME ?? "Olivia Thompson";
 const PARENT_CHILD_NAME = "E2E Parent Child";
 
 function resolveAuthSecret(): string {
@@ -59,11 +59,21 @@ function extractCookieValue(setCookie: string, expectedName: string): string | n
 }
 
 async function ensureParentAccount(request: APIRequestContext) {
+  const runDigits = Date.now().toString().slice(-8);
   const signupResponse = await request.post("/api/auth/signup", {
     data: {
       email: PARENT_EMAIL,
       password: PARENT_PASSWORD,
       name: PARENT_NAME,
+      phone: `+4474${runDigits}`,
+      address: {
+        addressLine1: "10 Downing Street",
+        addressLine2: "",
+        townCity: "London",
+        county: "",
+        postcode: "SW1A 2AA",
+        country: "United Kingdom",
+      },
       child: {
         name: PARENT_CHILD_NAME,
         age: 7,

@@ -41,6 +41,8 @@ export default function SecondaryDashboard({
   allAssignments,
   onStartJourney,
   onStartAssignment,
+  onStartBossBattle,
+  bossLaunching,
   pendingAssignmentId,
 }: DashboardProps) {
   const isGcse = pathway === "gcse";
@@ -330,12 +332,17 @@ export default function SecondaryDashboard({
           ) : (
             <>
               <p className="mt-2 text-sm text-slate-300">Test your skills across everything you have studied. Good luck!</p>
-              <a
-                href="/games/boss-battle"
+              <button
+                type="button"
+                onClick={() => {
+                  if (!onStartBossBattle) return;
+                  void onStartBossBattle();
+                }}
+                disabled={Boolean(bossLaunching) || !onStartBossBattle}
                 className="mt-4 inline-flex rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-slate-900 hover:bg-slate-200"
               >
-                Take Challenge
-              </a>
+                {bossLaunching ? "Preparing challenge..." : "Take Challenge"}
+              </button>
             </>
           )}
         </section>

@@ -12,6 +12,8 @@ export default function EarlyYearsDashboard({
   startingJourney,
   onStartJourney,
   onStartAssignment,
+  onStartBossBattle,
+  bossLaunching,
   onOpenStore,
 }: DashboardProps) {
   const firstAssignment = visibleAssignments[0] ?? null;
@@ -123,12 +125,17 @@ export default function EarlyYearsDashboard({
         <section className="rounded-3xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50 p-6 text-center">
           <p className="text-3xl">👾</p>
           <p className="mt-2 text-lg font-black text-slate-800">Boss Battle Unlocked!</p>
-          <a
-            href="/games/boss-battle"
+          <button
+            type="button"
+            onClick={() => {
+              if (!onStartBossBattle) return;
+              void onStartBossBattle();
+            }}
+            disabled={Boolean(bossLaunching) || !onStartBossBattle}
             className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-rose-500 px-6 py-3 font-black text-white hover:bg-rose-400"
           >
-            Fight the Boss!
-          </a>
+            {bossLaunching ? "Preparing..." : "Fight the Boss!"}
+          </button>
         </section>
       )}
     </div>

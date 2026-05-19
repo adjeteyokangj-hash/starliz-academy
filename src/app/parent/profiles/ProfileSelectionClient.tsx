@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { fetchWithRefreshRetry, refreshAuthSession } from "@/lib/refresh_client";
 
 type ParentProfilePayload = {
   parent: {
@@ -158,7 +159,7 @@ export default function ProfileSelectionClient() {
   useEffect(() => {
     void (async () => {
       try {
-        const response = await fetch("/api/parent/profiles", { credentials: "include" });
+        const response = await fetchWithRefreshRetry("/api/parent/profiles", { credentials: "include", cache: "no-store" });
         if (!response.ok) {
           setError("Could not load profiles.");
           setLoading(false);
@@ -213,7 +214,7 @@ export default function ProfileSelectionClient() {
     }, 2500);
 
     try {
-      const response = await fetch("/api/pin/verify", {
+      const response = await fetchWithRefreshRetry("/api/pin/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -249,12 +250,22 @@ export default function ProfileSelectionClient() {
     }, 2500);
 
     try {
-      const response = await fetch("/api/parent/profiles/verify-child-pin", {
+      const response = await fetchWithRefreshRetry("/api/parent/profiles/verify-child-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ childId, pin }),
       });
+
+      if (response.status === 401) {
+        const refreshed = await refreshAuthSession({ retryOnce: true });
+        if (!refreshed.ok) {
+          setChildPinError("Your session expired. Please log in again.");
+          setSubmitting(false);
+          setPendingProfileId(null);
+          return;
+        }
+      }
 
       if (!response.ok) {
         const failure = (await response.json().catch(() => null)) as { error?: string } | null;

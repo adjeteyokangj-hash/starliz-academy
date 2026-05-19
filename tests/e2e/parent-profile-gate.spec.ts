@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 
 const RUN_ID = Date.now().toString(36);
 const RUN_DIGITS = Date.now().toString().slice(-8);
-const PARENT_EMAIL = `profile-gate-parent+${RUN_ID}@starliz.dev`;
+const PARENT_EMAIL = `profile-gate-guardian+${RUN_ID}@gmail.com`;
 const PARENT_PASSWORD = "Parent#2026";
 const PARENT_NAME = "Olivia Thompson";
 const PARENT_PHONE = `+4474${RUN_DIGITS}`;

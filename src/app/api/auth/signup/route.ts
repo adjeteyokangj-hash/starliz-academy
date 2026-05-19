@@ -2,9 +2,19 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { createSessionToken, getAuthCookieName, getSessionMaxAgeSeconds, hashPassword } from "@/lib/auth";
+import {
+  createSessionToken,
+  getAccessTokenMaxAgeSeconds,
+  getAuthCookieName,
+  getChildSelectionCookieName,
+  getParentUnlockCookieName,
+  getRefreshCookieName,
+  hashPassword,
+} from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
 import { canAddSchoolStudent } from "@/lib/schools/licensing";
+import { buildDeviceFingerprint, getRefreshTokenMaxAgeSeconds, issueRefreshToken } from "@/lib/auth_sessions";
+import { getRequestIp } from "@/lib/api_guard";
 import {
   isPhoneLinkedToAnotherParent,
   normalizeUkPhone,
@@ -46,6 +56,8 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    const ip = getRequestIp(request);
+    const userAgent = request.headers.get("user-agent") ?? undefined;
     const body = bodySchema.parse(await request.json());
     const validatedName = validateParentFullName(body.name);
     const normalizedEmail = validateParentEmailQuality(body.email);
@@ -162,14 +174,45 @@ export async function POST(request: Request) {
       },
     });
 
-    const token = await createSessionToken({ userId: user.id, email: user.email, role: user.role });
+    const fingerprint = buildDeviceFingerprint({ ip, userAgent });
+    const token = await createSessionToken(
+      { userId: user.id, email: user.email, role: user.role },
+      getAccessTokenMaxAgeSeconds(),
+    );
+    const refresh = await issueRefreshToken({
+      userId: user.id,
+      fingerprint,
+      ipAddress: ip,
+      userAgent,
+    });
     const response = NextResponse.json({ ok: true, user: { id: user.id, email: user.email, name: user.name } }, { status: 201 });
     response.cookies.set(getAuthCookieName(), token, {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      maxAge: getSessionMaxAgeSeconds(),
+      maxAge: getAccessTokenMaxAgeSeconds(),
+    });
+    response.cookies.set(getRefreshCookieName(), refresh.token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: getRefreshTokenMaxAgeSeconds(),
+    });
+    response.cookies.set(getParentUnlockCookieName(), "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+    response.cookies.set(getChildSelectionCookieName(), "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
     });
     return response;
   } catch (error) {

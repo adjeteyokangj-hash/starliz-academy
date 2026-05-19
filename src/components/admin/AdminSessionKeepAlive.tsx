@@ -1,15 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { refreshAuthSession } from "@/lib/refresh_client";
 
 const KEEP_ALIVE_MS = 2 * 60 * 1000;
 
 async function refreshAdminSession() {
-  await fetch("/api/auth/refresh", {
-    method: "POST",
-    credentials: "include",
-    cache: "no-store",
-  });
+  await refreshAuthSession({ retryOnce: true });
 }
 
 export default function AdminSessionKeepAlive() {

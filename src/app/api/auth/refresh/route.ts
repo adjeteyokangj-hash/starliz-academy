@@ -31,7 +31,7 @@ async function refreshSession(request: Request, nextPath?: string | null) {
   const hasRedirect = Boolean(nextPath && nextPath.startsWith("/"));
   const safeNext = hasRedirect ? nextPath! : "/admin";
 
-  const buildError = (status = 401, message = "Session expired") => {
+  const buildError = (status = 401, message = "Session expired", clearCookies = hasRedirect) => {
     const target = hasRedirect ? new URL(safeNext === "/admin/login" ? "/admin/login" : "/admin/login", request.url) : null;
     const res = hasRedirect
       ? NextResponse.redirect(target!)
@@ -39,28 +39,30 @@ async function refreshSession(request: Request, nextPath?: string | null) {
     if (hasRedirect && status >= 400) {
       res.headers.set("x-refresh-error", message);
     }
-    res.cookies.set(authCookieName, "", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 0,
-    });
-    res.cookies.set(refreshCookieName, "", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 0,
-    });
+    if (clearCookies) {
+      res.cookies.set(authCookieName, "", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 0,
+      });
+      res.cookies.set(refreshCookieName, "", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 0,
+      });
+    }
     return withNoStore(res);
   };
 
   const token = (await cookies()).get(refreshCookieName)?.value;
-  if (!token) return buildError(401, "Missing refresh token");
+  if (!token) return buildError(401, "Missing refresh token", hasRedirect);
 
   const claims = await verifyRefreshToken(token);
-  if (!claims?.userId) return buildError(401, "Invalid refresh token");
+  if (!claims?.userId) return buildError(401, "Invalid refresh token", hasRedirect);
 
   const ip = getRequestIp(request);
   const userAgent = request.headers.get("user-agent") ?? undefined;
@@ -75,21 +77,22 @@ async function refreshSession(request: Request, nextPath?: string | null) {
   });
 
   if (!state.active || !state.rowId) {
-    return buildError(401, "Refresh token is no longer valid");
+    const likelyRotationRace = state.reason === "revoked";
+    return buildError(401, "Refresh token is no longer valid", hasRedirect && !likelyRotationRace);
   }
 
   const user = await prisma.user.findUnique({
     where: { id: claims.userId },
     select: { id: true, email: true, role: true },
   });
-  if (!user) return buildError(401, "User not found");
+  if (!user) return buildError(401, "User not found", hasRedirect);
 
   // Forced logout: suspended school accounts cannot continue refreshing sessions.
   if (user.role !== "admin") {
     const suspended = await isTeacherSuspended(user.id);
     if (suspended) {
       await revokeAllRefreshSessions(user.id, "school_suspension");
-      return buildError(403, "Account suspended");
+      return buildError(403, "Account suspended", true);
     }
   }
 
@@ -139,22 +142,7 @@ export async function POST(request: Request) {
     return await refreshSession(request, null);
   } catch (error) {
     console.error("Auth refresh failed", error);
-    const res = NextResponse.json({ error: "Session refresh failed" }, { status: 503 });
-    res.cookies.set(getAuthCookieName(), "", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 0,
-    });
-    res.cookies.set(getRefreshCookieName(), "", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 0,
-    });
-    return withNoStore(res);
+    return withNoStore(NextResponse.json({ error: "Session refresh failed" }, { status: 503 }));
   }
 }
 

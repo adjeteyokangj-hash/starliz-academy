@@ -57,6 +57,9 @@ type DailyJourneyPayload = {
 type BossBattleStatusPayload = {
   unlocked?: boolean;
   alreadyPlayedToday?: boolean;
+  lessonAssignmentId?: string | null;
+  lockReason?: string | null;
+  error?: string;
 };
 
 type ShopOwnedItem = {
@@ -156,28 +159,74 @@ export default function StudentDashboardPage() {
   const [ownedBadges, setOwnedBadges] = useState<ShopOwnedItem[]>([]);
   const [sessionSummary, setSessionSummary] = useState<SessionSummaryPayload["summary"] | null>(null);
   const [error, setError] = useState("");
+  const [missingChildContext, setMissingChildContext] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
   const [pendingAssignmentId, setPendingAssignmentId] = useState<string | null>(null);
   const [openingStore, setOpeningStore] = useState(false);
+  const [bossAssignmentId, setBossAssignmentId] = useState<string | null>(null);
+  const [bossLaunching, setBossLaunching] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError("");
+    setMissingChildContext(false);
+    setAuthRequired(false);
     try {
-      const [assignmentsRes, skillsRes, childRes, bossStatusRes, sessionSummaryRes] = await Promise.all([
+      const childRes = await fetch("/api/children/active", { credentials: "include" });
+      if (childRes.status === 401) {
+        setAuthRequired(true);
+        setError("Your session expired. Please sign in again.");
+        return;
+      }
+      if (!childRes.ok) {
+        throw new Error("Unable to confirm active learner profile.");
+      }
+
+      const childPayload = (await childRes.json()) as ActiveChildPayload;
+      if (!childPayload.child?.id) {
+        setMissingChildContext(true);
+        setAssignments([]);
+        setSkills([]);
+        setSessionSummary(null);
+        setBossUnlocked(false);
+        setBossPlayedToday(false);
+        setBossAssignmentId(null);
+        return;
+      }
+
+      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes] = await Promise.all([
         fetch("/api/student/assignments", { credentials: "include" }),
         fetch("/api/student/skills", { credentials: "include" }),
-        fetch("/api/children/active", { credentials: "include" }),
         fetch("/api/student/boss-battle", { credentials: "include" }),
         fetch("/api/student/session-summary", { credentials: "include" }),
       ]);
 
+      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes].some((res) => res.status === 401)) {
+        setAuthRequired(true);
+        setError("Your session expired. Please sign in again.");
+        return;
+      }
+
       const assignmentsPayload = (await assignmentsRes.json()) as StudentAssignmentsPayload;
-      const skillsPayload = (await skillsRes.json()) as StudentSkill[];
-      const childPayload = (await childRes.json()) as ActiveChildPayload;
-      const bossStatusPayload = (await bossStatusRes.json()) as BossBattleStatusPayload;
-      const sessionSummaryPayload = (await sessionSummaryRes.json()) as SessionSummaryPayload;
+      const skillsPayload = skillsRes.ok ? ((await skillsRes.json()) as StudentSkill[]) : [];
+      const bossStatusPayload = bossStatusRes.ok
+        ? ((await bossStatusRes.json()) as BossBattleStatusPayload)
+        : ({ unlocked: false, alreadyPlayedToday: false, lessonAssignmentId: null } as BossBattleStatusPayload);
+      const sessionSummaryPayload = sessionSummaryRes.ok
+        ? ((await sessionSummaryRes.json()) as SessionSummaryPayload)
+        : ({} as SessionSummaryPayload);
 
       if (!assignmentsRes.ok) {
+        if (assignmentsRes.status === 400 && /active student/i.test(assignmentsPayload.error ?? "")) {
+          setMissingChildContext(true);
+          setAssignments([]);
+          setSkills([]);
+          setSessionSummary(null);
+          setBossUnlocked(false);
+          setBossPlayedToday(false);
+          setBossAssignmentId(null);
+          return;
+        }
         throw new Error(assignmentsPayload.error ?? "Unable to load assignments.");
       }
 
@@ -185,6 +234,7 @@ export default function StudentDashboardPage() {
       setSkills(Array.isArray(skillsPayload) ? skillsPayload : []);
       setBossUnlocked(Boolean(bossStatusPayload.unlocked));
       setBossPlayedToday(Boolean(bossStatusPayload.alreadyPlayedToday));
+      setBossAssignmentId(typeof bossStatusPayload.lessonAssignmentId === "string" ? bossStatusPayload.lessonAssignmentId : null);
       setSessionSummary(sessionSummaryPayload.summary ?? null);
 
       if (childPayload.child?.id) {
@@ -331,6 +381,38 @@ export default function StudentDashboardPage() {
     }
   }
 
+  async function startBossBattle() {
+    if (bossLaunching) return;
+    setBossLaunching(true);
+    setError("");
+    try {
+      let nextAssignmentId = bossAssignmentId;
+      if (!nextAssignmentId) {
+        const statusRes = await fetch("/api/student/boss-battle", { credentials: "include" });
+        const statusPayload = (await statusRes.json()) as BossBattleStatusPayload;
+        if (statusRes.status === 401) {
+          setAuthRequired(true);
+          throw new Error("Your session expired. Please sign in again.");
+        }
+        if (!statusRes.ok) {
+          throw new Error(statusPayload.error ?? statusPayload.lockReason ?? "Boss Battle is not available yet.");
+        }
+        nextAssignmentId = typeof statusPayload.lessonAssignmentId === "string" ? statusPayload.lessonAssignmentId : null;
+        setBossAssignmentId(nextAssignmentId);
+      }
+
+      if (!nextAssignmentId) {
+        throw new Error("Finish a lesson first, then launch Boss Battle.");
+      }
+
+      router.push(`/games/lesson?assignmentId=${encodeURIComponent(nextAssignmentId)}&phase=boss_battle`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start Boss Battle.");
+    } finally {
+      setBossLaunching(false);
+    }
+  }
+
   const focusAssignment = findAssignmentForSkill(focusSkill);
   const weakAssignment = findAssignmentForSkill(weakSkill ?? focusSkill);
   const reviewAssignment = findAssignmentForSkill(strongSkill);
@@ -384,6 +466,29 @@ export default function StudentDashboardPage() {
             >
               Try again
             </button>
+            {authRequired ? (
+              <button
+                type="button"
+                onClick={() => router.push("/auth/login")}
+                className="mt-3 ml-3 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
+              >
+                Go to Login
+              </button>
+            ) : null}
+          </div>
+        ) : missingChildContext ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center">
+            <p className="font-bold text-amber-800">Choose a learner profile first</p>
+            <p className="mt-1 text-sm text-amber-700">
+              We could not find your active child context. Select a learner to continue to assignments, lessons, and Boss Battle.
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push("/parent/profiles?intent=child")}
+              className="mt-4 rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-500"
+            >
+              Go to Profile Selection
+            </button>
           </div>
         ) : (
           <div className="rounded-4xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 md:p-8">
@@ -427,6 +532,8 @@ export default function StudentDashboardPage() {
                 startingJourney={startingJourney}
                 onStartJourney={startTodayJourney}
                 onStartAssignment={startAssignment}
+                onStartBossBattle={startBossBattle}
+                bossLaunching={bossLaunching}
                 onOpenStore={openStore}
                 pendingAssignmentId={pendingAssignmentId}
                 openingStore={openingStore}
@@ -456,6 +563,8 @@ export default function StudentDashboardPage() {
                 allAssignments={assignments}
                 onStartJourney={startTodayJourney}
                 onStartAssignment={startAssignment}
+                onStartBossBattle={startBossBattle}
+                bossLaunching={bossLaunching}
                 onOpenStore={openStore}
                 pendingAssignmentId={pendingAssignmentId}
                 openingStore={openingStore}
