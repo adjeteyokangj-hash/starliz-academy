@@ -4,22 +4,9 @@ import { useEffect, useRef } from "react";
 
 const KEEP_ALIVE_MS = 2 * 60 * 1000;
 
-async function refreshParentSession() {
-  await fetch("/api/auth/refresh", {
-    method: "POST",
-    credentials: "include",
-    cache: "no-store",
-  });
-
-  await fetch("/api/pin/refresh", {
-    method: "POST",
-    credentials: "include",
-    cache: "no-store",
-  });
-}
-
 export default function ParentSessionKeepAlive() {
   const runningRef = useRef(false);
+  const pinRefreshDisabledRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -28,7 +15,22 @@ export default function ParentSessionKeepAlive() {
       if (!mounted || runningRef.current) return;
       runningRef.current = true;
       try {
-        await refreshParentSession();
+        await fetch("/api/auth/refresh", {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!pinRefreshDisabledRef.current) {
+          const pinResponse = await fetch("/api/pin/refresh", {
+            method: "POST",
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (pinResponse.status === 401 || pinResponse.status === 403) {
+            pinRefreshDisabledRef.current = true;
+          }
+        }
       } catch {
         // Keep-alive is best-effort and should not interrupt the parent UI.
       } finally {

@@ -36,6 +36,16 @@ export type StarLizQuestionCardProps = {
   /** Legacy visualRequired block rendered by the lesson page */
   visualRequiredSlot?: React.ReactNode;
 
+  // ── Coach support ────────────────────────────────────────────────────────
+  /** Visible coach button label for multiple-choice questions. */
+  coachButtonLabel?: string;
+  /** Whether the coach panel is currently expanded. */
+  coachOpen?: boolean;
+  /** Toggle handler for the coach panel. */
+  onToggleCoach?: () => void;
+  /** Panel content shown after the coach button is opened. */
+  coachPanel?: React.ReactNode;
+
   // ── Question prompt ───────────────────────────────────────────────────────
   /** Rendered question heading (h2 text or JSX) */
   questionPrompt: React.ReactNode;
@@ -108,6 +118,10 @@ export default function StarLizQuestionCard({
   aboveQuestionSlot,
   passageSlot,
   visualRequiredSlot,
+  coachButtonLabel = "Coach me",
+  coachOpen = false,
+  onToggleCoach,
+  coachPanel,
   questionPrompt,
   questionInstruction,
   gentleStartNotice,
@@ -230,6 +244,19 @@ export default function StarLizQuestionCard({
         <p className="mt-3 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-800">
           {hint}
         </p>
+      ) : null}
+
+      {onToggleCoach ? (
+        <div className="mt-4 space-y-3">
+          <button
+            type="button"
+            onClick={onToggleCoach}
+            className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-black text-cyan-800 hover:bg-cyan-100"
+          >
+            {coachOpen ? "Hide coach steps" : coachButtonLabel}
+          </button>
+          {coachOpen && coachPanel ? coachPanel : null}
+        </div>
       ) : null}
 
       {/* ── Answer area ─────────────────────────────────────────────────── */}

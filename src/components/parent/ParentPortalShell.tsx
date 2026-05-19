@@ -456,6 +456,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
   async function goToChildDashboard(childId: string) {
     setGoingToDashboard(true);
+    const timeoutId = window.setTimeout(() => {
+      setGoingToDashboard(false);
+    }, 2500);
     try {
       await fetch("/api/children/active", {
         method: "POST",
@@ -463,8 +466,10 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         credentials: "include",
         body: JSON.stringify({ childId }),
       });
+      window.clearTimeout(timeoutId);
       router.push("/student/dashboard");
     } finally {
+      window.clearTimeout(timeoutId);
       setGoingToDashboard(false);
     }
   }

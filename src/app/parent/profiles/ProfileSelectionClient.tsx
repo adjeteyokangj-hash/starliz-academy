@@ -206,6 +206,11 @@ export default function ProfileSelectionClient() {
     setSubmitting(true);
     setPendingProfileId("parent");
     setParentPinError(null);
+    const timeoutId = window.setTimeout(() => {
+      setSubmitting(false);
+      setPendingProfileId(null);
+      setParentPinError("That is taking longer than expected. Please try again.");
+    }, 2500);
 
     try {
       const response = await fetch("/api/pin/verify", {
@@ -222,8 +227,10 @@ export default function ProfileSelectionClient() {
         return;
       }
 
+      window.clearTimeout(timeoutId);
       router.replace(safeParentNext(searchParams.get("next")));
     } catch {
+      window.clearTimeout(timeoutId);
       setParentPinError("Could not verify PIN.");
       setSubmitting(false);
       setPendingProfileId(null);
@@ -235,6 +242,11 @@ export default function ProfileSelectionClient() {
     setSubmitting(true);
     setPendingProfileId(childId);
     setChildPinError(null);
+    const timeoutId = window.setTimeout(() => {
+      setSubmitting(false);
+      setPendingProfileId(null);
+      setChildPinError("That is taking longer than expected. Please try again.");
+    }, 2500);
 
     try {
       const response = await fetch("/api/parent/profiles/verify-child-pin", {
@@ -252,8 +264,10 @@ export default function ProfileSelectionClient() {
         return;
       }
 
+      window.clearTimeout(timeoutId);
       router.replace("/student/dashboard");
     } catch {
+      window.clearTimeout(timeoutId);
       setChildPinError("Could not open child profile.");
       setSubmitting(false);
       setPendingProfileId(null);
