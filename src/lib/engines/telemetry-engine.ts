@@ -107,6 +107,8 @@ export type TelemetryBatchResult = {
   queueSize: number;
 };
 
+export type TelemetryEventListener = (event: TelemetryEvent) => void;
+
 const MAX_TELEMETRY_QUEUE_SIZE = 500;
 
 const CATEGORY_BY_EVENT: Record<TutorTelemetryEventName, TelemetryCategory> = {
@@ -133,6 +135,7 @@ const CATEGORY_BY_EVENT: Record<TutorTelemetryEventName, TelemetryCategory> = {
 
 let telemetryQueue: TelemetryEvent[] = [];
 const queuedFingerprints = new Set<string>();
+const telemetryListeners = new Set<TelemetryEventListener>();
 
 function isDevelopmentMode(): boolean {
   return process.env.NODE_ENV === "development";
@@ -262,6 +265,15 @@ function enqueueTelemetryEvent(event: TelemetryEvent): TelemetryEmitResult {
 
   telemetryQueue.push(event);
   queuedFingerprints.add(event.fingerprint);
+
+  for (const listener of telemetryListeners) {
+    try {
+      listener(event);
+    } catch {
+      // listeners must never crash the emit pipeline
+    }
+  }
+
   debugTrace("enqueue", { event, queueSize: telemetryQueue.length, droppedOldest });
   return {
     ok: true,
@@ -340,6 +352,22 @@ export function __resetTelemetryQueueForTests(): void {
   queuedFingerprints.clear();
 }
 
+export function __clearTelemetryListenersForTests(): void {
+  telemetryListeners.clear();
+}
+
 export function __getTelemetryQueueSnapshotForTests(): TelemetryEvent[] {
   return [...telemetryQueue];
+}
+
+/**
+ * Subscribe to telemetry events as they are emitted.
+ * Returns an unsubscribe function. Safe to call in useEffect cleanup.
+ * The listener receives a snapshot copy of each event and must never throw.
+ */
+export function subscribeTelemetry(listener: TelemetryEventListener): () => void {
+  telemetryListeners.add(listener);
+  return () => {
+    telemetryListeners.delete(listener);
+  };
 }

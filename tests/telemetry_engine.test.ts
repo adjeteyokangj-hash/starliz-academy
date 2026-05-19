@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  __clearTelemetryListenersForTests,
   __getTelemetryQueueSnapshotForTests,
   __resetTelemetryQueueForTests,
   createTelemetryEvent,
   emitTelemetryBatch,
   emitTelemetryEvent,
   flushTelemetryQueue,
+  subscribeTelemetry,
 } from "@/lib/engines/telemetry-engine";
 
 function baseInput(overrides: Record<string, unknown> = {}) {
@@ -24,6 +26,7 @@ function baseInput(overrides: Record<string, unknown> = {}) {
 
 test.beforeEach(() => {
   __resetTelemetryQueueForTests();
+  __clearTelemetryListenersForTests();
 });
 
 test("event creation returns a normalized typed telemetry event", () => {
@@ -111,4 +114,45 @@ test("timestamp normalization falls back to now when input is malformed", () => 
   assert.ok(event);
   assert.equal(event.timestamp >= before, true);
   assert.equal(event.timestamp <= after, true);
+});
+
+test("subscription listener is called when an event is emitted", () => {
+  const received: string[] = [];
+  subscribeTelemetry((event) => {
+    received.push(event.name);
+  });
+
+  emitTelemetryEvent(baseInput({ dedupeKey: "sub-1", timestamp: 1 }));
+  emitTelemetryEvent(baseInput({ dedupeKey: "sub-2", timestamp: 2, questionIndex: 1 }));
+
+  assert.deepEqual(received, ["QUESTION_PRESENTED", "QUESTION_PRESENTED"]);
+});
+
+test("unsubscribe stops the listener from receiving further events", () => {
+  const received: string[] = [];
+  const unsubscribe = subscribeTelemetry((event) => {
+    received.push(event.name);
+  });
+
+  emitTelemetryEvent(baseInput({ dedupeKey: "unsub-1", timestamp: 1 }));
+  unsubscribe();
+  emitTelemetryEvent(baseInput({ dedupeKey: "unsub-2", timestamp: 2, questionIndex: 1 }));
+
+  assert.equal(received.length, 1);
+  assert.equal(received[0], "QUESTION_PRESENTED");
+});
+
+test("throwing listener does not prevent other listeners or crash emit", () => {
+  const good: string[] = [];
+  subscribeTelemetry(() => {
+    throw new Error("boom");
+  });
+  subscribeTelemetry((event) => {
+    good.push(event.name);
+  });
+
+  emitTelemetryEvent(baseInput({ dedupeKey: "throw-1", timestamp: 1 }));
+
+  assert.equal(good.length, 1);
+  assert.equal(__getTelemetryQueueSnapshotForTests().length, 1);
 });
