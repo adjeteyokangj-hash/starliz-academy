@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 
+import { emitTelemetryEvent } from "@/lib/engines/telemetry-engine";
 import { createInitialContext, transition } from "@/lib/tutor-runtime/state-machine";
 import type {
   TutorEventPayload,
@@ -20,6 +21,10 @@ type TutorEngineStore = {
   canTransition: (event: TutorEventPayload) => boolean;
 };
 
+type TutorEngineDependencies = {
+  emitTelemetry?: typeof emitTelemetryEvent;
+};
+
 function isDevelopmentMode(): boolean {
   return process.env.NODE_ENV === "development";
 }
@@ -38,6 +43,26 @@ function logTransition(
     event,
     nextState: nextContext.sessionState,
   });
+}
+
+function logTelemetryFailure(event: TutorEventPayload, error: unknown): void {
+  if (!isDevelopmentMode()) {
+    return;
+  }
+
+  console.debug("[TutorEngine] telemetry emit failed", {
+    eventName: event.name,
+    error,
+  });
+}
+
+function createTelemetrySessionId(context: TutorRuntimeContext): string {
+  return `tutor:${context.assignmentId}`;
+}
+
+function getCurrentQuestionState(context: TutorRuntimeContext): string | null {
+  const questionRecord = context.questionRecords.get(context.currentQuestionIndex);
+  return questionRecord?.state ?? null;
 }
 
 export function createInitialTutorRuntimeContext(
@@ -77,7 +102,11 @@ export function createLessonRuntimeContextFromAssignment(
   return startedResult.nextContext;
 }
 
-export function createTutorEngineStore(initialContext: TutorRuntimeContext): TutorEngineStore {
+export function createTutorEngineStore(
+  initialContext: TutorRuntimeContext,
+  dependencies: TutorEngineDependencies = {},
+): TutorEngineStore {
+  const emitTelemetry = dependencies.emitTelemetry ?? emitTelemetryEvent;
   let context = initialContext;
   let lastEvent: TutorEventPayload | null = null;
 
@@ -91,6 +120,30 @@ export function createTutorEngineStore(initialContext: TutorRuntimeContext): Tut
     dispatch(event: TutorEventPayload) {
       const previousContext = context;
       const result = transition(previousContext, event);
+      const timestamp = Date.now();
+
+      try {
+        emitTelemetry({
+          category: "lifecycle",
+          name: "SESSION_STARTED",
+          sessionId: createTelemetrySessionId(previousContext),
+          assignmentId: previousContext.assignmentId,
+          source: "tutor-runtime",
+          timestamp,
+          payload: {
+            eventName: event.name,
+            previousSessionState: previousContext.sessionState,
+            previousQuestionState: getCurrentQuestionState(previousContext),
+            nextSessionState: result.nextContext.sessionState,
+            nextQuestionState: getCurrentQuestionState(result.nextContext),
+            transitionAccepted: result.ok,
+            transitionRejected: !result.ok,
+          },
+        });
+      } catch (error) {
+        logTelemetryFailure(event, error);
+      }
+
       context = result.nextContext;
       lastEvent = event;
       logTransition(previousContext, event, result.nextContext);
