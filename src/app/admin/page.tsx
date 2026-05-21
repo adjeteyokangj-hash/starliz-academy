@@ -91,6 +91,11 @@ const adminModules = [
     href: "/admin/subscriptions",
   },
   {
+    title: "Trial Leads",
+    description: "Review trial emails, activity remaining, expiry and conversion status.",
+    href: "/admin/trial-leads",
+  },
+  {
     title: "Pricing",
     description: "Edit public plans, features, badges, Stripe price IDs and sort order.",
     href: "/admin/pricing",

@@ -10,6 +10,7 @@ export const adminNavItems = [
   { title: "Rewards", href: "/admin/rewards", icon: "R" },
   { title: "Store / Shop", href: "/admin/store", icon: "SH" },
   { title: "Subscriptions", href: "/admin/subscriptions", icon: "B" },
+  { title: "Trial Leads", href: "/admin/trial-leads", icon: "TL" },
   { title: "Pricing", href: "/admin/pricing", icon: "PR" },
   { title: "Reports", href: "/admin/reports", icon: "RP" },
   { title: "Support", href: "/admin/support", icon: "T" },

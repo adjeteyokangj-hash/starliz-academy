@@ -1,9 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useCallback, useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import PublicShell from "@/components/layout/PublicShell"
+import { restoreTrialSessionFromStorage, storeTrialEmail } from "@/lib/trial-client"
 
 type TrialStatus = {
   email: string
@@ -28,13 +29,14 @@ const SUBJECTS: Array<{ key: "spelling" | "reading" | "maths"; title: string; ac
 
 export default function TrialDashboardPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const activityCompleted = searchParams.get("activity") === "done"
   const [trial, setTrial] = useState<TrialStatus | null>(null)
   const [loading, setLoading] = useState(true)
-  const [busySubject, setBusySubject] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
 
-  async function loadStatus(showLoading = true) {
+  const loadStatus = useCallback(async (showLoading = true, allowRestore = true) => {
     if (showLoading) {
       setLoading(true)
     }
@@ -43,20 +45,35 @@ export default function TrialDashboardPage() {
       const response = await fetch("/api/trial/status", { method: "GET", cache: "no-store" })
       const payload = (await response.json()) as { trial?: TrialStatus; error?: string }
 
-      if (!response.ok || !payload.trial) {
+      let activeResponse = response
+      let activePayload = payload
+      if (response.status === 401 && allowRestore) {
+        const restored = await restoreTrialSessionFromStorage()
+        if (restored.restored) {
+          activeResponse = await fetch("/api/trial/status", { method: "GET", cache: "no-store" })
+          activePayload = (await activeResponse.json()) as { trial?: TrialStatus; error?: string }
+        } else if (restored.expired && restored.email) {
+          router.replace(`/trial/upgrade?email=${encodeURIComponent(restored.email)}`)
+          return
+        }
+      }
+
+      if (!activeResponse.ok || !activePayload.trial) {
         router.replace("/trial")
         return
       }
 
-      if (payload.trial.expired) {
-        router.replace(`/trial/upgrade?email=${encodeURIComponent(payload.trial.email)}`)
+      storeTrialEmail(activePayload.trial.email)
+
+      if (activePayload.trial.expired) {
+        router.replace(`/trial/upgrade?email=${encodeURIComponent(activePayload.trial.email)}`)
         return
       }
 
-      setTrial(payload.trial)
-      if (payload.trial.activitiesRemaining <= 2) {
+      setTrial(activePayload.trial)
+      if (activePayload.trial.activitiesRemaining <= 2) {
         setBanner("Low activities remaining. Create your full account to keep your child learning without limits.")
-      } else if (payload.trial.activitiesCompleted > 0) {
+      } else if (activePayload.trial.activitiesCompleted > 0) {
         setBanner("Welcome back. Save your child’s progress permanently by upgrading anytime.")
       }
     } catch {
@@ -66,89 +83,21 @@ export default function TrialDashboardPage() {
         setLoading(false)
       }
     }
-  }
-
-  useEffect(() => {
-    let active = true
-
-    async function loadInitialStatus() {
-      try {
-        const response = await fetch("/api/trial/status", { method: "GET", cache: "no-store" })
-        const payload = (await response.json()) as { trial?: TrialStatus; error?: string }
-
-        if (!active) return
-
-        if (!response.ok || !payload.trial) {
-          router.replace("/trial")
-          return
-        }
-
-        if (payload.trial.expired) {
-          router.replace(`/trial/upgrade?email=${encodeURIComponent(payload.trial.email)}`)
-          return
-        }
-
-        setTrial(payload.trial)
-        if (payload.trial.activitiesRemaining <= 2) {
-          setBanner("Low activities remaining. Create your full account to keep your child learning without limits.")
-        } else if (payload.trial.activitiesCompleted > 0) {
-          setBanner("Welcome back. Save your child’s progress permanently by upgrading anytime.")
-        }
-      } catch {
-        if (!active) return
-        setError("Unable to load trial dashboard right now.")
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-
-    void loadInitialStatus()
-
-    return () => {
-      active = false
-    }
   }, [router])
 
-  async function completeActivity(subject: "spelling" | "reading" | "maths") {
-    if (!trial) return
-    setBusySubject(subject)
-    setError(null)
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      void loadStatus(true)
+    }, 0)
 
-    try {
-      const response = await fetch("/api/trial/activity", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject }),
-      })
-      const payload = await response.json() as {
-        error?: string
-        trial?: Partial<TrialStatus>
-        upgrade?: { shouldPrompt: boolean; reason: string; signupUrl: string }
-      }
-
-      if (!response.ok) {
-        setError(payload.error ?? "Could not complete activity.")
-        if (response.status === 403 && trial?.email) {
-          router.push(`/trial/upgrade?email=${encodeURIComponent(trial.email)}`)
-        }
-        return
-      }
-
-      await loadStatus(true)
-
-      if (payload.upgrade?.shouldPrompt && trial.email) {
-        setBanner(
-          payload.upgrade.reason === "trial_expired"
-            ? "Your trial has ended. Create your full account to continue learning."
-            : "Only a few trial activities left. Upgrade to unlock unlimited personalised learning."
-        )
-      }
-    } catch {
-      setError("Network error while updating trial activity.")
-    } finally {
-      setBusySubject(null)
+    return () => {
+      window.clearTimeout(timerId)
     }
-  }
+  }, [loadStatus])
+
+  const activeBanner = activityCompleted
+    ? "Activity completed. Great work. Your remaining activity count has been updated."
+    : banner
 
   return (
     <PublicShell>
@@ -162,7 +111,7 @@ export default function TrialDashboardPage() {
 
             {loading ? <p className="mt-5 text-sm text-slate-400">Loading trial dashboard...</p> : null}
             {error ? <p className="mt-5 text-sm font-semibold text-rose-300">{error}</p> : null}
-            {banner ? <p className="mt-5 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">{banner}</p> : null}
+            {activeBanner ? <p className="mt-5 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">{activeBanner}</p> : null}
 
             {trial ? (
               <>
@@ -186,14 +135,22 @@ export default function TrialDashboardPage() {
                     <article key={subject.key} className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
                       <p className={`text-sm font-bold ${subject.accent}`}>{subject.title}</p>
                       <p className="mt-2 text-sm text-slate-300">{trial.subjectRemaining[subject.key]} remaining</p>
-                      <button
-                        type="button"
-                        onClick={() => completeActivity(subject.key)}
-                        disabled={busySubject === subject.key || trial.subjectRemaining[subject.key] <= 0}
-                        className="mt-4 w-full rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {busySubject === subject.key ? "Completing..." : "Complete activity"}
-                      </button>
+                      {trial.subjectRemaining[subject.key] > 0 ? (
+                        <Link
+                          href={`/trial/learn?subject=${encodeURIComponent(subject.key)}`}
+                          className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-500"
+                        >
+                          Start activity
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          className="mt-4 w-full rounded-xl bg-slate-700 px-3 py-2 text-xs font-bold text-slate-300 opacity-70"
+                        >
+                          No activities left
+                        </button>
+                      )}
                     </article>
                   ))}
                 </div>

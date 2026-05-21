@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react"
 import { useRouter } from "next/navigation"
 import PublicShell from "@/components/layout/PublicShell"
+import { storeTrialEmail } from "@/lib/trial-client"
 
 type StartPayload = {
   status?: "new" | "restored" | "expired" | "account_exists"
@@ -45,6 +46,7 @@ export default function TrialEntryPage() {
       }
 
       if (payload.status === "new" || payload.status === "restored") {
+        storeTrialEmail(email)
         if (payload.message) setInfo(payload.message)
         router.push("/trial/dashboard")
         return
