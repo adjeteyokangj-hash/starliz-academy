@@ -1,7 +1,7 @@
 import { KEY_STAGES, phonicsStageFromSkillFocus, type PhonicsStage } from "@/lib/curriculum";
 
 type QualityInput = {
-  type: "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths";
+  type: "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages";
   keyStage?: string;
   yearGroup?: string;
   skillFocus?: string;
@@ -38,6 +38,11 @@ function hasMathContent(value: string) {
 
 function itemText(item: unknown) {
   return JSON.stringify(item ?? "").toLowerCase();
+}
+
+function isReadingComprehensionSkill(skillFocus: string | null | undefined) {
+  const normalized = String(skillFocus ?? "").trim().toLowerCase();
+  return normalized === "reading comprehension" || normalized.includes("reading comprehension");
 }
 
 function normalizeWord(value: unknown) {
@@ -230,6 +235,35 @@ export function validateAiContentQuality({ type, keyStage, skillFocus, requested
       const answer = String(data.answer ?? "").trim();
       if (!answer) return { ok: false, error: `${label} content must include an answer.` };
 
+    }
+  }
+
+  if (type === "languages") {
+    const requiresPassage = isReadingComprehensionSkill(skillFocus);
+    const prompts = new Set<string>();
+
+    for (const item of records) {
+      if (!item || typeof item !== "object") return { ok: false, error: "Language content must be structured objects." };
+      const data = item as Record<string, unknown>;
+
+      if (requiresPassage && !data.passage) return { ok: false, error: "Reading output must include a passage." };
+
+      const prompt = String(
+        data.question
+        ?? data.prompt
+        ?? data.targetVocabulary
+        ?? data.targetVocabularyList
+        ?? data.exampleSentence
+        ?? "",
+      ).trim();
+      if (!prompt) return { ok: false, error: "Language content must include a prompt, question, or vocabulary target." };
+
+      const normalizedPrompt = prompt.toLowerCase();
+      if (prompts.has(normalizedPrompt)) return { ok: false, error: `Duplicate language prompt rejected: ${prompt}` };
+      prompts.add(normalizedPrompt);
+
+      const answer = String(data.answer ?? data.englishMeaning ?? data.meaning ?? "").trim();
+      if (!answer) return { ok: false, error: "Language content must include an answer or English meaning." };
     }
   }
 

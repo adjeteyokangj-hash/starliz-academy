@@ -4,6 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import {
+  evaluateAiGeneratorSaveState,
+  formatAiGeneratorValidationSuccessMessage,
+} from "@/lib/admin-ai-generator-validation";
 import { safeJsonParse } from "@/lib/safe-json";
 import {
   EXAM_BOARDS,
@@ -278,20 +282,6 @@ function toTitleCaseWords(value: string): string {
     .join(" ");
 }
 
-function formatValidationSuccessMessage(subject: Subject): string {
-  if (subject === "punctuation") return "Final punctuation set is valid.";
-  if (subject === "grammar") return "Final grammar set is valid.";
-  if (subject === "reading") return "Final reading set is valid.";
-  if (subject === "maths" || subject === "times-tables" || subject === "gcse-maths" || subject === "science" || subject === "gcse-science") {
-    return "Final maths set is valid.";
-  }
-  if (subject === "spelling" || subject === "phonics") {
-    return "Final set is valid. No duplicates or invalid skill words detected.";
-  }
-  if (subject === "writing" || subject === "english-language") return "Final writing set is valid.";
-  return `Final ${formatSubjectLabel(subject).toLowerCase()} set is valid.`;
-}
-
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs = 25000): Promise<Response> {
   const controller = new AbortController();
   const id = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -472,11 +462,13 @@ export default function AiGeneratorPage() {
 
   const generatedItemsList = (preview?.items ?? []) as GeneratedPreviewItem[];
   const hasPreviewUnavailable = generatedItemsList.some((item) => String(item.prompt ?? "").includes("preview unavailable"));
-  const saveBlocked =
-    !generatedItemsList.length ||
-    hasPreviewUnavailable ||
-    (preview != null && preview.safetyStatus !== "passed") ||
-    (generationMeta?.validation?.valid === false);
+  const saveState = evaluateAiGeneratorSaveState({
+    itemCount: generatedItemsList.length,
+    hasPreviewUnavailable,
+    safetyStatus: preview?.safetyStatus,
+    apiValid: generationMeta?.validation?.valid,
+  });
+  const saveBlocked = saveState.blocked;
   const approvedCount = generatedItemsList.filter((item) => item.status === "approved").length;
   const effectiveGenerationContext = previewContext ?? {
     subject,
@@ -1574,7 +1566,7 @@ export default function AiGeneratorPage() {
                   </div>
                 </>
               ) : (
-                <p className="font-bold">{formatValidationSuccessMessage(effectiveGenerationContext.subject)}</p>
+                <p className="font-bold">{formatAiGeneratorValidationSuccessMessage(effectiveGenerationContext.subject, effectiveGenerationContext.skillFocus)}</p>
               )}
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">

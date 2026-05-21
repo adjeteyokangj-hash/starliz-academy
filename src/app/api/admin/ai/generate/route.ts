@@ -83,13 +83,22 @@ function mapGenerationTypeToPromptType(type: GenerationType): PromptType {
   return "spelling";
 }
 
-function mapGenerationTypeToValidatorType(type: GenerationType): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" {
+function isReadingComprehensionSkill(skillFocus: string | null | undefined): boolean {
+  const normalized = String(skillFocus ?? "").trim().toLowerCase();
+  return normalized === "reading comprehension" || normalized.includes("reading comprehension");
+}
+
+function mapGenerationTypeToValidatorType(
+  type: GenerationType,
+  skillFocus?: string,
+): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages" {
   if (type === "phonics") return "phonics";
   if (type === "spelling") return "spelling";
   if (type === "punctuation") return "punctuation";
   if (type === "grammar") return "grammar";
+  if (type === "english-language" && isReadingComprehensionSkill(skillFocus)) return "reading";
   if (type === "writing" || type === "english-language") return "writing";
-  if (type === "languages") return "reading";
+  if (type === "languages") return "languages";
   if (type === "reading" || type === "vocabulary" || type === "english-literature") return "reading";
   return "maths";
 }
@@ -974,7 +983,6 @@ export async function POST(req: Request) {
 
   const generationType = mapSubjectToGenerationType(sourceSubject);
   const promptType = mapGenerationTypeToPromptType(generationType);
-  const validatorType = mapGenerationTypeToValidatorType(generationType);
   const level = typeof requestedLevel === "number" ? requestedLevel : Number(requestedLevel);
   const topic = typeof body.topic === "string" ? body.topic : "";
   const ageGroup = typeof body.ageGroup === "string" ? body.ageGroup : ageGroupForYearGroup(rawYearGroup);
@@ -991,6 +999,7 @@ export async function POST(req: Request) {
   const weakAreas: string[] = Array.isArray(body.weakAreas) ? (body.weakAreas as string[]) : [];
   // If targetSkills provided, derive skillFocus label from the first one
   const resolvedSkillFocus = skillFocus || (targetSkills.length ? (SKILL_MAP[targetSkills[0]]?.label ?? targetSkills[0]) : "");
+  const validatorType = mapGenerationTypeToValidatorType(generationType, resolvedSkillFocus);
 
   const maxLevel = 5;
   const safeLevel = Math.max(1, Math.min(maxLevel, Number.isFinite(level) ? level : 1));

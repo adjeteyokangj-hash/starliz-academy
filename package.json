@@ -9,7 +9,7 @@
     "start": "next start",
     "postinstall": "prisma generate",
     "lint": "eslint",
-    "test": "tsx --test tests/csv_escape.test.ts tests/production_flows.test.ts tests/tenant_isolation.test.ts tests/governance_flows.test.ts tests/curriculum_coverage.test.ts",
+    "test": "tsx --test tests/csv_escape.test.ts tests/production_flows.test.ts tests/tenant_isolation.test.ts tests/governance_flows.test.ts tests/curriculum_coverage.test.ts tests/ai_generator_validation.test.ts",
     "test:curriculum-coverage": "tsx --test tests/curriculum_coverage.test.ts",
     "audit:ai-curriculum": "tsx scripts/audit_ai_curriculum.ts",
     "test:e2e:assigned-loop": "playwright test tests/e2e/assigned-content-loop.spec.ts",

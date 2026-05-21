@@ -15,12 +15,22 @@ import {
   type Subject,
 } from "@/lib/curriculum";
 
-function mapSubjectToGenerationType(subject: Subject): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" {
+function isReadingComprehensionSkill(skillFocus: string | null | undefined): boolean {
+  const normalized = String(skillFocus ?? "").trim().toLowerCase();
+  return normalized === "reading comprehension" || normalized.includes("reading comprehension");
+}
+
+function mapSubjectToGenerationType(
+  subject: Subject,
+  skillFocus?: string,
+): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages" {
   const mapped = GENERATION_CONTENT_TYPE_BY_SUBJECT[subject];
   if (mapped === "phonics") return "phonics";
   if (mapped === "spelling") return "spelling";
   if (mapped === "punctuation") return "punctuation";
   if (mapped === "grammar") return "grammar";
+  if (mapped === "languages") return "languages";
+  if (mapped === "english-language" && isReadingComprehensionSkill(skillFocus)) return "reading";
   if (mapped === "writing" || mapped === "english-language") return "writing";
   if (mapped === "reading" || mapped === "vocabulary" || mapped === "english-literature") return "reading";
   return "maths";
@@ -172,7 +182,7 @@ export async function POST(req: Request) {
         { status: 422 },
       );
     }
-    const generationType = mapSubjectToGenerationType(normalizedSubject);
+    const generationType = mapSubjectToGenerationType(normalizedSubject, body.skillFocus);
     const maxDifficulty = legacyType === "reading" ? 10 : 5;
     
     if (body.difficulty > maxDifficulty) {
