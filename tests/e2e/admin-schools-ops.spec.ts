@@ -1,30 +1,225 @@
-import { existsSync } from "node:fs";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { PrismaClient } from "@prisma/client";
 import { expect, test } from "@playwright/test";
+
+const prisma = new PrismaClient();
 
 const OPS_ADMIN_EMAIL = process.env.E2E_OPS_ADMIN_EMAIL ?? "ops-owner@starliz.dev";
 const OPS_ADMIN_PASSWORD = process.env.E2E_OPS_ADMIN_PASSWORD ?? "OpsAdmin#2026";
 
-const PROJECT_ROOT = (() => {
-  const cwd = process.cwd();
-  if (existsSync(resolve(cwd, "package.json")) && existsSync(resolve(cwd, "src"))) {
-    return cwd;
-  }
-  return resolve(cwd, "starliz-academy");
-})();
+const OPS_SCHOOL_IDS = [
+  "ops-school-active",
+  "ops-school-suspended",
+  "ops-school-no-teacher",
+  "ops-school-capacity",
+  "ops-school-safeguarding",
+] as const;
 
-function runSqlFile(filePath: string) {
-  const sqlFile = resolve(PROJECT_ROOT, filePath);
-  const dbFile = resolve(PROJECT_ROOT, "prisma", "dev.db");
-  const sql = readFileSync(sqlFile, "utf-8");
-  const db = new DatabaseSync(dbFile);
-  try {
-    db.exec(sql);
-  } finally {
-    db.close();
+const OPS_USER_IDS = [
+  "ops-owner-user",
+  "ops-active-teacher-user",
+  "ops-invited-teacher-user",
+  "ops-capacity-teacher-user",
+  "ops-safeguarding-teacher-user",
+  "ops-parent-1-user",
+  "ops-parent-2-user",
+  "ops-parent-3-user",
+] as const;
+
+const OPS_CHILD_IDS = [
+  "ops-capacity-child-1",
+  "ops-capacity-child-2",
+  "ops-capacity-child-3",
+] as const;
+
+async function cleanupOpsScenarios() {
+  // Delete in reverse-FK order
+  await prisma.safeguardingEvidenceAttachment.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.safeguardingWorkflowEvent.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.safeguardingIncident.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.schoolSafeguardingAlert.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.schoolCommunicationLog.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.schoolCommunicationPreference.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.parentSchoolLink.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.schoolAccessLog.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.schoolLoginHistory.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.schoolAuditLog.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.licenceEvent.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.teacherInviteToken.deleteMany({
+    where: { schoolTeacher: { schoolId: { in: [...OPS_SCHOOL_IDS] } } },
+  });
+  await prisma.schoolInviteToken.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.classroom.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.schoolStudent.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.schoolTeacher.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.schoolLicence.deleteMany({ where: { schoolId: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.school.deleteMany({ where: { id: { in: [...OPS_SCHOOL_IDS] } } });
+  await prisma.attempt.deleteMany({ where: { studentId: { in: [...OPS_CHILD_IDS] } } });
+  await prisma.assignment.deleteMany({ where: { studentId: { in: [...OPS_CHILD_IDS] } } });
+  await prisma.progressRecord.deleteMany({ where: { childId: { in: [...OPS_CHILD_IDS] } } });
+  await prisma.walletTransaction.deleteMany({ where: { childId: { in: [...OPS_CHILD_IDS] } } });
+  await prisma.weakArea.deleteMany({ where: { studentId: { in: [...OPS_CHILD_IDS] } } });
+  await prisma.studentSkill.deleteMany({ where: { studentId: { in: [...OPS_CHILD_IDS] } } });
+  await prisma.questionHistory.deleteMany({ where: { childId: { in: [...OPS_CHILD_IDS] } } });
+  await prisma.childReward.deleteMany({ where: { childId: { in: [...OPS_CHILD_IDS] } } });
+  await prisma.childProfile.deleteMany({ where: { id: { in: [...OPS_CHILD_IDS] } } });
+  await prisma.authSession.deleteMany({ where: { userId: { in: [...OPS_USER_IDS] } } });
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        in: [
+          "ops-owner@starliz.dev",
+          "active.teacher@starliz.dev",
+          "invite.only@starliz.dev",
+          "capacity.teacher@starliz.dev",
+          "safeguarding.teacher@starliz.dev",
+          "capacity-parent-1@starliz.dev",
+          "capacity-parent-2@starliz.dev",
+          "capacity-parent-3@starliz.dev",
+        ],
+      },
+    },
+  });
+}
+
+async function seedOpsScenarios() {
+  const now = new Date();
+  const sevenDaysOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  // Users
+  await prisma.user.upsert({
+    where: { email: "ops-owner@starliz.dev" },
+    create: { id: "ops-owner-user", email: "ops-owner@starliz.dev", passwordHash: "$2b$12$tsDvr0Ru1qae/MKuDx41luefo9aTDRPAq3afOHWnWtsA2VvtemJNS", name: "Ops Owner", role: "admin" },
+    update: { name: "Ops Owner", role: "admin", passwordHash: "$2b$12$tsDvr0Ru1qae/MKuDx41luefo9aTDRPAq3afOHWnWtsA2VvtemJNS" },
+  });
+  for (const [id, email, name, role] of [
+    ["ops-active-teacher-user", "active.teacher@starliz.dev", "Active Teacher", "teacher"],
+    ["ops-invited-teacher-user", "invite.only@starliz.dev", "Invite Pending Teacher", "teacher"],
+    ["ops-capacity-teacher-user", "capacity.teacher@starliz.dev", "Capacity Teacher", "teacher"],
+    ["ops-safeguarding-teacher-user", "safeguarding.teacher@starliz.dev", "Safeguarding Teacher", "teacher"],
+    ["ops-parent-1-user", "capacity-parent-1@starliz.dev", "Capacity Child One Parent", "parent"],
+    ["ops-parent-2-user", "capacity-parent-2@starliz.dev", "Capacity Child Two Parent", "parent"],
+    ["ops-parent-3-user", "capacity-parent-3@starliz.dev", "Capacity Child Three Parent", "parent"],
+  ] as const) {
+    await prisma.user.upsert({
+      where: { email },
+      create: { id, email, passwordHash: "dev-seed-hash", name, role },
+      update: { name, role },
+    });
   }
+
+  // Schools
+  for (const [id, name, slug, status] of [
+    ["ops-school-active", "Ops Active Academy", "ops-active-academy", "active"],
+    ["ops-school-suspended", "Ops Suspended Academy", "ops-suspended-academy", "suspended"],
+    ["ops-school-no-teacher", "Ops No Teacher Academy", "ops-no-teacher-academy", "active"],
+    ["ops-school-capacity", "Ops Capacity Risk Academy", "ops-capacity-risk-academy", "active"],
+    ["ops-school-safeguarding", "Ops Safeguarding Academy", "ops-safeguarding-academy", "active"],
+  ] as const) {
+    await prisma.school.upsert({
+      where: { slug },
+      create: { id, name, slug, status, type: "school", contactEmail: `${slug}@starliz.dev`, notes: "Ops scenario fixture", ownerUserId: "ops-owner-user" },
+      update: { name, status, ownerUserId: "ops-owner-user", notes: "Ops scenario fixture" },
+    });
+  }
+
+  // Licences
+  for (const [id, schoolId, status, seatLimit] of [
+    ["ops-licence-active", "ops-school-active", "active", 25],
+    ["ops-licence-suspended", "ops-school-suspended", "suspended", 20],
+    ["ops-licence-no-teacher", "ops-school-no-teacher", "active", 15],
+    ["ops-licence-capacity", "ops-school-capacity", "active", 2],
+    ["ops-licence-safeguarding", "ops-school-safeguarding", "active", 12],
+  ] as const) {
+    await prisma.schoolLicence.upsert({
+      where: { schoolId },
+      create: { id, schoolId, provider: "manual", status, seatLimit, currency: "GBP", billingInterval: "month" },
+      update: { status, seatLimit, billingInterval: "month" },
+    });
+  }
+
+  // Teachers
+  await prisma.schoolTeacher.upsert({
+    where: { schoolId_userId: { schoolId: "ops-school-active", userId: "ops-active-teacher-user" } },
+    create: { id: "ops-teacher-active", schoolId: "ops-school-active", userId: "ops-active-teacher-user", role: "teacher", status: "active", invitedAt: now, acceptedAt: now, lastActiveAt: now },
+    update: { status: "active", acceptedAt: now, lastActiveAt: now },
+  });
+  await prisma.schoolTeacher.upsert({
+    where: { schoolId_userId: { schoolId: "ops-school-no-teacher", userId: "ops-invited-teacher-user" } },
+    create: { id: "ops-teacher-invited", schoolId: "ops-school-no-teacher", userId: "ops-invited-teacher-user", role: "teacher", status: "invited", invitedAt: now, acceptedAt: null, lastActiveAt: null },
+    update: { status: "invited", acceptedAt: null, lastActiveAt: null },
+  });
+  await prisma.schoolTeacher.upsert({
+    where: { schoolId_userId: { schoolId: "ops-school-capacity", userId: "ops-capacity-teacher-user" } },
+    create: { id: "ops-teacher-capacity", schoolId: "ops-school-capacity", userId: "ops-capacity-teacher-user", role: "teacher", status: "active", invitedAt: now, acceptedAt: now, lastActiveAt: now },
+    update: { status: "active", acceptedAt: now, lastActiveAt: now },
+  });
+  await prisma.schoolTeacher.upsert({
+    where: { schoolId_userId: { schoolId: "ops-school-safeguarding", userId: "ops-safeguarding-teacher-user" } },
+    create: { id: "ops-teacher-safeguarding", schoolId: "ops-school-safeguarding", userId: "ops-safeguarding-teacher-user", role: "teacher", status: "active", invitedAt: now, acceptedAt: now, lastActiveAt: now },
+    update: { status: "active", acceptedAt: now, lastActiveAt: now },
+  });
+
+  // Capacity risk children + school links
+  for (const [id, parentId, name, age, yearGroup] of [
+    ["ops-capacity-child-1", "ops-parent-1-user", "Capacity Child One", 8, "Year 4"],
+    ["ops-capacity-child-2", "ops-parent-2-user", "Capacity Child Two", 8, "Year 4"],
+    ["ops-capacity-child-3", "ops-parent-3-user", "Capacity Child Three", 9, "Year 5"],
+  ] as const) {
+    await prisma.childProfile.upsert({
+      where: { id },
+      create: { id, parentId, name, age, yearGroup, selectedVoice: "friendly_coach", selectedTheme: "default", archived: false },
+      update: { parentId, name, archived: false },
+    });
+  }
+  for (const [id, childId] of [
+    ["ops-schoolstudent-1", "ops-capacity-child-1"],
+    ["ops-schoolstudent-2", "ops-capacity-child-2"],
+    ["ops-schoolstudent-3", "ops-capacity-child-3"],
+  ] as const) {
+    await prisma.schoolStudent.upsert({
+      where: { schoolId_childId: { schoolId: "ops-school-capacity", childId } },
+      create: { id, schoolId: "ops-school-capacity", childId, status: "active", joinedAt: now },
+      update: { status: "active", leftAt: null },
+    });
+  }
+
+  // Pending invite token
+  await prisma.schoolInviteToken.upsert({
+    where: { tokenHash: "ops-pending-invite-token-hash" },
+    create: {
+      id: "ops-pending-invite-1",
+      schoolId: "ops-school-safeguarding",
+      inviteType: "teacher",
+      targetEmail: "pending.invite@starliz.dev",
+      targetRole: "teacher",
+      tokenHash: "ops-pending-invite-token-hash",
+      expiresAt: sevenDaysOut,
+      metadataJson: '{"source":"ops-seed"}',
+    },
+    update: { expiresAt: sevenDaysOut, usedAt: null },
+  });
+
+  // Open safeguarding incident
+  await prisma.safeguardingIncident.upsert({
+    where: { id: "ops-safeguarding-incident-1" },
+    create: {
+      id: "ops-safeguarding-incident-1",
+      schoolId: "ops-school-safeguarding",
+      reportedByUserId: "ops-owner-user",
+      escalationLevel: "tier_2",
+      category: "behaviour",
+      severity: "high",
+      status: "open",
+      description: "Ops seed safeguarding scenario incident",
+      actionTaken: "Monitoring in progress",
+    },
+    update: {
+      escalationLevel: "tier_2",
+      severity: "high",
+      status: "open",
+      resolvedAt: null,
+    },
+  });
 }
 
 async function loginAsAdmin(page: import("@playwright/test").Page) {
@@ -45,12 +240,19 @@ function schoolRow(page: import("@playwright/test").Page, schoolName: string) {
 
 test.describe("Admin Schools Operations Console", () => {
   test.beforeAll(async () => {
-    runSqlFile("./scripts/cleanup_ops_scenarios.sql");
-    runSqlFile("./scripts/seed_ops_scenarios.sql");
+    test.setTimeout(120_000);
+    console.log("Seeding ops scenarios into database...");
+    await cleanupOpsScenarios();
+    await seedOpsScenarios();
+    console.log("Ops scenarios seeded.");
   });
 
   test.afterAll(async () => {
-    runSqlFile("./scripts/cleanup_ops_scenarios.sql");
+    test.setTimeout(120_000);
+    console.log("Cleaning up ops scenarios...");
+    await cleanupOpsScenarios();
+    await prisma.$disconnect();
+    console.log("Ops scenarios cleanup complete.");
   });
 
   test("verifies saved views, filters, risk signals, toasts, heatmap, live center, safeguarding drill-down, and exports", async ({ page }) => {

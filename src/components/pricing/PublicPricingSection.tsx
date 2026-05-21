@@ -49,6 +49,20 @@ function canUseStripeCheckout(plan: PricingPlan): boolean {
   return (plan.interval === "month" || plan.interval === "year") && !!plan.stripePriceId
 }
 
+const familyPricingHighlights = [
+  "Secure parent portal with child profiles and PIN protection",
+  "Daily lessons, assignments, spelling, maths, reading and voice interaction",
+  "Progress reports, tutor history, weak-area insights and rewards wallet",
+  "Consent controls, support messaging and PDF, CSV and Excel report exports",
+]
+
+const organisationPricingHighlights = [
+  "School creation, classrooms, enrolments and licence management",
+  "Admin dashboard, AI content generator, content library, assignments and lessons",
+  "Safeguarding support, launch readiness scoring, compliance and audit exports",
+  "Stripe billing, Outlook inbox, API keys, system health and backup/export tools",
+]
+
 export default function PublicPricingSection({ compact = false, initialPlans = [] }: PublicPricingSectionProps) {
   const [plans, setPlans] = useState<PricingPlan[]>(initialPlans)
   const [loading, setLoading] = useState(initialPlans.length === 0)
@@ -93,8 +107,18 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
   return (
     <section id="pricing" className="scroll-mt-28 bg-slate-900/40 px-6 py-24">
       <div className="mx-auto max-w-6xl text-center">
-        <h2 className={`${headingSize} font-black`}>Simple pricing. Real learning progress.</h2>
-        <p className="mt-4 text-slate-400">Start with a free trial. No credit card required.</p>
+        <h2 className={`${headingSize} font-black`}>Simple pricing for a full learning platform.</h2>
+        <p className="mx-auto mt-4 max-w-3xl text-slate-400">
+          Start with a free trial. Plans support learning, parent oversight, reports, rewards, billing and secure access.
+        </p>
+
+        <div className="mx-auto mt-8 grid max-w-5xl gap-3 text-left sm:grid-cols-2">
+          {familyPricingHighlights.map((highlight) => (
+            <div key={highlight} className="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-300">
+              <span className="mr-2 text-blue-400">✓</span>{highlight}
+            </div>
+          ))}
+        </div>
 
         {loading && plans.length === 0 ? <p className="mt-8 text-sm text-slate-500">Loading pricing...</p> : null}
         {!loading && plans.length === 0 ? (
@@ -165,18 +189,13 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
       <div className="mx-auto mt-16 max-w-6xl rounded-3xl border border-slate-700 bg-slate-900/80 p-8 lg:p-10">
         <h3 className="text-3xl font-black text-white">Schools &amp; Organisations</h3>
         <p className="mt-3 max-w-3xl text-slate-300">
-          Bring StarLiz Academy to your school, tutoring centre or learning organisation.
+          Bring StarLiz Academy to your school, tutoring centre or learning organisation with governance,
+          reporting, safeguarding, billing and operations support included.
         </p>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-2">
           <ul className="space-y-3 text-slate-300">
-            {(orgPlans[0]?.features ?? [
-              "Multi-student management",
-              "Teacher/admin dashboard",
-              "Safeguarding and reports",
-              "AI learning insights",
-              "Custom onboarding support",
-            ]).map((feature) => (
+            {(orgPlans[0]?.features?.length ? orgPlans[0].features : organisationPricingHighlights).map((feature) => (
               <li key={feature} className="flex items-start gap-2"><span className="text-blue-400">✓</span>{feature}</li>
             ))}
           </ul>

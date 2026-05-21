@@ -2,44 +2,44 @@ import Link from "next/link"
 
 const featureList = [
   {
-    icon: "🧭",
-    title: "Reception to GCSE Pathways",
-    desc: "Supports England pathway stages across Reception-Year 6, KS3 (Years 7-9), and GCSE pathway aligned support.",
+    icon: "👨‍👩‍👧",
+    title: "Parent Portal",
+    desc: "Parent dashboard, child profiles, active child picker, billing, progress reports, tutor history, rewards wallet, consent, messages, support tickets and PIN protection.",
   },
   {
-    icon: "🏷️",
-    title: "Exam-board Aware GCSE Support",
-    desc: "GCSE stages include exam-board-aware tagging that supports AQA, Edexcel and OCR.",
+    icon: "🛠️",
+    title: "Admin Portal",
+    desc: "Platform dashboard, parent and student management, AI content generator, content library, assignments, lessons, rewards, subscriptions, reports, inbox, branding, audit logs and security settings.",
   },
   {
-    icon: "👶",
-    title: "Age-aware Learning Experience",
-    desc: "Younger learners get playful guidance, while older learners get clearer structured revision workflows.",
+    icon: "🧒",
+    title: "Child Learning",
+    desc: "Daily lesson journeys, assignment-based learning, spelling, maths and reading practice, adaptive tutor support, weak-area detection, voice interaction and motivation rewards.",
+  },
+  {
+    icon: "🏫",
+    title: "School and Governance Features",
+    desc: "School creation, classroom and enrolment management, licence management, bulk onboarding, safeguarding support, launch readiness scoring, compliance and audit exports.",
   },
   {
     icon: "📊",
-    title: "Parent Dashboard",
-    desc: "Track progress reports, assigned lessons, weak-topic support and GCSE readiness insights.",
-  },
-  {
-    icon: "🧑‍🏫",
-    title: "Tutor and School Friendly",
-    desc: "Supports parents, tutors and organisations coordinating structured interventions and progress checks.",
+    title: "Reporting and Analytics",
+    desc: "Weak topic reports, AI usage and cost estimates, learning activity reports, student progress exports, parent PDF, CSV and Excel reports, audit logs and security history.",
   },
   {
     icon: "🛡️",
-    title: "Safe, Practical Delivery",
-    desc: "No overclaiming: clear pathway guidance, structured assignments and transparent progress tracking.",
+    title: "Safety, Privacy and Trust",
+    desc: "Secure parent and child access, consent controls, PIN protection, secure sessions, role-based admin access, audit history, password reset and GDPR-focused child safety messaging.",
   },
   {
-    icon: "📘",
-    title: "Curriculum-aware Coverage",
-    desc: "National Curriculum aligned progression and staged support for key transitions through school years.",
+    icon: "🔌",
+    title: "Integrations and Operations",
+    desc: "Stripe billing, Outlook inbox support, API keys, admin integrations, system health checks, production checklist and backup/export tools.",
   },
   {
-    icon: "🎯",
-    title: "Targeted Intervention Support",
-    desc: "Weak-topic signals and assigned-content workflows make it easier to focus support where it matters.",
+    icon: "⭐",
+    title: "Rewards and Motivation",
+    desc: "Wallet balances, earned and spent totals, reward rules, store items, pending redemption approvals and a clear reward ledger.",
   },
 ]
 
@@ -60,7 +60,10 @@ export default function Features() {
       <div className="mx-auto max-w-6xl px-6 py-20">
         <div className="text-center mb-14">
           <h1 className="text-4xl font-black mb-4">Features</h1>
-          <p className="text-lg text-slate-400">Explore Reception to GCSE support built for families, tutors and schools.</p>
+          <p className="mx-auto max-w-3xl text-lg text-slate-400">
+            StarLiz Academy is not just a learning game. It is a full parent, student, admin, school,
+            reporting, rewards, billing and safeguarding platform for families, tutors and organisations.
+          </p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-8">
@@ -75,7 +78,7 @@ export default function Features() {
 
         <div className="mt-16 text-center">
           <Link href="/pricing" className="inline-flex rounded-xl bg-blue-600 px-8 py-4 font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-500">
-            View GCSE pathway
+            View pricing and platform options
           </Link>
         </div>
       </div>

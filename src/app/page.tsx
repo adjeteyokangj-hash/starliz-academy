@@ -7,35 +7,107 @@ export const dynamic = "force-dynamic"
 
 const features = [
   {
-    icon: "🧠",
-    title: "Reception to GCSE Pathways",
-    desc: "Supports England pathway stages: Reception-Year 6, KS3 (Years 7-9), and GCSE pathway (Years 10-11).",
+    icon: "👨‍👩‍👧",
+    title: "Parent Portal",
+    desc: "A secure parent dashboard for child profiles, active child switching, billing, progress reports, tutor history, rewards, consent, messages and support tickets.",
   },
   {
-    icon: "📘",
-    title: "Exam-board Aware GCSE Support",
-    desc: "GCSE pathway aligned with exam-board-aware tagging that supports AQA, Edexcel and OCR.",
+    icon: "🛠️",
+    title: "Admin Portal",
+    desc: "Platform operations for parents, students, schools, content, assignments, lessons, rewards, store items, subscriptions, reports, inbox, branding, audit logs and settings.",
+  },
+  {
+    icon: "🧒",
+    title: "Child Learning",
+    desc: "Daily lesson journeys, assignment-based learning, spelling, maths and reading practice, adaptive tutor support, voice interaction and confidence tracking.",
+  },
+  {
+    icon: "🏫",
+    title: "Schools and Governance",
+    desc: "School creation, classrooms, enrolments, licences, bulk onboarding, safeguarding support, launch readiness scoring, compliance and audit exports.",
   },
   {
     icon: "📊",
-    title: "Parent Progress Dashboard",
-    desc: "Track assigned lessons, weak-topic support, progress reports and GCSE readiness signals.",
-  },
-  {
-    icon: "🧭",
-    title: "Age-aware Experience",
-    desc: "Playful dashboards for younger learners, structured primary tasks, and mature secondary revision views.",
-  },
-  {
-    icon: "👨‍👩‍👧",
-    title: "Built For Families, Tutors and Schools",
-    desc: "Designed for parents across Reception to GCSE, tutors, and schools or organisations.",
+    title: "Reporting and Analytics",
+    desc: "Weak-topic reports, learning activity, AI usage and cost estimates, student progress exports, parent PDF, CSV and Excel reports, audit logs and security history.",
   },
   {
     icon: "🛡️",
-    title: "Safe, Structured Delivery",
-    desc: "Pathway guidance, assigned content and reporting tools help families support progress without overclaiming outcomes.",
+    title: "Safety, Privacy and Trust",
+    desc: "Secure parent and child access, PIN protection, consent controls, role-based admin access, audit history, password reset and GDPR-focused child safety messaging.",
   },
+  {
+    icon: "🔌",
+    title: "Integrations and Operations",
+    desc: "Stripe billing, Outlook inbox support, API keys, admin integrations, system health checks, production checklist and backup/export tools.",
+  },
+  {
+    icon: "⭐",
+    title: "Rewards and Motivation",
+    desc: "Wallet balance, earned and spent totals, reward rules, store items, pending redemption approvals and a reward ledger for accountability.",
+  },
+  {
+    icon: "🔒",
+    title: "Reliable Access",
+    desc: "Protected parent, admin and student routes, session refresh handling, tested parent shell navigation and stable support routes.",
+  },
+]
+
+const parentPortalFeatures = [
+  "Parent dashboard and account snapshot",
+  "Child profile management and active child picker",
+  "Billing and plan management",
+  "Progress reports and PDF, CSV and Excel exports",
+  "Tutor history and adaptive learning decisions",
+  "Rewards wallet, purchase history and approvals",
+  "Consent management with audit history",
+  "Parent messages and support tickets",
+  "PIN gate and child profile protection",
+]
+
+const adminPortalFeatures = [
+  "Platform dashboard and learning activity overview",
+  "Parent and student management",
+  "Schools, governance, licences and bulk onboarding",
+  "AI content generator and weak-area detection",
+  "Content library, assignments and lessons",
+  "Rewards engine and store/shop management",
+  "Subscriptions, pricing, reports and exports",
+  "Support tickets, notifications, inbox and voice/media manager",
+  "Branding, audit logs, security and settings",
+]
+
+const childLearningFeatures = [
+  "Daily lesson journey",
+  "Assignment-based learning",
+  "Spelling, maths and reading practice",
+  "Adaptive tutor support",
+  "Weak-area detection",
+  "Voice interaction",
+  "Confidence and progress tracking",
+  "Rewards and learning motivation",
+]
+
+const trustFeatures = [
+  "Secure parent, child, admin and student access",
+  "Parent consent controls and audit history",
+  "PIN protection for parent and child profile flows",
+  "Secure cookies and session handling",
+  "Admin role-based access",
+  "Password reset and account security settings",
+  "GDPR-focused child safety messaging",
+  "Safeguarding support for school operations",
+]
+
+const operationsFeatures = [
+  "School creation and classroom/enrolment management",
+  "Licence management and launch readiness scoring",
+  "Weak topic reports and learning activity reports",
+  "AI usage and cost estimates",
+  "Stripe billing and subscription tooling",
+  "Outlook inbox support and admin integrations",
+  "API keys, system health checks and production checklist",
+  "Backup/export tools and compliance exports",
 ]
 
 const subjects = [
@@ -65,20 +137,20 @@ const subjects = [
 const steps = [
   {
     step: "1",
-    title: "Set pathway and learner profile",
-    desc: "Choose Reception-Year 6, KS3, or GCSE pathway aligned setup.",
+    title: "Create the right profile",
+    desc: "Parents create child profiles, choose the active learner and keep access protected with PIN controls.",
     icon: "👤",
   },
   {
     step: "2",
-    title: "Assign and track learning",
-    desc: "Run assigned lessons and monitor weak-topic support from parent tools.",
+    title: "Learn with guided support",
+    desc: "Children complete daily journeys, assigned tasks and spelling, maths and reading practice with adaptive tutor support.",
     icon: "📝",
   },
   {
     step: "3",
-    title: "Review progress and readiness",
-    desc: "Use reports and GCSE readiness insights to guide next steps.",
+    title: "Review, report and improve",
+    desc: "Parents, tutors, admins and schools use reports, rewards, messaging and governance tools to support the next step.",
     icon: "📊",
   },
 ]
@@ -87,9 +159,9 @@ const roadmapItems = [
   "🎓 Deeper GCSE pathway tooling",
   "🏷️ Expanded exam-board tagging and reporting",
   "📧 Parent insights and scheduling improvements",
-  "🏫 School and tutor management enhancements",
+  "🏫 School and governance enhancements",
   "📱 Improved mobile parent experience",
-  "📊 Readiness and intervention analytics",
+  "📊 Readiness, intervention and platform analytics",
 ]
 
 export default async function PublicHomePage() {
@@ -108,8 +180,10 @@ export default async function PublicHomePage() {
           <Logo variant="wordmark" size={24} className="sm:size-32" />
 
           <nav className="hidden items-center gap-5 sm:gap-7 text-xs sm:text-sm text-slate-400 md:flex">
-            <Link href="#features" className="transition hover:text-white">Features</Link>
+            <Link href="#features" className="transition hover:text-white">Platform</Link>
             <Link href="#subjects" className="transition hover:text-white">Subjects</Link>
+            <Link href="#portals" className="transition hover:text-white">Portals</Link>
+            <Link href="#trust" className="transition hover:text-white">Trust</Link>
             <Link href="#how-it-works" className="transition hover:text-white">How it works</Link>
             <Link href="#pricing" className="transition hover:text-white">Pricing</Link>
             <Link href="/roadmap" className="transition hover:text-white">Roadmap</Link>
@@ -129,8 +203,10 @@ export default async function PublicHomePage() {
             Menu
           </summary>
           <nav className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
-            <Link href="#features" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Features</Link>
+            <Link href="#features" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Platform</Link>
             <Link href="#subjects" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Subjects</Link>
+            <Link href="#portals" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Portals</Link>
+            <Link href="#trust" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Trust</Link>
             <Link href="#how-it-works" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">How it works</Link>
             <Link href="#pricing" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Pricing</Link>
             <Link href="/roadmap" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Roadmap</Link>
@@ -146,20 +222,20 @@ export default async function PublicHomePage() {
           <div>
             <Logo variant="full" size={32} className="mb-4 sm:mb-6 sm:size-48" />
             <p className="mb-4 sm:mb-5 inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-3 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm font-semibold text-blue-300">
-              Reception to GCSE support for families, tutors and schools
+              Parent, student, admin and school platform
             </p>
 
             <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black leading-[1.2] tracking-tight">
-              England pathway learning{" "}
+              More than a learning game:{" "}
               <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-                from Reception to GCSE.
+                a full education platform.
               </span>
             </h1>
 
             <p className="mt-4 sm:mt-6 max-w-xl text-sm sm:text-base lg:text-lg leading-6 sm:leading-8 text-slate-300">
-              StarLiz Academy supports National Curriculum aligned primary learning,
-              KS3 pathway aligned progress, and GCSE pathway aligned revision with
-              exam-board-aware tagging for AQA, Edexcel and OCR.
+              StarLiz Academy brings child learning, parent oversight, admin operations,
+              school governance, reporting, rewards, billing, safeguarding and secure
+              support workflows into one clear platform.
             </p>
 
             <div className="mt-6 sm:mt-9 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
@@ -178,32 +254,32 @@ export default async function PublicHomePage() {
             </div>
 
             <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-slate-500">
-              No credit card required &middot; Cancel anytime
+              No credit card required &middot; Parent-friendly controls &middot; Built for trust
             </p>
           </div>
 
           <div className="rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6 shadow-2xl backdrop-blur-sm">
             <div className="rounded-2xl bg-slate-950 p-5">
-              <p className="text-sm font-semibold text-blue-300">Today&apos;s Pathway Snapshot</p>
+              <p className="text-sm font-semibold text-blue-300">Today&apos;s Platform Snapshot</p>
               <div className="mt-5 space-y-4">
                 <div className="flex items-center gap-4 rounded-2xl bg-slate-900 p-4">
-                  <span className="text-3xl">🔤</span>
+                  <span className="text-3xl">🧒</span>
                   <div>
-                    <p className="font-semibold">GCSE Pathway &mdash; Algebra focus</p>
-                    <p className="text-sm text-slate-400">Exam-board aware tagging: AQA</p>
+                    <p className="font-semibold">Daily lesson journey ready</p>
+                    <p className="text-sm text-slate-400">Spelling, maths, reading and adaptive tutor support.</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4 rounded-2xl bg-slate-900 p-4">
                   <span className="text-3xl">⭐</span>
                   <div>
-                    <p className="font-semibold">Weak-topic support active</p>
-                    <p className="text-sm text-slate-400">Parent dashboard shows targeted intervention areas.</p>
+                    <p className="font-semibold">Rewards wallet updated</p>
+                    <p className="text-sm text-slate-400">Earned and spent totals stay visible to parents and admins.</p>
                   </div>
                 </div>
                 <div className="rounded-2xl border border-emerald-700/40 bg-emerald-500/10 p-4">
-                  <p className="font-bold text-emerald-300">Readiness signals updated &#8593;</p>
+                  <p className="font-bold text-emerald-300">Secure access checked</p>
                   <p className="mt-1 text-sm text-slate-300">
-                    Next assigned lesson follows the learner&apos;s pathway profile.
+                    Parent PIN gate, protected routes and session refresh help keep each profile in the right hands.
                   </p>
                 </div>
               </div>
@@ -215,15 +291,15 @@ export default async function PublicHomePage() {
       {/* Trust strip */}
       <section className="border-y border-slate-800/60 bg-slate-900/30 px-4 sm:px-6 py-4 sm:py-6">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs sm:text-sm font-medium text-slate-400">
-          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Safe for children</span>
+          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Parent and child protected access</span>
           <span className="hidden sm:inline text-slate-700">|</span>
-          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; No ads or distractions</span>
+          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Consent and safeguarding support</span>
           <span className="hidden sm:inline text-slate-700">|</span>
-          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Reception to GCSE pathways</span>
+          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Parent, admin and school portals</span>
           <span className="hidden sm:inline text-slate-700">|</span>
-          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Exam-board aware (AQA, Edexcel, OCR)</span>
+          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Reports, rewards and billing</span>
           <span className="hidden sm:inline text-slate-700">|</span>
-          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Cancel anytime</span>
+          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; AI learning and voice interaction</span>
         </div>
       </section>
 
@@ -255,8 +331,11 @@ export default async function PublicHomePage() {
       <section id="features" className="bg-slate-900/40 px-4 sm:px-6 py-12 sm:py-20">
         <div className="mx-auto max-w-7xl">
           <div className="text-center">
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Why families, tutors and schools choose StarLiz</h2>
-            <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">Pathway aligned delivery with parent visibility and practical intervention support.</p>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">One platform for learning, care and operations</h2>
+            <p className="mx-auto mt-2 sm:mt-4 max-w-3xl text-sm sm:text-base text-slate-400">
+              StarLiz Academy is not just a learning game. It is a full parent, student, admin, school,
+              reporting, rewards, billing and safeguarding platform.
+            </p>
           </div>
 
           <div className="mt-8 sm:mt-12 grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -267,6 +346,68 @@ export default async function PublicHomePage() {
                 <p className="mt-2 text-xs sm:text-sm leading-6 sm:leading-7 text-slate-400">{feature.desc}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Portal depth */}
+      <section id="portals" className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8">
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-300">Parent Portal</p>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-black">Clear control for every family</h2>
+            <p className="mt-3 text-sm sm:text-base leading-7 text-slate-400">
+              Parents can manage children, protect access, follow learning progress, handle billing,
+              message support and keep consent decisions transparent.
+            </p>
+            <ul className="mt-6 grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
+              {parentPortalFeatures.map((feature) => (
+                <li key={feature} className="flex items-start gap-2">
+                  <span className="mt-0.5 text-blue-400">&#10003;</span>
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8">
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-indigo-300">Admin Portal</p>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-black">Operational tools behind the learning</h2>
+            <p className="mt-3 text-sm sm:text-base leading-7 text-slate-400">
+              Admins can run content, schools, subscriptions, reporting, support, security and day-to-day
+              platform operations from one secure area.
+            </p>
+            <ul className="mt-6 grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
+              {adminPortalFeatures.map((feature) => (
+                <li key={feature} className="flex items-start gap-2">
+                  <span className="mt-0.5 text-indigo-400">&#10003;</span>
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* Child learning */}
+      <section className="bg-slate-900/40 px-4 sm:px-6 py-12 sm:py-20">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-300">Child Learning</p>
+              <h2 className="mt-3 text-2xl sm:text-3xl lg:text-4xl font-black">Structured practice that still feels motivating</h2>
+              <p className="mt-4 text-sm sm:text-base leading-7 text-slate-400">
+                Children get a daily lesson journey, targeted assignments and subject practice with adaptive tutor
+                help. Voice interaction, confidence signals and rewards keep progress visible and encouraging.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {childLearningFeatures.map((feature) => (
+                <div key={feature} className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm font-semibold text-slate-200">
+                  {feature}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -294,32 +435,49 @@ export default async function PublicHomePage() {
         </div>
       </section>
 
-      {/* Parent Dashboard Preview */}
+      {/* Platform operations */}
       <section className="bg-gradient-to-b from-slate-900/60 to-transparent px-4 sm:px-6 py-12 sm:py-20">
         <div className="mx-auto max-w-5xl text-center">
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Real parent value at every stage</h2>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Built for schools, reporting and operations too</h2>
           <p className="mx-auto mt-2 sm:mt-4 max-w-2xl text-xs sm:text-sm lg:text-base text-slate-400">
-            Parent dashboard tools include progress reports, assigned lessons, weak-topic support and GCSE readiness insights.
+            StarLiz supports the practical work around learning: school setup, classroom enrolments, licences,
+            safeguarding, exports, integrations, billing and system health.
           </p>
 
-          <div className="mt-8 sm:mt-12 grid gap-3 sm:gap-4 rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-4 sm:p-6 sm:grid-cols-3">
-            <div className="rounded-lg sm:rounded-2xl bg-slate-950 p-4 sm:p-5">
-              <p className="text-2xl sm:text-3xl font-black text-blue-400">3 pathways</p>
-              <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-400">Reception-Year 6, KS3, GCSE</p>
-            </div>
-            <div className="rounded-lg sm:rounded-2xl bg-slate-950 p-4 sm:p-5">
-              <p className="text-2xl sm:text-3xl font-black text-emerald-400">AQA/OCR/Edexcel</p>
-              <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-400">Exam-board aware GCSE tagging</p>
-            </div>
-            <div className="rounded-lg sm:rounded-2xl bg-slate-950 p-4 sm:p-5">
-              <p className="text-2xl sm:text-3xl font-black text-purple-400">Readiness</p>
-              <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-400">GCSE readiness insights for parents</p>
-            </div>
+          <div className="mt-8 sm:mt-12 grid gap-3 sm:gap-4 rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-4 sm:p-6 sm:grid-cols-2 lg:grid-cols-4">
+            {operationsFeatures.map((feature) => (
+              <div key={feature} className="rounded-lg sm:rounded-2xl bg-slate-950 p-4 sm:p-5 text-sm font-semibold text-slate-200">
+                {feature}
+              </div>
+            ))}
           </div>
 
           <Link href="/signup" className="mt-6 sm:mt-8 inline-flex rounded-lg sm:rounded-xl bg-blue-600 px-5 sm:px-7 py-3 sm:py-4 text-sm sm:text-base font-bold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500">
-            Explore Reception to GCSE support
+            Explore platform features
           </Link>
+        </div>
+      </section>
+
+      {/* Trust */}
+      <section id="trust" className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
+        <div className="rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8 lg:p-10">
+          <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-[0.18em] text-cyan-300">Safety, Privacy and Trust</p>
+              <h2 className="mt-3 text-2xl sm:text-3xl lg:text-4xl font-black">Designed for child safety and accountable access</h2>
+              <p className="mt-4 text-sm sm:text-base leading-7 text-slate-400">
+                StarLiz keeps public wording simple for parents while backing the platform with protected routes,
+                secure sessions, role-based admin access, audit history and consent-first child data handling.
+              </p>
+            </div>
+            <ul className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
+              {trustFeatures.map((feature) => (
+                <li key={feature} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                  {feature}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
