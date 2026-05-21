@@ -23,7 +23,8 @@ export default function StoreBootstrap({ children }: Props) {
       const pathname = window.location.pathname;
       const isConsentPage = pathname.startsWith("/consent");
       const isPrivacyPage = pathname.startsWith("/privacy");
-      const isProfilesPage = pathname.startsWith("/profiles");
+      const isProfilesPage = pathname.startsWith("/profiles") || pathname.startsWith("/parent/profiles");
+      const isParentPage = pathname.startsWith("/parent");
       const isAuthPage = pathname.startsWith("/auth/");
       const isAdminPage = pathname.startsWith("/admin");
       const isPublicPage = pathname === "/" || pathname.startsWith("/about") || pathname.startsWith("/pricing")
@@ -31,8 +32,9 @@ export default function StoreBootstrap({ children }: Props) {
         || pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname.startsWith("/forgot-password")
         || pathname.startsWith("/reset-password") || pathname.startsWith("/terms") || pathname.startsWith("/privacy");
 
-      const needsProtectedBootstrap = !isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage;
-      const shouldHydrateProfiles = needsProtectedBootstrap && !isProfilesPage;
+      const needsProtectedBootstrap = !isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage && !isParentPage;
+      const needsActiveProfile = needsProtectedBootstrap && !isProfilesPage && !isParentPage;
+      const shouldHydrateProfiles = needsActiveProfile;
 
       if (shouldHydrateProfiles) {
         await hydrateProfilesFromServer();
@@ -53,7 +55,7 @@ export default function StoreBootstrap({ children }: Props) {
         }
       }
 
-      if (shouldHydrateProfiles && !getProfile()) {
+      if (needsActiveProfile && !getProfile()) {
         window.location.replace("/profiles");
         return;
       }

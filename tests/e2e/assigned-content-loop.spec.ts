@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local", override: true });
+
 import bcrypt from "bcryptjs";
 import { expect, test } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
@@ -17,7 +20,13 @@ type SeededData = {
   reading: SeededSubject;
 };
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+});
 
 const E2E_PARENT_EMAIL = process.env.E2E_PARENT_EMAIL ?? "e2e.parent+assigned@starliz.local";
 const E2E_PARENT_PASSWORD = process.env.E2E_PARENT_PASSWORD ?? "PlaywrightAssigned#2026";

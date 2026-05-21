@@ -168,7 +168,7 @@ export async function middleware(request: NextRequest) {
       const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
       return finalize(NextResponse.redirect(refreshTarget));
     }
-    return finalize(NextResponse.redirect(new URL("/login", request.url)));
+    return finalize(NextResponse.redirect(new URL("/auth/login", request.url)));
   }
 
   if (authenticated && (pathname === "/login" || pathname === "/signup" || pathname === "/auth/login" || pathname === "/auth/signup") && !adminLoginTarget) {
@@ -233,6 +233,10 @@ export async function middleware(request: NextRequest) {
       const next = `${pathname}${request.nextUrl.search}`;
       const profilesUrl = new URL(`/parent/profiles?intent=parent&next=${encodeURIComponent(next)}`, request.url);
       return finalize(NextResponse.redirect(profilesUrl));
+    }
+
+    if (pathname === "/parent") {
+      return finalize(NextResponse.redirect(new URL("/parent/dashboard", request.url)));
     }
   }
 

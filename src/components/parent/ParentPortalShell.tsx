@@ -592,7 +592,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
+    <main className="min-h-screen bg-slate-950 text-slate-100" data-testid="parent-portal-shell">
+      <span className="sr-only" data-testid={`parent-active-section-${activeSection}`}>{activeSection}</span>
       <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.22),_transparent_35%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1))]">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

@@ -2,11 +2,10 @@
 
 import Link from "next/link"
 import { FormEvent, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import PublicShell from "@/components/layout/PublicShell"
 
 export default function LoginPage() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -33,11 +32,11 @@ export default function LoginPage() {
 
       const nextPath = searchParams.get("next")
       if (payload.user?.role === "admin") {
-        router.replace(nextPath?.startsWith("/admin") ? nextPath : "/admin")
+        window.location.assign(nextPath?.startsWith("/admin") ? nextPath : "/admin")
         return
       }
 
-      router.replace("/parent/profiles")
+      window.location.assign("/parent/profiles")
     } catch {
       setError("Unable to login right now.")
     } finally {

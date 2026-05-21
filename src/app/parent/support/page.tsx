@@ -76,7 +76,7 @@ export default function ParentSupportPage() {
   const inputCls = "w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none focus:border-violet-500 transition";
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white" data-testid="parent-support-page">
       <Navbar />
 
       <div className="mx-auto max-w-3xl px-4 py-10 space-y-8">

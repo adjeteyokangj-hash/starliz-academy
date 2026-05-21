@@ -30,9 +30,10 @@ async function refreshSession(request: Request, nextPath?: string | null) {
   const authCookieName = getAuthCookieName();
   const hasRedirect = Boolean(nextPath && nextPath.startsWith("/"));
   const safeNext = hasRedirect ? nextPath! : "/admin";
+  const loginTarget = safeNext.startsWith("/admin") ? "/admin/login" : "/auth/login";
 
   const buildError = (status = 401, message = "Session expired", clearCookies = hasRedirect) => {
-    const target = hasRedirect ? new URL(safeNext === "/admin/login" ? "/admin/login" : "/admin/login", request.url) : null;
+    const target = hasRedirect ? new URL(loginTarget, request.url) : null;
     const res = hasRedirect
       ? NextResponse.redirect(target!)
       : NextResponse.json({ error: message }, { status });
@@ -46,6 +47,7 @@ async function refreshSession(request: Request, nextPath?: string | null) {
         secure: process.env.NODE_ENV === "production",
         path: "/",
         maxAge: 0,
+        expires: new Date(0),
       });
       res.cookies.set(refreshCookieName, "", {
         httpOnly: true,
@@ -53,6 +55,7 @@ async function refreshSession(request: Request, nextPath?: string | null) {
         secure: process.env.NODE_ENV === "production",
         path: "/",
         maxAge: 0,
+        expires: new Date(0),
       });
     }
     return withNoStore(res);
@@ -77,8 +80,7 @@ async function refreshSession(request: Request, nextPath?: string | null) {
   });
 
   if (!state.active || !state.rowId) {
-    const likelyRotationRace = state.reason === "revoked";
-    return buildError(401, "Refresh token is no longer valid", hasRedirect && !likelyRotationRace);
+    return buildError(401, "Refresh token is no longer valid", hasRedirect);
   }
 
   const user = await prisma.user.findUnique({
@@ -154,7 +156,8 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Auth refresh failed", error);
     const hasRedirect = Boolean(next && next.startsWith("/"));
-    const target = hasRedirect ? new URL("/admin/login", request.url) : null;
+    const targetPath = hasRedirect && next?.startsWith("/admin") ? "/admin/login" : "/auth/login";
+    const target = hasRedirect ? new URL(targetPath, request.url) : null;
     const res = hasRedirect
       ? NextResponse.redirect(target!)
       : NextResponse.json({ error: "Session refresh failed" }, { status: 503 });
@@ -165,6 +168,7 @@ export async function GET(request: Request) {
       secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 0,
+      expires: new Date(0),
     });
     res.cookies.set(getRefreshCookieName(), "", {
       httpOnly: true,
@@ -172,6 +176,7 @@ export async function GET(request: Request) {
       secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 0,
+      expires: new Date(0),
     });
     return withNoStore(res);
   }
