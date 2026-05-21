@@ -281,7 +281,24 @@ export default function StudentDashboardPage() {
   useEffect(() => {
     router.prefetch("/shop");
     router.prefetch("/games/lesson");
+    router.prefetch("/games/spelling");
+    router.prefetch("/games/math");
+    router.prefetch("/games/reading");
   }, [router]);
+
+  // Reset "stuck" loading states when the user navigates back to this page
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        setPendingAssignmentId(null);
+        setOpeningStore(false);
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   const visibleAssignments = useMemo(
     () => assignments.filter((assignment) => {

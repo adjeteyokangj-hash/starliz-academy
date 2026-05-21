@@ -16,6 +16,21 @@ export default function EarlyYearsDashboard({
   bossLaunching,
   onOpenStore,
 }: DashboardProps) {
+  export default function EarlyYearsDashboard({
+    childName,
+    stats,
+    visibleAssignments,
+    bossUnlocked,
+    loading,
+    error,
+    startingJourney,
+    onStartJourney,
+    onStartAssignment,
+    onStartBossBattle,
+    bossLaunching,
+    onOpenStore,
+    pendingAssignmentId,
+  }: DashboardProps) {
   const firstAssignment = visibleAssignments[0] ?? null;
 
   return (
@@ -63,12 +78,17 @@ export default function EarlyYearsDashboard({
                 key={assignment.id}
                 type="button"
                 onClick={() => onStartAssignment(assignment)}
-                className="rounded-2xl border border-sky-200 bg-white p-4 text-left transition hover:bg-sky-100"
+                disabled={pendingAssignmentId === assignment.id}
+                className="rounded-2xl border border-sky-200 bg-white p-4 text-left transition hover:bg-sky-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <p className="text-lg font-black capitalize text-slate-800">{assignment.subject}</p>
                 <p className="mt-1 text-sm text-slate-600">{assignment.title}</p>
                 <p className="mt-2 inline-flex rounded-full bg-sky-200 px-3 py-1 text-xs font-bold text-sky-900">
-                  {assignment.status === "in_progress" ? "Continue ▶" : "Start ▶"}
+                  {pendingAssignmentId === assignment.id
+                    ? "Opening... ✨"
+                    : assignment.status === "in_progress"
+                      ? "Continue ▶"
+                      : "Start ▶"}
                 </p>
               </button>
             ))}

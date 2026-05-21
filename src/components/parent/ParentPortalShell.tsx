@@ -314,6 +314,10 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [accountError, setAccountError] = useState<string | null>(null);
 
   useEffect(() => {
+    router.prefetch("/student/dashboard");
+  }, [router]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function load() {
