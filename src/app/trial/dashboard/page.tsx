@@ -21,6 +21,27 @@ type TrialStatus = {
   expired: boolean
 }
 
+type KeyStage = "ey" | "ks1" | "ks2"
+
+const KEY_STAGE_STORAGE_KEY = "starliz_trial_key_stage"
+
+const KEY_STAGES: Array<{ value: KeyStage; label: string; description: string }> = [
+  { value: "ey", label: "Early Years", description: "First steps in learning" },
+  { value: "ks1", label: "Key Stage 1", description: "Ages 5–7" },
+  { value: "ks2", label: "Key Stage 2", description: "Ages 7–11" },
+]
+
+function parseKeyStage(value: string | null): KeyStage {
+  if (value === "ey" || value === "ks1" || value === "ks2") return value
+  return "ks1"
+}
+
+function keyStageLabel(value: KeyStage): string {
+  if (value === "ey") return "Early Years"
+  if (value === "ks1") return "Key Stage 1"
+  return "Key Stage 2"
+}
+
 const SUBJECTS: Array<{ key: "spelling" | "reading" | "maths"; title: string; accent: string }> = [
   { key: "spelling", title: "Spelling", accent: "text-blue-300" },
   { key: "reading", title: "Reading", accent: "text-emerald-300" },
@@ -30,11 +51,26 @@ const SUBJECTS: Array<{ key: "spelling" | "reading" | "maths"; title: string; ac
 export default function TrialDashboardPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const activityCompleted = searchParams.get("activity") === "done"
+  const completedSubject = searchParams.get("completed")
+  const completedKeyStage = parseKeyStage(searchParams.get("keyStage"))
+  const activityCompleted = searchParams.get("activity") === "done" || Boolean(completedSubject)
   const [trial, setTrial] = useState<TrialStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
+  const [selectedKeyStage, setSelectedKeyStage] = useState<KeyStage>(() => {
+    const fromQuery = parseKeyStage(searchParams.get("keyStage"))
+    if (searchParams.get("keyStage")) return fromQuery
+    if (typeof window === "undefined") return "ks1"
+    return parseKeyStage(window.localStorage.getItem(KEY_STAGE_STORAGE_KEY))
+  })
+
+  function onSelectKeyStage(value: KeyStage) {
+    setSelectedKeyStage(value)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(KEY_STAGE_STORAGE_KEY, value)
+    }
+  }
 
   const loadStatus = useCallback(async (showLoading = true, allowRestore = true) => {
     if (showLoading) {
@@ -95,8 +131,15 @@ export default function TrialDashboardPage() {
     }
   }, [loadStatus])
 
+  const completedSubjectLabel =
+    completedSubject === "spelling" || completedSubject === "reading" || completedSubject === "maths"
+      ? completedSubject.charAt(0).toUpperCase() + completedSubject.slice(1)
+      : null
+
   const activeBanner = activityCompleted
-    ? "Activity completed. Great work. Your remaining activity count has been updated."
+    ? completedSubjectLabel
+      ? `${completedSubjectLabel} activity completed. Great work. You tried ${keyStageLabel(completedKeyStage)}. Your remaining activity count has been updated.`
+      : "Activity completed. Great work. Your remaining activity count has been updated."
     : banner
 
   return (
@@ -115,7 +158,28 @@ export default function TrialDashboardPage() {
 
             {trial ? (
               <>
-                <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950 p-4 sm:p-5">
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Choose learning level</p>
+                  <p className="mt-1 text-sm text-slate-300">Pick a Key Stage before starting a trial activity.</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    {KEY_STAGES.map((option) => {
+                      const isSelected = selectedKeyStage === option.value
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => onSelectKeyStage(option.value)}
+                          className={`rounded-xl border px-4 py-3 text-left transition active:scale-[0.98] ${isSelected ? "border-blue-400 bg-blue-500/20" : "border-slate-700 bg-slate-900 hover:border-blue-400/60"}`}
+                        >
+                          <p className="text-sm font-black text-white">{option.label}</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-300">{option.description}</p>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-4 sm:grid-cols-3" id="trial-subjects">
                   <div className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
                     <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Activities Remaining</p>
                     <p className="mt-2 text-3xl font-black text-white">{trial.activitiesRemaining}</p>
@@ -137,7 +201,7 @@ export default function TrialDashboardPage() {
                       <p className="mt-2 text-sm text-slate-300">{trial.subjectRemaining[subject.key]} remaining</p>
                       {trial.subjectRemaining[subject.key] > 0 ? (
                         <Link
-                          href={`/trial/learn?subject=${encodeURIComponent(subject.key)}`}
+                          href={`/trial/learn?subject=${encodeURIComponent(subject.key)}&keyStage=${encodeURIComponent(selectedKeyStage)}`}
                           className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-500"
                         >
                           Start activity
@@ -154,6 +218,24 @@ export default function TrialDashboardPage() {
                     </article>
                   ))}
                 </div>
+
+                {activityCompleted ? (
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => onSelectKeyStage(selectedKeyStage === "ey" ? "ks1" : selectedKeyStage === "ks1" ? "ks2" : "ey")}
+                      className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-bold text-slate-100 transition hover:bg-slate-800"
+                    >
+                      Try another Key Stage
+                    </button>
+                    <a
+                      href="#trial-subjects"
+                      className="rounded-xl border border-blue-500/60 bg-blue-500/20 px-4 py-2 text-sm font-bold text-blue-100 transition hover:bg-blue-500/30"
+                    >
+                      Try another subject
+                    </a>
+                  </div>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -174,6 +256,7 @@ export default function TrialDashboardPage() {
 
             <div className="rounded-3xl border border-blue-500/40 bg-blue-500/10 p-6">
               <h2 className="text-xl font-black">Full Version Includes</h2>
+              <p className="mt-2 text-sm font-semibold text-blue-100">Create a parent account to save full progress.</p>
               <ul className="mt-4 space-y-2 text-sm text-blue-100">
                 <li>✓ Unlimited learning activities</li>
                 <li>✓ Full AI personalised learning</li>

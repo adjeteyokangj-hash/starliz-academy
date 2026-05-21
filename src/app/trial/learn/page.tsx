@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import PublicShell from "@/components/layout/PublicShell"
@@ -15,302 +15,312 @@ type TrialStatus = {
 }
 
 type SubjectKey = "spelling" | "reading" | "maths"
-type ActivityPhase = "activity" | "answered" | "completing" | "done"
+type KeyStage = "ey" | "ks1" | "ks2"
+type ActivityPhase = "question" | "summary" | "completing" | "done"
+type ChoiceQuestion = { question: string; options: Array<{ label: string; correct: boolean }> }
 
-// ── Spelling ──────────────────────────────────────────────────────────────────
-const SPELLING_WORD = "adventure"
+const TOTAL_QUESTIONS = 3
 
-// ── Reading ───────────────────────────────────────────────────────────────────
-const READING_PASSAGE =
-  "The bright moon rises over the quiet forest. The trees stand tall and still. Owls watch from the branches above."
-const READING_QUESTION = "Where does the moon rise in the story?"
-const READING_OPTIONS: { label: string; correct: boolean }[] = [
-  { label: "Over the quiet forest", correct: true },
-  { label: "Under the deep ocean", correct: false },
-  { label: "Behind a tall building", correct: false },
-  { label: "Over a busy road", correct: false },
-]
+const SPELLING_WORDS: Record<KeyStage, string[]> = {
+  ey: ["cat", "sun", "dog"],
+  ks1: ["sunshine", "rabbit", "garden"],
+  ks2: ["adventure", "knowledge", "magnificent"],
+}
 
-// ── Maths ─────────────────────────────────────────────────────────────────────
-const MATHS_QUESTION = "What is 7 + 5?"
-const MATHS_OPTIONS: { label: string; correct: boolean }[] = [
-  { label: "11", correct: false },
-  { label: "12", correct: true },
-  { label: "13", correct: false },
-  { label: "10", correct: false },
-]
+const READING_PASSAGES: Record<KeyStage, string> = {
+  ey: "Sam has a red hat. Sam can hop. Sam is happy.",
+  ks1: "Lina planted a seed in a small pot. She watered it every morning. After one week, a tiny green shoot appeared.",
+  ks2: "During the school science fair, Amir demonstrated a small wind turbine. Although it spun slowly indoors, he explained that stronger outdoor wind would generate more electricity for the model village lights.",
+}
+
+const READING_QUESTIONS: Record<KeyStage, ChoiceQuestion[]> = {
+  ey: [
+    { question: "What color is Sam's hat?", options: [{ label: "Red", correct: true }, { label: "Blue", correct: false }, { label: "Green", correct: false }, { label: "Black", correct: false }] },
+    { question: "What can Sam do?", options: [{ label: "Sleep", correct: false }, { label: "Hop", correct: true }, { label: "Swim", correct: false }, { label: "Fly", correct: false }] },
+    { question: "How is Sam feeling?", options: [{ label: "Sad", correct: false }, { label: "Happy", correct: true }, { label: "Angry", correct: false }, { label: "Scared", correct: false }] },
+  ],
+  ks1: [
+    { question: "What did Lina plant?", options: [{ label: "A flower", correct: false }, { label: "A seed", correct: true }, { label: "A tree", correct: false }, { label: "A stick", correct: false }] },
+    { question: "When did she water it?", options: [{ label: "Every morning", correct: true }, { label: "Every night", correct: false }, { label: "Only once", correct: false }, { label: "Never", correct: false }] },
+    { question: "What appeared after one week?", options: [{ label: "A tiny green shoot", correct: true }, { label: "A red flower", correct: false }, { label: "A big tree", correct: false }, { label: "A bird nest", correct: false }] },
+  ],
+  ks2: [
+    { question: "What did Amir demonstrate?", options: [{ label: "A water pump", correct: false }, { label: "A wind turbine", correct: true }, { label: "A solar oven", correct: false }, { label: "A paper bridge", correct: false }] },
+    { question: "Why did it spin slowly indoors?", options: [{ label: "It was broken", correct: false }, { label: "There was weak wind", correct: true }, { label: "It was too heavy", correct: false }, { label: "Lights were off", correct: false }] },
+    { question: "What can we infer about outdoor testing?", options: [{ label: "It may produce more electricity", correct: true }, { label: "It will stop turning", correct: false }, { label: "It will need less wind", correct: false }, { label: "It will power a whole city", correct: false }] },
+  ],
+}
+
+const MATHS_QUESTIONS: Record<KeyStage, ChoiceQuestion[]> = {
+  ey: [
+    { question: "How many circles do you see? (● ● ●)", options: [{ label: "2", correct: false }, { label: "3", correct: true }, { label: "4", correct: false }, { label: "5", correct: false }] },
+    { question: "Which shape has 3 sides?", options: [{ label: "Square", correct: false }, { label: "Circle", correct: false }, { label: "Triangle", correct: true }, { label: "Rectangle", correct: false }] },
+    { question: "What is 2 + 1?", options: [{ label: "2", correct: false }, { label: "3", correct: true }, { label: "4", correct: false }, { label: "5", correct: false }] },
+  ],
+  ks1: [
+    { question: "What is 8 + 7?", options: [{ label: "14", correct: false }, { label: "15", correct: true }, { label: "16", correct: false }, { label: "17", correct: false }] },
+    { question: "What is 18 - 9?", options: [{ label: "7", correct: false }, { label: "8", correct: false }, { label: "9", correct: true }, { label: "10", correct: false }] },
+    { question: "Tom has 12 stickers and gets 6 more. How many now?", options: [{ label: "16", correct: false }, { label: "17", correct: false }, { label: "18", correct: true }, { label: "19", correct: false }] },
+  ],
+  ks2: [
+    { question: "What is 6 × 7?", options: [{ label: "36", correct: false }, { label: "40", correct: false }, { label: "42", correct: true }, { label: "48", correct: false }] },
+    { question: "What is 24 ÷ 6?", options: [{ label: "3", correct: false }, { label: "4", correct: true }, { label: "5", correct: false }, { label: "6", correct: false }] },
+    { question: "Which is equal to 1/2?", options: [{ label: "2/3", correct: false }, { label: "3/8", correct: false }, { label: "4/8", correct: true }, { label: "5/6", correct: false }] },
+  ],
+}
 
 function parseSubject(value: string | null): SubjectKey | null {
   if (value === "spelling" || value === "reading" || value === "maths") return value
   return null
 }
 
-function speakWord(word: string) {
-  if (typeof window === "undefined") return
-  if (!("speechSynthesis" in window)) return
-  window.speechSynthesis.cancel()
-  const utterance = new SpeechSynthesisUtterance(word)
-  utterance.rate = 0.85
-  window.speechSynthesis.speak(utterance)
+function parseKeyStage(value: string | null): KeyStage {
+  if (value === "ey" || value === "ks1" || value === "ks2") return value
+  return "ks1"
 }
 
-// ── Spelling activity ─────────────────────────────────────────────────────────
-function SpellingActivity({ onAnswered }: { onAnswered: () => void }) {
-  const [input, setInput] = useState("")
-  const [feedback, setFeedback] = useState<"correct" | "wrong" | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+function keyStageLabel(value: KeyStage): string {
+  if (value === "ey") return "Early Years"
+  if (value === "ks1") return "Key Stage 1"
+  return "Key Stage 2"
+}
 
-  function checkAnswer() {
-    const trimmed = input.trim().toLowerCase()
-    if (trimmed === SPELLING_WORD) {
-      setFeedback("correct")
-      onAnswered()
-    } else {
-      setFeedback("wrong")
-    }
-  }
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && feedback !== "correct") checkAnswer()
-  }
+function selectVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  const english = voices.filter((voice) => voice.lang.toLowerCase().startsWith("en"))
+  if (english.length === 0) return voices[0] ?? null
+  const preferred = english.find((voice) => /(child|kids|female|libby|aria|jenny|samantha|google uk english female|natural|neural)/i.test(voice.name))
+  if (preferred) return preferred
+  const uk = english.find((voice) => /en-gb|english \(united kingdom\)/i.test(voice.lang + voice.name))
+  return uk ?? english[0]
+}
 
+function createUtterance(text: string, voice: SpeechSynthesisVoice | null, rate: number, pitch: number): SpeechSynthesisUtterance {
+  const utterance = new SpeechSynthesisUtterance(text)
+  if (voice) utterance.voice = voice
+  utterance.rate = rate
+  utterance.pitch = pitch
+  utterance.lang = voice?.lang ?? "en-GB"
+  return utterance
+}
+
+function ProgressMeter({ current }: { current: number }) {
+  const percent = Math.min(100, Math.max(0, (current / TOTAL_QUESTIONS) * 100))
   return (
-    <div className="space-y-6">
-      {/* Word display */}
-      <div className="flex items-center justify-between rounded-2xl border border-indigo-700/50 bg-indigo-950/60 px-6 py-5">
-        <p className="text-3xl font-black tracking-widest text-white sm:text-4xl">
-          {feedback === "correct" ? SPELLING_WORD : "_ ".repeat(SPELLING_WORD.length).trim()}
-        </p>
-        <button
-          type="button"
-          onClick={() => speakWord(SPELLING_WORD)}
-          className="ml-4 inline-flex shrink-0 items-center gap-2 rounded-xl border border-indigo-600 bg-indigo-900 px-4 py-2 text-sm font-bold text-indigo-100 transition hover:bg-indigo-800 active:scale-95"
-        >
-          🔊 Hear word
-        </button>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs font-bold uppercase tracking-[0.16em] text-slate-300">
+        <span>Question {current} of {TOTAL_QUESTIONS}</span>
+        <span>{Math.round(percent)}%</span>
       </div>
-
-      {/* Input row */}
-      {feedback !== "correct" && (
-        <div className="space-y-3">
-          <label className="block text-sm font-semibold text-slate-300" htmlFor="spelling-input">
-            Type the word then press Check
-          </label>
-          <div className="flex gap-3">
-            <input
-              ref={inputRef}
-              id="spelling-input"
-              type="text"
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value)
-                setFeedback(null)
-              }}
-              onKeyDown={handleKeyDown}
-              className="flex-1 rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 text-lg font-bold text-white placeholder-slate-500 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30"
-              placeholder="Type your answer…"
-            />
-            <button
-              type="button"
-              onClick={checkAnswer}
-              disabled={input.trim().length === 0}
-              className="rounded-xl bg-indigo-600 px-5 py-3 font-black text-white transition hover:bg-indigo-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Check
-            </button>
-          </div>
-          {feedback === "wrong" && (
-            <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-200">
-              Not quite — try again! Hint: break it into syllables:{" "}
-              <strong>ad-ven-ture</strong>
-            </p>
-          )}
-        </div>
-      )}
-
-      {feedback === "correct" && (
-        <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-base font-bold text-emerald-200">
-          ✅ Brilliant! You spelled <strong>{SPELLING_WORD}</strong> correctly!
-        </p>
-      )}
+      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+        <div className="h-2 rounded-full bg-blue-500 transition-all duration-300" style={{ width: `${percent}%` }} />
+      </div>
+      {current >= 2 ? <p className="text-sm font-semibold text-emerald-300">You are nearly there.</p> : null}
     </div>
   )
 }
 
-// ── Choice activity (Reading + Maths) ─────────────────────────────────────────
-function ChoiceActivity({
-  question,
-  passage,
-  options,
-  onAnswered,
-}: {
-  question: string
-  passage?: string
-  options: { label: string; correct: boolean }[]
-  onAnswered: () => void
-}) {
-  const [selected, setSelected] = useState<number | null>(null)
+function ChoiceQuestionCard({ question, options, selected, onSelect }: { question: string; options: Array<{ label: string; correct: boolean }>; selected: number | null; onSelect: (index: number) => void }) {
   const answered = selected !== null
-
-  function choose(index: number) {
-    if (answered) return
-    setSelected(index)
-    onAnswered()
-  }
-
   return (
     <div className="space-y-5">
-      {passage && (
-        <div className="rounded-2xl border border-slate-700 bg-slate-950 px-5 py-4">
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Read this</p>
-          <p className="mt-2 text-base font-semibold leading-relaxed text-white sm:text-lg">{passage}</p>
-        </div>
-      )}
-
-      <p className="text-lg font-black text-white">{question}</p>
-
+      <p className="text-2xl font-black text-white sm:text-3xl">{question}</p>
       <div className="grid gap-3 sm:grid-cols-2">
         {options.map((option, index) => {
-          let btnClass =
-            "w-full rounded-2xl border px-5 py-4 text-left text-base font-bold transition active:scale-[0.98] "
-          if (!answered) {
-            btnClass +=
-              "border-slate-600 bg-slate-800 text-white hover:border-indigo-400 hover:bg-indigo-900/60"
-          } else if (index === selected) {
-            btnClass += option.correct
-              ? "border-emerald-500 bg-emerald-900/40 text-emerald-200"
-              : "border-rose-500 bg-rose-900/40 text-rose-200"
-          } else if (option.correct) {
-            btnClass += "border-emerald-500/50 bg-emerald-950/30 text-emerald-300"
-          } else {
-            btnClass += "border-slate-700 bg-slate-900 text-slate-500 opacity-60"
-          }
+          let classes = "min-h-14 w-full rounded-2xl border px-5 py-4 text-left text-lg font-black transition active:scale-[0.98] "
+          if (!answered) classes += "border-slate-600 bg-slate-800 text-white hover:border-blue-400 hover:bg-slate-700"
+          else if (index === selected) classes += option.correct ? "border-emerald-500 bg-emerald-950/40 text-emerald-200" : "border-amber-500 bg-amber-950/40 text-amber-200"
+          else if (option.correct) classes += "border-emerald-500/50 bg-emerald-950/20 text-emerald-300"
+          else classes += "border-slate-700 bg-slate-900 text-slate-500"
+
           return (
-            <button
-              key={option.label}
-              type="button"
-              onClick={() => choose(index)}
-              disabled={answered}
-              className={btnClass}
-            >
-              {answered && index === selected
-                ? option.correct
-                  ? "✅ "
-                  : "❌ "
-                : answered && option.correct
-                  ? "✅ "
-                  : ""}
+            <button key={option.label} type="button" onClick={() => onSelect(index)} disabled={answered} className={classes}>
               {option.label}
             </button>
           )
         })}
       </div>
-
-      {answered && (
-        <p
-          className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
-            options[selected]?.correct
-              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-              : "border-amber-500/40 bg-amber-500/10 text-amber-200"
-          }`}
-        >
-          {options[selected]?.correct
-            ? "🎉 Correct! Great work!"
-            : `Not quite — the correct answer is: ${options.find((o) => o.correct)?.label ?? ""}`}
-        </p>
-      )}
     </div>
   )
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
 export default function TrialLearnPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const subject = parseSubject(searchParams.get("subject"))
   const selectedSubject: SubjectKey = subject ?? "spelling"
+  const selectedKeyStage = parseKeyStage(searchParams.get("keyStage"))
 
   const [trial, setTrial] = useState<TrialStatus | null>(null)
   const [loading, setLoading] = useState(true)
-  const [phase, setPhase] = useState<ActivityPhase>("activity")
+  const [phase, setPhase] = useState<ActivityPhase>("question")
   const [error, setError] = useState<string | null>(null)
 
-  const loadStatus = useCallback(
-    async (allowRestore = true) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const response = await fetch("/api/trial/status", { method: "GET", cache: "no-store" })
-        const payload = (await response.json()) as { trial?: TrialStatus }
+  const [questionIndex, setQuestionIndex] = useState(0)
+  const [stars, setStars] = useState(0)
+  const [spellingInput, setSpellingInput] = useState("")
+  const [choiceSelected, setChoiceSelected] = useState<number | null>(null)
+  const [currentCorrect, setCurrentCorrect] = useState<boolean | null>(null)
+  const [speaking, setSpeaking] = useState(false)
+  const [audioFallbackMessage, setAudioFallbackMessage] = useState<string | null>(null)
 
-        if (response.status === 401 && allowRestore) {
-          const restored = await restoreTrialSessionFromStorage()
-          if (restored.restored) {
-            const retryResponse = await fetch("/api/trial/status", { method: "GET", cache: "no-store" })
-            const retryPayload = (await retryResponse.json()) as { trial?: TrialStatus }
-            if (retryResponse.ok && retryPayload.trial) {
-              storeTrialEmail(retryPayload.trial.email)
-              setTrial(retryPayload.trial)
-              return
-            }
-            router.replace("/trial")
-            return
-          }
-          if (restored.expired && restored.email) {
-            router.replace(`/trial/upgrade?email=${encodeURIComponent(restored.email)}`)
-            return
-          }
-          router.replace("/trial")
-          return
-        }
+  const questionNumber = questionIndex + 1
+  const spellingWord = SPELLING_WORDS[selectedKeyStage][questionIndex] ?? SPELLING_WORDS[selectedKeyStage][TOTAL_QUESTIONS - 1]
+  const choiceQuestions = useMemo(() => (selectedSubject === "reading" ? READING_QUESTIONS[selectedKeyStage] : MATHS_QUESTIONS[selectedKeyStage]), [selectedKeyStage, selectedSubject])
+  const activeChoiceQuestion = choiceQuestions[questionIndex] ?? choiceQuestions[TOTAL_QUESTIONS - 1]
 
-        if (!response.ok || !payload.trial) {
-          router.replace("/trial")
-          return
-        }
+  function resetQuestionState() {
+    setSpellingInput("")
+    setChoiceSelected(null)
+    setCurrentCorrect(null)
+    setAudioFallbackMessage(null)
+  }
 
-        storeTrialEmail(payload.trial.email)
+  function encouragement(isCorrect: boolean): string {
+    return isCorrect ? (questionNumber >= TOTAL_QUESTIONS ? "Great work!" : "Great work!") : "Good try, let us try again."
+  }
 
-        const noActivitiesLeft = payload.trial.activitiesRemaining <= 0
-        const subjectExhausted = payload.trial.subjectRemaining[selectedSubject] <= 0
-        if (payload.trial.expired || noActivitiesLeft || subjectExhausted) {
-          router.replace(`/trial/upgrade?email=${encodeURIComponent(payload.trial.email)}`)
-          return
-        }
-
-        setTrial(payload.trial)
-      } catch {
-        setError("Unable to verify your trial status right now.")
-      } finally {
-        setLoading(false)
-      }
-    },
-    [router, selectedSubject],
-  )
-
-  useEffect(() => {
-    if (!subject) {
-      router.replace("/trial/dashboard")
+  function moveToNextQuestion() {
+    if (questionNumber >= TOTAL_QUESTIONS) {
+      setPhase("summary")
       return
     }
-    void loadStatus(true)
+    setQuestionIndex((previous) => previous + 1)
+    resetQuestionState()
+  }
+
+  async function speakSpellingWord(word: string, withInstruction: boolean) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setAudioFallbackMessage(`Audio is not available on this device. Please read the word aloud: ${word}`)
+      return
+    }
+
+    setSpeaking(true)
+    setAudioFallbackMessage(null)
+    try {
+      const synth = window.speechSynthesis
+      synth.cancel()
+      const voice = selectVoice(synth.getVoices())
+
+      const speakOnce = async (utterance: SpeechSynthesisUtterance) => {
+        await new Promise<void>((resolve) => {
+          utterance.onend = () => resolve()
+          utterance.onerror = () => resolve()
+          synth.speak(utterance)
+        })
+      }
+
+      if (withInstruction) {
+        await speakOnce(createUtterance(`Your word is ${word}. Listen carefully.`, voice, 0.74, 1.0))
+        await wait(550)
+      }
+      await speakOnce(createUtterance(word, voice, 0.68, 1.05))
+    } finally {
+      setSpeaking(false)
+    }
+  }
+
+  function submitSpellingAnswer() {
+    const correct = spellingInput.trim().toLowerCase() === spellingWord.toLowerCase()
+    setCurrentCorrect(correct)
+    if (correct) setStars((value) => value + 1)
+  }
+
+  function submitChoiceAnswer(index: number) {
+    if (choiceSelected !== null) return
+    const correct = Boolean(activeChoiceQuestion.options[index]?.correct)
+    setChoiceSelected(index)
+    setCurrentCorrect(correct)
+    if (correct) setStars((value) => value + 1)
+  }
+
+  const loadStatus = useCallback(async (allowRestore = true) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/trial/status", { method: "GET", cache: "no-store" })
+      const payload = (await response.json()) as { trial?: TrialStatus }
+
+      if (response.status === 401 && allowRestore) {
+        const restored = await restoreTrialSessionFromStorage()
+        if (restored.restored) {
+          const retryResponse = await fetch("/api/trial/status", { method: "GET", cache: "no-store" })
+          const retryPayload = (await retryResponse.json()) as { trial?: TrialStatus }
+          if (retryResponse.ok && retryPayload.trial) {
+            storeTrialEmail(retryPayload.trial.email)
+            setTrial(retryPayload.trial)
+            return
+          }
+          router.replace("/trial")
+          return
+        }
+        if (restored.expired && restored.email) {
+          router.replace(`/trial/upgrade?email=${encodeURIComponent(restored.email)}`)
+          return
+        }
+        router.replace("/trial")
+        return
+      }
+
+      if (!response.ok || !payload.trial) {
+        router.replace("/trial")
+        return
+      }
+
+      storeTrialEmail(payload.trial.email)
+      const noActivitiesLeft = payload.trial.activitiesRemaining <= 0
+      const subjectExhausted = payload.trial.subjectRemaining[selectedSubject] <= 0
+      if (payload.trial.expired || noActivitiesLeft || subjectExhausted) {
+        router.replace(`/trial/upgrade?email=${encodeURIComponent(payload.trial.email)}`)
+        return
+      }
+
+      setTrial(payload.trial)
+    } catch {
+      setError("Unable to verify your trial status right now.")
+    } finally {
+      setLoading(false)
+    }
+  }, [router, selectedSubject])
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      if (!subject) {
+        router.replace("/trial/dashboard")
+        return
+      }
+      void loadStatus(true)
+    }, 0)
+    return () => window.clearTimeout(timerId)
   }, [loadStatus, router, subject])
 
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      setPhase("question")
+      setQuestionIndex(0)
+      setStars(0)
+      resetQuestionState()
+    }, 0)
+    return () => window.clearTimeout(timerId)
+  }, [selectedSubject, selectedKeyStage])
+
   async function completeActivity(allowRestore = true) {
-    if (!subject || !trial) return
+    if (!subject || !trial || phase === "completing" || phase === "done") return
     setPhase("completing")
     setError(null)
     try {
       const response = await fetch("/api/trial/activity", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject: selectedSubject }),
+        body: JSON.stringify({ subject: selectedSubject, keyStage: selectedKeyStage }),
       })
 
-      const payload = (await response.json()) as { error?: string; status?: string }
+      const payload = (await response.json()) as { error?: string }
       if (!response.ok) {
         if (response.status === 403) {
           router.replace(`/trial/upgrade?email=${encodeURIComponent(trial.email)}`)
@@ -324,124 +334,94 @@ export default function TrialLearnPage() {
           }
         }
         setError(payload.error ?? "Could not complete this activity.")
-        setPhase("answered")
+        setPhase("summary")
         return
       }
 
       setPhase("done")
-      router.replace("/trial/dashboard?activity=done")
+      router.replace(`/trial/dashboard?completed=${encodeURIComponent(selectedSubject)}&keyStage=${encodeURIComponent(selectedKeyStage)}`)
     } catch {
       setError("Network error while completing this activity.")
-      setPhase("answered")
+      setPhase("summary")
     }
   }
 
-  const SUBJECT_LABELS: Record<SubjectKey, string> = {
-    spelling: "Spelling",
-    reading: "Reading",
-    maths: "Maths",
-  }
+  const SUBJECT_LABELS: Record<SubjectKey, string> = { spelling: "Spelling", reading: "Reading", maths: "Maths" }
 
   return (
     <PublicShell>
-      <section className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 lg:py-14">
-        <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 sm:p-8">
-          {/* Loading */}
-          {loading && <p className="text-sm text-slate-300">Checking trial status…</p>}
+      <section className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:py-12">
+        <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 sm:p-8">
+          {loading ? <p className="text-sm text-slate-300">Checking trial status...</p> : null}
+          {error ? <p className="mb-4 rounded-xl border border-rose-500/50 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
 
-          {/* Error */}
-          {error && (
-            <p className="mb-4 rounded-xl border border-rose-500/50 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-              {error}
-            </p>
-          )}
-
-          {/* Activity */}
-          {!loading && trial && (
+          {!loading && trial ? (
             <>
-              {/* Header */}
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-300">
-                    Trial Activity
-                  </p>
-                  <h1 className="mt-1 text-2xl font-black text-white sm:text-3xl">
-                    {SUBJECT_LABELS[selectedSubject]} Challenge
-                  </h1>
-                </div>
-                <span className="rounded-full border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-bold text-slate-300">
-                  {trial.activitiesRemaining} left
-                </span>
+              <div className="mb-6 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-300">Trial Lesson</p>
+                <h1 className="text-3xl font-black text-white sm:text-4xl">{SUBJECT_LABELS[selectedSubject]} Mini Lesson</h1>
+                <p className="inline-flex w-fit rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-bold uppercase tracking-widest text-slate-200">{keyStageLabel(selectedKeyStage)}</p>
+                <ProgressMeter current={Math.min(questionNumber, TOTAL_QUESTIONS)} />
               </div>
 
-              {/* Spelling */}
-              {selectedSubject === "spelling" && (
-                <SpellingActivity onAnswered={() => setPhase("answered")} />
-              )}
-
-              {/* Reading */}
-              {selectedSubject === "reading" && (
-                <ChoiceActivity
-                  passage={READING_PASSAGE}
-                  question={READING_QUESTION}
-                  options={READING_OPTIONS}
-                  onAnswered={() => setPhase("answered")}
-                />
-              )}
-
-              {/* Maths */}
-              {selectedSubject === "maths" && (
-                <ChoiceActivity
-                  question={MATHS_QUESTION}
-                  options={MATHS_OPTIONS}
-                  onAnswered={() => setPhase("answered")}
-                />
-              )}
-
-              {/* Complete button — only after answering */}
-              {(phase === "answered" || phase === "completing" || phase === "done") && (
-                <div className="mt-8 flex flex-wrap gap-3 border-t border-slate-700 pt-6">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void completeActivity()
-                    }}
-                    disabled={phase === "completing" || phase === "done"}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 font-black text-white transition hover:bg-blue-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {phase === "completing" ? (
-                      <>
-                        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                        Saving…
-                      </>
-                    ) : phase === "done" ? (
-                      "✅ Done!"
-                    ) : (
-                      "Complete activity ✓"
-                    )}
-                  </button>
-                  <Link
-                    href="/trial/dashboard"
-                    className="inline-flex items-center justify-center rounded-2xl border border-slate-700 px-5 py-3 text-sm font-bold text-slate-200 transition hover:bg-slate-800"
-                  >
-                    Back to dashboard
-                  </Link>
+              {selectedSubject === "reading" && phase === "question" ? (
+                <div className="mb-5 rounded-2xl border border-slate-700 bg-slate-950 px-5 py-4">
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Passage</p>
+                  <p className="mt-2 text-base leading-relaxed text-white sm:text-lg">{READING_PASSAGES[selectedKeyStage]}</p>
                 </div>
-              )}
+              ) : null}
 
-              {/* While still in activity phase, show only back link */}
-              {phase === "activity" && (
-                <div className="mt-8 border-t border-slate-800 pt-5">
-                  <Link
-                    href="/trial/dashboard"
-                    className="text-sm font-semibold text-slate-400 transition hover:text-slate-200"
-                  >
-                    ← Back to dashboard
-                  </Link>
-                </div>
-              )}
+              <div className="rounded-3xl border border-slate-700 bg-slate-950 p-5 sm:p-7">
+                {phase === "question" ? (
+                  selectedSubject === "spelling" ? (
+                    <div className="space-y-5">
+                      <p className="text-2xl font-black tracking-wider text-white sm:text-3xl">Spell this word</p>
+                      <p className="text-lg font-bold text-blue-200">Word {questionNumber} of {TOTAL_QUESTIONS}</p>
+
+                      <div className="flex flex-wrap gap-3">
+                        <button type="button" onClick={() => { void speakSpellingWord(spellingWord, true) }} disabled={speaking} className="min-h-12 rounded-xl border border-blue-600 bg-blue-900 px-5 py-3 text-base font-black text-blue-100 transition hover:bg-blue-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70">{speaking ? "Speaking..." : "Hear word"}</button>
+                        <button type="button" onClick={() => { void speakSpellingWord(spellingWord, false) }} disabled={speaking} className="min-h-12 rounded-xl border border-slate-600 bg-slate-800 px-5 py-3 text-base font-black text-slate-100 transition hover:bg-slate-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70">{speaking ? "Speaking..." : "Repeat word"}</button>
+                      </div>
+
+                      {audioFallbackMessage ? <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-200">{audioFallbackMessage}</p> : null}
+
+                      <div className="space-y-3">
+                        <label htmlFor="trial-spelling-input" className="text-sm font-semibold text-slate-300">Type the word you hear</label>
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                          <input id="trial-spelling-input" type="text" autoComplete="off" autoCapitalize="none" spellCheck={false} value={spellingInput} onChange={(event) => { setSpellingInput(event.target.value); if (currentCorrect === false) setCurrentCorrect(null) }} onKeyDown={(event) => { if (event.key === "Enter" && spellingInput.trim().length > 0 && currentCorrect !== true) submitSpellingAnswer() }} className="min-h-12 flex-1 rounded-xl border border-slate-600 bg-slate-900 px-4 py-3 text-lg font-black text-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/30" placeholder="Type your answer" />
+                          <button type="button" onClick={submitSpellingAnswer} disabled={spellingInput.trim().length === 0 || currentCorrect === true} className="min-h-12 rounded-xl bg-blue-600 px-6 py-3 text-base font-black text-white transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">Check answer</button>
+                        </div>
+                      </div>
+
+                      {currentCorrect !== null ? <div className={`rounded-xl border px-4 py-3 text-base font-bold ${currentCorrect ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-amber-500/40 bg-amber-500/10 text-amber-200"}`}><p>{encouragement(currentCorrect)}</p>{currentCorrect ? <p className="mt-1 animate-pulse text-sm font-semibold text-emerald-300">Celebration: Star earned.</p> : <p className="mt-1 text-sm font-semibold">Try again and listen one more time.</p>}</div> : null}
+                      {currentCorrect ? <button type="button" onClick={moveToNextQuestion} className="min-h-12 rounded-xl bg-emerald-600 px-6 py-3 text-base font-black text-white transition hover:bg-emerald-500 active:scale-[0.98]">{questionNumber < TOTAL_QUESTIONS ? "Next question" : "View summary"}</button> : null}
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      <ChoiceQuestionCard question={activeChoiceQuestion.question} options={activeChoiceQuestion.options} selected={choiceSelected} onSelect={submitChoiceAnswer} />
+                      {choiceSelected !== null ? <div className={`rounded-xl border px-4 py-3 text-base font-bold ${currentCorrect ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-amber-500/40 bg-amber-500/10 text-amber-200"}`}><p>{encouragement(Boolean(currentCorrect))}</p>{currentCorrect ? <p className="mt-1 animate-pulse text-sm font-semibold text-emerald-300">Celebration: Star earned.</p> : <p className="mt-1 text-sm font-semibold">Gentle retry note: review and continue.</p>}</div> : null}
+                      {choiceSelected !== null ? <button type="button" onClick={moveToNextQuestion} className="min-h-12 rounded-xl bg-emerald-600 px-6 py-3 text-base font-black text-white transition hover:bg-emerald-500 active:scale-[0.98]">{questionNumber < TOTAL_QUESTIONS ? "Next question" : "View summary"}</button> : null}
+                    </div>
+                  )
+                ) : (
+                  <div className="space-y-5">
+                    <h2 className="text-2xl font-black text-white sm:text-3xl">Lesson Summary</h2>
+                    <p className="text-base font-semibold text-slate-200">{stars === TOTAL_QUESTIONS ? "Amazing lesson. You answered every question correctly." : stars >= 2 ? "Strong lesson. Keep practicing and you will level up quickly." : "Nice effort. Every question helps your brain grow."}</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border border-slate-700 bg-slate-900 p-4"><p className="text-xs font-bold uppercase tracking-widest text-slate-400">Questions completed</p><p className="mt-2 text-2xl font-black text-white">{TOTAL_QUESTIONS}/{TOTAL_QUESTIONS}</p></div>
+                      <div className="rounded-xl border border-slate-700 bg-slate-900 p-4"><p className="text-xs font-bold uppercase tracking-widest text-slate-400">Stars earned</p><p className="mt-2 text-2xl font-black text-white">{stars}</p></div>
+                      <div className="rounded-xl border border-slate-700 bg-slate-900 p-4"><p className="text-xs font-bold uppercase tracking-widest text-slate-400">Subject completed</p><p className="mt-2 text-2xl font-black text-white">{SUBJECT_LABELS[selectedSubject]}</p></div>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <button type="button" onClick={() => { void completeActivity() }} disabled={phase === "completing" || phase === "done"} className="min-h-12 rounded-xl bg-blue-600 px-6 py-3 text-base font-black text-white transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">{phase === "completing" ? "Saving..." : phase === "done" ? "Completed" : "Complete activity"}</button>
+                      <Link href={`/trial/dashboard?keyStage=${encodeURIComponent(selectedKeyStage)}`} className="min-h-12 rounded-xl border border-slate-700 px-6 py-3 text-base font-black text-slate-200 transition hover:bg-slate-800">Back to dashboard</Link>
+                      <Link href={`/trial/dashboard?keyStage=${encodeURIComponent(selectedKeyStage)}#trial-subjects`} className="min-h-12 rounded-xl border border-blue-500/60 bg-blue-500/20 px-6 py-3 text-base font-black text-blue-100 transition hover:bg-blue-500/30">Try another subject</Link>
+                    </div>
+                  </div>
+                )}
+              </div>
             </>
-          )}
+          ) : null}
         </div>
       </section>
     </PublicShell>

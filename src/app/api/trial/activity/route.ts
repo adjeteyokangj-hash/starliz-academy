@@ -13,6 +13,7 @@ import { sendTrialProgressEmailIfEligible, sendTrialUpgradeEmailIfEligible } fro
 
 const bodySchema = z.object({
   subject: z.enum(["spelling", "reading", "maths"]),
+  keyStage: z.enum(["ey", "ks1", "ks2"]).optional(),
   wordsMastered: z.number().int().min(0).max(25).optional(),
 });
 
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
 
     const now = new Date();
     const words = body.wordsMastered ?? (body.subject === "spelling" ? 5 : body.subject === "reading" ? 3 : 2);
+    const activityLabel = body.keyStage ? `${body.subject}:${body.keyStage}` : body.subject;
 
     const updated = await prisma.trialAccount.update({
       where: { id: trial.id },
@@ -64,7 +66,7 @@ export async function POST(request: Request) {
         wordsMastered: { increment: words },
         subjectUsageJson: serializeSubjectUsage(usage),
         subjectsUsed: toSubjectSummary(usage),
-        lastActivity: body.subject,
+        lastActivity: activityLabel,
         streakCount: {
           increment:
             trial.lastActiveAt.toDateString() === now.toDateString() ? 0 : 1,

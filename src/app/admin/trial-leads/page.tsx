@@ -6,15 +6,26 @@ type TrialLead = {
   id: string
   email: string
   activitiesRemaining: number
+  activitiesCompleted: number
   trialStartedAt: string
   trialExpiresAt: string
   lastActiveAt: string
+  lastSubject: string | null
+  lastKeyStage: "ey" | "ks1" | "ks2" | null
+  activityHistory: { spelling: number; reading: number; maths: number }
   convertedToAccount: boolean
   emailConsent: boolean
 }
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString()
+}
+
+function keyStageLabel(value: TrialLead["lastKeyStage"]) {
+  if (value === "ey") return "Early Years"
+  if (value === "ks1") return "Key Stage 1"
+  if (value === "ks2") return "Key Stage 2"
+  return "-"
 }
 
 export default function AdminTrialLeadsPage() {
@@ -69,6 +80,10 @@ export default function AdminTrialLeadsPage() {
                 <tr className="text-xs uppercase tracking-widest text-slate-400">
                   <th className="px-3 py-2">Email</th>
                   <th className="px-3 py-2">Activities Remaining</th>
+                  <th className="px-3 py-2">Completed</th>
+                  <th className="px-3 py-2">Last Subject</th>
+                  <th className="px-3 py-2">Last Key Stage</th>
+                  <th className="px-3 py-2">History (S/R/M)</th>
                   <th className="px-3 py-2">Trial Started</th>
                   <th className="px-3 py-2">Trial Expires</th>
                   <th className="px-3 py-2">Last Active</th>
@@ -81,6 +96,10 @@ export default function AdminTrialLeadsPage() {
                   <tr key={lead.id} className="text-slate-200">
                     <td className="px-3 py-2 font-medium text-white">{lead.email}</td>
                     <td className="px-3 py-2">{lead.activitiesRemaining}</td>
+                    <td className="px-3 py-2">{lead.activitiesCompleted}</td>
+                    <td className="px-3 py-2">{lead.lastSubject ?? "-"}</td>
+                    <td className="px-3 py-2">{keyStageLabel(lead.lastKeyStage)}</td>
+                    <td className="px-3 py-2">{lead.activityHistory.spelling}/{lead.activityHistory.reading}/{lead.activityHistory.maths}</td>
                     <td className="px-3 py-2">{formatDate(lead.trialStartedAt)}</td>
                     <td className="px-3 py-2">{formatDate(lead.trialExpiresAt)}</td>
                     <td className="px-3 py-2">{formatDate(lead.lastActiveAt)}</td>
