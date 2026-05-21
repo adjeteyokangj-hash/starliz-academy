@@ -174,7 +174,7 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
                   </StripeCheckoutButton>
                 ) : (
                   <Link
-                    href={plan.ctaHref || "/signup"}
+                    href={plan.ctaHref || "/trial"}
                     className="block w-full rounded-xl bg-blue-600 px-6 py-3 text-center text-sm font-bold text-white transition hover:bg-blue-500"
                   >
                     {plan.ctaLabel || "Start Free Trial"}

@@ -191,7 +191,7 @@ export default async function PublicHomePage() {
           </nav>
 
           <Link
-            href="/signup"
+            href="/trial"
             className="rounded-lg sm:rounded-xl bg-blue-600 px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-bold transition hover:bg-blue-500 whitespace-nowrap"
           >
             Free Trial
@@ -240,7 +240,7 @@ export default async function PublicHomePage() {
 
             <div className="mt-6 sm:mt-9 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
               <Link
-                href="/signup"
+                href="/trial"
                 className="rounded-lg sm:rounded-xl bg-blue-600 px-5 sm:px-7 py-3 sm:py-4 text-sm sm:text-base font-bold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500 text-center"
               >
                 Start your child&apos;s learning journey
@@ -319,7 +319,7 @@ export default async function PublicHomePage() {
               <p className="text-4xl sm:text-5xl">{subject.icon}</p>
               <h3 className="mt-4 sm:mt-5 text-lg sm:text-xl font-bold">{subject.title}</h3>
               <p className="mt-2 sm:mt-3 text-sm sm:text-base leading-6 sm:leading-7 text-slate-400">{subject.text}</p>
-              <Link href={subject.title.includes("GCSE") ? "/pricing" : "/signup"} className="mt-4 sm:mt-6 inline-block text-xs sm:text-sm font-semibold text-blue-400 hover:text-blue-300">
+              <Link href={subject.title.includes("GCSE") ? "/pricing" : "/trial"} className="mt-4 sm:mt-6 inline-block text-xs sm:text-sm font-semibold text-blue-400 hover:text-blue-300">
                 {subject.title.includes("GCSE") ? "View GCSE pathway \u2192" : "Explore pathway support \u2192"}
               </Link>
             </div>
@@ -452,7 +452,7 @@ export default async function PublicHomePage() {
             ))}
           </div>
 
-          <Link href="/signup" className="mt-6 sm:mt-8 inline-flex rounded-lg sm:rounded-xl bg-blue-600 px-5 sm:px-7 py-3 sm:py-4 text-sm sm:text-base font-bold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500">
+          <Link href="/trial" className="mt-6 sm:mt-8 inline-flex rounded-lg sm:rounded-xl bg-blue-600 px-5 sm:px-7 py-3 sm:py-4 text-sm sm:text-base font-bold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500">
             Explore platform features
           </Link>
         </div>
@@ -536,7 +536,7 @@ export default async function PublicHomePage() {
             Explore Reception to GCSE support with pathway aligned learning, exam-board-aware GCSE tagging and parent progress visibility.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <Link href="/signup" className="rounded-xl bg-white px-8 py-4 font-bold text-blue-700 shadow-lg transition hover:bg-blue-50">
+            <Link href="/trial" className="rounded-xl bg-white px-8 py-4 font-bold text-blue-700 shadow-lg transition hover:bg-blue-50">
               Start your child&apos;s learning journey
             </Link>
             <Link href="/pricing" className="rounded-xl border border-white/30 bg-white/10 px-8 py-4 font-bold text-white transition hover:bg-white/20">

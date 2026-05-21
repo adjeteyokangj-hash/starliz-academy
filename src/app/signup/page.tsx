@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { FormEvent, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { generatePassword as generateSecurePassword } from "@/lib/password"
 import {
   normalizeUkPhone,
@@ -75,10 +75,12 @@ function progressWidthClass(value: number): string {
 
 export default function SignupPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const prefilledEmail = searchParams.get("email")?.trim().toLowerCase() ?? ""
   const [step, setStep] = useState<1 | 2 | 3>(1)
 
   const [parentName, setParentName] = useState("")
-  const [email, setEmail] = useState("")
+  const [email, setEmail] = useState(prefilledEmail)
   const [phone, setPhone] = useState("")
   const [addressLine1, setAddressLine1] = useState("")
   const [addressLine2, setAddressLine2] = useState("")

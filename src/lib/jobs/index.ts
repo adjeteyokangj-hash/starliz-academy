@@ -7,6 +7,7 @@ import { runReportSnapshots } from "./report-snapshots";
 import { runSubscriptionChecks } from "./subscription-checks";
 import { runSchoolProvisioningJobs } from "./school-provisioning";
 import { runSchoolNotificationDispatch } from "./school-notification-dispatch";
+import { runTrialFollowupEmails } from "./trial-followup-emails";
 
 const jobs = [
   { name: "subscription-checks", run: runSubscriptionChecks },
@@ -16,6 +17,7 @@ const jobs = [
   { name: "notification-digest", run: runNotificationDigest },
   { name: "school-provisioning", run: runSchoolProvisioningJobs },
   { name: "school-notification-dispatch", run: runSchoolNotificationDispatch },
+  { name: "trial-followup-emails", run: runTrialFollowupEmails },
 ];
 
 export async function runDailyJobs() {

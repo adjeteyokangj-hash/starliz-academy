@@ -215,6 +215,40 @@ model ParentProfile {
   updatedAt              DateTime @updatedAt
 }
 
+model TrialAccount {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  emailConsent     Boolean  @default(false)
+  activitiesRemaining Int   @default(10)
+  spellingRemaining Int     @default(4)
+  readingRemaining  Int     @default(3)
+  mathsRemaining    Int     @default(3)
+  trialStartedAt    DateTime
+  trialExpiresAt    DateTime
+  lastActiveAt      DateTime
+  activitiesCompleted Int   @default(0)
+  wordsMastered     Int     @default(0)
+  subjectUsageJson  String?
+  subjectsUsed      String?
+  lastActivity      String?
+  streakCount       Int     @default(0)
+  convertedToAccount Boolean @default(false)
+  upgradedAt        DateTime?
+  welcomeEmailSentAt DateTime?
+  continueEmailSentAt DateTime?
+  progressEmailSentAt DateTime?
+  upgradeEmailSentAt DateTime?
+  lastEmailSentAt    DateTime?
+  sessionTokenHash  String?
+  sessionIssuedAt   DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([trialExpiresAt])
+  @@index([lastActiveAt])
+  @@index([convertedToAccount])
+}
+
 model StudentProfile {
   id                    String       @id @default(cuid())
   childId               String       @unique

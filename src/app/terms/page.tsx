@@ -8,7 +8,7 @@ export default function Terms() {
           <Link href="/" className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-xl font-black text-transparent tracking-tight">
             StarLiz Academy
           </Link>
-          <Link href="/signup" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
+          <Link href="/trial" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
             Start Free Trial
           </Link>
         </div>
