@@ -24,6 +24,8 @@ type TrialStatus = {
 type KeyStage = "ey" | "ks1" | "ks2"
 
 const KEY_STAGE_STORAGE_KEY = "starliz_trial_key_stage"
+const TRIAL_LAST_SUBJECT_KEY = "starliz_trial_last_subject"
+const TRIAL_COMPLETED_SUBJECTS_KEY = "starliz_trial_completed_subjects"
 
 const KEY_STAGES: Array<{ value: KeyStage; label: string; description: string }> = [
   { value: "ey", label: "Early Years", description: "First steps in learning" },
@@ -58,6 +60,16 @@ export default function TrialDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
+  const [lastSubjectTried] = useState<"spelling" | "reading" | "maths" | null>(() => {
+    if (typeof window === "undefined") return null
+    const value = window.localStorage.getItem(TRIAL_LAST_SUBJECT_KEY)
+    return value === "spelling" || value === "reading" || value === "maths" ? value : null
+  })
+  const [completedTokens] = useState<string[]>(() => {
+    if (typeof window === "undefined") return []
+    const value = window.localStorage.getItem(TRIAL_COMPLETED_SUBJECTS_KEY)
+    return value ? value.split(",").filter(Boolean) : []
+  })
   const [selectedKeyStage, setSelectedKeyStage] = useState<KeyStage>(() => {
     const fromQuery = parseKeyStage(searchParams.get("keyStage"))
     if (searchParams.get("keyStage")) return fromQuery
@@ -197,20 +209,25 @@ export default function TrialDashboardPage() {
                 <div className="mt-6 grid gap-4 sm:grid-cols-3">
                   {SUBJECTS.map((subject) => (
                     <article key={subject.key} className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
-                      <p className={`text-sm font-bold ${subject.accent}`}>{subject.title}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={`text-sm font-bold ${subject.accent}`}>{subject.title}</p>
+                        {completedTokens.includes(`${subject.key}:${selectedKeyStage}`) ? <span className="rounded-full border border-emerald-400/40 bg-emerald-500/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-200">Completed</span> : null}
+                      </div>
                       <p className="mt-2 text-sm text-slate-300">{trial.subjectRemaining[subject.key]} remaining</p>
+                      {lastSubjectTried === subject.key ? <p className="mt-2 text-xs font-semibold text-blue-200">Last subject tried</p> : null}
                       {trial.subjectRemaining[subject.key] > 0 ? (
                         <Link
                           href={`/trial/learn?subject=${encodeURIComponent(subject.key)}&keyStage=${encodeURIComponent(selectedKeyStage)}`}
-                          className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-500"
+                          className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300/60"
+                          aria-label={`${lastSubjectTried === subject.key ? "Resume" : "Start"} ${subject.title} activity`}
                         >
-                          Start activity
+                          {lastSubjectTried === subject.key ? "Resume activity" : "Start activity"}
                         </Link>
                       ) : (
                         <button
                           type="button"
                           disabled
-                          className="mt-4 w-full rounded-xl bg-slate-700 px-3 py-2 text-xs font-bold text-slate-300 opacity-70"
+                          className="mt-4 min-h-11 w-full rounded-xl bg-slate-700 px-3 py-2 text-xs font-bold text-slate-300 opacity-70"
                         >
                           No activities left
                         </button>

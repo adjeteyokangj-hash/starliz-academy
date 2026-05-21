@@ -15,22 +15,8 @@ export default function EarlyYearsDashboard({
   onStartBossBattle,
   bossLaunching,
   onOpenStore,
+  pendingAssignmentId,
 }: DashboardProps) {
-  export default function EarlyYearsDashboard({
-    childName,
-    stats,
-    visibleAssignments,
-    bossUnlocked,
-    loading,
-    error,
-    startingJourney,
-    onStartJourney,
-    onStartAssignment,
-    onStartBossBattle,
-    bossLaunching,
-    onOpenStore,
-    pendingAssignmentId,
-  }: DashboardProps) {
   const firstAssignment = visibleAssignments[0] ?? null;
 
   return (

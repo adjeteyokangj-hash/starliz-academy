@@ -32,6 +32,58 @@ export default function AdminTrialLeadsPage() {
   const [leads, setLeads] = useState<TrialLead[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [resettingLeadId, setResettingLeadId] = useState<string | null>(null)
+
+  async function loadLeads() {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/admin/trial-leads", { cache: "no-store" })
+      if (response.status === 401) {
+        window.location.replace("/admin/login?next=/admin/trial-leads")
+        return
+      }
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(payload?.error ?? `Unable to load trial leads (${response.status}).`)
+      }
+      const payload = (await response.json()) as { leads: TrialLead[] }
+      setLeads(payload.leads ?? [])
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : "Unable to load trial leads.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function resetTrialLead(lead: TrialLead) {
+    const confirmed = window.confirm(`Reset trial email for ${lead.email}? This will remove the current trial record so testing can restart fresh.`)
+    if (!confirmed) return
+
+    setResettingLeadId(lead.id)
+    setActionMessage(null)
+    setError(null)
+    try {
+      const response = await fetch("/api/admin/trial-leads", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trialId: lead.id, email: lead.email }),
+      })
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(payload?.error ?? "Unable to reset trial lead.")
+      }
+
+      setActionMessage(`Reset complete for ${lead.email}`)
+      await loadLeads()
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : "Unable to reset trial lead.")
+    } finally {
+      setResettingLeadId(null)
+    }
+  }
 
   useEffect(() => {
     fetch("/api/admin/trial-leads", { cache: "no-store" })
@@ -72,6 +124,7 @@ export default function AdminTrialLeadsPage() {
       <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6">
         {loading ? <p className="text-sm text-slate-300">Loading trial leads...</p> : null}
         {error ? <p className="text-sm font-semibold text-rose-300">{error}</p> : null}
+        {actionMessage ? <p className="text-sm font-semibold text-emerald-300">{actionMessage}</p> : null}
 
         {!loading && !error ? (
           <div className="overflow-x-auto">
@@ -89,6 +142,7 @@ export default function AdminTrialLeadsPage() {
                   <th className="px-3 py-2">Last Active</th>
                   <th className="px-3 py-2">Converted</th>
                   <th className="px-3 py-2">Email Consent</th>
+                  <th className="px-3 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
@@ -105,6 +159,18 @@ export default function AdminTrialLeadsPage() {
                     <td className="px-3 py-2">{formatDate(lead.lastActiveAt)}</td>
                     <td className="px-3 py-2">{lead.convertedToAccount ? "Yes" : "No"}</td>
                     <td className="px-3 py-2">{lead.emailConsent ? "Yes" : "No"}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void resetTrialLead(lead)
+                        }}
+                        disabled={resettingLeadId === lead.id}
+                        className="rounded-lg border border-rose-400/60 bg-rose-500/20 px-3 py-1.5 text-xs font-bold text-rose-100 transition hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {resettingLeadId === lead.id ? "Resetting..." : "Reset trial"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
