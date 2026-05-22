@@ -334,7 +334,7 @@ test.describe("Admin Schools Operations Console", () => {
 
     await schoolRow(page, "Ops Safeguarding Academy").getByRole("button", { name: "Manage Teachers" }).click({ force: true });
 
-    const teacherEmailInput = page.locator("#school-teachers").getByPlaceholder("Teacher email");
+    const teacherEmailInput = page.locator("#school-teachers").getByPlaceholder("Staff email");
     if (!(await teacherEmailInput.isVisible())) {
       const invitesSection = page
         .locator("#school-teachers")
