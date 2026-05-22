@@ -571,6 +571,73 @@ function isSecuritySensitiveAction(parsed: z.infer<typeof actionSchema>): boolea
   }
 }
 
+async function resolveBlockedActionSchoolId(parsed: z.infer<typeof actionSchema>): Promise<string | null> {
+  switch (parsed.action) {
+    case "inviteTeacher":
+    case "updateSchool":
+    case "exportSchoolData":
+      return parsed.payload.schoolId;
+    case "exportStudentData": {
+      const link = await prisma.schoolStudent.findUnique({
+        where: { id: parsed.payload.schoolStudentId },
+        select: { schoolId: true },
+      });
+      return link?.schoolId ?? null;
+    }
+    case "requestDeleteStudentData": {
+      const link = await prisma.schoolStudent.findUnique({
+        where: { id: parsed.payload.schoolStudentId },
+        select: { schoolId: true },
+      });
+      return link?.schoolId ?? null;
+    }
+    default:
+      return null;
+  }
+}
+
+async function writeSecurityGateBlockedAudit(input: {
+  parsed: z.infer<typeof actionSchema>;
+  session: { userId: string; email: string };
+  securityGate: SecurityGatePayload;
+  request: Request;
+}): Promise<void> {
+  const schoolId = await resolveBlockedActionSchoolId(input.parsed);
+  if (!schoolId) return;
+
+  const attemptedAt = new Date().toISOString();
+  const route = new URL(input.request.url).pathname;
+
+  await writeSchoolAuditLog({
+    schoolId,
+    actorUserId: input.session.userId,
+    action: "login_blocked",
+    entityType: "system",
+    entityId: schoolId,
+    metadata: {
+      actionType: input.parsed.action,
+      schoolId,
+      attemptedBy: {
+        userId: input.session.userId,
+        email: input.session.email,
+      },
+      timestamp: attemptedAt,
+      reason: input.securityGate.reason,
+      anomalyCount: input.securityGate.authAnomalySignals,
+      securityPolicyState: {
+        blocked: input.securityGate.blocked,
+        twoFaEnabled: input.securityGate.twoFaEnabled,
+        threshold: input.securityGate.threshold,
+      },
+      request: {
+        route,
+        method: input.request.method,
+      },
+    },
+    severity: "warning",
+  });
+}
+
 export async function POST(request: Request) {
   const { session, response } = await requireAdminPermission("students:write");
   if (!session) return response;
@@ -580,6 +647,17 @@ export async function POST(request: Request) {
     const securityGate = await loadSecurityGateContext();
 
     if (isSecuritySensitiveAction(parsed) && securityGate.blocked) {
+      try {
+        await writeSecurityGateBlockedAudit({
+          parsed,
+          session: { userId: session.userId, email: session.email },
+          securityGate,
+          request,
+        });
+      } catch {
+        // Best-effort logging: lock response must still be returned.
+      }
+
       return NextResponse.json(
         {
           error: "Security step-up required: elevated failed-login risk detected. Retry after the anomaly window clears or reduce failed login volume.",
