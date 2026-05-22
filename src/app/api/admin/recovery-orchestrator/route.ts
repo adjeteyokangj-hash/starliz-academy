@@ -8,15 +8,20 @@ import {
   type RecoveryOrchestrationPlan,
 } from "@/lib/recovery_orchestrator";
 import {
+  analyzePolicyImpact,
+  buildRecoveryExecutiveSummaryRows,
   getRecoveryGovernanceIntelligence,
   getRecoveryGovernanceMetrics,
+  listRecoveryGovernanceIncidentQueue,
   listRecoveryOrchestrationHistory,
   listRecoveryPolicyHistory,
   listRecoveryRunTimeline,
   loadRecoveryOrchestrationPlan,
   loadRecoveryTenantPolicy,
   persistRecoveryOrchestrationEvent,
+  persistRecoveryIncidentWorkflowEvent,
   persistRecoveryTenantPolicy,
+  simulateRecoveryPolicyConfiguration,
 } from "@/lib/recovery_orchestrator_store";
 import {
   executeRecoveryOrchestrationPlan,
@@ -117,6 +122,72 @@ const requestSchema = z.discriminatedUnion("action", [
       }).optional(),
     }),
   }),
+  z.object({
+    action: z.literal("incident_acknowledge"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      incidentId: z.string().min(1),
+      note: z.string().max(1500).optional().nullable(),
+    }),
+  }),
+  z.object({
+    action: z.literal("incident_assign_owner"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      incidentId: z.string().min(1),
+      ownerUserId: z.string().min(1),
+      note: z.string().max(1500).optional().nullable(),
+    }),
+  }),
+  z.object({
+    action: z.literal("incident_set_mitigation"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      incidentId: z.string().min(1),
+      mitigationStatus: z.enum(["pending", "in_progress", "resolved"]),
+      note: z.string().max(1500).optional().nullable(),
+    }),
+  }),
+  z.object({
+    action: z.literal("incident_resolve"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      incidentId: z.string().min(1),
+      resolutionNotes: z.string().max(3000),
+    }),
+  }),
+  z.object({
+    action: z.literal("simulate_policy"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      baseline: z.object({
+        label: z.string().min(1),
+        teacherApprovalRoles: z.array(z.enum(["teacher", "admin", "owner"])).min(1).max(3),
+        guardrails: z.object({
+          minAssessmentAccuracyPct: z.number().int().min(10).max(95).optional(),
+          repeatedHintThreshold: z.number().int().min(1).max(20).optional(),
+          lowConfidenceThreshold: z.number().min(0.05).max(0.95).optional(),
+          stalledDaysThreshold: z.number().int().min(1).max(60).optional(),
+          maxInterventionMinutesPerWeek: z.number().int().min(10).max(240).optional(),
+          cooldownHours: z.number().int().min(1).max(168).optional(),
+        }),
+        retryPolicyLimit: z.number().int().min(1).max(20).optional(),
+      }),
+      candidate: z.object({
+        label: z.string().min(1),
+        teacherApprovalRoles: z.array(z.enum(["teacher", "admin", "owner"])).min(1).max(3),
+        guardrails: z.object({
+          minAssessmentAccuracyPct: z.number().int().min(10).max(95).optional(),
+          repeatedHintThreshold: z.number().int().min(1).max(20).optional(),
+          lowConfidenceThreshold: z.number().min(0.05).max(0.95).optional(),
+          stalledDaysThreshold: z.number().int().min(1).max(60).optional(),
+          maxInterventionMinutesPerWeek: z.number().int().min(10).max(240).optional(),
+          cooldownHours: z.number().int().min(1).max(168).optional(),
+        }),
+        retryPolicyLimit: z.number().int().min(1).max(20).optional(),
+      }),
+    }),
+  }),
 ]);
 
 const historyQuerySchema = z.object({
@@ -129,9 +200,11 @@ const historyQuerySchema = z.object({
   sinceIso: z.string().datetime().optional(),
   includeMetrics: z.coerce.boolean().optional(),
   includeIntelligence: z.coerce.boolean().optional(),
+  includeIncidentQueue: z.coerce.boolean().optional(),
+  includeRiskProfiles: z.coerce.boolean().optional(),
   includePolicy: z.coerce.boolean().optional(),
   includeTimeline: z.coerce.boolean().optional(),
-  exportType: z.enum(["orchestration_history", "rollback_history", "retry_activity", "school_policy_settings"]).optional(),
+  exportType: z.enum(["orchestration_history", "rollback_history", "retry_activity", "school_policy_settings", "executive_governance_summary"]).optional(),
   limit: z.coerce.number().int().min(10).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
@@ -342,6 +415,16 @@ export async function GET(request: Request) {
   }
 
   if (query.exportType) {
+    if (query.exportType === "executive_governance_summary") {
+      const rows = await buildRecoveryExecutiveSummaryRows(query);
+      return new Response(toCsv(rows), {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename=\"executive-governance-summary-${new Date().toISOString().slice(0, 10)}.csv\"`,
+        },
+      });
+    }
+
     if (query.exportType === "school_policy_settings") {
       const policies = await listRecoveryPolicyHistory({
         schoolId: query.schoolId,
@@ -428,6 +511,18 @@ export async function GET(request: Request) {
     ? await getRecoveryGovernanceIntelligence(query)
     : null;
 
+  const incidentQueue = query.includeIncidentQueue
+    ? await listRecoveryGovernanceIncidentQueue({
+      schoolId: query.schoolId,
+      anomalies: intelligence?.anomalies ?? [],
+      alerts: intelligence?.alerts ?? [],
+    })
+    : null;
+
+  const riskProfiles = query.includeRiskProfiles
+    ? intelligence?.schoolRiskProfiles ?? []
+    : null;
+
   const timeline = query.includeTimeline && query.runId && query.schoolId
     ? await listRecoveryRunTimeline({ schoolId: query.schoolId, runId: query.runId })
     : null;
@@ -439,6 +534,8 @@ export async function GET(request: Request) {
     policy,
     metrics,
     intelligence,
+    incidentQueue,
+    riskProfiles,
     timeline,
   });
 }
@@ -488,6 +585,89 @@ export async function POST(request: Request) {
       policy,
       schoolId: parsedBody.payload.schoolId,
       actorUserId: session.userId,
+    });
+  }
+
+  if (parsedBody.action === "incident_acknowledge") {
+    const { session, response } = await requireAdminPermission("ai:run");
+    if (!session) return response;
+    await persistRecoveryIncidentWorkflowEvent({
+      schoolId: parsedBody.payload.schoolId,
+      incidentId: parsedBody.payload.incidentId,
+      actorUserId: session.userId,
+      action: "acknowledge",
+      note: parsedBody.payload.note,
+    });
+    return NextResponse.json({ ok: true, incidentId: parsedBody.payload.incidentId });
+  }
+
+  if (parsedBody.action === "incident_assign_owner") {
+    const { session, response } = await requireAdminPermission("ai:run");
+    if (!session) return response;
+    await persistRecoveryIncidentWorkflowEvent({
+      schoolId: parsedBody.payload.schoolId,
+      incidentId: parsedBody.payload.incidentId,
+      actorUserId: session.userId,
+      action: "assign_owner",
+      ownerUserId: parsedBody.payload.ownerUserId,
+      note: parsedBody.payload.note,
+    });
+    return NextResponse.json({ ok: true, incidentId: parsedBody.payload.incidentId, ownerUserId: parsedBody.payload.ownerUserId });
+  }
+
+  if (parsedBody.action === "incident_set_mitigation") {
+    const { session, response } = await requireAdminPermission("ai:run");
+    if (!session) return response;
+    await persistRecoveryIncidentWorkflowEvent({
+      schoolId: parsedBody.payload.schoolId,
+      incidentId: parsedBody.payload.incidentId,
+      actorUserId: session.userId,
+      action: "mitigation",
+      mitigationStatus: parsedBody.payload.mitigationStatus,
+      note: parsedBody.payload.note,
+    });
+    return NextResponse.json({ ok: true, incidentId: parsedBody.payload.incidentId, mitigationStatus: parsedBody.payload.mitigationStatus });
+  }
+
+  if (parsedBody.action === "incident_resolve") {
+    const { session, response } = await requireAdminPermission("ai:run");
+    if (!session) return response;
+    await persistRecoveryIncidentWorkflowEvent({
+      schoolId: parsedBody.payload.schoolId,
+      incidentId: parsedBody.payload.incidentId,
+      actorUserId: session.userId,
+      action: "resolve",
+      mitigationStatus: "resolved",
+      note: parsedBody.payload.resolutionNotes,
+    });
+    return NextResponse.json({ ok: true, incidentId: parsedBody.payload.incidentId, resolved: true });
+  }
+
+  if (parsedBody.action === "simulate_policy") {
+    const { session, response } = await requireAdminPermission("ai:run");
+    if (!session) return response;
+
+    const baselineMetrics = await getRecoveryGovernanceMetrics({ schoolId: parsedBody.payload.schoolId, limit: 200, offset: 0 });
+    const baselineSimulation = simulateRecoveryPolicyConfiguration({
+      config: parsedBody.payload.baseline,
+      baselineMetrics,
+    });
+    const candidateSimulation = simulateRecoveryPolicyConfiguration({
+      config: parsedBody.payload.candidate,
+      baselineMetrics,
+    });
+    const impact = analyzePolicyImpact({
+      baseline: parsedBody.payload.baseline,
+      candidate: parsedBody.payload.candidate,
+      baselineMetrics,
+    });
+
+    return NextResponse.json({
+      simulateWithoutExecution: true,
+      actorUserId: session.userId,
+      baselineSimulation,
+      candidateSimulation,
+      impact,
     });
   }
 

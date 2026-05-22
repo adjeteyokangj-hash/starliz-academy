@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/db";
-import { DEFAULT_TENANT_POLICY, type RecoveryOrchestrationPlan, type RecoveryTenantPolicy } from "@/lib/recovery_orchestrator";
+import {
+  DEFAULT_TENANT_POLICY,
+  resolvePolicyRules,
+  type RecoveryOrchestrationPlan,
+  type RecoveryTenantPolicy,
+} from "@/lib/recovery_orchestrator";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
 
 type RecoveryAuditAction =
@@ -141,6 +146,69 @@ export type RecoveryGovernanceIntelligence = {
   insights: RecoveryGovernanceInsights;
   operatorRecommendations: string[];
   healthScores: RecoveryGovernanceHealthScore[];
+  incidentCommandCenter: RecoveryGovernanceIncident[];
+  schoolRiskProfiles: RecoverySchoolRiskProfile[];
+};
+
+export type RecoveryGovernanceIncident = {
+  incidentId: string;
+  schoolId: string | null;
+  sourceType: "anomaly" | "alert";
+  sourceId: string;
+  severity: RecoveryAnomalySeverity;
+  summary: string;
+  suggestedAction: string;
+  acknowledged: boolean;
+  acknowledgedAtIso: string | null;
+  acknowledgedByUserId: string | null;
+  ownerUserId: string | null;
+  mitigationStatus: "pending" | "in_progress" | "resolved";
+  resolutionNotes: string | null;
+  notes: string[];
+  updatedAtIso: string;
+};
+
+export type RecoverySchoolRiskProfile = {
+  schoolId: string;
+  operationalRiskLevel: "low" | "medium" | "high" | "critical";
+  governanceMaturityLevel: "emerging" | "developing" | "advanced" | "leading";
+  orchestrationRiskTrend: "rising" | "stable" | "improving";
+  interventionVolatilityScore: number;
+  approvalDisciplineScore: number;
+  rollbackInstabilityScore: number;
+};
+
+export type RecoveryPolicySimulationConfig = {
+  label: string;
+  teacherApprovalRoles: Array<"teacher" | "admin" | "owner">;
+  guardrails: Partial<RecoveryTenantPolicy["guardrails"]>;
+  retryPolicyLimit?: number;
+};
+
+export type RecoveryPolicySimulationResult = {
+  simulateWithoutExecution: true;
+  estimatedRollbackProbability: number;
+  estimatedGuardrailTriggerProbability: number;
+  estimatedExecutionLoad: number;
+  estimatedRetryPressure: number;
+  estimatedFailureProbability: number;
+};
+
+export type RecoveryPolicyComparisonResult = {
+  label: string;
+  simulation: RecoveryPolicySimulationResult;
+};
+
+export type RecoveryPolicyImpactAnalysis = {
+  baseline: RecoveryPolicyComparisonResult;
+  candidate: RecoveryPolicyComparisonResult;
+  delta: {
+    rollbackProbability: number;
+    guardrailProbability: number;
+    executionLoad: number;
+    retryPressure: number;
+    failureProbability: number;
+  };
 };
 
 function parseJsonSafe<T>(value: string | null | undefined): T | null {
@@ -462,11 +530,9 @@ export async function getRecoveryGovernanceIntelligence(input: RecoveryOrchestra
   const nowIso = new Date().toISOString();
   const latestStates = getLatestRunState(history.items);
   const bySchool = new Map<string, RecoveryRunHistoryItem[]>();
-  const runEvents = new Map<string, RecoveryRunHistoryItem[]>();
 
   for (const item of history.items) {
     bySchool.set(item.schoolId, [...(bySchool.get(item.schoolId) ?? []), item]);
-    runEvents.set(item.runId, [...(runEvents.get(item.runId) ?? []), item]);
   }
 
   const totalRuns = latestStates.length;
@@ -788,13 +854,333 @@ export async function getRecoveryGovernanceIntelligence(input: RecoveryOrchestra
     operatorRecommendations.push("Pause orchestration for a school with critical anomaly signals.");
   }
 
+  const incidentCommandCenter = await listRecoveryGovernanceIncidentQueue({
+    schoolId: input.schoolId,
+    anomalies,
+    alerts,
+  });
+
+  const schoolRiskProfiles = buildSchoolRiskProfiles({
+    bySchool,
+    healthScores,
+  });
+
   return {
     anomalies: anomalies.slice(0, 20),
     alerts: alerts.slice(0, 20),
     insights,
     operatorRecommendations,
     healthScores,
+    incidentCommandCenter,
+    schoolRiskProfiles,
   };
+}
+
+function buildSchoolRiskProfiles(input: {
+  bySchool: Map<string, RecoveryRunHistoryItem[]>;
+  healthScores: RecoveryGovernanceHealthScore[];
+}): RecoverySchoolRiskProfile[] {
+  return Array.from(input.bySchool.entries()).map(([schoolId, schoolItems]) => {
+    const latest = getLatestRunState(schoolItems);
+    const total = latest.length || 1;
+    const retries = schoolItems.filter((item) => item.action === "recovery_orchestration_executed" && (Boolean(item.metadata.retry) || (item.plan.execution.attempts ?? 0) > 1)).length;
+    const rollbacks = latest.filter((item) => item.plan.status === "rolled_back").length;
+    const pendingApprovals = latest.filter((item) => item.plan.status === "planned" || item.plan.status === "teacher_approved").length;
+    const guardrailFails = schoolItems.filter((item) => item.action === "recovery_orchestration_admin_confirmed" && !item.plan.guardrailsPassed).length;
+
+    const health = input.healthScores.find((item) => item.schoolId === schoolId);
+    const baseline = health?.overallScore ?? 50;
+    const volatility = toScore(((retries + guardrailFails) / total) * 100);
+    const approvalDiscipline = toScore(100 - (pendingApprovals / total) * 100);
+    const rollbackInstability = toScore((rollbacks / total) * 100);
+
+    const operationalRiskIndex = (100 - baseline) * 0.45 + volatility * 0.25 + rollbackInstability * 0.30;
+    const operationalRiskLevel: RecoverySchoolRiskProfile["operationalRiskLevel"] =
+      operationalRiskIndex >= 75 ? "critical"
+        : operationalRiskIndex >= 55 ? "high"
+          : operationalRiskIndex >= 35 ? "medium"
+            : "low";
+
+    const governanceMaturityLevel: RecoverySchoolRiskProfile["governanceMaturityLevel"] =
+      baseline >= 85 ? "leading"
+        : baseline >= 70 ? "advanced"
+          : baseline >= 50 ? "developing"
+            : "emerging";
+
+    const recent = latest.filter((item) => new Date(item.createdAt).getTime() >= sinceHours(48).getTime()).length;
+    const prior = latest.filter((item) => {
+      const age = Date.now() - new Date(item.createdAt).getTime();
+      return age > 48 * 60 * 60 * 1000 && age <= 96 * 60 * 60 * 1000;
+    }).length;
+
+    const orchestrationRiskTrend: RecoverySchoolRiskProfile["orchestrationRiskTrend"] =
+      recent > prior ? "rising"
+        : recent < prior ? "improving"
+          : "stable";
+
+    return {
+      schoolId,
+      operationalRiskLevel,
+      governanceMaturityLevel,
+      orchestrationRiskTrend,
+      interventionVolatilityScore: volatility,
+      approvalDisciplineScore: approvalDiscipline,
+      rollbackInstabilityScore: rollbackInstability,
+    };
+  }).sort((a, b) => {
+    const rank = { critical: 0, high: 1, medium: 2, low: 3 } as const;
+    return rank[a.operationalRiskLevel] - rank[b.operationalRiskLevel];
+  });
+}
+
+type IncidentWorkflowEvent = {
+  incidentId: string;
+  action: "acknowledge" | "assign_owner" | "mitigation" | "resolution_note" | "resolve";
+  actorUserId: string | null;
+  createdAtIso: string;
+  ownerUserId?: string | null;
+  mitigationStatus?: "pending" | "in_progress" | "resolved";
+  note?: string | null;
+};
+
+async function listRecoveryIncidentWorkflowEvents(input: { schoolId?: string }): Promise<IncidentWorkflowEvent[]> {
+  const rows = await prisma.schoolAuditLog.findMany({
+    where: {
+      operation: "recovery_incident_command",
+      ...(input.schoolId ? { schoolId: input.schoolId } : {}),
+    },
+    orderBy: [{ createdAt: "asc" }],
+    take: 2000,
+    select: {
+      actorUserId: true,
+      createdAt: true,
+      metadataJson: true,
+    },
+  });
+
+  const parsed: IncidentWorkflowEvent[] = [];
+  for (const row of rows) {
+    const metadata = parseJsonSafe<Record<string, unknown>>(row.metadataJson);
+    const incidentId = typeof metadata?.incidentId === "string" ? metadata.incidentId : null;
+    const action = typeof metadata?.action === "string" ? metadata.action : null;
+    if (!incidentId || !action) continue;
+    if (!["acknowledge", "assign_owner", "mitigation", "resolution_note", "resolve"].includes(action)) continue;
+
+    parsed.push({
+      incidentId,
+      action: action as IncidentWorkflowEvent["action"],
+      actorUserId: row.actorUserId,
+      createdAtIso: row.createdAt.toISOString(),
+      ownerUserId: typeof metadata?.ownerUserId === "string" ? metadata.ownerUserId : null,
+      mitigationStatus: metadata?.mitigationStatus === "pending" || metadata?.mitigationStatus === "in_progress" || metadata?.mitigationStatus === "resolved"
+        ? metadata.mitigationStatus
+        : undefined,
+      note: typeof metadata?.note === "string" ? metadata.note : null,
+    });
+  }
+
+  return parsed;
+}
+
+export async function listRecoveryGovernanceIncidentQueue(input: {
+  schoolId?: string;
+  anomalies: RecoveryGovernanceAnomaly[];
+  alerts: RecoveryGovernanceAlert[];
+}): Promise<RecoveryGovernanceIncident[]> {
+  const incidents = [
+    ...input.anomalies.map((item) => ({
+      incidentId: `incident-anomaly-${item.id}`,
+      schoolId: item.schoolId,
+      sourceType: "anomaly" as const,
+      sourceId: item.id,
+      severity: item.severity,
+      summary: item.summary,
+      suggestedAction: item.suggestedOperatorAction,
+      updatedAtIso: item.detectedAtIso,
+    })),
+    ...input.alerts.map((item) => ({
+      incidentId: `incident-alert-${item.id}`,
+      schoolId: item.schoolId,
+      sourceType: "alert" as const,
+      sourceId: item.id,
+      severity: item.severity,
+      summary: item.summary,
+      suggestedAction: item.recommendedAction,
+      updatedAtIso: item.createdAtIso,
+    })),
+  ].filter((item) => (input.schoolId ? item.schoolId === input.schoolId : true));
+
+  const workflowEvents = await listRecoveryIncidentWorkflowEvents({ schoolId: input.schoolId });
+  const eventsByIncident = new Map<string, IncidentWorkflowEvent[]>();
+  for (const event of workflowEvents) {
+    eventsByIncident.set(event.incidentId, [...(eventsByIncident.get(event.incidentId) ?? []), event]);
+  }
+
+  const severityWeight = { critical: 0, high: 1, medium: 2, low: 3 } as const;
+
+  return incidents.map((incident) => {
+    const events = eventsByIncident.get(incident.incidentId) ?? [];
+    let acknowledged = false;
+    let acknowledgedAtIso: string | null = null;
+    let acknowledgedByUserId: string | null = null;
+    let ownerUserId: string | null = null;
+    let mitigationStatus: RecoveryGovernanceIncident["mitigationStatus"] = "pending";
+    let resolutionNotes: string | null = null;
+    const notes: string[] = [];
+
+    for (const event of events) {
+      if (event.action === "acknowledge") {
+        acknowledged = true;
+        acknowledgedAtIso = event.createdAtIso;
+        acknowledgedByUserId = event.actorUserId;
+      }
+      if (event.action === "assign_owner") {
+        ownerUserId = event.ownerUserId ?? ownerUserId;
+      }
+      if (event.action === "mitigation") {
+        mitigationStatus = event.mitigationStatus ?? mitigationStatus;
+      }
+      if (event.action === "resolution_note" && event.note) {
+        notes.push(event.note);
+      }
+      if (event.action === "resolve") {
+        mitigationStatus = "resolved";
+        if (event.note) resolutionNotes = event.note;
+      }
+    }
+
+    return {
+      incidentId: incident.incidentId,
+      schoolId: incident.schoolId,
+      sourceType: incident.sourceType,
+      sourceId: incident.sourceId,
+      severity: incident.severity,
+      summary: incident.summary,
+      suggestedAction: incident.suggestedAction,
+      acknowledged,
+      acknowledgedAtIso,
+      acknowledgedByUserId,
+      ownerUserId,
+      mitigationStatus,
+      resolutionNotes,
+      notes,
+      updatedAtIso: (events.at(-1)?.createdAtIso ?? incident.updatedAtIso),
+    };
+  }).sort((a, b) => {
+    const s = severityWeight[a.severity] - severityWeight[b.severity];
+    if (s !== 0) return s;
+    return new Date(b.updatedAtIso).getTime() - new Date(a.updatedAtIso).getTime();
+  });
+}
+
+export async function persistRecoveryIncidentWorkflowEvent(input: {
+  schoolId: string;
+  incidentId: string;
+  actorUserId?: string | null;
+  action: "acknowledge" | "assign_owner" | "mitigation" | "resolution_note" | "resolve";
+  ownerUserId?: string | null;
+  mitigationStatus?: "pending" | "in_progress" | "resolved";
+  note?: string | null;
+}): Promise<void> {
+  await writeSchoolAuditLog({
+    schoolId: input.schoolId,
+    actorUserId: input.actorUserId ?? undefined,
+    action: "recovery_orchestration_policy_updated",
+    entityType: "system",
+    entityId: input.incidentId,
+    source: "api",
+    operation: "recovery_incident_command",
+    correlationId: input.incidentId,
+    metadata: {
+      incidentId: input.incidentId,
+      action: input.action,
+      ownerUserId: input.ownerUserId ?? null,
+      mitigationStatus: input.mitigationStatus ?? null,
+      note: input.note ?? null,
+    },
+    severity: input.action === "resolve" ? "info" : "warning",
+  });
+}
+
+export function simulateRecoveryPolicyConfiguration(input: {
+  config: RecoveryPolicySimulationConfig;
+  baselineMetrics?: RecoveryGovernanceMetrics | null;
+}): RecoveryPolicySimulationResult {
+  const rules = resolvePolicyRules(input.config.guardrails);
+  const approvalStrictness = Math.min(1, input.config.teacherApprovalRoles.length / 3);
+  const cooldownStrictness = Math.min(1, rules.cooldownHours / 72);
+  const frequencyPressure = Math.min(1, rules.maxInterventionMinutesPerWeek / 180);
+  const retryPressure = Math.min(1, (input.config.retryPolicyLimit ?? 3) / 8);
+  const currentRollbackRate = (input.baselineMetrics?.rollbackRate ?? 20) / 100;
+  const currentGuardrailRate = (input.baselineMetrics?.guardrailBlockCount ?? 0) / Math.max(1, input.baselineMetrics?.totalRuns ?? 10);
+
+  const estimatedRollbackProbability = Number(Math.max(0.02, Math.min(0.95, currentRollbackRate * (1 - cooldownStrictness * 0.25) * (1 - approvalStrictness * 0.2) + frequencyPressure * 0.2)).toFixed(3));
+  const estimatedGuardrailTriggerProbability = Number(Math.max(0.02, Math.min(0.95, currentGuardrailRate * (1 + frequencyPressure * 0.35) + cooldownStrictness * 0.2)).toFixed(3));
+  const estimatedExecutionLoad = Number(Math.max(5, Math.min(100, rules.maxInterventionMinutesPerWeek * (1 - approvalStrictness * 0.15))).toFixed(2));
+  const estimatedRetryPressure = Number(Math.max(0.02, Math.min(0.95, retryPressure * 0.55 + frequencyPressure * 0.25 + estimatedRollbackProbability * 0.2)).toFixed(3));
+  const estimatedFailureProbability = Number(Math.max(0.02, Math.min(0.95, estimatedRollbackProbability * 0.45 + estimatedRetryPressure * 0.35 + estimatedGuardrailTriggerProbability * 0.2)).toFixed(3));
+
+  return {
+    simulateWithoutExecution: true,
+    estimatedRollbackProbability,
+    estimatedGuardrailTriggerProbability,
+    estimatedExecutionLoad,
+    estimatedRetryPressure,
+    estimatedFailureProbability,
+  };
+}
+
+export function analyzePolicyImpact(input: {
+  baseline: RecoveryPolicySimulationConfig;
+  candidate: RecoveryPolicySimulationConfig;
+  baselineMetrics?: RecoveryGovernanceMetrics | null;
+}): RecoveryPolicyImpactAnalysis {
+  const baseline = {
+    label: input.baseline.label,
+    simulation: simulateRecoveryPolicyConfiguration({ config: input.baseline, baselineMetrics: input.baselineMetrics }),
+  };
+  const candidate = {
+    label: input.candidate.label,
+    simulation: simulateRecoveryPolicyConfiguration({ config: input.candidate, baselineMetrics: input.baselineMetrics }),
+  };
+
+  return {
+    baseline,
+    candidate,
+    delta: {
+      rollbackProbability: Number((candidate.simulation.estimatedRollbackProbability - baseline.simulation.estimatedRollbackProbability).toFixed(3)),
+      guardrailProbability: Number((candidate.simulation.estimatedGuardrailTriggerProbability - baseline.simulation.estimatedGuardrailTriggerProbability).toFixed(3)),
+      executionLoad: Number((candidate.simulation.estimatedExecutionLoad - baseline.simulation.estimatedExecutionLoad).toFixed(2)),
+      retryPressure: Number((candidate.simulation.estimatedRetryPressure - baseline.simulation.estimatedRetryPressure).toFixed(3)),
+      failureProbability: Number((candidate.simulation.estimatedFailureProbability - baseline.simulation.estimatedFailureProbability).toFixed(3)),
+    },
+  };
+}
+
+export async function buildRecoveryExecutiveSummaryRows(input: RecoveryOrchestratorHistoryFilters): Promise<Array<Record<string, unknown>>> {
+  const [metrics, intelligence] = await Promise.all([
+    getRecoveryGovernanceMetrics(input),
+    getRecoveryGovernanceIntelligence(input),
+  ]);
+
+  const topRisk = intelligence.anomalies[0]?.summary ?? intelligence.alerts[0]?.summary ?? "none";
+  const riskEscalation = intelligence.alerts.filter((item) => item.severity === "high" || item.severity === "critical").length;
+
+  return intelligence.schoolRiskProfiles.slice(0, 25).map((profile, index) => ({
+    rank: index + 1,
+    schoolId: profile.schoolId,
+    governanceHealthOverall: intelligence.healthScores.find((item) => item.schoolId === profile.schoolId)?.overallScore ?? "",
+    operationalRiskLevel: profile.operationalRiskLevel,
+    governanceMaturityLevel: profile.governanceMaturityLevel,
+    orchestrationRiskTrend: profile.orchestrationRiskTrend,
+    orchestrationReliabilityTrend: metrics.approvalRate,
+    interventionOutcomeTrend: intelligence.insights.interventionSuccessTrend.direction,
+    topOperationalRisk: topRisk,
+    riskEscalationCount: riskEscalation,
+    rollbackRatePercent: metrics.rollbackRate,
+    retryCount: metrics.retryCount,
+    approvalRatePercent: metrics.approvalRate,
+  }));
 }
 
 export async function listRecoveryPolicyHistory(input: {

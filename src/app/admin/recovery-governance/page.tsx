@@ -156,6 +156,57 @@ type RecoveryGovernanceIntelligence = {
   insights: RecoveryGovernanceInsights;
   operatorRecommendations: string[];
   healthScores: RecoveryGovernanceHealthScore[];
+  incidentCommandCenter: RecoveryGovernanceIncident[];
+  schoolRiskProfiles: RecoverySchoolRiskProfile[];
+};
+
+type RecoveryGovernanceIncident = {
+  incidentId: string;
+  schoolId: string | null;
+  sourceType: "anomaly" | "alert";
+  sourceId: string;
+  severity: "low" | "medium" | "high" | "critical";
+  summary: string;
+  suggestedAction: string;
+  acknowledged: boolean;
+  acknowledgedAtIso: string | null;
+  acknowledgedByUserId: string | null;
+  ownerUserId: string | null;
+  mitigationStatus: "pending" | "in_progress" | "resolved";
+  resolutionNotes: string | null;
+  notes: string[];
+  updatedAtIso: string;
+};
+
+type RecoverySchoolRiskProfile = {
+  schoolId: string;
+  operationalRiskLevel: "low" | "medium" | "high" | "critical";
+  governanceMaturityLevel: "emerging" | "developing" | "advanced" | "leading";
+  orchestrationRiskTrend: "rising" | "stable" | "improving";
+  interventionVolatilityScore: number;
+  approvalDisciplineScore: number;
+  rollbackInstabilityScore: number;
+};
+
+type PolicySimulationResult = {
+  simulateWithoutExecution: true;
+  estimatedRollbackProbability: number;
+  estimatedGuardrailTriggerProbability: number;
+  estimatedExecutionLoad: number;
+  estimatedRetryPressure: number;
+  estimatedFailureProbability: number;
+};
+
+type PolicyImpactAnalysis = {
+  baseline: { label: string; simulation: PolicySimulationResult };
+  candidate: { label: string; simulation: PolicySimulationResult };
+  delta: {
+    rollbackProbability: number;
+    guardrailProbability: number;
+    executionLoad: number;
+    retryPressure: number;
+    failureProbability: number;
+  };
 };
 
 type RecoveryTimelineEvent = {
@@ -212,6 +263,22 @@ export default function RecoveryGovernancePage() {
   const [policyMessage, setPolicyMessage] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [simulationRunning, setSimulationRunning] = useState(false);
+  const [simulationResult, setSimulationResult] = useState<{
+    baselineSimulation: PolicySimulationResult;
+    candidateSimulation: PolicySimulationResult;
+    impact: PolicyImpactAnalysis;
+  } | null>(null);
+  const [simulationConfig, setSimulationConfig] = useState({
+    baselineCooldownHours: 24,
+    baselineMaxIntervention: 60,
+    baselineApprovalRoles: 3,
+    baselineRetryLimit: 3,
+    candidateCooldownHours: 36,
+    candidateMaxIntervention: 48,
+    candidateApprovalRoles: 2,
+    candidateRetryLimit: 2,
+  });
 
   const [liveTransport, setLiveTransport] = useState<RecoveryGovernanceTransport | null>(null);
   const [liveEvents, setLiveEvents] = useState<RecoveryGovernanceLiveEvent[]>([]);
@@ -252,6 +319,8 @@ export default function RecoveryGovernancePage() {
     params.set("limit", String(limit));
     params.set("includeMetrics", "true");
     params.set("includeIntelligence", "true");
+    params.set("includeIncidentQueue", "true");
+    params.set("includeRiskProfiles", "true");
     if (schoolId) params.set("includePolicy", "true");
     return params.toString();
   }, [schoolId, runId, status, actorUserId, offset, limit]);
@@ -449,7 +518,7 @@ export default function RecoveryGovernancePage() {
     }
   }
 
-  async function downloadExport(exportType: "orchestration_history" | "rollback_history" | "retry_activity" | "school_policy_settings") {
+  async function downloadExport(exportType: "orchestration_history" | "rollback_history" | "retry_activity" | "school_policy_settings" | "executive_governance_summary") {
     setExporting(exportType);
     setError(null);
     try {
@@ -487,6 +556,89 @@ export default function RecoveryGovernancePage() {
       setError(cause instanceof Error ? cause.message : "Export failed.");
     } finally {
       setExporting(null);
+    }
+  }
+
+  async function updateIncident(
+    action: "incident_acknowledge" | "incident_assign_owner" | "incident_set_mitigation" | "incident_resolve",
+    payload: Record<string, unknown>,
+  ) {
+    if (!schoolId) return;
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/recovery-orchestrator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action,
+          payload: {
+            schoolId,
+            ...payload,
+          },
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({ error: "Incident workflow update failed." }))) as { error?: string };
+        throw new Error(body.error ?? "Incident workflow update failed.");
+      }
+      await loadHistory();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Incident workflow update failed.");
+    }
+  }
+
+  async function runPolicySimulation() {
+    if (!schoolId) return;
+    setSimulationRunning(true);
+    setError(null);
+    try {
+      const allRoles = ["teacher", "admin", "owner"] as const;
+      const pickRoles = (count: number) => allRoles.slice(0, Math.max(1, Math.min(3, count)));
+
+      const response = await fetch("/api/admin/recovery-orchestrator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "simulate_policy",
+          payload: {
+            schoolId,
+            baseline: {
+              label: "baseline",
+              teacherApprovalRoles: pickRoles(simulationConfig.baselineApprovalRoles),
+              guardrails: {
+                cooldownHours: simulationConfig.baselineCooldownHours,
+                maxInterventionMinutesPerWeek: simulationConfig.baselineMaxIntervention,
+              },
+              retryPolicyLimit: simulationConfig.baselineRetryLimit,
+            },
+            candidate: {
+              label: "candidate",
+              teacherApprovalRoles: pickRoles(simulationConfig.candidateApprovalRoles),
+              guardrails: {
+                cooldownHours: simulationConfig.candidateCooldownHours,
+                maxInterventionMinutesPerWeek: simulationConfig.candidateMaxIntervention,
+              },
+              retryPolicyLimit: simulationConfig.candidateRetryLimit,
+            },
+          },
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({ error: "Simulation failed." }))) as { error?: string };
+        throw new Error(body.error ?? "Simulation failed.");
+      }
+      const payload = (await response.json()) as {
+        baselineSimulation: PolicySimulationResult;
+        candidateSimulation: PolicySimulationResult;
+        impact: PolicyImpactAnalysis;
+      };
+      setSimulationResult(payload);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Simulation failed.");
+    } finally {
+      setSimulationRunning(false);
     }
   }
 
@@ -624,6 +776,131 @@ export default function RecoveryGovernancePage() {
 
       <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-white">Governance Incident Command Center</h2>
+          <p className="text-xs text-slate-400">Live queue, severity prioritisation, mitigation, acknowledgement, ownership, and resolution workflow</p>
+        </div>
+        <div className="mt-3 space-y-2 text-xs">
+          {intelligence?.incidentCommandCenter?.length
+            ? intelligence.incidentCommandCenter.slice(0, 8).map((incident) => (
+              <article key={incident.incidentId} className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold text-white">{incident.summary}</p>
+                  <p className="text-[11px] text-amber-200">{incident.severity.toUpperCase()} · {incident.mitigationStatus}</p>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-300">School: {schoolLabel(incident.schoolId)} · owner: {incident.ownerUserId ?? "unassigned"}</p>
+                <p className="mt-1 text-[11px] text-slate-400">{incident.suggestedAction}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {!incident.acknowledged ? (
+                    <button type="button" onClick={() => void updateIncident("incident_acknowledge", { incidentId: incident.incidentId, note: "Acknowledged from command center" })} className="rounded-md border border-cyan-500/50 bg-cyan-500/15 px-2 py-1 text-[11px] font-semibold text-cyan-100">Acknowledge</button>
+                  ) : null}
+                  {!incident.ownerUserId ? (
+                    <button type="button" onClick={() => void updateIncident("incident_assign_owner", { incidentId: incident.incidentId, ownerUserId: actorUserId.trim() || "admin-owner", note: "Owner assigned from command center" })} className="rounded-md border border-indigo-500/50 bg-indigo-500/15 px-2 py-1 text-[11px] font-semibold text-indigo-100">Assign Owner</button>
+                  ) : null}
+                  {incident.mitigationStatus !== "in_progress" ? (
+                    <button type="button" onClick={() => void updateIncident("incident_set_mitigation", { incidentId: incident.incidentId, mitigationStatus: "in_progress", note: "Mitigation started" })} className="rounded-md border border-amber-500/50 bg-amber-500/15 px-2 py-1 text-[11px] font-semibold text-amber-100">Start Mitigation</button>
+                  ) : null}
+                  {incident.mitigationStatus !== "resolved" ? (
+                    <button type="button" onClick={() => void updateIncident("incident_resolve", { incidentId: incident.incidentId, resolutionNotes: "Resolved from incident command center" })} className="rounded-md border border-emerald-500/50 bg-emerald-500/15 px-2 py-1 text-[11px] font-semibold text-emerald-100">Resolve</button>
+                  ) : null}
+                </div>
+                {incident.resolutionNotes ? <p className="mt-1 text-[11px] text-emerald-200">Resolution: {incident.resolutionNotes}</p> : null}
+              </article>
+            ))
+            : <p className="text-slate-400">No active incidents in command center queue.</p>}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-white">School Risk Profiling Engine</h2>
+          <p className="text-xs text-slate-400">Operational risk, maturity, trend, volatility, discipline, and instability indicators</p>
+        </div>
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-slate-700 text-slate-400">
+                <th className="px-2 py-2">School</th>
+                <th className="px-2 py-2">Operational Risk</th>
+                <th className="px-2 py-2">Governance Maturity</th>
+                <th className="px-2 py-2">Risk Trend</th>
+                <th className="px-2 py-2">Intervention Volatility</th>
+                <th className="px-2 py-2">Approval Discipline</th>
+                <th className="px-2 py-2">Rollback Instability</th>
+              </tr>
+            </thead>
+            <tbody>
+              {intelligence?.schoolRiskProfiles?.length
+                ? intelligence.schoolRiskProfiles.slice(0, 12).map((profile) => (
+                  <tr key={profile.schoolId} className="border-b border-slate-800/70 text-slate-200">
+                    <td className="px-2 py-2">{schoolLabel(profile.schoolId)}</td>
+                    <td className="px-2 py-2 uppercase">{profile.operationalRiskLevel}</td>
+                    <td className="px-2 py-2 uppercase">{profile.governanceMaturityLevel}</td>
+                    <td className="px-2 py-2 uppercase">{profile.orchestrationRiskTrend}</td>
+                    <td className="px-2 py-2">{profile.interventionVolatilityScore}</td>
+                    <td className="px-2 py-2">{profile.approvalDisciplineScore}</td>
+                    <td className="px-2 py-2">{profile.rollbackInstabilityScore}</td>
+                  </tr>
+                ))
+                : (
+                  <tr>
+                    <td className="px-2 py-2 text-slate-400" colSpan={7}>No school risk profiles available yet.</td>
+                  </tr>
+                )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-white">Governance Simulation Mode + Policy Impact Analysis</h2>
+          <button type="button" onClick={() => void runPolicySimulation()} disabled={simulationRunning || !schoolId} className="rounded-lg border border-cyan-500/50 bg-cyan-500/15 px-3 py-1.5 text-xs font-semibold text-cyan-100 disabled:opacity-50">{simulationRunning ? "Simulating..." : "Run Dry-Run Simulation"}</button>
+        </div>
+        <p className="mt-1 text-xs text-slate-400">Simulates orchestration without execution and compares cooldown, approval scope, intervention frequency, and retry policy changes before deployment.</p>
+        <div className="mt-3 grid gap-2 md:grid-cols-4 text-xs text-slate-300">
+          <label>Baseline cooldown (h)
+            <input type="number" value={simulationConfig.baselineCooldownHours} onChange={(event) => setSimulationConfig((current) => ({ ...current, baselineCooldownHours: Number(event.target.value) || 1 }))} className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white" />
+          </label>
+          <label>Candidate cooldown (h)
+            <input type="number" value={simulationConfig.candidateCooldownHours} onChange={(event) => setSimulationConfig((current) => ({ ...current, candidateCooldownHours: Number(event.target.value) || 1 }))} className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white" />
+          </label>
+          <label>Baseline intervention cap
+            <input type="number" value={simulationConfig.baselineMaxIntervention} onChange={(event) => setSimulationConfig((current) => ({ ...current, baselineMaxIntervention: Number(event.target.value) || 10 }))} className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white" />
+          </label>
+          <label>Candidate intervention cap
+            <input type="number" value={simulationConfig.candidateMaxIntervention} onChange={(event) => setSimulationConfig((current) => ({ ...current, candidateMaxIntervention: Number(event.target.value) || 10 }))} className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white" />
+          </label>
+        </div>
+        {simulationResult ? (
+          <div className="mt-3 grid gap-3 md:grid-cols-3 text-xs text-slate-200">
+            <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+              <p className="font-semibold text-cyan-200">Baseline</p>
+              <p className="mt-1">Rollback: {(simulationResult.baselineSimulation.estimatedRollbackProbability * 100).toFixed(1)}%</p>
+              <p>Guardrail: {(simulationResult.baselineSimulation.estimatedGuardrailTriggerProbability * 100).toFixed(1)}%</p>
+              <p>Execution load: {simulationResult.baselineSimulation.estimatedExecutionLoad}</p>
+              <p>Retry pressure: {(simulationResult.baselineSimulation.estimatedRetryPressure * 100).toFixed(1)}%</p>
+            </article>
+            <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+              <p className="font-semibold text-cyan-200">Candidate</p>
+              <p className="mt-1">Rollback: {(simulationResult.candidateSimulation.estimatedRollbackProbability * 100).toFixed(1)}%</p>
+              <p>Guardrail: {(simulationResult.candidateSimulation.estimatedGuardrailTriggerProbability * 100).toFixed(1)}%</p>
+              <p>Execution load: {simulationResult.candidateSimulation.estimatedExecutionLoad}</p>
+              <p>Retry pressure: {(simulationResult.candidateSimulation.estimatedRetryPressure * 100).toFixed(1)}%</p>
+            </article>
+            <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+              <p className="font-semibold text-cyan-200">Policy Impact Delta</p>
+              <p className="mt-1">Rollback: {(simulationResult.impact.delta.rollbackProbability * 100).toFixed(1)}%</p>
+              <p>Guardrail: {(simulationResult.impact.delta.guardrailProbability * 100).toFixed(1)}%</p>
+              <p>Execution load: {simulationResult.impact.delta.executionLoad}</p>
+              <p>Retry pressure: {(simulationResult.impact.delta.retryPressure * 100).toFixed(1)}%</p>
+              <p>Failure probability: {(simulationResult.impact.delta.failureProbability * 100).toFixed(1)}%</p>
+            </article>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-white">AI Governance Insights Panel</h2>
           <p className="text-xs text-slate-400">Trend intelligence and bottleneck analysis</p>
         </div>
@@ -746,6 +1023,7 @@ export default function RecoveryGovernancePage() {
           <button type="button" onClick={() => void downloadExport("rollback_history")} disabled={exporting !== null} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50">{exporting === "rollback_history" ? "Exporting..." : "Export Rollback"}</button>
           <button type="button" onClick={() => void downloadExport("retry_activity")} disabled={exporting !== null} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50">{exporting === "retry_activity" ? "Exporting..." : "Export Retries"}</button>
           <button type="button" onClick={() => void downloadExport("school_policy_settings")} disabled={exporting !== null} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50">{exporting === "school_policy_settings" ? "Exporting..." : "Export Policies"}</button>
+          <button type="button" onClick={() => void downloadExport("executive_governance_summary")} disabled={exporting !== null} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50">{exporting === "executive_governance_summary" ? "Exporting..." : "Export Executive Summary"}</button>
         </div>
       </section>
 
