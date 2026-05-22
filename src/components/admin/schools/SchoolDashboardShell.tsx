@@ -1,33 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { ReactNode, useEffect, useMemo, useState } from "react";
-
-type SchoolDashboardRecord = {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
-  notes: string | null;
-  licence: {
-    status: string;
-    seatLimit: number;
-    seatsUsed: number;
-    billingInterval: string;
-    provider: string;
-    currentPeriodEnd: string | null;
-    trialEndsAt: string | null;
-  } | null;
-  teachers: Array<{ id: string; status: string }>;
-  students: Array<{ id: string; status: string }>;
-  classrooms: Array<{ id: string; status: string }>;
-  safeguarding: { openAlerts: number; criticalAlerts: number };
-  communicationLogs: Array<{ id: string }>;
-  activityTimeline: Array<{ id: string; createdAt: string }>;
-};
+import { ReactNode, useMemo, useState } from "react";
+import { canDo, getSchoolRoleLabel, type SchoolRole } from "@/lib/schools/permissions";
+import { useSchoolDashboardRecord, type SchoolDashboardRecord } from "@/components/admin/schools/school-dashboard-data";
 
 type TabKey =
   | "dashboard"
+  | "learning"
+  | "interventions"
+  | "governance"
+  | "ai-intelligence"
+  | "reports"
   | "profile"
   | "staff"
   | "students"
@@ -70,8 +54,8 @@ function shortDate(iso: string | null): string {
 }
 
 function onboardingStatus(school: SchoolDashboardRecord): string {
-  const invitedCount = school.teachers.filter((row) => row.status === "invited").length;
-  const activeStaffCount = school.teachers.filter((row) => row.status === "active").length;
+  const invitedCount = school.teachers.filter((row: { status: string }) => row.status === "invited").length;
+  const activeStaffCount = school.teachers.filter((row: { status: string }) => row.status === "active").length;
   if (activeStaffCount > 0 && invitedCount > 0) return "Invites Sent";
   if (activeStaffCount > 0) return "Active";
   if (invitedCount > 0) return "Invites Sent";
@@ -80,20 +64,29 @@ function onboardingStatus(school: SchoolDashboardRecord): string {
 }
 
 export default function SchoolDashboardShell({ schoolId, activeTab, title, subtitle, children }: Props) {
-  const [school, setSchool] = useState<SchoolDashboardRecord | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { school, loading, error } = useSchoolDashboardRecord(schoolId);
+  const [viewAsRole, setViewAsRole] = useState<SchoolRole>("owner");
 
   const tabs = useMemo<TabItem[]>(() => {
     return [
       { key: "dashboard", label: "Overview", href: `/admin/schools/${schoolId}/dashboard` },
-      { key: "profile", label: "Profile", href: `/admin/schools/${schoolId}/profile` },
-      { key: "staff", label: "Staff", href: `/admin/schools/${schoolId}/staff` },
       { key: "students", label: "Students", href: `/admin/schools/${schoolId}/students` },
+      { key: "staff", label: "Staff", href: `/admin/schools/${schoolId}/staff` },
+      { key: "learning", label: "Learning", href: `/admin/schools/${schoolId}/learning` },
+      { key: "safeguarding", label: "Safeguarding", href: `/admin/schools/${schoolId}/safeguarding` },
+      { key: "interventions", label: "Interventions", href: `/admin/schools/${schoolId}/interventions` },
+      { key: "governance", label: "Governance", href: `/admin/schools/${schoolId}/governance` },
+      { key: "ai-intelligence", label: "AI Intelligence", href: `/admin/schools/${schoolId}/ai-intelligence` },
+      { key: "communications", label: "Communications", href: `/admin/schools/${schoolId}/communications` },
+      { key: "reports", label: "Reports", href: `/admin/schools/${schoolId}/reports` },
+    ];
+  }, [schoolId]);
+
+  const operationsTabs = useMemo<TabItem[]>(() => {
+    return [
+      { key: "profile", label: "Profile", href: `/admin/schools/${schoolId}/profile` },
       { key: "classrooms", label: "Classrooms", href: `/admin/schools/${schoolId}/classrooms` },
       { key: "parent-onboarding", label: "Parent Onboarding", href: `/admin/schools/${schoolId}/parent-onboarding` },
-      { key: "safeguarding", label: "Safeguarding", href: `/admin/schools/${schoolId}/safeguarding` },
-      { key: "communications", label: "Communications", href: `/admin/schools/${schoolId}/communications` },
       { key: "audit", label: "Audit", href: `/admin/schools/${schoolId}/audit` },
       { key: "readiness", label: "Readiness", href: `/admin/schools/${schoolId}/readiness` },
       { key: "roles", label: "Roles", href: `/admin/schools/${schoolId}/roles` },
@@ -102,48 +95,40 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
     ];
   }, [schoolId]);
 
-  useEffect(() => {
-    let active = true;
+  const roleOptions = useMemo<SchoolRole[]>(
+    () => ["owner", "admin", "teacher", "support", "staff_observer", "finance"],
+    [],
+  );
 
-    async function run() {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch("/api/admin/schools", {
-          credentials: "include",
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          setError("Unable to load school dashboard data.");
-          return;
-        }
+  const commandTabs = useMemo(() => {
+    return tabs.filter((tab) => {
+      if (tab.key === "dashboard") return canDo(viewAsRole, "viewDashboard");
+      if (tab.key === "students") return canDo(viewAsRole, "viewStudents");
+      if (tab.key === "staff") return canDo(viewAsRole, "manageTeachers");
+      if (tab.key === "learning") return canDo(viewAsRole, "viewProgress") || canDo(viewAsRole, "viewWeakAreas");
+      if (tab.key === "safeguarding") return canDo(viewAsRole, "manageSafeguarding");
+      if (tab.key === "interventions") return canDo(viewAsRole, "viewWeakAreas");
+      if (tab.key === "governance") return canDo(viewAsRole, "manageSchoolSettings") || canDo(viewAsRole, "viewAuditLog");
+      if (tab.key === "ai-intelligence") return canDo(viewAsRole, "viewReports") || canDo(viewAsRole, "viewProgress");
+      if (tab.key === "communications") return canDo(viewAsRole, "viewDashboard");
+      if (tab.key === "reports") return canDo(viewAsRole, "viewReports");
+      return true;
+    });
+  }, [tabs, viewAsRole]);
 
-        const payload = (await response.json()) as { schools?: SchoolDashboardRecord[] };
-        const target = (payload.schools ?? []).find((row) => row.id === schoolId) ?? null;
-
-        if (!active) return;
-
-        if (!target) {
-          setError("School not found.");
-          setSchool(null);
-          return;
-        }
-
-        setSchool(target);
-      } catch {
-        if (!active) return;
-        setError("Unable to load school dashboard data.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    void run();
-
-    return () => {
-      active = false;
-    };
-  }, [schoolId]);
+  const visibleOperationsTabs = useMemo(() => {
+    return operationsTabs.filter((tab) => {
+      if (tab.key === "profile") return canDo(viewAsRole, "viewDashboard");
+      if (tab.key === "classrooms") return canDo(viewAsRole, "viewClassrooms") || canDo(viewAsRole, "manageClassrooms");
+      if (tab.key === "parent-onboarding") return canDo(viewAsRole, "viewStudents");
+      if (tab.key === "audit") return canDo(viewAsRole, "viewAuditLog");
+      if (tab.key === "readiness") return canDo(viewAsRole, "viewDashboard");
+      if (tab.key === "roles") return canDo(viewAsRole, "manageSchoolSettings");
+      if (tab.key === "identity-access") return canDo(viewAsRole, "manageSchoolSettings");
+      if (tab.key === "developer-docs") return canDo(viewAsRole, "viewDashboard");
+      return true;
+    });
+  }, [operationsTabs, viewAsRole]);
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 text-slate-100">
@@ -154,12 +139,26 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
             <h1 className="mt-1 text-2xl font-black text-white">{title}</h1>
             <p className="mt-1 text-sm text-slate-300">{subtitle}</p>
           </div>
-          <Link
-            href="/admin/schools"
-            className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
-          >
-            Back to Schools & Governance
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs font-semibold text-slate-300">
+              View as role
+              <select
+                value={viewAsRole}
+                onChange={(event) => setViewAsRole(event.target.value as SchoolRole)}
+                className="ml-2 rounded-lg border border-slate-600 bg-slate-950/70 px-2 py-1.5 text-xs text-slate-100"
+              >
+                {roleOptions.map((role) => (
+                  <option key={role} value={role}>{getSchoolRoleLabel(role)}</option>
+                ))}
+              </select>
+            </label>
+            <Link
+              href="/admin/schools"
+              className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+            >
+              Back to Schools & Governance
+            </Link>
+          </div>
         </div>
 
         {loading ? <p className="mt-4 text-sm text-slate-300">Loading school profile...</p> : null}
@@ -220,8 +219,26 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
       </section>
 
       <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-3">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-300">School Command Centre</p>
         <div className="flex flex-wrap gap-2">
-          {tabs.map((tab) => (
+          {commandTabs.map((tab) => (
+            <Link
+              key={tab.key}
+              href={tab.href}
+              className={[
+                "rounded-lg border px-3 py-1.5 text-xs font-semibold transition",
+                activeTab === tab.key
+                  ? "border-sky-400/60 bg-sky-500/15 text-sky-100"
+                  : "border-slate-600 bg-slate-950/70 text-slate-300 hover:border-slate-500 hover:text-white",
+              ].join(" ")}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </div>
+        <p className="mt-4 mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Operations Workspace</p>
+        <div className="flex flex-wrap gap-2">
+          {visibleOperationsTabs.map((tab) => (
             <Link
               key={tab.key}
               href={tab.href}
@@ -238,8 +255,8 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
         </div>
       </section>
 
-      <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-        Dashboard tabs are UI placeholders for routing and structure. Backend wiring for advanced workflows is pending.
+      <section className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-xs text-cyan-100">
+        Role-aware view is active. Tab availability is filtered by permission matrix for the selected role profile.
       </section>
 
       <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">

@@ -6,6 +6,7 @@ import DictionaryFilters, { type DictionaryFilterState } from "@/components/admi
 import DictionaryForm, { type DictionaryFormValues } from "@/components/admin/dictionary/DictionaryForm";
 import DictionaryTable from "@/components/admin/dictionary/DictionaryTable";
 import type { DictionaryDashboardMetrics, DictionaryWordRecord } from "@/lib/dictionary";
+import { decodeDictionaryWordRelationships } from "@/lib/dictionary_relationships";
 
 type ListResponse = {
   items: DictionaryWordRecord[];
@@ -14,6 +15,16 @@ type ListResponse = {
   limit: number;
   metrics?: DictionaryDashboardMetrics;
 };
+
+async function readJsonSafe<T>(response: Response): Promise<T | null> {
+  const text = await response.text();
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
 
 const defaultFilters: DictionaryFilterState = {
   q: "",
@@ -45,6 +56,14 @@ const defaultFormValues: DictionaryFormValues = {
   synonyms: "",
   antonyms: "",
   relatedWords: "",
+  easierWords: "",
+  harderWords: "",
+  prerequisiteWords: "",
+  relatedMathConcepts: "",
+  phonicsFamilies: "",
+  spellingFamilies: "",
+  curriculumTopics: "",
+  interventionPaths: "",
   isTrickyWord: false,
   isTopicKeyword: false,
   isMathsKeyword: false,
@@ -74,6 +93,7 @@ function toQuery(filters: DictionaryFilterState): string {
 }
 
 function toFormValue(item: DictionaryWordRecord): DictionaryFormValues {
+  const relationships = decodeDictionaryWordRelationships(item.relatedWords);
   return {
     word: item.word,
     subject: item.subject,
@@ -91,7 +111,15 @@ function toFormValue(item: DictionaryWordRecord): DictionaryFormValues {
     pronunciationHint: item.pronunciationHint ?? "",
     synonyms: item.synonyms.join(", "),
     antonyms: item.antonyms.join(", "),
-    relatedWords: item.relatedWords.join(", "),
+    relatedWords: relationships.relatedWords.join(", "),
+    easierWords: relationships.easierWords.join(", "),
+    harderWords: relationships.harderWords.join(", "),
+    prerequisiteWords: relationships.prerequisiteWords.join(", "),
+    relatedMathConcepts: relationships.relatedMathConcepts.join(", "),
+    phonicsFamilies: relationships.phonicsFamilies.join(", "),
+    spellingFamilies: relationships.spellingFamilies.join(", "),
+    curriculumTopics: relationships.curriculumTopics.join(", "),
+    interventionPaths: relationships.interventionPaths.join(", "),
     isTrickyWord: item.isTrickyWord,
     isTopicKeyword: item.isTopicKeyword,
     isMathsKeyword: item.isMathsKeyword,
@@ -125,6 +153,14 @@ function buildPayload(form: DictionaryFormValues) {
     synonyms: form.synonyms,
     antonyms: form.antonyms,
     relatedWords: form.relatedWords,
+    easierWords: form.easierWords,
+    harderWords: form.harderWords,
+    prerequisiteWords: form.prerequisiteWords,
+    relatedMathConcepts: form.relatedMathConcepts,
+    phonicsFamilies: form.phonicsFamilies,
+    spellingFamilies: form.spellingFamilies,
+    curriculumTopics: form.curriculumTopics,
+    interventionPaths: form.interventionPaths,
     isTrickyWord: form.isTrickyWord,
     isTopicKeyword: form.isTopicKeyword,
     isMathsKeyword: form.isMathsKeyword,
@@ -171,9 +207,29 @@ export default function DictionaryPage() {
         window.location.replace("/admin/login?next=/admin/dictionary");
         return;
       }
-      const payload = await response.json() as ListResponse;
+      const payload = await readJsonSafe<ListResponse | { error?: string }>(response);
+      if (!response.ok) {
+        const errorMessage = payload && "error" in payload && typeof payload.error === "string"
+          ? payload.error
+          : "Unable to load dictionary words.";
+        setMessage(errorMessage);
+        setItems([]);
+        setMetrics(null);
+        return;
+      }
+      if (!payload || !("items" in payload)) {
+        setMessage("Unable to load dictionary words.");
+        setItems([]);
+        setMetrics(null);
+        return;
+      }
       setItems(payload.items ?? []);
       setMetrics(payload.metrics ?? null);
+      setMessage(null);
+    } catch {
+      setMessage("Unable to load dictionary words.");
+      setItems([]);
+      setMetrics(null);
     } finally {
       setLoading(false);
     }

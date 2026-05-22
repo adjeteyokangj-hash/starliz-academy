@@ -19,4 +19,7 @@ test("Coach fallback does not crash without a word", async () => {
   assert.equal(response.found, false);
   assert.equal(response.shouldReadAloud, false);
   assert.match(response.coachMessage, /Word Bank yet/);
+  assert.deepEqual(response.relationshipLinks, []);
+  assert.equal(response.recoveryPlan.estimatedComplexity, "low");
+  assert.deepEqual(response.recoveryPlan.revisionOrder, []);
 });

@@ -1,4 +1,9 @@
 import { prisma } from "@/lib/db";
+import {
+  decodeDictionaryWordRelationships,
+  encodeDictionaryWordRelationships,
+  type DictionaryWordRelationships,
+} from "@/lib/dictionary_relationships";
 
 export type DictionaryWordRecord = {
   id: string;
@@ -52,6 +57,7 @@ export type DictionaryWordFilters = {
   active?: boolean | null;
   page?: number | null;
   limit?: number | null;
+  skip?: number | null;
 };
 
 export type DictionaryWordInput = {
@@ -72,6 +78,14 @@ export type DictionaryWordInput = {
   synonyms?: string[] | string | null;
   antonyms?: string[] | string | null;
   relatedWords?: string[] | string | null;
+  easierWords?: string[] | string | null;
+  harderWords?: string[] | string | null;
+  prerequisiteWords?: string[] | string | null;
+  relatedMathConcepts?: string[] | string | null;
+  phonicsFamilies?: string[] | string | null;
+  spellingFamilies?: string[] | string | null;
+  curriculumTopics?: string[] | string | null;
+  interventionPaths?: string[] | string | null;
   isTrickyWord?: boolean;
   isTopicKeyword?: boolean;
   isMathsKeyword?: boolean;
@@ -93,6 +107,10 @@ export type DictionaryDashboardMetrics = {
   wordsBySubject: Array<{ subject: string; count: number }>;
   wordsByKeyStage: Array<{ keyStage: string; count: number }>;
   mostUsedCoachLookups: Array<{ normalizedWord: string; subject: string | null; count: number }>;
+};
+
+export type DictionaryWordWithRelationships = DictionaryWordRecord & {
+  relationships: DictionaryWordRelationships;
 };
 
 type DictionaryMutationContext = {
@@ -180,6 +198,18 @@ function buildCreateData(input: DictionaryWordInput, context: DictionaryMutation
     throw new Error("Year group does not match key stage.");
   }
 
+  const relationshipInput = {
+    relatedWords: input.relatedWords,
+    easierWords: input.easierWords,
+    harderWords: input.harderWords,
+    prerequisiteWords: input.prerequisiteWords,
+    relatedMathConcepts: input.relatedMathConcepts,
+    phonicsFamilies: input.phonicsFamilies,
+    spellingFamilies: input.spellingFamilies,
+    curriculumTopics: input.curriculumTopics,
+    interventionPaths: input.interventionPaths,
+  };
+
   return {
     word,
     normalizedWord,
@@ -198,7 +228,7 @@ function buildCreateData(input: DictionaryWordInput, context: DictionaryMutation
     pronunciationHint: toOptionalText(input.pronunciationHint),
     synonyms: toStringArray(input.synonyms),
     antonyms: toStringArray(input.antonyms),
-    relatedWords: toStringArray(input.relatedWords),
+    relatedWords: encodeDictionaryWordRelationships(relationshipInput),
     isTrickyWord: toBoolean(input.isTrickyWord),
     isTopicKeyword: toBoolean(input.isTopicKeyword),
     isMathsKeyword: toBoolean(input.isMathsKeyword),
@@ -212,6 +242,13 @@ function buildCreateData(input: DictionaryWordInput, context: DictionaryMutation
     importSource: toOptionalText(context.importSource ?? input.importSource) ?? "manual",
     ...(context.actorUserId ? { updatedByUserId: context.actorUserId } : {}),
     active: toBoolean(input.active, true),
+  };
+}
+
+export function enrichDictionaryWordWithRelationships<T extends { relatedWords: string[] }>(item: T): T & { relationships: DictionaryWordRelationships } {
+  return {
+    ...item,
+    relationships: decodeDictionaryWordRelationships(item.relatedWords),
   };
 }
 
@@ -335,10 +372,33 @@ export async function getDictionaryWordByContext(params: {
   });
 }
 
+export async function listActiveDictionaryWordsByNormalizedWords(params: {
+  normalizedWords: string[];
+  subject?: string | null;
+  keyStage?: string | null;
+  yearGroup?: string | null;
+}) {
+  const normalizedWords = [...new Set(params.normalizedWords.map((word) => normalizeDictionaryWord(word)).filter(Boolean))];
+  if (!normalizedWords.length) return [];
+
+  return prisma.dictionaryWord.findMany({
+    where: {
+      normalizedWord: { in: normalizedWords },
+      active: true,
+      ...(params.subject ? { subject: params.subject } : {}),
+      ...(params.keyStage ? { keyStage: params.keyStage } : {}),
+      ...(params.yearGroup ? { yearGroup: params.yearGroup } : {}),
+    },
+    orderBy: [{ updatedAt: "desc" }],
+  });
+}
+
 export async function listDictionaryWords(filters: DictionaryWordFilters = {}) {
   const page = Math.max(1, Math.floor(filters.page ?? 1));
   const limit = Math.min(100, Math.max(1, Math.floor(filters.limit ?? 25)));
-  const skip = (page - 1) * limit;
+  const skip = filters.skip !== undefined && filters.skip !== null
+    ? Math.max(0, Math.floor(filters.skip))
+    : (page - 1) * limit;
   const q = cleanText(filters.q).toLowerCase();
 
   const where = {
@@ -376,6 +436,30 @@ export async function listDictionaryWords(filters: DictionaryWordFilters = {}) {
   ]);
 
   return { items, total, page, limit };
+}
+
+export async function countDictionaryWordsForGraph(filters: Pick<DictionaryWordFilters, "q" | "subject" | "keyStage" | "yearGroup" | "active"> = {}) {
+  const q = cleanText(filters.q).toLowerCase();
+
+  const where = {
+    ...(q
+      ? {
+          OR: [
+            { word: { contains: q, mode: "insensitive" as const } },
+            { normalizedWord: { contains: q, mode: "insensitive" as const } },
+            { topic: { contains: q, mode: "insensitive" as const } },
+            { skillFocus: { contains: q, mode: "insensitive" as const } },
+            { definitionChild: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+    ...(filters.subject ? { subject: filters.subject } : {}),
+    ...(filters.keyStage ? { keyStage: filters.keyStage } : {}),
+    ...(filters.yearGroup ? { yearGroup: filters.yearGroup } : {}),
+    active: filters.active ?? true,
+  };
+
+  return prisma.dictionaryWord.count({ where });
 }
 
 export async function recordCoachDictionaryLookup(params: {

@@ -18,6 +18,14 @@ export type DictionaryFormValues = {
   synonyms: string;
   antonyms: string;
   relatedWords: string;
+  easierWords: string;
+  harderWords: string;
+  prerequisiteWords: string;
+  relatedMathConcepts: string;
+  phonicsFamilies: string;
+  spellingFamilies: string;
+  curriculumTopics: string;
+  interventionPaths: string;
   isTrickyWord: boolean;
   isTopicKeyword: boolean;
   isMathsKeyword: boolean;
@@ -95,7 +103,15 @@ export default function DictionaryForm({ value, onChange, onSubmit, onCancel, sa
         <Field label="Pronunciation hint"><input value={value.pronunciationHint} onChange={(event) => onChange({ ...value, pronunciationHint: event.target.value })} className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500" /></Field>
         <Field label="Synonyms"><input value={value.synonyms} onChange={(event) => onChange({ ...value, synonyms: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
         <Field label="Antonyms"><input value={value.antonyms} onChange={(event) => onChange({ ...value, antonyms: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
-        <Field label="Related words" wide><input value={value.relatedWords} onChange={(event) => onChange({ ...value, relatedWords: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
+        <Field label="Related words (general)" wide><input value={value.relatedWords} onChange={(event) => onChange({ ...value, relatedWords: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
+        <Field label="Easier words" wide><input value={value.easierWords} onChange={(event) => onChange({ ...value, easierWords: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
+        <Field label="Harder words" wide><input value={value.harderWords} onChange={(event) => onChange({ ...value, harderWords: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
+        <Field label="Prerequisite words" wide><input value={value.prerequisiteWords} onChange={(event) => onChange({ ...value, prerequisiteWords: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
+        <Field label="Related maths concepts" wide><input value={value.relatedMathConcepts} onChange={(event) => onChange({ ...value, relatedMathConcepts: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
+        <Field label="Phonics families" wide><input value={value.phonicsFamilies} onChange={(event) => onChange({ ...value, phonicsFamilies: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
+        <Field label="Spelling families" wide><input value={value.spellingFamilies} onChange={(event) => onChange({ ...value, spellingFamilies: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
+        <Field label="Curriculum topics (graph)" wide><input value={value.curriculumTopics} onChange={(event) => onChange({ ...value, curriculumTopics: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
+        <Field label="Intervention paths" wide><input value={value.interventionPaths} onChange={(event) => onChange({ ...value, interventionPaths: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
         <Field label="Intervention tags" wide><input value={value.interventionTags} onChange={(event) => onChange({ ...value, interventionTags: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
         <Field label="SEN tags" wide><input value={value.senTags} onChange={(event) => onChange({ ...value, senTags: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>
         <Field label="Safeguarding-sensitive tags" wide><input value={value.safeguardingTags} onChange={(event) => onChange({ ...value, safeguardingTags: event.target.value })} placeholder="comma-separated" className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500" /></Field>

@@ -1,5 +1,6 @@
 import DictionaryStatusBadge from "@/components/admin/dictionary/DictionaryStatusBadge";
 import type { DictionaryWordRecord } from "@/lib/dictionary";
+import { countDictionaryWordRelationshipLinks } from "@/lib/dictionary_relationships";
 
 type Props = {
   items: DictionaryWordRecord[];
@@ -40,6 +41,7 @@ export default function DictionaryTable({ items, onEdit, onToggleActive, busyId 
               <th className="px-4 py-3">Year Group</th>
               <th className="px-4 py-3">Difficulty</th>
               <th className="px-4 py-3">Topic</th>
+              <th className="px-4 py-3">Graph Links</th>
               <th className="px-4 py-3">Child Definition</th>
               <th className="px-4 py-3">Flags</th>
               <th className="px-4 py-3">Status</th>
@@ -55,6 +57,7 @@ export default function DictionaryTable({ items, onEdit, onToggleActive, busyId 
                 <td className="px-4 py-4 text-slate-300">{item.yearGroup ?? "—"}</td>
                 <td className="px-4 py-4 capitalize text-slate-300">{item.difficulty}</td>
                 <td className="px-4 py-4 text-slate-300">{item.topic ?? "—"}</td>
+                <td className="px-4 py-4 text-slate-300">{countDictionaryWordRelationshipLinks(item.relatedWords)}</td>
                 <td className="px-4 py-4 text-slate-200">{item.definitionChild}</td>
                 <td className="px-4 py-4">
                   <div className="flex flex-wrap gap-2">

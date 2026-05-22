@@ -14,17 +14,20 @@ type SectionCard = {
 
 const SECTION_CARDS: SectionCard[] = [
   { title: "Overview", description: "School overview KPIs, operating posture, and launch status.", actionLabel: "Open Overview", href: "dashboard" },
+  { title: "Students", description: "Student analytics, weak areas, and cohort risk signals.", actionLabel: "Open Students", href: "students" },
   { title: "Staff & Teachers", description: "Provisioning, invite lifecycle, access history, and training posture.", actionLabel: "Manage Staff", href: "staff" },
-  { title: "Students", description: "Enrolment, allocation, import placeholder, and active cohort health.", actionLabel: "Open Students", href: "students" },
+  { title: "Learning", description: "Curriculum coverage, vocabulary graph dependencies, and subject progress.", actionLabel: "Open Learning", href: "learning" },
+  { title: "Safeguarding", description: "DSL workflows, incidents, and escalation state tracking.", actionLabel: "Open Safeguarding", href: "safeguarding" },
+  { title: "Interventions", description: "Recovery plans, intervention queue, and outcome trend tracking.", actionLabel: "Open Interventions", href: "interventions" },
+  { title: "Governance", description: "Compliance status, role controls, and accountability audit trails.", actionLabel: "Open Governance", href: "governance" },
+  { title: "AI Intelligence", description: "Prediction signals, AI narratives, and risk forecasting.", actionLabel: "Open AI Intelligence", href: "ai-intelligence" },
+  { title: "Communications", description: "Parent communication history, channel health, and sending controls.", actionLabel: "Open Communications", href: "communications" },
+  { title: "Reports", description: "Exports, leadership summaries, and operational reporting packs.", actionLabel: "Open Reports", href: "reports" },
   { title: "Classrooms", description: "Classroom ownership, year-group allocation, and capacity controls.", actionLabel: "Manage Classrooms", href: "classrooms" },
   { title: "Parent Onboarding", description: "Parent activation progress, consent, and comms readiness.", actionLabel: "Open Parent Onboarding", href: "parent-onboarding" },
-  { title: "Safeguarding", description: "Case register, escalation queue, override protection, and incidents.", actionLabel: "Open Safeguarding", href: "safeguarding" },
-  { title: "Assignments", description: "Assignment readiness and delivery handoff checkpoints.", actionLabel: "Go to Assignment Operations", href: "dashboard" },
-  { title: "Attendance", description: "Attendance actions, trend checks, and intervention placeholders.", actionLabel: "Open Attendance Placeholder", href: "dashboard" },
-  { title: "Communications", description: "Parent communication history, channel health, and sending controls.", actionLabel: "Open Communications", href: "communications" },
   { title: "Billing & Licence", description: "Licence allocation, seat pressure, renewal windows, and billing notes.", actionLabel: "Open Profile & Licence", href: "profile" },
   { title: "Compliance & Audit", description: "Audit activity log, compliance checkpoints, and evidence links.", actionLabel: "Open Compliance & Audit", href: "audit" },
-  { title: "Risk & Interventions", description: "Risk scoring, escalation queue, and intervention planning.", actionLabel: "Open Risk & Readiness", href: "readiness" },
+  { title: "Risk & Readiness", description: "Risk scoring, launch checks, and operational readiness timeline.", actionLabel: "Open Risk & Readiness", href: "readiness" },
   { title: "Settings", description: "School settings, role permissions, and operational controls.", actionLabel: "Open Settings", href: "profile" },
 ];
 

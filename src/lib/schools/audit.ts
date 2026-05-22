@@ -32,7 +32,14 @@ export type SchoolAuditAction =
   | "licence_updated"
   | "student_exported"
   | "school_exported"
-  | "compliance_delete_requested";
+  | "compliance_delete_requested"
+  | "recovery_orchestration_planned"
+  | "recovery_orchestration_teacher_approved"
+  | "recovery_orchestration_admin_confirmed"
+  | "recovery_orchestration_rejected"
+  | "recovery_orchestration_rolled_back"
+  | "recovery_orchestration_executed"
+  | "recovery_orchestration_policy_updated";
 
 export type SchoolEntityType =
   | "school"

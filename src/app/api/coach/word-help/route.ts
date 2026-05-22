@@ -41,6 +41,18 @@ export async function POST(request: Request) {
       yearGroup: null,
       active: false,
       found: false,
+      relationshipLinks: [],
+      recoveryPlan: {
+        targetWord: null,
+        prerequisites: [],
+        revisionOrder: [],
+        shortestRecoveryPath: [],
+        missingConcepts: [],
+        estimatedComplexity: "low",
+        estimatedInterventionMinutes: 10,
+        visualSupportHint: "Use a concrete visual example first.",
+        interventionLessonFocus: [],
+      },
     });
   }
 }
