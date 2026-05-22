@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import { readParentUnlockFromCookie, readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+
+type SessionLike = {
+  userId: string;
+  email: string;
+  role: string;
+};
 
 type RateLimitRecord = {
   count: number;
@@ -52,6 +59,56 @@ export function checkRateLimit(input: {
 
 export async function requireSession() {
   const session = await readSessionFromCookie();
+  if (session) {
+    return { session, response: null as NextResponse | null };
+  }
+
+  // Local development fallback only.
+  // This must never be enabled in shared, preview, staging, or production environments.
+  const devFallbackEnabled = String(process.env.STARLIZ_ENABLE_DEV_ADMIN_FALLBACK ?? "").trim().toLowerCase() === "true";
+
+  if (process.env.NODE_ENV === "development" && devFallbackEnabled) {
+    const requestHeaders = await headers();
+    const forwardedHost = requestHeaders.get("x-forwarded-host")?.split(",")[0]?.trim() ?? "";
+    const hostHeader = (forwardedHost || requestHeaders.get("host") || "").trim();
+    const hostWithoutPort = hostHeader.startsWith("[")
+      ? hostHeader.slice(1).split("]")[0]
+      : hostHeader.split(":")[0];
+
+    const isLocalHost = hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1" || hostWithoutPort === "::1";
+    if (!isLocalHost) {
+      return { session: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+    }
+
+    const configuredEmail = (process.env.STARLIZ_DEV_ADMIN_EMAIL ?? "").trim().toLowerCase();
+    if (!configuredEmail) {
+      return { session: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+    }
+
+    const devAdmin = await prisma.user.findFirst({
+      where: {
+        role: "admin",
+        email: configuredEmail,
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+      },
+    });
+
+    if (devAdmin) {
+      const devSession: SessionLike = {
+        userId: devAdmin.id,
+        email: devAdmin.email,
+        role: devAdmin.role,
+      };
+      return { session: devSession, response: null as NextResponse | null };
+    }
+
+    return { session: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+
   if (!session) {
     return { session: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
