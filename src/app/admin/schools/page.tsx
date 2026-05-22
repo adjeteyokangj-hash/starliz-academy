@@ -2,6 +2,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import { OpsLiveSnapshot, OpsLiveTransport, startOpsLiveBridge } from "@/lib/schools/ops-live-bridge";
 import { canDo, getSchoolRoleLabel, requiresOwnerInviteConfirmation, type SchoolRole } from "@/lib/schools/permissions";
@@ -468,6 +469,12 @@ type RolePermissionSummary = {
   manageBilling: boolean;
   accessSafeguarding: boolean;
   changeGovernanceSettings: boolean;
+  studentDataAccess: string;
+  safeguardingAccess: string;
+  staffManagementAccess: string;
+  billingAccess: string;
+  governanceSettingsAccess: string;
+  recommendedUseCase: string;
 };
 
 function rolePermissionSummary(role: SchoolRole): RolePermissionSummary {
@@ -479,6 +486,12 @@ function rolePermissionSummary(role: SchoolRole): RolePermissionSummary {
       manageBilling: true,
       accessSafeguarding: true,
       changeGovernanceSettings: true,
+      studentDataAccess: "Full student and parental records",
+      safeguardingAccess: "Full safeguarding incident and override access",
+      staffManagementAccess: "Invite, edit, suspend, and reactivate all staff",
+      billingAccess: "Full licence, billing, and financial control",
+      governanceSettingsAccess: "Full governance and policy configuration",
+      recommendedUseCase: "Executive governance owner for school-level accountability",
     };
   }
   if (role === "admin") {
@@ -489,6 +502,12 @@ function rolePermissionSummary(role: SchoolRole): RolePermissionSummary {
       manageBilling: canDo(role, "manageBilling"),
       accessSafeguarding: canDo(role, "manageSafeguarding"),
       changeGovernanceSettings: canDo(role, "manageSchoolSettings"),
+      studentDataAccess: "Broad operational student visibility",
+      safeguardingAccess: "Safeguarding case and governance access",
+      staffManagementAccess: "Can provision and manage school staff",
+      billingAccess: "Can view and adjust billing and licence data",
+      governanceSettingsAccess: "Can change governance settings",
+      recommendedUseCase: "School operations lead coordinating staff and compliance",
     };
   }
   if (role === "teacher") {
@@ -499,6 +518,12 @@ function rolePermissionSummary(role: SchoolRole): RolePermissionSummary {
       manageBilling: false,
       accessSafeguarding: false,
       changeGovernanceSettings: false,
+      studentDataAccess: "Assigned students and classroom-scoped data",
+      safeguardingAccess: "Limited safeguarding escalation visibility",
+      staffManagementAccess: "No staff management",
+      billingAccess: "No billing access",
+      governanceSettingsAccess: "No governance settings access",
+      recommendedUseCase: "Primary teaching and classroom delivery",
     };
   }
   if (role === "support") {
@@ -509,6 +534,12 @@ function rolePermissionSummary(role: SchoolRole): RolePermissionSummary {
       manageBilling: false,
       accessSafeguarding: false,
       changeGovernanceSettings: false,
+      studentDataAccess: "Operational student context without sensitive interventions",
+      safeguardingAccess: "No safeguarding case ownership",
+      staffManagementAccess: "No staff management",
+      billingAccess: "No billing access",
+      governanceSettingsAccess: "No governance settings access",
+      recommendedUseCase: "Onboarding, communication, and support workflows",
     };
   }
   if (role === "finance") {
@@ -519,6 +550,12 @@ function rolePermissionSummary(role: SchoolRole): RolePermissionSummary {
       manageBilling: canDo(role, "manageBilling"),
       accessSafeguarding: false,
       changeGovernanceSettings: false,
+      studentDataAccess: "Minimal student data required for billing context",
+      safeguardingAccess: "No safeguarding case access",
+      staffManagementAccess: "No staff management",
+      billingAccess: "Full finance and billing operations",
+      governanceSettingsAccess: "No governance settings access",
+      recommendedUseCase: "School finance operations and licence oversight",
     };
   }
   return {
@@ -528,6 +565,12 @@ function rolePermissionSummary(role: SchoolRole): RolePermissionSummary {
     manageBilling: false,
     accessSafeguarding: false,
     changeGovernanceSettings: false,
+    studentDataAccess: "Read-only operational visibility",
+    safeguardingAccess: "No safeguarding incident editing",
+    staffManagementAccess: "No staff management",
+    billingAccess: "No billing access",
+    governanceSettingsAccess: "No governance settings access",
+    recommendedUseCase: "Oversight and reporting observer role",
   };
 }
 
@@ -818,6 +861,54 @@ type SecurityGateState = {
   twoFaEnabled: boolean;
   authAnomalySignals: number;
   threshold: number;
+};
+
+type StaffProvisionMode = "invite" | "manual";
+
+type StaffProvisionRecord = {
+  id: string;
+  schoolId: string;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  workEmail: string;
+  mobileNumber: string;
+  jobTitle: string;
+  department: string;
+  role: SchoolRole;
+  accessLevel: string;
+  startDate: string;
+  employmentType: string;
+  schoolAssignment: string;
+  staffId: string;
+  backupEmail: string;
+  lineManager: string;
+  endDate: string;
+  notes: string;
+  dbsStatus: string;
+  dbsExpiryDate: string;
+  safeguardingTrainingStatus: string;
+  safeguardingTrainingExpiry: string;
+  gdprTrainingStatus: string;
+  kcsieConfirmed: boolean;
+  preventTrainingStatus: string;
+  assignedClassrooms: string;
+  assignedYearGroups: string;
+  subjectOwnership: string;
+  parentCommunicationPermission: boolean;
+  attendancePermission: boolean;
+  behaviourSafeguardingPermission: boolean;
+  senAccessPermission: boolean;
+  mfaRequired: boolean;
+  temporaryPassword: string;
+  forcePasswordReset: boolean;
+  accountStatus: "invited" | "active" | "suspended" | "pending_setup";
+  approvalRequired: boolean;
+  annualAccessReviewDate: string;
+  statusLabel: string;
+  safeguardingComplianceStatus: string;
+  lastActivity: string;
+  source: "manual" | "invite";
 };
 
 const SECURITY_LOOKBACK_MINUTES = 15;
@@ -1430,7 +1521,6 @@ export default function AdminSchoolsPage() {
   const [inviteRolePulse, setInviteRolePulse] = useState<{ schoolId: string; roleLabel: string } | null>(null);
   const [inviteFallbackState, setInviteFallbackState] = useState<InviteFallbackState | null>(null);
   const [securityGateState, setSecurityGateState] = useState<SecurityGateState | null>(null);
-  const [securityLockSeenAt, setSecurityLockSeenAt] = useState<number | null>(null);
 
   // Provisioning workflow state
   const [provisioningSteps, setProvisioningSteps] = useState<ProvisioningStep[]>(PROVISIONING_STEPS.map(step => ({ ...step })));
@@ -1555,10 +1645,47 @@ export default function AdminSchoolsPage() {
   const [classroomTeacherId, setClassroomTeacherId] = useState("");
 
   const [teacherEmail, setTeacherEmail] = useState("");
+  const [teacherFirstName, setTeacherFirstName] = useState("");
+  const [teacherLastName, setTeacherLastName] = useState("");
   const [teacherName, setTeacherName] = useState("");
+  const [teacherMobileNumber, setTeacherMobileNumber] = useState("");
   const [teacherRole, setTeacherRole] = useState<SchoolRole>("teacher");
+  const [teacherAccessLevel, setTeacherAccessLevel] = useState("Role-based");
+  const [teacherStartDate, setTeacherStartDate] = useState("");
+  const [teacherEmploymentType, setTeacherEmploymentType] = useState("Permanent");
+  const [teacherSchoolAssignment, setTeacherSchoolAssignment] = useState("");
   const [teacherTitle, setTeacherTitle] = useState("");
+  const [teacherDepartment, setTeacherDepartment] = useState("");
+  const [teacherStaffId, setTeacherStaffId] = useState("");
+  const [teacherBackupEmail, setTeacherBackupEmail] = useState("");
+  const [teacherLineManager, setTeacherLineManager] = useState("");
+  const [teacherEndDate, setTeacherEndDate] = useState("");
+  const [teacherNotes, setTeacherNotes] = useState("");
+  const [teacherDbsStatus, setTeacherDbsStatus] = useState("Pending");
+  const [teacherDbsExpiryDate, setTeacherDbsExpiryDate] = useState("");
+  const [teacherSafeguardingTrainingStatus, setTeacherSafeguardingTrainingStatus] = useState("Due");
+  const [teacherSafeguardingTrainingExpiry, setTeacherSafeguardingTrainingExpiry] = useState("");
+  const [teacherGdprTrainingStatus, setTeacherGdprTrainingStatus] = useState("Due");
+  const [teacherKcsieConfirmed, setTeacherKcsieConfirmed] = useState(false);
+  const [teacherPreventTrainingStatus, setTeacherPreventTrainingStatus] = useState("Due");
+  const [teacherAssignedClassrooms, setTeacherAssignedClassrooms] = useState("");
+  const [teacherAssignedYearGroups, setTeacherAssignedYearGroups] = useState("");
+  const [teacherSubjectOwnership, setTeacherSubjectOwnership] = useState("");
+  const [teacherParentCommunicationPermission, setTeacherParentCommunicationPermission] = useState(true);
+  const [teacherAttendancePermission, setTeacherAttendancePermission] = useState(true);
+  const [teacherBehaviourSafeguardingPermission, setTeacherBehaviourSafeguardingPermission] = useState(false);
+  const [teacherSenAccessPermission, setTeacherSenAccessPermission] = useState(false);
+  const [teacherMfaRequired, setTeacherMfaRequired] = useState(false);
+  const [teacherTemporaryPassword, setTeacherTemporaryPassword] = useState("");
+  const [teacherForcePasswordReset, setTeacherForcePasswordReset] = useState(true);
+  const [teacherAccountStatus, setTeacherAccountStatus] = useState<"invited" | "active" | "suspended" | "pending_setup">("pending_setup");
+  const [teacherApprovalRequired, setTeacherApprovalRequired] = useState(false);
+  const [teacherAnnualAccessReviewDate, setTeacherAnnualAccessReviewDate] = useState("");
+  const [staffProvisionMode, setStaffProvisionMode] = useState<StaffProvisionMode>("invite");
+  const [manualSetupWarningAccepted, setManualSetupWarningAccepted] = useState(false);
   const [ownerInviteConfirmed, setOwnerInviteConfirmed] = useState(false);
+  const [manualStaffBySchool, setManualStaffBySchool] = useState<Record<string, StaffProvisionRecord[]>>({});
+  const [staffAuditBySchool, setStaffAuditBySchool] = useState<Record<string, Array<{ id: string; message: string; createdAt: string }>>>({});
 
   const [assignChildId, setAssignChildId] = useState("");
   const [assignClassroomId, setAssignClassroomId] = useState("");
@@ -1569,9 +1696,71 @@ export default function AdminSchoolsPage() {
     [schools, selectedSchoolId],
   );
   const selectedRoleSummary = useMemo(() => rolePermissionSummary(teacherRole), [teacherRole]);
+  const staffRows = useMemo(() => {
+    if (!selectedSchool) return [] as Array<StaffProvisionRecord & { sourceType: "remote" | "manual"; teacherId?: string }>;
+
+    const remoteRows = selectedSchool.teachers.map((teacher) => {
+      const compliance = teacher.status === "active" ? "Compliant (pending checks)" : "Pending setup";
+      return {
+        id: `remote-${teacher.id}`,
+        schoolId: selectedSchool.id,
+        firstName: "",
+        lastName: "",
+        displayName: teacher.name ?? teacher.email,
+        workEmail: teacher.email,
+        mobileNumber: "",
+        jobTitle: teacher.title ?? "Unassigned",
+        department: "General",
+        role: (teacher.role as SchoolRole) ?? "teacher",
+        accessLevel: rolePermissionSummary((teacher.role as SchoolRole) ?? "teacher").accessLevel,
+        startDate: "",
+        employmentType: "Not set",
+        schoolAssignment: selectedSchool.name,
+        staffId: "",
+        backupEmail: "",
+        lineManager: "",
+        endDate: "",
+        notes: "",
+        dbsStatus: "Unknown",
+        dbsExpiryDate: "",
+        safeguardingTrainingStatus: "Due",
+        safeguardingTrainingExpiry: "",
+        gdprTrainingStatus: "Due",
+        kcsieConfirmed: false,
+        preventTrainingStatus: "Due",
+        assignedClassrooms: "",
+        assignedYearGroups: "",
+        subjectOwnership: "",
+        parentCommunicationPermission: true,
+        attendancePermission: true,
+        behaviourSafeguardingPermission: false,
+        senAccessPermission: false,
+        mfaRequired: false,
+        temporaryPassword: "",
+        forcePasswordReset: false,
+        accountStatus: teacher.status === "active" ? "active" : teacher.status === "suspended" ? "suspended" : "invited",
+        approvalRequired: false,
+        annualAccessReviewDate: "",
+        statusLabel: teacher.status === "invited" ? "Invite Sent" : teacher.status,
+        safeguardingComplianceStatus: compliance,
+        lastActivity: teacher.lastActiveAt ? timeAgo(teacher.lastActiveAt) : "No activity",
+        source: teacher.status === "invited" ? "invite" : "manual",
+        sourceType: "remote" as const,
+        teacherId: teacher.id,
+      };
+    });
+
+    const localRows = (manualStaffBySchool[selectedSchool.id] ?? []).map((row) => ({
+      ...row,
+      sourceType: "manual" as const,
+    }));
+
+    return [...localRows, ...remoteRows];
+  }, [manualStaffBySchool, selectedSchool]);
 
   function onInviteRoleChange(nextRole: SchoolRole) {
     setTeacherRole(nextRole);
+    setTeacherAccessLevel(rolePermissionSummary(nextRole).accessLevel);
     if (!requiresOwnerInviteConfirmation(nextRole)) {
       setOwnerInviteConfirmed(false);
     }
@@ -1881,14 +2070,6 @@ export default function AdminSchoolsPage() {
     return onboardingStatusLabel(selectedSchool, selectedOnboardingChecklist);
   }, [selectedOnboardingChecklist, selectedSchool]);
 
-  useEffect(() => {
-    if (securityGateState?.blocked) {
-      setSecurityLockSeenAt((current) => current ?? Date.now());
-      return;
-    }
-    setSecurityLockSeenAt(null);
-  }, [securityGateState?.blocked]);
-
   const securityLockReason = useMemo(
     () => securityLockReasonLabel(securityGateState?.reason),
     [securityGateState?.reason],
@@ -1896,10 +2077,8 @@ export default function AdminSchoolsPage() {
 
   const estimatedUnlockMinutes = useMemo(() => {
     if (!securityGateState?.blocked) return 0;
-    if (!securityLockSeenAt) return SECURITY_LOOKBACK_MINUTES;
-    const elapsedMinutes = Math.floor((Date.now() - securityLockSeenAt) / (1000 * 60));
-    return Math.max(1, SECURITY_LOOKBACK_MINUTES - elapsedMinutes);
-  }, [liveUpdatedAt, securityGateState?.blocked, securityLockSeenAt]);
+    return SECURITY_LOOKBACK_MINUTES;
+  }, [securityGateState?.blocked]);
 
   const governanceCardMeta = useMemo<Record<"compliance" | "communication" | "safeguarding" | "parentPreferences" | "timeline" | "provisioning" | "mat" | "notifications", GovernanceCardMetaItem> | null>(() => {
     if (!selectedSchool) return null;
@@ -3044,21 +3223,170 @@ export default function AdminSchoolsPage() {
   async function onInviteTeacher(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedSchool) return;
-    if (requiresOwnerInviteConfirmation(teacherRole) && !ownerInviteConfirmed) {
-      setError("Owner invites require explicit confirmation before sending.");
+
+    if (!teacherFirstName.trim()) {
+      setError("First name is required.");
       return;
     }
-    await postAction("inviteTeacher", {
-      schoolId: selectedSchool.id,
-      email: teacherEmail,
-      name: teacherName || undefined,
-      role: teacherRole,
-      title: teacherTitle || undefined,
-      ownerInviteConfirmed: ownerInviteConfirmed || undefined,
-    });
+    if (!teacherLastName.trim()) {
+      setError("Last name is required.");
+      return;
+    }
+    if (!teacherEmail.trim()) {
+      setError("Work email is required.");
+      return;
+    }
+    if (!teacherTitle.trim()) {
+      setError("Job title is required.");
+      return;
+    }
+    if (!teacherDepartment.trim()) {
+      setError("Department is required.");
+      return;
+    }
+    if (!teacherRole) {
+      setError("Role is required.");
+      return;
+    }
+    if (requiresOwnerInviteConfirmation(teacherRole) && !ownerInviteConfirmed) {
+      setError("Owner/Admin assignment requires senior-authorisation confirmation.");
+      return;
+    }
+
+    if (staffProvisionMode === "manual" && !teacherTemporaryPassword.trim() && !manualSetupWarningAccepted) {
+      setError("Add Manually requires a temporary password or setup-warning acknowledgement.");
+      return;
+    }
+
+    setError(null);
+
+    if (staffProvisionMode === "invite") {
+      const inviteResult = await postAction("inviteTeacher", {
+        schoolId: selectedSchool.id,
+        email: teacherEmail,
+        name: teacherName || `${teacherFirstName} ${teacherLastName}`,
+        role: teacherRole,
+        title: teacherTitle || undefined,
+        ownerInviteConfirmed: ownerInviteConfirmed || undefined,
+      });
+      if (inviteResult.ok) {
+        setStaffAuditBySchool((prev) => ({
+          ...prev,
+          [selectedSchool.id]: [
+            {
+              id: `audit-invite-${Date.now()}`,
+              message: `Invite audit entry: ${teacherEmail} (${getSchoolRoleLabel(teacherRole)}) set to Invite Sent`,
+              createdAt: new Date().toISOString(),
+            },
+            ...(prev[selectedSchool.id] ?? []),
+          ].slice(0, 20),
+        }));
+      }
+    } else {
+      const nowIso = new Date().toISOString();
+      const newManual: StaffProvisionRecord = {
+        id: `manual-${Date.now()}`,
+        schoolId: selectedSchool.id,
+        firstName: teacherFirstName.trim(),
+        lastName: teacherLastName.trim(),
+        displayName: teacherName.trim() || `${teacherFirstName.trim()} ${teacherLastName.trim()}`,
+        workEmail: teacherEmail.trim().toLowerCase(),
+        mobileNumber: teacherMobileNumber.trim(),
+        jobTitle: teacherTitle.trim(),
+        department: teacherDepartment.trim(),
+        role: teacherRole,
+        accessLevel: teacherAccessLevel.trim() || selectedRoleSummary.accessLevel,
+        startDate: teacherStartDate,
+        employmentType: teacherEmploymentType,
+        schoolAssignment: teacherSchoolAssignment.trim() || selectedSchool.name,
+        staffId: teacherStaffId.trim(),
+        backupEmail: teacherBackupEmail.trim(),
+        lineManager: teacherLineManager.trim(),
+        endDate: teacherEndDate,
+        notes: teacherNotes.trim(),
+        dbsStatus: teacherDbsStatus,
+        dbsExpiryDate: teacherDbsExpiryDate,
+        safeguardingTrainingStatus: teacherSafeguardingTrainingStatus,
+        safeguardingTrainingExpiry: teacherSafeguardingTrainingExpiry,
+        gdprTrainingStatus: teacherGdprTrainingStatus,
+        kcsieConfirmed: teacherKcsieConfirmed,
+        preventTrainingStatus: teacherPreventTrainingStatus,
+        assignedClassrooms: teacherAssignedClassrooms,
+        assignedYearGroups: teacherAssignedYearGroups,
+        subjectOwnership: teacherSubjectOwnership,
+        parentCommunicationPermission: teacherParentCommunicationPermission,
+        attendancePermission: teacherAttendancePermission,
+        behaviourSafeguardingPermission: teacherBehaviourSafeguardingPermission,
+        senAccessPermission: teacherSenAccessPermission,
+        mfaRequired: teacherMfaRequired,
+        temporaryPassword: teacherTemporaryPassword,
+        forcePasswordReset: teacherForcePasswordReset,
+        accountStatus: teacherAccountStatus,
+        approvalRequired: teacherApprovalRequired,
+        annualAccessReviewDate: teacherAnnualAccessReviewDate,
+        statusLabel: "Manually Added",
+        safeguardingComplianceStatus: teacherSafeguardingTrainingStatus === "Complete" && teacherDbsStatus === "Clear" ? "Compliant" : "Pending compliance",
+        lastActivity: "just now",
+        source: "manual",
+      };
+
+      setManualStaffBySchool((prev) => ({
+        ...prev,
+        [selectedSchool.id]: [newManual, ...(prev[selectedSchool.id] ?? [])],
+      }));
+      setStaffAuditBySchool((prev) => ({
+        ...prev,
+        [selectedSchool.id]: [
+          {
+            id: `audit-manual-${Date.now()}`,
+            message: `Manual add audit entry: ${newManual.displayName} (${newManual.workEmail}) set to Active/Pending Setup`,
+            createdAt: nowIso,
+          },
+          ...(prev[selectedSchool.id] ?? []),
+        ].slice(0, 20),
+      }));
+      enqueueToast("Staff manually added", "Record saved locally with Active/Pending Setup state.");
+      setMessage("Staff record added locally. Provide login details securely if no email invite is sent.");
+    }
+
     setTeacherEmail("");
+    setTeacherFirstName("");
+    setTeacherLastName("");
+    setTeacherMobileNumber("");
     setTeacherName("");
+    setTeacherAccessLevel(rolePermissionSummary("teacher").accessLevel);
+    setTeacherStartDate("");
+    setTeacherEmploymentType("Permanent");
+    setTeacherSchoolAssignment("");
     setTeacherTitle("");
+    setTeacherDepartment("");
+    setTeacherStaffId("");
+    setTeacherBackupEmail("");
+    setTeacherLineManager("");
+    setTeacherEndDate("");
+    setTeacherNotes("");
+    setTeacherDbsStatus("Pending");
+    setTeacherDbsExpiryDate("");
+    setTeacherSafeguardingTrainingStatus("Due");
+    setTeacherSafeguardingTrainingExpiry("");
+    setTeacherGdprTrainingStatus("Due");
+    setTeacherKcsieConfirmed(false);
+    setTeacherPreventTrainingStatus("Due");
+    setTeacherAssignedClassrooms("");
+    setTeacherAssignedYearGroups("");
+    setTeacherSubjectOwnership("");
+    setTeacherParentCommunicationPermission(true);
+    setTeacherAttendancePermission(true);
+    setTeacherBehaviourSafeguardingPermission(false);
+    setTeacherSenAccessPermission(false);
+    setTeacherMfaRequired(false);
+    setTeacherTemporaryPassword("");
+    setTeacherForcePasswordReset(true);
+    setTeacherAccountStatus("pending_setup");
+    setTeacherApprovalRequired(false);
+    setTeacherAnnualAccessReviewDate("");
+    setStaffProvisionMode("invite");
+    setManualSetupWarningAccepted(false);
     setTeacherRole("teacher");
     setOwnerInviteConfirmed(false);
   }
@@ -4522,7 +4850,7 @@ export default function AdminSchoolsPage() {
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap gap-2">
-                        <button onClick={() => { applySchoolSelection(school); jumpToSection("dashboard"); }} className={subtleButtonClass}>Open Dashboard</button>
+                        <Link href={`/admin/schools/${school.id}/dashboard`} className={subtleButtonClass}>Open Dashboard</Link>
                         <button onClick={() => { applySchoolSelection(school); jumpToSection("teachers"); }} className={subtleButtonClass}>Manage Teachers</button>
                         <button onClick={() => runGovernanceAction("viewSafeguarding", school)} className={subtleButtonClass}>View Safeguarding</button>
                         <button onClick={() => { applySchoolSelection(school); jumpToSection("communication"); }} className={subtleButtonClass}>Send Communication</button>
@@ -4608,7 +4936,7 @@ export default function AdminSchoolsPage() {
                   <p className="mt-1">Reason: {securityLockReason}</p>
                   <p className="mt-1">Anomaly count: {securityGateState.authAnomalySignals}</p>
                   <p className="mt-1">Policy threshold: {securityGateState.threshold} failed logins in 15 minutes.</p>
-                  <p className="mt-1">Estimated unlock window: approximately {estimatedUnlockMinutes} minute{estimatedUnlockMinutes === 1 ? "" : "s"} if no additional failed logins are detected.</p>
+                  <p className="mt-1">Estimated unlock window: approximately {estimatedUnlockMinutes} minute{estimatedUnlockMinutes > 1 ? "s" : ""} if no additional failed logins are detected.</p>
                   <p className="mt-1">Recommended action: wait for the anomaly window to clear, review failed logins in security/audit views, or require admin verification before retrying sensitive actions.</p>
                 </div>
               ) : null}
@@ -4898,17 +5226,70 @@ export default function AdminSchoolsPage() {
                         </div>
                       </div>
                     ) : null}
-                    <form onSubmit={(event) => void onInviteTeacher(event)} className="mt-3 grid gap-2">
-                      <input required type="email" value={teacherEmail} onChange={(event) => setTeacherEmail(event.target.value)} placeholder="Staff email" className={fieldClass} />
-                      <input value={teacherName} onChange={(event) => setTeacherName(event.target.value)} placeholder="Display name" className={fieldClass} />
-                      <select value={teacherRole} onChange={(event) => onInviteRoleChange(event.target.value as SchoolRole)} className={fieldClass}>
-                        <option value="teacher">Teacher</option>
-                        <option value="admin">Admin</option>
-                        <option value="support">Support</option>
-                        <option value="staff_observer">Staff Observer</option>
-                        <option value="finance">Finance</option>
-                        <option value="owner">Owner</option>
-                      </select>
+                    <form onSubmit={(event) => void onInviteTeacher(event)} className="mt-3 space-y-4">
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <label className="rounded-lg border border-slate-700 bg-slate-950/60 p-2 text-xs text-slate-200">
+                          <span className="font-semibold text-slate-100">Mode</span>
+                          <select value={staffProvisionMode} onChange={(event) => setStaffProvisionMode(event.target.value as StaffProvisionMode)} className={`${fieldClass} mt-1`}>
+                            <option value="invite">Send Invite</option>
+                            <option value="manual">Add Manually</option>
+                          </select>
+                        </label>
+                        <label className="rounded-lg border border-slate-700 bg-slate-950/60 p-2 text-xs text-slate-200">
+                          <span className="font-semibold text-slate-100">Role</span>
+                          <select value={teacherRole} onChange={(event) => onInviteRoleChange(event.target.value as SchoolRole)} className={`${fieldClass} mt-1`}>
+                            <option value="teacher">Teacher</option>
+                            <option value="admin">Admin</option>
+                            <option value="support">Support</option>
+                            <option value="staff_observer">Staff Observer</option>
+                            <option value="finance">Finance</option>
+                            <option value="owner">Owner</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      {staffProvisionMode === "manual" ? (
+                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+                          <p className="inline-flex rounded-full border border-amber-400/60 bg-amber-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-50">
+                            Persistence Status: UI-only for now
+                          </p>
+                          <p className="mt-2 font-semibold text-amber-50">Manual staff records are currently stored in local UI state and may disappear after refresh until backend persistence is added.</p>
+                          <p className="mt-1">Backend persistence pending. Do not rely on manual-add records after refresh.</p>
+                        </div>
+                      ) : null}
+
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        <input required value={teacherFirstName} onChange={(event) => setTeacherFirstName(event.target.value)} placeholder="First name" className={fieldClass} />
+                        <input required value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} placeholder="Last name" className={fieldClass} />
+                        <input required value={teacherName} onChange={(event) => setTeacherName(event.target.value)} placeholder="Display name" className={fieldClass} />
+                        <input required type="email" value={teacherEmail} onChange={(event) => setTeacherEmail(event.target.value)} placeholder="Work email" className={fieldClass} />
+                        <input value={teacherMobileNumber} onChange={(event) => setTeacherMobileNumber(event.target.value)} placeholder="Mobile number" className={fieldClass} />
+                        <input required value={teacherTitle} onChange={(event) => setTeacherTitle(event.target.value)} placeholder="Job title" className={fieldClass} />
+                        <input required value={teacherDepartment} onChange={(event) => setTeacherDepartment(event.target.value)} placeholder="Department" className={fieldClass} />
+                        <input required value={teacherAccessLevel} onChange={(event) => setTeacherAccessLevel(event.target.value)} placeholder="Access level" className={fieldClass} />
+                        <input required type="date" value={teacherStartDate} onChange={(event) => setTeacherStartDate(event.target.value)} className={fieldClass} />
+                        <select value={teacherEmploymentType} onChange={(event) => setTeacherEmploymentType(event.target.value)} className={fieldClass}>
+                          <option>Permanent</option>
+                          <option>Temporary</option>
+                          <option>Contract</option>
+                          <option>Agency</option>
+                          <option>Part-time</option>
+                        </select>
+                        <input required value={teacherSchoolAssignment || selectedSchool.name} onChange={(event) => setTeacherSchoolAssignment(event.target.value)} placeholder="School assignment" className={fieldClass} />
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        <input value={teacherStaffId} onChange={(event) => setTeacherStaffId(event.target.value)} placeholder="Staff ID / Employee ID" className={fieldClass} />
+                        <input type="email" value={teacherBackupEmail} onChange={(event) => setTeacherBackupEmail(event.target.value)} placeholder="Backup email" className={fieldClass} />
+                        <input value={teacherLineManager} onChange={(event) => setTeacherLineManager(event.target.value)} placeholder="Line manager" className={fieldClass} />
+                        <input type="date" value={teacherEndDate} onChange={(event) => setTeacherEndDate(event.target.value)} className={fieldClass} />
+                        <input value={teacherAssignedClassrooms} onChange={(event) => setTeacherAssignedClassrooms(event.target.value)} placeholder="Assigned classrooms (comma separated)" className={fieldClass} />
+                        <input value={teacherAssignedYearGroups} onChange={(event) => setTeacherAssignedYearGroups(event.target.value)} placeholder="Assigned year groups" className={fieldClass} />
+                        <input value={teacherSubjectOwnership} onChange={(event) => setTeacherSubjectOwnership(event.target.value)} placeholder="Subject ownership" className={fieldClass} />
+                        <input type="date" value={teacherAnnualAccessReviewDate} onChange={(event) => setTeacherAnnualAccessReviewDate(event.target.value)} className={fieldClass} />
+                        <textarea value={teacherNotes} onChange={(event) => setTeacherNotes(event.target.value)} placeholder="Notes" className={`${fieldClass} min-h-[40px]`} />
+                      </div>
+
                       <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-200" aria-live="polite">
                         <p className="font-semibold text-slate-100">Role details: {getSchoolRoleLabel(teacherRole)}</p>
                         <p className="mt-1 text-slate-400">
@@ -4921,16 +5302,70 @@ export default function AdminSchoolsPage() {
                         </p>
                         <div className="mt-2 grid gap-1 text-[11px] text-slate-300 sm:grid-cols-2">
                           <p>Access level: <span className="font-semibold text-white">{selectedRoleSummary.accessLevel}</span></p>
-                          <p>Can manage staff?: <span className="font-semibold text-white">{selectedRoleSummary.manageStaff ? "Yes" : "No"}</span></p>
-                          <p>Can view student data?: <span className="font-semibold text-white">{selectedRoleSummary.viewStudentData ? "Yes" : "No"}</span></p>
-                          <p>Can manage billing?: <span className="font-semibold text-white">{selectedRoleSummary.manageBilling ? "Yes" : "No"}</span></p>
-                          <p>Can access safeguarding?: <span className="font-semibold text-white">{selectedRoleSummary.accessSafeguarding ? "Yes" : "No"}</span></p>
-                          <p>Can change governance settings?: <span className="font-semibold text-white">{selectedRoleSummary.changeGovernanceSettings ? "Yes" : "No"}</span></p>
+                          <p>Student data access: <span className="font-semibold text-white">{selectedRoleSummary.studentDataAccess}</span></p>
+                          <p>Safeguarding access: <span className="font-semibold text-white">{selectedRoleSummary.safeguardingAccess}</span></p>
+                          <p>Staff management access: <span className="font-semibold text-white">{selectedRoleSummary.staffManagementAccess}</span></p>
+                          <p>Billing access: <span className="font-semibold text-white">{selectedRoleSummary.billingAccess}</span></p>
+                          <p>Governance settings access: <span className="font-semibold text-white">{selectedRoleSummary.governanceSettingsAccess}</span></p>
                         </div>
+                        <p className="mt-2 text-[11px] text-slate-300">Recommended use case: <span className="font-semibold text-white">{selectedRoleSummary.recommendedUseCase}</span></p>
                       </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        <select value={teacherDbsStatus} onChange={(event) => setTeacherDbsStatus(event.target.value)} className={fieldClass}>
+                          <option>Pending</option>
+                          <option>Clear</option>
+                          <option>Expired</option>
+                          <option>Not required</option>
+                        </select>
+                        <input type="date" value={teacherDbsExpiryDate} onChange={(event) => setTeacherDbsExpiryDate(event.target.value)} className={fieldClass} />
+                        <select value={teacherSafeguardingTrainingStatus} onChange={(event) => setTeacherSafeguardingTrainingStatus(event.target.value)} className={fieldClass}>
+                          <option>Due</option>
+                          <option>Complete</option>
+                          <option>Expired</option>
+                          <option>In progress</option>
+                        </select>
+                        <input type="date" value={teacherSafeguardingTrainingExpiry} onChange={(event) => setTeacherSafeguardingTrainingExpiry(event.target.value)} className={fieldClass} />
+                        <select value={teacherGdprTrainingStatus} onChange={(event) => setTeacherGdprTrainingStatus(event.target.value)} className={fieldClass}>
+                          <option>Due</option>
+                          <option>Complete</option>
+                          <option>Expired</option>
+                          <option>In progress</option>
+                        </select>
+                        <select value={teacherPreventTrainingStatus} onChange={(event) => setTeacherPreventTrainingStatus(event.target.value)} className={fieldClass}>
+                          <option>Due</option>
+                          <option>Complete</option>
+                          <option>Expired</option>
+                          <option>In progress</option>
+                        </select>
+                        <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs text-slate-200">
+                          <input type="checkbox" checked={teacherKcsieConfirmed} onChange={(event) => setTeacherKcsieConfirmed(event.target.checked)} />
+                          KCSIE confirmation
+                        </label>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs text-slate-200"><input type="checkbox" checked={teacherParentCommunicationPermission} onChange={(event) => setTeacherParentCommunicationPermission(event.target.checked)} />Parent communication permission</label>
+                        <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs text-slate-200"><input type="checkbox" checked={teacherAttendancePermission} onChange={(event) => setTeacherAttendancePermission(event.target.checked)} />Attendance permission</label>
+                        <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs text-slate-200"><input type="checkbox" checked={teacherBehaviourSafeguardingPermission} onChange={(event) => setTeacherBehaviourSafeguardingPermission(event.target.checked)} />Behaviour/safeguarding incident permission</label>
+                        <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs text-slate-200"><input type="checkbox" checked={teacherSenAccessPermission} onChange={(event) => setTeacherSenAccessPermission(event.target.checked)} />SEN access permission</label>
+                        <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs text-slate-200"><input type="checkbox" checked={teacherMfaRequired} onChange={(event) => setTeacherMfaRequired(event.target.checked)} />MFA required</label>
+                        <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs text-slate-200"><input type="checkbox" checked={teacherForcePasswordReset} onChange={(event) => setTeacherForcePasswordReset(event.target.checked)} />Force password reset on first login</label>
+                        <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs text-slate-200"><input type="checkbox" checked={teacherApprovalRequired} onChange={(event) => setTeacherApprovalRequired(event.target.checked)} />Approval required before activation</label>
+                        <select value={teacherAccountStatus} onChange={(event) => setTeacherAccountStatus(event.target.value as "invited" | "active" | "suspended" | "pending_setup")} className={fieldClass}>
+                          <option value="pending_setup">Active/Pending Setup</option>
+                          <option value="active">Active</option>
+                          <option value="suspended">Suspended</option>
+                          <option value="invited">Invite Sent</option>
+                        </select>
+                        {staffProvisionMode === "manual" ? (
+                          <input type="password" value={teacherTemporaryPassword} onChange={(event) => setTeacherTemporaryPassword(event.target.value)} placeholder="Temporary password (optional with warning)" className={fieldClass} />
+                        ) : null}
+                      </div>
+
                       {requiresOwnerInviteConfirmation(teacherRole) ? (
                         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
-                          <p className="font-semibold text-amber-50">Owner has executive-level governance access. Only assign this role to authorised senior leaders.</p>
+                          <p className="font-semibold text-amber-50">Owner/Admin assignment requires senior authorisation.</p>
                           <label className="mt-2 flex items-start gap-2">
                             <input
                               type="checkbox"
@@ -4938,43 +5373,176 @@ export default function AdminSchoolsPage() {
                               onChange={(event) => setOwnerInviteConfirmed(event.target.checked)}
                               className="mt-0.5"
                             />
-                            <span>I confirm this recipient is an authorised senior leader for School Owner access.</span>
+                            <span>I confirm senior authorisation for this high-privilege role assignment.</span>
                           </label>
                         </div>
                       ) : null}
-                      <input value={teacherTitle} onChange={(event) => setTeacherTitle(event.target.value)} placeholder="Title" className={fieldClass} />
-                      <button disabled={saving || (requiresOwnerInviteConfirmation(teacherRole) && !ownerInviteConfirmed)} className={primaryButtonClass}>Send Invite</button>
+
+                      {staffProvisionMode === "manual" ? (
+                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+                          <p className="font-semibold text-amber-50">Manual add warning</p>
+                          <p className="mt-1">No invite email will be sent. Admin must share login details securely.</p>
+                          <label className="mt-2 flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={manualSetupWarningAccepted}
+                              onChange={(event) => setManualSetupWarningAccepted(event.target.checked)}
+                              className="mt-0.5"
+                            />
+                            <span>I understand secure credential handoff is required for manual add.</span>
+                          </label>
+                        </div>
+                      ) : null}
+
+                      <button
+                        disabled={saving || (requiresOwnerInviteConfirmation(teacherRole) && !ownerInviteConfirmed)}
+                        className={primaryButtonClass}
+                      >
+                        {staffProvisionMode === "manual" ? "Add Staff" : "Send Invite"}
+                      </button>
                     </form>
-                    <div className="mt-3 space-y-2">
-                      {selectedSchool.teachers.map((teacher) => (
-                        <article key={teacher.id} className="rounded-lg border border-slate-700 bg-slate-950/60 p-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <p className="text-sm font-semibold text-white">{teacher.name ?? teacher.email}</p>
-                              <p className="text-xs text-slate-400">{getSchoolRoleLabel(teacher.role)} · {teacher.email}</p>
-                            </div>
-                            <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${badgeClass(teacher.status)}`}>{teacher.status}</span>
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {teacher.status === "invited" ? (
-                              <>
-                                <button disabled={saving} onClick={() => void postAction("resendInvite", { teacherId: teacher.id })} className={subtleButtonClass}>Resend</button>
-                                <button disabled={saving} onClick={() => void postAction("revokeInvite", { teacherId: teacher.id })} className={subtleButtonClass}>Revoke</button>
-                              </>
-                            ) : null}
-                            <button disabled={saving} onClick={() => void postAction("updateTeacher", { teacherId: teacher.id, status: teacher.status === "active" ? "suspended" : "active" })} className={subtleButtonClass}>
-                              {teacher.status === "active" ? "Suspend" : "Activate"}
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                      {!selectedSchool.teachers.length ? (
-                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-100">
-                          No staff invited yet. Impact: operational ownership and delivery coverage may be delayed.
-                          Next action: invite at least one teacher, admin, support, finance, observer, or owner role as appropriate.
+
+                    <div className="mt-3 overflow-x-auto rounded-lg border border-slate-700 bg-slate-950/60">
+                      <table className="min-w-full text-left text-xs text-slate-200">
+                        <thead className="bg-slate-900/70 text-[11px] uppercase tracking-[0.08em] text-slate-400">
+                          <tr>
+                            <th className="px-3 py-2">Name</th>
+                            <th className="px-3 py-2">Email</th>
+                            <th className="px-3 py-2">Role</th>
+                            <th className="px-3 py-2">Job title</th>
+                            <th className="px-3 py-2">Department</th>
+                            <th className="px-3 py-2">Employment type</th>
+                            <th className="px-3 py-2">Status</th>
+                            <th className="px-3 py-2">Safeguarding compliance</th>
+                            <th className="px-3 py-2">Last activity</th>
+                            <th className="px-3 py-2">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {staffRows.map((row) => (
+                            <tr key={row.id} className="border-t border-slate-800/80 align-top">
+                              <td className="px-3 py-2 font-semibold text-white">{row.displayName}</td>
+                              <td className="px-3 py-2">{row.workEmail}</td>
+                              <td className="px-3 py-2">{getSchoolRoleLabel(row.role)}</td>
+                              <td className="px-3 py-2">{row.jobTitle}</td>
+                              <td className="px-3 py-2">{row.department}</td>
+                              <td className="px-3 py-2">{row.employmentType}</td>
+                              <td className="px-3 py-2">{row.statusLabel}</td>
+                              <td className="px-3 py-2">{row.safeguardingComplianceStatus}</td>
+                              <td className="px-3 py-2">{row.lastActivity}</td>
+                              <td className="px-3 py-2">
+                                <div className="flex flex-wrap gap-1">
+                                  <button type="button" className={subtleButtonClass}>View profile</button>
+                                  <button type="button" className={subtleButtonClass}>Edit access</button>
+                                  <button
+                                    type="button"
+                                    className={subtleButtonClass}
+                                    onClick={() => {
+                                      if (row.sourceType === "remote" && row.teacherId) {
+                                        void postAction("resendInvite", { teacherId: row.teacherId });
+                                      } else if (selectedSchool) {
+                                        setStaffAuditBySchool((prev) => ({
+                                          ...prev,
+                                          [selectedSchool.id]: [
+                                            {
+                                              id: `audit-resend-${Date.now()}`,
+                                              message: `Invite audit entry: resend requested for ${row.workEmail}`,
+                                              createdAt: new Date().toISOString(),
+                                            },
+                                            ...(prev[selectedSchool.id] ?? []),
+                                          ].slice(0, 20),
+                                        }));
+                                      }
+                                    }}
+                                  >
+                                    Resend invite
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={subtleButtonClass}
+                                    onClick={() => {
+                                      if (row.sourceType === "remote" && row.teacherId) {
+                                        void postAction("updateTeacher", {
+                                          teacherId: row.teacherId,
+                                          status: row.accountStatus === "active" ? "suspended" : "active",
+                                        });
+                                      } else if (selectedSchool) {
+                                        setManualStaffBySchool((prev) => ({
+                                          ...prev,
+                                          [selectedSchool.id]: (prev[selectedSchool.id] ?? []).map((entry) => {
+                                            if (entry.id !== row.id) return entry;
+                                            return {
+                                              ...entry,
+                                              accountStatus: entry.accountStatus === "suspended" ? "active" : "suspended",
+                                              statusLabel: entry.accountStatus === "suspended" ? "Active/Pending Setup" : "Suspended",
+                                              lastActivity: "just now",
+                                            };
+                                          }),
+                                        }));
+                                      }
+                                    }}
+                                  >
+                                    Suspend staff
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={subtleButtonClass}
+                                    onClick={() => {
+                                      if (!selectedSchool) return;
+                                      if (row.sourceType === "manual") {
+                                        setManualStaffBySchool((prev) => ({
+                                          ...prev,
+                                          [selectedSchool.id]: (prev[selectedSchool.id] ?? []).map((entry) => {
+                                            if (entry.id !== row.id) return entry;
+                                            return {
+                                              ...entry,
+                                              safeguardingTrainingStatus: "Complete",
+                                              gdprTrainingStatus: "Complete",
+                                              preventTrainingStatus: "Complete",
+                                              safeguardingComplianceStatus: "Compliant",
+                                              lastActivity: "just now",
+                                            };
+                                          }),
+                                        }));
+                                      }
+                                      setStaffAuditBySchool((prev) => ({
+                                        ...prev,
+                                        [selectedSchool.id]: [
+                                          {
+                                            id: `audit-training-${Date.now()}`,
+                                            message: `Training expiry alert placeholder updated: ${row.workEmail} marked complete`,
+                                            createdAt: new Date().toISOString(),
+                                          },
+                                          ...(prev[selectedSchool.id] ?? []),
+                                        ].slice(0, 20),
+                                      }));
+                                    }}
+                                  >
+                                    Mark training complete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {!staffRows.length ? (
+                        <div className="p-3 text-xs text-amber-100">
+                          No staff records yet. Next action: send invite or add manually to establish staffing ownership.
                         </div>
                       ) : null}
                     </div>
+
+                    {(staffAuditBySchool[selectedSchool.id] ?? []).length > 0 ? (
+                      <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-300">
+                        <p className="font-semibold text-slate-100">Staff provisioning audit placeholders</p>
+                        <ul className="mt-2 space-y-1">
+                          {(staffAuditBySchool[selectedSchool.id] ?? []).slice(0, 6).map((entry) => (
+                            <li key={entry.id}>{shortDateTime(entry.createdAt)} · {entry.message}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                   </>
                 )}
               </section>
