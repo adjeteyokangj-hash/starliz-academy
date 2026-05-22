@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { CoachResponse, CoachSubject } from "@/lib/coach/types";
 import { getSessionSummary } from "@/lib/coach/session-memory";
+import { speak } from "@/lib/voice";
+import CoachWordHelp from "@/components/coach/CoachWordHelp";
+import type { CoachWordHelpResponse } from "@/lib/coachDictionary";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -24,6 +27,17 @@ export type SmartCoachPanelProps = {
   skillFocus?: string;
   assignmentId?: string;
   contentId?: string;
+  coachContext?: {
+    word?: string;
+    subject?: string;
+    keyStage?: string;
+    yearGroup?: string;
+    activityType?: string;
+    assignmentId?: string;
+    currentPrompt?: string;
+    childAttempt?: string;
+    topic?: string;
+  };
   attemptCount?: number;
   /** 0–1 from coaching memory. Defaults to 0.5. */
   confidenceScore?: number;
@@ -56,6 +70,7 @@ export default function SmartCoachPanel({
   skillFocus,
   assignmentId,
   contentId,
+  coachContext,
   attemptCount = 0,
   confidenceScore = 0.5,
     responseTimeMs,
@@ -63,7 +78,9 @@ export default function SmartCoachPanel({
   onClose,
 }: SmartCoachPanelProps) {
   const [response, setResponse] = useState<CoachResponse | null>(null);
+  const [wordHelp, setWordHelp] = useState<CoachWordHelpResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [wordHelpLoading, setWordHelpLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Follow-up tracking
@@ -83,6 +100,55 @@ export default function SmartCoachPanel({
 
   // Session summary (client-side, resets on page reload)
   const sessionSummary = getSessionSummary(subject, skillFocus);
+
+  useEffect(() => {
+    const word = coachContext?.word?.trim();
+    if (!word) {
+      const resetTimer = window.setTimeout(() => {
+        setWordHelp(null);
+        setWordHelpLoading(false);
+      }, 0);
+      return () => window.clearTimeout(resetTimer);
+    }
+
+    const controller = new AbortController();
+    const loadingTimer = window.setTimeout(() => {
+      setWordHelpLoading(true);
+    }, 0);
+
+    fetch("/api/coach/word-help", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...coachContext,
+        word,
+        subject: coachContext?.subject ?? subject,
+        keyStage: coachContext?.keyStage ?? keyStageLevel,
+        yearGroup: coachContext?.yearGroup ?? String(yearGroup ?? ""),
+        supportLevel: Math.min(5, Math.max(1, localHintCount + 1)),
+      }),
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return res.json() as Promise<CoachWordHelpResponse>;
+      })
+      .then((payload) => {
+        if (payload) setWordHelp(payload);
+      })
+      .catch(() => {
+        setWordHelp(null);
+      })
+      .finally(() => {
+        window.clearTimeout(loadingTimer);
+        setWordHelpLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(loadingTimer);
+    };
+  }, [coachContext, keyStageLevel, localHintCount, subject, yearGroup]);
 
   // ── Fetch coach response ──────────────────────────────────────────────────
 
@@ -196,6 +262,10 @@ export default function SmartCoachPanel({
     const newCount = localHintCount + 1;
     setLocalHintCount(newCount);
     onHintUsed(newCount);
+  }
+
+  async function speakWordHelp(message: string) {
+    await speak(message);
   }
 
   function handleSkipWait() {
@@ -317,6 +387,26 @@ export default function SmartCoachPanel({
           </p>
         </div>
       )}
+
+      {wordHelpLoading ? (
+        <div className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-900">
+          Looking up the Word Bank...
+        </div>
+      ) : null}
+
+      {wordHelp ? (
+        <div className="mt-3">
+          <CoachWordHelp
+            help={wordHelp}
+            onClose={onClose}
+            onSpeakWord={() => void speakWordHelp(wordHelp.word ? `Let’s say the word ${wordHelp.word}.` : wordHelp.coachMessage)}
+            onSpeakDefinition={() => void speakWordHelp(wordHelp.definitionChild)}
+            onSpeakExample={() => void speakWordHelp(wordHelp.exampleSentence ?? wordHelp.definitionChild)}
+            onRepeatExplanation={() => void speakWordHelp(wordHelp.coachMessage)}
+            onNextTry={() => void speakWordHelp("Now you try again.")}
+          />
+        </div>
+      ) : null}
 
       {/* Main coaching message */}
       <p className="mt-3 text-sm leading-6 text-cyan-950">{response.message}</p>

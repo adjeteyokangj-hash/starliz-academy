@@ -85,6 +85,8 @@ export async function POST(request: Request) {
     data: {
       passwordHash,
       ...(body.name ? { name: body.name } : {}),
+      // Keep the base app role as "teacher". School-specific capabilities come
+      // from SchoolTeacher.role and are enforced by school guard/scoping helpers.
       role: "teacher",
     },
   });
@@ -121,6 +123,8 @@ export async function POST(request: Request) {
   const sessionToken = await createSessionToken({
     userId,
     email: schoolTeacher.user.email,
+    // Session role remains the app-level baseline; school role checks use
+    // SchoolTeacher.role from school membership context.
     role: "teacher",
   });
 

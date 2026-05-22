@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireSchoolAccess } from "@/lib/schools/guards";
+import { requireSchoolRoles } from "@/lib/schools/guards";
 import { sendEmail } from "@/lib/email-provider";
 import { evaluateCommunicationEligibility } from "@/lib/schools/governance_rules";
 
@@ -78,9 +78,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  const access = await requireSchoolAccess({
-    schoolId: body.schoolId,
-    minRole: "support",
+  const access = await requireSchoolRoles(body.schoolId, ["owner", "admin", "support"], {
     method: "POST",
     route: "/api/school/communications",
     resourceType: "parent_communication",
@@ -285,9 +283,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "schoolId is required" }, { status: 400 });
   }
 
-  const access = await requireSchoolAccess({
-    schoolId,
-    minRole: "support",
+  const access = await requireSchoolRoles(schoolId, ["owner", "admin", "support"], {
     method: "GET",
     route: "/api/school/communications",
     resourceType: "parent_communication",

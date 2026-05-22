@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireSchoolAccess } from "@/lib/schools/guards";
+import { requireSchoolRoles } from "@/lib/schools/guards";
 import { withSchoolId } from "@/lib/schools/tenant";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
 import { canResolveIncident } from "@/lib/schools/governance_rules";
@@ -108,9 +108,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  const { context, response } = await requireSchoolAccess({
-    schoolId: body.schoolId,
-    minRole: "support",
+  const { context, response } = await requireSchoolRoles(body.schoolId, ["owner", "admin"], {
     method: "POST",
     route: "/api/school/safeguarding",
     resourceType: "safeguarding",
@@ -431,9 +429,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "schoolId is required" }, { status: 400 });
   }
 
-  const { response } = await requireSchoolAccess({
-    schoolId,
-    minRole: "support",
+  const { response } = await requireSchoolRoles(schoolId, ["owner", "admin"], {
     method: "GET",
     route: "/api/school/safeguarding",
     resourceType: "safeguarding",

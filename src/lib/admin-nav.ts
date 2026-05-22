@@ -4,6 +4,7 @@ export const adminNavItems = [
   { title: "Students", href: "/admin/students", icon: "S" },
   { title: "Schools", href: "/admin/schools", icon: "SC" },
   { title: "AI Generator", href: "/admin/ai", icon: "AI" },
+  { title: "Dictionary / Word Bank", href: "/admin/dictionary", icon: "DW" },
   { title: "Content Library", href: "/admin/content-library", icon: "CL" },
   { title: "Assignments", href: "/admin/assignments", icon: "AS" },
   { title: "Lessons", href: "/admin/lessons", icon: "L" },

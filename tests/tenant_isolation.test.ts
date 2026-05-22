@@ -262,12 +262,12 @@ test("analytics includes all students for wide-scoped school", () => {
 
 // ─── 6. isWideRole classification ────────────────────────────────────────
 
-test("isWideRole returns true for admin and owner", () => {
+test("isWideRole returns true for admin and owner only", () => {
   assert.equal(isWideRole("admin"), true);
   assert.equal(isWideRole("owner"), true);
-  assert.equal(isWideRole("finance"), true);
-  assert.equal(isWideRole("support"), true);
-  assert.equal(isWideRole("staff_observer"), true);
+  assert.equal(isWideRole("finance"), false);
+  assert.equal(isWideRole("support"), false);
+  assert.equal(isWideRole("staff_observer"), false);
 });
 
 test("isWideRole returns false for teacher", () => {

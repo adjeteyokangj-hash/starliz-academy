@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { readSessionFromCookie } from "@/lib/auth";
 import { hasMinimumRole } from "./rbac";
-import { type SchoolRole } from "./permissions";
+import { canDo, type SchoolPermission, type SchoolRole } from "./permissions";
 import { writeSchoolAccessLog } from "./audit";
 
 export type SchoolAccessContext = {
@@ -136,6 +136,72 @@ export async function requireTeacher(
     resourceType: meta?.resourceType,
     resourceId: meta?.resourceId,
   });
+}
+
+export async function requireSchoolPermission(
+  schoolId: string,
+  permission: SchoolPermission,
+  meta?: Omit<RequireSchoolAccessInput, "schoolId" | "minRole">
+): Promise<GuardResult> {
+  const access = await requireSchoolAccess({
+    schoolId,
+    minRole: "staff_observer",
+    method: meta?.method,
+    route: meta?.route,
+    resourceType: meta?.resourceType,
+    resourceId: meta?.resourceId,
+  });
+  if (access.response) return access;
+
+  if (!canDo(access.context.role, permission)) {
+    await writeSchoolAccessLog({
+      schoolId,
+      userId: access.context.userId,
+      schoolTeacherId: access.context.schoolTeacherId,
+      method: meta?.method ?? "UNKNOWN",
+      route: meta?.route ?? "unknown",
+      resourceType: meta?.resourceType,
+      resourceId: meta?.resourceId,
+      success: false,
+      denialReason: `missing_permission_${permission}`,
+    });
+    return deny(403, `Forbidden: requires ${permission} permission`);
+  }
+
+  return access;
+}
+
+export async function requireSchoolRoles(
+  schoolId: string,
+  allowedRoles: SchoolRole[],
+  meta?: Omit<RequireSchoolAccessInput, "schoolId" | "minRole">
+): Promise<GuardResult> {
+  const access = await requireSchoolAccess({
+    schoolId,
+    minRole: "staff_observer",
+    method: meta?.method,
+    route: meta?.route,
+    resourceType: meta?.resourceType,
+    resourceId: meta?.resourceId,
+  });
+  if (access.response) return access;
+
+  if (!allowedRoles.includes(access.context.role)) {
+    await writeSchoolAccessLog({
+      schoolId,
+      userId: access.context.userId,
+      schoolTeacherId: access.context.schoolTeacherId,
+      method: meta?.method ?? "UNKNOWN",
+      route: meta?.route ?? "unknown",
+      resourceType: meta?.resourceType,
+      resourceId: meta?.resourceId,
+      success: false,
+      denialReason: `requires_roles_${allowedRoles.join("|")}`,
+    });
+    return deny(403, `Forbidden: requires one of roles ${allowedRoles.join(", ")}`);
+  }
+
+  return access;
 }
 
 type ClassroomGuardInput = {

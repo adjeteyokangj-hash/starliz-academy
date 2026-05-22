@@ -18,7 +18,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireTeacher } from "@/lib/schools/guards";
+import { requireSchoolPermission } from "@/lib/schools/guards";
 import { getAccessibleStudents } from "@/lib/schools/scoping";
 
 export async function GET(request: Request) {
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "schoolId is required" }, { status: 400 });
   }
 
-  const access = await requireTeacher(schoolId, {
+  const access = await requireSchoolPermission(schoolId, "viewProgress", {
     method: "GET",
     route: "/api/school/analytics",
     resourceType: "analytics",

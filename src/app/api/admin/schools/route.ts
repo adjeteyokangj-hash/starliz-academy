@@ -195,6 +195,7 @@ const actionSchema = z.discriminatedUnion("action", [
       name: z.string().trim().max(120).optional(),
       role: z.enum(["owner", "admin", "teacher", "support", "staff_observer", "finance"]).default("teacher"),
       title: z.string().trim().max(80).optional(),
+      ownerInviteConfirmed: z.boolean().optional(),
     }),
   }),
   z.object({
@@ -644,6 +645,15 @@ export async function POST(request: Request) {
         break;
       }
       case "inviteTeacher": {
+        if (parsed.payload.role === "owner" && !parsed.payload.ownerInviteConfirmed) {
+          return NextResponse.json(
+            {
+              error: "Owner has executive-level governance access. Confirmation is required before sending this invite.",
+            },
+            { status: 400 },
+          );
+        }
+
         const email = parsed.payload.email.toLowerCase();
         const existingUser = await prisma.user.findUnique({ where: { email }, select: { id: true } });
         const userId = existingUser?.id
@@ -652,6 +662,8 @@ export async function POST(request: Request) {
               data: {
                 email,
                 name: parsed.payload.name || null,
+                // Base app role stays "teacher"; school-level authorisation uses
+                // SchoolTeacher.role for owner/admin/teacher/support/observer/finance.
                 role: "teacher",
                 passwordHash: await hashPassword(randomBytes(18).toString("base64url")),
               },

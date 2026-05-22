@@ -14,7 +14,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireTeacher } from "@/lib/schools/guards";
+import { requireSchoolPermission } from "@/lib/schools/guards";
 import { getAccessibleStudents } from "@/lib/schools/scoping";
 
 // ─── GET ──────────────────────────────────────────────────────────────────
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "schoolId is required" }, { status: 400 });
   }
 
-  const access = await requireTeacher(schoolId, {
+  const access = await requireSchoolPermission(schoolId, "issueAssignment", {
     method: "GET",
     route: "/api/school/assignments",
     resourceType: "assignment",
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "schoolId, studentId, contentId are required" }, { status: 400 });
   }
 
-  const access = await requireTeacher(schoolId, {
+  const access = await requireSchoolPermission(schoolId, "issueAssignment", {
     method: "POST",
     route: "/api/school/assignments",
     resourceType: "assignment",

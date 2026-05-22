@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { readSessionFromCookie } from "@/lib/auth";
+import { getSchoolRoleLabel } from "@/lib/schools/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -134,7 +135,7 @@ export default async function SchoolDashboardPage() {
               <div key={teacher.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
                 <p className="font-bold text-white">{teacher.user.name ?? teacher.user.email}</p>
                 <p className="text-xs text-slate-400">
-                  {teacher.user.email} • {teacher.role} • {teacher.status}
+                  {teacher.user.email} • {getSchoolRoleLabel(teacher.role)} • {teacher.status}
                 </p>
               </div>
             ))}

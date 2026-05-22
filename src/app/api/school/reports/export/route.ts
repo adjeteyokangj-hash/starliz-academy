@@ -12,7 +12,7 @@
  * }
  *
  * Security:
- *   - Requires teacher+ role via requireTeacher()
+ *   - Requires viewReports permission via requireSchoolPermission()
  *   - Students resolved through getAccessibleStudents() — teachers see only their classrooms
  *   - schoolId never taken from student records; always from verified guard context
  *   - Output rows include schoolId as first column so logs are self-describing
@@ -20,7 +20,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireTeacher } from "@/lib/schools/guards";
+import { requireSchoolPermission } from "@/lib/schools/guards";
 import { getAccessibleStudents } from "@/lib/schools/scoping";
 import { csvEscape } from "@/lib/csv_escape";
 
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const access = await requireTeacher(schoolId, {
+  const access = await requireSchoolPermission(schoolId, "viewReports", {
     method: "POST",
     route: "/api/school/reports/export",
     resourceType: "report",

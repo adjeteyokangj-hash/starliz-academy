@@ -16,7 +16,7 @@ import { keyStageForYearGroup, normalizeExamBoard } from "@/lib/curriculum";
 // ─── Pure helpers (no DB — testable in isolation) ─────────────────────────
 
 /** Roles that have wide access (all classrooms/students in school). */
-export const WIDE_ROLES: SchoolRole[] = ["owner", "admin", "finance", "support", "staff_observer"];
+export const WIDE_ROLES: SchoolRole[] = ["owner", "admin"];
 
 /** Returns true if the role can see all school data (not just their own classrooms). */
 export function isWideRole(role: SchoolRole): boolean {
@@ -67,8 +67,8 @@ export function buildClassroomWhere(
 
 /**
  * Returns classrooms the teacher can access.
- * - owner/admin/finance/support/staff_observer: all classrooms in school
- * - teacher: only classrooms they are assigned to
+ * - owner/admin: all classrooms in school
+ * - teacher/support/staff_observer/finance: only classrooms they are assigned to
  */
 export async function getAccessibleClassrooms(
   schoolId: string,

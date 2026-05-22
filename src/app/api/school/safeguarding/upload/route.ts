@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireSchoolAccess } from "@/lib/schools/guards";
+import { requireSchoolRoles } from "@/lib/schools/guards";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED: Record<string, string> = {
@@ -36,9 +36,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "schoolId, incidentId, label, and file are required." }, { status: 400 });
   }
 
-  const access = await requireSchoolAccess({
-    schoolId,
-    minRole: "support",
+  const access = await requireSchoolRoles(schoolId, ["owner", "admin"], {
     method: "POST",
     route: "/api/school/safeguarding/upload",
     resourceType: "safeguarding",

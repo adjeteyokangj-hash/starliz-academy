@@ -90,6 +90,8 @@ export async function POST(request: Request) {
         id: randomBytes(12).toString("hex"),
         email,
         name: email.split("@")[0],
+        // Keep app-level role as "teacher". Effective school permissions are
+        // controlled by SchoolTeacher.role for this school membership.
         role: "teacher",
         passwordHash: "", // will be set on invite acceptance
       },

@@ -4,6 +4,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import { OpsLiveSnapshot, OpsLiveTransport, startOpsLiveBridge } from "@/lib/schools/ops-live-bridge";
+import { canDo, getSchoolRoleLabel, requiresOwnerInviteConfirmation, type SchoolRole } from "@/lib/schools/permissions";
+import { createAdminSectionAnchorRegistry } from "@/lib/admin/section-anchors";
 import ProvisioningSuccessScreenV2 from "@/components/admin/ProvisioningSuccessScreenV2";
 import DynamicScoringDashboard from "@/components/admin/DynamicScoringDashboard";
 
@@ -159,6 +161,59 @@ type SavedOperationalView = {
   description: string;
   filtersApplied: string[];
 };
+
+type OpsSection = "dashboard" | "teachers" | "safeguarding" | "communication" | "exports";
+
+type GovernanceActionKey =
+  | "assignStaff"
+  | "openGovernanceWorkspace"
+  | "contactSchool"
+  | "launchIntervention"
+  | "viewSafeguarding"
+  | "generateIncidentSummary";
+
+type GovernanceActionDestination = {
+  section: OpsSection;
+  anchorId: string;
+  jumpLabel: string;
+};
+
+const GOVERNANCE_ACTION_TO_SECTION_MAP: Record<GovernanceActionKey, GovernanceActionDestination> = {
+  assignStaff: {
+    section: "teachers",
+    anchorId: "school-invites-card",
+    jumpLabel: "Invites",
+  },
+  openGovernanceWorkspace: {
+    section: "safeguarding",
+    anchorId: "school-governance-area",
+    jumpLabel: "Governance",
+  },
+  contactSchool: {
+    section: "communication",
+    anchorId: "school-communication",
+    jumpLabel: "Communication Audit",
+  },
+  launchIntervention: {
+    section: "dashboard",
+    anchorId: "school-intervention-queue",
+    jumpLabel: "Intervention Queue",
+  },
+  viewSafeguarding: {
+    section: "safeguarding",
+    anchorId: "school-safeguarding-card",
+    jumpLabel: "Safeguarding",
+  },
+  generateIncidentSummary: {
+    section: "exports",
+    anchorId: "school-timeline",
+    jumpLabel: "Activity Timeline",
+  },
+};
+
+const SECTION_SCROLL_TOP_OFFSET = 96;
+const HIGHLIGHT_TIMEOUT_MS = 8000;
+const JUMP_HELPER_TIMEOUT_MS = 2600;
 
 type ToastItem = {
   id: number;
@@ -404,6 +459,76 @@ function schoolStatusLabel(value: string): string {
 
 function licenceStatusLabel(value: string): string {
   return LICENCE_STATUS_LABELS[value] ?? value;
+}
+
+type RolePermissionSummary = {
+  accessLevel: string;
+  manageStaff: boolean;
+  viewStudentData: boolean;
+  manageBilling: boolean;
+  accessSafeguarding: boolean;
+  changeGovernanceSettings: boolean;
+};
+
+function rolePermissionSummary(role: SchoolRole): RolePermissionSummary {
+  if (role === "owner") {
+    return {
+      accessLevel: "Executive",
+      manageStaff: true,
+      viewStudentData: true,
+      manageBilling: true,
+      accessSafeguarding: true,
+      changeGovernanceSettings: true,
+    };
+  }
+  if (role === "admin") {
+    return {
+      accessLevel: "Operational Admin",
+      manageStaff: canDo(role, "manageTeachers"),
+      viewStudentData: canDo(role, "viewStudents"),
+      manageBilling: canDo(role, "manageBilling"),
+      accessSafeguarding: canDo(role, "manageSafeguarding"),
+      changeGovernanceSettings: canDo(role, "manageSchoolSettings"),
+    };
+  }
+  if (role === "teacher") {
+    return {
+      accessLevel: "Classroom",
+      manageStaff: false,
+      viewStudentData: canDo(role, "viewStudents"),
+      manageBilling: false,
+      accessSafeguarding: false,
+      changeGovernanceSettings: false,
+    };
+  }
+  if (role === "support") {
+    return {
+      accessLevel: "Support Operations",
+      manageStaff: false,
+      viewStudentData: canDo(role, "viewStudents"),
+      manageBilling: false,
+      accessSafeguarding: false,
+      changeGovernanceSettings: false,
+    };
+  }
+  if (role === "finance") {
+    return {
+      accessLevel: "Finance",
+      manageStaff: false,
+      viewStudentData: canDo(role, "viewStudents"),
+      manageBilling: canDo(role, "manageBilling"),
+      accessSafeguarding: false,
+      changeGovernanceSettings: false,
+    };
+  }
+  return {
+    accessLevel: "Read-only",
+    manageStaff: false,
+    viewStudentData: canDo(role, "viewStudents"),
+    manageBilling: false,
+    accessSafeguarding: false,
+    changeGovernanceSettings: false,
+  };
 }
 
 type EscalationSeverity = "Low" | "Medium" | "High" | "Critical";
@@ -659,6 +784,77 @@ function daysUntil(iso: string | null): number | null {
   const target = new Date(iso).getTime();
   if (Number.isNaN(target)) return null;
   return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
+}
+
+type SchoolOperationalState = "Critical Risk" | "At Risk" | "Stabilising" | "Operational" | "Governance Healthy";
+
+type SchoolOperationalSignals = {
+  activeTeachers: number;
+  activeClassrooms: number;
+  hasSafeguardingLead: boolean;
+  hasAdminAssignment: boolean;
+  hasRecentStudentActivity: boolean;
+  readinessScore: number;
+  state: SchoolOperationalState;
+};
+
+type GovernanceRiskLevel = "Low" | "Medium" | "High" | "Critical";
+
+type GovernanceCardMetaItem = {
+  description: string;
+  status: string;
+  risk: GovernanceRiskLevel;
+  lastActivityAt: string | null;
+  actionCount: number;
+};
+
+function lastActivityTimestamp(school: SchoolRecord, contains: string[]): string | null {
+  const match = school.activityTimeline
+    .filter((entry) => contains.some((token) => entry.action.toLowerCase().includes(token) || entry.entityType.toLowerCase().includes(token)))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  return match?.createdAt ?? null;
+}
+
+function calculateSchoolOperationalSignals(school: SchoolRecord, ownership: OwnershipRecord | undefined): SchoolOperationalSignals {
+  const activeTeachers = school.teachers.filter((row) => row.status === "active").length;
+  const activeClassrooms = school.classrooms.filter((row) => row.status === "active").length;
+  const hasSafeguardingLead = Boolean(ownership?.safeguardingLead?.trim());
+  const hasAdminAssignment = school.teachers.some((teacher) => {
+    const role = teacher.role.toLowerCase();
+    return (role === "admin" || role === "owner") && (teacher.status === "active" || teacher.status === "invited");
+  });
+  const hasRecentStudentActivity = school.activityTimeline.some(
+    (event) => event.entityType.toLowerCase().includes("student") && !isOlderThan(event.createdAt, 14),
+  );
+
+  let readinessScore = 0;
+  if (activeTeachers > 0) readinessScore += 22;
+  if (activeClassrooms > 0) readinessScore += 20;
+  if (hasSafeguardingLead) readinessScore += 20;
+  if (hasRecentStudentActivity) readinessScore += 18;
+  if (hasAdminAssignment) readinessScore += 20;
+
+  const criticalSafeguarding = school.safeguarding.criticalAlerts > 0;
+  let state: SchoolOperationalState = "Governance Healthy";
+  if (criticalSafeguarding || readinessScore < 30 || !hasSafeguardingLead) {
+    state = "Critical Risk";
+  } else if (readinessScore < 50 || activeTeachers === 0 || activeClassrooms === 0) {
+    state = "At Risk";
+  } else if (readinessScore < 70) {
+    state = "Stabilising";
+  } else if (readinessScore < 90) {
+    state = "Operational";
+  }
+
+  return {
+    activeTeachers,
+    activeClassrooms,
+    hasSafeguardingLead,
+    hasAdminAssignment,
+    hasRecentStudentActivity,
+    readinessScore,
+    state,
+  };
 }
 
 function schoolRiskState(school: SchoolRecord) {
@@ -1121,10 +1317,12 @@ export default function AdminSchoolsPage() {
     const preset = getSavedViewPreset(readSavedViewFromStorage());
     return preset ? { ...preset.filters } : { ...DEFAULT_QUICK_FILTERS };
   });
-  const [focusedOpsSection, setFocusedOpsSection] = useState<"dashboard" | "teachers" | "safeguarding" | "communication" | "exports">(() => {
+  const [focusedOpsSection, setFocusedOpsSection] = useState<OpsSection>(() => {
     const preset = getSavedViewPreset(readSavedViewFromStorage());
     return preset?.focus ?? "dashboard";
   });
+  const [highlightedTargetId, setHighlightedTargetId] = useState<string | null>(null);
+  const [jumpedToLabel, setJumpedToLabel] = useState<string | null>(null);
   const [ownershipBySchool, setOwnershipBySchool] = useState<Record<string, OwnershipRecord>>(() => readOwnershipFromStorage());
   const [liveSnapshot, setLiveSnapshot] = useState<OpsLiveSnapshot | null>(null);
   const [liveTransport, setLiveTransport] = useState<OpsLiveTransport | "offline">("offline");
@@ -1155,6 +1353,11 @@ export default function AdminSchoolsPage() {
   const [createConfirmChecked, setCreateConfirmChecked] = useState(initialDraft?.confirmChecked ?? false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const lastUnresolvedRef = useRef<number | null>(null);
+  const highlightTimerRef = useRef<number | null>(null);
+  const jumpHelperTimerRef = useRef<number | null>(null);
+  const roleAssignmentTimerRef = useRef<number | null>(null);
+  const anchorRegistryRef = useRef(createAdminSectionAnchorRegistry());
+  const [inviteRolePulse, setInviteRolePulse] = useState<{ schoolId: string; roleLabel: string } | null>(null);
 
   // Provisioning workflow state
   const [provisioningSteps, setProvisioningSteps] = useState<ProvisioningStep[]>(PROVISIONING_STEPS.map(step => ({ ...step })));
@@ -1280,8 +1483,9 @@ export default function AdminSchoolsPage() {
 
   const [teacherEmail, setTeacherEmail] = useState("");
   const [teacherName, setTeacherName] = useState("");
-  const [teacherRole, setTeacherRole] = useState("teacher");
+  const [teacherRole, setTeacherRole] = useState<SchoolRole>("teacher");
   const [teacherTitle, setTeacherTitle] = useState("");
+  const [ownerInviteConfirmed, setOwnerInviteConfirmed] = useState(false);
 
   const [assignChildId, setAssignChildId] = useState("");
   const [assignClassroomId, setAssignClassroomId] = useState("");
@@ -1291,6 +1495,53 @@ export default function AdminSchoolsPage() {
     () => schools.find((school) => school.id === selectedSchoolId) ?? null,
     [schools, selectedSchoolId],
   );
+  const selectedRoleSummary = useMemo(() => rolePermissionSummary(teacherRole), [teacherRole]);
+
+  function onInviteRoleChange(nextRole: SchoolRole) {
+    setTeacherRole(nextRole);
+    if (!requiresOwnerInviteConfirmation(nextRole)) {
+      setOwnerInviteConfirmed(false);
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current !== null) {
+        window.clearTimeout(highlightTimerRef.current);
+      }
+      if (jumpHelperTimerRef.current !== null) {
+        window.clearTimeout(jumpHelperTimerRef.current);
+      }
+      if (roleAssignmentTimerRef.current !== null) {
+        window.clearTimeout(roleAssignmentTimerRef.current);
+      }
+    };
+  }, []);
+
+  const adminSectionAnchors = useMemo(() => {
+    return [
+      { id: "school-invites-card", label: "Invites", expand: () => setShowInvites(true), highlight: () => setHighlightedTargetId("school-invites-card") },
+      { id: "school-governance-area", label: "Governance", expand: () => setShowCommunicationAudit(true), highlight: () => setHighlightedTargetId("school-governance-area") },
+      { id: "school-communication", label: "Communication Audit", expand: () => setShowCommunicationAudit(true), highlight: () => setHighlightedTargetId("school-communication") },
+      { id: "school-intervention-queue", label: "Intervention Queue", expand: () => setShowInterventionQueue(true), highlight: () => setHighlightedTargetId("school-intervention-queue") },
+      { id: "school-safeguarding-card", label: "Safeguarding", expand: () => setShowSafeguardingDetails(true), highlight: () => setHighlightedTargetId("school-safeguarding-card") },
+      { id: "school-timeline", label: "Activity Timeline", expand: () => setShowActivityTimeline(true), highlight: () => setHighlightedTargetId("school-timeline") },
+      { id: "school-exports", label: "Compliance & Exports", expand: () => setShowCompliance(true) },
+      { id: "school-parent-preferences", label: "Parent Preferences", expand: () => setShowParentPreferences(true) },
+      { id: "prov-hardening-panel", label: "Provisioning Hardening", expand: () => setProvisioningExpanded(true) },
+      { id: "mat-trust-panel", label: "MAT / Multi-School Operations", expand: () => setShowMatPanel(true) },
+      { id: "notifications-panel", label: "Notification Infrastructure", expand: () => setShowNotificationsPanel(true) },
+    ];
+  }, []);
+
+  useEffect(() => {
+    const registry = anchorRegistryRef.current;
+    const unregisterCallbacks = adminSectionAnchors.map((anchor) => registry.register(anchor));
+
+    return () => {
+      unregisterCallbacks.forEach((unregister) => unregister());
+    };
+  }, [adminSectionAnchors]);
 
   const filteredSchools = useMemo(() => {
     return schools.filter((school) => {
@@ -1381,6 +1632,7 @@ export default function AdminSchoolsPage() {
     return schools
       .map((school) => {
         const risk = schoolRiskState(school);
+        const hasStaffAssignments = school.teachers.length > 0;
         const activeClassrooms = school.classrooms.filter((row) => row.status === "active").length;
         const missingSafeguardingLead = !ownershipBySchool[school.id]?.safeguardingLead?.trim();
         const hasRecentStudentActivity = school.activityTimeline.some(
@@ -1395,7 +1647,7 @@ export default function AdminSchoolsPage() {
         const licenceExpiringSoon = Boolean(school.licence?.currentPeriodEnd && (daysUntil(school.licence.currentPeriodEnd) ?? 999) <= 14);
 
         const signals: EscalationSignal[] = [];
-        if (risk.activeTeachers === 0) signals.push({ label: "No Active Teachers", severity: "Critical" });
+        if (!hasStaffAssignments) signals.push({ label: "No Staff Assigned", severity: "Critical" });
         if (activeClassrooms === 0) signals.push({ label: "No Active Classrooms", severity: "High" });
         if (missingSafeguardingLead) signals.push({ label: "No Safeguarding Lead Assigned", severity: "Critical" });
         if (risk.licenceExpired) signals.push({ label: "Licence Expired", severity: "High" });
@@ -1435,7 +1687,7 @@ export default function AdminSchoolsPage() {
 
         // Status tracking (simple example: based on signals)
         let status: string = "Awaiting staffing assignment";
-        if (risk.activeTeachers > 0 && !missingSafeguardingLead) status = "In progress";
+        if (hasStaffAssignments && !missingSafeguardingLead) status = "In progress";
         if (signals.length === 0) status = "Resolved";
 
         const reasons = signals.slice(0, 3).map((signal) => signal.label);
@@ -1511,6 +1763,109 @@ export default function AdminSchoolsPage() {
     };
   }, [escalationQueue.length, liveSnapshot, schools, trendAnalytics.communicationFailures, trendAnalytics.unresolvedSafeguarding]);
 
+  const operationalSignalsBySchool = useMemo(() => {
+    return schools.reduce<Record<string, SchoolOperationalSignals>>((acc, school) => {
+      acc[school.id] = calculateSchoolOperationalSignals(school, ownershipBySchool[school.id]);
+      return acc;
+    }, {});
+  }, [ownershipBySchool, schools]);
+
+  const governancePulse = useMemo(() => {
+    const schoolsNeedingIntervention = Object.values(operationalSignalsBySchool).filter(
+      (signals) => signals.state === "Critical Risk" || signals.state === "At Risk",
+    ).length;
+    const missingSafeguardingLeads = Object.values(operationalSignalsBySchool).filter((signals) => !signals.hasSafeguardingLead).length;
+    const schoolsWithoutTeachers = schools.filter((school) => school.teachers.length === 0).length;
+    const schoolsWithoutClassrooms = schools.filter((school) => school.classrooms.length === 0).length;
+    const activeOnboardingRisks = escalationQueue.length;
+
+    return {
+      activeOnboardingRisks,
+      schoolsNeedingIntervention,
+      missingSafeguardingLeads,
+      schoolsWithoutTeachers,
+      schoolsWithoutClassrooms,
+    };
+  }, [escalationQueue.length, operationalSignalsBySchool, schools]);
+
+  const selectedOperationalSignals = useMemo(() => {
+    if (!selectedSchool) return null;
+    return operationalSignalsBySchool[selectedSchool.id] ?? null;
+  }, [operationalSignalsBySchool, selectedSchool]);
+
+  const governanceCardMeta = useMemo<Record<"compliance" | "communication" | "safeguarding" | "parentPreferences" | "timeline" | "provisioning" | "mat" | "notifications", GovernanceCardMetaItem> | null>(() => {
+    if (!selectedSchool) return null;
+
+    const communicationFailures = selectedSchool.communicationLogs.filter((entry) => entry.deliveryStatus !== "sent").length;
+    const unresolvedIncidents = selectedSchool.safeguardingIncidents.filter((incident) => incident.status !== "resolved").length;
+    const hasProvisioningFailure = provisioningHistory.some((job) => job.status === "failed" || job.status === "retry_scheduled");
+    const now = Date.now();
+    const unresolvedNotifications = notificationEvents.reduce(
+      (sum, event) => sum + event.deliveries.filter((delivery) => delivery.status !== "delivered").length,
+      0,
+    );
+    const recentTimelineActions = selectedSchool.activityTimeline.filter((item) => now - new Date(item.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000).length;
+
+    return {
+      compliance: {
+        description: "Run exports, monitor delete requests, and keep student data controls audit-ready.",
+        status: selectedSchool.students.length > 0 ? "Active" : "Awaiting Data",
+        risk: selectedSchool.students.length === 0 ? "Medium" : "Low",
+        lastActivityAt: lastActivityTimestamp(selectedSchool, ["export", "delete", "compliance"]),
+        actionCount: selectedSchool.students.length,
+      },
+      communication: {
+        description: "Track delivery outcomes and resolve parent communication failures quickly.",
+        status: communicationFailures > 0 ? "Needs Attention" : "Healthy",
+        risk: communicationFailures > 0 ? "Medium" : "Low",
+        lastActivityAt: selectedSchool.communicationLogs[0]?.createdAt ?? null,
+        actionCount: selectedSchool.communicationLogs.length,
+      },
+      safeguarding: {
+        description: "Escalate unresolved incidents and monitor DSL coverage with clear ownership.",
+        status: unresolvedIncidents > 0 ? "Open Incidents" : "Stable",
+        risk: selectedSchool.safeguarding.criticalAlerts > 0 ? "Critical" : unresolvedIncidents > 0 ? "High" : "Low",
+        lastActivityAt: lastActivityTimestamp(selectedSchool, ["safeguarding", "incident"]),
+        actionCount: unresolvedIncidents,
+      },
+      parentPreferences: {
+        description: "Review opt-outs and safeguarding communication locks before parent outreach.",
+        status: selectedSchool.communicationPreferences.length > 0 ? "Configured" : "Baseline",
+        risk: selectedSchool.communicationPreferences.some((item) => Boolean(item.safeguardingLockedAt)) ? "Medium" : "Low",
+        lastActivityAt: selectedSchool.communicationPreferences[0]?.updatedAt ?? null,
+        actionCount: selectedSchool.communicationPreferences.length,
+      },
+      timeline: {
+        description: "Audit operational changes chronologically for governance and intervention follow-up.",
+        status: selectedSchool.activityTimeline.length > 0 ? "Streaming" : "Idle",
+        risk: selectedSchool.activityTimeline.length === 0 ? "Medium" : "Low",
+        lastActivityAt: selectedSchool.activityTimeline[0]?.createdAt ?? null,
+        actionCount: recentTimelineActions,
+      },
+      provisioning: {
+        description: "Harden provisioning jobs, retries, and rollback actions across operational workflows.",
+        status: hasProvisioningFailure ? "Degraded" : "Stable",
+        risk: hasProvisioningFailure ? "High" : "Low",
+        lastActivityAt: provisioningHistory[0]?.updatedAt ?? null,
+        actionCount: provisioningHistory.length,
+      },
+      mat: {
+        description: "Coordinate trust operations, bulk onboarding, and regional school assignment at scale.",
+        status: trusts.length > 0 ? "Online" : "Not Started",
+        risk: trusts.length === 0 ? "Medium" : "Low",
+        lastActivityAt: bulkBatches[0]?.createdAt ?? null,
+        actionCount: trusts.length,
+      },
+      notifications: {
+        description: "Manage notification policy, dispatch tests, and delivery failures across channels.",
+        status: notificationPrefs.length > 0 ? "Configured" : "Defaults",
+        risk: unresolvedNotifications > 0 ? "Medium" : "Low",
+        lastActivityAt: notificationEvents[0]?.createdAt ?? null,
+        actionCount: notificationEvents.length,
+      },
+    };
+  }, [bulkBatches, notificationEvents, notificationPrefs, provisioningHistory, selectedSchool, trusts]);
+
   const fieldClass = "mt-1 w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none";
   const panelClass = "rounded-2xl border border-slate-700/80 bg-slate-950/45 p-4";
   const primaryButtonClass = "rounded-lg border border-indigo-400/20 bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50";
@@ -1558,6 +1913,27 @@ export default function AdminSchoolsPage() {
     safeguarding_team: "Safeguarding Team",
     external_review: "External Review",
   }[createApprovalWorkflow] ?? "-";
+
+  function governanceRiskClass(level: GovernanceRiskLevel) {
+    if (level === "Critical") return "border-rose-500/45 bg-rose-500/15 text-rose-100";
+    if (level === "High") return "border-amber-500/45 bg-amber-500/15 text-amber-100";
+    if (level === "Medium") return "border-fuchsia-500/45 bg-fuchsia-500/15 text-fuchsia-100";
+    return "border-emerald-500/35 bg-emerald-500/10 text-emerald-100";
+  }
+
+  function renderGovernanceMeta(meta: GovernanceCardMetaItem) {
+    return (
+      <>
+        <p className="text-xs text-slate-400">{meta.description}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px]">
+          <span className="rounded-full border border-indigo-400/45 bg-indigo-500/10 px-2 py-0.5 font-semibold text-indigo-100">{meta.status}</span>
+          <span className={`rounded-full border px-2 py-0.5 font-semibold ${governanceRiskClass(meta.risk)}`}>Risk: {meta.risk}</span>
+          <span className="rounded-full border border-slate-600/70 bg-slate-900/60 px-2 py-0.5 font-semibold text-slate-200">Actions: {meta.actionCount}</span>
+          <span className="text-slate-500">Last activity: {meta.lastActivityAt ? shortDateTime(meta.lastActivityAt) : "-"}</span>
+        </div>
+      </>
+    );
+  }
   const createFieldStepMap: Record<CreateWizardField, 1 | 2 | 3> = {
     createName: 1,
     createEmail: 1,
@@ -1884,12 +2260,41 @@ export default function AdminSchoolsPage() {
       }
 
       const nextSchools = data.schools ?? [];
+      if (action === "inviteTeacher") {
+        const schoolId = typeof payload.schoolId === "string" ? payload.schoolId : null;
+        const inviteRole = typeof payload.role === "string" ? payload.role : "teacher";
+        if (schoolId) {
+          const schoolIndex = nextSchools.findIndex((school) => school.id === schoolId);
+          if (schoolIndex >= 0) {
+            const school = nextSchools[schoolIndex];
+            const syntheticEvent: SchoolRecord["activityTimeline"][number] = {
+              id: `local-invite-${Date.now()}`,
+              action: `staff_invite_sent:${inviteRole}`,
+              entityType: "SchoolTeacher",
+              entityId: null,
+              severity: "info",
+              actorUserId: null,
+              createdAt: new Date().toISOString(),
+            };
+            school.activityTimeline = [syntheticEvent, ...school.activityTimeline].slice(0, 80);
+          }
+          setInviteRolePulse({ schoolId, roleLabel: getSchoolRoleLabel(inviteRole as SchoolRole) });
+          if (roleAssignmentTimerRef.current !== null) {
+            window.clearTimeout(roleAssignmentTimerRef.current);
+          }
+          roleAssignmentTimerRef.current = window.setTimeout(() => {
+            setInviteRolePulse((current) => (current?.schoolId === schoolId ? null : current));
+            roleAssignmentTimerRef.current = null;
+          }, 2200);
+        }
+      }
       setSchools(nextSchools);
       const keepSelected = nextSchools.find((row) => row.id === selectedSchoolId) ?? nextSchools[0] ?? null;
       applySchoolSelection(keepSelected);
       setMessage("Changes saved.");
       if (action === "inviteTeacher") {
-        enqueueToast("Teacher invite sent", "Invitation is pending acceptance.", "Open Invites", () => jumpToSection("teachers"));
+        const inviteRole = typeof payload.role === "string" ? payload.role : "teacher";
+        enqueueToast("Staff invite sent", `${getSchoolRoleLabel(inviteRole as SchoolRole)} assignment is pending acceptance.`, "Open Invites", () => jumpToSection("teachers"));
       }
       if (action === "upsertLicence") {
         enqueueToast("Licence updated", "Licence limits and billing policy were updated.", "Open Licence Panel", () => {
@@ -2499,17 +2904,23 @@ export default function AdminSchoolsPage() {
   async function onInviteTeacher(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedSchool) return;
+    if (requiresOwnerInviteConfirmation(teacherRole) && !ownerInviteConfirmed) {
+      setError("Owner invites require explicit confirmation before sending.");
+      return;
+    }
     await postAction("inviteTeacher", {
       schoolId: selectedSchool.id,
       email: teacherEmail,
       name: teacherName || undefined,
       role: teacherRole,
       title: teacherTitle || undefined,
+      ownerInviteConfirmed: ownerInviteConfirmed || undefined,
     });
     setTeacherEmail("");
     setTeacherName("");
     setTeacherTitle("");
     setTeacherRole("teacher");
+    setOwnerInviteConfirmed(false);
   }
 
   async function onAssignStudent(event: FormEvent<HTMLFormElement>) {
@@ -2566,7 +2977,82 @@ export default function AdminSchoolsPage() {
     });
   }
 
-  function jumpToSection(section: "dashboard" | "teachers" | "safeguarding" | "communication" | "exports") {
+  function clearHighlightedTarget() {
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = null;
+    }
+    setHighlightedTargetId(null);
+  }
+
+  function showJumpHelper(label: string) {
+    if (jumpHelperTimerRef.current !== null) {
+      window.clearTimeout(jumpHelperTimerRef.current);
+      jumpHelperTimerRef.current = null;
+    }
+    setJumpedToLabel(label);
+    jumpHelperTimerRef.current = window.setTimeout(() => {
+      setJumpedToLabel((current) => (current === label ? null : current));
+      jumpHelperTimerRef.current = null;
+    }, JUMP_HELPER_TIMEOUT_MS);
+  }
+
+  function onHighlightedInteraction(targetId: string) {
+    if (highlightedTargetId === targetId) {
+      clearHighlightedTarget();
+    }
+  }
+
+  function targetHighlightClass(targetId: string, baseClassName: string) {
+    const isHighlighted = highlightedTargetId === targetId;
+    return `${baseClassName} ${isHighlighted
+        ? "border-amber-300/80 ring-2 ring-amber-300/80 bg-amber-500/10 shadow-[0_0_28px_rgba(251,191,36,0.22)] [animation:opsHighlightPulse_1.8s_ease-in-out_infinite]"
+      : ""
+      }`;
+  }
+
+  function renderSelectedSectionBadge(targetId: string) {
+    if (highlightedTargetId !== targetId) return null;
+    return (
+      <span className="rounded-full border border-amber-300/70 bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100">
+        Selected section
+      </span>
+    );
+  }
+
+  function scrollToTargetWithOffset(targetId: string, targetLabel: string, attempt = 0) {
+    const node = document.getElementById(targetId);
+    if (!node) {
+      if (attempt < 10) {
+        window.setTimeout(() => {
+          scrollToTargetWithOffset(targetId, targetLabel, attempt + 1);
+        }, 80);
+      }
+      return;
+    }
+
+    clearHighlightedTarget();
+    setHighlightedTargetId(targetId);
+
+    const top = window.scrollY + node.getBoundingClientRect().top - SECTION_SCROLL_TOP_OFFSET;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+
+    const targetElement = node as HTMLElement;
+    if (targetElement.tabIndex < 0 || targetElement.tabIndex === 0) {
+      targetElement.focus({ preventScroll: true });
+    }
+
+    highlightTimerRef.current = window.setTimeout(() => {
+      setHighlightedTargetId((current) => (current === targetId ? null : current));
+      highlightTimerRef.current = null;
+    }, HIGHLIGHT_TIMEOUT_MS);
+
+    if (targetElement.getAttribute("aria-label") === null) {
+      targetElement.setAttribute("aria-label", targetLabel);
+    }
+  }
+
+  function jumpToSection(section: OpsSection) {
     setFocusedOpsSection(section);
     if (section === "safeguarding") {
       setShowSafeguardingDetails(true);
@@ -2580,8 +3066,26 @@ export default function AdminSchoolsPage() {
     const sectionId = `school-${section}`;
     setTimeout(() => {
       const node = document.getElementById(sectionId);
-      node?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!node) return;
+      const top = window.scrollY + node.getBoundingClientRect().top - SECTION_SCROLL_TOP_OFFSET;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     }, 40);
+  }
+
+  function runGovernanceAction(action: GovernanceActionKey, school: SchoolRecord | null) {
+    if (school) {
+      applySchoolSelection(school);
+    }
+    const destination = GOVERNANCE_ACTION_TO_SECTION_MAP[action];
+    const destinationAnchor = anchorRegistryRef.current.resolve(destination.anchorId);
+    setFocusedOpsSection(destination.section);
+    destinationAnchor?.expand?.();
+    window.setTimeout(() => {
+      destinationAnchor?.highlight?.();
+      const label = destinationAnchor?.label ?? destination.jumpLabel;
+      showJumpHelper(`Jumped to ${label}`);
+      scrollToTargetWithOffset(destination.anchorId, label);
+    }, 60);
   }
 
   function getProvisioningTargetSchool(): SchoolRecord | null {
@@ -2795,6 +3299,14 @@ export default function AdminSchoolsPage() {
         </aside>
       ) : null}
 
+      {jumpedToLabel ? (
+        <aside className="pointer-events-none fixed left-1/2 top-24 z-40 -translate-x-1/2">
+          <div className="rounded-full border border-indigo-300/55 bg-slate-950/90 px-4 py-2 text-xs font-semibold text-indigo-100 shadow-lg [animation:jumpHelperIn_220ms_ease-out]">
+            {jumpedToLabel}
+          </div>
+        </aside>
+      ) : null}
+
       <section className="rounded-2xl border border-slate-700/80 bg-slate-950/45 p-5">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Admin Console</p>
         <h1 className="mt-2 text-2xl font-black text-white">Schools &amp; Governance</h1>
@@ -2890,6 +3402,29 @@ export default function AdminSchoolsPage() {
         </div>
       </section>
 
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Live governance pulse">
+        <article className="rounded-2xl border border-rose-500/35 bg-rose-500/10 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-rose-200">Active onboarding risks</p>
+          <p className="mt-1 text-2xl font-black text-rose-100">{governancePulse.activeOnboardingRisks}</p>
+        </article>
+        <article className="rounded-2xl border border-amber-500/35 bg-amber-500/10 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-amber-200">Schools needing intervention</p>
+          <p className="mt-1 text-2xl font-black text-amber-100">{governancePulse.schoolsNeedingIntervention}</p>
+        </article>
+        <article className="rounded-2xl border border-fuchsia-500/35 bg-fuchsia-500/10 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-fuchsia-200">Missing safeguarding leads</p>
+          <p className="mt-1 text-2xl font-black text-fuchsia-100">{governancePulse.missingSafeguardingLeads}</p>
+        </article>
+        <article className="rounded-2xl border border-sky-500/35 bg-sky-500/10 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-sky-200">Schools without teachers</p>
+          <p className="mt-1 text-2xl font-black text-sky-100">{governancePulse.schoolsWithoutTeachers}</p>
+        </article>
+        <article className="rounded-2xl border border-slate-500/45 bg-slate-900/80 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-slate-300">Schools without classrooms</p>
+          <p className="mt-1 text-2xl font-black text-white">{governancePulse.schoolsWithoutClassrooms}</p>
+        </article>
+      </section>
+
       {escalationQueue.length > 0 ? (
         <section className="rounded-2xl border border-rose-500/45 bg-linear-to-r from-rose-950/70 via-slate-950/80 to-orange-950/60 p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -2973,14 +3508,14 @@ export default function AdminSchoolsPage() {
                     <p className="mt-1 text-xl font-black text-rose-100">{entry.severityScore}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => { applySchoolSelection(entry.school); jumpToSection("communication"); }} className={subtleButtonClass}>Open Governance Workspace</button>
-                    <button onClick={() => { applySchoolSelection(entry.school); jumpToSection("teachers"); }} className={subtleButtonClass}>Assign Staff</button>
-                    <button onClick={() => { applySchoolSelection(entry.school); jumpToSection("communication"); }} className={subtleButtonClass}>Contact School</button>
-                    <button onClick={() => { applySchoolSelection(entry.school); jumpToSection("dashboard"); }} className={subtleButtonClass}>Launch Intervention</button>
-                    <button onClick={() => { applySchoolSelection(entry.school); jumpToSection("safeguarding"); }} className={subtleButtonClass}>View Safeguarding</button>
+                    <button onClick={() => runGovernanceAction("openGovernanceWorkspace", entry.school)} className={subtleButtonClass}>Open Governance Workspace</button>
+                    <button onClick={() => runGovernanceAction("assignStaff", entry.school)} className={subtleButtonClass}>Assign Staff</button>
+                    <button onClick={() => runGovernanceAction("contactSchool", entry.school)} className={subtleButtonClass}>Contact School</button>
+                    <button onClick={() => runGovernanceAction("launchIntervention", entry.school)} className={subtleButtonClass}>Launch Intervention</button>
+                    <button onClick={() => runGovernanceAction("viewSafeguarding", entry.school)} className={subtleButtonClass}>View Safeguarding</button>
                     <button onClick={() => {
-                      applySchoolSelection(entry.school);
-                      enqueueToast("Incident summary generated", `${entry.school.name}: ${entry.reasons.join("; ")}`, "Open Compliance", () => jumpToSection("exports"));
+                      runGovernanceAction("generateIncidentSummary", entry.school);
+                      enqueueToast("Incident summary generated", `${entry.school.name}: ${entry.reasons.join("; ")}`, "Open Timeline", () => runGovernanceAction("generateIncidentSummary", entry.school));
                     }} className={subtleButtonClass}>Generate Incident Summary</button>
                   </div>
                 </div>
@@ -3846,7 +4381,7 @@ export default function AdminSchoolsPage() {
                       <div className="flex flex-wrap gap-2">
                         <button onClick={() => { applySchoolSelection(school); jumpToSection("dashboard"); }} className={subtleButtonClass}>Open Dashboard</button>
                         <button onClick={() => { applySchoolSelection(school); jumpToSection("teachers"); }} className={subtleButtonClass}>Manage Teachers</button>
-                        <button onClick={() => { applySchoolSelection(school); jumpToSection("safeguarding"); }} className={subtleButtonClass}>View Safeguarding</button>
+                        <button onClick={() => runGovernanceAction("viewSafeguarding", school)} className={subtleButtonClass}>View Safeguarding</button>
                         <button onClick={() => { applySchoolSelection(school); jumpToSection("communication"); }} className={subtleButtonClass}>Send Communication</button>
                         <button onClick={() => void onExportSchoolData(school.id, school.name)} className={subtleButtonClass}>Export Data</button>
                         <button onClick={() => void onSuspendSchool(school)} className="rounded-lg border border-rose-600/60 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/15">Suspend School</button>
@@ -3871,12 +4406,17 @@ export default function AdminSchoolsPage() {
         <>
           <div id="school-dashboard">
             <AdminSectionCard title={`${selectedSchool.name} Overview`} eyebrow="Selected School">
-            <div className="grid gap-4 md:grid-cols-5">
+            <div className="grid gap-4 md:grid-cols-6">
               <div className={panelClass}><p className="text-xs text-slate-400">Licence Status</p><p className="mt-1 text-xl font-black text-white">{licenceStatusLabel(selectedSchool.licence?.status ?? "pilot")}</p></div>
               <div className={panelClass}><p className="text-xs text-slate-400">Seats</p><p className="mt-1 text-xl font-black text-white">{selectedSchool.licence?.seatsUsed ?? 0}/{selectedSchool.licence?.seatLimit || "∞"}</p></div>
               <div className={panelClass}><p className="text-xs text-slate-400">Teachers</p><p className="mt-1 text-xl font-black text-white">{selectedSchool.teachers.filter((row) => row.status === "active").length}</p></div>
               <div className={panelClass}><p className="text-xs text-slate-400">Students</p><p className="mt-1 text-xl font-black text-white">{selectedSchool.students.filter((row) => row.status === "active").length}</p></div>
               <div className={panelClass}><p className="text-xs text-slate-400">Safeguarding</p><p className="mt-1 text-xl font-black text-rose-200">{selectedSchool.safeguarding.openAlerts}</p></div>
+              <div className={panelClass}>
+                <p className="text-xs text-slate-400">Operational State</p>
+                <p className="mt-1 text-xl font-black text-white">{selectedOperationalSignals?.state ?? "Operational"}</p>
+                <p className="text-[11px] text-slate-400">Readiness score {selectedOperationalSignals?.readinessScore ?? 0}%</p>
+              </div>
             </div>
             </AdminSectionCard>
           </div>
@@ -4104,9 +4644,20 @@ export default function AdminSchoolsPage() {
                 )}
               </section>
 
-              <section className={`${panelClass} ${focusedOpsSection === "teachers" ? "ring-1 ring-indigo-400/60" : ""}`}>
+              <section
+                id="school-invites-card"
+                tabIndex={-1}
+                aria-label="School Operations Invites and Staff card"
+                onPointerDownCapture={() => onHighlightedInteraction("school-invites-card")}
+                onKeyDownCapture={() => onHighlightedInteraction("school-invites-card")}
+                className={targetHighlightClass(
+                  "school-invites-card",
+                  `${panelClass} ${focusedOpsSection === "teachers" ? "ring-1 ring-indigo-400/60" : ""}`,
+                )}
+              >
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white">Invites</h3>
+                  {renderSelectedSectionBadge("school-invites-card")}
                   <button
                     type="button"
                     onClick={() => setShowInvites(!showInvites)}
@@ -4117,10 +4668,15 @@ export default function AdminSchoolsPage() {
                 </div>
                 {showInvites && (
                   <>
+                    {inviteRolePulse?.schoolId === selectedSchool.id ? (
+                      <div className="mb-3 rounded-lg border border-emerald-400/55 bg-emerald-500/15 p-2 text-xs font-semibold text-emerald-100 [animation:roleAssignPulse_900ms_ease-out_2]">
+                        Role assignment sent: {inviteRolePulse.roleLabel}
+                      </div>
+                    ) : null}
                     <form onSubmit={(event) => void onInviteTeacher(event)} className="mt-3 grid gap-2">
-                      <input required type="email" value={teacherEmail} onChange={(event) => setTeacherEmail(event.target.value)} placeholder="Teacher email" className={fieldClass} />
+                      <input required type="email" value={teacherEmail} onChange={(event) => setTeacherEmail(event.target.value)} placeholder="Staff email" className={fieldClass} />
                       <input value={teacherName} onChange={(event) => setTeacherName(event.target.value)} placeholder="Display name" className={fieldClass} />
-                      <select value={teacherRole} onChange={(event) => setTeacherRole(event.target.value)} className={fieldClass}>
+                      <select value={teacherRole} onChange={(event) => onInviteRoleChange(event.target.value as SchoolRole)} className={fieldClass}>
                         <option value="teacher">Teacher</option>
                         <option value="admin">Admin</option>
                         <option value="support">Support</option>
@@ -4128,8 +4684,41 @@ export default function AdminSchoolsPage() {
                         <option value="finance">Finance</option>
                         <option value="owner">Owner</option>
                       </select>
+                      <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-200" aria-live="polite">
+                        <p className="font-semibold text-slate-100">Role details: {getSchoolRoleLabel(teacherRole)}</p>
+                        <p className="mt-1 text-slate-400">
+                          {teacherRole === "teacher" ? "Classroom teaching access for assignments and student learning workflows."
+                            : teacherRole === "admin" ? "Operational administration across staff, students, compliance, and governance."
+                              : teacherRole === "support" ? "Communication and onboarding support workflows without full safeguarding records."
+                                : teacherRole === "staff_observer" ? "Read-only operational visibility for monitoring and oversight."
+                                  : teacherRole === "finance" ? "Billing, licence, and reporting workflows with restricted safeguarding access."
+                                    : "Executive-level governance and full operational control."}
+                        </p>
+                        <div className="mt-2 grid gap-1 text-[11px] text-slate-300 sm:grid-cols-2">
+                          <p>Access level: <span className="font-semibold text-white">{selectedRoleSummary.accessLevel}</span></p>
+                          <p>Can manage staff?: <span className="font-semibold text-white">{selectedRoleSummary.manageStaff ? "Yes" : "No"}</span></p>
+                          <p>Can view student data?: <span className="font-semibold text-white">{selectedRoleSummary.viewStudentData ? "Yes" : "No"}</span></p>
+                          <p>Can manage billing?: <span className="font-semibold text-white">{selectedRoleSummary.manageBilling ? "Yes" : "No"}</span></p>
+                          <p>Can access safeguarding?: <span className="font-semibold text-white">{selectedRoleSummary.accessSafeguarding ? "Yes" : "No"}</span></p>
+                          <p>Can change governance settings?: <span className="font-semibold text-white">{selectedRoleSummary.changeGovernanceSettings ? "Yes" : "No"}</span></p>
+                        </div>
+                      </div>
+                      {requiresOwnerInviteConfirmation(teacherRole) ? (
+                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+                          <p className="font-semibold text-amber-50">Owner has executive-level governance access. Only assign this role to authorised senior leaders.</p>
+                          <label className="mt-2 flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={ownerInviteConfirmed}
+                              onChange={(event) => setOwnerInviteConfirmed(event.target.checked)}
+                              className="mt-0.5"
+                            />
+                            <span>I confirm this recipient is an authorised senior leader for School Owner access.</span>
+                          </label>
+                        </div>
+                      ) : null}
                       <input value={teacherTitle} onChange={(event) => setTeacherTitle(event.target.value)} placeholder="Title" className={fieldClass} />
-                      <button disabled={saving} className={primaryButtonClass}>Send Invite</button>
+                      <button disabled={saving || (requiresOwnerInviteConfirmation(teacherRole) && !ownerInviteConfirmed)} className={primaryButtonClass}>Send Invite</button>
                     </form>
                     <div className="mt-3 space-y-2">
                       {selectedSchool.teachers.map((teacher) => (
@@ -4137,7 +4726,7 @@ export default function AdminSchoolsPage() {
                           <div className="flex items-center justify-between gap-2">
                             <div>
                               <p className="text-sm font-semibold text-white">{teacher.name ?? teacher.email}</p>
-                              <p className="text-xs text-slate-400">{teacher.role} · {teacher.email}</p>
+                              <p className="text-xs text-slate-400">{getSchoolRoleLabel(teacher.role)} · {teacher.email}</p>
                             </div>
                             <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${badgeClass(teacher.status)}`}>{teacher.status}</span>
                           </div>
@@ -4156,8 +4745,8 @@ export default function AdminSchoolsPage() {
                       ))}
                       {!selectedSchool.teachers.length ? (
                         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-100">
-                          No teachers invited yet. Impact: no operational owner is assigned for classes.
-                          Next action: invite at least one teacher or admin.
+                          No staff invited yet. Impact: operational ownership and delivery coverage may be delayed.
+                          Next action: invite at least one teacher, admin, support, finance, observer, or owner role as appropriate.
                         </div>
                       ) : null}
                     </div>
@@ -4200,21 +4789,32 @@ export default function AdminSchoolsPage() {
             </AdminSectionCard>
           </div>
 
-          <AdminSectionCard
-            title="Intervention Queue"
-            eyebrow="Operational Risks"
-            action={(
-              <button
-                type="button"
-                onClick={() => setShowInterventionQueue(!showInterventionQueue)}
-                className="text-[10px] text-slate-400 hover:text-slate-200 transition"
-              >
-                {showInterventionQueue ? "Collapse" : "Expand"}
-              </button>
-            )}
+          <div
+            id="school-intervention-queue"
+            tabIndex={-1}
+            aria-label="Intervention Queue card"
+            onPointerDownCapture={() => onHighlightedInteraction("school-intervention-queue")}
+            onKeyDownCapture={() => onHighlightedInteraction("school-intervention-queue")}
+            className={targetHighlightClass("school-intervention-queue", "rounded-2xl")}
           >
-            {showInterventionQueue && (
-              <div className="grid gap-3 md:grid-cols-2">
+            <AdminSectionCard
+              title="Intervention Queue"
+              eyebrow="Operational Risks"
+              action={(
+                <div className="flex items-center gap-2">
+                  {renderSelectedSectionBadge("school-intervention-queue")}
+                  <button
+                    type="button"
+                    onClick={() => setShowInterventionQueue(!showInterventionQueue)}
+                    className="text-[10px] text-slate-400 hover:text-slate-200 transition"
+                  >
+                    {showInterventionQueue ? "Collapse" : "Expand"}
+                  </button>
+                </div>
+              )}
+            >
+              {showInterventionQueue && (
+                <div className="grid gap-3 md:grid-cols-2">
               {selectedSchool.students.filter((student) => !student.classroomName).map((student) => (
                 <article key={student.id} className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
                   <p className="text-sm font-semibold text-white">{student.childName}</p>
@@ -4241,12 +4841,25 @@ export default function AdminSchoolsPage() {
                     Next action: continue monitoring filters for emerging risk.
                   </div>
                 ) : null}
-              </div>
-            )}
-          </AdminSectionCard>
+                </div>
+              )}
+            </AdminSectionCard>
+          </div>
 
           <div id="school-safeguarding">
-            <AdminSectionCard title="Governance Area" eyebrow="Invites · Compliance · Audit · Safeguarding · Exports">
+            <div
+              id="school-governance-area"
+              tabIndex={-1}
+              aria-label="Governance Area card"
+              onPointerDownCapture={() => onHighlightedInteraction("school-governance-area")}
+              onKeyDownCapture={() => onHighlightedInteraction("school-governance-area")}
+              className={targetHighlightClass("school-governance-area", "rounded-2xl")}
+            >
+            <AdminSectionCard
+              title="Governance Area"
+              eyebrow="Invites · Compliance · Audit · Safeguarding · Exports"
+              action={renderSelectedSectionBadge("school-governance-area")}
+            >
             <div className="grid gap-4 lg:grid-cols-2">
               <section id="school-exports" className={`${panelClass} ${focusedOpsSection === "exports" ? "ring-1 ring-indigo-400/60" : ""}`}>
                 <div className="flex items-center justify-between mb-3">
@@ -4259,6 +4872,7 @@ export default function AdminSchoolsPage() {
                     {showCompliance ? "Collapse" : "Expand"}
                   </button>
                 </div>
+                {governanceCardMeta ? renderGovernanceMeta(governanceCardMeta.compliance) : null}
                 {showCompliance && (
                   <div className="mt-3 space-y-2">
                   {selectedSchool.students.map((student) => (
@@ -4285,9 +4899,20 @@ export default function AdminSchoolsPage() {
                 )}
               </section>
 
-              <section id="school-communication" className={`${panelClass} ${focusedOpsSection === "communication" ? "ring-1 ring-indigo-400/60" : ""}`}>
+              <section
+                id="school-communication"
+                tabIndex={-1}
+                aria-label="Communication Audit card"
+                onPointerDownCapture={() => onHighlightedInteraction("school-communication")}
+                onKeyDownCapture={() => onHighlightedInteraction("school-communication")}
+                className={targetHighlightClass(
+                  "school-communication",
+                  `${panelClass} ${focusedOpsSection === "communication" ? "ring-1 ring-indigo-400/60" : ""}`,
+                )}
+              >
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white">Communication Audit</h3>
+                  {renderSelectedSectionBadge("school-communication")}
                   <button
                     type="button"
                     onClick={() => setShowCommunicationAudit(!showCommunicationAudit)}
@@ -4296,6 +4921,7 @@ export default function AdminSchoolsPage() {
                     {showCommunicationAudit ? "Collapse" : "Expand"}
                   </button>
                 </div>
+                {governanceCardMeta ? renderGovernanceMeta(governanceCardMeta.communication) : null}
                 {showCommunicationAudit && (
                   <div className="mt-3 space-y-2">
                   {selectedSchool.communicationLogs.map((entry) => (
@@ -4319,9 +4945,20 @@ export default function AdminSchoolsPage() {
                 )}
               </section>
 
-              <section className={`${panelClass} ${focusedOpsSection === "safeguarding" ? "ring-1 ring-rose-400/60" : ""}`}>
+              <section
+                id="school-safeguarding-card"
+                tabIndex={-1}
+                aria-label="Safeguarding card"
+                onPointerDownCapture={() => onHighlightedInteraction("school-safeguarding-card")}
+                onKeyDownCapture={() => onHighlightedInteraction("school-safeguarding-card")}
+                className={targetHighlightClass(
+                  "school-safeguarding-card",
+                  `${panelClass} ${focusedOpsSection === "safeguarding" ? "ring-1 ring-rose-400/60" : ""}`,
+                )}
+              >
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white">Safeguarding</h3>
+                  {renderSelectedSectionBadge("school-safeguarding-card")}
                   <button
                     type="button"
                     onClick={() => setShowSafeguardingDetails(!showSafeguardingDetails)}
@@ -4330,6 +4967,7 @@ export default function AdminSchoolsPage() {
                     {showSafeguardingDetails ? "Collapse" : "Expand"}
                   </button>
                 </div>
+                {governanceCardMeta ? renderGovernanceMeta(governanceCardMeta.safeguarding) : null}
                 <p className="text-sm text-slate-300">
                   Open alerts: <span className="font-bold text-rose-200">{selectedSchool.safeguarding.openAlerts}</span>
                   {" · "}
@@ -4364,7 +5002,7 @@ export default function AdminSchoolsPage() {
                 )}
               </section>
 
-              <section className={panelClass}>
+              <section id="school-parent-preferences" className={panelClass}>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white">Parent Preferences</h3>
                   <button
@@ -4375,6 +5013,7 @@ export default function AdminSchoolsPage() {
                     {showParentPreferences ? "Collapse" : "Expand"}
                   </button>
                 </div>
+                {governanceCardMeta ? renderGovernanceMeta(governanceCardMeta.parentPreferences) : null}
                 {showParentPreferences && (
                   <div className="mt-3 space-y-2">
                     {selectedSchool.communicationPreferences.map((entry) => (
@@ -4389,9 +5028,17 @@ export default function AdminSchoolsPage() {
                 )}
               </section>
 
-              <section id="school-timeline" className={panelClass + " lg:col-span-2"}>
+              <section
+                id="school-timeline"
+                tabIndex={-1}
+                aria-label="Activity Timeline card"
+                onPointerDownCapture={() => onHighlightedInteraction("school-timeline")}
+                onKeyDownCapture={() => onHighlightedInteraction("school-timeline")}
+                className={targetHighlightClass("school-timeline", panelClass + " lg:col-span-2")}
+              >
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white">Activity Timeline</h3>
+                  {renderSelectedSectionBadge("school-timeline")}
                   <button
                     type="button"
                     onClick={() => setShowActivityTimeline(!showActivityTimeline)}
@@ -4400,6 +5047,7 @@ export default function AdminSchoolsPage() {
                     {showActivityTimeline ? "Collapse" : "Expand"}
                   </button>
                 </div>
+                {governanceCardMeta ? renderGovernanceMeta(governanceCardMeta.timeline) : null}
                 {showActivityTimeline && (
                   <div className="mt-3 space-y-2">
                     {selectedSchool.activityTimeline.map((item) => (
@@ -4422,7 +5070,7 @@ export default function AdminSchoolsPage() {
                 )}
               </section>
 
-              <section className={panelClass + " lg:col-span-2"} data-testid="prov-hardening-panel">
+              <section id="prov-hardening-panel" className={panelClass + " lg:col-span-2"} data-testid="prov-hardening-panel">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <h3 className="text-sm font-semibold text-white">Provisioning Hardening</h3>
                   <div className="flex items-center gap-2">
@@ -4454,6 +5102,7 @@ export default function AdminSchoolsPage() {
                     </button>
                   </div>
                 </div>
+                {governanceCardMeta ? renderGovernanceMeta(governanceCardMeta.provisioning) : null}
                 <p className="text-xs text-slate-400">
                   Backend provisioning remains feature-safe. Mock provisioning stays active unless backend feature flag is enabled.
                 </p>
@@ -4522,7 +5171,7 @@ export default function AdminSchoolsPage() {
                 ) : null}
               </section>
 
-              <section className={panelClass + " lg:col-span-2"} data-testid="mat-trust-panel">
+              <section id="mat-trust-panel" className={panelClass + " lg:col-span-2"} data-testid="mat-trust-panel">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white">MAT / Multi-School Operations</h3>
                   <button
@@ -4534,6 +5183,7 @@ export default function AdminSchoolsPage() {
                     {showMatPanel ? "Collapse" : "Expand"}
                   </button>
                 </div>
+                {governanceCardMeta ? renderGovernanceMeta(governanceCardMeta.mat) : null}
                 {showMatPanel ? (
                   <div className="grid gap-3 lg:grid-cols-2" data-testid="mat-panel-body">
                     <article className="rounded-lg border border-slate-700 bg-slate-950/60 p-3" data-testid="trust-management-form">
@@ -4611,7 +5261,7 @@ export default function AdminSchoolsPage() {
                 ) : null}
               </section>
 
-              <section className={panelClass + " lg:col-span-2"} data-testid="notifications-panel">
+              <section id="notifications-panel" className={panelClass + " lg:col-span-2"} data-testid="notifications-panel">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white">Notification Infrastructure</h3>
                   <button
@@ -4623,6 +5273,7 @@ export default function AdminSchoolsPage() {
                     {showNotificationsPanel ? "Collapse" : "Expand"}
                   </button>
                 </div>
+                {governanceCardMeta ? renderGovernanceMeta(governanceCardMeta.notifications) : null}
                 {showNotificationsPanel ? (
                   <div className="grid gap-3 lg:grid-cols-2" data-testid="notifications-body">
                     <article className="rounded-lg border border-slate-700 bg-slate-950/60 p-3" data-testid="notification-preferences-panel">
@@ -4698,6 +5349,7 @@ export default function AdminSchoolsPage() {
               </section>
             </div>
             </AdminSectionCard>
+            </div>
           </div>
         </>
       ) : null}
@@ -4715,6 +5367,36 @@ export default function AdminSchoolsPage() {
           to {
             opacity: 1;
             transform: translateY(0);
+          }
+        }
+
+        @keyframes opsHighlightPulse {
+          0%,
+          100% {
+            box-shadow: 0 0 0 rgba(251, 191, 36, 0.2);
+          }
+          50% {
+            box-shadow: 0 0 24px rgba(251, 191, 36, 0.35);
+          }
+        }
+
+        @keyframes jumpHelperIn {
+          from {
+            opacity: 0;
+            transform: translateY(-6px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes roleAssignPulse {
+          from {
+            transform: scale(0.98);
+          }
+          to {
+            transform: scale(1);
           }
         }
       `}</style>

@@ -76,6 +76,11 @@ const adminModules = [
     href: "/admin/ai",
   },
   {
+    title: "Dictionary / Word Bank",
+    description: "Manage child-friendly word explanations used by Coach and lessons.",
+    href: "/admin/dictionary",
+  },
+  {
     title: "Content Library",
     description: "Review, edit, publish and assign spelling, maths and reading content.",
     href: "/admin/content",
