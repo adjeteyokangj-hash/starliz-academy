@@ -8,6 +8,7 @@ import {
   type RecoveryOrchestrationPlan,
 } from "@/lib/recovery_orchestrator";
 import {
+  getRecoveryGovernanceIntelligence,
   getRecoveryGovernanceMetrics,
   listRecoveryOrchestrationHistory,
   listRecoveryPolicyHistory,
@@ -127,6 +128,7 @@ const historyQuerySchema = z.object({
   transport: z.enum(["sse", "polling"]).optional(),
   sinceIso: z.string().datetime().optional(),
   includeMetrics: z.coerce.boolean().optional(),
+  includeIntelligence: z.coerce.boolean().optional(),
   includePolicy: z.coerce.boolean().optional(),
   includeTimeline: z.coerce.boolean().optional(),
   exportType: z.enum(["orchestration_history", "rollback_history", "retry_activity", "school_policy_settings"]).optional(),
@@ -422,6 +424,10 @@ export async function GET(request: Request) {
     ? await getRecoveryGovernanceMetrics(query)
     : null;
 
+  const intelligence = query.includeIntelligence
+    ? await getRecoveryGovernanceIntelligence(query)
+    : null;
+
   const timeline = query.includeTimeline && query.runId && query.schoolId
     ? await listRecoveryRunTimeline({ schoolId: query.schoolId, runId: query.runId })
     : null;
@@ -432,6 +438,7 @@ export async function GET(request: Request) {
     query,
     policy,
     metrics,
+    intelligence,
     timeline,
   });
 }

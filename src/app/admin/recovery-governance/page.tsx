@@ -95,6 +95,69 @@ type RecoveryGovernanceMetrics = {
   mostActiveSchools: Array<{ schoolId: string; runCount: number }>;
 };
 
+type RecoveryGovernanceAnomaly = {
+  id: string;
+  type:
+    | "unusual_rollback_spike"
+    | "excessive_retries"
+    | "repeated_guardrail_failures"
+    | "abnormal_execution_durations"
+    | "school_level_orchestration_anomaly";
+  schoolId: string | null;
+  severity: "low" | "medium" | "high" | "critical";
+  confidenceScore: number;
+  summary: string;
+  suggestedOperatorAction: string;
+  detectedAtIso: string;
+};
+
+type RecoveryGovernanceAlert = {
+  id: string;
+  type:
+    | "repeated_execution_failures"
+    | "policy_override_abuse"
+    | "retry_storm"
+    | "rollback_storm"
+    | "stuck_execution"
+    | "long_running_approval";
+  schoolId: string | null;
+  severity: "low" | "medium" | "high" | "critical";
+  summary: string;
+  recommendedAction: string;
+  createdAtIso: string;
+};
+
+type RecoveryGovernanceHealthScore = {
+  schoolId: string;
+  overallScore: number;
+  stability: number;
+  executionReliability: number;
+  approvalQuality: number;
+  rollbackFrequency: number;
+  recoverySuccessRate: number;
+};
+
+type RecoveryGovernanceInsights = {
+  schoolsWithRisingInterventionPressure: Array<{ schoolId: string; pressureScore: number; reason: string }>;
+  highestRollbackSchools: Array<{ schoolId: string; rollbackRate: number; rollbacks: number }>;
+  interventionSuccessTrend: {
+    currentWindowSuccessRate: number;
+    previousWindowSuccessRate: number;
+    direction: "up" | "down" | "flat";
+  };
+  weakestSubjectRecoveryClusters: Array<{ cluster: string; failureRate: number; runCount: number }>;
+  approvalBottlenecks: Array<{ schoolId: string; pendingApprovals: number; avgApprovalDelayHours: number }>;
+  retryFailureHotspots: Array<{ schoolId: string; retryCount: number; failureCount: number }>;
+};
+
+type RecoveryGovernanceIntelligence = {
+  anomalies: RecoveryGovernanceAnomaly[];
+  alerts: RecoveryGovernanceAlert[];
+  insights: RecoveryGovernanceInsights;
+  operatorRecommendations: string[];
+  healthScores: RecoveryGovernanceHealthScore[];
+};
+
 type RecoveryTimelineEvent = {
   runId: string;
   schoolId: string;
@@ -140,6 +203,7 @@ export default function RecoveryGovernancePage() {
   const [limit] = useState(25);
   const [total, setTotal] = useState(0);
   const [metrics, setMetrics] = useState<RecoveryGovernanceMetrics | null>(null);
+  const [intelligence, setIntelligence] = useState<RecoveryGovernanceIntelligence | null>(null);
   const [policy, setPolicy] = useState<RecoveryPolicy>({
     teacherApprovalRoles: ["teacher", "admin", "owner"],
     guardrails: {},
@@ -187,6 +251,7 @@ export default function RecoveryGovernancePage() {
     params.set("offset", String(offset));
     params.set("limit", String(limit));
     params.set("includeMetrics", "true");
+    params.set("includeIntelligence", "true");
     if (schoolId) params.set("includePolicy", "true");
     return params.toString();
   }, [schoolId, runId, status, actorUserId, offset, limit]);
@@ -210,10 +275,12 @@ export default function RecoveryGovernancePage() {
         total?: number;
         policy?: RecoveryPolicy | null;
         metrics?: RecoveryGovernanceMetrics | null;
+        intelligence?: RecoveryGovernanceIntelligence | null;
       };
       setRows(payload.items ?? []);
       setTotal(payload.total ?? 0);
       setMetrics(payload.metrics ?? null);
+      setIntelligence(payload.intelligence ?? null);
       if (payload.policy) {
         setPolicy(payload.policy);
       }
@@ -443,6 +510,11 @@ export default function RecoveryGovernancePage() {
     return `${school?.name ?? top.schoolId} (${top.runCount})`;
   }, [metrics?.mostActiveSchools, schools]);
 
+  const schoolLabel = (value: string | null | undefined) => {
+    if (!value) return "all schools";
+    return schools.find((item) => item.id === value)?.name ?? value;
+  };
+
   return (
     <main className="mx-auto max-w-7xl space-y-5 px-4 py-6 text-slate-100">
       <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
@@ -510,6 +582,158 @@ export default function RecoveryGovernancePage() {
           <p className="mt-1 text-2xl font-black text-cyan-200">{formatDuration(metrics?.averageExecutionDurationMs ?? 0)}</p>
           <p className="text-[11px] text-slate-400">Guardrail blocks: {metrics?.guardrailBlockCount ?? 0}</p>
         </article>
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-2">
+        <article className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-white">Automated Anomaly Detection</h2>
+            <p className="text-xs text-slate-400">{intelligence?.anomalies.length ?? 0} anomalies</p>
+          </div>
+          <ul className="mt-3 space-y-2 text-xs text-slate-200">
+            {intelligence?.anomalies.length
+              ? intelligence.anomalies.slice(0, 6).map((item) => (
+                <li key={item.id} className="rounded-lg border border-slate-700 bg-slate-950/70 p-2">
+                  <p className="font-semibold text-amber-200">{item.type} · {item.severity.toUpperCase()} · confidence {Math.round(item.confidenceScore * 100)}%</p>
+                  <p className="mt-1">{item.summary}</p>
+                  <p className="mt-1 text-[11px] text-slate-400">School: {schoolLabel(item.schoolId)} · Action: {item.suggestedOperatorAction}</p>
+                </li>
+              ))
+              : <li className="text-slate-400">No active anomaly detections.</li>}
+          </ul>
+        </article>
+
+        <article className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-white">Governance Alerting Engine</h2>
+            <p className="text-xs text-slate-400">{intelligence?.alerts.length ?? 0} alerts</p>
+          </div>
+          <ul className="mt-3 space-y-2 text-xs text-slate-200">
+            {intelligence?.alerts.length
+              ? intelligence.alerts.slice(0, 6).map((item) => (
+                <li key={item.id} className="rounded-lg border border-slate-700 bg-slate-950/70 p-2">
+                  <p className="font-semibold text-rose-200">{item.type} · {item.severity.toUpperCase()}</p>
+                  <p className="mt-1">{item.summary}</p>
+                  <p className="mt-1 text-[11px] text-slate-400">School: {schoolLabel(item.schoolId)} · Recommendation: {item.recommendedAction}</p>
+                </li>
+              ))
+              : <li className="text-slate-400">No alert conditions detected.</li>}
+          </ul>
+        </article>
+      </section>
+
+      <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-white">AI Governance Insights Panel</h2>
+          <p className="text-xs text-slate-400">Trend intelligence and bottleneck analysis</p>
+        </div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-3">
+          <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-200">
+            <p className="font-semibold text-cyan-200">Rising Intervention Pressure</p>
+            <ul className="mt-2 space-y-1 text-[11px]">
+              {intelligence?.insights.schoolsWithRisingInterventionPressure.length
+                ? intelligence.insights.schoolsWithRisingInterventionPressure.map((row) => (
+                  <li key={row.schoolId}>{schoolLabel(row.schoolId)} · score {row.pressureScore} · {row.reason}</li>
+                ))
+                : <li className="text-slate-400">No pressure spikes detected.</li>}
+            </ul>
+          </article>
+
+          <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-200">
+            <p className="font-semibold text-cyan-200">Rollback + Hotspots</p>
+            <ul className="mt-2 space-y-1 text-[11px]">
+              {intelligence?.insights.highestRollbackSchools.length
+                ? intelligence.insights.highestRollbackSchools.map((row) => (
+                  <li key={row.schoolId}>{schoolLabel(row.schoolId)} · rollback {row.rollbackRate}% ({row.rollbacks})</li>
+                ))
+                : <li className="text-slate-400">No rollback concentration detected.</li>}
+            </ul>
+            <ul className="mt-2 space-y-1 text-[11px] text-slate-300">
+              {intelligence?.insights.retryFailureHotspots.length
+                ? intelligence.insights.retryFailureHotspots.map((row) => (
+                  <li key={`${row.schoolId}-hotspot`}>{schoolLabel(row.schoolId)} · retries {row.retryCount} · failures {row.failureCount}</li>
+                ))
+                : <li className="text-slate-400">No retry/failure hotspots.</li>}
+            </ul>
+          </article>
+
+          <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-200">
+            <p className="font-semibold text-cyan-200">Recovery Clusters + Approval Bottlenecks</p>
+            <ul className="mt-2 space-y-1 text-[11px]">
+              {intelligence?.insights.weakestSubjectRecoveryClusters.length
+                ? intelligence.insights.weakestSubjectRecoveryClusters.map((row) => (
+                  <li key={row.cluster}>{row.cluster} · failure {row.failureRate}% · runs {row.runCount}</li>
+                ))
+                : <li className="text-slate-400">No weak recovery clusters.</li>}
+            </ul>
+            <ul className="mt-2 space-y-1 text-[11px] text-slate-300">
+              {intelligence?.insights.approvalBottlenecks.length
+                ? intelligence.insights.approvalBottlenecks.map((row) => (
+                  <li key={`${row.schoolId}-bottleneck`}>{schoolLabel(row.schoolId)} · pending {row.pendingApprovals} · avg delay {row.avgApprovalDelayHours}h</li>
+                ))
+                : <li className="text-slate-400">No approval bottlenecks.</li>}
+            </ul>
+          </article>
+        </div>
+
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-200">
+            <p className="font-semibold text-cyan-200">Intervention Success Trend</p>
+            <p className="mt-2 text-[11px]">Current 7d success: {intelligence?.insights.interventionSuccessTrend.currentWindowSuccessRate ?? 0}%</p>
+            <p className="text-[11px]">Previous 7d success: {intelligence?.insights.interventionSuccessTrend.previousWindowSuccessRate ?? 0}%</p>
+            <p className="text-[11px]">Direction: {intelligence?.insights.interventionSuccessTrend.direction ?? "flat"}</p>
+          </article>
+
+          <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-200">
+            <p className="font-semibold text-cyan-200">Intelligent Operator Recommendations</p>
+            <ul className="mt-2 space-y-1 text-[11px]">
+              {intelligence?.operatorRecommendations.length
+                ? intelligence.operatorRecommendations.map((entry) => <li key={entry}>- {entry}</li>)
+                : <li className="text-slate-400">No immediate operational actions recommended.</li>}
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-white">Governance Health Scoring</h2>
+          <p className="text-xs text-slate-400">Per-school stability and reliability scoring</p>
+        </div>
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-slate-700 text-slate-400">
+                <th className="px-2 py-2">School</th>
+                <th className="px-2 py-2">Overall</th>
+                <th className="px-2 py-2">Stability</th>
+                <th className="px-2 py-2">Execution Reliability</th>
+                <th className="px-2 py-2">Approval Quality</th>
+                <th className="px-2 py-2">Rollback Frequency</th>
+                <th className="px-2 py-2">Recovery Success</th>
+              </tr>
+            </thead>
+            <tbody>
+              {intelligence?.healthScores.length
+                ? intelligence.healthScores.slice(0, 12).map((row) => (
+                  <tr key={row.schoolId} className="border-b border-slate-800/70 text-slate-200">
+                    <td className="px-2 py-2">{schoolLabel(row.schoolId)}</td>
+                    <td className="px-2 py-2 font-semibold">{row.overallScore}</td>
+                    <td className="px-2 py-2">{row.stability}</td>
+                    <td className="px-2 py-2">{row.executionReliability}</td>
+                    <td className="px-2 py-2">{row.approvalQuality}</td>
+                    <td className="px-2 py-2">{row.rollbackFrequency}</td>
+                    <td className="px-2 py-2">{row.recoverySuccessRate}</td>
+                  </tr>
+                ))
+                : (
+                  <tr>
+                    <td className="px-2 py-2 text-slate-400" colSpan={7}>No school health score data available yet.</td>
+                  </tr>
+                )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
