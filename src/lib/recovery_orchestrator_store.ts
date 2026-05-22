@@ -30,6 +30,7 @@ export type RecoveryRunHistoryItem = {
   planStatus: string;
   note: string | null;
   plan: RecoveryOrchestrationPlan;
+  metadata: Record<string, unknown>;
 };
 
 export type RecoveryOrchestratorHistoryFilters = {
@@ -40,6 +41,37 @@ export type RecoveryOrchestratorHistoryFilters = {
   actorSchoolTeacherId?: string;
   limit?: number;
   offset?: number;
+};
+
+export type RecoveryTimelineEvent = {
+  runId: string;
+  schoolId: string;
+  atIso: string;
+  action: string;
+  stage:
+    | "plan_created"
+    | "teacher_approved"
+    | "admin_confirmed"
+    | "execution_started"
+    | "partial_failure"
+    | "retry_executed"
+    | "rollback_completed"
+    | "guardrail_failed"
+    | "unknown";
+  actorUserId: string | null;
+  actorSchoolTeacherId: string | null;
+  note: string | null;
+};
+
+export type RecoveryGovernanceMetrics = {
+  totalRuns: number;
+  approvalRate: number;
+  rollbackRate: number;
+  retryCount: number;
+  averageExecutionDurationMs: number;
+  guardrailBlockCount: number;
+  partiallyExecutedRuns: number;
+  mostActiveSchools: Array<{ schoolId: string; runCount: number }>;
 };
 
 function parseJsonSafe<T>(value: string | null | undefined): T | null {
@@ -60,8 +92,9 @@ function parseRecoveryEntry(row: {
   actorSchoolTeacherId: string | null;
   metadataJson: string | null;
 }): RecoveryRunHistoryItem | null {
-  const metadata = parseJsonSafe<{ note?: string | null; plan?: RecoveryOrchestrationPlan }>(row.metadataJson);
-  if (!metadata?.plan || !row.correlationId) return null;
+  const metadata = parseJsonSafe<Record<string, unknown>>(row.metadataJson);
+  const plan = (metadata?.plan ?? null) as RecoveryOrchestrationPlan | null;
+  if (!plan || !row.correlationId) return null;
 
   return {
     runId: row.correlationId,
@@ -70,10 +103,27 @@ function parseRecoveryEntry(row: {
     createdAt: row.createdAt.toISOString(),
     actorUserId: row.actorUserId,
     actorSchoolTeacherId: row.actorSchoolTeacherId,
-    planStatus: metadata.plan.status,
-    note: metadata.note ?? null,
-    plan: metadata.plan,
+    planStatus: plan.status,
+    note: typeof metadata?.note === "string" ? metadata.note : null,
+    plan,
+    metadata: metadata ?? {},
   };
+}
+
+function mapTimelineStage(item: RecoveryRunHistoryItem): RecoveryTimelineEvent["stage"] {
+  if (item.action === "recovery_orchestration_planned") return "plan_created";
+  if (item.action === "recovery_orchestration_teacher_approved") return "teacher_approved";
+  if (item.action === "recovery_orchestration_admin_confirmed") {
+    if (!item.plan.guardrailsPassed && item.plan.blockedReasons.length > 0) return "guardrail_failed";
+    return "admin_confirmed";
+  }
+  if (item.action === "recovery_orchestration_executed") {
+    const retry = Boolean(item.metadata.retry) || (item.plan.execution.attempts ?? 0) > 1;
+    if (item.plan.execution.progressPercent > 0 && !item.plan.execution.executed) return "partial_failure";
+    return retry ? "retry_executed" : "execution_started";
+  }
+  if (item.action === "recovery_orchestration_rolled_back") return "rollback_completed";
+  return "unknown";
 }
 
 export async function persistRecoveryOrchestrationEvent(input: PersistInput): Promise<void> {
@@ -223,4 +273,129 @@ export async function loadRecoveryTenantPolicy(input: {
 
   const metadata = parseJsonSafe<{ policy?: Partial<RecoveryTenantPolicy> }>(row?.metadataJson ?? null);
   return normalizePolicy(metadata?.policy);
+}
+
+export async function listRecoveryRunTimeline(input: {
+  schoolId: string;
+  runId: string;
+}): Promise<RecoveryTimelineEvent[]> {
+  const history = await listRecoveryOrchestrationHistory({
+    schoolId: input.schoolId,
+    runId: input.runId,
+    limit: 200,
+    offset: 0,
+  });
+
+  return history.items
+    .slice()
+    .reverse()
+    .map((item) => ({
+      runId: item.runId,
+      schoolId: item.schoolId,
+      atIso: item.createdAt,
+      action: item.action,
+      stage: mapTimelineStage(item),
+      actorUserId: item.actorUserId,
+      actorSchoolTeacherId: item.actorSchoolTeacherId,
+      note: item.note,
+    }));
+}
+
+function getLatestRunState(items: RecoveryRunHistoryItem[]): RecoveryRunHistoryItem[] {
+  const latest = new Map<string, RecoveryRunHistoryItem>();
+  for (const item of items) {
+    const existing = latest.get(item.runId);
+    if (!existing || new Date(item.createdAt).getTime() > new Date(existing.createdAt).getTime()) {
+      latest.set(item.runId, item);
+    }
+  }
+  return Array.from(latest.values());
+}
+
+function toPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Number((value * 100).toFixed(2));
+}
+
+export async function getRecoveryGovernanceMetrics(input: RecoveryOrchestratorHistoryFilters): Promise<RecoveryGovernanceMetrics> {
+  const history = await listRecoveryOrchestrationHistory({
+    ...input,
+    limit: 1000,
+    offset: 0,
+  });
+  const latestStates = getLatestRunState(history.items);
+  const totalRuns = latestStates.length;
+  const approvedRuns = latestStates.filter((item) => item.plan.status === "approved" || item.plan.status === "rolled_back").length;
+  const rolledBackRuns = latestStates.filter((item) => item.plan.status === "rolled_back").length;
+  const retryCount = history.items.filter((item) => item.action === "recovery_orchestration_executed" && (Boolean(item.metadata.retry) || (item.plan.execution.attempts ?? 0) > 1)).length;
+  const durationRows = latestStates
+    .map((item) => item.plan.execution.durationMs)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0);
+  const averageExecutionDurationMs = durationRows.length
+    ? Math.round(durationRows.reduce((sum, value) => sum + value, 0) / durationRows.length)
+    : 0;
+  const guardrailBlockCount = latestStates.filter((item) => !item.plan.guardrailsPassed || item.plan.blockedReasons.length > 0).length;
+  const partiallyExecutedRuns = latestStates.filter((item) => item.plan.execution.partialExecution || ((item.plan.execution.progressPercent ?? 0) > 0 && !item.plan.execution.executed)).length;
+
+  const bySchool = new Map<string, number>();
+  for (const item of latestStates) {
+    bySchool.set(item.schoolId, (bySchool.get(item.schoolId) ?? 0) + 1);
+  }
+  const mostActiveSchools = Array.from(bySchool.entries())
+    .map(([schoolId, runCount]) => ({ schoolId, runCount }))
+    .sort((a, b) => b.runCount - a.runCount)
+    .slice(0, 5);
+
+  return {
+    totalRuns,
+    approvalRate: toPercent(totalRuns ? approvedRuns / totalRuns : 0),
+    rollbackRate: toPercent(totalRuns ? rolledBackRuns / totalRuns : 0),
+    retryCount,
+    averageExecutionDurationMs,
+    guardrailBlockCount,
+    partiallyExecutedRuns,
+    mostActiveSchools,
+  };
+}
+
+export async function listRecoveryPolicyHistory(input: {
+  schoolId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<Array<{
+  schoolId: string;
+  createdAt: string;
+  actorUserId: string | null;
+  note: string | null;
+  policy: RecoveryTenantPolicy;
+}>> {
+  const rows = await prisma.schoolAuditLog.findMany({
+    where: {
+      operation: "recovery_orchestrator_policy",
+      ...(input.schoolId ? { schoolId: input.schoolId } : {}),
+    },
+    orderBy: [{ createdAt: "desc" }],
+    take: Math.max(10, Math.min(500, Math.floor(input.limit ?? 200))),
+    skip: Math.max(0, Math.floor(input.offset ?? 0)),
+    select: {
+      schoolId: true,
+      createdAt: true,
+      actorUserId: true,
+      metadataJson: true,
+    },
+  });
+
+  return rows
+    .map((row) => {
+      const metadata = parseJsonSafe<{ note?: string | null; policy?: Partial<RecoveryTenantPolicy> }>(row.metadataJson);
+      if (!metadata?.policy) return null;
+      return {
+        schoolId: row.schoolId,
+        createdAt: row.createdAt.toISOString(),
+        actorUserId: row.actorUserId,
+        note: metadata.note ?? null,
+        policy: normalizePolicy(metadata.policy),
+      };
+    })
+    .filter((row): row is { schoolId: string; createdAt: string; actorUserId: string | null; note: string | null; policy: RecoveryTenantPolicy } => Boolean(row));
 }

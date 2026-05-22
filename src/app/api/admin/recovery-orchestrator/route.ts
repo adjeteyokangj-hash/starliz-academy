@@ -8,7 +8,10 @@ import {
   type RecoveryOrchestrationPlan,
 } from "@/lib/recovery_orchestrator";
 import {
+  getRecoveryGovernanceMetrics,
   listRecoveryOrchestrationHistory,
+  listRecoveryPolicyHistory,
+  listRecoveryRunTimeline,
   loadRecoveryOrchestrationPlan,
   loadRecoveryTenantPolicy,
   persistRecoveryOrchestrationEvent,
@@ -121,10 +124,85 @@ const historyQuerySchema = z.object({
   status: z.enum(["planned", "teacher_approved", "approved", "rejected", "rolled_back"]).optional(),
   actorUserId: z.string().min(1).optional(),
   actorSchoolTeacherId: z.string().min(1).optional(),
+  transport: z.enum(["sse", "polling"]).optional(),
+  sinceIso: z.string().datetime().optional(),
+  includeMetrics: z.coerce.boolean().optional(),
   includePolicy: z.coerce.boolean().optional(),
+  includeTimeline: z.coerce.boolean().optional(),
+  exportType: z.enum(["orchestration_history", "rollback_history", "retry_activity", "school_policy_settings"]).optional(),
   limit: z.coerce.number().int().min(10).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
+
+function toCsv(rows: Array<Record<string, unknown>>): string {
+  if (!rows.length) return "";
+  const headers = Object.keys(rows[0]);
+  const escapeCell = (value: unknown) => {
+    const text = value === null || value === undefined ? "" : String(value);
+    if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
+      return `"${text.replace(/\"/g, '""')}"`;
+    }
+    return text;
+  };
+
+  return [
+    headers.join(","),
+    ...rows.map((row) => headers.map((header) => escapeCell(row[header])).join(",")),
+  ].join("\n");
+}
+
+type GovernanceLiveEventType =
+  | "run_status_change"
+  | "execution_progress"
+  | "retry"
+  | "rollback"
+  | "guardrail_failure";
+
+type GovernanceLiveEvent = {
+  eventType: GovernanceLiveEventType;
+  runId: string;
+  schoolId: string;
+  action: string;
+  createdAt: string;
+  status: string;
+  progressPercent: number;
+  lastExecutionError: string | null;
+};
+
+type GovernanceLiveEnvelope = {
+  generatedAt: string;
+  events: GovernanceLiveEvent[];
+};
+
+function toSseChunk(payload: GovernanceLiveEnvelope): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function toLiveEvents(items: Awaited<ReturnType<typeof listRecoveryOrchestrationHistory>>["items"]): GovernanceLiveEvent[] {
+  return items.map((item) => {
+    const hasRetry = Boolean(item.metadata.retry) || (item.plan.execution.attempts ?? 0) > 1;
+    const isGuardrailFailure = item.action === "recovery_orchestration_admin_confirmed" && !item.plan.guardrailsPassed && item.plan.blockedReasons.length > 0;
+    const isRollback = item.action === "recovery_orchestration_rolled_back";
+    const isExecution = item.action === "recovery_orchestration_executed";
+
+    let eventType: GovernanceLiveEventType = "run_status_change";
+    if (isGuardrailFailure) eventType = "guardrail_failure";
+    else if (isRollback) eventType = "rollback";
+    else if (isExecution && hasRetry) eventType = "retry";
+    else if (isExecution) eventType = "execution_progress";
+
+    return {
+      eventType,
+      runId: item.runId,
+      schoolId: item.schoolId,
+      action: item.action,
+      createdAt: item.createdAt,
+      status: item.plan.status,
+      progressPercent: item.plan.execution.progressPercent ?? 0,
+      lastExecutionError: item.plan.execution.lastExecutionError,
+    };
+  });
+}
 
 async function resolveTeacherApprover(input: {
   schoolId: string;
@@ -156,10 +234,196 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const query = historyQuerySchema.parse(Object.fromEntries(searchParams.entries()));
+
+  if (query.transport === "sse") {
+    let streamClosed = false;
+    let lastSeenIso = query.sinceIso ?? new Date(Date.now() - 60_000).toISOString();
+    let pushTimer: ReturnType<typeof setInterval> | null = null;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+    const clearTimers = () => {
+      if (pushTimer) {
+        clearInterval(pushTimer);
+        pushTimer = null;
+      }
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    };
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder();
+        const safeEnqueue = (chunk: string) => {
+          if (streamClosed) return;
+          try {
+            controller.enqueue(encoder.encode(chunk));
+          } catch {
+            streamClosed = true;
+            clearTimers();
+          }
+        };
+
+        const push = async () => {
+          if (streamClosed) return;
+          try {
+            const history = await listRecoveryOrchestrationHistory({
+              schoolId: query.schoolId,
+              runId: query.runId,
+              status: query.status,
+              actorUserId: query.actorUserId,
+              actorSchoolTeacherId: query.actorSchoolTeacherId,
+              limit: 120,
+              offset: 0,
+            });
+
+            const fresh = history.items
+              .filter((item) => new Date(item.createdAt).getTime() > new Date(lastSeenIso).getTime())
+              .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+            if (!fresh.length) return;
+            lastSeenIso = fresh[fresh.length - 1].createdAt;
+            const envelope: GovernanceLiveEnvelope = {
+              generatedAt: new Date().toISOString(),
+              events: toLiveEvents(fresh),
+            };
+            safeEnqueue(toSseChunk(envelope));
+          } catch {
+            safeEnqueue("event: error\ndata: {\"error\":\"recovery_live_snapshot_failed\"}\n\n");
+          }
+        };
+
+        void push();
+        pushTimer = setInterval(() => {
+          void push();
+        }, 5000);
+        heartbeatTimer = setInterval(() => {
+          safeEnqueue(": heartbeat\n\n");
+        }, 10000);
+      },
+      cancel() {
+        streamClosed = true;
+        clearTimers();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-store, no-transform",
+        Connection: "keep-alive",
+      },
+    });
+  }
+
+  if (query.transport === "polling") {
+    const sinceIso = query.sinceIso ?? new Date(Date.now() - 60_000).toISOString();
+    const history = await listRecoveryOrchestrationHistory({
+      schoolId: query.schoolId,
+      runId: query.runId,
+      status: query.status,
+      actorUserId: query.actorUserId,
+      actorSchoolTeacherId: query.actorSchoolTeacherId,
+      limit: 120,
+      offset: 0,
+    });
+
+    const fresh = history.items
+      .filter((item) => new Date(item.createdAt).getTime() > new Date(sinceIso).getTime())
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    return NextResponse.json({
+      generatedAt: new Date().toISOString(),
+      events: toLiveEvents(fresh),
+    });
+  }
+
+  if (query.exportType) {
+    if (query.exportType === "school_policy_settings") {
+      const policies = await listRecoveryPolicyHistory({
+        schoolId: query.schoolId,
+        limit: query.limit,
+        offset: query.offset,
+      });
+      const rows = policies.map((item) => ({
+        schoolId: item.schoolId,
+        createdAt: item.createdAt,
+        actorUserId: item.actorUserId ?? "",
+        note: item.note ?? "",
+        teacherApprovalRoles: item.policy.teacherApprovalRoles.join("|"),
+        minAssessmentAccuracyPct: item.policy.guardrails.minAssessmentAccuracyPct ?? "",
+        repeatedHintThreshold: item.policy.guardrails.repeatedHintThreshold ?? "",
+        lowConfidenceThreshold: item.policy.guardrails.lowConfidenceThreshold ?? "",
+        stalledDaysThreshold: item.policy.guardrails.stalledDaysThreshold ?? "",
+        maxInterventionMinutesPerWeek: item.policy.guardrails.maxInterventionMinutesPerWeek ?? "",
+        cooldownHours: item.policy.guardrails.cooldownHours ?? "",
+      }));
+      return new Response(toCsv(rows), {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename=\"recovery-policy-settings-${new Date().toISOString().slice(0, 10)}.csv\"`,
+        },
+      });
+    }
+
+    const history = await listRecoveryOrchestrationHistory({
+      schoolId: query.schoolId,
+      runId: query.runId,
+      status: query.status,
+      actorUserId: query.actorUserId,
+      actorSchoolTeacherId: query.actorSchoolTeacherId,
+      limit: 1000,
+      offset: 0,
+    });
+
+    const rows = history.items.filter((item) => {
+      if (query.exportType === "rollback_history") return item.action === "recovery_orchestration_rolled_back";
+      if (query.exportType === "retry_activity") return item.action === "recovery_orchestration_executed" && (Boolean(item.metadata.retry) || (item.plan.execution.attempts ?? 0) > 1);
+      return true;
+    }).map((item) => ({
+      runId: item.runId,
+      schoolId: item.schoolId,
+      action: item.action,
+      createdAt: item.createdAt,
+      planStatus: item.plan.status,
+      actorUserId: item.actorUserId ?? "",
+      actorSchoolTeacherId: item.actorSchoolTeacherId ?? "",
+      targetConcept: item.plan.targetConcept,
+      guardrailsPassed: item.plan.guardrailsPassed,
+      blockedReasons: item.plan.blockedReasons.join(" | "),
+      executionProgressPercent: item.plan.execution.progressPercent ?? 0,
+      executionAttempts: item.plan.execution.attempts ?? 0,
+      executed: item.plan.execution.executed,
+      durationMs: item.plan.execution.durationMs ?? "",
+      failureCategory: item.plan.execution.failureClassification?.category ?? "",
+      failureSeverity: item.plan.execution.failureClassification?.severity ?? "",
+      retryRecommended: item.plan.execution.failureClassification?.retryRecommended ?? "",
+      operatorGuidance: item.plan.execution.failureClassification?.operatorGuidance ?? "",
+      lastExecutionError: item.plan.execution.lastExecutionError ?? "",
+      note: item.note ?? "",
+    }));
+
+    return new Response(toCsv(rows), {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename=\"${query.exportType}-${new Date().toISOString().slice(0, 10)}.csv\"`,
+      },
+    });
+  }
+
   const history = await listRecoveryOrchestrationHistory(query);
 
   const policy = query.includePolicy && query.schoolId
     ? await loadRecoveryTenantPolicy({ schoolId: query.schoolId })
+    : null;
+
+  const metrics = query.includeMetrics
+    ? await getRecoveryGovernanceMetrics(query)
+    : null;
+
+  const timeline = query.includeTimeline && query.runId && query.schoolId
+    ? await listRecoveryRunTimeline({ schoolId: query.schoolId, runId: query.runId })
     : null;
 
   return NextResponse.json({
@@ -167,6 +431,8 @@ export async function GET(request: Request) {
     total: history.total,
     query,
     policy,
+    metrics,
+    timeline,
   });
 }
 

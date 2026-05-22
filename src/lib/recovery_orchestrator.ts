@@ -89,7 +89,13 @@ export type RecoveryPlanApprovalState = {
 export type RecoveryPlanExecutionState = {
   executed: boolean;
   executedAtIso: string | null;
+  startedAtIso: string | null;
+  attempts: number;
+  durationMs: number | null;
+  progressPercent: number;
+  partialExecution: boolean;
   lastExecutionError: string | null;
+  failureClassification: RecoveryFailureClassification | null;
   executionEffects: {
     createdContentId: string | null;
     assignmentId: string | null;
@@ -98,6 +104,23 @@ export type RecoveryPlanExecutionState = {
     previousWeakAreaMetadataJson: string | null;
     revisionScheduled: boolean;
   };
+};
+
+export type RecoveryFailureCategory =
+  | "assignment_failure"
+  | "weak_area_failure"
+  | "content_generation_failure"
+  | "permission_failure"
+  | "guardrail_failure"
+  | "unknown_failure";
+
+export type RecoveryFailureSeverity = "low" | "medium" | "high" | "critical";
+
+export type RecoveryFailureClassification = {
+  category: RecoveryFailureCategory;
+  severity: RecoveryFailureSeverity;
+  retryRecommended: boolean;
+  operatorGuidance: string;
 };
 
 export type RecoveryOrchestrationPlan = {
@@ -158,8 +181,62 @@ export const DEFAULT_TENANT_POLICY: RecoveryTenantPolicy = {
   guardrails: {},
 };
 
+const FAILURE_CLASSIFICATION_GUIDANCE: Record<RecoveryFailureCategory, { severity: RecoveryFailureSeverity; retryRecommended: boolean; operatorGuidance: string }> = {
+  assignment_failure: {
+    severity: "high",
+    retryRecommended: true,
+    operatorGuidance: "Check assignment service health and student eligibility, then retry execution.",
+  },
+  weak_area_failure: {
+    severity: "medium",
+    retryRecommended: true,
+    operatorGuidance: "Verify weak-area record integrity for the learner and retry after correcting data issues.",
+  },
+  content_generation_failure: {
+    severity: "high",
+    retryRecommended: true,
+    operatorGuidance: "Confirm AI content generation dependencies and moderation state, then retry.",
+  },
+  permission_failure: {
+    severity: "critical",
+    retryRecommended: false,
+    operatorGuidance: "Review role/permission policy and actor scope before attempting execution again.",
+  },
+  guardrail_failure: {
+    severity: "medium",
+    retryRecommended: false,
+    operatorGuidance: "Adjust intervention load/cooldown policy or wait for guardrails to clear before confirming.",
+  },
+  unknown_failure: {
+    severity: "medium",
+    retryRecommended: true,
+    operatorGuidance: "Inspect run evidence and logs, then retry if no hard policy blocks remain.",
+  },
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function detectFailureCategory(message: string): RecoveryFailureCategory {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("guardrail") || normalized.includes("cooldown") || normalized.includes("weekly cap")) return "guardrail_failure";
+  if (normalized.includes("permission") || normalized.includes("forbidden") || normalized.includes("unauthor") || normalized.includes("not allowed")) return "permission_failure";
+  if (normalized.includes("assign") || normalized.includes("assignment")) return "assignment_failure";
+  if (normalized.includes("weak area") || normalized.includes("weak-area") || normalized.includes("weakarea")) return "weak_area_failure";
+  if (normalized.includes("content") || normalized.includes("aicontent") || normalized.includes("generation")) return "content_generation_failure";
+  return "unknown_failure";
+}
+
+export function classifyRecoveryFailure(message: string): RecoveryFailureClassification {
+  const category = detectFailureCategory(message);
+  const guidance = FAILURE_CLASSIFICATION_GUIDANCE[category];
+  return {
+    category,
+    severity: guidance.severity,
+    retryRecommended: guidance.retryRecommended,
+    operatorGuidance: guidance.operatorGuidance,
+  };
 }
 
 function toNowIso(value?: string): string {
@@ -392,7 +469,13 @@ export function buildRecoveryActionPlan(input: {
     execution: {
       executed: false,
       executedAtIso: null,
+      startedAtIso: null,
+      attempts: 0,
+      durationMs: null,
+      progressPercent: 0,
+      partialExecution: false,
       lastExecutionError: null,
+      failureClassification: null,
       executionEffects: {
         createdContentId: null,
         assignmentId: null,
@@ -468,6 +551,7 @@ export function applyOrchestrationDecision(
   let changed = false;
   let reason = "No status transition applied.";
   let rollbackExecuted = false;
+  const execution = { ...plan.execution };
 
   if (input.decision === "teacher_approve") {
     if (previousStatus === "planned") {
@@ -497,6 +581,8 @@ export function applyOrchestrationDecision(
       reason = "Admin confirmation requires prior teacher approval.";
     } else if (!plan.guardrailsPassed) {
       reason = "Plan cannot be confirmed because one or more guardrails are blocking execution.";
+      execution.lastExecutionError = reason;
+      execution.failureClassification = classifyRecoveryFailure(reason);
     } else {
       reason = `Plan is already ${previousStatus}.`;
     }
@@ -528,6 +614,7 @@ export function applyOrchestrationDecision(
       ...plan,
       status: nextStatus,
       approval,
+      execution,
     },
     result: {
       previousStatus,

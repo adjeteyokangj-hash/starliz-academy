@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   applyOrchestrationDecision,
   buildRecoveryActionPlan,
+  classifyRecoveryFailure,
   detectRecoveryTriggers,
   evaluateRecoveryGuardrails,
   resolvePolicyRules,
@@ -124,4 +125,47 @@ test("rollback instructions are generated for every planned action", () => {
 
   assert.equal(plan.actions.length > 0, true);
   assert.equal(plan.rollbackPlan.length, plan.actions.length);
+});
+
+test("classifyRecoveryFailure maps known categories with retry guidance", () => {
+  const assignmentFailure = classifyRecoveryFailure("Assignment write failed for student.");
+  assert.equal(assignmentFailure.category, "assignment_failure");
+  assert.equal(assignmentFailure.retryRecommended, true);
+
+  const permissionFailure = classifyRecoveryFailure("User forbidden by permission policy.");
+  assert.equal(permissionFailure.category, "permission_failure");
+  assert.equal(permissionFailure.retryRecommended, false);
+
+  const guardrailFailure = classifyRecoveryFailure("Guardrail blocked due to cooldown active.");
+  assert.equal(guardrailFailure.category, "guardrail_failure");
+  assert.equal(guardrailFailure.severity, "medium");
+});
+
+test("admin confirm guardrail block persists failure classification", () => {
+  const plan = buildRecoveryActionPlan({
+    runId: "aro-test-4",
+    schoolId: "school-1",
+    targetConcept: "equivalent fraction",
+    createdAtIso: "2026-05-22T12:00:00.000Z",
+    triggers: [],
+    estimatedComplexity: "medium",
+    estimatedInterventionMinutes: 20,
+    recoveryPath: ["fraction", "equivalent fraction"],
+    blockedReasons: ["Cooldown active"],
+    warnings: [],
+    guardrailsPassed: false,
+  });
+
+  const teacherApproved = applyOrchestrationDecision(plan, {
+    decision: "teacher_approve",
+    actorUserId: "teacher-1",
+    actorSchoolTeacherId: "st-1",
+  });
+  const result = applyOrchestrationDecision(teacherApproved.plan, {
+    decision: "admin_confirm",
+    actorUserId: "admin-1",
+  });
+
+  assert.equal(result.result.changed, false);
+  assert.equal(result.plan.execution.failureClassification?.category, "guardrail_failure");
 });

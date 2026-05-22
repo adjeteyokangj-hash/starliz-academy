@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  startRecoveryGovernanceLiveBridge,
+  type RecoveryGovernanceLiveEvent,
+  type RecoveryGovernanceTransport,
+} from "@/lib/recovery-governance-live-bridge";
 
 type SchoolItem = {
   id: string;
@@ -18,6 +23,19 @@ type RecoveryPolicy = {
     maxInterventionMinutesPerWeek?: number;
     cooldownHours?: number;
   };
+};
+
+type RecoveryFailureClassification = {
+  category:
+    | "assignment_failure"
+    | "weak_area_failure"
+    | "content_generation_failure"
+    | "permission_failure"
+    | "guardrail_failure"
+    | "unknown_failure";
+  severity: "low" | "medium" | "high" | "critical";
+  retryRecommended: boolean;
+  operatorGuidance: string;
 };
 
 type RecoveryHistoryRow = {
@@ -47,7 +65,13 @@ type RecoveryHistoryRow = {
     execution: {
       executed: boolean;
       executedAtIso: string | null;
+      startedAtIso: string | null;
+      attempts: number;
+      durationMs: number | null;
+      progressPercent: number;
+      partialExecution: boolean;
       lastExecutionError: string | null;
+      failureClassification: RecoveryFailureClassification | null;
       executionEffects: {
         createdContentId: string | null;
         assignmentId: string | null;
@@ -60,7 +84,47 @@ type RecoveryHistoryRow = {
   };
 };
 
+type RecoveryGovernanceMetrics = {
+  totalRuns: number;
+  approvalRate: number;
+  rollbackRate: number;
+  retryCount: number;
+  averageExecutionDurationMs: number;
+  guardrailBlockCount: number;
+  partiallyExecutedRuns: number;
+  mostActiveSchools: Array<{ schoolId: string; runCount: number }>;
+};
+
+type RecoveryTimelineEvent = {
+  runId: string;
+  schoolId: string;
+  atIso: string;
+  action: string;
+  stage:
+    | "plan_created"
+    | "teacher_approved"
+    | "admin_confirmed"
+    | "execution_started"
+    | "partial_failure"
+    | "retry_executed"
+    | "rollback_completed"
+    | "guardrail_failed"
+    | "unknown";
+  actorUserId: string | null;
+  actorSchoolTeacherId: string | null;
+  note: string | null;
+};
+
 const STATUS_OPTIONS = ["", "planned", "teacher_approved", "approved", "rejected", "rolled_back"];
+
+function formatDuration(ms: number): string {
+  if (!ms || ms <= 0) return "-";
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remSeconds = seconds % 60;
+  return `${minutes}m ${remSeconds}s`;
+}
 
 export default function RecoveryGovernancePage() {
   const [schools, setSchools] = useState<SchoolItem[]>([]);
@@ -69,11 +133,13 @@ export default function RecoveryGovernancePage() {
   const [status, setStatus] = useState("");
   const [actorUserId, setActorUserId] = useState("");
   const [rows, setRows] = useState<RecoveryHistoryRow[]>([]);
+  const [timeline, setTimeline] = useState<RecoveryTimelineEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [limit] = useState(25);
   const [total, setTotal] = useState(0);
+  const [metrics, setMetrics] = useState<RecoveryGovernanceMetrics | null>(null);
   const [policy, setPolicy] = useState<RecoveryPolicy>({
     teacherApprovalRoles: ["teacher", "admin", "owner"],
     guardrails: {},
@@ -81,6 +147,12 @@ export default function RecoveryGovernancePage() {
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [policyMessage, setPolicyMessage] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const [liveTransport, setLiveTransport] = useState<RecoveryGovernanceTransport | null>(null);
+  const [liveEvents, setLiveEvents] = useState<RecoveryGovernanceLiveEvent[]>([]);
+  const [liveUpdatedAt, setLiveUpdatedAt] = useState<string | null>(null);
+  const lastLiveSinceIsoRef = useRef<string>(new Date().toISOString());
 
   useEffect(() => {
     let active = true;
@@ -114,6 +186,7 @@ export default function RecoveryGovernancePage() {
     if (actorUserId.trim()) params.set("actorUserId", actorUserId.trim());
     params.set("offset", String(offset));
     params.set("limit", String(limit));
+    params.set("includeMetrics", "true");
     if (schoolId) params.set("includePolicy", "true");
     return params.toString();
   }, [schoolId, runId, status, actorUserId, offset, limit]);
@@ -136,9 +209,11 @@ export default function RecoveryGovernancePage() {
         items?: RecoveryHistoryRow[];
         total?: number;
         policy?: RecoveryPolicy | null;
+        metrics?: RecoveryGovernanceMetrics | null;
       };
       setRows(payload.items ?? []);
       setTotal(payload.total ?? 0);
+      setMetrics(payload.metrics ?? null);
       if (payload.policy) {
         setPolicy(payload.policy);
       }
@@ -149,9 +224,93 @@ export default function RecoveryGovernancePage() {
     }
   }
 
+  async function loadTimeline(runValue: string) {
+    if (!schoolId || !runValue) {
+      setTimeline([]);
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({
+        schoolId,
+        runId: runValue,
+        includeTimeline: "true",
+        limit: "200",
+        offset: "0",
+      });
+      const response = await fetch(`/api/admin/recovery-orchestrator?${params.toString()}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        setTimeline([]);
+        return;
+      }
+      const payload = (await response.json()) as { timeline?: RecoveryTimelineEvent[] };
+      setTimeline(payload.timeline ?? []);
+    } catch {
+      setTimeline([]);
+    }
+  }
+
   useEffect(() => {
     void loadHistory();
   }, [queryString]);
+
+  useEffect(() => {
+    if (!selectedRunId) {
+      setTimeline([]);
+      return;
+    }
+    void loadTimeline(selectedRunId);
+  }, [selectedRunId, schoolId]);
+
+  useEffect(() => {
+    if (!schoolId) return;
+
+    const params = new URLSearchParams();
+    params.set("transport", "sse");
+    params.set("schoolId", schoolId);
+    params.set("sinceIso", lastLiveSinceIsoRef.current);
+    if (status) params.set("status", status);
+    if (actorUserId.trim()) params.set("actorUserId", actorUserId.trim());
+
+    const pollingParams = new URLSearchParams();
+    pollingParams.set("transport", "polling");
+    pollingParams.set("schoolId", schoolId);
+    pollingParams.set("sinceIso", lastLiveSinceIsoRef.current);
+    if (status) pollingParams.set("status", status);
+    if (actorUserId.trim()) pollingParams.set("actorUserId", actorUserId.trim());
+
+    const stop = startRecoveryGovernanceLiveBridge({
+      sseUrl: `/api/admin/recovery-orchestrator?${params.toString()}`,
+      pollingUrl: `/api/admin/recovery-orchestrator?${pollingParams.toString()}`,
+      pollingIntervalMs: 10000,
+      onUpdate: ({ transport, envelope }) => {
+        setLiveTransport(transport);
+        setLiveUpdatedAt(envelope.generatedAt);
+        if (!envelope.events.length) return;
+        lastLiveSinceIsoRef.current = envelope.events[envelope.events.length - 1].createdAt;
+        setLiveEvents((current) => [...envelope.events.slice(-8), ...current].slice(0, 30));
+        void loadHistory();
+        if (selectedRunId) {
+          const selectedUpdated = envelope.events.some((entry) => entry.runId === selectedRunId);
+          if (selectedUpdated) {
+            void loadTimeline(selectedRunId);
+          }
+        }
+      },
+      onStatus: ({ transport, state }) => {
+        if (state === "connected") {
+          setLiveTransport(transport);
+        }
+      },
+    });
+
+    return () => {
+      stop();
+    };
+  }, [schoolId, status, actorUserId, selectedRunId]);
 
   const selectedRow = useMemo(
     () => rows.find((row) => row.runId === selectedRunId) ?? null,
@@ -217,8 +376,50 @@ export default function RecoveryGovernancePage() {
         throw new Error(payload.error ?? "Retry failed.");
       }
       await loadHistory();
+      await loadTimeline(row.runId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Retry failed.");
+    }
+  }
+
+  async function downloadExport(exportType: "orchestration_history" | "rollback_history" | "retry_activity" | "school_policy_settings") {
+    setExporting(exportType);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("exportType", exportType);
+      if (schoolId) params.set("schoolId", schoolId);
+      if (runId.trim()) params.set("runId", runId.trim());
+      if (status) params.set("status", status);
+      if (actorUserId.trim()) params.set("actorUserId", actorUserId.trim());
+      params.set("limit", "500");
+      params.set("offset", "0");
+
+      const response = await fetch(`/api/admin/recovery-orchestrator?${params.toString()}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({ error: "Export failed." }))) as { error?: string };
+        throw new Error(payload.error ?? "Export failed.");
+      }
+
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("content-disposition") ?? "";
+      const match = /filename=\"?([^\";]+)\"?/i.exec(contentDisposition);
+      const filename = match?.[1] ?? `${exportType}.csv`;
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Export failed.");
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -235,12 +436,27 @@ export default function RecoveryGovernancePage() {
     });
   }
 
+  const activeSchoolLabel = useMemo(() => {
+    if (!metrics?.mostActiveSchools?.length) return "-";
+    const top = metrics.mostActiveSchools[0];
+    const school = schools.find((item) => item.id === top.schoolId);
+    return `${school?.name ?? top.schoolId} (${top.runCount})`;
+  }, [metrics?.mostActiveSchools, schools]);
+
   return (
     <main className="mx-auto max-w-7xl space-y-5 px-4 py-6 text-slate-100">
       <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
-        <p className="text-xs uppercase tracking-[0.15em] text-cyan-300">Recovery Governance</p>
-        <h1 className="mt-1 text-2xl font-black text-white">Orchestration Governance Replay</h1>
-        <p className="mt-1 text-sm text-slate-300">Filter by school, run, status, and actor. Review execution failures and retry partial runs.</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.15em] text-cyan-300">Recovery Governance</p>
+            <h1 className="mt-1 text-2xl font-black text-white">Orchestration Governance Replay</h1>
+            <p className="mt-1 text-sm text-slate-300">Live operations, failure intelligence, retry controls, rollback history, and policy governance.</p>
+          </div>
+          <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-[11px] text-slate-300">
+            <p>Live transport: <span className="font-semibold text-cyan-200">{liveTransport ?? "-"}</span></p>
+            <p>Updated: <span className="font-semibold text-slate-200">{liveUpdatedAt ? new Date(liveUpdatedAt).toLocaleString() : "-"}</span></p>
+          </div>
+        </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <label className="text-xs text-slate-300">
@@ -270,6 +486,42 @@ export default function RecoveryGovernancePage() {
             Actor User Id
             <input value={actorUserId} onChange={(event) => { setActorUserId(event.target.value); setOffset(0); }} className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-xs text-white" placeholder="admin or teacher user id" />
           </label>
+        </div>
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">Total Runs</p>
+          <p className="mt-1 text-2xl font-black text-white">{metrics?.totalRuns ?? 0}</p>
+          <p className="text-[11px] text-slate-400">Most active: {activeSchoolLabel}</p>
+        </article>
+        <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">Approval Rate</p>
+          <p className="mt-1 text-2xl font-black text-emerald-200">{metrics?.approvalRate ?? 0}%</p>
+          <p className="text-[11px] text-slate-400">Rollback rate: {metrics?.rollbackRate ?? 0}%</p>
+        </article>
+        <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">Retries</p>
+          <p className="mt-1 text-2xl font-black text-amber-200">{metrics?.retryCount ?? 0}</p>
+          <p className="text-[11px] text-slate-400">Partial runs: {metrics?.partiallyExecutedRuns ?? 0}</p>
+        </article>
+        <article className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">Execution Duration</p>
+          <p className="mt-1 text-2xl font-black text-cyan-200">{formatDuration(metrics?.averageExecutionDurationMs ?? 0)}</p>
+          <p className="text-[11px] text-slate-400">Guardrail blocks: {metrics?.guardrailBlockCount ?? 0}</p>
+        </article>
+      </section>
+
+      <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-white">Governance Exports</h2>
+          <p className="text-xs text-slate-400">CSV snapshots for history, rollback, retry, and policy settings.</p>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => void downloadExport("orchestration_history")} disabled={exporting !== null} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50">{exporting === "orchestration_history" ? "Exporting..." : "Export Orchestration"}</button>
+          <button type="button" onClick={() => void downloadExport("rollback_history")} disabled={exporting !== null} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50">{exporting === "rollback_history" ? "Exporting..." : "Export Rollback"}</button>
+          <button type="button" onClick={() => void downloadExport("retry_activity")} disabled={exporting !== null} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50">{exporting === "retry_activity" ? "Exporting..." : "Export Retries"}</button>
+          <button type="button" onClick={() => void downloadExport("school_policy_settings")} disabled={exporting !== null} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50">{exporting === "school_policy_settings" ? "Exporting..." : "Export Policies"}</button>
         </div>
       </section>
 
@@ -325,6 +577,17 @@ export default function RecoveryGovernancePage() {
 
         {error ? <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{error}</p> : null}
 
+        {liveEvents.length ? (
+          <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950/60 p-3 text-[11px] text-slate-300">
+            <p className="font-semibold text-cyan-200">Live Incident Feed</p>
+            <ul className="mt-2 space-y-1">
+              {liveEvents.slice(0, 6).map((entry) => (
+                <li key={`${entry.runId}-${entry.createdAt}-${entry.eventType}`}>{new Date(entry.createdAt).toLocaleTimeString()} · {entry.eventType} · {entry.runId} · {entry.status} · progress {entry.progressPercent}%</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <div className="mt-3 overflow-x-auto">
           <table className="min-w-full text-left text-xs">
             <thead>
@@ -357,6 +620,7 @@ export default function RecoveryGovernancePage() {
                   <td className="px-2 py-2 align-top">
                     <p>{row.plan.execution.executed ? "executed" : "pending/partial"}</p>
                     <p className="text-[11px] text-amber-200">{row.plan.execution.lastExecutionError ?? "-"}</p>
+                    <p className="text-[11px] text-slate-400">progress {row.plan.execution.progressPercent ?? 0}%</p>
                   </td>
                   <td className="px-2 py-2 align-top">{new Date(row.createdAt).toLocaleString()}</td>
                   <td className="px-2 py-2 align-top">
@@ -421,6 +685,9 @@ export default function RecoveryGovernancePage() {
               <ul className="mt-2 space-y-1 text-[11px] text-slate-300">
                 <li>Executed: {selectedRow.plan.execution.executed ? "yes" : "no"}</li>
                 <li>Executed at: {selectedRow.plan.execution.executedAtIso ? new Date(selectedRow.plan.execution.executedAtIso).toLocaleString() : "-"}</li>
+                <li>Duration: {formatDuration(selectedRow.plan.execution.durationMs ?? 0)}</li>
+                <li>Attempts: {selectedRow.plan.execution.attempts ?? 0}</li>
+                <li>Progress: {selectedRow.plan.execution.progressPercent ?? 0}%</li>
                 <li>Content id: {selectedRow.plan.execution.executionEffects.createdContentId ?? "-"}</li>
                 <li>Assignment id: {selectedRow.plan.execution.executionEffects.assignmentId ?? "-"}</li>
                 <li>Weak area id: {selectedRow.plan.execution.executionEffects.weakAreaId ?? "-"}</li>
@@ -429,6 +696,22 @@ export default function RecoveryGovernancePage() {
               </ul>
             </article>
 
+            <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+              <p className="text-xs font-semibold text-slate-100">Failure Classification</p>
+              {selectedRow.plan.execution.failureClassification ? (
+                <ul className="mt-2 space-y-1 text-[11px] text-slate-300">
+                  <li>Category: {selectedRow.plan.execution.failureClassification.category}</li>
+                  <li>Severity: {selectedRow.plan.execution.failureClassification.severity}</li>
+                  <li>Retry Recommended: {selectedRow.plan.execution.failureClassification.retryRecommended ? "yes" : "no"}</li>
+                  <li>Guidance: {selectedRow.plan.execution.failureClassification.operatorGuidance}</li>
+                </ul>
+              ) : (
+                <p className="mt-2 text-[11px] text-slate-300">No failure classification for this run.</p>
+              )}
+            </article>
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
             <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
               <p className="text-xs font-semibold text-slate-100">Rollback Instructions</p>
               <ul className="mt-2 space-y-1 text-[11px] text-slate-300">
@@ -439,21 +722,31 @@ export default function RecoveryGovernancePage() {
                   : <li>No rollback actions recorded.</li>}
               </ul>
             </article>
-          </div>
 
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
             <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-              <p className="text-xs font-semibold text-slate-100">Recovery Path</p>
-              <p className="mt-1 text-xs text-slate-300">{selectedRow.plan.recoveryPath.length ? selectedRow.plan.recoveryPath.join(" -> ") : "-"}</p>
-            </article>
-            <article className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-              <p className="text-xs font-semibold text-slate-100">Guardrails</p>
-              <ul className="mt-1 space-y-1 text-[11px] text-slate-300">
+              <p className="text-xs font-semibold text-slate-100">Recovery Path + Guardrails</p>
+              <p className="mt-1 text-[11px] text-slate-300">Path: {selectedRow.plan.recoveryPath.length ? selectedRow.plan.recoveryPath.join(" -> ") : "-"}</p>
+              <ul className="mt-2 space-y-1 text-[11px] text-slate-300">
                 {selectedRow.plan.blockedReasons.length ? selectedRow.plan.blockedReasons.map((entry) => <li key={entry}>Blocked: {entry}</li>) : <li>No blocked reasons.</li>}
                 {selectedRow.plan.warnings.length ? selectedRow.plan.warnings.map((entry) => <li key={entry}>Warning: {entry}</li>) : <li>No warnings.</li>}
               </ul>
             </article>
           </div>
+
+          <article className="mt-3 rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+            <p className="text-xs font-semibold text-slate-100">Incident Timeline</p>
+            <p className="mt-1 text-[11px] text-slate-400">{"plan created -> teacher approved -> admin confirmed -> execution -> retry/rollback/guardrail outcomes"}</p>
+            <ul className="mt-2 space-y-1 text-[11px] text-slate-300">
+              {timeline.length
+                ? timeline.map((event) => (
+                  <li key={`${event.runId}-${event.atIso}-${event.stage}`}>
+                    {new Date(event.atIso).toLocaleString()} · {event.stage} · {event.action} · actor {event.actorUserId ?? "-"}
+                    {event.note ? ` · ${event.note}` : ""}
+                  </li>
+                ))
+                : <li>No timeline events for this run.</li>}
+            </ul>
+          </article>
         </section>
       ) : null}
     </main>

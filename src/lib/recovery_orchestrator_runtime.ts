@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { assignContentToStudent } from "@/lib/assignments";
 import { parseWeakAreaMetadata, stringifyWeakAreaMetadata } from "@/lib/weakAreas";
-import type { RecoveryOrchestrationPlan } from "@/lib/recovery_orchestrator";
+import { classifyRecoveryFailure, type RecoveryOrchestrationPlan } from "@/lib/recovery_orchestrator";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
 
 function normalizeContentType(subject: string | null | undefined): string {
@@ -27,6 +27,7 @@ function appendUniqueWarning(warnings: string[], warning: string): string[] {
 }
 
 function withExecutionError(plan: RecoveryOrchestrationPlan, message: string): RecoveryOrchestrationPlan {
+  const classified = classifyRecoveryFailure(message);
   return {
     ...plan,
     warnings: appendUniqueWarning(plan.warnings, message),
@@ -34,6 +35,9 @@ function withExecutionError(plan: RecoveryOrchestrationPlan, message: string): R
       ...plan.execution,
       executed: false,
       lastExecutionError: message,
+      partialExecution: false,
+      progressPercent: 0,
+      failureClassification: classified,
     },
   };
 }
@@ -45,8 +49,21 @@ function isExecutionComplete(plan: RecoveryOrchestrationPlan): boolean {
 
 async function executeOrRetry(plan: RecoveryOrchestrationPlan, actorUserId: string): Promise<RecoveryOrchestrationPlan> {
   if (plan.status !== "approved") return plan;
+  const startedAt = new Date();
+  const startedAtIso = startedAt.toISOString();
+  const attempt = (plan.execution.attempts ?? 0) + 1;
+
   if (!plan.studentId) {
-    return withExecutionError(plan, "Execution skipped because no student is attached to this recovery plan.");
+    const erroredPlan = withExecutionError(plan, "Execution skipped because no student is attached to this recovery plan.");
+    return {
+      ...erroredPlan,
+      execution: {
+        ...erroredPlan.execution,
+        startedAtIso,
+        attempts: attempt,
+        durationMs: Date.now() - startedAt.getTime(),
+      },
+    };
   }
 
   const student = await prisma.childProfile.findUnique({
@@ -63,7 +80,16 @@ async function executeOrRetry(plan: RecoveryOrchestrationPlan, actorUserId: stri
   });
 
   if (!student) {
-    return withExecutionError(plan, "Execution skipped because the referenced student no longer exists.");
+    const erroredPlan = withExecutionError(plan, "Execution skipped because the referenced student no longer exists.");
+    return {
+      ...erroredPlan,
+      execution: {
+        ...erroredPlan.execution,
+        startedAtIso,
+        attempts: attempt,
+        durationMs: Date.now() - startedAt.getTime(),
+      },
+    };
   }
 
   const subject = "maths";
@@ -71,6 +97,16 @@ async function executeOrRetry(plan: RecoveryOrchestrationPlan, actorUserId: stri
   const checkpoints = revisionCheckpoints();
   const effects = {
     ...plan.execution.executionEffects,
+  };
+
+  const computeProgressPercent = () => {
+    const score = [
+      effects.createdContentId ? 1 : 0,
+      effects.assignmentId ? 1 : 0,
+      effects.weakAreaId ? 1 : 0,
+      effects.revisionScheduled ? 1 : 0,
+    ].reduce((sum, part) => sum + part, 0);
+    return Math.round((score / 4) * 100);
   };
 
   try {
@@ -216,19 +252,32 @@ async function executeOrRetry(plan: RecoveryOrchestrationPlan, actorUserId: stri
       execution: {
         executed: isExecutionComplete({ ...plan, execution: { ...plan.execution, executionEffects: effects } }),
         executedAtIso: new Date().toISOString(),
+        startedAtIso,
+        attempts: attempt,
+        durationMs: Date.now() - startedAt.getTime(),
+        progressPercent: computeProgressPercent(),
+        partialExecution: !isExecutionComplete({ ...plan, execution: { ...plan.execution, executionEffects: effects } }) && computeProgressPercent() > 0,
         lastExecutionError: null,
+        failureClassification: null,
         executionEffects: effects,
       },
     };
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : "Execution failed during orchestrator runtime.";
+    const classification = classifyRecoveryFailure(message);
     return {
       ...plan,
       warnings: appendUniqueWarning(plan.warnings, `Execution issue: ${message}`),
       execution: {
         ...plan.execution,
         executed: false,
+        startedAtIso,
+        attempts: attempt,
+        durationMs: Date.now() - startedAt.getTime(),
+        progressPercent: computeProgressPercent(),
+        partialExecution: computeProgressPercent() > 0,
         lastExecutionError: message,
+        failureClassification: classification,
         executionEffects: effects,
       },
     };
@@ -301,6 +350,9 @@ export async function rollbackRecoveryOrchestrationPlan(input: {
       ...input.plan.execution,
       executed: false,
       lastExecutionError: null,
+      failureClassification: null,
+      partialExecution: false,
+      progressPercent: 0,
     },
   };
 }
