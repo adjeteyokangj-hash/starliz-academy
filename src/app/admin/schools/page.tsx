@@ -798,6 +798,20 @@ type SchoolOperationalSignals = {
   state: SchoolOperationalState;
 };
 
+type OnboardingChecklistItem = {
+  key: string;
+  label: string;
+  passed: boolean;
+};
+
+type InviteFallbackState = {
+  teacherId: string;
+  role: string;
+  email: string;
+  inviteUrl: string;
+  schoolId: string;
+};
+
 type GovernanceRiskLevel = "Low" | "Medium" | "High" | "Critical";
 
 type GovernanceCardMetaItem = {
@@ -855,6 +869,45 @@ function calculateSchoolOperationalSignals(school: SchoolRecord, ownership: Owne
     readinessScore,
     state,
   };
+}
+
+function buildOnboardingChecklist(school: SchoolRecord, ownership: OwnershipRecord | undefined): OnboardingChecklistItem[] {
+  const activeOrInvitedTeachers = school.teachers.filter((teacher) => teacher.status === "active" || teacher.status === "invited");
+  const hasAdminOrOwnerInvite = activeOrInvitedTeachers.some((teacher) => {
+    const role = teacher.role.toLowerCase();
+    return role === "admin" || role === "owner";
+  });
+  const hasTeacherInvite = activeOrInvitedTeachers.some((teacher) => teacher.role.toLowerCase() === "teacher");
+  const hasSafeguardingLead = Boolean(ownership?.safeguardingLead?.trim());
+  const hasLicenceReady = !school.licence || school.licence.status === "pilot" || school.licence.status === "active";
+  const hasCommunicationPreference = school.communicationPreferences.length > 0;
+  const hasWorkspaceActive = school.status === "active" || school.status === "pilot";
+
+  return [
+    { key: "school-created", label: "School created", passed: Boolean(school.id) },
+    { key: "admin-owner-invited", label: "Admin/Owner invited", passed: hasAdminOrOwnerInvite },
+    { key: "teacher-invited", label: "Teacher invited", passed: hasTeacherInvite },
+    { key: "safeguarding-lead", label: "Safeguarding lead assigned", passed: hasSafeguardingLead },
+    { key: "licence-ready", label: "Licence active or pilot", passed: hasLicenceReady },
+    { key: "comms-preference", label: "Communication preference selected", passed: hasCommunicationPreference },
+    { key: "workspace-active", label: "School workspace active", passed: hasWorkspaceActive },
+  ];
+}
+
+function onboardingStatusLabel(school: SchoolRecord, checklist: OnboardingChecklistItem[]): "Draft" | "Setup in Progress" | "Ready to Invite Users" | "Invites Sent" | "Active" {
+  const passedCount = checklist.filter((item) => item.passed).length;
+  const invitedCount = school.teachers.filter((teacher) => teacher.status === "invited").length;
+  const activeCount = school.teachers.filter((teacher) => teacher.status === "active").length;
+  const hasReadyToInviteBaseline = checklist.find((item) => item.key === "school-created")?.passed
+    && checklist.find((item) => item.key === "safeguarding-lead")?.passed
+    && checklist.find((item) => item.key === "licence-ready")?.passed
+    && checklist.find((item) => item.key === "comms-preference")?.passed;
+
+  if (activeCount > 0 && checklist.every((item) => item.passed)) return "Active";
+  if (invitedCount > 0) return "Invites Sent";
+  if (hasReadyToInviteBaseline) return "Ready to Invite Users";
+  if (passedCount <= 1) return "Draft";
+  return "Setup in Progress";
 }
 
 function schoolRiskState(school: SchoolRecord) {
@@ -1358,6 +1411,7 @@ export default function AdminSchoolsPage() {
   const roleAssignmentTimerRef = useRef<number | null>(null);
   const anchorRegistryRef = useRef(createAdminSectionAnchorRegistry());
   const [inviteRolePulse, setInviteRolePulse] = useState<{ schoolId: string; roleLabel: string } | null>(null);
+  const [inviteFallbackState, setInviteFallbackState] = useState<InviteFallbackState | null>(null);
 
   // Provisioning workflow state
   const [provisioningSteps, setProvisioningSteps] = useState<ProvisioningStep[]>(PROVISIONING_STEPS.map(step => ({ ...step })));
@@ -1793,6 +1847,21 @@ export default function AdminSchoolsPage() {
     return operationalSignalsBySchool[selectedSchool.id] ?? null;
   }, [operationalSignalsBySchool, selectedSchool]);
 
+  const selectedOnboardingChecklist = useMemo(() => {
+    if (!selectedSchool) return [] as OnboardingChecklistItem[];
+    return buildOnboardingChecklist(selectedSchool, ownershipBySchool[selectedSchool.id]);
+  }, [ownershipBySchool, selectedSchool]);
+
+  const selectedOnboardingReady = useMemo(
+    () => selectedOnboardingChecklist.length > 0 && selectedOnboardingChecklist.every((item) => item.passed),
+    [selectedOnboardingChecklist],
+  );
+
+  const selectedOnboardingStatusLabel = useMemo(() => {
+    if (!selectedSchool) return "Draft" as const;
+    return onboardingStatusLabel(selectedSchool, selectedOnboardingChecklist);
+  }, [selectedOnboardingChecklist, selectedSchool]);
+
   const governanceCardMeta = useMemo<Record<"compliance" | "communication" | "safeguarding" | "parentPreferences" | "timeline" | "provisioning" | "mat" | "notifications", GovernanceCardMetaItem> | null>(() => {
     if (!selectedSchool) return null;
 
@@ -2199,6 +2268,9 @@ export default function AdminSchoolsPage() {
 
   function applySchoolSelection(school: SchoolRecord | null) {
     if (!school) return;
+    if (inviteFallbackState && inviteFallbackState.schoolId !== school.id) {
+      setInviteFallbackState(null);
+    }
     setSelectedSchoolId(school.id);
     void loadProvisioningHistory(school.id);
     void loadNotificationData(school.id);
@@ -2253,7 +2325,16 @@ export default function AdminSchoolsPage() {
         body: JSON.stringify({ action, payload }),
       });
 
-      const data = (await response.json()) as { schools?: SchoolRecord[]; error?: string };
+      const data = (await response.json()) as {
+        schools?: SchoolRecord[];
+        error?: string;
+        inviteFallback?: {
+          teacherId: string;
+          role: string;
+          email: string;
+          inviteUrl: string;
+        };
+      };
       if (!response.ok) {
         setError(data.error ?? "Unable to save school changes.");
         return { ok: false, schools: [] as SchoolRecord[] };
@@ -2286,6 +2367,17 @@ export default function AdminSchoolsPage() {
             setInviteRolePulse((current) => (current?.schoolId === schoolId ? null : current));
             roleAssignmentTimerRef.current = null;
           }, 2200);
+        }
+      }
+      if ((action === "inviteTeacher" || action === "resendInvite") && data.inviteFallback) {
+        const schoolId = typeof payload.schoolId === "string"
+          ? payload.schoolId
+          : nextSchools.find((school) => school.teachers.some((teacher) => teacher.id === data.inviteFallback?.teacherId))?.id ?? "";
+        if (schoolId) {
+          setInviteFallbackState({
+            ...data.inviteFallback,
+            schoolId,
+          });
         }
       }
       setSchools(nextSchools);
@@ -4343,6 +4435,8 @@ export default function AdminSchoolsPage() {
               <tbody>
                 {filteredSchools.map((school) => {
                   const risk = schoolRiskState(school);
+                  const onboardingChecklist = buildOnboardingChecklist(school, ownershipBySchool[school.id]);
+                  const onboardingLabel = onboardingStatusLabel(school, onboardingChecklist);
                   const riskClass = risk.licenceExpired || risk.seatFull || school.safeguarding.criticalAlerts > 0
                     ? "bg-rose-500/10"
                     : selectedSchoolId === school.id
@@ -4360,6 +4454,7 @@ export default function AdminSchoolsPage() {
                       <span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${badgeClass(school.status)}`}>
                         {schoolStatusLabel(school.status)}
                       </span>
+                      <p className="mt-1 text-[11px] text-slate-300">{onboardingLabel}</p>
                       {risk.licenceExpired ? <p className="mt-1 text-[11px] font-semibold text-rose-200">Expired licence</p> : null}
                     </td>
                     <td className="px-3 py-3">
@@ -4416,6 +4511,24 @@ export default function AdminSchoolsPage() {
                 <p className="text-xs text-slate-400">Operational State</p>
                 <p className="mt-1 text-xl font-black text-white">{selectedOperationalSignals?.state ?? "Operational"}</p>
                 <p className="text-[11px] text-slate-400">Readiness score {selectedOperationalSignals?.readinessScore ?? 0}%</p>
+              </div>
+            </div>
+            <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">Onboarding readiness</p>
+                  <p className="text-sm font-semibold text-white">Status: {selectedOnboardingStatusLabel}</p>
+                </div>
+                <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${selectedOnboardingReady ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100" : "border-amber-500/40 bg-amber-500/15 text-amber-100"}`}>
+                  {selectedOnboardingReady ? "Ready to onboard users" : "Onboarding blockers remaining"}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {selectedOnboardingChecklist.map((item) => (
+                  <div key={item.key} className={`rounded-lg border px-3 py-2 text-xs ${item.passed ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-100" : "border-amber-500/35 bg-amber-500/10 text-amber-100"}`}>
+                    <span className="font-semibold">{item.passed ? "Done" : "Pending"}</span> · {item.label}
+                  </div>
+                ))}
               </div>
             </div>
             </AdminSectionCard>
@@ -4671,6 +4784,36 @@ export default function AdminSchoolsPage() {
                     {inviteRolePulse?.schoolId === selectedSchool.id ? (
                       <div className="mb-3 rounded-lg border border-emerald-400/55 bg-emerald-500/15 p-2 text-xs font-semibold text-emerald-100 [animation:roleAssignPulse_900ms_ease-out_2]">
                         Role assignment sent: {inviteRolePulse.roleLabel}
+                      </div>
+                    ) : null}
+                    {inviteFallbackState?.schoolId === selectedSchool.id ? (
+                      <div className="mb-3 rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-xs text-sky-100">
+                        <p className="font-semibold text-sky-50">Invite fallback ready</p>
+                        <p className="mt-1 break-all">{inviteFallbackState.email || "Staff user"} · {getSchoolRoleLabel(inviteFallbackState.role as SchoolRole)}</p>
+                        <p className="mt-1 break-all text-[11px] text-sky-200">{inviteFallbackState.inviteUrl}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className={subtleButtonClass}
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(inviteFallbackState.inviteUrl);
+                                enqueueToast("Invite link copied", "Share this secure invite link directly with the recipient.");
+                              } catch {
+                                setError("Clipboard copy failed. Copy the fallback URL manually.");
+                              }
+                            }}
+                          >
+                            Copy invite link
+                          </button>
+                          <button
+                            type="button"
+                            className={subtleButtonClass}
+                            onClick={() => setInviteFallbackState(null)}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
                       </div>
                     ) : null}
                     <form onSubmit={(event) => void onInviteTeacher(event)} className="mt-3 grid gap-2">

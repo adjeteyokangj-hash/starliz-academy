@@ -8,6 +8,10 @@ import { canAddSchoolStudent } from "@/lib/schools/licensing";
 import { createInviteToken, resendInviteToken } from "@/lib/schools/invite";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
 
+function getBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+}
+
 type SchoolPayload = {
   schools: Array<{
     id: string;
@@ -512,6 +516,15 @@ export async function POST(request: Request) {
   try {
     const parsed = actionSchema.parse(await request.json());
 
+    let inviteFallback:
+      | {
+        teacherId: string;
+        role: string;
+        email: string;
+        inviteUrl: string;
+      }
+      | null = null;
+
     switch (parsed.action) {
       case "createSchool": {
         const slug = await uniqueSlug(parsed.payload.name, parsed.payload.slug);
@@ -698,6 +711,7 @@ export async function POST(request: Request) {
 
         // Generate secure invite token
         const inviteToken = await createInviteToken(schoolTeacher.id);
+        const inviteUrl = `${getBaseUrl()}/invite/accept?token=${inviteToken}`;
 
         // Audit trail
         await writeSchoolAuditLog({
@@ -709,6 +723,13 @@ export async function POST(request: Request) {
           metadata: { role: parsed.payload.role, email, inviteToken },
           severity: "info",
         });
+
+        inviteFallback = {
+          teacherId: schoolTeacher.id,
+          role: parsed.payload.role,
+          email,
+          inviteUrl,
+        };
         break;
       }
       case "resendInvite": {
@@ -724,6 +745,12 @@ export async function POST(request: Request) {
         }
 
         const newToken = await resendInviteToken(teacher.id);
+        const inviteUrl = `${getBaseUrl()}/invite/accept?token=${newToken}`;
+
+        const teacherUser = await prisma.user.findUnique({
+          where: { id: teacher.userId },
+          select: { email: true },
+        });
 
         await writeSchoolAuditLog({
           schoolId: teacher.schoolId,
@@ -734,6 +761,13 @@ export async function POST(request: Request) {
           metadata: { newToken },
           severity: "info",
         });
+
+        inviteFallback = {
+          teacherId: teacher.id,
+          role: "teacher",
+          email: teacherUser?.email ?? "",
+          inviteUrl,
+        };
         break;
       }
       case "revokeInvite": {
@@ -1024,7 +1058,10 @@ export async function POST(request: Request) {
     }
 
     const payload = await buildPayload();
-    return NextResponse.json(payload);
+    return NextResponse.json({
+      ...payload,
+      ...(inviteFallback ? { inviteFallback } : {}),
+    });
   } catch {
     return NextResponse.json({ error: "Invalid school request." }, { status: 400 });
   }
