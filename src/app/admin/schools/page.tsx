@@ -812,6 +812,14 @@ type InviteFallbackState = {
   schoolId: string;
 };
 
+type SecurityGateState = {
+  blocked: boolean;
+  reason: "none" | "elevated_auth_anomaly";
+  twoFaEnabled: boolean;
+  authAnomalySignals: number;
+  threshold: number;
+};
+
 type GovernanceRiskLevel = "Low" | "Medium" | "High" | "Critical";
 
 type GovernanceCardMetaItem = {
@@ -1412,6 +1420,7 @@ export default function AdminSchoolsPage() {
   const anchorRegistryRef = useRef(createAdminSectionAnchorRegistry());
   const [inviteRolePulse, setInviteRolePulse] = useState<{ schoolId: string; roleLabel: string } | null>(null);
   const [inviteFallbackState, setInviteFallbackState] = useState<InviteFallbackState | null>(null);
+  const [securityGateState, setSecurityGateState] = useState<SecurityGateState | null>(null);
 
   // Provisioning workflow state
   const [provisioningSteps, setProvisioningSteps] = useState<ProvisioningStep[]>(PROVISIONING_STEPS.map(step => ({ ...step })));
@@ -2328,6 +2337,7 @@ export default function AdminSchoolsPage() {
       const data = (await response.json()) as {
         schools?: SchoolRecord[];
         error?: string;
+        securityGate?: SecurityGateState;
         inviteFallback?: {
           teacherId: string;
           role: string;
@@ -2335,8 +2345,15 @@ export default function AdminSchoolsPage() {
           inviteUrl: string;
         };
       };
+      if (data.securityGate) {
+        setSecurityGateState(data.securityGate);
+      }
       if (!response.ok) {
-        setError(data.error ?? "Unable to save school changes.");
+        if (response.status === 423 && data.securityGate?.blocked) {
+          setError(`Security gate active: ${data.securityGate.authAnomalySignals} failed logins in 15m (threshold ${data.securityGate.threshold}). Sensitive actions are temporarily locked.`);
+        } else {
+          setError(data.error ?? "Unable to save school changes.");
+        }
         return { ok: false, schools: [] as SchoolRecord[] };
       }
 
@@ -2429,8 +2446,9 @@ export default function AdminSchoolsPage() {
           return;
         }
 
-        const schoolsPayload = (await schoolsResponse.json()) as { schools: SchoolRecord[] };
+        const schoolsPayload = (await schoolsResponse.json()) as { schools: SchoolRecord[]; securityGate?: SecurityGateState };
         const nextSchools = schoolsPayload.schools ?? [];
+        setSecurityGateState(schoolsPayload.securityGate ?? null);
         setSchools(nextSchools);
 
         if (studentsResponse.ok) {
@@ -4529,6 +4547,30 @@ export default function AdminSchoolsPage() {
                     <span className="font-semibold">{item.passed ? "Done" : "Pending"}</span> · {item.label}
                   </div>
                 ))}
+              </div>
+            </div>
+            <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">Security readiness</p>
+                  <p className="text-sm font-semibold text-white">
+                    {securityGateState?.blocked ? "Sensitive actions locked" : "Sensitive actions available"}
+                  </p>
+                </div>
+                <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${securityGateState?.blocked ? "border-rose-500/40 bg-rose-500/15 text-rose-100" : "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"}`}>
+                  {securityGateState?.blocked ? "Security step-up required" : "Security gate clear"}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                <div className={`rounded-lg border px-3 py-2 text-xs ${securityGateState?.twoFaEnabled ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-100" : "border-amber-500/35 bg-amber-500/10 text-amber-100"}`}>
+                  <span className="font-semibold">{securityGateState?.twoFaEnabled ? "Done" : "Pending"}</span> · Admin 2FA policy enabled
+                </div>
+                <div className={`rounded-lg border px-3 py-2 text-xs ${securityGateState && securityGateState.authAnomalySignals < securityGateState.threshold ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-100" : "border-amber-500/35 bg-amber-500/10 text-amber-100"}`}>
+                  <span className="font-semibold">{securityGateState && securityGateState.authAnomalySignals < securityGateState.threshold ? "Done" : "Monitor"}</span> · Failed logins (15m): {securityGateState?.authAnomalySignals ?? 0}/{securityGateState?.threshold ?? 5}
+                </div>
+                <div className={`rounded-lg border px-3 py-2 text-xs ${selectedSchool.safeguarding.criticalAlerts === 0 ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-100" : "border-amber-500/35 bg-amber-500/10 text-amber-100"}`}>
+                  <span className="font-semibold">{selectedSchool.safeguarding.criticalAlerts === 0 ? "Done" : "Pending"}</span> · Critical safeguarding alerts cleared
+                </div>
               </div>
             </div>
             </AdminSectionCard>

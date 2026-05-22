@@ -12,7 +12,52 @@ function getBaseUrl(): string {
   return process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
 }
 
+const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
+
+type SecuritySettingsRow = {
+  id: string;
+  maxLoginAttempts: number;
+  twoFaEnabled: boolean;
+};
+
+type SecurityGatePayload = {
+  blocked: boolean;
+  reason: "none" | "elevated_auth_anomaly";
+  twoFaEnabled: boolean;
+  authAnomalySignals: number;
+  threshold: number;
+};
+
+function getSecuritySettingsModel() {
+  return (prisma as unknown as { securitySettings?: {
+    findFirst: () => Promise<SecuritySettingsRow | null>;
+  } }).securitySettings;
+}
+
+async function loadSecurityGateContext(): Promise<SecurityGatePayload> {
+  const model = getSecuritySettingsModel();
+  const settings = model ? await model.findFirst() : null;
+  const threshold = Math.max(3, settings?.maxLoginAttempts ?? 5);
+  const authAnomalySignals = await prisma.schoolLoginHistory.count({
+    where: {
+      success: false,
+      createdAt: { gte: new Date(Date.now() - FIFTEEN_MINUTES_MS) },
+    },
+  });
+  const twoFaEnabled = Boolean(settings?.twoFaEnabled);
+  const blocked = twoFaEnabled && authAnomalySignals >= threshold;
+
+  return {
+    blocked,
+    reason: blocked ? "elevated_auth_anomaly" : "none",
+    twoFaEnabled,
+    authAnomalySignals,
+    threshold,
+  };
+}
+
 type SchoolPayload = {
+  securityGate: SecurityGatePayload;
   schools: Array<{
     id: string;
     name: string;
@@ -283,6 +328,7 @@ async function uniqueSlug(name: string, provided?: string): Promise<string> {
 }
 
 async function buildPayload(): Promise<SchoolPayload> {
+  const securityGate = await loadSecurityGateContext();
   const schools = await prisma.school.findMany({
     orderBy: [{ updatedAt: "desc" }],
     include: {
@@ -378,6 +424,7 @@ async function buildPayload(): Promise<SchoolPayload> {
   });
 
   return {
+    securityGate,
     schools: schools.map((school) => {
       const seatsUsed = school.students.filter((row) => row.status === "active").length;
       const seatLimit = school.licence?.seatLimit ?? 0;
@@ -509,12 +556,38 @@ export async function GET() {
   return NextResponse.json(payload);
 }
 
+function isSecuritySensitiveAction(parsed: z.infer<typeof actionSchema>): boolean {
+  switch (parsed.action) {
+    case "inviteTeacher":
+      return parsed.payload.role === "owner" || parsed.payload.role === "admin";
+    case "updateSchool":
+      return parsed.payload.status === "suspended";
+    case "exportSchoolData":
+    case "exportStudentData":
+    case "requestDeleteStudentData":
+      return true;
+    default:
+      return false;
+  }
+}
+
 export async function POST(request: Request) {
   const { session, response } = await requireAdminPermission("students:write");
   if (!session) return response;
 
   try {
     const parsed = actionSchema.parse(await request.json());
+    const securityGate = await loadSecurityGateContext();
+
+    if (isSecuritySensitiveAction(parsed) && securityGate.blocked) {
+      return NextResponse.json(
+        {
+          error: "Security step-up required: elevated failed-login risk detected. Retry after the anomaly window clears or reduce failed login volume.",
+          securityGate,
+        },
+        { status: 423 },
+      );
+    }
 
     let inviteFallback:
       | {
