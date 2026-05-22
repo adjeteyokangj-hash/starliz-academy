@@ -11,6 +11,27 @@ type InviteRecord = {
   createdAt: string;
 };
 
+type ManagedTeacher = {
+  id: string;
+  schoolId: string;
+  userId: string;
+  role: "owner" | "admin" | "teacher" | "support" | "staff_observer" | "finance";
+  status: "invited" | "active" | "suspended" | "archived";
+  title: string | null;
+  invitedAt: string | null;
+  acceptedAt: string | null;
+  lastActiveAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  isCurrentActor: boolean;
+  user: { id: string; name: string | null; email: string };
+  classrooms: Array<{ id: string; name: string }>;
+};
+
+type ManageTeacherAction = "suspend" | "reactivate" | "changeRole";
+type TeacherStatusFilter = "all" | "active" | "invited" | "suspended" | "archived";
+type EditableTeacherRole = "admin" | "teacher" | "support" | "staff_observer" | "finance";
+
 type CommunicationPreference = {
   linkId: string;
   parent: { id: string; name: string | null; email: string };
@@ -98,6 +119,25 @@ function fmtDate(value: string | null) {
   return new Date(value).toLocaleString();
 }
 
+function roleLabel(role: ManagedTeacher["role"]) {
+  const labels: Record<ManagedTeacher["role"], string> = {
+    owner: "School Owner",
+    admin: "School Admin",
+    teacher: "Teacher",
+    support: "Support Staff",
+    staff_observer: "Staff Observer",
+    finance: "Finance",
+  };
+  return labels[role];
+}
+
+function statusBadgeClass(status: ManagedTeacher["status"]) {
+  if (status === "active") return "border-emerald-500/40 bg-emerald-500/15 text-emerald-100";
+  if (status === "invited") return "border-cyan-500/40 bg-cyan-500/15 text-cyan-100";
+  if (status === "suspended") return "border-amber-500/40 bg-amber-500/15 text-amber-100";
+  return "border-slate-500/40 bg-slate-500/15 text-slate-100";
+}
+
 export default function TeacherGovernancePanel({
   schoolId,
   schoolName,
@@ -105,6 +145,9 @@ export default function TeacherGovernancePanel({
   canManageCompliance,
   canManageSafeguarding,
 }: Props) {
+  const [teachers, setTeachers] = useState<ManagedTeacher[]>([]);
+  const [teacherStatusFilter, setTeacherStatusFilter] = useState<TeacherStatusFilter>("all");
+  const [roleDrafts, setRoleDrafts] = useState<Record<string, EditableTeacherRole>>({});
   const [invites, setInvites] = useState<InviteRecord[]>([]);
   const [preferences, setPreferences] = useState<CommunicationPreference[]>([]);
   const [logs, setLogs] = useState<CommunicationLog[]>([]);
@@ -127,17 +170,33 @@ export default function TeacherGovernancePanel({
 
       if (canManageInvites) {
         requests.unshift(fetch(`/api/school/invites?schoolId=${schoolId}`, { credentials: "include" }));
+        requests.unshift(fetch(`/api/school/teachers?schoolId=${schoolId}&status=${teacherStatusFilter}`, { credentials: "include" }));
       }
 
       const responses = await Promise.all(requests);
       let offset = 0;
 
       if (canManageInvites) {
+        const teachersResponse = responses[offset++];
+        const teachersPayload = await teachersResponse.json() as { teachers?: ManagedTeacher[]; error?: string };
+        if (!teachersResponse.ok) throw new Error(teachersPayload.error ?? "Unable to load teacher records.");
+        const fetchedTeachers = teachersPayload.teachers ?? [];
+        setTeachers(fetchedTeachers);
+        setRoleDrafts((previous) => {
+          const next: Record<string, EditableTeacherRole> = { ...previous };
+          for (const teacher of fetchedTeachers) {
+            if (teacher.role === "owner") continue;
+            next[teacher.id] = teacher.role;
+          }
+          return next;
+        });
+
         const inviteResponse = responses[offset++];
         const invitePayload = await inviteResponse.json() as { invites?: InviteRecord[]; error?: string };
         if (!inviteResponse.ok) throw new Error(invitePayload.error ?? "Unable to load invites.");
         setInvites(invitePayload.invites ?? []);
       } else {
+        setTeachers([]);
         setInvites([]);
       }
 
@@ -165,7 +224,7 @@ export default function TeacherGovernancePanel({
     } finally {
       setLoading(false);
     }
-  }, [canManageInvites, schoolId]);
+  }, [canManageInvites, schoolId, teacherStatusFilter]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -190,6 +249,36 @@ export default function TeacherGovernancePanel({
       await loadAll();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Unable to update invite.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onTeacherAction(teacher: ManagedTeacher, action: ManageTeacherAction, role?: EditableTeacherRole) {
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/school/teachers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ schoolId, teacherId: teacher.id, action, role }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? `Unable to ${action} teacher.`);
+
+      if (action === "changeRole") {
+        setMessage(`Updated role for ${teacher.user.name ?? teacher.user.email}.`);
+      } else if (action === "suspend") {
+        setMessage(`Suspended ${teacher.user.name ?? teacher.user.email}.`);
+      } else {
+        setMessage(`Reactivated ${teacher.user.name ?? teacher.user.email}.`);
+      }
+
+      await loadAll();
+    } catch (teacherError) {
+      setError(teacherError instanceof Error ? teacherError.message : "Unable to update teacher.");
     } finally {
       setSaving(false);
     }
@@ -296,6 +385,107 @@ export default function TeacherGovernancePanel({
       {loading ? <p className="text-sm text-slate-400">Loading governance workspace...</p> : null}
       {error ? <p className="rounded-2xl border border-rose-500/40 bg-rose-950/40 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
       {message ? <p className="rounded-2xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-100">{message}</p> : null}
+
+      {canManageInvites ? (
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-xl font-black text-white">Teacher Management</h2>
+              <p className="text-sm text-slate-400">Filter staff, update roles, and suspend or reactivate school members.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-400" htmlFor="teacher-status-filter">Status</label>
+              <select
+                id="teacher-status-filter"
+                className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
+                value={teacherStatusFilter}
+                onChange={(event) => setTeacherStatusFilter(event.target.value as TeacherStatusFilter)}
+              >
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="invited">Invited</option>
+                <option value="suspended">Suspended</option>
+                <option value="archived">Archived</option>
+              </select>
+              <span className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">{teachers.length} staff</span>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            {teachers.map((teacher) => {
+              const draftRole = roleDrafts[teacher.id] ?? (teacher.role === "owner" ? "admin" : teacher.role);
+              const roleChanged = teacher.role !== "owner" && draftRole !== teacher.role;
+              const canMutate = !teacher.isCurrentActor && teacher.role !== "owner";
+              return (
+                <article key={teacher.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-bold text-white">{teacher.user.name ?? teacher.user.email}</p>
+                        <span className={`rounded-full border px-2 py-1 text-[11px] font-bold ${statusBadgeClass(teacher.status)}`}>
+                          {teacher.status}
+                        </span>
+                        {teacher.isCurrentActor ? <span className="text-[11px] text-slate-400">You</span> : null}
+                      </div>
+                      <p className="text-xs text-slate-400">{teacher.user.email} • {roleLabel(teacher.role)}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Joined {fmtDate(teacher.createdAt)} • Last active {fmtDate(teacher.lastActiveAt)} • Classrooms {teacher.classrooms.length}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={draftRole}
+                        disabled={!canMutate || saving}
+                        onChange={(event) => {
+                          const value = event.target.value as EditableTeacherRole;
+                          setRoleDrafts((previous) => ({ ...previous, [teacher.id]: value }));
+                        }}
+                        className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white disabled:opacity-50"
+                      >
+                        <option value="admin">School Admin</option>
+                        <option value="teacher">Teacher</option>
+                        <option value="support">Support Staff</option>
+                        <option value="staff_observer">Staff Observer</option>
+                        <option value="finance">Finance</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        disabled={!canMutate || !roleChanged || saving}
+                        onClick={() => void onTeacherAction(teacher, "changeRole", draftRole)}
+                        className="rounded-xl border border-cyan-500/60 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-500/10 disabled:opacity-50"
+                      >
+                        Save Role
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={!canMutate || saving || teacher.status === "suspended"}
+                        onClick={() => void onTeacherAction(teacher, "suspend")}
+                        className="rounded-xl border border-amber-500/60 px-3 py-2 text-xs font-bold text-amber-100 hover:bg-amber-500/10 disabled:opacity-50"
+                      >
+                        Suspend
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={!canMutate || saving || teacher.status === "active"}
+                        onClick={() => void onTeacherAction(teacher, "reactivate")}
+                        className="rounded-xl border border-emerald-500/60 px-3 py-2 text-xs font-bold text-emerald-100 hover:bg-emerald-500/10 disabled:opacity-50"
+                      >
+                        Reactivate
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+
+            {teachers.length === 0 ? <p className="text-sm text-slate-400">No teachers matched this status.</p> : null}
+          </div>
+        </section>
+      ) : null}
 
       {canManageInvites ? (
         <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
