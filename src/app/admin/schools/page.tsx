@@ -820,6 +820,15 @@ type SecurityGateState = {
   threshold: number;
 };
 
+const SECURITY_LOOKBACK_MINUTES = 15;
+
+function securityLockReasonLabel(reason: SecurityGateState["reason"] | undefined): string {
+  if (reason === "elevated_auth_anomaly") {
+    return "Elevated failed-login anomalies in the rolling 15-minute window.";
+  }
+  return "No active security lock reason.";
+}
+
 type GovernanceRiskLevel = "Low" | "Medium" | "High" | "Critical";
 
 type GovernanceCardMetaItem = {
@@ -1421,6 +1430,7 @@ export default function AdminSchoolsPage() {
   const [inviteRolePulse, setInviteRolePulse] = useState<{ schoolId: string; roleLabel: string } | null>(null);
   const [inviteFallbackState, setInviteFallbackState] = useState<InviteFallbackState | null>(null);
   const [securityGateState, setSecurityGateState] = useState<SecurityGateState | null>(null);
+  const [securityLockSeenAt, setSecurityLockSeenAt] = useState<number | null>(null);
 
   // Provisioning workflow state
   const [provisioningSteps, setProvisioningSteps] = useState<ProvisioningStep[]>(PROVISIONING_STEPS.map(step => ({ ...step })));
@@ -1870,6 +1880,26 @@ export default function AdminSchoolsPage() {
     if (!selectedSchool) return "Draft" as const;
     return onboardingStatusLabel(selectedSchool, selectedOnboardingChecklist);
   }, [selectedOnboardingChecklist, selectedSchool]);
+
+  useEffect(() => {
+    if (securityGateState?.blocked) {
+      setSecurityLockSeenAt((current) => current ?? Date.now());
+      return;
+    }
+    setSecurityLockSeenAt(null);
+  }, [securityGateState?.blocked]);
+
+  const securityLockReason = useMemo(
+    () => securityLockReasonLabel(securityGateState?.reason),
+    [securityGateState?.reason],
+  );
+
+  const estimatedUnlockMinutes = useMemo(() => {
+    if (!securityGateState?.blocked) return 0;
+    if (!securityLockSeenAt) return SECURITY_LOOKBACK_MINUTES;
+    const elapsedMinutes = Math.floor((Date.now() - securityLockSeenAt) / (1000 * 60));
+    return Math.max(1, SECURITY_LOOKBACK_MINUTES - elapsedMinutes);
+  }, [liveUpdatedAt, securityGateState?.blocked, securityLockSeenAt]);
 
   const governanceCardMeta = useMemo<Record<"compliance" | "communication" | "safeguarding" | "parentPreferences" | "timeline" | "provisioning" | "mat" | "notifications", GovernanceCardMetaItem> | null>(() => {
     if (!selectedSchool) return null;
@@ -4572,6 +4602,16 @@ export default function AdminSchoolsPage() {
                   <span className="font-semibold">{selectedSchool.safeguarding.criticalAlerts === 0 ? "Done" : "Pending"}</span> · Critical safeguarding alerts cleared
                 </div>
               </div>
+              {securityGateState?.blocked ? (
+                <div className="mt-3 rounded-lg border border-rose-500/35 bg-rose-500/10 p-3 text-xs text-rose-100">
+                  <p className="text-sm font-semibold text-rose-50">Security lock active</p>
+                  <p className="mt-1">Reason: {securityLockReason}</p>
+                  <p className="mt-1">Anomaly count: {securityGateState.authAnomalySignals}</p>
+                  <p className="mt-1">Policy threshold: {securityGateState.threshold} failed logins in 15 minutes.</p>
+                  <p className="mt-1">Estimated unlock window: approximately {estimatedUnlockMinutes} minute{estimatedUnlockMinutes === 1 ? "" : "s"} if no additional failed logins are detected.</p>
+                  <p className="mt-1">Recommended action: wait for the anomaly window to clear, review failed logins in security/audit views, or require admin verification before retrying sensitive actions.</p>
+                </div>
+              ) : null}
             </div>
             </AdminSectionCard>
           </div>
