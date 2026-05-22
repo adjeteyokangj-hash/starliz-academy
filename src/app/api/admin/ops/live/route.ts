@@ -139,17 +139,40 @@ export async function GET(request: Request) {
 
   let updateInterval: ReturnType<typeof setInterval> | null = null;
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  let streamClosed = false;
+
+  const clearTimers = () => {
+    if (updateInterval) {
+      clearInterval(updateInterval);
+      updateInterval = null;
+    }
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+  };
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const encoder = new TextEncoder();
 
+      const safeEnqueue = (chunk: string) => {
+        if (streamClosed) return;
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          streamClosed = true;
+          clearTimers();
+        }
+      };
+
       const push = async () => {
+        if (streamClosed) return;
         try {
           const payload = await buildLiveEnvelope();
-          controller.enqueue(encoder.encode(sseEncode(payload)));
+          safeEnqueue(sseEncode(payload));
         } catch {
-          controller.enqueue(encoder.encode("event: error\ndata: {\"error\":\"snapshot_failed\"}\n\n"));
+          safeEnqueue("event: error\ndata: {\"error\":\"snapshot_failed\"}\n\n");
         }
       };
 
@@ -159,18 +182,12 @@ export async function GET(request: Request) {
       }, 15000);
 
       heartbeatInterval = setInterval(() => {
-        controller.enqueue(encoder.encode(": heartbeat\n\n"));
+        safeEnqueue(": heartbeat\n\n");
       }, 10000);
     },
     cancel() {
-      if (updateInterval) {
-        clearInterval(updateInterval);
-        updateInterval = null;
-      }
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
-      }
+      streamClosed = true;
+      clearTimers();
     },
   });
 
