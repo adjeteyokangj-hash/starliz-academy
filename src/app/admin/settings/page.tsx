@@ -133,8 +133,22 @@ export default function SettingsPage() {
   const [showEditPw, setShowEditPw] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  function redirectToAdminLogin() {
+    const nextPath = typeof window !== "undefined"
+      ? `${window.location.pathname}${window.location.search}`
+      : "/admin/settings";
+    window.location.replace(`/admin/login?next=${encodeURIComponent(nextPath)}`);
+  }
+
+  function handleUnauthorized(response: Response): boolean {
+    if (response.status !== 401) return false;
+    redirectToAdminLogin();
+    return true;
+  }
+
   async function loadAdmins() {
     const res = await fetch("/api/admin/users");
+    if (handleUnauthorized(res)) return;
     const payload = await res.json();
     setAdmins(payload.admins ?? []);
   }
@@ -142,6 +156,7 @@ export default function SettingsPage() {
   async function loadRoles() {
     try {
       const res = await fetch("/api/admin/roles");
+      if (handleUnauthorized(res)) return;
       const payload = await res.json();
       if (res.ok) setRoles(payload.roles ?? []);
     } catch { /* ignore */ }
@@ -150,6 +165,7 @@ export default function SettingsPage() {
   async function loadKeys() {
     try {
       const response = await fetch("/api/admin/settings/api-keys");
+      if (handleUnauthorized(response)) return;
       const payload = await response.json();
       if (!response.ok) {
         setMessage(payload.error ?? "Unable to load saved API keys.");
@@ -184,6 +200,7 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, label: effectiveLabel }),
       });
+        if (handleUnauthorized(response)) return;
       const payload = await response.json();
       if (!response.ok) { setCardMsg({ provider, text: payload.error ?? "Unable to update from address.", ok: false }); return; }
       setCardMsg({ provider, text: "From address saved.", ok: true });
@@ -197,6 +214,7 @@ export default function SettingsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider, label: effectiveLabel, value }),
     });
+    if (handleUnauthorized(response)) return;
     const payload = await response.json();
     if (!response.ok) { setCardMsg({ provider, text: payload.error ?? "Unable to save API key.", ok: false }); return; }
     setValues((c) => ({ ...c, [provider]: "" }));
@@ -211,6 +229,7 @@ export default function SettingsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider }),
     });
+    if (handleUnauthorized(response)) return;
     const payload = await response.json();
     setCardMsg({ provider, text: payload.message ?? payload.error ?? "Test complete.", ok: response.ok });
     await loadKeys();
@@ -225,6 +244,7 @@ export default function SettingsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: adminName, email: adminEmail, password: adminPassword, ...(adminRoleId ? { roleId: adminRoleId } : {}) }),
     });
+    if (handleUnauthorized(res)) return;
     const payload = await res.json();
     if (!res.ok) { setAdminError(payload.error ?? "Unable to create admin user."); return; }
     setAdminMsg(`Admin account created for ${payload.admin.email}.`);
@@ -245,6 +265,7 @@ export default function SettingsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (handleUnauthorized(res)) return;
     const payload = await res.json();
     if (!res.ok) { setEditError(payload.error ?? "Unable to update admin."); return; }
     setEditMsg("Admin updated successfully.");
@@ -254,6 +275,7 @@ export default function SettingsPage() {
 
   async function deleteAdmin(id: string) {
     const res = await fetch(`/api/admin/users?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (handleUnauthorized(res)) return;
     const payload = await res.json();
     if (!res.ok) { setAdminError(payload.error ?? "Unable to delete admin."); return; }
     setDeleteConfirmId(null);
