@@ -1,3 +1,4 @@
+import Link from "next/link";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
 
 type PageProps = {
@@ -12,25 +13,25 @@ export default async function SchoolIdentityAccessPage({ params }: PageProps) {
       schoolId={schoolId}
       activeTab="identity-access"
       title="Identity Access Integrations"
-      subtitle="API keys, scopes, webhook, rate limits, and emergency controls placeholders."
+      subtitle="API keys, scopes, webhook, rate limits, and emergency controls."
     >
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {[
-          "API key management per external app",
-          "Scope-based permissions",
-          "Webhook events",
-          "Rate limiting",
-          "Audit logs",
-          "Card lifecycle history",
-          "Lost/stolen card workflow",
-          "Parent consent rules",
-          "Safeguarding override protection",
-          "Emergency access mode",
+          { title: "API key management per external app", section: "api-keys" },
+          { title: "Scope-based permissions", section: "scopes" },
+          { title: "Webhook events", section: "webhooks" },
+          { title: "Rate limiting", section: "rate-limits" },
+          { title: "Audit logs", section: "audit-logs" },
+          { title: "Card lifecycle history", section: "card-lifecycle" },
+          { title: "Lost/stolen card workflow", section: "card-incident" },
+          { title: "Parent consent rules", section: "parent-consent" },
+          { title: "Safeguarding override protection", section: "safeguarding-override" },
+          { title: "Emergency access mode", section: "emergency-access" },
         ].map((item) => (
-          <article key={item} className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
-            <h2 className="text-sm font-semibold text-white">{item}</h2>
-            <p className="mt-1 text-xs text-slate-400">Audit-ready placeholder card for this identity access control area.</p>
-            <button className="mt-3 rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200">Configure Placeholder</button>
+          <article key={item.title} className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+            <h2 className="text-sm font-semibold text-white">{item.title}</h2>
+            <p className="mt-1 text-xs text-slate-400">Audit-ready controls for this identity access area.</p>
+            <Link href={`/admin/schools/${schoolId}/identity-access?section=${item.section}`} className="mt-3 inline-flex rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Configure Section</Link>
           </article>
         ))}
       </div>
