@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { hashPassword } from "@/lib/auth";
-import { hasPermission } from "@/lib/rbac";
+import { DEFAULT_ROLES, hasPermission } from "@/lib/rbac";
 
 const createAdminSchema = z.object({
   name: z.string().trim().min(1),
@@ -86,22 +86,52 @@ export async function POST(request: Request) {
 
   try {
     const body = createAdminSchema.parse(await request.json());
-    const existing = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() } });
+    const normalizedEmail = body.email.toLowerCase();
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
       return NextResponse.json({ error: "A user with that email already exists." }, { status: 409 });
     }
 
-    // Verify role exists if provided
-    const role = body.roleId ? await prisma.adminRole.findUnique({ where: { id: body.roleId } }) : null;
-    if (body.roleId && !role) {
-      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+    const adminCount = await prisma.adminUser.count();
+    const isFirstAdmin = adminCount === 0;
+
+    let effectiveRoleId: string | undefined;
+    let effectiveRoleName: string | null = null;
+
+    if (isFirstAdmin) {
+      const superAdminConfig = DEFAULT_ROLES.SUPER_ADMIN;
+      const superAdminRole = await prisma.adminRole.upsert({
+        where: { name: "SUPER_ADMIN" },
+        update: {
+          description: superAdminConfig.description,
+          permissions: JSON.stringify(superAdminConfig.permissions),
+          isBuiltIn: true,
+        },
+        create: {
+          name: "SUPER_ADMIN",
+          description: superAdminConfig.description,
+          permissions: JSON.stringify(superAdminConfig.permissions),
+          isBuiltIn: true,
+        },
+      });
+
+      effectiveRoleId = superAdminRole.id;
+      effectiveRoleName = superAdminRole.name;
+    } else if (body.roleId) {
+      // Verify role exists if provided.
+      const role = await prisma.adminRole.findUnique({ where: { id: body.roleId } });
+      if (!role) {
+        return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+      }
+      effectiveRoleId = role.id;
+      effectiveRoleName = role.name;
     }
 
     const passwordHash = await hashPassword(body.password);
     const user = await prisma.user.create({
       data: {
         name: body.name,
-        email: body.email.toLowerCase(),
+        email: normalizedEmail,
         passwordHash,
         role: "admin",
       },
@@ -110,7 +140,7 @@ export async function POST(request: Request) {
     const adminProfile = await prisma.adminUser.create({
       data: {
         userId: user.id,
-        ...(body.roleId ? { roleId: body.roleId } : {}),
+        ...(effectiveRoleId ? { roleId: effectiveRoleId } : {}),
         active: true,
       },
       include: {
@@ -127,7 +157,11 @@ export async function POST(request: Request) {
         action: "CREATE_ADMIN_USER",
         entityType: "admin_user",
         entityId: adminProfile.id,
-        metadataJson: JSON.stringify({ email: user.email, role: role?.name ?? null }),
+        metadataJson: JSON.stringify({
+          email: user.email,
+          role: effectiveRoleName,
+          firstAdminBootstrap: isFirstAdmin,
+        }),
       },
     });
 
