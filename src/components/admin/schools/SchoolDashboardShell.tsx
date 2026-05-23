@@ -79,7 +79,7 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
       { key: "staff", label: "Teachers", href: `/admin/schools/${schoolId}/staff` },
       { key: "classrooms", label: "Classes", href: `/admin/schools/${schoolId}/classrooms` },
       { key: "assignments", label: "Assignments", href: `/admin/schools/${schoolId}/assignments` },
-      { key: "attendance-activity", label: "Attendance / Activity", href: `/admin/schools/${schoolId}/attendance-activity` },
+      { key: "attendance-activity", label: "Attendance Intelligence", href: `/admin/schools/${schoolId}/attendance-activity` },
       { key: "safeguarding", label: "Safeguarding", href: `/admin/schools/${schoolId}/safeguarding` },
       { key: "governance", label: "Governance", href: `/admin/schools/${schoolId}/governance` },
       { key: "compliance", label: "Compliance", href: `/admin/schools/${schoolId}/compliance` },
@@ -230,10 +230,10 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
 
         <p className="mt-4 mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Quick Actions</p>
         <div className="flex flex-wrap gap-2">
-          <Link href={`/admin/schools/${schoolId}/students`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Add Student</Link>
-          <Link href={`/admin/schools/${schoolId}/staff`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Add Teacher</Link>
-          <Link href={`/admin/schools/${schoolId}/classrooms`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Create Class</Link>
-          <Link href={`/admin/schools/${schoolId}/assignments`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Assign Lesson</Link>
+          <Link href={`/admin/schools/${schoolId}/students/new`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Add Student</Link>
+          <Link href={`/admin/schools/${schoolId}/staff/new?role=teacher`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Add Teacher</Link>
+          <Link href={`/admin/schools/${schoolId}/classrooms/new`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Create Class</Link>
+          <Link href={`/admin/schools/${schoolId}/assignments/new`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Assign Lesson</Link>
           <Link href={`/admin/schools/${schoolId}/ai-intelligence`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Generate AI Content</Link>
           <Link href={`/admin/schools/${schoolId}/safeguarding`} className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-100 transition hover:bg-rose-500/20">Open Safeguarding</Link>
           <Link href={`/admin/schools/${schoolId}/governance`} className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20">Open Governance</Link>
