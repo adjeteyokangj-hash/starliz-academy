@@ -43,6 +43,18 @@ Create or update an admin account:
 npm run seed:admin -- --email admin@example.com --password "StrongPassword123!" --name "StarLiz Admin"
 ```
 
+## Local Prisma Helper
+
+Use the local Prisma helper when running Prisma against `.env.local` without pasting long shell commands.
+
+```bash
+npm run prisma:local:pull
+npm run prisma:local:generate
+npm run prisma:local:studio
+```
+
+The helper loads `.env.local`, normalises `DATABASE_URL` and `DIRECT_URL` only in runtime memory, and never prints full database URLs.
+
 ## Assigned Content E2E (Playwright)
 
 Run the closed-loop assignment test (spelling + math + reading):
