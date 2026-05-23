@@ -89,6 +89,10 @@ export default function SubscriptionsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [planFilter, setPlanFilter] = useState("all");
   const [canManagePlans, setCanManagePlans] = useState(false);
+  const [applyParentId, setApplyParentId] = useState(() => requestedParentId ?? "");
+  const [applyPlanKey, setApplyPlanKey] = useState("standard");
+  const [applyStatus, setApplyStatus] = useState<SubscriptionRow["status"]>("active");
+  const [applyRenewalDate, setApplyRenewalDate] = useState("");
 
   const loadRows = useCallback(async (withLoading = true) => {
     if (withLoading) setLoading(true);
@@ -137,6 +141,48 @@ export default function SubscriptionsPage() {
       await loadRows();
     } catch {
       setError("Unable to run action.");
+    } finally {
+      setWorkingParentId(null);
+    }
+  }
+
+  async function applySubscriptionPlan() {
+    const parentId = applyParentId.trim();
+    if (!parentId) {
+      setError("Enter a parent ID before applying a subscription plan.");
+      return;
+    }
+
+    setWorkingParentId(parentId);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/subscriptions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          parentId,
+          action: "change_plan",
+          planKey: applyPlanKey,
+          status: applyStatus,
+          renewalDate: applyRenewalDate
+            ? new Date(`${applyRenewalDate}T00:00:00.000Z`).toISOString()
+            : null,
+        }),
+      });
+
+      const payload = (await response.json()) as { error?: string; message?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Unable to apply subscription plan.");
+        return;
+      }
+
+      setMessage(payload.message ?? `Subscription plan applied to ${parentId}.`);
+      await loadRows();
+    } catch {
+      setError("Unable to apply subscription plan.");
     } finally {
       setWorkingParentId(null);
     }
@@ -199,6 +245,61 @@ export default function SubscriptionsPage() {
         <div className="mb-4 rounded-2xl border border-amber-500/45 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
           You have read-only access. Ask a Super Admin to grant the <span className="font-semibold">parents:write</span> permission to update parent plans.
         </div>
+      ) : null}
+
+      {canManagePlans ? (
+        <section className="mb-4 rounded-2xl border border-indigo-500/25 bg-indigo-950/20 p-3">
+          <p className="text-sm font-semibold text-indigo-100">Apply subscription plan to parent</p>
+          <p className="mt-1 text-xs text-indigo-200/80">Use a parent ID to create or update their current subscription.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <input
+              value={applyParentId}
+              onChange={(event) => setApplyParentId(event.target.value)}
+              placeholder="Parent ID (e.g. cmp...)"
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              disabled={workingParentId === applyParentId.trim()}
+            />
+            <select
+              value={applyPlanKey}
+              onChange={(event) => setApplyPlanKey(event.target.value)}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              disabled={workingParentId === applyParentId.trim()}
+            >
+              {PLAN_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={applyStatus}
+              onChange={(event) => setApplyStatus(event.target.value as SubscriptionRow["status"])}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              disabled={workingParentId === applyParentId.trim()}
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={applyRenewalDate}
+              onChange={(event) => setApplyRenewalDate(event.target.value)}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              disabled={workingParentId === applyParentId.trim()}
+            />
+            <button
+              type="button"
+              onClick={() => void applySubscriptionPlan()}
+              disabled={!applyParentId.trim() || workingParentId === applyParentId.trim()}
+              className="rounded-xl bg-indigo-500 px-3 py-2 text-sm font-bold text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {workingParentId === applyParentId.trim() ? "Applying..." : "Apply plan"}
+            </button>
+          </div>
+        </section>
       ) : null}
 
       <section className="mb-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
