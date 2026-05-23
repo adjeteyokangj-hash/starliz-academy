@@ -85,10 +85,17 @@ export default function SchoolInterventionInsights({ schoolId }: Props) {
     return severity === "critical" || severity === "high";
   }).length;
 
+  const referenceTimestampMs = Math.max(
+    ...school.students.map((student) => new Date(student.updatedAt).getTime()),
+    ...school.activityTimeline.map((item) => new Date(item.createdAt).getTime()),
+    ...school.safeguardingIncidents.map((incident) => new Date(incident.updatedAt).getTime()),
+    0,
+  );
+  const staleCutoffMs = referenceTimestampMs - (1000 * 60 * 60 * 24 * 30);
+
   const staleStudentAssignments = school.students.filter((student) => {
     if (student.status !== "active") return false;
-    const ageMs = Date.now() - new Date(student.updatedAt).getTime();
-    return ageMs > 1000 * 60 * 60 * 24 * 30;
+    return new Date(student.updatedAt).getTime() <= staleCutoffMs;
   }).length;
 
   const priority = interventionPriority(metrics.riskScore);

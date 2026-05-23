@@ -148,7 +148,6 @@ export default function KnowledgeGraphPage() {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [recoveryWord, setRecoveryWord] = useState("");
-  const [pathHighlights, setPathHighlights] = useState<Set<string>>(new Set());
   const [recoveryPlan, setRecoveryPlan] = useState<ApiResponse["recoveryPath"]>(null);
   const [searchTick, setSearchTick] = useState(0);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node, Edge> | null>(null);
@@ -219,7 +218,6 @@ export default function KnowledgeGraphPage() {
         setHasMore(payload.pagination.hasMore);
         setMetrics(payload.metrics);
         setRecoveryPlan(payload.recoveryPath);
-        setPathHighlights(highlighted);
       } catch {
         setError("Unable to load knowledge graph.");
       } finally {
@@ -242,21 +240,22 @@ export default function KnowledgeGraphPage() {
   }, [query, subject, keyStage, yearGroup, school, interventionType, depth]);
 
   useEffect(() => {
-    void runFetch(offset, recoveryWord.trim() ? recoveryWord : null);
-  }, [offset, runFetch, searchTick]);
+    const timer = window.setTimeout(() => {
+      void runFetch(offset, recoveryWord.trim() ? recoveryWord : null);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [offset, recoveryWord, runFetch, searchTick]);
 
-  useEffect(() => {
-    setEdges((current) =>
-      current.map((edge) => ({
-        ...edge,
-        style: {
-          ...(edge.style ?? {}),
-          opacity: selectedEdgeType === "all" || edge.label === selectedEdgeType ? 1 : 0.15,
-          strokeWidth: selectedEdgeType === "all" || edge.label === selectedEdgeType ? 2 : 1,
-        },
-      })),
-    );
-  }, [selectedEdgeType]);
+  const renderedEdges = useMemo(() => {
+    return edges.map((edge) => ({
+      ...edge,
+      style: {
+        ...(edge.style ?? {}),
+        opacity: selectedEdgeType === "all" || edge.label === selectedEdgeType ? 1 : 0.15,
+        strokeWidth: selectedEdgeType === "all" || edge.label === selectedEdgeType ? 2 : 1,
+      },
+    }));
+  }, [edges, selectedEdgeType]);
 
   const selectedNodeDetails = useMemo(() => {
     if (!selectedNode) return null;
@@ -391,7 +390,7 @@ export default function KnowledgeGraphPage() {
           <div className="h-[68vh] rounded-xl border border-slate-800 bg-slate-950">
             <ReactFlow
               nodes={nodes}
-              edges={edges}
+              edges={renderedEdges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onInit={setFlowInstance}

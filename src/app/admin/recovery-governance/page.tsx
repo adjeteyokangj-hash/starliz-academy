@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   startRecoveryGovernanceLiveBridge,
   type RecoveryGovernanceLiveEvent,
@@ -325,7 +325,7 @@ export default function RecoveryGovernancePage() {
     return params.toString();
   }, [schoolId, runId, status, actorUserId, offset, limit]);
 
-  async function loadHistory() {
+  const loadHistory = useCallback(async () => {
     if (!schoolId) return;
     setLoading(true);
     setError(null);
@@ -358,9 +358,9 @@ export default function RecoveryGovernancePage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [queryString, schoolId]);
 
-  async function loadTimeline(runValue: string) {
+  const loadTimeline = useCallback(async (runValue: string) => {
     if (!schoolId || !runValue) {
       setTimeline([]);
       return;
@@ -387,19 +387,25 @@ export default function RecoveryGovernancePage() {
     } catch {
       setTimeline([]);
     }
-  }
+  }, [schoolId]);
 
   useEffect(() => {
-    void loadHistory();
-  }, [queryString]);
+    const timer = window.setTimeout(() => {
+      void loadHistory();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadHistory]);
 
   useEffect(() => {
-    if (!selectedRunId) {
-      setTimeline([]);
-      return;
-    }
-    void loadTimeline(selectedRunId);
-  }, [selectedRunId, schoolId]);
+    const timer = window.setTimeout(() => {
+      if (!selectedRunId) {
+        setTimeline([]);
+        return;
+      }
+      void loadTimeline(selectedRunId);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadTimeline, schoolId, selectedRunId]);
 
   useEffect(() => {
     if (!schoolId) return;
@@ -446,7 +452,7 @@ export default function RecoveryGovernancePage() {
     return () => {
       stop();
     };
-  }, [schoolId, status, actorUserId, selectedRunId]);
+  }, [loadHistory, loadTimeline, schoolId, status, actorUserId, selectedRunId]);
 
   const selectedRow = useMemo(
     () => rows.find((row) => row.runId === selectedRunId) ?? null,
@@ -656,11 +662,12 @@ export default function RecoveryGovernancePage() {
   }
 
   const activeSchoolLabel = useMemo(() => {
-    if (!metrics?.mostActiveSchools?.length) return "-";
-    const top = metrics.mostActiveSchools[0];
+    const mostActiveSchools = metrics?.mostActiveSchools;
+    if (!mostActiveSchools?.length) return "-";
+    const top = mostActiveSchools[0];
     const school = schools.find((item) => item.id === top.schoolId);
     return `${school?.name ?? top.schoolId} (${top.runCount})`;
-  }, [metrics?.mostActiveSchools, schools]);
+  }, [metrics, schools]);
 
   const schoolLabel = (value: string | null | undefined) => {
     if (!value) return "all schools";

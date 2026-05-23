@@ -7,6 +7,11 @@ import { useSchoolDashboardRecord, type SchoolDashboardRecord } from "@/componen
 
 type TabKey =
   | "dashboard"
+  | "assignments"
+  | "attendance-activity"
+  | "compliance"
+  | "billing-licence"
+  | "settings"
   | "learning"
   | "interventions"
   | "governance"
@@ -71,27 +76,16 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
     return [
       { key: "dashboard", label: "Overview", href: `/admin/schools/${schoolId}/dashboard` },
       { key: "students", label: "Students", href: `/admin/schools/${schoolId}/students` },
-      { key: "staff", label: "Staff", href: `/admin/schools/${schoolId}/staff` },
-      { key: "learning", label: "Learning", href: `/admin/schools/${schoolId}/learning` },
+      { key: "staff", label: "Teachers", href: `/admin/schools/${schoolId}/staff` },
+      { key: "classrooms", label: "Classes", href: `/admin/schools/${schoolId}/classrooms` },
+      { key: "assignments", label: "Assignments", href: `/admin/schools/${schoolId}/assignments` },
+      { key: "attendance-activity", label: "Attendance / Activity", href: `/admin/schools/${schoolId}/attendance-activity` },
       { key: "safeguarding", label: "Safeguarding", href: `/admin/schools/${schoolId}/safeguarding` },
-      { key: "interventions", label: "Interventions", href: `/admin/schools/${schoolId}/interventions` },
       { key: "governance", label: "Governance", href: `/admin/schools/${schoolId}/governance` },
-      { key: "ai-intelligence", label: "AI Intelligence", href: `/admin/schools/${schoolId}/ai-intelligence` },
-      { key: "communications", label: "Communications", href: `/admin/schools/${schoolId}/communications` },
+      { key: "compliance", label: "Compliance", href: `/admin/schools/${schoolId}/compliance` },
+      { key: "billing-licence", label: "Billing / Licence", href: `/admin/schools/${schoolId}/billing-licence` },
       { key: "reports", label: "Reports", href: `/admin/schools/${schoolId}/reports` },
-    ];
-  }, [schoolId]);
-
-  const operationsTabs = useMemo<TabItem[]>(() => {
-    return [
-      { key: "profile", label: "Profile", href: `/admin/schools/${schoolId}/profile` },
-      { key: "classrooms", label: "Classrooms", href: `/admin/schools/${schoolId}/classrooms` },
-      { key: "parent-onboarding", label: "Parent Onboarding", href: `/admin/schools/${schoolId}/parent-onboarding` },
-      { key: "audit", label: "Audit", href: `/admin/schools/${schoolId}/audit` },
-      { key: "readiness", label: "Readiness", href: `/admin/schools/${schoolId}/readiness` },
-      { key: "roles", label: "Roles", href: `/admin/schools/${schoolId}/roles` },
-      { key: "identity-access", label: "Identity Access", href: `/admin/schools/${schoolId}/identity-access` },
-      { key: "developer-docs", label: "Developer Docs", href: `/admin/schools/${schoolId}/developer-docs` },
+      { key: "settings", label: "Settings", href: `/admin/schools/${schoolId}/settings` },
     ];
   }, [schoolId]);
 
@@ -105,37 +99,34 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
       if (tab.key === "dashboard") return canDo(viewAsRole, "viewDashboard");
       if (tab.key === "students") return canDo(viewAsRole, "viewStudents");
       if (tab.key === "staff") return canDo(viewAsRole, "manageTeachers");
-      if (tab.key === "learning") return canDo(viewAsRole, "viewProgress") || canDo(viewAsRole, "viewWeakAreas");
+      if (tab.key === "classrooms") return canDo(viewAsRole, "viewClassrooms") || canDo(viewAsRole, "manageClassrooms");
+      if (tab.key === "assignments") return canDo(viewAsRole, "viewProgress") || canDo(viewAsRole, "viewStudents");
+      if (tab.key === "attendance-activity") return canDo(viewAsRole, "viewReports") || canDo(viewAsRole, "viewDashboard");
       if (tab.key === "safeguarding") return canDo(viewAsRole, "manageSafeguarding");
-      if (tab.key === "interventions") return canDo(viewAsRole, "viewWeakAreas");
       if (tab.key === "governance") return canDo(viewAsRole, "manageSchoolSettings") || canDo(viewAsRole, "viewAuditLog");
-      if (tab.key === "ai-intelligence") return canDo(viewAsRole, "viewReports") || canDo(viewAsRole, "viewProgress");
-      if (tab.key === "communications") return canDo(viewAsRole, "viewDashboard");
+      if (tab.key === "compliance") return canDo(viewAsRole, "viewAuditLog");
+      if (tab.key === "billing-licence") return canDo(viewAsRole, "viewDashboard");
       if (tab.key === "reports") return canDo(viewAsRole, "viewReports");
+      if (tab.key === "settings") return canDo(viewAsRole, "manageSchoolSettings") || canDo(viewAsRole, "viewDashboard");
       return true;
     });
   }, [tabs, viewAsRole]);
-
-  const visibleOperationsTabs = useMemo(() => {
-    return operationsTabs.filter((tab) => {
-      if (tab.key === "profile") return canDo(viewAsRole, "viewDashboard");
-      if (tab.key === "classrooms") return canDo(viewAsRole, "viewClassrooms") || canDo(viewAsRole, "manageClassrooms");
-      if (tab.key === "parent-onboarding") return canDo(viewAsRole, "viewStudents");
-      if (tab.key === "audit") return canDo(viewAsRole, "viewAuditLog");
-      if (tab.key === "readiness") return canDo(viewAsRole, "viewDashboard");
-      if (tab.key === "roles") return canDo(viewAsRole, "manageSchoolSettings");
-      if (tab.key === "identity-access") return canDo(viewAsRole, "manageSchoolSettings");
-      if (tab.key === "developer-docs") return canDo(viewAsRole, "viewDashboard");
-      return true;
-    });
-  }, [operationsTabs, viewAsRole]);
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 text-slate-100">
       <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">School Dashboard</p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+              <Link href="/admin/schools" className="rounded-md border border-slate-600 bg-slate-950/70 px-2 py-1 font-semibold transition hover:border-slate-500 hover:text-white">
+                Schools
+              </Link>
+              <span>&gt;</span>
+              <span className="rounded-md border border-slate-700 bg-slate-950/50 px-2 py-1 text-slate-200">{school?.name ?? "School"}</span>
+              <span>&gt;</span>
+              <span className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2 py-1 font-semibold text-sky-100">Dashboard</span>
+            </div>
+            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">School Dashboard</p>
             <h1 className="mt-1 text-2xl font-black text-white">{title}</h1>
             <p className="mt-1 text-sm text-slate-300">{subtitle}</p>
           </div>
@@ -156,7 +147,7 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
               href="/admin/schools"
               className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
             >
-              Back to Schools & Governance
+              Back to Schools
             </Link>
           </div>
         </div>
@@ -236,22 +227,17 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
             </Link>
           ))}
         </div>
-        <p className="mt-4 mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Operations Workspace</p>
+
+        <p className="mt-4 mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Quick Actions</p>
         <div className="flex flex-wrap gap-2">
-          {visibleOperationsTabs.map((tab) => (
-            <Link
-              key={tab.key}
-              href={tab.href}
-              className={[
-                "rounded-lg border px-3 py-1.5 text-xs font-semibold transition",
-                activeTab === tab.key
-                  ? "border-sky-400/60 bg-sky-500/15 text-sky-100"
-                  : "border-slate-600 bg-slate-950/70 text-slate-300 hover:border-slate-500 hover:text-white",
-              ].join(" ")}
-            >
-              {tab.label}
-            </Link>
-          ))}
+          <Link href={`/admin/schools/${schoolId}/students`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Add Student</Link>
+          <Link href={`/admin/schools/${schoolId}/staff`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Add Teacher</Link>
+          <Link href={`/admin/schools/${schoolId}/classrooms`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Create Class</Link>
+          <Link href={`/admin/schools/${schoolId}/assignments`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Assign Lesson</Link>
+          <Link href={`/admin/schools/${schoolId}/ai-intelligence`} className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Generate AI Content</Link>
+          <Link href={`/admin/schools/${schoolId}/safeguarding`} className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-100 transition hover:bg-rose-500/20">Open Safeguarding</Link>
+          <Link href={`/admin/schools/${schoolId}/governance`} className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20">Open Governance</Link>
+          <Link href={`/admin/schools/${schoolId}/reports`} className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20">View Reports</Link>
         </div>
       </section>
 

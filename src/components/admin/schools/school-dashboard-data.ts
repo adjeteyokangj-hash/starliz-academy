@@ -9,6 +9,7 @@ export type SchoolDashboardRecord = {
   name: string;
   slug: string;
   status: string;
+  type?: string;
   notes: string | null;
   licence: {
     status: string;
@@ -23,7 +24,7 @@ export type SchoolDashboardRecord = {
   students: Array<{ id: string; status: string; classroomId: string | null; updatedAt: string }>;
   classrooms: Array<{ id: string; status: string; studentsCount: number }>;
   safeguarding: { openAlerts: number; criticalAlerts: number };
-  safeguardingIncidents: Array<{ id: string; severity: string; status: string; updatedAt: string }>;
+  safeguardingIncidents: Array<{ id: string; category: string; severity: string; status: string; updatedAt: string }>;
   communicationLogs: Array<{ id: string; deliveryStatus: string; createdAt: string }>;
   activityTimeline: Array<{ id: string; action: string; severity: string; createdAt: string }>;
 };
@@ -131,9 +132,14 @@ export function useDerivedSchoolMetrics(school: SchoolDashboardRecord | null) {
       ),
     );
 
+    const referenceTimestampMs = Math.max(
+      ...school.activityTimeline.map((item) => new Date(item.createdAt).getTime()),
+      0,
+    );
+    const recentCutoffMs = referenceTimestampMs - (1000 * 60 * 60 * 24 * 14);
+
     const recentActivity = school.activityTimeline.filter((item) => {
-      const ageMs = Date.now() - new Date(item.createdAt).getTime();
-      return ageMs <= 1000 * 60 * 60 * 24 * 14;
+      return new Date(item.createdAt).getTime() >= recentCutoffMs;
     }).length;
 
     const engagementScore = Math.max(

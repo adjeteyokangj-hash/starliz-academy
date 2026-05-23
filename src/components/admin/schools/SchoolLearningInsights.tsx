@@ -20,9 +20,14 @@ export default function SchoolLearningInsights({ schoolId }: Props) {
 
   const activeClassrooms = school.classrooms.filter((classroom) => classroom.status === "active").length;
   const overloadedClassrooms = school.classrooms.filter((classroom) => classroom.studentsCount > 30).length;
+  const referenceTimestampMs = Math.max(
+    ...school.safeguardingIncidents.map((incident) => new Date(incident.updatedAt).getTime()),
+    ...school.activityTimeline.map((item) => new Date(item.createdAt).getTime()),
+    0,
+  );
+  const recentCutoffMs = referenceTimestampMs - (1000 * 60 * 60 * 24 * 30);
   const recentCriticalIncidents = school.safeguardingIncidents.filter((incident) => {
-    const recentMs = Date.now() - new Date(incident.updatedAt).getTime();
-    return incident.severity.toLowerCase() === "critical" && recentMs <= 1000 * 60 * 60 * 24 * 30;
+    return incident.severity.toLowerCase() === "critical" && new Date(incident.updatedAt).getTime() >= recentCutoffMs;
   }).length;
 
   return (
