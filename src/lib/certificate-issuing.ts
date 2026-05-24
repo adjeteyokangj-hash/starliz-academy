@@ -1,11 +1,14 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { CertificateEligibilityResult, CertificateType } from "@/lib/certificate-eligibility";
+import type { StudentAwardNomination, StudentAwardScope, StudentAwardType } from "@/lib/student-awards";
+
+export type IssuedCertificateType = CertificateType | "award_certificate";
 
 export type IssuedCertificateRecord = {
   id: string;
   certificateNumber: string;
   verificationCode: string;
-  certificateType: CertificateType;
+  certificateType: IssuedCertificateType;
   title: string;
   studentId: string;
   studentName: string;
@@ -17,6 +20,12 @@ export type IssuedCertificateRecord = {
   evidenceSummary: CertificateEligibilityResult["evidenceSummary"];
   subjectBreakdown: CertificateEligibilityResult["subjectBreakdown"];
   verificationUrl: string;
+  awardType?: StudentAwardType;
+  awardScope?: StudentAwardScope;
+  subject?: string | null;
+  strand?: string | null;
+  score?: number | null;
+  nominationId?: string;
 };
 
 export type CertificateIssueBlocked = {
@@ -34,13 +43,18 @@ export type CertificateVerificationResult = {
   certificate: {
     certificateNumber: string;
     verificationCode: string;
-    certificateType: CertificateType;
+    certificateType: IssuedCertificateType;
     title: string;
     studentDisplayName: string;
     yearGroup: string | null;
     term: string;
     issuedAt: string;
     verificationMessage: string;
+    awardType: StudentAwardType | null;
+    awardScope: StudentAwardScope | null;
+    subject: string | null;
+    strand: string | null;
+    score: number | null;
   } | null;
 };
 
@@ -72,6 +86,7 @@ function parseIssuedRecord(value: unknown): IssuedCertificateRecord | null {
     && certificateType !== "subject_achievement"
     && certificateType !== "english_achievement"
     && certificateType !== "mastery_certificate"
+    && certificateType !== "award_certificate"
   ) {
     return null;
   }
@@ -128,6 +143,12 @@ function parseIssuedRecord(value: unknown): IssuedCertificateRecord | null {
     evidenceSummary,
     subjectBreakdown,
     verificationUrl: typeof row.verificationUrl === "string" ? row.verificationUrl : `/certificates/verify/${verificationCode}`,
+    awardType: typeof row.awardType === "string" ? (row.awardType as StudentAwardType) : undefined,
+    awardScope: typeof row.awardScope === "string" ? (row.awardScope as StudentAwardScope) : undefined,
+    subject: typeof row.subject === "string" ? row.subject : null,
+    strand: typeof row.strand === "string" ? row.strand : null,
+    score: typeof row.score === "number" ? row.score : null,
+    nominationId: typeof row.nominationId === "string" ? row.nominationId : undefined,
   };
 }
 
@@ -184,13 +205,18 @@ function certificateTypeCode(type: CertificateType): string {
   return "MC";
 }
 
+function issuedCertificateTypeCode(type: IssuedCertificateType): string {
+  if (type === "award_certificate") return "AW";
+  return certificateTypeCode(type);
+}
+
 export function generateCertificateNumber(input: {
-  certificateType: CertificateType;
+  certificateType: IssuedCertificateType;
   yearGroup?: string | null;
   term: string;
 }): string {
   const year = new Date().getFullYear();
-  const typeCode = certificateTypeCode(input.certificateType);
+  const typeCode = issuedCertificateTypeCode(input.certificateType);
   const termCode = normalize(input.term).slice(0, 3).toUpperCase() || "TRM";
   const yearCode = normalize(input.yearGroup).replace(/[^0-9]/g, "").slice(0, 2) || "00";
   const randomCode = randomBytes(3).toString("hex").toUpperCase();
@@ -240,6 +266,63 @@ export function issueCertificateRecord(input: {
   };
 }
 
+export function issueAwardCertificateRecord(input: {
+  nomination: StudentAwardNomination;
+  studentId: string;
+  studentName: string;
+  yearGroup?: string | null;
+  keyStage?: string | null;
+  verificationBaseUrl?: string;
+}): IssuedCertificateRecord {
+  const certificateNumber = generateCertificateNumber({
+    certificateType: "award_certificate",
+    yearGroup: input.yearGroup,
+    term: input.nomination.term,
+  });
+  const verificationCode = generateVerificationCode();
+  const baseUrl = input.verificationBaseUrl ?? "";
+  const normalizedBase = baseUrl.replace(/\/$/, "");
+  const verificationUrl = normalizedBase
+    ? `${normalizedBase}/certificates/verify/${verificationCode}`
+    : `/certificates/verify/${verificationCode}`;
+
+  return {
+    id: randomUUID(),
+    certificateNumber,
+    verificationCode,
+    certificateType: "award_certificate",
+    title: input.nomination.suggestedCertificateTitle,
+    studentId: input.studentId,
+    studentName: input.studentName,
+    yearGroup: input.yearGroup ?? null,
+    keyStage: input.keyStage ?? null,
+    term: input.nomination.term,
+    status: "issued",
+    issuedAt: new Date().toISOString(),
+    evidenceSummary: {
+      placementCompleted: input.nomination.evidenceSummary.baselineAccuracy > 0,
+      selectedSubjects: 0,
+      requiredScopeCount: 0,
+      scopesWithAssignments: 0,
+      completedAssignments: 0,
+      totalAssignments: 0,
+      quizAttemptCount: 0,
+      activeWeakAreas: input.nomination.evidenceSummary.activeWeakAreas,
+      secureProgressionCount: 0,
+      examAttempts: 0,
+      passedExamAttempts: 0,
+    },
+    subjectBreakdown: [],
+    verificationUrl,
+    awardType: input.nomination.awardType,
+    awardScope: input.nomination.awardScope,
+    subject: input.nomination.subject,
+    strand: input.nomination.strand,
+    score: input.nomination.score,
+    nominationId: input.nomination.nominationId,
+  };
+}
+
 export function maskStudentName(name: string): string {
   const clean = String(name || "").trim();
   if (!clean) return "Learner";
@@ -277,6 +360,11 @@ export function verifyIssuedCertificate(input: {
       verificationMessage: found.status === "revoked"
         ? "This StarLiz Academy certificate has been revoked."
         : "This StarLiz Academy certificate is valid.",
+      awardType: found.awardType ?? null,
+      awardScope: found.awardScope ?? null,
+      subject: found.subject ?? null,
+      strand: found.strand ?? null,
+      score: typeof found.score === "number" ? found.score : null,
     },
   };
 }

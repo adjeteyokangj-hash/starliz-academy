@@ -196,7 +196,9 @@ export async function GET(request: Request) {
     weakAreas,
     studentSkills,
     progressRecords,
-    existingIssuedCertificates: issuedCertificates.map((row) => row.certificateType),
+    existingIssuedCertificates: issuedCertificates
+      .map((row) => row.certificateType)
+      .filter((type): type is "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate" => type !== "award_certificate"),
   });
 
   return NextResponse.json({

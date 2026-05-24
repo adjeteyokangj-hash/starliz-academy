@@ -207,7 +207,9 @@ export async function POST(request: Request) {
     weakAreas,
     studentSkills,
     progressRecords,
-    existingIssuedCertificates: existingIssued.map((row) => row.certificateType),
+    existingIssuedCertificates: existingIssued
+      .map((row) => row.certificateType)
+      .filter((type): type is "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate" => type !== "award_certificate"),
   });
 
   const target = eligibility.certificates.find((row) => row.certificateType === certificateType);

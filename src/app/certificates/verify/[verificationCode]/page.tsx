@@ -60,6 +60,10 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
                 <dd className="font-medium capitalize text-neutral-900">{verification.certificate.certificateType.replaceAll("_", " ")}</dd>
               </div>
               <div>
+                <dt className="text-neutral-500">Title</dt>
+                <dd className="font-medium text-neutral-900">{verification.certificate.title}</dd>
+              </div>
+              <div>
                 <dt className="text-neutral-500">Student</dt>
                 <dd className="font-medium text-neutral-900">{verification.certificate.studentDisplayName}</dd>
               </div>
@@ -75,6 +79,30 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
                 <dt className="text-neutral-500">Issued</dt>
                 <dd className="font-medium text-neutral-900">{formatDate(verification.certificate.issuedAt)}</dd>
               </div>
+              {verification.certificate.certificateType === "award_certificate" ? (
+                <>
+                  <div>
+                    <dt className="text-neutral-500">Award Type</dt>
+                    <dd className="font-medium text-neutral-900">{verification.certificate.awardType?.replaceAll("_", " ") ?? "Award"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-neutral-500">Award Scope</dt>
+                    <dd className="font-medium text-neutral-900">{verification.certificate.awardScope?.replaceAll("_", " ") ?? "Scope"}</dd>
+                  </div>
+                  {verification.certificate.subject ? (
+                    <div>
+                      <dt className="text-neutral-500">Subject</dt>
+                      <dd className="font-medium text-neutral-900">{verification.certificate.subject}</dd>
+                    </div>
+                  ) : null}
+                  {verification.certificate.strand ? (
+                    <div>
+                      <dt className="text-neutral-500">Strand</dt>
+                      <dd className="font-medium text-neutral-900">{verification.certificate.strand.replaceAll("-", " ")}</dd>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
             </dl>
           </div>
         )}

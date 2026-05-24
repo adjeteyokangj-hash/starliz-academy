@@ -1,4 +1,5 @@
 import { ENGLISH_STRANDS } from "@/lib/subject-selection";
+import { createHash } from "node:crypto";
 import type { CertificateEligibilityEngineOutput, CertificateType } from "@/lib/certificate-eligibility";
 import type { SubjectProgressionRecommendation } from "@/lib/subject-level-progression";
 
@@ -19,7 +20,12 @@ export type StudentAwardType =
 
 export type StudentAwardScope = "platform" | "year_group" | "subject" | "subject_strand" | "term" | "academic_year";
 
-export type StudentAwardStatus = "pending_review";
+export type StudentAwardStatus = "pending_review" | "approved" | "rejected";
+
+export type AwardReviewGate = {
+  ok: boolean;
+  reason: string | null;
+};
 
 type PlacementLevel = {
   accuracy: number;
@@ -90,6 +96,7 @@ export type StudentAwardEvidenceInput = {
 };
 
 export type StudentAwardNomination = {
+  nominationId: string;
   awardType: StudentAwardType;
   awardScope: StudentAwardScope;
   studentId: string;
@@ -508,7 +515,19 @@ function buildNomination(input: {
   const strand = input.strand ?? null;
   const titleScope = input.student.yearGroup ? ` - ${input.student.yearGroup}` : "";
 
+  const nominationId = createAwardNominationId({
+    studentId: input.student.studentId,
+    awardType: input.awardType,
+    awardScope: input.awardScope,
+    term: input.student.term,
+    academicYear: input.student.academicYear,
+    yearGroup: input.student.yearGroup ?? null,
+    subject,
+    strand,
+  });
+
   return {
+    nominationId,
     awardType: input.awardType,
     awardScope: input.awardScope,
     studentId: input.student.studentId,
@@ -535,6 +554,30 @@ function buildNomination(input: {
     suggestedCertificateTitle: `${awardLabel(input.awardType)}${titleScope}`,
     suggestedAwardMessage: `${awardLabel(input.awardType)} nomination prepared for review.`,
   };
+}
+
+export function createAwardNominationId(input: {
+  studentId: string;
+  awardType: StudentAwardType;
+  awardScope: StudentAwardScope;
+  term: string;
+  academicYear: string;
+  yearGroup: string | null;
+  subject: string | null;
+  strand: string | null;
+}): string {
+  const source = [
+    normalize(input.studentId),
+    input.awardType,
+    input.awardScope,
+    normalize(input.term),
+    normalize(input.academicYear),
+    normalize(input.yearGroup),
+    normalize(input.subject),
+    normalize(input.strand),
+  ].join("|");
+
+  return `awn-${createHash("sha1").update(source).digest("hex").slice(0, 16)}`;
 }
 
 function subjectNominationScore(base: ScoreComponents): number {
@@ -713,4 +756,44 @@ export function buildAwardNominationsForCohort(input: {
       eligibleCount,
     },
   };
+}
+
+export function canApproveAwardNomination(input: {
+  nomination: StudentAwardNomination;
+  reviewNote?: string | null;
+  notEnoughEvidence?: boolean;
+}): AwardReviewGate {
+  if (input.notEnoughEvidence) {
+    return { ok: false, reason: "Nomination does not have enough evidence." };
+  }
+
+  if (input.nomination.blockers.length > 0 && !String(input.reviewNote ?? "").trim()) {
+    return { ok: false, reason: "Nomination has blockers. Add reviewNote for explicit review handling." };
+  }
+
+  return { ok: true, reason: null };
+}
+
+export function canIssueAwardCertificate(input: {
+  nomination: StudentAwardNomination;
+  nominationStatus: StudentAwardStatus;
+  notEnoughEvidence?: boolean;
+}): AwardReviewGate {
+  if (input.nominationStatus === "pending_review") {
+    return { ok: false, reason: "Pending nominations cannot issue award certificates." };
+  }
+
+  if (input.nominationStatus === "rejected") {
+    return { ok: false, reason: "Rejected nominations cannot issue award certificates." };
+  }
+
+  if (input.notEnoughEvidence) {
+    return { ok: false, reason: "Not enough evidence to issue award certificate." };
+  }
+
+  if (!input.nomination.eligibleForNomination || input.nomination.blockers.length > 0) {
+    return { ok: false, reason: "Nomination is blocked and cannot be issued." };
+  }
+
+  return { ok: true, reason: null };
 }

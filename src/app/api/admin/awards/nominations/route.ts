@@ -6,6 +6,7 @@ import { parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/s
 import { buildSubjectLevelProgression } from "@/lib/subject-level-progression";
 import { buildCertificateEligibility } from "@/lib/certificate-eligibility";
 import { parseIssuedCertificates } from "@/lib/certificate-issuing";
+import { parseAwardReviewDecisions } from "@/lib/award-review-state";
 import {
   buildStudentAwardNominations,
   rankAwardNominations,
@@ -236,8 +237,26 @@ export async function GET(request: Request) {
     progressByStudent.set(row.childId, list);
   }
 
+  const nominationMeta = new Map<string, {
+    decision: {
+      status: "approved" | "rejected";
+      reason: string | null;
+      reviewedAt: string;
+      reviewedBy: string;
+    } | null;
+    issuedAwardCertificate: {
+      certificateNumber: string;
+      verificationCode: string;
+      issuedAt: string;
+      verificationUrl: string;
+    } | null;
+  }>();
+
   const nominations = students.flatMap((student) => {
     const profileJson = student.studentProfile?.aiLearningProfileJson ?? null;
+    const reviewDecisions = parseAwardReviewDecisions(profileJson);
+    const issuedAwardCertificates = parseIssuedCertificates(profileJson)
+      .filter((row) => row.certificateType === "award_certificate");
     const selectedSubjects = parseSelectedSubjectsFromProfileJson(profileJson).length
       ? parseSelectedSubjectsFromProfileJson(profileJson)
       : parseSubjectFocus(student.studentProfile?.subjectFocus ?? null);
@@ -301,7 +320,9 @@ export async function GET(request: Request) {
       progressRecords: studentProgress,
     });
 
-    const existingIssuedCertificates = parseIssuedCertificates(profileJson).map((row) => row.certificateType);
+    const existingIssuedCertificates = parseIssuedCertificates(profileJson)
+      .map((row) => row.certificateType)
+      .filter((type): type is "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate" => type !== "award_certificate");
     const certificateEligibility = buildCertificateEligibility({
       studentId: student.id,
       yearGroup: student.yearGroup,
@@ -335,6 +356,30 @@ export async function GET(request: Request) {
       studentSkills: studentSkillRows,
       progressRecords: studentProgress,
       selectedSubjects,
+    }).map((nomination) => {
+      const decision = reviewDecisions.find((row) => row.nominationId === nomination.nominationId);
+      const issued = issuedAwardCertificates.find((row) => row.nominationId === nomination.nominationId);
+
+      nominationMeta.set(nomination.nominationId, {
+        decision: decision
+          ? {
+              status: decision.status,
+              reason: decision.reason,
+              reviewedAt: decision.reviewedAt,
+              reviewedBy: decision.reviewedBy,
+            }
+          : null,
+        issuedAwardCertificate: issued
+          ? {
+              certificateNumber: issued.certificateNumber,
+              verificationCode: issued.verificationCode,
+              issuedAt: issued.issuedAt,
+              verificationUrl: issued.verificationUrl,
+            }
+          : null,
+      });
+
+      return nomination;
     });
   });
 
@@ -342,7 +387,17 @@ export async function GET(request: Request) {
     .filter((row) => !scope || row.awardScope === scope)
     .filter((row) => !yearGroup || normalize(row.yearGroup) === normalize(yearGroup));
 
-  const eligibleCount = ranked.filter((row) => row.eligibleForNomination).length;
+  const enriched = ranked.map((row) => {
+    const meta = nominationMeta.get(row.nominationId);
+    return {
+      ...row,
+      status: meta?.decision?.status ?? row.status,
+      reviewDecision: meta?.decision ?? null,
+      issuedAwardCertificate: meta?.issuedAwardCertificate ?? null,
+    };
+  });
+
+  const eligibleCount = enriched.filter((row) => row.eligibleForNomination).length;
 
   return NextResponse.json({
     ok: true,
@@ -350,6 +405,7 @@ export async function GET(request: Request) {
     message: eligibleCount > 0
       ? "Award nominations generated. All nominations are pending review."
       : "Not enough evidence to generate eligible nominations.",
+    limitationNote: "Nomination approval is currently calculated from live evidence until a dedicated award table is added.",
     scope: scope ?? "platform",
     term,
     academicYear,
@@ -360,9 +416,9 @@ export async function GET(request: Request) {
     ],
     summary: {
       studentCount: students.length,
-      nominationsCount: ranked.length,
+      nominationsCount: enriched.length,
       eligibleCount,
     },
-    nominations: ranked,
+    nominations: enriched,
   });
 }
