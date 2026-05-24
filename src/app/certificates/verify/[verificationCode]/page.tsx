@@ -51,7 +51,7 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
               {verification.certificate.verificationMessage}
             </div>
 
-            {verification.status === "valid" ? (
+            {verification.status === "valid" || verification.status === "revoked" ? (
               <CertificatePreview
                 title={verification.certificate.title}
                 studentDisplayName={verification.certificate.studentDisplayName}
@@ -68,7 +68,8 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
                 certificateNumber={verification.certificate.certificateNumber}
                 verificationCode={verification.certificate.verificationCode}
                 verificationUrl={`/certificates/verify/${encodeURIComponent(verification.certificate.verificationCode)}`}
-                status="valid"
+                score={verification.certificate.score}
+                status={verification.status}
               />
             ) : null}
 

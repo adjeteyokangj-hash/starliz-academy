@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import CertificatePreview from "@/components/certificates/CertificatePreview";
 
 type AwardNomination = {
   nominationId: string;
@@ -86,6 +87,7 @@ export default function AdminAwardsNominationsPage() {
   const [workingNominationId, setWorkingNominationId] = useState<string | null>(null);
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [previewByNomination, setPreviewByNomination] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async (withLoading = true) => {
     if (withLoading) setLoading(true);
@@ -268,13 +270,53 @@ export default function AdminAwardsNominationsPage() {
                 <p>Certificate Number: <span className="font-mono">{row.issuedAwardCertificate.certificateNumber}</span></p>
                 <p>Verification Code: <span className="font-mono">{row.issuedAwardCertificate.verificationCode}</span></p>
                 <p>Issued At: {new Date(row.issuedAwardCertificate.issuedAt).toLocaleString()}</p>
-                <button
-                  type="button"
-                  onClick={() => window.open(`/certificates/verify/${encodeURIComponent(row.issuedAwardCertificate?.verificationCode ?? "")}`, "_blank", "noopener,noreferrer")}
-                  className="mt-2 rounded border border-emerald-500/40 bg-emerald-900/40 px-2 py-1 text-xs font-bold text-emerald-100"
-                >
-                  Open Verification
-                </button>
+                <div className="mt-2 flex flex-wrap gap-2 print:hidden">
+                  <button
+                    type="button"
+                    onClick={() => window.open(`/certificates/verify/${encodeURIComponent(row.issuedAwardCertificate?.verificationCode ?? "")}`, "_blank", "noopener,noreferrer")}
+                    className="rounded border border-emerald-500/40 bg-emerald-900/40 px-2 py-1 text-xs font-bold text-emerald-100"
+                  >
+                    Open Verification
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewByNomination((prev) => ({
+                        ...prev,
+                        [row.nominationId]: !(prev[row.nominationId] ?? false),
+                      }));
+                    }}
+                    className="rounded border border-cyan-500/40 bg-cyan-900/40 px-2 py-1 text-xs font-bold text-cyan-100"
+                  >
+                    {(previewByNomination[row.nominationId] ?? false) ? "Hide Certificate Preview" : "Preview Certificate"}
+                  </button>
+                </div>
+
+                {(previewByNomination[row.nominationId] ?? false) ? (
+                  <div className="mt-3">
+                    <CertificatePreview
+                      title={`StarLiz ${titleCase(row.awardType)} Award`}
+                      studentDisplayName={row.studentName ? `${row.studentName.charAt(0)}***` : "Learner"}
+                      certificateType="award_certificate"
+                      typeLabel="Award Certificate"
+                      yearGroup={row.yearGroup}
+                      keyStage={null}
+                      term={row.term}
+                      subject={row.subject}
+                      strand={row.strand}
+                      awardType={row.awardType}
+                      awardScope={row.awardScope}
+                      issuedAt={row.issuedAwardCertificate.issuedAt}
+                      certificateNumber={row.issuedAwardCertificate.certificateNumber}
+                      verificationCode={row.issuedAwardCertificate.verificationCode}
+                      verificationUrl={row.issuedAwardCertificate.verificationUrl || `/certificates/verify/${encodeURIComponent(row.issuedAwardCertificate.verificationCode)}`}
+                      status="issued"
+                      score={row.score}
+                      evidenceSummaryText={`Assessment ${row.evidenceSummary.assessmentScore}, improvement ${row.evidenceSummary.improvementPoints}, consistency ${row.evidenceSummary.consistencyScore}`}
+                      showPrintAction
+                    />
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </article>

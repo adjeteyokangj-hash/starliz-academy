@@ -1,22 +1,16 @@
-type CertificatePreviewStatus = "valid" | "issued" | "revoked";
+"use client";
 
-export type CertificatePreviewProps = {
-  title: string;
-  studentDisplayName: string;
-  certificateType: "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate" | "award_certificate";
-  typeLabel: string;
-  yearGroup: string | null;
-  keyStage: string | null;
-  term: string;
-  subject: string | null;
-  strand: string | null;
-  awardType: string | null;
-  awardScope: string | null;
-  issuedAt: string;
-  certificateNumber: string;
-  verificationCode: string;
-  verificationUrl: string;
-  status: CertificatePreviewStatus;
+import CertificateAwardDetails from "@/components/certificates/CertificateAwardDetails";
+import CertificateFrame from "@/components/certificates/CertificateFrame";
+import CertificateMetadata from "@/components/certificates/CertificateMetadata";
+import CertificateRecipient from "@/components/certificates/CertificateRecipient";
+import CertificateSeal from "@/components/certificates/CertificateSeal";
+import CertificateSubjectDetails from "@/components/certificates/CertificateSubjectDetails";
+import CertificateVerificationBlock from "@/components/certificates/CertificateVerificationBlock";
+import { resolveCertificateDesign, type CertificateDesignInput, type CertificatePreviewStatus } from "@/components/certificates/certificate-designs";
+
+export type CertificatePreviewProps = CertificateDesignInput & {
+  showPrintAction?: boolean;
 };
 
 function formatIssuedDate(value: string): string {
@@ -25,12 +19,7 @@ function formatIssuedDate(value: string): string {
   return date.toLocaleDateString("en-GB", { year: "numeric", month: "long", day: "numeric" });
 }
 
-function formatTokenLabel(value: string | null): string | null {
-  if (!value) return null;
-  return value.replaceAll("_", " ").replaceAll("-", " ");
-}
-
-function statusBadge(status: CertificatePreviewStatus): string {
+function statusClass(status: CertificatePreviewStatus): string {
   if (status === "revoked") {
     return "rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-rose-700";
   }
@@ -40,69 +29,87 @@ function statusBadge(status: CertificatePreviewStatus): string {
   return "rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-amber-700";
 }
 
-function statusLabel(status: CertificatePreviewStatus): string {
-  if (status === "revoked") return "revoked";
-  if (status === "valid") return "valid";
-  return "issued";
+function titleCaseToken(value: string | null): string | null {
+  if (!value) return null;
+  return value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .split(/\s+/g)
+    .map((part) => (part ? `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}` : part))
+    .join(" ");
 }
 
 export default function CertificatePreview(props: CertificatePreviewProps) {
-  const isAward = props.certificateType === "award_certificate";
+  const design = resolveCertificateDesign(props);
 
   return (
-    <article className="w-full overflow-hidden rounded-3xl border border-amber-300 bg-gradient-to-b from-amber-50 via-white to-slate-50 shadow-sm">
-      <div className="border-b border-amber-200 bg-[linear-gradient(120deg,rgba(255,251,235,0.95),rgba(255,255,255,1))] px-5 py-4 sm:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-700">StarLiz Academy</p>
-            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">By Okang Group</p>
-          </div>
-          <span className={statusBadge(props.status)}>Status: {statusLabel(props.status)}</span>
+    <div className="space-y-3">
+      {props.showPrintAction ? (
+        <div className="flex justify-end print:hidden">
+          <button
+            type="button"
+            data-print-action="browser-print"
+            onClick={() => window.print()}
+            className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+          >
+            Print Certificate
+          </button>
         </div>
-      </div>
+      ) : null}
 
-      <div className="px-5 py-6 sm:px-8 sm:py-8">
-        <p className="text-center text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Certificate</p>
-        <h3 className="mt-2 text-center text-xl font-black text-slate-900 sm:text-2xl">{props.title}</h3>
-        <p className="mt-6 text-center text-sm text-slate-600">This certificate is proudly awarded to</p>
-        <p className="mt-1 text-center text-2xl font-black tracking-wide text-slate-900 sm:text-3xl">{props.studentDisplayName}</p>
+      <CertificateFrame
+        themeName={design.theme}
+        statusClassName={statusClass(props.status)}
+        badgeText={design.badgeText}
+        accentLabel={design.accentLabel}
+        printClassName={design.printClassName}
+      >
+        <CertificateRecipient
+          themeName={design.theme}
+          title={design.title}
+          subtitle={design.subtitle}
+          recipientLine={design.recipientLine}
+          recipientName={props.studentDisplayName}
+          bodyText={design.bodyText}
+        />
 
-        {isAward ? (
-          <p className="mx-auto mt-5 max-w-2xl text-center text-sm leading-6 text-slate-700">
-            This award is presented in recognition of outstanding progress, commitment, and achievement.
-          </p>
-        ) : (
-          <p className="mx-auto mt-5 max-w-2xl text-center text-sm leading-6 text-slate-700">
-            for successfully completing the required StarLiz Academy learning evidence.
-          </p>
-        )}
+        <CertificateSeal themeName={design.theme} label={design.sealLabel} />
 
-        <div className="mt-6 grid gap-2 rounded-2xl border border-amber-100 bg-white/80 p-4 text-sm text-slate-700 sm:grid-cols-2">
-          <p>Certificate type: <span className="font-semibold text-slate-900">{props.typeLabel}</span></p>
-          <p>Term: <span className="font-semibold text-slate-900">{props.term}</span></p>
-          <p>Year group: <span className="font-semibold text-slate-900">{props.yearGroup ?? "Not set"}</span></p>
-          <p>Key stage: <span className="font-semibold text-slate-900">{props.keyStage ?? "Not set"}</span></p>
-          {props.subject ? <p>Subject: <span className="font-semibold text-slate-900">{props.subject}</span></p> : null}
-          {props.strand ? <p>English strand: <span className="font-semibold text-slate-900">{formatTokenLabel(props.strand)}</span></p> : null}
-          {props.awardType ? <p>Award type: <span className="font-semibold text-slate-900">{formatTokenLabel(props.awardType)}</span></p> : null}
-          {props.awardScope ? <p>Award scope: <span className="font-semibold text-slate-900">{formatTokenLabel(props.awardScope)}</span></p> : null}
-          <p>Issued date: <span className="font-semibold text-slate-900">{formatIssuedDate(props.issuedAt)}</span></p>
-        </div>
+        <CertificateMetadata
+          themeName={design.theme}
+          typeLabel={props.typeLabel}
+          term={props.term}
+          yearGroup={props.yearGroup}
+          keyStage={props.keyStage}
+          issuedDateLabel={formatIssuedDate(props.issuedAt)}
+        />
 
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-600">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <p>
-              Certificate number: <span className="font-mono font-semibold text-slate-900">{props.certificateNumber}</span>
-            </p>
-            <p>
-              Verification code: <span className="font-mono font-semibold text-slate-900">{props.verificationCode}</span>
-            </p>
-          </div>
-          <p className="mt-2 break-all">
-            Verification link: <a href={props.verificationUrl} className="font-semibold text-cyan-700 underline underline-offset-2 hover:text-cyan-900">{props.verificationUrl}</a>
-          </p>
-        </div>
-      </div>
-    </article>
+        {design.showSubjectDetails ? (
+          <CertificateSubjectDetails
+            subject={design.normalizedSubject}
+            strand={design.normalizedStrand}
+            showEnglishStrands={design.showEnglishStrands}
+          />
+        ) : null}
+
+        {design.showAwardDetails ? (
+          <CertificateAwardDetails
+            awardType={titleCaseToken(props.awardType)}
+            awardScope={titleCaseToken(props.awardScope)}
+            score={typeof props.score === "number" ? props.score : null}
+            evidenceSummaryText={props.evidenceSummaryText ?? null}
+          />
+        ) : null}
+
+        {design.showVerificationBlock ? (
+          <CertificateVerificationBlock
+            certificateNumber={props.certificateNumber}
+            verificationCode={props.verificationCode}
+            verificationUrl={props.verificationUrl}
+            footerNote={design.footerNote}
+          />
+        ) : null}
+      </CertificateFrame>
+    </div>
   );
 }

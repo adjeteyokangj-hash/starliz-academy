@@ -33,7 +33,7 @@ function renderPreview(overrides: Partial<CertificatePreviewProps> = {}): string
 
 test("normal certificate preview shows title, number, and verification code", () => {
   const html = renderPreview();
-  assert.match(html, /StarLiz Spring Term Completion Certificate/);
+  assert.match(html, /Certificate of Term Completion/);
   assert.match(html, /SLA-2026-TC-SPR-05-AAAAAA/);
   assert.match(html, /SV-AAAAAA/);
 });
@@ -61,7 +61,7 @@ test("english strand certificate shows subject English and strand", () => {
   });
   assert.match(html, /Subject:\s*<span[^>]*>English<\/span>/);
   assert.match(html, /English strand:/);
-  assert.match(html, /reading comprehension/i);
+  assert.match(html, /Reading Comprehension/);
 });
 
 test("revoked certificate displays revoked status", () => {

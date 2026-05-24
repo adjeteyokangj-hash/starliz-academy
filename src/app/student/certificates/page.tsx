@@ -169,7 +169,7 @@ export default function StudentCertificatesPage() {
                       {row.awardScope ? <p>Award scope: <span className="font-semibold text-slate-900">{row.awardScope.replaceAll("_", " ")}</span></p> : null}
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-wrap gap-2 print:hidden">
                       <a href={row.verificationUrl} className="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100">
                         Verification link
                       </a>
@@ -213,6 +213,7 @@ export default function StudentCertificatesPage() {
                           verificationCode={row.verificationCode}
                           verificationUrl={row.verificationUrl}
                           status={row.status}
+                          showPrintAction
                         />
                       </div>
                     ) : null}

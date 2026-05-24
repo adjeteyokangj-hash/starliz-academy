@@ -994,7 +994,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <p>Certificate number: <span className="font-mono font-semibold text-white">{item.certificateNumber}</span></p>
                             <p>Issued date: <span className="font-semibold text-white">{new Date(item.issuedAt).toLocaleDateString("en-GB")}</span></p>
                           </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
+                          <div className="mt-3 flex flex-wrap gap-2 print:hidden">
                             <a href={item.verificationUrl} className="rounded-xl border border-white/20 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-white/10">
                               Verification link
                             </a>
@@ -1034,6 +1034,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                                 verificationCode={item.verificationCode}
                                 verificationUrl={item.verificationUrl}
                                 status={item.status}
+                                showPrintAction
                               />
                             </div>
                           ) : null}
