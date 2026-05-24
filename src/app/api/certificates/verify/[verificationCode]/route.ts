@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseIssuedCertificates, verifyIssuedCertificate } from "@/lib/certificate-issuing";
+import { writeAuditLog } from "@/lib/audit";
 
 export async function GET(
   _request: Request,
@@ -28,6 +29,16 @@ export async function GET(
 
   const issued = rows.flatMap((row) => parseIssuedCertificates(row.aiLearningProfileJson));
   const verification = verifyIssuedCertificate({ verificationCode, candidates: issued });
+
+  await writeAuditLog({
+    action: "certificate_verification_checked",
+    entityType: "certificate_verification",
+    entityId: verification.status === "not_found" ? undefined : verification.certificate?.verificationCode,
+    metadata: {
+      verificationCode,
+      status: verification.status,
+    },
+  });
 
   if (verification.status === "not_found") {
     return NextResponse.json({

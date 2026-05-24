@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { parseIssuedCertificates, verifyIssuedCertificate } from "@/lib/certificate-issuing";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
+import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 
 type VerifyPageProps = {
   params: Promise<{
@@ -52,7 +53,7 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
             </div>
 
             {verification.status === "valid" ? (
-              <div className="print:hidden">
+              <div className="space-y-2 print:hidden">
                 <a
                   href={`/api/certificates/verify/${encodeURIComponent(verification.certificate.verificationCode)}/export`}
                   target="_blank"
@@ -61,6 +62,10 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
                 >
                   Print / Save as PDF
                 </a>
+                <CertificateShareControls
+                  verificationUrl={`/certificates/verify/${encodeURIComponent(verification.certificate.verificationCode)}`}
+                  compact
+                />
               </div>
             ) : null}
 

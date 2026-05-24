@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
+import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 
 type AwardNomination = {
   nominationId: string;
@@ -297,6 +298,10 @@ export default function AdminAwardsNominationsPage() {
                   >
                     {(previewByNomination[row.nominationId] ?? false) ? "Hide Certificate Preview" : "Preview Certificate"}
                   </button>
+                </div>
+
+                <div className="mt-2 print:hidden">
+                  <CertificateShareControls verificationUrl={row.issuedAwardCertificate.verificationUrl || `/certificates/verify/${encodeURIComponent(row.issuedAwardCertificate.verificationCode)}`} compact />
                 </div>
 
                 {(previewByNomination[row.nominationId] ?? false) ? (

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
+import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 
 type CertificateLibraryEntry = {
   certificateNumber: string;
@@ -202,6 +203,10 @@ export default function StudentCertificatesPage() {
                       >
                         Open verification page
                       </button>
+                    </div>
+
+                    <div className="mt-3 print:hidden">
+                      <CertificateShareControls verificationUrl={row.verificationUrl} compact />
                     </div>
 
                     {previewOpen ? (

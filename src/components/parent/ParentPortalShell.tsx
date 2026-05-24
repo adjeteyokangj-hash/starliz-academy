@@ -11,6 +11,7 @@ import SecuritySettings from "./SecuritySettings";
 import ConsentAuditView from "./ConsentAuditView";
 import NotificationPreferences from "./NotificationPreferences";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
+import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 import { resolveDashboardTier, dashboardTierLabel, isProfileComplete } from "@/lib/dashboardResolver";
 
 type PortalSection =
@@ -1023,6 +1024,10 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <Link href={`/certificates/verify/${encodeURIComponent(item.verificationCode)}`} className="rounded-xl bg-cyan-500 px-3 py-1.5 text-xs font-bold text-slate-950 hover:bg-cyan-400">
                               Open verification page
                             </Link>
+                          </div>
+
+                          <div className="mt-3 print:hidden">
+                            <CertificateShareControls verificationUrl={item.verificationUrl} compact />
                           </div>
 
                           {previewOpen ? (
