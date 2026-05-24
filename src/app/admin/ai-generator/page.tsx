@@ -145,16 +145,40 @@ type GenerationContext = {
   yearGroup: YearGroup;
   curriculumPathway: string;
   examBoard?: string;
+  englishStrand?: EnglishStrand;
   skillFocus: string;
   ageGroup: (typeof AGE_GROUPS)[number];
   difficulty: number;
   topic: string;
+  activityType?: string;
+  masteryOutcome?: string;
   targetStudentId: string | null;
   source: "manual" | "weak-area";
   weakAreaId: string | null;
 };
 
 const CUSTOM_TOPIC_VALUE = "__custom_topic__";
+type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuation" | "writing" | "vocabulary";
+
+const ENGLISH_STRAND_OPTIONS: Array<{ value: EnglishStrand; label: string }> = [
+  { value: "phonics", label: "Phonics" },
+  { value: "spelling", label: "Spelling" },
+  { value: "reading", label: "Reading" },
+  { value: "grammar", label: "Grammar" },
+  { value: "punctuation", label: "Punctuation" },
+  { value: "writing", label: "Writing" },
+  { value: "vocabulary", label: "Vocabulary" },
+];
+
+function isEnglishParentSubject(value: Subject): boolean {
+  return value === "english-language" || value === "gcse-english" || value === "gcse-english-language";
+}
+
+function deriveSkillFocusFromEnglishStrand(strand: EnglishStrand | "", yearGroup: string): string {
+  if (!strand) return "";
+  const strandSkills = getAvailableSkills(strand as Subject, yearGroup);
+  return strandSkills[0] ?? strand;
+}
 
 const GCSE_SUBJECT_GROUPS: Array<{ label: string; subjects: Subject[] }> = [
   {
@@ -489,7 +513,12 @@ export default function AiGeneratorPage() {
       : availableSubjects[0]
   );
   const [keyStage, setKeyStage] = useState(keyStageForYearGroup(yearGroup));
-  const availableSkills = getAvailableSkills(subject, yearGroup);
+  const requiresEnglishStrand = isEnglishParentSubject(subject);
+  const [englishStrand, setEnglishStrand] = useState<EnglishStrand | "">(
+    isEnglishParentSubject(subject) ? "reading" : ""
+  );
+  const skillSubject = requiresEnglishStrand && englishStrand ? (englishStrand as Subject) : subject;
+  const availableSkills = getAvailableSkills(skillSubject, yearGroup);
   const [skillFocus, setSkillFocus] = useState(
     prefillSkill && availableSkills.includes(prefillSkill) ? prefillSkill : availableSkills[0] ?? ""
   );
@@ -499,6 +528,8 @@ export default function AiGeneratorPage() {
   const [items, setItems] = useState(5);
   const [topicChoice, setTopicChoice] = useState<string>(prefillWords ? CUSTOM_TOPIC_VALUE : "");
   const [customTopic, setCustomTopic] = useState(prefillWords ? `Focus practice on: ${prefillWords}` : "");
+  const [activityType, setActivityType] = useState("");
+  const [masteryOutcome, setMasteryOutcome] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -563,7 +594,15 @@ export default function AiGeneratorPage() {
     subject,
   });
 
-  const canGenerate = Boolean(subject && keyStage && yearGroup && skillFocus.trim() && selectedTopicTheme && (!shouldTagExamBoard || Boolean(examBoard)));
+  const canGenerate = Boolean(
+    subject
+    && keyStage
+    && yearGroup
+    && skillFocus.trim()
+    && selectedTopicTheme
+    && (!requiresEnglishStrand || Boolean(englishStrand))
+    && (!shouldTagExamBoard || Boolean(examBoard))
+  );
 
   const automationDurationLabel = automationDurationMs === null
     ? null
@@ -590,10 +629,13 @@ export default function AiGeneratorPage() {
     yearGroup: yearGroup as YearGroup,
     curriculumPathway,
     examBoard: shouldTagExamBoard ? examBoard : undefined,
+    englishStrand: englishStrand || undefined,
     skillFocus,
     ageGroup: ageGroup as (typeof AGE_GROUPS)[number],
     difficulty,
     topic: selectedTopicTheme,
+    activityType,
+    masteryOutcome,
     targetStudentId,
     source: "manual" as const,
     weakAreaId: null,
@@ -672,10 +714,13 @@ export default function AiGeneratorPage() {
       yearGroup: yearGroup as YearGroup,
       curriculumPathway,
       examBoard: shouldTagExamBoard ? examBoard : undefined,
+      englishStrand: englishStrand || undefined,
       skillFocus,
       ageGroup: ageGroup as (typeof AGE_GROUPS)[number],
       difficulty,
       topic: selectedTopicTheme,
+      activityType,
+      masteryOutcome,
       targetStudentId,
       source: "manual",
       weakAreaId: null,
@@ -687,6 +732,10 @@ export default function AiGeneratorPage() {
     }
     if (!context.topic) {
       setError("Topic/theme is required before generating content.");
+      return;
+    }
+    if (isEnglishParentSubject(context.subject) && !context.englishStrand) {
+      setError("Please choose an English strand before generating content.");
       return;
     }
     const pathValidation = isValidCurriculumPath({
@@ -738,11 +787,14 @@ export default function AiGeneratorPage() {
           yearGroup: context.yearGroup,
           curriculumPathway: context.curriculumPathway,
           examBoard: context.examBoard,
+          englishStrand: context.englishStrand,
           skillFocus: context.skillFocus,
           ageGroup: context.ageGroup,
           difficulty: context.difficulty,
           numberOfItems: items,
           topic: context.topic,
+          activityType: context.activityType,
+          masteryOutcome: context.masteryOutcome,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
       setGenerationPhase("repairing-response");
@@ -891,10 +943,13 @@ export default function AiGeneratorPage() {
       yearGroup: yearGroup as YearGroup,
       curriculumPathway,
       examBoard: shouldTagExamBoard ? examBoard : undefined,
+      englishStrand: englishStrand || undefined,
       skillFocus,
       ageGroup: ageGroup as (typeof AGE_GROUPS)[number],
       difficulty,
       topic: selectedTopicTheme,
+      activityType,
+      masteryOutcome,
       targetStudentId,
       source: "manual" as const,
       weakAreaId: null,
@@ -923,9 +978,12 @@ export default function AiGeneratorPage() {
           yearGroup: context.yearGroup,
           curriculumPathway: context.curriculumPathway,
           examBoard: context.examBoard,
+          englishStrand: context.englishStrand,
           skillFocus: context.skillFocus,
           difficulty: context.difficulty,
           topic: context.topic,
+          activityType: context.activityType,
+          masteryOutcome: context.masteryOutcome,
           itemSchema: generationTypeForContext,
           items: {
             ...preview,
@@ -1020,11 +1078,14 @@ export default function AiGeneratorPage() {
           yearGroup,
           curriculumPathway,
           examBoard: shouldTagExamBoard ? examBoard : undefined,
+          englishStrand: englishStrand || undefined,
           skillFocus,
           ageGroup,
           difficulty,
           numberOfItems: 1,
           topic: `${selectedTopicTheme || skillFocus} replacement item`,
+          activityType,
+          masteryOutcome,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
       const parsed = await parseApiResponse<Record<string, unknown>>(response);
@@ -1328,11 +1389,18 @@ export default function AiGeneratorPage() {
                     setSubject(nextAvailable[0]);
                     const nextSkills = getAvailableSkills(nextAvailable[0], nextYear);
                     setSkillFocus(nextSkills[0] ?? "");
+                    if (!isEnglishParentSubject(nextAvailable[0])) {
+                      setEnglishStrand("");
+                    }
                   } else {
                     // Update skill focus if current is no longer available
-                    const nextSkills = getAvailableSkills(subject, nextYear);
-                    if (!nextSkills.includes(skillFocus)) {
-                      setSkillFocus(nextSkills[0] ?? "");
+                    if (isEnglishParentSubject(subject) && englishStrand) {
+                      setSkillFocus(deriveSkillFocusFromEnglishStrand(englishStrand, nextYear));
+                    } else {
+                      const nextSkills = getAvailableSkills(subject, nextYear);
+                      if (!nextSkills.includes(skillFocus)) {
+                        setSkillFocus(nextSkills[0] ?? "");
+                      }
                     }
                   }
                 }}
@@ -1363,8 +1431,15 @@ export default function AiGeneratorPage() {
                 clearWeakAreaLink();
                 const nextSubject = event.target.value as Subject;
                 setSubject(nextSubject);
-                const nextSkills = getAvailableSkills(nextSubject, yearGroup);
-                setSkillFocus(nextSkills[0] ?? "");
+                if (isEnglishParentSubject(nextSubject)) {
+                  const defaultStrand: EnglishStrand = "reading";
+                  setEnglishStrand(defaultStrand);
+                  setSkillFocus(deriveSkillFocusFromEnglishStrand(defaultStrand, yearGroup));
+                } else {
+                  setEnglishStrand("");
+                  const nextSkills = getAvailableSkills(nextSubject, yearGroup);
+                  setSkillFocus(nextSkills[0] ?? "");
+                }
                 setTopicChoice("");
                 setCustomTopic("");
               }}
@@ -1390,6 +1465,29 @@ export default function AiGeneratorPage() {
               ) : null}
             </select>
           </label>
+
+          {requiresEnglishStrand ? (
+            <label className="block text-sm font-bold text-slate-300">
+              English strand (required)
+              <select
+                value={englishStrand}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  const nextStrand = event.target.value as EnglishStrand | "";
+                  setEnglishStrand(nextStrand);
+                  setSkillFocus(deriveSkillFocusFromEnglishStrand(nextStrand, yearGroup));
+                  setTopicChoice("");
+                  setCustomTopic("");
+                }}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+              >
+                <option value="">Select an English strand</option>
+                {ENGLISH_STRAND_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           <label className="block text-sm font-bold text-slate-300">
             Skill focus
@@ -1514,6 +1612,33 @@ export default function AiGeneratorPage() {
               />
             ) : null}
           </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-bold text-slate-300">
+              Activity type
+              <input
+                value={activityType}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setActivityType(event.target.value);
+                }}
+                placeholder="e.g. sentence correction"
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600"
+              />
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Mastery outcome
+              <input
+                value={masteryOutcome}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setMasteryOutcome(event.target.value);
+                }}
+                placeholder="e.g. apply apostrophes accurately"
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600"
+              />
+            </label>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <button onClick={() => void generatePreview()} disabled={loading || !canGenerate} className="rounded-xl bg-indigo-500 px-4 py-3 font-black text-white hover:bg-indigo-400 disabled:opacity-50">
               {loading ? "Generating with AI..." : "Generate Preview"}
@@ -1525,6 +1650,11 @@ export default function AiGeneratorPage() {
           {(preview || generationMeta) && (saveBlocked || !approvedCount) ? (
             <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
               {approvedCount > 0 ? saveBlockMessage : "Generate a valid preview before saving."}
+            </p>
+          ) : null}
+          {requiresEnglishStrand && !englishStrand ? (
+            <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+              Please choose an English strand before generating content.
             </p>
           ) : null}
           {error ? <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
@@ -1543,8 +1673,11 @@ export default function AiGeneratorPage() {
                 <li><strong>Source:</strong> {effectiveGenerationContext.source === "weak-area" ? "AI Intervention Engine" : "Manual generator"}</li>
                 <li><strong>Year Group:</strong> {effectiveGenerationContext.yearGroup}</li>
                 <li><strong>Subject:</strong> {formatSubjectLabel(effectiveGenerationContext.subject)}</li>
+                {effectiveGenerationContext.englishStrand ? <li><strong>English Strand:</strong> {effectiveGenerationContext.englishStrand}</li> : null}
                 <li><strong>Skill Focus:</strong> {effectiveGenerationContext.skillFocus || "(none)"}</li>
                 <li><strong>Topic/Theme:</strong> {effectiveGenerationContext.topic || "(none)"}</li>
+                {effectiveGenerationContext.activityType ? <li><strong>Activity Type:</strong> {effectiveGenerationContext.activityType}</li> : null}
+                {effectiveGenerationContext.masteryOutcome ? <li><strong>Mastery Outcome:</strong> {effectiveGenerationContext.masteryOutcome}</li> : null}
                 <li><strong>Generation Type:</strong> {selectedGenerationTypeForContext || "(unknown)"}</li>
                 <li><strong>Difficulty:</strong> {effectiveGenerationContext.difficulty}/5</li>
                 <li><strong>Items Requested:</strong> {items}</li>

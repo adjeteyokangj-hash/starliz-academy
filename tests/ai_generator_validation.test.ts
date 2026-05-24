@@ -448,3 +448,53 @@ test("languages content requires language-mode signals and supports fallback-lik
   });
   assert.equal(calibrated.ok, true);
 });
+
+test("Year 4 English spelling difficulty 4 rejects too-easy Year 1 words", () => {
+  const result = validateAiContentQuality({
+    type: "spelling",
+    subject: "english-language",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Spelling",
+    difficulty: 4,
+    items: [
+      { word: "cat", hint: "Say each sound.", sentenceContext: "The cat sat on the mat." },
+      { word: "dog", hint: "Blend the sounds.", sentenceContext: "The dog ran to the gate." },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.error), /too easy|too simple|stronger|spelling/i);
+});
+
+test("Year 4 English spelling difficulty 4 accepts stronger words", () => {
+  const result = validateAiContentQuality({
+    type: "spelling",
+    subject: "english-language",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Spelling",
+    difficulty: 4,
+    items: [
+      { word: "carefully", hint: "Split into syllables.", sentenceContext: "Read the instructions carefully before starting." },
+      { word: "enjoyment", hint: "Look for the suffix.", sentenceContext: "Reading for enjoyment helps build vocabulary." },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("English reading strand still requires a passage", () => {
+  const result = validateAiContentQuality({
+    type: "reading",
+    subject: "english-language",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Reading comprehension",
+    difficulty: 3,
+    items: [{ question: "What is the main idea?", answer: "The main idea is friendship." }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "Reading output must include a passage.");
+});

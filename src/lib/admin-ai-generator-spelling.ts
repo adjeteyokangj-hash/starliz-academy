@@ -126,7 +126,7 @@ export function getSpellingDifficultyProfile(
   const yearNumber = parseYearGroupNumber(yearGroup);
   const safeDifficulty = Math.max(1, Math.min(5, difficulty));
   const skillKind = detectSpellingSkillFocusKind(skillFocus);
-  const advancedYear4 = (yearNumber ?? 0) >= 4 && safeDifficulty >= 5;
+  const advancedYear4 = (yearNumber ?? 0) >= 4 && safeDifficulty >= 4;
   const minLength = advancedYear4 && skillKind !== "homophones" ? 7 : safeDifficulty >= 4 ? 6 : safeDifficulty >= 3 ? 5 : 4;
   return {
     yearGroup,

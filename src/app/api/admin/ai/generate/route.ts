@@ -74,6 +74,43 @@ const DIFFICULTY_PROFILE: Record<number, {
 };
 
 type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" | "writing" | "science" | "languages";
+type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuation" | "writing" | "vocabulary";
+
+function isEnglishParentSubject(subject: Subject): boolean {
+  return subject === "english-language" || subject === "gcse-english" || subject === "gcse-english-language";
+}
+
+function normalizeEnglishStrand(value: unknown): EnglishStrand | null {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "phonics") return "phonics";
+  if (normalized === "spelling") return "spelling";
+  if (normalized === "reading") return "reading";
+  if (normalized === "grammar") return "grammar";
+  if (normalized === "punctuation") return "punctuation";
+  if (normalized === "writing") return "writing";
+  if (normalized === "vocabulary") return "vocabulary";
+  return null;
+}
+
+function englishStrandToGenerationType(strand: EnglishStrand): GenerationType {
+  if (strand === "phonics") return "phonics";
+  if (strand === "spelling") return "spelling";
+  if (strand === "reading") return "reading";
+  if (strand === "grammar") return "grammar";
+  if (strand === "punctuation") return "punctuation";
+  if (strand === "writing") return "writing";
+  return "vocabulary";
+}
+
+function englishStrandToSubject(strand: EnglishStrand): Subject {
+  if (strand === "phonics") return "phonics";
+  if (strand === "spelling") return "spelling";
+  if (strand === "reading") return "reading";
+  if (strand === "grammar") return "grammar";
+  if (strand === "punctuation") return "punctuation";
+  if (strand === "writing") return "writing";
+  return "vocabulary";
+}
 
 function mapSubjectToGenerationType(subject: Subject): GenerationType {
   return GENERATION_CONTENT_TYPE_BY_SUBJECT[subject];
@@ -88,6 +125,14 @@ function mapGenerationTypeToPromptType(type: GenerationType): PromptType {
   if (type === "grammar") return "grammar";
   if (type === "writing" || type === "english-language") return "writing";
   return "spelling";
+}
+
+function mapEnglishStrandToPromptType(strand: EnglishStrand): PromptType {
+  if (strand === "phonics" || strand === "spelling") return "spelling";
+  if (strand === "reading" || strand === "vocabulary") return "reading";
+  if (strand === "grammar") return "grammar";
+  if (strand === "punctuation") return "punctuation";
+  return "writing";
 }
 
 function isReadingComprehensionSkill(skillFocus: string | null | undefined): boolean {
@@ -108,6 +153,15 @@ function mapGenerationTypeToValidatorType(
   if (type === "languages") return "languages";
   if (type === "reading" || type === "vocabulary" || type === "english-literature") return "reading";
   return "maths";
+}
+
+function mapEnglishStrandToValidatorType(strand: EnglishStrand): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" {
+  if (strand === "phonics") return "phonics";
+  if (strand === "spelling") return "spelling";
+  if (strand === "reading" || strand === "vocabulary") return "reading";
+  if (strand === "grammar") return "grammar";
+  if (strand === "punctuation") return "punctuation";
+  return "writing";
 }
 
 type GeneratedPreview = {
@@ -784,6 +838,7 @@ function attachSelectedMetadataToGeneratedItems(
   meta: {
     subject: Subject;
     contentType: GenerationType;
+    englishStrand: EnglishStrand | null;
     yearGroup: string;
     keyStage: string;
     curriculumPathway: string;
@@ -794,6 +849,8 @@ function attachSelectedMetadataToGeneratedItems(
     cognitiveDemand: string;
     scaffoldingLevel: string;
     topic: string;
+    activityType: string;
+    masteryOutcome: string;
   },
 ): unknown[] {
   const records = Array.isArray(content) ? content : content && typeof content === "object" ? [content] : [];
@@ -803,16 +860,22 @@ function attachSelectedMetadataToGeneratedItems(
       ...row,
       subject: meta.subject,
       contentType: meta.contentType,
+      strand: meta.englishStrand,
+      module: meta.englishStrand,
       yearGroup: meta.yearGroup,
       keyStage: meta.keyStage,
       curriculumPathway: meta.curriculumPathway,
       examBoard: meta.examBoard,
       skillFocus: meta.skillFocus,
       difficulty: meta.difficulty,
+      level: meta.difficulty,
       difficultyLevel: meta.difficulty,
       difficultyLabel: meta.difficultyLabel,
       cognitiveDemand: meta.cognitiveDemand,
       scaffoldingLevel: meta.scaffoldingLevel,
+      activityType: meta.activityType,
+      masteryOutcome: meta.masteryOutcome,
+      masteryTarget: meta.masteryOutcome,
       topic: meta.topic || row.topic,
       topicTheme: meta.topic || row.topic,
     };
@@ -827,8 +890,11 @@ function pickMetadataSnapshot(item: unknown) {
     subject: row.subject ?? null,
     curriculumPathway: row.curriculumPathway ?? null,
     examBoard: row.examBoard ?? null,
+    strand: row.strand ?? row.module ?? null,
     skillFocus: row.skillFocus ?? null,
     topic: row.topic ?? null,
+    activityType: row.activityType ?? null,
+    masteryOutcome: row.masteryOutcome ?? row.masteryTarget ?? null,
   };
 }
 
@@ -1266,6 +1332,9 @@ async function generateValidatedStructuredContent(input: {
   targetSkills: string[];
   weakAreas: string[];
   curriculumPathway: string;
+  englishStrand: EnglishStrand | null;
+  activityType: string;
+  masteryOutcome: string;
 }) {
   const errors = new Set<string>();
   const fixesApplied = new Set<string>();
@@ -1300,6 +1369,7 @@ async function generateValidatedStructuredContent(input: {
     const normalizedBeforeValidation = attachSelectedMetadataToGeneratedItems(response.parsed, {
       subject: input.subject,
       contentType: input.generationType,
+      englishStrand: input.englishStrand,
       yearGroup: input.yearGroup,
       keyStage: input.keyStage,
       curriculumPathway: input.curriculumPathway,
@@ -1310,6 +1380,8 @@ async function generateValidatedStructuredContent(input: {
       cognitiveDemand: difficultyProfile.cognitiveDemand,
       scaffoldingLevel: difficultyProfile.scaffoldingLevel,
       topic: input.topic,
+      activityType: input.activityType,
+      masteryOutcome: input.masteryOutcome,
     });
 
     const quality = validateAiContentQuality({
@@ -1386,12 +1458,26 @@ export async function POST(req: Request) {
     }, { status: 422 });
   }
   const sourceSubject = normalizedSubject;
+  const isEnglishParent = isEnglishParentSubject(sourceSubject);
+  const englishStrand = isEnglishParent ? normalizeEnglishStrand(body.englishStrand) : null;
+  if (isEnglishParent && !englishStrand) {
+    return NextResponse.json({
+      success: false,
+      error: "Please choose an English strand before generating content.",
+      details: {
+        category: "validation_error",
+        field: "englishStrand",
+        allowed: ["phonics", "spelling", "reading", "grammar", "punctuation", "writing", "vocabulary"],
+      },
+    }, { status: 422 });
+  }
   const requestedCount = body.numberOfItems ?? body.count;
   const requestedLevel = body.difficulty ?? body.level;
   const rawYearGroup = typeof body.yearGroup === "string" ? body.yearGroup : "Year 1";
 
-  const generationType = mapSubjectToGenerationType(sourceSubject);
-  const promptType = mapGenerationTypeToPromptType(generationType);
+  const parentGenerationType = mapSubjectToGenerationType(sourceSubject);
+  const generationType = englishStrand ? englishStrandToGenerationType(englishStrand) : parentGenerationType;
+  const promptType = englishStrand ? mapEnglishStrandToPromptType(englishStrand) : mapGenerationTypeToPromptType(generationType);
   const level = typeof requestedLevel === "number" ? requestedLevel : Number(requestedLevel);
   const topic = typeof body.topic === "string" ? body.topic : "";
   const ageGroup = typeof body.ageGroup === "string" ? body.ageGroup : ageGroupForYearGroup(rawYearGroup);
@@ -1406,9 +1492,13 @@ export async function POST(req: Request) {
   // Skill-first targeting
   const targetSkills: string[] = Array.isArray(body.targetSkills) ? (body.targetSkills as string[]) : [];
   const weakAreas: string[] = Array.isArray(body.weakAreas) ? (body.weakAreas as string[]) : [];
+  const activityType = typeof body.activityType === "string" ? body.activityType.trim() : "";
+  const masteryOutcome = typeof body.masteryOutcome === "string" ? body.masteryOutcome.trim() : "";
   // If targetSkills provided, derive skillFocus label from the first one
   const resolvedSkillFocus = skillFocus || (targetSkills.length ? (SKILL_MAP[targetSkills[0]]?.label ?? targetSkills[0]) : "");
-  const validatorType = mapGenerationTypeToValidatorType(generationType, resolvedSkillFocus);
+  const validatorType = englishStrand
+    ? mapEnglishStrandToValidatorType(englishStrand)
+    : mapGenerationTypeToValidatorType(generationType, resolvedSkillFocus);
 
   const maxLevel = 5;
   const safeLevel = Math.max(1, Math.min(maxLevel, Number.isFinite(level) ? level : 1));
@@ -1440,16 +1530,17 @@ export async function POST(req: Request) {
     }, { status: 422 });
   }
 
+  const pathSubject = englishStrand ? englishStrandToSubject(englishStrand) : sourceSubject;
   const pathValidation = isValidCurriculumPath({
     yearGroup: safeYearGroup,
-    subject: sourceSubject,
+    subject: pathSubject,
     skillFocus: resolvedSkillFocus,
     topic: topic,
   });
   if (!pathValidation.ok) {
     const mappedTopics = topicSuggestionsForSelection({
       yearGroup: safeYearGroup,
-      subject: sourceSubject,
+      subject: pathSubject,
       skillFocus: resolvedSkillFocus,
     });
     return NextResponse.json({
@@ -1476,6 +1567,8 @@ export async function POST(req: Request) {
     examBoard: safeExamBoard,
     skillFocus: resolvedSkillFocus,
     generationType,
+    parentGenerationType,
+    englishStrand,
     promptBuilder: promptType,
     parserUsed: promptType === "reading" ? "reading-object" : "array-items",
   };
@@ -1605,7 +1698,23 @@ export async function POST(req: Request) {
     }, { status: failure.status });
   }
 
-  const requestKey = cacheKey({ generationType, promptType, level, topic, ageGroup, count, keyStage: safeKeyStage, yearGroup: safeYearGroup, curriculumPathway: safeCurriculumPathway, examBoard: safeExamBoard, skillFocus });
+  const requestKey = cacheKey({
+    generationType,
+    parentGenerationType,
+    promptType,
+    level,
+    topic,
+    ageGroup,
+    count,
+    keyStage: safeKeyStage,
+    yearGroup: safeYearGroup,
+    curriculumPathway: safeCurriculumPathway,
+    examBoard: safeExamBoard,
+    skillFocus: resolvedSkillFocus,
+    englishStrand,
+    activityType,
+    masteryOutcome,
+  });
   const cached = generationCache.get(requestKey);
   if (cached) {
     const cachedValidation = (cached.meta.validation ?? {}) as Record<string, unknown>;
@@ -1613,13 +1722,17 @@ export async function POST(req: Request) {
       success: true,
       type: promptType,
       generationType,
+      parentGenerationType,
+      englishStrand,
       level,
       topic,
       keyStage: safeKeyStage,
       yearGroup: safeYearGroup,
       curriculumPathway: safeCurriculumPathway,
       examBoard: safeExamBoard,
-      skillFocus,
+      skillFocus: resolvedSkillFocus,
+      activityType,
+      masteryOutcome,
       model: OPENAI_MODEL,
       prompt: cached.meta.prompt,
       estimatedCostPence: cached.meta.estimatedCostPence,
@@ -1639,12 +1752,13 @@ export async function POST(req: Request) {
     let generatedMetadataSnapshot: Record<string, unknown> | null = null;
     let normalizedMetadataSnapshot: Record<string, unknown> | null = null;
 
-    const strictSpellingValidation = generationType === "spelling" || generationType === "phonics";
+    const strictSpellingValidation = validatorType === "spelling" || validatorType === "phonics";
     if (strictSpellingValidation) {
+      const spellingGenerationType = validatorType === "phonics" ? "phonics" : "spelling";
       const validated = await generateValidatedSpellingContent({
         apiKey,
         systemPrompt,
-        generationType,
+        generationType: spellingGenerationType,
         level: safeLevel,
         topic,
         ageGroup,
@@ -1675,6 +1789,9 @@ export async function POST(req: Request) {
         targetSkills,
         weakAreas,
         curriculumPathway: safeCurriculumPathway,
+        englishStrand,
+        activityType,
+        masteryOutcome,
       });
       parsed = validated.content;
       promptUsed = validated.prompt;
@@ -1683,13 +1800,54 @@ export async function POST(req: Request) {
       normalizedMetadataSnapshot = validated.normalizedMetadataSnapshot;
     }
 
+    const difficultyProfile = DIFFICULTY_PROFILE[safeLevel] ?? DIFFICULTY_PROFILE[3];
+    const taggedParsed = attachSelectedMetadataToGeneratedItems(parsed, {
+      subject: sourceSubject,
+      contentType: generationType,
+      englishStrand,
+      yearGroup: safeYearGroup,
+      keyStage: safeKeyStage,
+      curriculumPathway: safeCurriculumPathway,
+      examBoard: safeExamBoard,
+      skillFocus: resolvedSkillFocus,
+      difficulty: safeLevel,
+      difficultyLabel: difficultyProfile.difficultyLabel,
+      cognitiveDemand: difficultyProfile.cognitiveDemand,
+      scaffoldingLevel: difficultyProfile.scaffoldingLevel,
+      topic,
+      activityType,
+      masteryOutcome,
+    });
+    parsed = taggedParsed;
+    if (!generatedMetadataSnapshot) {
+      generatedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(parsed) ? parsed[0] : parsed);
+    }
+    normalizedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(parsed) ? parsed[0] : parsed);
+
     const estimated = estimateCost(count);
 
     await writeAuditLogSafely({
       actorUserId: session.userId,
       action: "ai_content.generated",
       entityType: "ai_generation",
-      metadata: { type: promptType, generationType, level: safeLevel, topic, keyStage: safeKeyStage, yearGroup: safeYearGroup, skillFocus: resolvedSkillFocus, targetSkills, weakAreas, model: OPENAI_MODEL, estimatedCostPence: estimated.estimatedCostPence, validation },
+      metadata: {
+        type: promptType,
+        generationType,
+        parentGenerationType,
+        englishStrand,
+        activityType,
+        masteryOutcome,
+        level: safeLevel,
+        topic,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        skillFocus: resolvedSkillFocus,
+        targetSkills,
+        weakAreas,
+        model: OPENAI_MODEL,
+        estimatedCostPence: estimated.estimatedCostPence,
+        validation,
+      },
     });
 
     const preview = buildGeneratedPreview({
@@ -1720,6 +1878,8 @@ export async function POST(req: Request) {
       success: true,
       type: promptType,
       generationType,
+      parentGenerationType,
+      englishStrand,
       level: safeLevel,
       topic,
       keyStage: safeKeyStage,
@@ -1727,6 +1887,8 @@ export async function POST(req: Request) {
       curriculumPathway: safeCurriculumPathway,
       examBoard: safeExamBoard,
       skillFocus: resolvedSkillFocus,
+      activityType,
+      masteryOutcome,
       skills: serializeSkills(targetSkills.length ? targetSkills : []),
       model: OPENAI_MODEL,
       prompt: promptUsed,
@@ -1740,10 +1902,15 @@ export async function POST(req: Request) {
             yearGroup: safeYearGroup,
             keyStage: safeKeyStage,
             subject: sourceSubject,
+            strand: englishStrand,
+            module: englishStrand,
             curriculumPathway: safeCurriculumPathway,
             examBoard: safeExamBoard,
             skillFocus: resolvedSkillFocus,
             topic,
+            level: safeLevel,
+            activityType,
+            masteryOutcome,
           },
           generatedMetadata: generatedMetadataSnapshot,
           normalizedMetadata: normalizedMetadataSnapshot,
