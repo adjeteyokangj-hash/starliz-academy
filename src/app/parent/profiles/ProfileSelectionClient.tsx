@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchWithRefreshRetry, refreshAuthSession } from "@/lib/refresh_client";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 type ParentProfilePayload = {
   parent: {
@@ -20,6 +20,12 @@ type ParentProfilePayload = {
     pinEnabled: boolean;
   }>;
 };
+
+const PIN_VERIFY_TIMEOUT_MS = 15000;
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
 
 const featurePills = [
   {
@@ -207,11 +213,10 @@ export default function ProfileSelectionClient() {
     setSubmitting(true);
     setPendingProfileId("parent");
     setParentPinError(null);
+    const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
-      setSubmitting(false);
-      setPendingProfileId(null);
-      setParentPinError("That is taking longer than expected. Please try again.");
-    }, 2500);
+      controller.abort();
+    }, PIN_VERIFY_TIMEOUT_MS);
 
     try {
       const response = await fetchWithRefreshRetry("/api/pin/verify", {
@@ -219,20 +224,23 @@ export default function ProfileSelectionClient() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ pin: parentPin }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
         setParentPinError("Incorrect PIN.");
-        setSubmitting(false);
-        setPendingProfileId(null);
         return;
       }
 
-      window.clearTimeout(timeoutId);
       router.replace(safeParentNext(searchParams.get("next")));
-    } catch {
-      window.clearTimeout(timeoutId);
+    } catch (error: unknown) {
+      if (isAbortError(error)) {
+        setParentPinError("Verification timed out. Please try again.");
+        return;
+      }
       setParentPinError("Could not verify PIN.");
+    } finally {
+      window.clearTimeout(timeoutId);
       setSubmitting(false);
       setPendingProfileId(null);
     }
@@ -240,14 +248,18 @@ export default function ProfileSelectionClient() {
 
   async function continueAsChild(childId: string, pin?: string) {
     if (submitting) return;
+    if (pin && !/^\d{4}$/.test(pin)) {
+      setChildPinError("Enter a 4-digit PIN.");
+      return;
+    }
+
     setSubmitting(true);
     setPendingProfileId(childId);
     setChildPinError(null);
+    const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
-      setSubmitting(false);
-      setPendingProfileId(null);
-      setChildPinError("That is taking longer than expected. Please try again.");
-    }, 2500);
+      controller.abort();
+    }, PIN_VERIFY_TIMEOUT_MS);
 
     try {
       const response = await fetchWithRefreshRetry("/api/parent/profiles/verify-child-pin", {
@@ -255,31 +267,24 @@ export default function ProfileSelectionClient() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ childId, pin }),
+        signal: controller.signal,
       });
-
-      if (response.status === 401) {
-        const refreshed = await refreshAuthSession({ retryOnce: true });
-        if (!refreshed.ok) {
-          setChildPinError("Your session expired. Please log in again.");
-          setSubmitting(false);
-          setPendingProfileId(null);
-          return;
-        }
-      }
 
       if (!response.ok) {
         const failure = (await response.json().catch(() => null)) as { error?: string } | null;
         setChildPinError(failure?.error ?? "Could not open child profile.");
-        setSubmitting(false);
-        setPendingProfileId(null);
         return;
       }
 
-      window.clearTimeout(timeoutId);
       router.replace("/student/dashboard");
-    } catch {
-      window.clearTimeout(timeoutId);
+    } catch (error: unknown) {
+      if (isAbortError(error)) {
+        setChildPinError("Verification timed out. Please try again.");
+        return;
+      }
       setChildPinError("Could not open child profile.");
+    } finally {
+      window.clearTimeout(timeoutId);
       setSubmitting(false);
       setPendingProfileId(null);
     }
