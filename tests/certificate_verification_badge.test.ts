@@ -105,18 +105,19 @@ test("badge does not expose sensitive student data", () => {
   assert.doesNotMatch(html, /Jane Morgan/i);
 });
 
-test("print export includes verification badge and QR placeholder fields", () => {
+test("print export includes verification badge and real QR fields", () => {
   const payloadResult = buildCertificateExportPayload(exportInput());
   assert.equal(payloadResult.ok, true);
   if (!payloadResult.ok) return;
 
   assert.equal(payloadResult.payload.verificationBadgeLabel, "Verified Certificate");
-  assert.equal(payloadResult.payload.qrPlaceholderLabel, "Scan or visit verification link");
+  assert.equal(payloadResult.payload.qrInstructionLabel, "Scan or visit verification link");
 
   const html = buildCertificateExportHtml(payloadResult.payload);
   assert.match(html, /Verified Certificate/);
-  assert.match(html, /QR placeholder/i);
+  assert.match(html, /Real verification QR/i);
   assert.match(html, /Scan or visit verification link/i);
+  assert.match(html, /aria-label="Verification QR code"/i);
 });
 
 test("issuing rules are unchanged", () => {
