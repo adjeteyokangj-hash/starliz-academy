@@ -669,12 +669,19 @@ const GCSE_SCIENCE_SKILLS = [
   "Biology",
   "Chemistry",
   "Physics",
-  "Working scientifically",
+  "Forces",
+  "Energy",
+  "Waves",
+  "Electricity",
+  "Magnetism",
+  "Particle model",
+  "Atomic structure",
   "Required practicals",
-  "Exam technique",
+  "Equations",
+  "Scientific method",
   "Data analysis",
-  "Equations and calculations",
-  "Scientific vocabulary",
+  "Command words",
+  "Exam practice",
 ] as const;
 
 const GCSE_MATHS_SKILLS = [
@@ -833,8 +840,44 @@ const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
     "Year 11": ["English Language", "English Literature", "Exam technique", "Extended response", "Retrieval practice"],
   },
   "gcse-english-language": {
-    "Year 10": ["Language analysis", "Reading comprehension", "Writing practice", "Exam practice", "Transactional writing", "Creative writing"],
-    "Year 11": ["Language analysis", "Reading comprehension", "Writing practice", "Exam practice", "Transactional writing", "Creative writing"],
+    "Year 10": [
+      "Reading comprehension",
+      "Inference",
+      "Language analysis",
+      "Structure analysis",
+      "Evaluation",
+      "Comparison",
+      "Summary",
+      "Vocabulary",
+      "Grammar",
+      "Punctuation",
+      "Strategic punctuation",
+      "Spelling",
+      "Writing accuracy",
+      "Creative writing",
+      "Transactional writing",
+      "Speaking and listening",
+      "Exam practice",
+    ],
+    "Year 11": [
+      "Reading comprehension",
+      "Inference",
+      "Language analysis",
+      "Structure analysis",
+      "Evaluation",
+      "Comparison",
+      "Summary",
+      "Vocabulary",
+      "Grammar",
+      "Punctuation",
+      "Strategic punctuation",
+      "Spelling",
+      "Writing accuracy",
+      "Creative writing",
+      "Transactional writing",
+      "Speaking and listening",
+      "Exam practice",
+    ],
   },
   "gcse-english-literature": {
     "Year 10": ["Theme analysis", "Character analysis", "Poetry analysis", "Comparative analysis", "Essay planning", "Exam practice"],
@@ -861,8 +904,8 @@ const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
     "Year 11": ["Energy changes", "Rates of reaction", "Organic chemistry", "Required practicals", "Data analysis", "Exam technique"],
   },
   "gcse-physics": {
-    "Year 10": ["Forces", "Energy", "Waves", "Electricity", "Working scientifically", "Exam technique"],
-    "Year 11": ["Magnetism", "Particle model", "Atomic structure", "Required practicals", "Equations and calculations", "Exam technique"],
+    "Year 10": ["Forces", "Energy", "Waves", "Electricity", "Magnetism", "Particle model", "Atomic structure", "Required practicals", "Equations", "Scientific method", "Data analysis", "Command words", "Exam practice"],
+    "Year 11": ["Forces", "Energy", "Waves", "Electricity", "Magnetism", "Particle model", "Atomic structure", "Required practicals", "Equations", "Scientific method", "Data analysis", "Command words", "Exam practice"],
   },
   "gcse-french": {
     "Year 10": GCSE_LANGUAGE_SKILLS,
@@ -1532,6 +1575,13 @@ function generateTopicsFromSkill(skillFocus: string, subject: Subject): readonly
     skillFocus: string | null | undefined;
     topic: string | null | undefined;
   }) {
+    const normalizeMappingValue = (value: string | null | undefined) =>
+      String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ");
+
     const year = normalizeYearGroup(input.yearGroup);
     if (!year) return { ok: false, reason: "Invalid year group" };
     const subjects = subjectsForYearGroup(year);
@@ -1539,11 +1589,21 @@ function generateTopicsFromSkill(skillFocus: string, subject: Subject): readonly
 
     const skill = (input.skillFocus ?? "").trim();
     const skills = skillsForSubjectAndYear(input.subject, year);
-    if (!skill || !skills.includes(skill)) return { ok: false, reason: "Skill focus is not mapped for selected year and subject" };
+    const normalizedSkill = normalizeMappingValue(skill);
+    const isMappedSkill = Boolean(
+      skill
+      && skills.some((mappedSkill) => normalizeMappingValue(mappedSkill) === normalizedSkill)
+    );
+    if (!isMappedSkill) return { ok: false, reason: "This skill is not mapped yet. Add mapping or choose another skill." };
 
     const topic = (input.topic ?? "").trim();
     const topics = topicSuggestionsForSelection({ yearGroup: year, subject: input.subject, skillFocus: skill });
-    if (!topic || !topics.includes(topic)) return { ok: false, reason: "Topic/theme is not mapped for selected skill" };
+    const normalizedTopic = normalizeMappingValue(topic);
+    const isMappedTopic = Boolean(
+      topic
+      && topics.some((mappedTopic) => normalizeMappingValue(mappedTopic) === normalizedTopic)
+    );
+    if (!isMappedTopic) return { ok: false, reason: "Topic/theme is not mapped for selected skill" };
 
     return { ok: true, reason: null as string | null };
   }

@@ -143,11 +143,12 @@ function isReadingComprehensionSkill(skillFocus: string | null | undefined): boo
 function mapGenerationTypeToValidatorType(
   type: GenerationType,
   skillFocus?: string,
-): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages" {
+): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages" | "science" {
   if (type === "phonics") return "phonics";
   if (type === "spelling") return "spelling";
   if (type === "punctuation") return "punctuation";
   if (type === "grammar") return "grammar";
+  if (type === "science") return "science";
   if (type === "english-language" && isReadingComprehensionSkill(skillFocus)) return "reading";
   if (type === "writing" || type === "english-language") return "writing";
   if (type === "languages") return "languages";
@@ -1167,7 +1168,7 @@ function buildValidatedSpellingFallback({
 }
 
 function buildDeterministicGenericFallback(input: {
-  type: "spelling" | "phonics" | "maths" | "reading" | "writing" | "grammar" | "punctuation" | "languages";
+  type: "spelling" | "phonics" | "maths" | "reading" | "writing" | "grammar" | "punctuation" | "languages" | "science";
   subject: Subject;
   keyStage: string;
   yearGroup: string;
@@ -1231,6 +1232,42 @@ function buildDeterministicGenericFallback(input: {
     });
   }
 
+  if (input.type === "science") {
+    const sciencePrompts = [
+      "Explain the difference between mass and weight.",
+      "A car has a mass of 1200 kg and accelerates at 2 m/s². Calculate the resultant force.",
+      "Identify the main energy stores in a moving rollercoaster.",
+      "Describe how current changes in a series circuit when resistance increases.",
+      "Explain the effect of increasing resistance on current and voltage.",
+      "State and apply the equation F = m × a in context.",
+    ];
+    return Array.from({ length: safeCount }, (_, index) => {
+      const question = sciencePrompts[index % sciencePrompts.length];
+      const answer = question.includes("1200 kg")
+        ? "2400 N"
+        : `Model science answer for ${baseSkill.toLowerCase()} in ${baseTopic.toLowerCase()}.`;
+      const explanation = question.includes("1200 kg")
+        ? "Use F = m × a, so 1200 × 2 = 2400 N."
+        : `Science explanation aligned to ${input.yearGroup} ${difficultyLabel.toLowerCase()} expectations.`;
+      return {
+        id: `fallback-science-${index + 1}`,
+        type: input.subject,
+        question,
+        answer,
+        choices: [
+          String(answer),
+          "Review the equation and units before choosing.",
+          "Re-check the scientific context in the question.",
+        ],
+        explanation,
+        yearGroup: input.yearGroup,
+        skillFocus: baseSkill,
+        topic: baseTopic,
+        difficulty: input.difficulty,
+      };
+    });
+  }
+
   if (input.type === "languages") {
     return Array.from({ length: safeCount }, (_, index) => ({
       id: `fallback-lang-${index + 1}`,
@@ -1272,7 +1309,7 @@ function buildDeterministicGenericFallback(input: {
 }
 
 function buildValidatedGenericFallback(input: {
-  type: "spelling" | "phonics" | "maths" | "reading" | "writing" | "grammar" | "punctuation" | "languages";
+  type: "spelling" | "phonics" | "maths" | "reading" | "writing" | "grammar" | "punctuation" | "languages" | "science";
   subject: Subject;
   keyStage: string;
   yearGroup: string;
@@ -1318,7 +1355,7 @@ async function generateValidatedStructuredContent(input: {
   apiKey: string;
   systemPrompt: string;
   promptType: PromptType;
-  validatorType: "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages";
+  validatorType: "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages" | "science";
   subject: Subject;
   generationType: GenerationType;
   level: number;
@@ -1546,6 +1583,35 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: false,
       error: pathValidation.reason,
+      providerUsed: "local_fallback",
+      fallbackReason: "subject_mapping_failure",
+      validationReason: pathValidation.reason,
+      generationType,
+      subject: sourceSubject,
+      yearGroup: safeYearGroup,
+      keyStage: safeKeyStage,
+      skillFocus: resolvedSkillFocus,
+      topic,
+      activityType,
+      strand: englishStrand,
+      generationDebug: {
+        providerAttempted: false,
+        providerUsed: "local_fallback",
+        openAiKeyFoundServerSide: false,
+        fallbackReason: "subject_mapping_failure",
+        validationReason: pathValidation.reason,
+        mappingStatus: "unmapped",
+        subjectRoute: `${pathSubject}->${generationType}`,
+        fallbackTemplate: null,
+        generationType,
+        subject: sourceSubject,
+        yearGroup: safeYearGroup,
+        keyStage: safeKeyStage,
+        skillFocus: resolvedSkillFocus,
+        topic,
+        activityType,
+        strand: englishStrand,
+      },
       details: {
         category: "unsupported_path",
         yearGroup: safeYearGroup,
@@ -1572,6 +1638,30 @@ export async function POST(req: Request) {
     promptBuilder: promptType,
     parserUsed: promptType === "reading" ? "reading-object" : "array-items",
   };
+  const subjectRoute = `${pathSubject}->${generationType}`;
+  const sharedGenerationFields = {
+    generationType,
+    subject: sourceSubject,
+    yearGroup: safeYearGroup,
+    keyStage: safeKeyStage,
+    skillFocus: resolvedSkillFocus,
+    topic,
+    activityType,
+    strand: englishStrand,
+  };
+  const buildGenerationDebug = (input: {
+    providerAttempted: boolean;
+    providerUsed: "openai" | "local_fallback";
+    openAiKeyFoundServerSide: boolean;
+    fallbackReason: string | null;
+    validationReason: string | null;
+    mappingStatus: "mapped" | "unmapped";
+    fallbackTemplate: string | null;
+  }) => ({
+    ...input,
+    subjectRoute,
+    ...sharedGenerationFields,
+  });
   console.info("[admin-ai-generate] request", {
     ...generationDiagnostics,
     count,
@@ -1630,6 +1720,18 @@ export async function POST(req: Request) {
         prompt: "Deterministic spelling fallback",
         estimatedCostPence: 0,
         estimatedTokens: 0,
+        providerUsed: "local_fallback",
+        fallbackReason: String(failure.details.reason ?? failure.errorCode),
+        validationReason: failure.message,
+        generationDebug: buildGenerationDebug({
+          providerAttempted: false,
+          providerUsed: "local_fallback",
+          openAiKeyFoundServerSide: false,
+          fallbackReason: String(failure.details.reason ?? failure.errorCode),
+          validationReason: failure.message,
+          mappingStatus: "mapped",
+          fallbackTemplate: "deterministic_spelling",
+        }),
         content: preview,
         meta: fallback.validation,
         fallback: {
@@ -1678,6 +1780,18 @@ export async function POST(req: Request) {
         prompt: "Deterministic subject fallback",
         estimatedCostPence: 0,
         estimatedTokens: 0,
+        providerUsed: "local_fallback",
+        fallbackReason: String(failure.details.reason ?? failure.errorCode),
+        validationReason: failure.message,
+        generationDebug: buildGenerationDebug({
+          providerAttempted: false,
+          providerUsed: "local_fallback",
+          openAiKeyFoundServerSide: false,
+          fallbackReason: String(failure.details.reason ?? failure.errorCode),
+          validationReason: failure.message,
+          mappingStatus: "mapped",
+          fallbackTemplate: `deterministic_${validatorType}`,
+        }),
         content: preview,
         meta: fallback.validation,
         fallback: {
@@ -1694,6 +1808,26 @@ export async function POST(req: Request) {
       errorCode: failure.errorCode,
       message: failure.message,
       error: failure.message,
+      providerUsed: "local_fallback",
+      fallbackReason: String(failure.details.reason ?? failure.errorCode),
+      validationReason: failure.message,
+      generationType,
+      subject: sourceSubject,
+      yearGroup: safeYearGroup,
+      keyStage: safeKeyStage,
+      skillFocus: resolvedSkillFocus,
+      topic,
+      activityType,
+      strand: englishStrand,
+      generationDebug: buildGenerationDebug({
+        providerAttempted: false,
+        providerUsed: "local_fallback",
+        openAiKeyFoundServerSide: false,
+        fallbackReason: String(failure.details.reason ?? failure.errorCode),
+        validationReason: failure.message,
+        mappingStatus: "mapped",
+        fallbackTemplate: null,
+      }),
       details: failure.details,
     }, { status: failure.status });
   }
@@ -1737,6 +1871,18 @@ export async function POST(req: Request) {
       prompt: cached.meta.prompt,
       estimatedCostPence: cached.meta.estimatedCostPence,
       estimatedTokens: cached.meta.estimatedTokens,
+      providerUsed: "openai",
+      fallbackReason: null,
+      validationReason: null,
+      generationDebug: buildGenerationDebug({
+        providerAttempted: false,
+        providerUsed: "openai",
+        openAiKeyFoundServerSide: true,
+        fallbackReason: null,
+        validationReason: null,
+        mappingStatus: "mapped",
+        fallbackTemplate: null,
+      }),
       content: cached.content,
       meta: { ...cachedValidation, cached: true },
     });
@@ -1894,6 +2040,18 @@ export async function POST(req: Request) {
       prompt: promptUsed,
       estimatedCostPence: estimated.estimatedCostPence,
       estimatedTokens: estimated.estimatedTokens,
+      providerUsed: "openai",
+      fallbackReason: null,
+      validationReason: null,
+      generationDebug: buildGenerationDebug({
+        providerAttempted: true,
+        providerUsed: "openai",
+        openAiKeyFoundServerSide: true,
+        fallbackReason: null,
+        validationReason: null,
+        mappingStatus: "mapped",
+        fallbackTemplate: null,
+      }),
       content: preview,
       meta: {
         ...validation,
@@ -1989,6 +2147,18 @@ export async function POST(req: Request) {
           prompt: userPrompt,
           estimatedCostPence: 0,
           estimatedTokens: 0,
+          providerUsed: "local_fallback",
+          fallbackReason: String(failure.details.reason ?? failure.errorCode),
+          validationReason: failure.message,
+          generationDebug: buildGenerationDebug({
+            providerAttempted: true,
+            providerUsed: "local_fallback",
+            openAiKeyFoundServerSide: true,
+            fallbackReason: String(failure.details.reason ?? failure.errorCode),
+            validationReason: failure.message,
+            mappingStatus: "mapped",
+            fallbackTemplate: "deterministic_spelling",
+          }),
           content: preview,
           meta: fallback.validation,
           fallback: {
@@ -2048,6 +2218,18 @@ export async function POST(req: Request) {
           prompt: userPrompt,
           estimatedCostPence: 0,
           estimatedTokens: 0,
+          providerUsed: "local_fallback",
+          fallbackReason: String(failure.details.reason ?? failure.errorCode),
+          validationReason: failure.message,
+          generationDebug: buildGenerationDebug({
+            providerAttempted: true,
+            providerUsed: "local_fallback",
+            openAiKeyFoundServerSide: true,
+            fallbackReason: String(failure.details.reason ?? failure.errorCode),
+            validationReason: failure.message,
+            mappingStatus: "mapped",
+            fallbackTemplate: `deterministic_${validatorType}`,
+          }),
           content: preview,
           meta: fallback.validation,
           fallback: {
@@ -2067,6 +2249,26 @@ export async function POST(req: Request) {
         errorCode: failure.errorCode,
         message: failure.message,
         error: failure.message,
+        providerUsed: "openai",
+        fallbackReason: String(failure.details.reason ?? failure.errorCode),
+        validationReason: failure.message,
+        generationType,
+        subject: sourceSubject,
+        yearGroup: safeYearGroup,
+        keyStage: safeKeyStage,
+        skillFocus: resolvedSkillFocus,
+        topic,
+        activityType,
+        strand: englishStrand,
+        generationDebug: buildGenerationDebug({
+          providerAttempted: true,
+          providerUsed: "openai",
+          openAiKeyFoundServerSide: true,
+          fallbackReason: String(failure.details.reason ?? failure.errorCode),
+          validationReason: failure.message,
+          mappingStatus: "mapped",
+          fallbackTemplate: null,
+        }),
         details: {
           ...failure.details,
           subject: sourceSubject,

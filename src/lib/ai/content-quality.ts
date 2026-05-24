@@ -2,7 +2,7 @@ import { KEY_STAGES, phonicsStageFromSkillFocus, type PhonicsStage } from "@/lib
 import { assessSpellingItemForDifficulty } from "@/lib/admin-ai-generator-spelling";
 
 type QualityInput = {
-  type: "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages";
+  type: "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages" | "science";
   subject?: string;
   topic?: string;
   keyStage?: string;
@@ -70,6 +70,14 @@ function itemText(item: unknown) {
 
 function hasMathContent(value: string) {
   return /(\d+\s*[+\-x÷*/]\s*\d+|\bfractions?\b|\bnumber bonds?\b|\btimes tables?\b|\baddition\b|\bsubtraction\b|\bmultiplication\b|\bdivision\b|\bratio\b|\bdecimal\b|\bpercent(?:age)?\b)/i.test(value);
+}
+
+function hasScienceSignal(value: string) {
+  return /(science|physics|chemistry|biology|force|energy|waves?|electricity|magnetism|circuit|resistance|current|voltage|particle|atomic|atom|cells?|ecosystem|practical|equation|f\s*=\s*m\s*[x*]\s*a)/i.test(value);
+}
+
+function isMathOnlyContent(value: string) {
+  return hasMathContent(value) && !hasScienceSignal(value);
 }
 
 function isReadingComprehensionSkill(skillFocus: string | null | undefined) {
@@ -170,6 +178,9 @@ function difficultyThresholdByType(type: QualityInput["type"], difficulty: numbe
   if (type === "maths") {
     return safeDifficulty >= 4 ? 2 : 1;
   }
+  if (type === "science") {
+    return 28 + (safeDifficulty - 1) * 10 + yearBoost;
+  }
   return 35 + (safeDifficulty - 1) * 8 + yearBoost;
 }
 
@@ -184,6 +195,7 @@ function classifySubjectMatch(subject: string | undefined, text: string, type: Q
   const normalized = String(subject ?? "").toLowerCase();
   const lower = text.toLowerCase();
   if (type === "maths") return hasMathContent(lower);
+  if (type === "science") return hasScienceSignal(lower) && !isMathOnlyContent(lower);
   if (type === "languages" || ((normalized.includes("french") || normalized.includes("german") || normalized.includes("spanish") || normalized.includes("latin") || normalized.includes("mandarin") || normalized.includes("arabic")) && !normalized.includes("english-language"))) {
     return /(translation|vocabulary|verb|tense|conjugat|speaking|listening|bonjour|hola|guten|fran|espan|deutsch)/i.test(lower);
   }
@@ -197,7 +209,13 @@ function classifySubjectMatch(subject: string | undefined, text: string, type: Q
     return /(geography|map|climate|river|coast|mountain|region|continent|settlement|population)/i.test(lower);
   }
   if (type === "spelling" || type === "phonics") return !hasMathContent(lower);
-  if (type === "reading" || type === "writing" || type === "grammar" || type === "punctuation") return !hasMathContent(lower);
+  if (type === "punctuation") {
+    return /(punctuation|comma|apostrophe|semicolon|colon|full stop|capital letters?|question marks?|exclamation marks?|sentence)/i.test(lower) && !hasMathContent(lower);
+  }
+  if (type === "grammar") {
+    return /(grammar|clause|verb|noun|adjective|adverb|tense|syntax|sentence)/i.test(lower) && !hasMathContent(lower);
+  }
+  if (type === "reading" || type === "writing") return !hasMathContent(lower);
   return true;
 }
 
@@ -410,6 +428,23 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
       }
     }
 
+    if (input.type === "science") {
+      const fullText = `${prompt} ${String(answer ?? "")} ${String(data.explanation ?? "")}`;
+      if (!hasScienceSignal(fullText)) {
+        issues.push("science_subject_mismatch");
+        pushMismatch(acc, "subject");
+      }
+      if (isMathOnlyContent(fullText)) {
+        issues.push("science_maths_only");
+        pushMismatch(acc, "subject");
+      }
+      const minPrompt = difficultyThresholdByType("science", safeDifficulty, yearNumber);
+      if (prompt.length < minPrompt) {
+        issues.push("difficulty_too_easy");
+        pushMismatch(acc, "difficulty");
+      }
+    }
+
     if (input.type === "languages") {
       const hasLanguageSignal = /(translation|vocabulary|verb|tense|conjugat|listening|speaking|bonjour|hola|guten)/i.test(itemText(data))
         || typeof data.englishMeaning === "string"
@@ -522,7 +557,10 @@ export function validateAiContentQuality(input: QualityInput): QualityResult {
     const errors = validated.meta.errors;
     if (errors.includes("reading_missing_passage")) return { ok: false, error: "Reading output must include a passage.", cleanedItems: validated.cleaned, meta: validated.meta };
     if (errors.includes("reading_missing_questions")) return { ok: false, error: "Reading output must include questions.", cleanedItems: validated.cleaned, meta: validated.meta };
-    if (errors.some((entry) => entry.includes("subject_mismatch") || entry.includes("maths_subject_mismatch") || entry.includes("language_subject_mismatch"))) {
+    if (errors.includes("science_maths_only")) {
+      return { ok: false, error: "Generated content did not match GCSE Physics. Please regenerate.", cleanedItems: validated.cleaned, meta: validated.meta };
+    }
+    if (errors.some((entry) => entry.includes("subject_mismatch") || entry.includes("maths_subject_mismatch") || entry.includes("language_subject_mismatch") || entry.includes("science_subject_mismatch"))) {
       return { ok: false, error: "Generated content did not match the selected subject.", cleanedItems: validated.cleaned, meta: validated.meta };
     }
     if (errors.includes("missing_prompt")) return { ok: false, error: "Generated content must include a prompt or question.", cleanedItems: validated.cleaned, meta: validated.meta };

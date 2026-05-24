@@ -120,6 +120,25 @@ type GeneratorFallbackInfo = {
   message: string;
 };
 
+type GenerationDebug = {
+  providerAttempted: boolean;
+  providerUsed: "openai" | "local_fallback";
+  openAiKeyFoundServerSide: boolean;
+  fallbackReason: string | null;
+  validationReason: string | null;
+  mappingStatus: "mapped" | "unmapped";
+  subjectRoute: string;
+  fallbackTemplate: string | null;
+  generationType: string;
+  subject: string;
+  yearGroup: string;
+  keyStage: string;
+  skillFocus: string;
+  topic: string;
+  activityType: string;
+  strand: string | null;
+};
+
 type SpellingPreviewItem = {
   id: string;
   word: string;
@@ -541,6 +560,10 @@ export default function AiGeneratorPage() {
     estimatedTokens?: number;
     validation?: ValidationMeta;
     fallback?: GeneratorFallbackInfo;
+    providerUsed?: "openai" | "local_fallback";
+    fallbackReason?: string | null;
+    validationReason?: string | null;
+    debug?: GenerationDebug;
   } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null);
@@ -738,9 +761,12 @@ export default function AiGeneratorPage() {
       setError("Please choose an English strand before generating content.");
       return;
     }
+    const mappedPathSubject = isEnglishParentSubject(context.subject) && context.englishStrand
+      ? (context.englishStrand as Subject)
+      : context.subject;
     const pathValidation = isValidCurriculumPath({
       yearGroup: context.yearGroup,
-      subject: context.subject,
+      subject: mappedPathSubject,
       skillFocus: context.skillFocus,
       topic: context.topic,
     });
@@ -848,6 +874,10 @@ export default function AiGeneratorPage() {
         prompt?: string;
         estimatedCostPence?: number;
         estimatedTokens?: number;
+        providerUsed?: "openai" | "local_fallback";
+        fallbackReason?: string | null;
+        validationReason?: string | null;
+        generationDebug?: GenerationDebug;
         meta?: ValidationMeta;
         fallback?: GeneratorFallbackInfo;
       };
@@ -869,7 +899,7 @@ export default function AiGeneratorPage() {
         if (payload.meta?.valid === false) {
           console.warn("[admin-ai-generator] preview validation failed", payload.meta?.errors ?? []);
           setGenerationDiagnostics((current) => current ? { ...current, reason: "validation_failure" } : current);
-          setError("Generated content failed validation. Regenerate with a different topic or skill focus.");
+          setError(payload.validationReason ?? payload.meta?.errors?.[0] ?? "Generated content failed validation. Regenerate with a different topic or skill focus.");
           return;
         }
         const content = payload.content;
@@ -899,6 +929,10 @@ export default function AiGeneratorPage() {
           estimatedTokens: payload.estimatedTokens,
           validation: payload.meta,
           fallback: payload.fallback,
+          providerUsed: payload.providerUsed,
+          fallbackReason: payload.fallbackReason,
+          validationReason: payload.validationReason,
+          debug: payload.generationDebug,
         });
         if (payload.fallback?.used) {
           setGenerationDiagnostics((current) => current ? { ...current, reason: "fallback_used" } : current);
@@ -1679,10 +1713,22 @@ export default function AiGeneratorPage() {
                 {effectiveGenerationContext.activityType ? <li><strong>Activity Type:</strong> {effectiveGenerationContext.activityType}</li> : null}
                 {effectiveGenerationContext.masteryOutcome ? <li><strong>Mastery Outcome:</strong> {effectiveGenerationContext.masteryOutcome}</li> : null}
                 <li><strong>Generation Type:</strong> {selectedGenerationTypeForContext || "(unknown)"}</li>
+                {generationMeta?.providerUsed ? <li><strong>Provider Used:</strong> {generationMeta.providerUsed === "openai" ? "openai" : "local_fallback"}</li> : null}
                 <li><strong>Difficulty:</strong> {effectiveGenerationContext.difficulty}/5</li>
                 <li><strong>Items Requested:</strong> {items}</li>
                 {generationMeta?.model ? <li><strong>Model:</strong> {generationMeta.model}</li> : null}
                 {generationMeta?.fallback?.used ? <li><strong>Fallback:</strong> {generationMeta.fallback.reasonCode}</li> : null}
+                {generationMeta?.fallbackReason ? <li><strong>Fallback Reason:</strong> {generationMeta.fallbackReason}</li> : null}
+                {generationMeta?.validationReason ? <li><strong>Validation Reason:</strong> {generationMeta.validationReason}</li> : null}
+                {generationMeta?.debug ? (
+                  <>
+                    <li><strong>Provider Attempted:</strong> {generationMeta.debug.providerAttempted ? "Yes" : "No"}</li>
+                    <li><strong>OpenAI Key Found (server):</strong> {generationMeta.debug.openAiKeyFoundServerSide ? "Yes" : "No"}</li>
+                    <li><strong>Mapping Status:</strong> {generationMeta.debug.mappingStatus}</li>
+                    <li><strong>Subject Route:</strong> {generationMeta.debug.subjectRoute}</li>
+                    <li><strong>Fallback Template:</strong> {generationMeta.debug.fallbackTemplate ?? "(none)"}</li>
+                  </>
+                ) : null}
                 {generationMeta?.validation ? (
                   <>
                     <li><strong>API Valid:</strong> {generationMeta.validation.valid ? "✓" : "✗"}</li>
@@ -1949,9 +1995,15 @@ export default function AiGeneratorPage() {
               </div>
             ) : null}
 
+            {generationMeta?.providerUsed === "openai" ? (
+              <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+                <p className="font-bold">OpenAI generation used.</p>
+              </div>
+            ) : null}
+
             {generationMeta?.fallback?.used ? (
               <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100">
-                <p className="font-bold">Local spelling fallback used.</p>
+                <p className="font-bold">Local fallback used{generationMeta.fallbackReason ? `: ${generationMeta.fallbackReason}.` : "."}</p>
                 <p className="mt-1 text-xs text-amber-100/90">{generationMeta.fallback.message}</p>
               </div>
             ) : null}

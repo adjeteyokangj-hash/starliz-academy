@@ -108,16 +108,9 @@ function isReadingComprehensionSkill(skillFocus: string | null | undefined): boo
 
 export function formatAiGeneratorValidationSuccessMessage(subject: Subject, skillFocus?: string): string {
   if (isReadingComprehensionSkill(skillFocus)) return "Final reading comprehension set is valid.";
-  if (subject === "punctuation") return "Final punctuation set is valid.";
-  if (subject === "grammar") return "Final grammar set is valid.";
-  if (subject === "reading") return "Final reading set is valid.";
-  if (subject === "maths" || subject === "times-tables" || subject === "gcse-maths" || subject === "science" || subject === "gcse-science") {
-    return "Final maths set is valid.";
-  }
   if (subject === "spelling" || subject === "phonics") {
     return "Final set is valid. No duplicates or invalid skill words detected.";
   }
-  if (subject === "writing" || subject === "english-language") return "Final writing set is valid.";
   if (subject.startsWith("gcse-") && ["Vocabulary", "Grammar", "Translation", "Speaking practice", "Listening comprehension", "Writing practice", "Role play", "Photo card", "Sentence building", "Verb conjugation", "Tenses"].includes(skillFocus ?? "")) {
     return `Final ${formatSubjectLabel(subject)} ${String(skillFocus).toLowerCase()} set is valid.`;
   }

@@ -15,6 +15,7 @@ import {
   shouldUseDeterministicSpellingFallback,
 } from "../src/lib/admin-ai-generator-spelling";
 import { validateAiContentQuality } from "../src/lib/ai/content-quality";
+import { isValidCurriculumPath } from "../src/lib/curriculum";
 
 const frenchVocabularyItem = {
   id: "fr-vocab-1",
@@ -497,4 +498,68 @@ test("English reading strand still requires a passage", () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.error, "Reading output must include a passage.");
+});
+
+test("GCSE English Language punctuation mapping accepts strategic punctuation flow", () => {
+  const result = isValidCurriculumPath({
+    yearGroup: "Year 10",
+    subject: "gcse-english-language",
+    skillFocus: "Strategic punctuation",
+    topic: "Strategic punctuation drill",
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("GCSE Physics mapping accepts forces route", () => {
+  const result = isValidCurriculumPath({
+    yearGroup: "Year 10",
+    subject: "gcse-physics",
+    skillFocus: "Forces",
+    topic: "Forces practice",
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("science validation rejects pure arithmetic prompts", () => {
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-physics",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Forces",
+    topic: "Physics practice",
+    items: [{
+      id: "bad-science-1",
+      question: "31 x 2 then subtract 28",
+      answer: "34",
+      explanation: "Multiply then subtract.",
+    }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "Generated content did not match GCSE Physics. Please regenerate.");
+});
+
+test("science validation accepts physics-context equations", () => {
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-physics",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Forces",
+    topic: "Physics practice",
+    items: [{
+      id: "physics-1",
+      question: "A car has a mass of 1200 kg and accelerates at 2 m/s². Calculate the resultant force.",
+      answer: "2400 N",
+      explanation: "Use F = m × a, so 1200 × 2 = 2400 N.",
+      yearGroup: "Year 10",
+      skillFocus: "Forces",
+      difficulty: 5,
+    }],
+  });
+
+  assert.equal(result.ok, true);
 });
