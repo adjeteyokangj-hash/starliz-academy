@@ -969,6 +969,15 @@ export default function StudentDashboardPage() {
             {certificateEligibility && (certificateEligibility.summary || certificateEligibility.message) ? (
               <section className="mb-6 rounded-3xl border border-amber-200 bg-amber-50/70 p-5">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Certificate Progress</p>
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/student/certificates")}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] text-white hover:bg-slate-700"
+                  >
+                    View My Certificates
+                  </button>
+                </div>
                 <p className="mt-1 text-sm font-semibold text-amber-900">
                   {certificateEligibility.summary?.friendlyLabel ?? "Keep learning"}
                 </p>

@@ -240,6 +240,39 @@ type ParentAcademicIntelligencePayload = {
   parentExplanation: string;
 };
 
+type ParentCertificateLibraryEntry = {
+  certificateNumber: string;
+  verificationCode: string;
+  verificationUrl: string;
+  certificateType: "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate" | "award_certificate";
+  typeLabel: string;
+  typeGroupLabel: string;
+  title: string;
+  awardType: string | null;
+  awardScope: string | null;
+  subject: string | null;
+  strand: string | null;
+  yearGroup: string | null;
+  keyStage: string | null;
+  term: string;
+  issuedAt: string;
+  status: "issued" | "revoked";
+  studentDisplayName: string;
+};
+
+type ParentCertificatesPayload = {
+  ok?: boolean;
+  child?: {
+    id: string;
+    name: string;
+    studentDisplayName: string;
+    yearGroup: string | null;
+    keyStage: string | null;
+  };
+  certificates?: ParentCertificateLibraryEntry[];
+  error?: string;
+};
+
 const sections: Array<{ id: PortalSection; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
   { id: "children", label: "Children" },
@@ -315,6 +348,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [academicIntelligence, setAcademicIntelligence] = useState<ParentAcademicIntelligencePayload | null>(null);
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicError, setAcademicError] = useState<string | null>(null);
+  const [childCertificates, setChildCertificates] = useState<ParentCertificateLibraryEntry[]>([]);
+  const [childCertificatesLoading, setChildCertificatesLoading] = useState(false);
+  const [childCertificatesError, setChildCertificatesError] = useState<string | null>(null);
   const [goingToDashboard, setGoingToDashboard] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -440,12 +476,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     async function loadChild() {
       setAcademicLoading(true);
       setAcademicError(null);
+      setChildCertificatesLoading(true);
+      setChildCertificatesError(null);
 
-      const [childRes, insightsRes, assignmentsRes, academicRes] = await Promise.all([
+      const [childRes, insightsRes, assignmentsRes, academicRes, certificatesRes] = await Promise.all([
         fetch(`/api/children/${selectedChildId}/data`, { credentials: "include" }),
         fetch("/api/parent/insights", { credentials: "include" }),
         fetch(`/api/assignments?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
         fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
+        fetch(`/api/parent/students/${encodeURIComponent(selectedChildId ?? "")}/certificates`, { credentials: "include" }),
       ]);
       
       if (cancelled) return;
@@ -473,7 +512,19 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         setAcademicIntelligence(null);
         setAcademicError(payload?.error ?? "Unable to load academic intelligence.");
       }
+
+      if (certificatesRes.ok) {
+        const payload = (await certificatesRes.json()) as ParentCertificatesPayload;
+        setChildCertificates(payload.certificates ?? []);
+        setChildCertificatesError(null);
+      } else {
+        const payload = (await certificatesRes.json().catch(() => null)) as { error?: string } | null;
+        setChildCertificates([]);
+        setChildCertificatesError(payload?.error ?? "Unable to load child certificates.");
+      }
+
       setAcademicLoading(false);
+      setChildCertificatesLoading(false);
     }
 
     void loadChild();
@@ -902,6 +953,51 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     >
                       {goingToDashboard ? "Opening..." : `Go to ${activeChild.name}'s Dashboard`}
                     </button>
+                  )}
+                </Panel>
+              ) : null}
+
+              {selectedChildId ? (
+                <Panel title="Child Certificates" description="Issued certificates for the selected child, including approved awards.">
+                  <div className="mb-3">
+                    <ChildPicker profiles={children?.children ?? []} selectedChildId={selectedChildId} setSelectedChildId={setSelectedChildId} />
+                  </div>
+                  {childCertificatesLoading ? (
+                    <p className="text-sm text-slate-300">Loading certificates...</p>
+                  ) : childCertificatesError ? (
+                    <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-100">{childCertificatesError}</p>
+                  ) : childCertificates.length === 0 ? (
+                    <EmptyState text="No certificates have been issued for this child yet." />
+                  ) : (
+                    <div className="space-y-3">
+                      {childCertificates.map((item) => (
+                        <article key={`${item.verificationCode}-${item.certificateNumber}`} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-[0.12em] text-cyan-300">{item.typeGroupLabel}</p>
+                              <h3 className="mt-1 font-semibold text-white">{item.title}</h3>
+                            </div>
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-bold uppercase ${item.status === "revoked" ? "bg-rose-500/20 text-rose-200" : "bg-emerald-500/20 text-emerald-200"}`}>
+                              {item.status}
+                            </span>
+                          </div>
+                          <div className="mt-2 grid gap-1 text-xs text-slate-300 sm:grid-cols-2">
+                            <p>Child name: <span className="font-semibold text-white">{activeChild?.name ?? "Child"}</span></p>
+                            <p>Certificate type: <span className="font-semibold text-white">{item.typeLabel}</span></p>
+                            <p>Certificate number: <span className="font-mono font-semibold text-white">{item.certificateNumber}</span></p>
+                            <p>Issued date: <span className="font-semibold text-white">{new Date(item.issuedAt).toLocaleDateString("en-GB")}</span></p>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <a href={item.verificationUrl} className="rounded-xl border border-white/20 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-white/10">
+                              Verification link
+                            </a>
+                            <Link href={`/certificates/verify/${encodeURIComponent(item.verificationCode)}`} className="rounded-xl bg-cyan-500 px-3 py-1.5 text-xs font-bold text-slate-950 hover:bg-cyan-400">
+                              Open verification page
+                            </Link>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
                   )}
                 </Panel>
               ) : null}
