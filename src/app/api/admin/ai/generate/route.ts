@@ -266,6 +266,9 @@ FOLLOW-UP PRACTICE:
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
   const safeLevel = Math.max(1, Math.min(5, level));
   const difficultyProfile = DIFFICULTY_PROFILE[safeLevel] ?? DIFFICULTY_PROFILE[3];
+  const genericRepairLine = repairFeedback
+    ? `\nREPAIR FEEDBACK FROM VALIDATION:\n${repairFeedback}\nReplace invalid or too-easy items while keeping year, subject, skill, topic, and difficulty aligned.`
+    : "";
   const difficultyLines = `
 Difficulty profile:
 - Difficulty level: ${safeLevel}
@@ -311,7 +314,7 @@ Return JSON array only using this schema:
   "yearGroup": "${safeYearGroup}",
   "skillFocus": "${skillFocus}",
   "difficulty": ${level}
-}${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+}${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
 
   if (type === "spelling") {
@@ -385,7 +388,7 @@ Each item must include:
   "yearGroup": "${safeYearGroup}",
   "skillFocus": "${skillFocus || "Silent e"}",
   "difficulty": ${level}
-}${difficultyLines}${followUpInstruction}`.trim();
+}${difficultyLines}${followUpInstruction}${genericRepairLine}`.trim();
   }
   if (type === "maths") {
     return `Generate ${count} KS1/KS2-style maths questions for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -395,7 +398,7 @@ Include answers and multiple choice options.
 Difficulty must increase appropriately for the selected year group and level.
 Return JSON with: id, question, answer, explanation, choices, yearGroup, skillFocus, difficulty and topic.
 Do not return spelling words or reading passages.
-Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "science") {
     const isGcse = safeYearGroup === "Year 10" || safeYearGroup === "Year 11" || keyStage === "KS4";
@@ -411,7 +414,7 @@ ${isGcse ? "GCSE mode guidance: include exam technique, structured response clar
 Return JSON array with: id, question, answer, explanation, choices, yearGroup, skillFocus, difficulty, topic.
 Do not return spelling word lists, unrelated reading passages, or non-science content.
 Prefer helpful visuals for science where appropriate (diagram, graph, table).
-Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "languages") {
     const languageSubject = GCSE_LANGUAGE_SUBJECTS.includes(subject) ? subject.replace("gcse-", "").toUpperCase() : "language";
@@ -422,7 +425,7 @@ Topic/theme: ${cleanedTopic || skillFocus || "Identity and culture"}.
 Exam board: ${examBoard || "General GCSE"}.
 Use language-specific activity modes only: vocabulary, translation, listening-style, reading comprehension, grammar, speaking prompts, writing tasks, role play, photo card, sentence building, verb conjugation, tenses, exam practice.
 Every item must include: activityMode, difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.
-Do not return generic maths/science-only formats.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Do not return generic maths/science-only formats.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "punctuation") {
     return `Generate ${count} UK punctuation practice items for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -430,7 +433,7 @@ Skill focus: ${skillFocus || "Sentence punctuation"}.
 Topic/theme: ${cleanedTopic || skillFocus || "punctuation practice"}.
 Return JSON array with: id, question, answer, options, explanation, hint, yearGroup, skillFocus, difficulty.
 Do not return spelling word lists, reading passages, or maths questions.
-Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "grammar") {
     return `Generate ${count} UK grammar practice items for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -438,7 +441,7 @@ Skill focus: ${skillFocus || "Grammar accuracy"}.
 Topic/theme: ${cleanedTopic || skillFocus || "grammar practice"}.
 Return JSON array with: id, question, answer, options, explanation, hint, yearGroup, skillFocus, difficulty.
 Do not return spelling-only word lists, reading passages, or maths questions.
-Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "writing") {
     return `Generate ${count} UK writing practice tasks for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -446,7 +449,7 @@ Skill focus: ${skillFocus || "Sentence composition"}.
 Topic/theme: ${cleanedTopic || skillFocus || "writing practice"}.
 Return JSON array with: id, prompt, answer, options, explanation, hint, yearGroup, skillFocus, difficulty.
 Do not return isolated spelling word lists or maths questions.
-Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "reading") {
     return `Generate a short reading passage for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -955,6 +958,8 @@ async function generateValidatedSpellingContent({
     const combined = [...collected, ...incoming];
     const quality = validateAiContentQuality({
       type: generationType,
+      subject: "spelling",
+      topic,
       keyStage,
       yearGroup: safeYearGroup,
       skillFocus,
@@ -1019,6 +1024,10 @@ async function generateValidatedSpellingContent({
       regeneratedCount,
       requestedCount: count,
       finalCount: count,
+      yearLevelMatch: true,
+      subjectMatch: true,
+      skillTopicMatch: true,
+      difficultyMatch: true,
     },
   };
 }
@@ -1048,6 +1057,8 @@ function buildValidatedSpellingFallback({
   });
   const quality = validateAiContentQuality({
     type: "spelling",
+    subject: "spelling",
+    topic,
     keyStage,
     yearGroup,
     skillFocus,
@@ -1081,8 +1092,267 @@ function buildValidatedSpellingFallback({
       regeneratedCount: 0,
       requestedCount: count,
       finalCount: count,
+      yearLevelMatch: true,
+      subjectMatch: true,
+      skillTopicMatch: true,
+      difficultyMatch: true,
     },
   };
+}
+
+function buildDeterministicGenericFallback(input: {
+  type: "spelling" | "phonics" | "maths" | "reading" | "writing" | "grammar" | "punctuation" | "languages";
+  subject: Subject;
+  keyStage: string;
+  yearGroup: string;
+  skillFocus: string;
+  topic: string;
+  count: number;
+  difficulty: number;
+}) {
+  const safeCount = Math.max(1, Math.min(10, input.count));
+  const difficultyLabel = DIFFICULTY_PROFILE[input.difficulty]?.difficultyLabel ?? "Balanced challenge";
+  const baseTopic = input.topic || input.skillFocus || "curriculum practice";
+  const baseSkill = input.skillFocus || "core skill";
+  const wordsByDifficulty = ["identify", "apply", "explain", "analyse", "justify"]; 
+
+  if (input.type === "reading") {
+    return Array.from({ length: safeCount }, (_, index) => {
+      const verb = wordsByDifficulty[Math.min(4, Math.max(0, input.difficulty - 1))];
+      const passage = `${input.yearGroup} ${baseTopic} lesson text ${index + 1}. Pupils ${verb} key ideas, use evidence, and connect the ${baseSkill.toLowerCase()} focus to the wider topic.`;
+      return {
+        id: `fallback-reading-${index + 1}`,
+        type: input.subject,
+        passage,
+        question: `How does the passage ${verb} ${baseSkill.toLowerCase()} in ${baseTopic.toLowerCase()}?`,
+        answer: `It ${verb}s ${baseSkill.toLowerCase()} by using clear evidence from ${baseTopic.toLowerCase()}.`,
+        options: [
+          `It ignores ${baseSkill.toLowerCase()}.`,
+          `It ${verb}s ${baseSkill.toLowerCase()} using evidence.`,
+          `It is unrelated to ${baseTopic.toLowerCase()}.`,
+        ],
+        explanation: `This answer matches the ${input.yearGroup} ${difficultyLabel} reading focus.`,
+        yearGroup: input.yearGroup,
+        skillFocus: baseSkill,
+        topic: baseTopic,
+        difficulty: input.difficulty,
+      };
+    });
+  }
+
+  if (input.type === "maths") {
+    const base = input.difficulty * 5;
+    return Array.from({ length: safeCount }, (_, index) => {
+      const a = base + index + 6;
+      const b = base + index + 3;
+      const useMultiply = input.difficulty >= 4;
+      const question = useMultiply
+        ? `${a} x ${index + 2} then subtract ${b}. Explain your method for ${baseTopic.toLowerCase()}.`
+        : `${a} + ${b} = ?`;
+      const answer = useMultiply ? (a * (index + 2)) - b : a + b;
+      return {
+        id: `fallback-maths-${index + 1}`,
+        type: input.subject,
+        question,
+        answer,
+        choices: [answer, answer + 2, Math.max(0, answer - 2)],
+        explanation: `Worked at ${difficultyLabel.toLowerCase()} for ${input.yearGroup}.`,
+        yearGroup: input.yearGroup,
+        skillFocus: baseSkill,
+        topic: baseTopic,
+        difficulty: input.difficulty,
+      };
+    });
+  }
+
+  if (input.type === "languages") {
+    return Array.from({ length: safeCount }, (_, index) => ({
+      id: `fallback-lang-${index + 1}`,
+      type: input.subject,
+      question: `Translation task ${index + 1}: ${baseTopic} (${baseSkill}).`,
+      answer: `Provide a ${input.yearGroup} level translation using ${baseSkill.toLowerCase()}.`,
+      englishMeaning: `Practice meaning for ${baseTopic}.`,
+      targetVocabulary: `${baseTopic} vocabulary ${index + 1}`,
+      activityMode: "translation",
+      explanation: `Calibrated for ${input.yearGroup} at ${difficultyLabel.toLowerCase()}.`,
+      yearGroup: input.yearGroup,
+      skillFocus: baseSkill,
+      topic: baseTopic,
+      difficulty: input.difficulty,
+    }));
+  }
+
+  const field = input.type === "writing" ? "prompt" : "question";
+  return Array.from({ length: safeCount }, (_, index) => {
+    const stem = `${input.yearGroup} ${baseTopic} ${input.type} task ${index + 1}: ${wordsByDifficulty[Math.min(4, Math.max(0, input.difficulty - 1))]} ${baseSkill.toLowerCase()} clearly.`;
+    return {
+      id: `fallback-${input.type}-${index + 1}`,
+      type: input.subject,
+      [field]: stem,
+      answer: `Model response for ${baseSkill} in ${baseTopic}.`,
+      options: [
+        "Option A",
+        "Option B",
+        "Option C",
+      ],
+      explanation: `This item is aligned to ${input.yearGroup}, ${baseSkill}, and difficulty ${input.difficulty}/5.`,
+      hint: `Use ${baseSkill.toLowerCase()} accurately in ${baseTopic.toLowerCase()}.`,
+      yearGroup: input.yearGroup,
+      skillFocus: baseSkill,
+      topic: baseTopic,
+      difficulty: input.difficulty,
+    };
+  });
+}
+
+function buildValidatedGenericFallback(input: {
+  type: "spelling" | "phonics" | "maths" | "reading" | "writing" | "grammar" | "punctuation" | "languages";
+  subject: Subject;
+  keyStage: string;
+  yearGroup: string;
+  skillFocus: string;
+  topic: string;
+  count: number;
+  difficulty: number;
+}) {
+  const fallbackItems = buildDeterministicGenericFallback(input);
+  const quality = validateAiContentQuality({
+    type: input.type,
+    subject: input.subject,
+    topic: input.topic,
+    keyStage: input.keyStage,
+    yearGroup: input.yearGroup,
+    skillFocus: input.skillFocus,
+    difficulty: input.difficulty,
+    requestedCount: input.count,
+    items: fallbackItems,
+    mode: "repair",
+  });
+
+  if (!quality.ok || !Array.isArray(quality.cleanedItems) || quality.cleanedItems.length < input.count) {
+    throw new Error(quality.error ?? "Deterministic fallback validation failed.");
+  }
+
+  return {
+    content: quality.cleanedItems.slice(0, input.count),
+    validation: {
+      ...(quality.meta ?? {}),
+      valid: true,
+      repaired: false,
+      aiGenerated: false,
+      regeneratedAfterValidation: false,
+      fallbackUsed: true,
+      requestedCount: input.count,
+      finalCount: input.count,
+    },
+  };
+}
+
+async function generateValidatedStructuredContent(input: {
+  apiKey: string;
+  systemPrompt: string;
+  promptType: PromptType;
+  validatorType: "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages";
+  subject: Subject;
+  generationType: GenerationType;
+  level: number;
+  topic: string;
+  ageGroup: string;
+  count: number;
+  keyStage: string;
+  yearGroup: string;
+  skillFocus: string;
+  examBoard: string | null;
+  targetSkills: string[];
+  weakAreas: string[];
+  curriculumPathway: string;
+}) {
+  const errors = new Set<string>();
+  const fixesApplied = new Set<string>();
+  let regeneratedCount = 0;
+  let repairFeedback = "";
+  let promptUsed = "";
+  let finalParsed: unknown = null;
+  let generatedMetadataSnapshot: Record<string, unknown> | null = null;
+  let normalizedMetadataSnapshot: Record<string, unknown> | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    promptUsed = buildUserPrompt(
+      input.promptType,
+      input.subject,
+      input.level,
+      input.topic,
+      input.ageGroup,
+      input.count,
+      input.keyStage,
+      input.yearGroup,
+      input.skillFocus,
+      input.examBoard,
+      [],
+      input.targetSkills,
+      input.weakAreas,
+      repairFeedback,
+    );
+
+    const response = await requestOpenAiJson(input.apiKey, input.systemPrompt, promptUsed);
+    generatedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(response.parsed) ? response.parsed[0] : response.parsed);
+    const difficultyProfile = DIFFICULTY_PROFILE[input.level] ?? DIFFICULTY_PROFILE[3];
+    const normalizedBeforeValidation = attachSelectedMetadataToGeneratedItems(response.parsed, {
+      subject: input.subject,
+      contentType: input.generationType,
+      yearGroup: input.yearGroup,
+      keyStage: input.keyStage,
+      curriculumPathway: input.curriculumPathway,
+      examBoard: input.examBoard,
+      skillFocus: input.skillFocus,
+      difficulty: input.level,
+      difficultyLabel: difficultyProfile.difficultyLabel,
+      cognitiveDemand: difficultyProfile.cognitiveDemand,
+      scaffoldingLevel: difficultyProfile.scaffoldingLevel,
+      topic: input.topic,
+    });
+
+    const quality = validateAiContentQuality({
+      type: input.validatorType,
+      subject: input.subject,
+      topic: input.topic,
+      keyStage: input.keyStage,
+      yearGroup: input.yearGroup,
+      skillFocus: input.skillFocus,
+      difficulty: input.level,
+      requestedCount: input.count,
+      items: normalizedBeforeValidation,
+      mode: "repair",
+    });
+
+    if (quality.ok && Array.isArray(quality.cleanedItems) && quality.cleanedItems.length >= input.count) {
+      finalParsed = quality.cleanedItems.slice(0, input.count);
+      normalizedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(finalParsed) ? finalParsed[0] : finalParsed);
+      return {
+        content: finalParsed,
+        prompt: promptUsed,
+        validation: {
+          ...(quality.meta as Record<string, unknown>),
+          aiGenerated: true,
+          regeneratedAfterValidation: regeneratedCount > 0 || Boolean(quality.meta?.repaired),
+          fallbackUsed: false,
+          regeneratedCount,
+          requestedCount: input.count,
+          finalCount: input.count,
+          repairDiagnostics: response.repairDiagnostics,
+        },
+        generatedMetadataSnapshot,
+        normalizedMetadataSnapshot,
+      };
+    }
+
+    for (const issue of quality.meta?.errors ?? []) errors.add(issue);
+    for (const fix of quality.meta?.fixesApplied ?? []) fixesApplied.add(fix);
+    regeneratedCount += 1;
+    repairFeedback = `Validation issues: ${Array.from(errors).slice(0, 8).join(", ")}. Regenerate stronger ${input.yearGroup} ${input.skillFocus} ${input.subject} items aligned to topic ${input.topic}.`;
+  }
+
+  throw new Error(`No valid ${input.subject} content remained after validation.`);
 }
 
 export async function POST(req: Request) {
@@ -1276,6 +1546,56 @@ export async function POST(req: Request) {
         },
       });
     }
+    try {
+      const fallback = buildValidatedGenericFallback({
+        type: validatorType,
+        subject: sourceSubject,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        skillFocus: resolvedSkillFocus || "Core skill",
+        topic,
+        count,
+        difficulty: safeLevel,
+      });
+      const preview = buildGeneratedPreview({
+        subject: sourceSubject,
+        generationType,
+        promptType,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        curriculumPathway: safeCurriculumPathway,
+        examBoard: safeExamBoard,
+        skillFocus: resolvedSkillFocus,
+        difficulty: safeLevel,
+        topic,
+        content: fallback.content,
+      });
+      return NextResponse.json({
+        success: true,
+        type: promptType,
+        generationType,
+        level: safeLevel,
+        topic,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        curriculumPathway: safeCurriculumPathway,
+        examBoard: safeExamBoard,
+        skillFocus: resolvedSkillFocus,
+        model: "local-fallback",
+        prompt: "Deterministic subject fallback",
+        estimatedCostPence: 0,
+        estimatedTokens: 0,
+        content: preview,
+        meta: fallback.validation,
+        fallback: {
+          used: true,
+          reasonCode: String(failure.details.reason ?? failure.errorCode),
+          message: `${failure.message} Preview generated using the local calibrated fallback.`,
+        },
+      });
+    } catch (fallbackError) {
+      console.error("[admin-ai-generate] non-spelling fallback failed:", fallbackError);
+    }
     return NextResponse.json({
       success: false,
       errorCode: failure.errorCode,
@@ -1337,42 +1657,30 @@ export async function POST(req: Request) {
       promptUsed = validated.prompt;
       validation = validated.validation;
     } else {
-      const response = await requestOpenAiJson(apiKey, systemPrompt, userPrompt);
-      generatedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(response.parsed) ? response.parsed[0] : response.parsed);
-      const difficultyProfile = DIFFICULTY_PROFILE[safeLevel] ?? DIFFICULTY_PROFILE[3];
-      const normalizedBeforeValidation = attachSelectedMetadataToGeneratedItems(response.parsed, {
+      const validated = await generateValidatedStructuredContent({
+        apiKey,
+        systemPrompt,
+        promptType,
+        validatorType,
         subject: sourceSubject,
-        contentType: generationType,
-        yearGroup: safeYearGroup,
-        keyStage: safeKeyStage,
-        curriculumPathway: safeCurriculumPathway,
-        examBoard: safeExamBoard,
-        skillFocus: resolvedSkillFocus,
-        difficulty: safeLevel,
-        difficultyLabel: difficultyProfile.difficultyLabel,
-        cognitiveDemand: difficultyProfile.cognitiveDemand,
-        scaffoldingLevel: difficultyProfile.scaffoldingLevel,
+        generationType,
+        level: safeLevel,
         topic,
-      });
-      parsed = response.parsed;
-      const quality = validateAiContentQuality({
-        type: validatorType,
+        ageGroup,
+        count,
         keyStage: safeKeyStage,
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus,
-        difficulty: safeLevel,
-        requestedCount: count,
-        items: normalizedBeforeValidation,
+        examBoard: safeExamBoard,
+        targetSkills,
+        weakAreas,
+        curriculumPathway: safeCurriculumPathway,
       });
-      if (!quality.ok) {
-        throw new Error(quality.error ?? `Invalid ${generationType} content.`);
-      }
-      parsed = quality.cleanedItems ?? normalizedBeforeValidation;
-      normalizedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(parsed) ? parsed[0] : parsed);
-      validation = {
-        ...(quality.meta as Record<string, unknown>),
-        repairDiagnostics: response.repairDiagnostics,
-      };
+      parsed = validated.content;
+      promptUsed = validated.prompt;
+      validation = validated.validation;
+      generatedMetadataSnapshot = validated.generatedMetadataSnapshot;
+      normalizedMetadataSnapshot = validated.normalizedMetadataSnapshot;
     }
 
     const estimated = estimateCost(count);
@@ -1524,6 +1832,65 @@ export async function POST(req: Request) {
         });
       } catch (fallbackError) {
         console.error("[admin-ai-generate] spelling fallback failed:", fallbackError);
+      }
+    }
+
+    if (generationType !== "spelling") {
+      try {
+        const fallback = buildValidatedGenericFallback({
+          type: validatorType,
+          subject: sourceSubject,
+          keyStage: safeKeyStage,
+          yearGroup: safeYearGroup,
+          skillFocus: resolvedSkillFocus || "Core skill",
+          topic,
+          count,
+          difficulty: safeLevel,
+        });
+        const preview = buildGeneratedPreview({
+          subject: sourceSubject,
+          generationType,
+          promptType,
+          keyStage: safeKeyStage,
+          yearGroup: safeYearGroup,
+          curriculumPathway: safeCurriculumPathway,
+          examBoard: safeExamBoard,
+          skillFocus: resolvedSkillFocus,
+          difficulty: safeLevel,
+          topic,
+          content: fallback.content,
+        });
+        console.warn("[admin-ai-generate] recovered with non-spelling fallback", {
+          errorCode: failure.errorCode,
+          reason: failure.details.reason,
+          providerStatus: failure.details.providerStatus,
+          providerCode: failure.details.providerCode,
+        });
+        return NextResponse.json({
+          success: true,
+          type: promptType,
+          generationType,
+          level: safeLevel,
+          topic,
+          keyStage: safeKeyStage,
+          yearGroup: safeYearGroup,
+          curriculumPathway: safeCurriculumPathway,
+          examBoard: safeExamBoard,
+          skillFocus: resolvedSkillFocus,
+          model: "local-fallback",
+          prompt: userPrompt,
+          estimatedCostPence: 0,
+          estimatedTokens: 0,
+          content: preview,
+          meta: fallback.validation,
+          fallback: {
+            used: true,
+            reasonCode: String(failure.details.reason ?? failure.errorCode),
+            message: `${failure.message} Preview generated using the local calibrated fallback.`,
+          },
+        });
+      } catch (fallbackError) {
+        console.error("[admin-ai-generate] non-spelling fallback failed:", fallbackError);
       }
     }
 

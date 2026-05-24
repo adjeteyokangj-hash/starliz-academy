@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
@@ -96,6 +96,10 @@ type ValidationMeta = {
   aiGenerated?: boolean;
   regeneratedAfterValidation?: boolean;
   fallbackUsed?: boolean;
+  yearLevelMatch?: boolean;
+  subjectMatch?: boolean;
+  skillTopicMatch?: boolean;
+  difficultyMatch?: boolean;
   errors: string[];
   fixesApplied: string[];
   removedWords: string[];
@@ -295,12 +299,77 @@ function toTitleCaseWords(value: string): string {
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs = 25000): Promise<Response> {
   const controller = new AbortController();
-  const id = window.setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(timedOut ? `request_timeout_${timeoutMs}` : "request_aborted");
+    }
+    throw error;
   } finally {
-    window.clearTimeout(id);
+    window.clearTimeout(timeoutId);
   }
+}
+
+const AI_REQUEST_TIMEOUT_MS = 180000;
+
+let inFlightAdminRefresh: Promise<boolean> | null = null;
+
+async function refreshAdminSession(timeoutMs: number): Promise<boolean> {
+  if (!inFlightAdminRefresh) {
+    inFlightAdminRefresh = (async () => {
+      const refreshResponse = await fetchWithTimeout(
+        "/api/auth/refresh",
+        {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+        },
+        timeoutMs,
+      );
+      return refreshResponse.ok;
+    })().finally(() => {
+      inFlightAdminRefresh = null;
+    });
+  }
+  return inFlightAdminRefresh;
+}
+
+async function fetchWithAdminSessionRetry(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs = 25000,
+): Promise<Response> {
+  const firstResponse = await fetchWithTimeout(
+    input,
+    {
+      ...init,
+      credentials: "include",
+      cache: "no-store",
+    },
+    timeoutMs,
+  );
+
+  if (firstResponse.status !== 401) return firstResponse;
+
+  const refreshed = await refreshAdminSession(Math.min(timeoutMs, 30000));
+
+  if (!refreshed) return firstResponse;
+
+  return fetchWithTimeout(
+    input,
+    {
+      ...init,
+      credentials: "include",
+      cache: "no-store",
+    },
+    timeoutMs,
+  );
 }
 
 type SafeApiResponse<T = Record<string, unknown>> = {
@@ -463,9 +532,14 @@ export default function AiGeneratorPage() {
     parseStage: string;
     statusCode: number;
     contentType: string;
+    reason?: string;
     model?: string;
     provider?: string;
   } | null>(null);
+  const [generationHeartbeat, setGenerationHeartbeat] = useState<string | null>(null);
+  const generateRequestIdRef = useRef(0);
+  const regenerateRequestIdRef = useRef(0);
+  const heartbeatTimerRef = useRef<number | null>(null);
   const [previewContext, setPreviewContext] = useState<GenerationContext | null>(null);
   const [loadedWeakAreaId, setLoadedWeakAreaId] = useState<string | null>(null);
   const [weakAreaFormSynced, setWeakAreaFormSynced] = useState(false);
@@ -556,6 +630,30 @@ export default function AiGeneratorPage() {
     setWeakAreaFormSynced(false);
   };
 
+  const stopGenerationHeartbeat = () => {
+    if (heartbeatTimerRef.current !== null) {
+      window.clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
+    setGenerationHeartbeat(null);
+  };
+
+  const startGenerationHeartbeat = (label = "Generating content") => {
+    stopGenerationHeartbeat();
+    let elapsedSeconds = 0;
+    setGenerationHeartbeat(`${label}...`);
+    heartbeatTimerRef.current = window.setInterval(() => {
+      elapsedSeconds += 3;
+      setGenerationHeartbeat(`${label}... ${elapsedSeconds}s elapsed`);
+    }, 3000);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopGenerationHeartbeat();
+    };
+  }, []);
+
   function formatRepairMessage(error: string) {
     const [type, word] = error.split(":");
     if (type === "duplicate") return `Removed duplicate: ${word}`;
@@ -566,6 +664,8 @@ export default function AiGeneratorPage() {
   }
 
   async function generatePreview(retryCount = 0, contextOverride?: GenerationContext) {
+    if (loading && retryCount === 0) return;
+    const requestId = ++generateRequestIdRef.current;
     const context: GenerationContext = contextOverride ?? {
       subject,
       keyStage,
@@ -617,6 +717,7 @@ export default function AiGeneratorPage() {
     setGenerationMeta(null);
     setPreviewContext(null);
     setGenerationDiagnostics(null);
+    startGenerationHeartbeat(retryCount > 0 ? "Retrying AI generation" : "Generating content");
     try {
       console.info("[admin-ai-generator] preview request", {
         subject: context.subject,
@@ -628,7 +729,7 @@ export default function AiGeneratorPage() {
         difficulty: context.difficulty,
         numberOfItems: items,
       });
-      const response = await fetch("/api/admin/ai/generate", {
+      const response = await fetchWithAdminSessionRetry("/api/admin/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -643,7 +744,7 @@ export default function AiGeneratorPage() {
           numberOfItems: items,
           topic: context.topic,
         }),
-      });
+      }, AI_REQUEST_TIMEOUT_MS);
       setGenerationPhase("repairing-response");
       const parsed = await parseApiResponse<Record<string, unknown>>(response);
       setGenerationDiagnostics({
@@ -651,6 +752,7 @@ export default function AiGeneratorPage() {
         parseStage: parsed.diagnostics.parseStage,
         statusCode: parsed.diagnostics.status,
         contentType: parsed.diagnostics.contentType,
+        reason: parsed.diagnostics.status >= 500 ? "provider_unavailable" : undefined,
         model: typeof parsed.payload?.model === "string" ? parsed.payload.model : undefined,
         provider: "openai",
       });
@@ -663,10 +765,23 @@ export default function AiGeneratorPage() {
       if (!parsed.ok || !parsed.payload) {
         if (retryCount === 0) {
           setGenerationPhase("retrying-parse");
+          startGenerationHeartbeat("Retrying after parse issue");
           await generatePreview(1, context);
           return;
         }
-        setError(parsed.message ?? "The AI returned an invalid response. Please try again.");
+        setGenerationDiagnostics((current) => current ? {
+          ...current,
+          reason: parsed.diagnostics.status === 401
+            ? "unauthorized"
+            : parsed.message?.toLowerCase().includes("html")
+              ? "provider_unavailable"
+              : "validation_failure",
+        } : current);
+        setError(
+          parsed.diagnostics.status === 401
+            ? "Your admin session has expired. Please sign in again and retry."
+            : (parsed.message ?? "The AI returned an invalid response. Please try again."),
+        );
         return;
       }
 
@@ -693,10 +808,15 @@ export default function AiGeneratorPage() {
           errorCode: payload.errorCode ?? "generation_error",
           details: payload.details,
         });
+        setGenerationDiagnostics((current) => current ? {
+          ...current,
+          reason: payload.errorCode === "model_error" ? "provider_unavailable" : "validation_failure",
+        } : current);
         setError(errorMsg);
       } else {
         if (payload.meta?.valid === false) {
           console.warn("[admin-ai-generator] preview validation failed", payload.meta?.errors ?? []);
+          setGenerationDiagnostics((current) => current ? { ...current, reason: "validation_failure" } : current);
           setError("Generated content failed validation. Regenerate with a different topic or skill focus.");
           return;
         }
@@ -728,14 +848,35 @@ export default function AiGeneratorPage() {
           validation: payload.meta,
           fallback: payload.fallback,
         });
+        if (payload.fallback?.used) {
+          setGenerationDiagnostics((current) => current ? { ...current, reason: "fallback_used" } : current);
+        }
         setPreviewContext(context);
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unable to reach AI generator";
-      setError(`Network or server error: ${errorMsg}`);
+      const timeout = errorMsg.startsWith("request_timeout_");
+      const aborted = errorMsg === "request_aborted";
+      setGenerationDiagnostics((current) => ({
+        rawResponse: current?.rawResponse ?? "",
+        parseStage: current?.parseStage ?? "empty",
+        statusCode: current?.statusCode ?? 0,
+        contentType: current?.contentType ?? "",
+        model: current?.model,
+        provider: current?.provider,
+        reason: timeout ? "timeout" : aborted ? "aborted_request" : "provider_unavailable",
+      }));
+      setError(timeout
+        ? "AI generation timed out while waiting for the provider. Please retry."
+        : aborted
+          ? "AI generation was cancelled before completion. Please retry."
+          : `Network or server error: ${errorMsg}`);
     } finally {
-      setLoading(false);
-      setGenerationPhase("idle");
+      if (requestId === generateRequestIdRef.current) {
+        stopGenerationHeartbeat();
+        setLoading(false);
+        setGenerationPhase("idle");
+      }
     }
   }
 
@@ -864,10 +1005,13 @@ export default function AiGeneratorPage() {
   }
 
   async function regenerateItem(index: number) {
+    if (loading) return;
+    const requestId = ++regenerateRequestIdRef.current;
     setLoading(true);
     setError(null);
+    startGenerationHeartbeat("Regenerating item");
     try {
-      const response = await fetch("/api/admin/ai/generate", {
+      const response = await fetchWithAdminSessionRetry("/api/admin/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -882,14 +1026,24 @@ export default function AiGeneratorPage() {
           numberOfItems: 1,
           topic: `${selectedTopicTheme || skillFocus} replacement item`,
         }),
-      });
+      }, AI_REQUEST_TIMEOUT_MS);
       const parsed = await parseApiResponse<Record<string, unknown>>(response);
       if (!parsed.ok || !parsed.payload) {
+        setGenerationDiagnostics((current) => ({
+          rawResponse: current?.rawResponse ?? parsed.diagnostics.rawResponse,
+          parseStage: parsed.diagnostics.parseStage,
+          statusCode: parsed.diagnostics.status,
+          contentType: parsed.diagnostics.contentType,
+          model: current?.model,
+          provider: current?.provider ?? "openai",
+          reason: parsed.diagnostics.status >= 500 ? "provider_unavailable" : "validation_failure",
+        }));
         setError(parsed.message ?? "Regeneration failed due to malformed AI output.");
         return;
       }
       const payload = parsed.payload as { success?: boolean; error?: string; content?: { items?: unknown[] }; meta?: { valid?: boolean } };
       if (!response.ok || payload.success === false) {
+        setGenerationDiagnostics((current) => current ? { ...current, reason: "validation_failure" } : current);
         setError(payload.error ?? "Regeneration failed.");
         return;
       }
@@ -900,10 +1054,29 @@ export default function AiGeneratorPage() {
           status: resolvePreviewItemStatus(replacement),
         });
       }
-    } catch {
-      setError("Unable to regenerate item.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown";
+      const timeout = message.startsWith("request_timeout_");
+      const aborted = message === "request_aborted";
+      setGenerationDiagnostics((current) => ({
+        rawResponse: current?.rawResponse ?? "",
+        parseStage: current?.parseStage ?? "empty",
+        statusCode: current?.statusCode ?? 0,
+        contentType: current?.contentType ?? "",
+        model: current?.model,
+        provider: current?.provider,
+        reason: timeout ? "timeout" : aborted ? "aborted_request" : "provider_unavailable",
+      }));
+      setError(timeout
+        ? "Item regeneration timed out while waiting for the provider."
+        : aborted
+          ? "Item regeneration was cancelled before completion."
+          : "Unable to regenerate item.");
     } finally {
-      setLoading(false);
+      if (requestId === regenerateRequestIdRef.current) {
+        stopGenerationHeartbeat();
+        setLoading(false);
+      }
     }
   }
 
@@ -1357,7 +1530,7 @@ export default function AiGeneratorPage() {
           {error ? <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
           {loading ? (
             <p className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm text-indigo-100">
-              {generationPhase === "retrying-parse" ? "Retrying parse..."
+              {generationHeartbeat ? generationHeartbeat : generationPhase === "retrying-parse" ? "Retrying parse..."
                 : generationPhase === "repairing-response" ? "Repairing response..."
                   : generationPhase === "validating-content" ? "Validating content..."
                     : "Generating content..."}
@@ -1384,6 +1557,10 @@ export default function AiGeneratorPage() {
                     <li><strong>AI generated:</strong> {generationMeta.validation.aiGenerated === false ? "No" : "Yes"}</li>
                     <li><strong>Regenerated after validation:</strong> {generationMeta.validation.regeneratedAfterValidation ? "Yes" : "No"}</li>
                     <li><strong>Fallback used:</strong> {generationMeta.validation.fallbackUsed ? "Yes" : "No"}</li>
+                    <li><strong>Year level match:</strong> {generationMeta.validation.yearLevelMatch === false ? "No" : "Yes"}</li>
+                    <li><strong>Subject match:</strong> {generationMeta.validation.subjectMatch === false ? "No" : "Yes"}</li>
+                    <li><strong>Skill/topic match:</strong> {generationMeta.validation.skillTopicMatch === false ? "No" : "Yes"}</li>
+                    <li><strong>Difficulty match:</strong> {generationMeta.validation.difficultyMatch === false ? "No" : "Yes"}</li>
                     {generationMeta.validation.metadataDebug ? (
                       <>
                         <li><strong>Requested Metadata:</strong> {JSON.stringify(generationMeta.validation.metadataDebug.requestedMetadata)}</li>
@@ -1403,6 +1580,7 @@ export default function AiGeneratorPage() {
                 <li>Parse stage failed: {generationDiagnostics.parseStage}</li>
                 <li>Backend status code: {generationDiagnostics.statusCode}</li>
                 <li>Content-Type: {generationDiagnostics.contentType || "(none)"}</li>
+                <li>Diagnostic reason: {generationDiagnostics.reason || "none"}</li>
                 <li>Provider/model: {generationDiagnostics.provider || "openai"}/{generationDiagnostics.model || generationMeta?.model || "unknown"}</li>
               </ul>
               <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-slate-900 p-2 text-xs">{generationDiagnostics.rawResponse}</pre>

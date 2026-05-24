@@ -181,7 +181,7 @@ test("Year 4 suffixes difficulty 5 rejects simple words", () => {
 });
 
 test("Year 4 suffixes difficulty 5 accepts stronger suffix words", () => {
-  const strong = ["carefully", "happiness", "preparation", "courageous", "believable"];
+  const strong = ["carefully", "happiness", "enjoyment", "preparation", "poisonous"];
   const items = strong.map((word) => ({
     word,
     hint: "Explain the suffix and meaning shift.",
@@ -301,4 +301,150 @@ test("assessment utility marks age-appropriate Year 4 prefix words", () => {
   assert.equal(assessed.valid, true);
   assert.equal(assessed.validationLevel, "age-appropriate");
   assert.equal(detectSpellingSkillFocusKind("Prefixes"), "prefixes");
+});
+
+test("Year 1 spelling accepts accessible CVC-aligned content", () => {
+  const result = validateAiContentQuality({
+    type: "spelling",
+    subject: "spelling",
+    keyStage: "KS1",
+    yearGroup: "Year 1",
+    skillFocus: "CVC words",
+    topic: "CVC words practice",
+    difficulty: 1,
+    items: [
+      { word: "cat", hint: "Say each sound.", sentenceContext: "The cat sat on the mat.", yearGroup: "Year 1" },
+      { word: "dog", hint: "Blend the sounds.", sentenceContext: "The dog ran to the gate.", yearGroup: "Year 1" },
+    ],
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.meta?.yearLevelMatch, true);
+  assert.equal(result.meta?.difficultyMatch, true);
+});
+
+test("Year 6 reading difficulty 5 rejects passages that are too short", () => {
+  const result = validateAiContentQuality({
+    type: "reading",
+    subject: "english-language",
+    keyStage: "KS2",
+    yearGroup: "Year 6",
+    skillFocus: "Analysis",
+    topic: "Author intent",
+    difficulty: 5,
+    items: [
+      {
+        passage: "A short passage.",
+        question: "What is the writer trying to do?",
+        answer: "To inform.",
+      },
+    ],
+  });
+  assert.equal(result.ok, false);
+  assert.match(String(result.error), /too easy|validation/i);
+});
+
+test("maths difficulty calibration distinguishes easy and hard prompts", () => {
+  const tooEasy = validateAiContentQuality({
+    type: "maths",
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 5",
+    skillFocus: "Problem solving",
+    topic: "fractions",
+    difficulty: 5,
+    items: [{ question: "2 + 2", answer: 4, yearGroup: "Year 5" }],
+  });
+  assert.equal(tooEasy.ok, false);
+
+  const stronger = validateAiContentQuality({
+    type: "maths",
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 5",
+    skillFocus: "Problem solving",
+    topic: "fractions",
+    difficulty: 5,
+    items: [{ question: "18 x 3 then subtract 11. Explain your method.", answer: 43, yearGroup: "Year 5" }],
+  });
+  assert.equal(stronger.ok, true);
+});
+
+test("science subject-aware validation rejects non-science content", () => {
+  const result = validateAiContentQuality({
+    type: "reading",
+    subject: "science",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Scientific reasoning",
+    topic: "forces",
+    difficulty: 3,
+    items: [
+      {
+        passage: "In a castle, a king prepared for a feast.",
+        question: "Who arrived first?",
+        answer: "The cook.",
+        yearGroup: "Year 4",
+      },
+    ],
+  });
+  assert.equal(result.ok, false);
+  assert.match(String(result.error), /subject/i);
+});
+
+test("history and geography prompts must match selected skill/topic", () => {
+  const history = validateAiContentQuality({
+    type: "reading",
+    subject: "gcse-history",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Source analysis",
+    topic: "Industrial Revolution",
+    difficulty: 4,
+    items: [{ passage: "The source evidence from the Industrial Revolution period shows harsh factory conditions and social change.", question: "What does this source suggest about Industrial Revolution working life?", answer: "Working conditions were harsh during the Industrial Revolution." }],
+  });
+  assert.equal(history.ok, true);
+
+  const geographyMismatch = validateAiContentQuality({
+    type: "reading",
+    subject: "gcse-geography",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Map skills",
+    topic: "coasts",
+    difficulty: 4,
+    items: [{ passage: "A poem explored loneliness and identity.", question: "What feeling is created?", answer: "Sadness." }],
+  });
+  assert.equal(geographyMismatch.ok, false);
+});
+
+test("languages content requires language-mode signals and supports fallback-like structure", () => {
+  const invalid = validateAiContentQuality({
+    type: "languages",
+    subject: "gcse-french",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Translation",
+    topic: "family",
+    difficulty: 3,
+    items: [{ question: "What is 6 x 4?", answer: "24" }],
+  });
+  assert.equal(invalid.ok, false);
+
+  const calibrated = validateAiContentQuality({
+    type: "languages",
+    subject: "gcse-french",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Translation",
+    topic: "family",
+    difficulty: 3,
+    items: [{
+      question: "Translation: describe your family in French.",
+      answer: "Je parle de ma famille.",
+      targetVocabulary: "la famille",
+      englishMeaning: "family",
+      activityMode: "translation",
+    }],
+  });
+  assert.equal(calibrated.ok, true);
 });
