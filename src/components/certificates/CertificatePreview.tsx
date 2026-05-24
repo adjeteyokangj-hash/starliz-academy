@@ -106,6 +106,7 @@ export default function CertificatePreview(props: CertificatePreviewProps) {
             certificateNumber={props.certificateNumber}
             verificationCode={props.verificationCode}
             verificationUrl={props.verificationUrl}
+            status={props.status}
             footerNote={design.footerNote}
           />
         ) : null}

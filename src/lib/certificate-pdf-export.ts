@@ -43,6 +43,8 @@ export type CertificateExportPayload = {
   verificationCode: string;
   verificationUrl: string;
   status: "issued" | "valid";
+  verificationBadgeLabel: "Verified Certificate";
+  qrPlaceholderLabel: "Scan or visit verification link";
   signaturePlaceholder: "Academic Office Placeholder";
   verificationNote: string;
   score: number | null;
@@ -145,6 +147,8 @@ export function buildCertificateExportPayload(input: CertificateExportInput | nu
       verificationCode: input.verificationCode,
       verificationUrl: input.verificationUrl,
       status: input.status,
+      verificationBadgeLabel: "Verified Certificate",
+      qrPlaceholderLabel: "Scan or visit verification link",
       signaturePlaceholder: "Academic Office Placeholder",
       verificationNote: "Verify this certificate using the code and link shown below.",
       score: typeof input.score === "number" ? input.score : null,
@@ -195,6 +199,14 @@ export function buildCertificateExportHtml(payload: CertificateExportPayload): s
     .meta-row { line-height: 1.4; }
     .verify { margin-top: 20px; border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; padding: 14px; font-size: 12px; color: #334155; }
     .verify a { color: #0c4a6e; word-break: break-all; }
+    .verify-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .verify-badge { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #334155; }
+    .qr-wrap { margin-top: 10px; display: grid; gap: 10px; grid-template-columns: auto 1fr; align-items: start; }
+    .qr-box { border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px; background: #f8fafc; width: fit-content; }
+    .qr-grid { display: grid; grid-template-columns: repeat(8, 6px); gap: 2px; }
+    .qr-cell-on { width: 6px; height: 6px; border-radius: 1px; background: #0f172a; }
+    .qr-cell-off { width: 6px; height: 6px; border-radius: 1px; background: #cbd5e1; }
+    .qr-label { margin-top: 4px; font-size: 9px; font-weight: 700; letter-spacing: 0.08em; color: #64748b; text-transform: uppercase; }
     .footer { margin-top: 22px; display: flex; justify-content: space-between; gap: 14px; font-size: 12px; color: #475569; }
     .signature { border-top: 1px solid #cbd5e1; padding-top: 8px; min-width: 240px; }
     @media print {
@@ -232,11 +244,30 @@ export function buildCertificateExportHtml(payload: CertificateExportPayload): s
       <div class=\"meta-row\"><strong>Issued date:</strong> ${escapeHtml(payload.issuedDateLabel)}</div>
     </section>
 
-    <section class=\"verify\">
+    <section class="verify">
+      <div class="verify-top">
+        <div class="verify-badge">${escapeHtml(payload.verificationBadgeLabel)}</div>
+      </div>
+      <div class="qr-wrap">
+        <div class="qr-box">
+          <div class="qr-grid">
+            ${Array.from({ length: 64 }, (_, index) => {
+              const code = payload.verificationCode || "SV";
+              const char = code.charCodeAt(index % code.length);
+              const on = ((char + index * 7) % 11) > 4;
+              return `<span class=\"${on ? "qr-cell-on" : "qr-cell-off"}\"></span>`;
+            }).join("")}
+          </div>
+          <div class="qr-label">QR placeholder</div>
+        </div>
+        <div>
       <div class=\"meta-row\"><strong>Certificate number:</strong> ${escapeHtml(payload.certificateNumber)}</div>
       <div class=\"meta-row\"><strong>Verification code:</strong> ${escapeHtml(payload.verificationCode)}</div>
       <div class=\"meta-row\"><strong>Verification link:</strong> <a href=\"${escapeHtml(payload.verificationUrl)}\">${escapeHtml(payload.verificationUrl)}</a></div>
+      <div class="meta-row">${escapeHtml(payload.qrPlaceholderLabel)}</div>
       <div class=\"meta-row\">${escapeHtml(payload.verificationNote)}</div>
+        </div>
+      </div>
     </section>
 
     <footer class=\"footer\">
