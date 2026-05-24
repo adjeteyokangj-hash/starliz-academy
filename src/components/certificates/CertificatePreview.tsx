@@ -52,7 +52,7 @@ export default function CertificatePreview(props: CertificatePreviewProps) {
             onClick={() => window.print()}
             className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
           >
-            Print Certificate
+            Print / Save as PDF
           </button>
         </div>
       ) : null}

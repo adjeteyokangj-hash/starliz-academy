@@ -280,6 +280,13 @@ export default function AdminAwardsNominationsPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => window.open(`/api/admin/certificates/${encodeURIComponent(row.issuedAwardCertificate?.verificationCode ?? "")}/export`, "_blank", "noopener,noreferrer")}
+                    className="rounded border border-cyan-500/40 bg-cyan-900/40 px-2 py-1 text-xs font-bold text-cyan-100"
+                  >
+                    Print / Save as PDF
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       setPreviewByNomination((prev) => ({
                         ...prev,

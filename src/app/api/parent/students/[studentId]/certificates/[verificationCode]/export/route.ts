@@ -1,0 +1,82 @@
+import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/api_guard";
+import { resolveParentScope } from "@/lib/parent_scope";
+import { prisma } from "@/lib/db";
+import { listIssuedCertificatesForLibrary } from "@/lib/certificate-library";
+import { buildCertificateExportHtml, buildCertificateExportPayload } from "@/lib/certificate-pdf-export";
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ studentId: string; verificationCode: string }> },
+) {
+  const { session, response } = await requireSession();
+  if (!session) return response;
+
+  const parentScope = await resolveParentScope(session);
+  if (!parentScope) {
+    return NextResponse.json({ ok: false, error: "Parent account not found." }, { status: 404 });
+  }
+
+  const { studentId, verificationCode } = await params;
+
+  const child = await prisma.childProfile.findFirst({
+    where: { id: studentId, parentId: parentScope.parentId, archived: false },
+    select: {
+      studentProfile: {
+        select: {
+          aiLearningProfileJson: true,
+        },
+      },
+    },
+  });
+
+  if (!child) {
+    return NextResponse.json({ ok: false, error: "Certificate export is only available for your own child profiles." }, { status: 403 });
+  }
+
+  const certificates = listIssuedCertificatesForLibrary(child.studentProfile?.aiLearningProfileJson ?? null);
+  const certificate = certificates.find((row) => row.verificationCode === verificationCode);
+
+  if (!certificate) {
+    return NextResponse.json({ ok: false, error: "Certificate not found." }, { status: 404 });
+  }
+
+  const exportResult = buildCertificateExportPayload({
+    title: certificate.title,
+    studentDisplayName: certificate.studentDisplayName,
+    certificateType: certificate.certificateType,
+    typeLabel: certificate.typeLabel,
+    yearGroup: certificate.yearGroup,
+    keyStage: certificate.keyStage,
+    term: certificate.term,
+    subject: certificate.subject,
+    strand: certificate.strand,
+    awardType: certificate.awardType,
+    awardScope: certificate.awardScope,
+    issuedAt: certificate.issuedAt,
+    certificateNumber: certificate.certificateNumber,
+    verificationCode: certificate.verificationCode,
+    verificationUrl: certificate.verificationUrl,
+    status: certificate.status,
+  });
+
+  if (!exportResult.ok) {
+    return NextResponse.json({ ok: false, error: exportResult.message }, { status: exportResult.code === "not_found" ? 404 : 400 });
+  }
+
+  const url = new URL(request.url);
+  const mode = url.searchParams.get("mode");
+  if (mode === "json") {
+    return NextResponse.json({ ok: true, export: exportResult.payload });
+  }
+
+  const html = buildCertificateExportHtml(exportResult.payload);
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "content-disposition": `inline; filename="${exportResult.payload.certificateNumber}.html"`,
+      "cache-control": "no-store",
+    },
+  });
+}

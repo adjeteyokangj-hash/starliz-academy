@@ -173,6 +173,16 @@ export default function StudentCertificatesPage() {
                       <a href={row.verificationUrl} className="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100">
                         Verification link
                       </a>
+                      {row.status === "issued" ? (
+                        <a
+                          href={`/api/student/certificates/${encodeURIComponent(row.verificationCode)}/export`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100"
+                        >
+                          Print / Save as PDF
+                        </a>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => {
@@ -213,7 +223,7 @@ export default function StudentCertificatesPage() {
                           verificationCode={row.verificationCode}
                           verificationUrl={row.verificationUrl}
                           status={row.status}
-                          showPrintAction
+                          showPrintAction={row.status === "issued"}
                         />
                       </div>
                     ) : null}

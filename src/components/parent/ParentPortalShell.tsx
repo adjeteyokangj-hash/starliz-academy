@@ -998,6 +998,16 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <a href={item.verificationUrl} className="rounded-xl border border-white/20 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-white/10">
                               Verification link
                             </a>
+                            {selectedChildId && item.status === "issued" ? (
+                              <a
+                                href={`/api/parent/students/${encodeURIComponent(selectedChildId)}/certificates/${encodeURIComponent(item.verificationCode)}/export`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="rounded-xl border border-emerald-300/70 bg-emerald-300/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:bg-emerald-300/25"
+                              >
+                                Print / Save as PDF
+                              </a>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => {
@@ -1034,7 +1044,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                                 verificationCode={item.verificationCode}
                                 verificationUrl={item.verificationUrl}
                                 status={item.status}
-                                showPrintAction
+                                showPrintAction={item.status === "issued"}
                               />
                             </div>
                           ) : null}

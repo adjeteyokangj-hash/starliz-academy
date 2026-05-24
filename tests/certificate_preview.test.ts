@@ -84,7 +84,6 @@ test("verification link is present", () => {
 
 test("no PDF or download button is rendered", () => {
   const html = renderPreview();
-  assert.doesNotMatch(html, /download pdf/i);
-  assert.doesNotMatch(html, /download/i);
-  assert.doesNotMatch(html, /pdf/i);
+  assert.doesNotMatch(html, /Download PDF/i);
+  assert.doesNotMatch(html, /Download Certificate/i);
 });

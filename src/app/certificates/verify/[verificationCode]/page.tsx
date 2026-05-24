@@ -51,6 +51,19 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
               {verification.certificate.verificationMessage}
             </div>
 
+            {verification.status === "valid" ? (
+              <div className="print:hidden">
+                <a
+                  href={`/api/certificates/verify/${encodeURIComponent(verification.certificate.verificationCode)}/export`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100"
+                >
+                  Print / Save as PDF
+                </a>
+              </div>
+            ) : null}
+
             {verification.status === "valid" || verification.status === "revoked" ? (
               <CertificatePreview
                 title={verification.certificate.title}
@@ -70,6 +83,7 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
                 verificationUrl={`/certificates/verify/${encodeURIComponent(verification.certificate.verificationCode)}`}
                 score={verification.certificate.score}
                 status={verification.status}
+                showPrintAction={verification.status === "valid"}
               />
             ) : null}
 

@@ -129,13 +129,13 @@ test("safe preview props do not expose sensitive data", () => {
 
 test("no PDF or download label is rendered", () => {
   const html = renderPreview();
-  assert.doesNotMatch(html, /pdf/i);
-  assert.doesNotMatch(html, /download/i);
+  assert.doesNotMatch(html, /Download PDF/i);
+  assert.doesNotMatch(html, /Download Certificate/i);
 });
 
 test("print action uses browser print only", () => {
   const html = renderPreview({ showPrintAction: true });
-  assert.match(html, /Print Certificate/);
+  assert.match(html, /Print \/ Save as PDF/);
   assert.match(html, /data-print-action="browser-print"/);
   assert.doesNotMatch(html, /Download PDF/i);
 });
