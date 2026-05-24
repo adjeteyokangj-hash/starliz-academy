@@ -12,6 +12,49 @@ import SecondaryDashboard from "@/components/student/SecondaryDashboard";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 
+type ProgressionRecommendation = {
+  scopedSubject: string;
+  subject: string;
+  strand: string | null;
+  currentLevel: number;
+  recommendedLevel: number;
+  status: "needs_support" | "developing" | "on_track" | "secure" | "ready_to_advance" | "advanced" | "review_needed";
+  action: "keep_current_level" | "assign_catch_up" | "assign_revision" | "assign_mastery_check" | "recommend_level_up" | "recommend_admin_review";
+  confidence: number;
+  evidenceSummary: {
+    activityCount: number;
+    completedAssignments: number;
+    attemptCount: number;
+    averageScore: number;
+    activeWeakAreas: number;
+    masterySignals: number;
+  };
+  reasons: string[];
+  blockers: string[];
+  nextBestStep: string;
+};
+
+type ProgressionPayload = {
+  ok?: boolean;
+  code?: string;
+  message?: string;
+  recommendations?: ProgressionRecommendation[];
+  grouped?: Array<{
+    parentSubject: string;
+    label: string;
+    recommendations: ProgressionRecommendation[];
+  }>;
+  contentGaps?: ProgressionRecommendation[];
+  summary?: {
+    total: number;
+    needsSupport: number;
+    readyToAdvance: number;
+    reviewNeeded: number;
+    friendlyHeadline: string;
+  };
+  error?: string;
+};
+
 type StudentAssignment = {
   id: string;
   status: "assigned" | "in_progress" | "completed" | string;
@@ -179,6 +222,15 @@ function normalize(value: string | null | undefined): string {
   return (value ?? "").toLowerCase().trim();
 }
 
+function progressionFriendlyBadge(status: ProgressionRecommendation["status"]): string {
+  if (status === "needs_support") return "Catch-up recommended";
+  if (status === "developing") return "Keep practising";
+  if (status === "on_track") return "You are on track";
+  if (status === "secure") return "Almost ready to move up";
+  if (status === "ready_to_advance" || status === "advanced") return "Ready for a challenge";
+  return "Keep practising";
+}
+
 function buildInterventionPath(input: {
   assignmentId: string;
   skill: string;
@@ -216,6 +268,7 @@ export default function StudentDashboardPage() {
   const [placementLevels, setPlacementLevels] = useState<PlacementLevels | null>(null);
   const [placementLessonGroups, setPlacementLessonGroups] = useState<PlacementLessonGroup[]>([]);
   const [placementContentGaps, setPlacementContentGaps] = useState<PlacementLessonRecommendation[]>([]);
+  const [progression, setProgression] = useState<ProgressionPayload | null>(null);
   const [academicIntelligence, setAcademicIntelligence] = useState<StudentAcademicIntelligencePayload | null>(null);
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicError, setAcademicError] = useState("");
@@ -253,6 +306,7 @@ export default function StudentDashboardPage() {
         setPlacementLevels(null);
         setPlacementLessonGroups([]);
         setPlacementContentGaps([]);
+        setProgression(null);
         setAcademicIntelligence(null);
         setAcademicError("");
         setBossUnlocked(false);
@@ -264,7 +318,7 @@ export default function StudentDashboardPage() {
       setAcademicLoading(true);
       setAcademicError("");
 
-      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes] = await Promise.all([
+      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes] = await Promise.all([
         fetch("/api/student/assignments", { credentials: "include" }),
         fetch("/api/student/skills", { credentials: "include" }),
         fetch("/api/student/boss-battle", { credentials: "include" }),
@@ -273,9 +327,10 @@ export default function StudentDashboardPage() {
         fetch("/api/student/learning-state", { credentials: "include" }),
         fetch("/api/student/quick-level-finder/levels", { credentials: "include" }),
         fetch("/api/student/placement-lessons", { credentials: "include" }),
+        fetch("/api/student/progression/recommendations", { credentials: "include" }),
       ]);
 
-      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes].some((res) => res.status === 401)) {
+      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes].some((res) => res.status === 401)) {
         setAuthRequired(true);
         setError("Your session expired. Please sign in again.");
         return;
@@ -298,6 +353,7 @@ export default function StudentDashboardPage() {
       const placementLessonsPayload = placementLessonsRes.ok
         ? ((await placementLessonsRes.json()) as PlacementLessonsPayload)
         : ({} as PlacementLessonsPayload);
+      const progressionPayload = ((await progressionRes.json()) as ProgressionPayload);
       const academicPayload = academicIntelligenceRes.ok
         ? ((await academicIntelligenceRes.json()) as StudentAcademicIntelligencePayload)
         : null;
@@ -311,6 +367,7 @@ export default function StudentDashboardPage() {
           setLearningState(null);
           setPlacementLessonGroups([]);
           setPlacementContentGaps([]);
+          setProgression(null);
           setBossUnlocked(false);
           setBossPlayedToday(false);
           setBossAssignmentId(null);
@@ -329,6 +386,7 @@ export default function StudentDashboardPage() {
       setPlacementLevels(placementLevelsPayload.levels ?? null);
       setPlacementLessonGroups(Array.isArray(placementLessonsPayload.grouped) ? placementLessonsPayload.grouped : []);
       setPlacementContentGaps(Array.isArray(placementLessonsPayload.contentGaps) ? placementLessonsPayload.contentGaps : []);
+      setProgression(progressionPayload ?? null);
       if (academicPayload) {
         const state = learningStatePayload.learningState;
         if (state?.isFirstTimeStudent || !state?.hasAssessmentData) {
@@ -745,6 +803,53 @@ export default function StudentDashboardPage() {
                 </div>
               )}
             </section>
+
+            {progression && (Array.isArray(progression.recommendations) ? progression.recommendations.length > 0 : Boolean(progression.message)) ? (
+              <section className="mb-6 rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Subject Progression</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-900">{progression.message ?? "Progression recommendations updated."}</p>
+
+                {progression.summary ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                    <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Headline</p>
+                      <p className="mt-1 text-sm font-black text-slate-900">{progression.summary.friendlyHeadline}</p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Needs support</p>
+                      <p className="mt-1 text-sm font-black text-slate-900">{progression.summary.needsSupport}</p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Ready to advance</p>
+                      <p className="mt-1 text-sm font-black text-slate-900">{progression.summary.readyToAdvance}</p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Review needed</p>
+                      <p className="mt-1 text-sm font-black text-slate-900">{progression.summary.reviewNeeded}</p>
+                    </div>
+                  </div>
+                ) : null}
+
+                {Array.isArray(progression.recommendations) && progression.recommendations.length > 0 ? (
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    {progression.recommendations.slice(0, 6).map((item) => (
+                      <div key={item.scopedSubject} className="rounded-2xl border border-emerald-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-black text-slate-900">{item.subject}{item.strand ? ` - ${item.strand}` : ""}</p>
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                            {progressionFriendlyBadge(item.status)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs font-semibold text-slate-600">
+                          Level {item.currentLevel} {"->"} {item.recommendedLevel} · Confidence {item.confidence}%
+                        </p>
+                        <p className="mt-1 text-xs text-slate-700">{item.nextBestStep}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
 
             {dashboardTier === "primary" && (
               <PrimaryDashboard
