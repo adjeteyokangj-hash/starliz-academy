@@ -286,6 +286,9 @@ test("student API formatter returns safe response shape", () => {
   assert.ok("summary" in safe);
   assert.ok(Array.isArray(safe.catchUpRecommendations));
   assert.ok(Array.isArray(safe.assessmentRecommendations));
+  assert.ok(typeof safe.examReadinessProfile.score === "number");
+  assert.ok(Array.isArray(safe.schoolWeekModePlan.days));
+  assert.ok(typeof safe.masteryExpansion.masteredTopics === "number");
   assert.ok(Array.isArray(safe.nextRecommendedActions));
 });
 
@@ -307,4 +310,38 @@ test("admin-depth output contains triggers, report notes, and review actions", (
   assert.ok(Array.isArray(output.reportNotes));
   assert.ok(Array.isArray(output.reviewActions));
   assert.ok(Array.isArray(output.auditHistoryDraft));
+  assert.ok(typeof output.examReadinessProfile.score === "number");
+  assert.ok(Array.isArray(output.schoolWeekModePlan.days));
+  assert.ok(Array.isArray(output.masteryExpansion.priorityTopics));
+});
+
+test("exam readiness band and school week strategy adapt to weak performance", () => {
+  const output = buildAcademicIntelligence(baseSource({
+    attempts: [
+      {
+        id: "at-1",
+        subject: "math",
+        topic: "Algebra",
+        skill: "linear_equations",
+        correct: false,
+        hintsUsed: 3,
+        createdAt: new Date().toISOString(),
+        score: 20,
+      },
+      {
+        id: "at-2",
+        subject: "reading",
+        topic: "Inference",
+        skill: "inference",
+        correct: false,
+        hintsUsed: 2,
+        createdAt: new Date().toISOString(),
+        score: 35,
+      },
+    ],
+  }));
+
+  assert.equal(output.examReadinessProfile.band, "not_ready");
+  assert.ok(output.schoolWeekModePlan.strategy.toLowerCase().includes("foundation"));
+  assert.ok(output.schoolWeekModePlan.days.length >= 5);
 });

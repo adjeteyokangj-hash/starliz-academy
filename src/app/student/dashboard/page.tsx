@@ -172,6 +172,14 @@ type StudentAcademicIntelligencePayload = {
     coveredCount: number;
     averageScore: number;
   };
+  masteryExpansion?: {
+    needsCatchUpTopics: number;
+    nearlySecureTopics: number;
+    masteredTopics: number;
+    overdueRevisionTopics: number;
+    highConfidenceTopics: number;
+    priorityTopics: string[];
+  };
   catchUpRecommendations: Array<{
     id: string;
     title: string;
@@ -190,6 +198,32 @@ type StudentAcademicIntelligencePayload = {
     reason: string;
     readinessStatus: string;
   }>;
+  examReadinessProfile?: {
+    score: number;
+    band: "not_ready" | "nearly_ready" | "ready";
+    headline: string;
+    blockers: string[];
+    recommendedActions: string[];
+    signals: {
+      masteryScore: number;
+      consistencyScore: number;
+      examEvidenceScore: number;
+      weakAreaPenalty: number;
+    };
+  };
+  schoolWeekModePlan?: {
+    enabled: boolean;
+    strategy: string;
+    totalEstimatedMinutes: number;
+    days: Array<{
+      day: string;
+      focus: string;
+      activityType: "catch_up" | "assessment" | "mastery" | "revision";
+      estimatedMinutes: number;
+      routeTarget: string | null;
+      recommendationId: string | null;
+    }>;
+  };
   nextRecommendedActions: string[];
   generatedAt: string;
 };
@@ -865,6 +899,25 @@ export default function StudentDashboardPage() {
                     </div>
                   </div>
 
+                  {academicIntelligence.masteryExpansion ? (
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
+                        <p className="text-xs text-cyan-700">Mastered topics</p>
+                        <p className="text-lg font-black text-cyan-900">{academicIntelligence.masteryExpansion.masteredTopics}</p>
+                      </div>
+                      <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
+                        <p className="text-xs text-cyan-700">Nearly secure</p>
+                        <p className="text-lg font-black text-cyan-900">{academicIntelligence.masteryExpansion.nearlySecureTopics}</p>
+                      </div>
+                      <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
+                        <p className="text-xs text-cyan-700">Priority topics</p>
+                        <p className="text-sm font-black text-cyan-900">
+                          {academicIntelligence.masteryExpansion.priorityTopics.slice(0, 3).join(", ") || "No priority topics"}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {academicIntelligence.catchUpRecommendations.length === 0 ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                       <p className="font-semibold">No catch-up needed right now.</p>
@@ -907,14 +960,60 @@ export default function StudentDashboardPage() {
                     </div>
                   )}
 
-                  {academicIntelligence.assessmentRecommendations.length === 0 ? (
-                    <p className="text-sm text-cyan-900">No assessment due right now.</p>
-                  ) : (
-                    <div className="rounded-2xl border border-cyan-200 bg-white p-4">
-                      <p className="text-sm font-bold text-slate-900">Assessment Readiness</p>
-                      <p className="mt-1 text-sm text-slate-700">{academicIntelligence.assessmentRecommendations[0]?.reason}</p>
-                    </div>
-                  )}
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {academicIntelligence.examReadinessProfile ? (
+                      <div className="rounded-2xl border border-cyan-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-bold text-slate-900">AI Exam Readiness</p>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                            academicIntelligence.examReadinessProfile.band === "ready"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : academicIntelligence.examReadinessProfile.band === "nearly_ready"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-rose-100 text-rose-700"
+                          }`}>
+                            {academicIntelligence.examReadinessProfile.band.replaceAll("_", " ")}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm font-black text-cyan-900">{academicIntelligence.examReadinessProfile.score}%</p>
+                        <p className="mt-1 text-sm text-slate-700">{academicIntelligence.examReadinessProfile.headline}</p>
+                        {academicIntelligence.examReadinessProfile.recommendedActions.length > 0 ? (
+                          <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                            {academicIntelligence.examReadinessProfile.recommendedActions.slice(0, 2).map((item) => (
+                              <li key={item}>• {item}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-cyan-200 bg-white p-4">
+                        <p className="text-sm text-cyan-900">No assessment due right now.</p>
+                      </div>
+                    )}
+
+                    {academicIntelligence.schoolWeekModePlan?.enabled ? (
+                      <div className="rounded-2xl border border-cyan-200 bg-white p-4">
+                        <p className="text-sm font-bold text-slate-900">School Week Mode</p>
+                        <p className="mt-1 text-xs text-slate-600">{academicIntelligence.schoolWeekModePlan.strategy}</p>
+                        <p className="mt-1 text-xs font-semibold text-cyan-700">
+                          Weekly load: {academicIntelligence.schoolWeekModePlan.totalEstimatedMinutes} mins
+                        </p>
+                        <div className="mt-2 space-y-1">
+                          {academicIntelligence.schoolWeekModePlan.days.slice(0, 3).map((day) => (
+                            <button
+                              key={`${day.day}-${day.focus}`}
+                              type="button"
+                              onClick={() => router.push(day.routeTarget ?? "/student/dashboard")}
+                              className="flex w-full items-center justify-between rounded-lg border border-cyan-100 bg-cyan-50 px-2 py-1 text-left text-xs text-slate-700 hover:bg-cyan-100"
+                            >
+                              <span>{day.day}: {day.focus}</span>
+                              <span className="font-bold text-cyan-700">{day.estimatedMinutes}m</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               )}
             </section>

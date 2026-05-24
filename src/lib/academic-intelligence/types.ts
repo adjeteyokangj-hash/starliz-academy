@@ -18,6 +18,8 @@ export type CatchUpStatus = "recommended" | "active" | "completed" | "skipped" |
 
 export type AssessmentReadinessStatus = "not_ready" | "developing" | "nearly_ready" | "ready" | "needs_catch_up";
 
+export type ExamReadinessBand = "not_ready" | "nearly_ready" | "ready";
+
 export type CatchUpTaskType =
   | "recap_lesson"
   | "targeted_practice"
@@ -264,6 +266,45 @@ export type GcseReadiness = {
   improveMyAnswerRecommended: boolean;
 };
 
+export type ExamReadinessProfile = {
+  score: number;
+  band: ExamReadinessBand;
+  headline: string;
+  blockers: string[];
+  recommendedActions: string[];
+  signals: {
+    masteryScore: number;
+    consistencyScore: number;
+    examEvidenceScore: number;
+    weakAreaPenalty: number;
+  };
+};
+
+export type SchoolWeekModeDayPlan = {
+  day: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
+  focus: string;
+  activityType: "catch_up" | "assessment" | "mastery" | "revision";
+  estimatedMinutes: number;
+  routeTarget: string | null;
+  recommendationId: string | null;
+};
+
+export type SchoolWeekModePlan = {
+  enabled: boolean;
+  strategy: string;
+  totalEstimatedMinutes: number;
+  days: SchoolWeekModeDayPlan[];
+};
+
+export type MasteryExpansionSummary = {
+  needsCatchUpTopics: number;
+  nearlySecureTopics: number;
+  masteredTopics: number;
+  overdueRevisionTopics: number;
+  highConfidenceTopics: number;
+  priorityTopics: string[];
+};
+
 export type ParentAdminReviewAction = {
   action:
     | "approve_catch_up"
@@ -310,12 +351,15 @@ export type AcademicIntelligenceOutput = {
   studentId: string;
   summary: MasterySummary;
   masteryMap: MasteryMapEntry[];
+  masteryExpansion: MasteryExpansionSummary;
   curriculumCoverage: CoverageEntry[];
   catchUpTriggers: CatchUpTrigger[];
   catchUpRecommendations: CatchUpRecommendation[];
   assessmentRecommendations: AssessmentRecommendation[];
   assessmentReadiness: AssessmentReadinessStatus;
+  examReadinessProfile: ExamReadinessProfile;
   gcseReadiness: GcseReadiness | null;
+  schoolWeekModePlan: SchoolWeekModePlan;
   reviewActions: ParentAdminReviewAction[];
   reportNotes: AcademicReportNote[];
   unresolvedAcademicGaps: string[];

@@ -4,6 +4,7 @@ import type {
   AssessmentType,
   CatchUpTrigger,
   CoverageEntry,
+  ExamReadinessProfile,
   GcseReadiness,
   MasteryMapEntry,
 } from "@/lib/academic-intelligence/types";
@@ -78,6 +79,85 @@ function recommendationReason(entry: MasteryMapEntry, type: AssessmentType): str
   return `A focused assessment is recommended for this topic.`;
 }
 
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function buildExamReadinessProfile(input: {
+  masteryMap: MasteryMapEntry[];
+  recommendations: AssessmentRecommendation[];
+  overallReadiness: AssessmentReadinessStatus;
+}): ExamReadinessProfile {
+  const activeTopics = input.masteryMap.filter((row) => row.masteryStatus !== "not_started");
+  const averageConfidence = activeTopics.length > 0
+    ? activeTopics.reduce((sum, row) => sum + row.confidenceScore, 0) / activeTopics.length
+    : 0;
+  const masteryScore = clampScore(averageConfidence);
+
+  const overdueOrRevision = activeTopics.filter((row) => row.revisionOverdue || row.masteryStatus === "needs_revision").length;
+  const consistencyScore = activeTopics.length > 0
+    ? clampScore(100 - (overdueOrRevision / activeTopics.length) * 70)
+    : 0;
+
+  const readyOrNearly = input.recommendations.filter((item) => item.readinessStatus === "ready" || item.readinessStatus === "nearly_ready").length;
+  const examEvidenceScore = input.recommendations.length > 0
+    ? clampScore((readyOrNearly / input.recommendations.length) * 100)
+    : 0;
+
+  const weakAreaCount = activeTopics.filter((row) => row.weakAreaActive || row.masteryStatus === "needs_catch_up").length;
+  const weakAreaPenalty = clampScore(weakAreaCount * 8);
+
+  const score = clampScore(
+    masteryScore * 0.45
+      + consistencyScore * 0.25
+      + examEvidenceScore * 0.30
+      - weakAreaPenalty,
+  );
+
+  const band = score >= 75 ? "ready" : score >= 55 ? "nearly_ready" : "not_ready";
+  const blockers: string[] = [];
+  if (weakAreaCount > 0) blockers.push(`${weakAreaCount} weak-topic signals are still active.`);
+  if (overdueOrRevision > 0) blockers.push(`${overdueOrRevision} topics are overdue for revision.`);
+  if (input.overallReadiness === "needs_catch_up" || input.overallReadiness === "not_ready") {
+    blockers.push("Assessment readiness is below secure level.");
+  }
+
+  const recommendations = band === "ready"
+    ? [
+        "Take one timed exam-style assessment this week.",
+        "Run one mark-scheme self-review after each practice paper.",
+      ]
+    : band === "nearly_ready"
+      ? [
+          "Complete two targeted catch-up sessions before mock questions.",
+          "Take one short recap assessment after each catch-up block.",
+        ]
+      : [
+          "Start with guided catch-up tasks for weak topics.",
+          "Use short daily checks before attempting exam-style questions.",
+        ];
+
+  const headline = band === "ready"
+    ? "Ready for structured exam practice"
+    : band === "nearly_ready"
+      ? "Nearly ready - secure weak topics first"
+      : "Not ready yet - build foundations first";
+
+  return {
+    score,
+    band,
+    headline,
+    blockers,
+    recommendedActions: recommendations,
+    signals: {
+      masteryScore,
+      consistencyScore,
+      examEvidenceScore,
+      weakAreaPenalty,
+    },
+  };
+}
+
 export function buildAssessmentRecommendations(input: {
   masteryMap: MasteryMapEntry[];
   coverageMap: CoverageEntry[];
@@ -86,6 +166,7 @@ export function buildAssessmentRecommendations(input: {
 }): {
   recommendations: AssessmentRecommendation[];
   readinessStatus: AssessmentReadinessStatus;
+  examReadinessProfile: ExamReadinessProfile;
   gcseReadiness: GcseReadiness | null;
   assessmentLinkedCatchUpTriggers: CatchUpTrigger[];
 } {
@@ -193,9 +274,16 @@ export function buildAssessmentRecommendations(input: {
       examBoard: item.examBoard,
     }));
 
+  const examReadinessProfile = buildExamReadinessProfile({
+    masteryMap: input.masteryMap,
+    recommendations,
+    overallReadiness,
+  });
+
   return {
     recommendations,
     readinessStatus: overallReadiness,
+    examReadinessProfile,
     gcseReadiness,
     assessmentLinkedCatchUpTriggers,
   };
