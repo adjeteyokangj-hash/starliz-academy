@@ -6,6 +6,8 @@ import { useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import {
   evaluateAiGeneratorSaveState,
+  findAiGeneratorPreviewMissingFields,
+  formatAiGeneratorSaveBlockedMessage,
   formatAiGeneratorValidationSuccessMessage,
 } from "@/lib/admin-ai-generator-validation";
 import { safeJsonParse } from "@/lib/safe-json";
@@ -103,6 +105,12 @@ type ValidationMeta = {
     generatedMetadata?: Record<string, unknown> | null;
     normalizedMetadata?: Record<string, unknown> | null;
   };
+};
+
+type GeneratorFallbackInfo = {
+  used: boolean;
+  reasonCode: string;
+  message: string;
 };
 
 type SpellingPreviewItem = {
@@ -358,6 +366,35 @@ async function parseApiResponse<T = Record<string, unknown>>(response: Response)
   };
 }
 
+function formatGeneratorFailureMessage(payload: {
+  errorCode?: unknown;
+  message?: unknown;
+  error?: unknown;
+  details?: unknown;
+}) {
+  const errorCode = typeof payload.errorCode === "string" ? payload.errorCode : "generation_error";
+  const details = payload.details && typeof payload.details === "object" ? payload.details as Record<string, unknown> : {};
+  const rawMessage = typeof payload.message === "string"
+    ? payload.message
+    : typeof payload.error === "string"
+      ? payload.error
+      : "AI generation failed. Please try again.";
+
+  if (details.reason === "invalid_openai_key") {
+    return "AI generation failed because the configured OpenAI API key was rejected.";
+  }
+  if (errorCode === "missing_openai_key") {
+    return "AI generation failed because the OpenAI API key is missing.";
+  }
+  if (errorCode === "invalid_generated_content") {
+    return rawMessage || "AI returned content in an invalid format. Please try again.";
+  }
+  if (errorCode === "model_error") {
+    return rawMessage || "AI generation failed because the external AI service rejected the request.";
+  }
+  return rawMessage;
+}
+
 export default function AiGeneratorPage() {
   const searchParams = useSearchParams();
   const prefillSubject = searchParams.get("subject");
@@ -400,6 +437,7 @@ export default function AiGeneratorPage() {
     estimatedCostPence?: number;
     estimatedTokens?: number;
     validation?: ValidationMeta;
+    fallback?: GeneratorFallbackInfo;
   } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null);
@@ -468,7 +506,6 @@ export default function AiGeneratorPage() {
     safetyStatus: preview?.safetyStatus,
     apiValid: generationMeta?.validation?.valid,
   });
-  const saveBlocked = saveState.blocked;
   const approvedCount = generatedItemsList.filter((item) => item.status === "approved").length;
   const effectiveGenerationContext = previewContext ?? {
     subject,
@@ -484,6 +521,12 @@ export default function AiGeneratorPage() {
     source: "manual" as const,
     weakAreaId: null,
   };
+  const previewMissingFields = findAiGeneratorPreviewMissingFields(preview, effectiveGenerationContext.subject);
+  const saveBlocked = saveState.blocked || previewMissingFields.length > 0;
+  const saveBlockMessage = formatAiGeneratorSaveBlockedMessage({
+    reason: previewMissingFields.length ? "preview-invalid" : saveState.reason,
+    missingFields: previewMissingFields,
+  });
   const selectedGenerationTypeForContext = GENERATION_CONTENT_TYPE_BY_SUBJECT[effectiveGenerationContext.subject];
 
   const weakAreasWithMatch = weakAreas.map((area) => {
@@ -572,6 +615,16 @@ export default function AiGeneratorPage() {
     setPreviewContext(null);
     setGenerationDiagnostics(null);
     try {
+      console.info("[admin-ai-generator] preview request", {
+        subject: context.subject,
+        keyStage: context.keyStage,
+        yearGroup: context.yearGroup,
+        skillFocus: context.skillFocus,
+        topic: context.topic,
+        generationType: GENERATION_CONTENT_TYPE_BY_SUBJECT[context.subject],
+        difficulty: context.difficulty,
+        numberOfItems: items,
+      });
       const response = await fetch("/api/admin/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -598,6 +651,11 @@ export default function AiGeneratorPage() {
         model: typeof parsed.payload?.model === "string" ? parsed.payload.model : undefined,
         provider: "openai",
       });
+      console.info("[admin-ai-generator] preview response", {
+        status: response.status,
+        parseStage: parsed.diagnostics.parseStage,
+        contentType: parsed.diagnostics.contentType,
+      });
 
       if (!parsed.ok || !parsed.payload) {
         if (retryCount === 0) {
@@ -609,30 +667,33 @@ export default function AiGeneratorPage() {
         return;
       }
 
-        const payload = parsed.payload as {
+      const payload = parsed.payload as {
         success?: boolean;
+        errorCode?: string;
+        message?: string;
         error?: string;
         details?: unknown;
-          content?: Partial<GeneratedPreview> & { items?: unknown[]; title?: string };
+        content?: Partial<GeneratedPreview> & { items?: unknown[]; title?: string };
         model?: string;
         prompt?: string;
         estimatedCostPence?: number;
         estimatedTokens?: number;
         meta?: ValidationMeta;
+        fallback?: GeneratorFallbackInfo;
       };
 
       setGenerationPhase("validating-content");
       if (!response.ok || payload.success === false) {
-        const errorMsg = payload.error ?? "The AI returned an invalid response. Please try again.";
-        const detailObj = payload.details && typeof payload.details === "object" ? payload.details as Record<string, unknown> : null;
-        const mismatchReason = typeof detailObj?.reason === "string"
-          ? detailObj.reason
-          : typeof detailObj?.category === "string"
-            ? detailObj.category
-            : null;
-        setError(mismatchReason ? `${errorMsg} (${mismatchReason})` : errorMsg);
+        const errorMsg = formatGeneratorFailureMessage(payload);
+        console.warn("[admin-ai-generator] preview failed", {
+          status: response.status,
+          errorCode: payload.errorCode ?? "generation_error",
+          details: payload.details,
+        });
+        setError(errorMsg);
       } else {
         if (payload.meta?.valid === false) {
+          console.warn("[admin-ai-generator] preview validation failed", payload.meta?.errors ?? []);
           setError("Generated content failed validation. Regenerate with a different topic or skill focus.");
           return;
         }
@@ -662,6 +723,7 @@ export default function AiGeneratorPage() {
           estimatedCostPence: payload.estimatedCostPence,
           estimatedTokens: payload.estimatedTokens,
           validation: payload.meta,
+          fallback: payload.fallback,
         });
         setPreviewContext(context);
       }
@@ -675,7 +737,10 @@ export default function AiGeneratorPage() {
   }
 
   async function saveGeneratedContent() {
-    if (!preview || !approvedCount) return;
+    if (!preview || !approvedCount || saveBlocked) {
+      setError(saveBlockMessage);
+      return;
+    }
     const context = previewContext ?? {
       subject,
       keyStage,
@@ -696,6 +761,13 @@ export default function AiGeneratorPage() {
     setError(null);
     setMessage(null);
     try {
+      console.info("[admin-ai-generator] save request", {
+        subject: context.subject,
+        generationType: generationTypeForContext,
+        approvedCount,
+        yearGroup: context.yearGroup,
+        skillFocus: context.skillFocus,
+      });
       const response = await fetch("/api/admin/content-library", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -725,6 +797,7 @@ export default function AiGeneratorPage() {
       });
       const payload = await response.json();
       if (!response.ok) {
+        console.warn("[admin-ai-generator] save blocked", payload.error ?? "Save failed.");
         setError(payload.error ?? "Save failed.");
       } else {
         const warnings = Array.isArray(payload.warnings)
@@ -1273,6 +1346,11 @@ export default function AiGeneratorPage() {
               {saving ? "Saving..." : saveBlocked ? "Fix required before save" : "Save to Content Library"}
             </button>
           </div>
+          {(preview || generationMeta) && (saveBlocked || !approvedCount) ? (
+            <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+              {approvedCount > 0 ? saveBlockMessage : "Generate a valid preview before saving."}
+            </p>
+          ) : null}
           {error ? <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
           {loading ? (
             <p className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm text-indigo-100">
@@ -1295,6 +1373,7 @@ export default function AiGeneratorPage() {
                 <li><strong>Difficulty:</strong> {effectiveGenerationContext.difficulty}/5</li>
                 <li><strong>Items Requested:</strong> {items}</li>
                 {generationMeta?.model ? <li><strong>Model:</strong> {generationMeta.model}</li> : null}
+                {generationMeta?.fallback?.used ? <li><strong>Fallback:</strong> {generationMeta.fallback.reasonCode}</li> : null}
                 {generationMeta?.validation ? (
                   <>
                     <li><strong>API Valid:</strong> {generationMeta.validation.valid ? "✓" : "✗"}</li>
@@ -1550,6 +1629,13 @@ export default function AiGeneratorPage() {
               <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-100">
                 <p className="font-bold">Phonics-stage mismatch detected.</p>
                 <p className="mt-1 text-xs text-rose-100/90">Some generated words exceeded the selected phonics stage and were automatically rejected/regenerated.</p>
+              </div>
+            ) : null}
+
+            {generationMeta?.fallback?.used ? (
+              <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100">
+                <p className="font-bold">Local spelling fallback used.</p>
+                <p className="mt-1 text-xs text-amber-100/90">{generationMeta.fallback.message}</p>
               </div>
             ) : null}
 

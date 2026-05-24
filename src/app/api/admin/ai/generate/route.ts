@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
+import {
+  buildDeterministicSpellingFallback,
+  normalizeAdminAiGeneratorFailure,
+  shouldUseDeterministicSpellingFallback,
+} from "@/lib/admin-ai-generator-spelling";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import { SKILL_MAP, serializeSkills } from "@/lib/skills";
 import { parseJsonWithRepair } from "@/lib/safe-json";
@@ -318,7 +323,7 @@ Return JSON array only using this schema:
             ? "- Phase 5 strict rule: allow split digraphs and alternative vowel sounds."
             : "";
     return `
-You are generating UK KS1 spelling content.
+  You are generating UK ${keyStage} spelling content.
 
 STRICT RULES:
 - Key stage: ${keyStage}
@@ -447,7 +452,13 @@ async function requestOpenAiJson(apiKey: string, systemPrompt: string, userPromp
   const providerPayload = parseJsonWithRepair<Record<string, unknown>>(rawProviderBody);
   if (!openAIResponse.ok) {
     console.error("OpenAI error:", rawProviderBody);
-    throw new Error(`OpenAI request failed with status ${openAIResponse.status}`);
+    const providerError = providerPayload.success && providerPayload.data.error && typeof providerPayload.data.error === "object"
+      ? (providerPayload.data.error as Record<string, unknown>)
+      : null;
+    const requestError = new Error(`OpenAI request failed with status ${openAIResponse.status}${typeof providerError?.code === "string" ? ` (${providerError.code})` : ""}`) as Error & Record<string, unknown>;
+    requestError.providerStatus = openAIResponse.status;
+    requestError.providerCode = typeof providerError?.code === "string" ? providerError.code : null;
+    throw requestError;
   }
   if (!providerPayload.success) {
     throw new Error("OpenAI returned a non-JSON payload.");
@@ -946,6 +957,59 @@ async function generateValidatedSpellingContent({
   };
 }
 
+function buildValidatedSpellingFallback({
+  yearGroup,
+  skillFocus,
+  topic,
+  count,
+  difficulty,
+}: {
+  yearGroup: string;
+  skillFocus: string;
+  topic: string;
+  count: number;
+  difficulty: number;
+}) {
+  const fallbackItems = buildDeterministicSpellingFallback({
+    yearGroup,
+    skillFocus,
+    topic,
+    count,
+    difficulty,
+  });
+  const quality = validateAiContentQuality({
+    type: "spelling",
+    skillFocus,
+    requestedCount: count,
+    items: fallbackItems,
+    mode: "repair",
+  });
+
+  if (!quality.ok || !Array.isArray(quality.cleanedItems)) {
+    throw new Error(quality.error ?? "Deterministic spelling fallback validation failed.");
+  }
+
+  const normalized = normalizeSpellingItems(quality.cleanedItems, yearGroup, skillFocus, difficulty, topic);
+  const finalClean = hardCleanSpellingItems(normalized, skillFocus);
+  if (finalClean.cleaned.length < count) {
+    throw new Error(`Deterministic fallback could not create ${count} valid ${skillFocus || "spelling"} items.`);
+  }
+
+  return {
+    content: finalClean.cleaned.slice(0, count),
+    validation: {
+      valid: true,
+      repaired: false,
+      errors: [],
+      fixesApplied: [],
+      removedWords: [],
+      regeneratedCount: 0,
+      requestedCount: count,
+      finalCount: count,
+    },
+  };
+}
+
 export async function POST(req: Request) {
   const { session, response } = await requireAdmin();
   if (!session) return response;
@@ -1059,18 +1123,6 @@ export async function POST(req: Request) {
     }, { status: 422 });
   }
 
-  const apiKey = await getOpenAiApiKey();
-  if (!apiKey) {
-    return NextResponse.json({
-      success: false,
-      error: "OpenAI API key not configured. Save it in Admin Settings > API Keys.",
-      details: {
-        category: "missing_env",
-        stage: "provider-config",
-      },
-    }, { status: 503 });
-  }
-
   const generationDiagnostics = {
     yearGroup: safeYearGroup,
     keyStage: safeKeyStage,
@@ -1082,7 +1134,80 @@ export async function POST(req: Request) {
     promptBuilder: promptType,
     parserUsed: promptType === "reading" ? "reading-object" : "array-items",
   };
-  console.info("[admin-ai-generate]", generationDiagnostics);
+  console.info("[admin-ai-generate] request", {
+    ...generationDiagnostics,
+    count,
+    difficulty: safeLevel,
+    topic,
+  });
+
+  const apiKey = await getOpenAiApiKey();
+  if (!apiKey) {
+    const failure = normalizeAdminAiGeneratorFailure(new Error("OpenAI API key not configured."), {
+      subject: sourceSubject,
+      yearGroup: safeYearGroup,
+      skillFocus: resolvedSkillFocus,
+      generationType,
+    });
+    if (generationType === "spelling") {
+      const fallback = buildValidatedSpellingFallback({
+        yearGroup: safeYearGroup,
+        skillFocus: resolvedSkillFocus || "Prefixes",
+        topic,
+        count,
+        difficulty: safeLevel,
+      });
+      const preview = buildGeneratedPreview({
+        subject: sourceSubject,
+        generationType,
+        promptType,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        curriculumPathway: safeCurriculumPathway,
+        examBoard: safeExamBoard,
+        skillFocus: resolvedSkillFocus,
+        difficulty: safeLevel,
+        topic,
+        content: fallback.content,
+      });
+      console.warn("[admin-ai-generate] using spelling fallback", {
+        errorCode: failure.errorCode,
+        reason: failure.details.reason,
+        yearGroup: safeYearGroup,
+        skillFocus: resolvedSkillFocus,
+      });
+      return NextResponse.json({
+        success: true,
+        type: promptType,
+        generationType,
+        level: safeLevel,
+        topic,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        curriculumPathway: safeCurriculumPathway,
+        examBoard: safeExamBoard,
+        skillFocus: resolvedSkillFocus,
+        model: "local-fallback",
+        prompt: "Deterministic spelling fallback",
+        estimatedCostPence: 0,
+        estimatedTokens: 0,
+        content: preview,
+        meta: fallback.validation,
+        fallback: {
+          used: true,
+          reasonCode: String(failure.details.reason ?? failure.errorCode),
+          message: `${failure.message} Preview generated using the local spelling fallback.`,
+        },
+      });
+    }
+    return NextResponse.json({
+      success: false,
+      errorCode: failure.errorCode,
+      message: failure.message,
+      error: failure.message,
+      details: failure.details,
+    }, { status: failure.status });
+  }
 
   const requestKey = cacheKey({ generationType, promptType, level, topic, ageGroup, count, keyStage: safeKeyStage, yearGroup: safeYearGroup, curriculumPathway: safeCurriculumPathway, examBoard: safeExamBoard, skillFocus });
   const cached = generationCache.get(requestKey);
@@ -1241,23 +1366,16 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to parse AI response";
-    const lowered = errorMessage.toLowerCase();
-    const category = lowered.includes("not configured")
-      ? "missing_env"
-      : lowered.includes("unsupported") || lowered.includes("not mapped")
-        ? "unsupported_path"
-        : lowered.includes("malformed") || lowered.includes("parse")
-          ? "parser_schema_failure"
-          : lowered.includes("openai")
-            ? "provider_failure"
-            : lowered.includes("validation") || lowered.includes("invalid")
-              ? "validation_error"
-              : "generation_error";
+    const failure = normalizeAdminAiGeneratorFailure(error, {
+      subject: sourceSubject,
+      yearGroup: safeYearGroup,
+      skillFocus: resolvedSkillFocus,
+      generationType,
+    });
     console.error("[admin-ai-generate] OpenAI generation failed:", error);
-    console.error("[admin-ai-generate] Error category:", category);
+    console.error("[admin-ai-generate] Error code:", failure.errorCode);
     console.error("[admin-ai-generate] Generation diagnostics:", generationDiagnostics);
-    
+
     await writeAuditLogSafely({
       actorUserId: session.userId,
       action: "ai_content.malformed_generation",
@@ -1269,21 +1387,76 @@ export async function POST(req: Request) {
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus,
         prompt: userPrompt,
-        error: errorMessage,
-        category,
+        error: failure.message,
+        errorCode: failure.errorCode,
         diagnostics: generationDiagnostics,
       },
     });
 
-    // Always return JSON error responses, never return fallback placeholders
-    // This ensures GCSE Science (and all subjects) fail cleanly without HTML 502 responses
-    const status = category === "validation_error" || category === "unsupported_path" ? 422 : category === "missing_env" ? 503 : 500;
+    if (generationType === "spelling" && shouldUseDeterministicSpellingFallback(failure.errorCode)) {
+      try {
+        const fallback = buildValidatedSpellingFallback({
+          yearGroup: safeYearGroup,
+          skillFocus: resolvedSkillFocus || "Prefixes",
+          topic,
+          count,
+          difficulty: safeLevel,
+        });
+        const preview = buildGeneratedPreview({
+          subject: sourceSubject,
+          generationType,
+          promptType,
+          keyStage: safeKeyStage,
+          yearGroup: safeYearGroup,
+          curriculumPathway: safeCurriculumPathway,
+          examBoard: safeExamBoard,
+          skillFocus: resolvedSkillFocus,
+          difficulty: safeLevel,
+          topic,
+          content: fallback.content,
+        });
+        console.warn("[admin-ai-generate] recovered with spelling fallback", {
+          errorCode: failure.errorCode,
+          reason: failure.details.reason,
+          providerStatus: failure.details.providerStatus,
+          providerCode: failure.details.providerCode,
+        });
+        return NextResponse.json({
+          success: true,
+          type: promptType,
+          generationType,
+          level: safeLevel,
+          topic,
+          keyStage: safeKeyStage,
+          yearGroup: safeYearGroup,
+          curriculumPathway: safeCurriculumPathway,
+          examBoard: safeExamBoard,
+          skillFocus: resolvedSkillFocus,
+          model: "local-fallback",
+          prompt: userPrompt,
+          estimatedCostPence: 0,
+          estimatedTokens: 0,
+          content: preview,
+          meta: fallback.validation,
+          fallback: {
+            used: true,
+            reasonCode: String(failure.details.reason ?? failure.errorCode),
+            message: `${failure.message} Preview generated using the local spelling fallback.`,
+          },
+        });
+      } catch (fallbackError) {
+        console.error("[admin-ai-generate] spelling fallback failed:", fallbackError);
+      }
+    }
+
     return NextResponse.json(
       {
         success: false,
-        error: errorMessage,
+        errorCode: failure.errorCode,
+        message: failure.message,
+        error: failure.message,
         details: {
-          category,
+          ...failure.details,
           subject: sourceSubject,
           yearGroup: safeYearGroup,
           skillFocus: resolvedSkillFocus,
@@ -1293,7 +1466,7 @@ export async function POST(req: Request) {
           diagnostics: generationDiagnostics,
         },
       },
-      { status },
+      { status: failure.status },
     );
   }
 }

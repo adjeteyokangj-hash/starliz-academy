@@ -3,8 +3,15 @@ import { test } from "node:test";
 
 import {
   evaluateAiGeneratorSaveState,
+  findAiGeneratorPreviewMissingFields,
+  formatAiGeneratorSaveBlockedMessage,
   formatAiGeneratorValidationSuccessMessage,
 } from "../src/lib/admin-ai-generator-validation";
+import {
+  buildDeterministicSpellingFallback,
+  normalizeAdminAiGeneratorFailure,
+  shouldUseDeterministicSpellingFallback,
+} from "../src/lib/admin-ai-generator-spelling";
 import { validateAiContentQuality } from "../src/lib/ai/content-quality";
 
 const frenchVocabularyItem = {
@@ -86,5 +93,72 @@ test("invalid generated preview still blocks save", () => {
       apiValid: false,
     }),
     { blocked: true, reason: "api-invalid" },
+  );
+});
+
+test("Year 4 prefixes fallback generates valid spelling items", () => {
+  const items = buildDeterministicSpellingFallback({
+    yearGroup: "Year 4",
+    skillFocus: "Prefixes",
+    topic: "Prefixes practice",
+    count: 5,
+    difficulty: 5,
+  });
+
+  assert.equal(items.length, 5);
+  const result = validateAiContentQuality({
+    type: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Prefixes",
+    requestedCount: 5,
+    items,
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("malformed AI output becomes a clear invalid generated content error", () => {
+  const failure = normalizeAdminAiGeneratorFailure(
+    new Error("Generation failed due to malformed AI output. Stages: raw -> repair"),
+    { yearGroup: "Year 4", skillFocus: "Prefixes", generationType: "spelling" },
+  );
+
+  assert.equal(failure.errorCode, "invalid_generated_content");
+  assert.match(failure.message, /invalid format/i);
+});
+
+test("invalid API key becomes a clear model error and enables spelling fallback", () => {
+  const providerError = Object.assign(new Error("OpenAI request failed with status 401 (invalid_api_key)"), {
+    providerStatus: 401,
+    providerCode: "invalid_api_key",
+  });
+  const failure = normalizeAdminAiGeneratorFailure(providerError, {
+    yearGroup: "Year 4",
+    skillFocus: "Prefixes",
+    generationType: "spelling",
+  });
+
+  assert.equal(failure.errorCode, "model_error");
+  assert.match(failure.message, /api key was rejected/i);
+  assert.equal(shouldUseDeterministicSpellingFallback(failure.errorCode), true);
+});
+
+test("save is blocked when preview content is missing required spelling fields", () => {
+  const missingFields = findAiGeneratorPreviewMissingFields({
+    title: "Spelling - Prefixes practice",
+    subject: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Prefixes",
+    difficulty: 5,
+    topic: "Prefixes practice",
+    items: [{ word: "unhappy", hint: "", sentenceContext: "" }],
+  }, "spelling");
+
+  assert.deepEqual(missingFields, ["items[1].hint", "items[1].sentenceContext"]);
+  assert.match(
+    formatAiGeneratorSaveBlockedMessage({ reason: "preview-invalid", missingFields }),
+    /Generate a valid preview before saving/i,
   );
 });
