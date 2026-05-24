@@ -93,6 +93,9 @@ type WeakArea = {
 type ValidationMeta = {
   valid: boolean;
   repaired: boolean;
+  aiGenerated?: boolean;
+  regeneratedAfterValidation?: boolean;
+  fallbackUsed?: boolean;
   errors: string[];
   fixesApplied: string[];
   removedWords: string[];
@@ -1378,6 +1381,9 @@ export default function AiGeneratorPage() {
                   <>
                     <li><strong>API Valid:</strong> {generationMeta.validation.valid ? "✓" : "✗"}</li>
                     <li><strong>Repaired:</strong> {generationMeta.validation.repaired ? "Yes" : "No"}</li>
+                    <li><strong>AI generated:</strong> {generationMeta.validation.aiGenerated === false ? "No" : "Yes"}</li>
+                    <li><strong>Regenerated after validation:</strong> {generationMeta.validation.regeneratedAfterValidation ? "Yes" : "No"}</li>
+                    <li><strong>Fallback used:</strong> {generationMeta.validation.fallbackUsed ? "Yes" : "No"}</li>
                     {generationMeta.validation.metadataDebug ? (
                       <>
                         <li><strong>Requested Metadata:</strong> {JSON.stringify(generationMeta.validation.metadataDebug.requestedMetadata)}</li>
@@ -1679,6 +1685,15 @@ export default function AiGeneratorPage() {
                   ) : null}
                   <p className="mt-1 line-clamp-3 text-xs text-slate-300">{String(item.hint ?? item.explanation ?? "Review this item before saving.")}</p>
                   <p className="mt-1 line-clamp-3 text-xs text-slate-400">{String(item.sentence ?? item.sentenceContext ?? item.passage ?? "")}</p>
+                  {typeof item.spellingPattern === "string" && item.spellingPattern ? (
+                    <p className="mt-1 text-[11px] text-cyan-200">Pattern: {String(item.spellingPattern)}</p>
+                  ) : null}
+                  {typeof item.whyItMatchesSkill === "string" && item.whyItMatchesSkill ? (
+                    <p className="mt-1 text-[11px] text-slate-300">Why this matches: {String(item.whyItMatchesSkill)}</p>
+                  ) : null}
+                  {typeof item.validationLevel === "string" ? (
+                    <p className="mt-1 text-[11px] text-amber-200">Validation level: {String(item.validationLevel)}</p>
+                  ) : null}
                   {typeof item.visualPrompt === "string" && item.visualPrompt ? (
                     <p className="mt-1 line-clamp-2 text-[11px] text-violet-200">Visual prompt: {String(item.visualPrompt)}</p>
                   ) : null}

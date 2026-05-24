@@ -8,7 +8,9 @@ import {
   formatAiGeneratorValidationSuccessMessage,
 } from "../src/lib/admin-ai-generator-validation";
 import {
+  assessSpellingItemForDifficulty,
   buildDeterministicSpellingFallback,
+  detectSpellingSkillFocusKind,
   normalizeAdminAiGeneratorFailure,
   shouldUseDeterministicSpellingFallback,
 } from "../src/lib/admin-ai-generator-spelling";
@@ -161,4 +163,142 @@ test("save is blocked when preview content is missing required spelling fields",
     formatAiGeneratorSaveBlockedMessage({ reason: "preview-invalid", missingFields }),
     /Generate a valid preview before saving/i,
   );
+});
+
+test("Year 4 suffixes difficulty 5 rejects simple words", () => {
+  for (const simple of ["line", "shine", "time"]) {
+    const result = validateAiContentQuality({
+      type: "spelling",
+      keyStage: "KS2",
+      yearGroup: "Year 4",
+      skillFocus: "Suffixes",
+      difficulty: 5,
+      items: [{ word: simple, hint: "Try again", sentenceContext: "A weak sentence." }],
+    });
+    assert.equal(result.ok, false);
+    assert.match(String(result.error), /too simple|stronger Year 4|suffix focus/i);
+  }
+});
+
+test("Year 4 suffixes difficulty 5 accepts stronger suffix words", () => {
+  const strong = ["carefully", "happiness", "preparation", "courageous", "believable"];
+  const items = strong.map((word) => ({
+    word,
+    hint: "Explain the suffix and meaning shift.",
+    sentenceContext: `Use ${word} in a precise Year 4 sentence.`,
+  }));
+  const result = validateAiContentQuality({
+    type: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Suffixes",
+    difficulty: 5,
+    items,
+  });
+  assert.equal(result.ok, true);
+});
+
+test("Year 4 prefixes difficulty 5 accepts strong prefix words", () => {
+  const strong = ["misbehave", "disappear", "preview", "submarine", "interact"];
+  const items = strong.map((word) => ({
+    word,
+    hint: "Identify the prefix before spelling.",
+    sentenceContext: `Write a sentence that uses ${word} in context.`,
+  }));
+  const result = validateAiContentQuality({
+    type: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Prefixes",
+    difficulty: 5,
+    items,
+  });
+  assert.equal(result.ok, true);
+});
+
+test("Year 4 homophones require pair/group", () => {
+  const single = validateAiContentQuality({
+    type: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Homophones",
+    difficulty: 5,
+    items: [{ word: "their", hint: "Choose correctly", sentenceContext: "Their bag was on the floor." }],
+  });
+  assert.equal(single.ok, false);
+
+  const pair = validateAiContentQuality({
+    type: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Homophones",
+    difficulty: 5,
+    items: [{
+      word: "their",
+      hint: "Choose the right form.",
+      sentenceContext: "Their project was displayed in the hall.",
+      homophoneGroup: ["their", "there", "they're"],
+      meaning: "possessive form",
+    }],
+  });
+  assert.equal(pair.ok, true);
+});
+
+test("Year 4 compound words require visible parts", () => {
+  const weak = validateAiContentQuality({
+    type: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Compound words",
+    difficulty: 5,
+    items: [{ word: "mountain", hint: "Think carefully", sentenceContext: "We climbed a mountain yesterday." }],
+  });
+  assert.equal(weak.ok, false);
+
+  const strong = validateAiContentQuality({
+    type: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Compound words",
+    difficulty: 5,
+    items: [{ word: "earthquake", hint: "Split the roots", sentenceContext: "An earthquake can shake buildings.", firstWord: "earth", secondWord: "quake" }],
+  });
+  assert.equal(strong.ok, true);
+});
+
+test("fallback output matches skill focus for suffixes and compounds", () => {
+  const suffixFallback = buildDeterministicSpellingFallback({
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+    skillFocus: "Suffixes",
+    topic: "Suffixes practice",
+    count: 5,
+    difficulty: 5,
+  });
+  assert.equal(suffixFallback.every((item) => String(item.spellingPattern ?? "").startsWith("-")), true);
+
+  const compoundFallback = buildDeterministicSpellingFallback({
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+    skillFocus: "Compound words",
+    topic: "Compound words practice",
+    count: 5,
+    difficulty: 5,
+  });
+  assert.equal(compoundFallback.every((item) => Array.isArray(item.homophoneGroup) || item.firstWord || item.secondWord), true);
+});
+
+test("assessment utility marks age-appropriate Year 4 prefix words", () => {
+  const assessed = assessSpellingItemForDifficulty({
+    word: "misbehave",
+    sentenceContext: "Do not misbehave when visitors arrive.",
+    skillFocus: "Prefixes",
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+    difficulty: 5,
+    item: { word: "misbehave" },
+  });
+  assert.equal(assessed.valid, true);
+  assert.equal(assessed.validationLevel, "age-appropriate");
+  assert.equal(detectSpellingSkillFocusKind("Prefixes"), "prefixes");
 });

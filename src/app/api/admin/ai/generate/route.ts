@@ -3,7 +3,9 @@ import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
 import {
+  detectSpellingSkillFocusKind,
   buildDeterministicSpellingFallback,
+  getSpellingDifficultyProfile,
   normalizeAdminAiGeneratorFailure,
   shouldUseDeterministicSpellingFallback,
 } from "@/lib/admin-ai-generator-spelling";
@@ -243,6 +245,7 @@ function buildUserPrompt(
   excludeWords: string[] = [],
   targetSkills: string[] = [],
   weakAreas: string[] = [],
+  repairFeedback = "",
 ): string {
   const skillInstruction = targetSkills.length
     ? `\nSKILL TARGETING: Focus content on these skills: ${targetSkills.join(", ")}.`
@@ -312,6 +315,23 @@ Return JSON array only using this schema:
   }
 
   if (type === "spelling") {
+    const profile = getSpellingDifficultyProfile(safeYearGroup, keyStage, skillFocus || "spelling", safeLevel);
+    const skillKind = detectSpellingSkillFocusKind(skillFocus || "");
+    const strictPatternLine = skillKind === "prefixes"
+      ? "- Prefix focus: every word must begin with an accepted prefix (re-, mis-, dis-, pre-, sub-, inter-, super-, anti-, auto-)."
+      : skillKind === "suffixes"
+        ? "- Suffix focus: every word must end with an accepted suffix (-ly, -ness, -ment, -ation, -ous, -ful, -less, -able, -ible)."
+        : skillKind === "homophones"
+          ? "- Homophone focus: each item must include a homophone pair or group and a sentence showing correct usage."
+          : skillKind === "compound"
+            ? "- Compound word focus: each item must be a real compound word and include firstWord + secondWord."
+            : "- Match selected spelling progression exactly.";
+    const year4HardBan = safeYearGroup === "Year 4" && safeLevel >= 5
+      ? "- Reject simple words like line, shine, time, cake, book, dog, cat, sun, run unless the selected skill explicitly requires that pattern."
+      : "";
+    const repairLine = repairFeedback
+      ? `\nREPAIR FEEDBACK FROM VALIDATION:\n${repairFeedback}\nReplace only invalid items and keep valid items out of the response.`
+      : "";
     const stageLower = (skillFocus || "").toLowerCase();
     const phonicsInstruction = stageLower.startsWith("phase 2")
       ? "- Phase 2 strict rule: only simple VC/CVC words. No split digraphs, no magic-e, no advanced vowel teams."
@@ -332,12 +352,16 @@ STRICT RULES:
 - Difficulty: ${level}
 - Theme: ${cleanedTopic || skillFocus || "silent e"}
 - All words MUST follow the skill exactly
+- Year-group calibration: ${profile.expectedLevel} for ${safeYearGroup} (${keyStage})
+- Minimum target word length: ${profile.minLength} letters unless homophone or explicit exception
 - For "Silent e": every word MUST end with "e" and follow vowel-consonant-e pattern (examples: make, bike, rope)
-- ${phonicsInstruction || "Match selected spelling progression exactly."}
+- ${phonicsInstruction || strictPatternLine}
 - DO NOT include words like sneak, climb, bread, or any irregular patterns
+- ${strictPatternLine}
+- ${year4HardBan}
 - NO duplicates
 - Avoid these words: ${excludeWords.join(", ") || "none"}
-- Do not return maths questions, fractions, number problems, reading passages, or explanations${skillInstruction}${weakInstruction}
+- Do not return maths questions, fractions, number problems, reading passages, or explanations${skillInstruction}${weakInstruction}${repairLine}
 
 OUTPUT:
 - ${count} items EXACTLY
@@ -352,6 +376,12 @@ Each item must include:
   "categoryHint": string,
   "syllables": string,
   "emoji": string,
+  "spellingPattern": string,
+  "whyItMatchesSkill": string,
+  "validationLevel": "age-appropriate" | "needs-review" | "too-easy",
+  "homophoneGroup": string[] | null,
+  "firstWord": string | null,
+  "secondWord": string | null,
   "yearGroup": "${safeYearGroup}",
   "skillFocus": "${skillFocus || "Silent e"}",
   "difficulty": ${level}
@@ -813,6 +843,14 @@ function normalizeSpellingItems(items: unknown[], yearGroup: string, skillFocus:
       categoryHint,
       syllables: String(data.syllables ?? "1").trim(),
       emoji: String(data.emoji ?? "🔤").trim(),
+      spellingPattern: String(data.spellingPattern ?? ""),
+      whyItMatchesSkill: String(data.whyItMatchesSkill ?? ""),
+      validationLevel: String(data.validationLevel ?? "needs-review"),
+      ageSuitability: String(data.ageSuitability ?? data.validationLevel ?? "needs-review"),
+      skillFocusMatch: Boolean(data.skillFocusMatch ?? false),
+      homophoneGroup: Array.isArray(data.homophoneGroup) ? data.homophoneGroup : null,
+      firstWord: typeof data.firstWord === "string" ? data.firstWord : null,
+      secondWord: typeof data.secondWord === "string" ? data.secondWord : null,
       yearGroup,
       skillFocus,
       difficulty: level,
@@ -890,17 +928,37 @@ async function generateValidatedSpellingContent({
   const fixesApplied = new Set<string>();
   const removedWords = new Set<string>();
   let regeneratedCount = 0;
+  let regeneratedAfterValidation = false;
   let lastPrompt = "";
+  let repairFeedback = "";
 
   for (let attempt = 0; attempt < 4 && collected.length < count; attempt += 1) {
     const needed = count - collected.length;
-    lastPrompt = buildUserPrompt("spelling", "spelling", level, topic, ageGroup, needed, keyStage, safeYearGroup, skillFocus, null, Array.from(excludeWords));
+    lastPrompt = buildUserPrompt(
+      "spelling",
+      "spelling",
+      level,
+      topic,
+      ageGroup,
+      needed,
+      keyStage,
+      safeYearGroup,
+      skillFocus,
+      null,
+      Array.from(excludeWords),
+      [],
+      [],
+      repairFeedback,
+    );
     const { parsed } = await requestOpenAiJson(apiKey, systemPrompt, lastPrompt);
     const incoming = Array.isArray(parsed) ? parsed : [];
     const combined = [...collected, ...incoming];
     const quality = validateAiContentQuality({
       type: generationType,
+      keyStage,
+      yearGroup: safeYearGroup,
       skillFocus,
+      difficulty: level,
       requestedCount: count,
       items: combined,
       mode: "repair",
@@ -924,6 +982,10 @@ async function generateValidatedSpellingContent({
     }
 
     for (const error of quality.meta?.errors ?? []) errors.add(error);
+    if ((quality.meta?.errors ?? []).length > 0) {
+      regeneratedAfterValidation = true;
+      repairFeedback = `Validation failed for: ${(quality.meta?.errors ?? []).slice(0, 8).join(", ")}. Generate stronger ${safeYearGroup} ${skillFocus} items and replace invalid entries only.`;
+    }
     for (const fix of quality.meta?.fixesApplied ?? []) fixesApplied.add(fix);
     for (const word of quality.meta?.removedWords ?? []) removedWords.add(word);
     if (attempt > 0 && cleaned.length > regeneratedCount) {
@@ -944,9 +1006,13 @@ async function generateValidatedSpellingContent({
     validation: {
       valid: true,
       repaired: errors.size > 0 || fixesApplied.size > 0,
+      aiGenerated: true,
+      regeneratedAfterValidation,
+      fallbackUsed: false,
       errors: Array.from(errors),
       fixesApplied: [
         ...Array.from(fixesApplied),
+        ...(regeneratedAfterValidation ? ["AI output was revalidated and regenerated for invalid items."] : []),
         ...(regeneratedCount > 0 ? [`Regenerated ${regeneratedCount} replacement ${regeneratedCount === 1 ? "word" : "words"}`] : []),
       ],
       removedWords: Array.from(removedWords),
@@ -958,12 +1024,14 @@ async function generateValidatedSpellingContent({
 }
 
 function buildValidatedSpellingFallback({
+  keyStage,
   yearGroup,
   skillFocus,
   topic,
   count,
   difficulty,
 }: {
+  keyStage: string;
   yearGroup: string;
   skillFocus: string;
   topic: string;
@@ -971,6 +1039,7 @@ function buildValidatedSpellingFallback({
   difficulty: number;
 }) {
   const fallbackItems = buildDeterministicSpellingFallback({
+    keyStage,
     yearGroup,
     skillFocus,
     topic,
@@ -979,7 +1048,10 @@ function buildValidatedSpellingFallback({
   });
   const quality = validateAiContentQuality({
     type: "spelling",
+    keyStage,
+    yearGroup,
     skillFocus,
+    difficulty,
     requestedCount: count,
     items: fallbackItems,
     mode: "repair",
@@ -1000,6 +1072,9 @@ function buildValidatedSpellingFallback({
     validation: {
       valid: true,
       repaired: false,
+      aiGenerated: false,
+      regeneratedAfterValidation: false,
+      fallbackUsed: true,
       errors: [],
       fixesApplied: [],
       removedWords: [],
@@ -1151,6 +1226,7 @@ export async function POST(req: Request) {
     });
     if (generationType === "spelling") {
       const fallback = buildValidatedSpellingFallback({
+        keyStage: safeKeyStage,
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus || "Prefixes",
         topic,
@@ -1284,6 +1360,7 @@ export async function POST(req: Request) {
         keyStage: safeKeyStage,
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus,
+        difficulty: safeLevel,
         requestedCount: count,
         items: normalizedBeforeValidation,
       });
@@ -1396,6 +1473,7 @@ export async function POST(req: Request) {
     if (generationType === "spelling" && shouldUseDeterministicSpellingFallback(failure.errorCode)) {
       try {
         const fallback = buildValidatedSpellingFallback({
+          keyStage: safeKeyStage,
           yearGroup: safeYearGroup,
           skillFocus: resolvedSkillFocus || "Prefixes",
           topic,

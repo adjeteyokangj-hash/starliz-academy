@@ -1,10 +1,12 @@
 import { KEY_STAGES, phonicsStageFromSkillFocus, type PhonicsStage } from "@/lib/curriculum";
+import { assessSpellingItemForDifficulty } from "@/lib/admin-ai-generator-spelling";
 
 type QualityInput = {
   type: "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages";
   keyStage?: string;
   yearGroup?: string;
   skillFocus?: string;
+  difficulty?: number;
   requestedCount?: number;
   mode?: "strict" | "repair";
   items: unknown;
@@ -97,17 +99,34 @@ function createSpellingErrorMessage(code: string) {
   if (type === "duplicate") return `Duplicate spelling word rejected: ${word}`;
   if (type === "invalid_silent_e") return `Invalid silent-e word rejected: ${word}`;
   if (type.startsWith("phonics_stage_")) return `Word exceeds selected phonics stage: ${word}`;
+  if (type === "too_easy") return "Some generated words were too simple for Year 4 difficulty 5.";
+  if (type === "too_short") return "Regenerate with stronger Year 4 spelling patterns.";
+  if (type === "skill_mismatch_prefix") return "Generated words did not match the selected prefix focus.";
+  if (type === "skill_mismatch_suffix") return "Generated words did not match the selected suffix focus.";
+  if (type === "homophone_pair_missing") return "This homophone item is missing its matching word pair.";
+  if (type === "homophone_meaning_missing") return "This homophone item is missing a meaning difference explanation.";
+  if (type === "compound_split_missing") return "This compound word item does not show two joined words.";
+  if (type === "weak_sentence_context") return "Regenerate with stronger sentence context for each spelling word.";
   if (type === "incomplete") return `Incomplete spelling item rejected: ${word || "unknown"}`;
   return "Invalid spelling content.";
 }
 
-function repairSpellingItems(records: unknown[], skillFocus?: string, requestedCount?: number) {
+function repairSpellingItems(
+  records: unknown[],
+  skillFocus?: string,
+  requestedCount?: number,
+  yearGroup?: string,
+  keyStage?: string,
+  difficulty?: number,
+) {
   const seen = new Set<string>();
   const errors: string[] = [];
   const fixesApplied: string[] = [];
   const removedWords: string[] = [];
   const cleaned: Record<string, unknown>[] = [];
   const phonicsStage = phonicsStageFromSkillFocus(skillFocus);
+  const safeDifficulty = Math.max(1, Math.min(5, typeof difficulty === "number" ? difficulty : 3));
+  const safeYearGroup = String(yearGroup ?? "Year 1");
 
   for (const item of records) {
     if (!item || typeof item !== "object") {
@@ -159,8 +178,35 @@ function repairSpellingItems(records: unknown[], skillFocus?: string, requestedC
       continue;
     }
 
+    const assessment = assessSpellingItemForDifficulty({
+      word,
+      sentenceContext,
+      skillFocus: String(skillFocus ?? ""),
+      yearGroup: safeYearGroup,
+      keyStage: keyStage ?? null,
+      difficulty: safeDifficulty,
+      item: data,
+    });
+    if (!assessment.valid) {
+      for (const issue of assessment.issues) {
+        errors.push(issue);
+      }
+      fixesApplied.push(`Removed weak or mismatched word: ${word}`);
+      removedWords.push(word);
+      continue;
+    }
+
     seen.add(word);
-    cleaned.push({ ...data, word, phonicsStage: phonicsStage ?? null });
+    cleaned.push({
+      ...data,
+      word,
+      phonicsStage: phonicsStage ?? null,
+      spellingPattern: String(data.spellingPattern ?? assessment.spellingPattern),
+      whyItMatchesSkill: String(data.whyItMatchesSkill ?? assessment.whyItMatchesSkill),
+      validationLevel: String(data.validationLevel ?? assessment.validationLevel),
+      ageSuitability: assessment.validationLevel,
+      skillFocusMatch: assessment.spellingPattern !== "none",
+    });
   }
 
   return {
@@ -181,14 +227,14 @@ function repairSpellingItems(records: unknown[], skillFocus?: string, requestedC
   };
 }
 
-export function validateAiContentQuality({ type, keyStage, skillFocus, requestedCount, mode = "strict", items }: QualityInput): QualityResult {
+export function validateAiContentQuality({ type, keyStage, yearGroup, skillFocus, difficulty, requestedCount, mode = "strict", items }: QualityInput): QualityResult {
   const records = asArray(items);
   if (!records.length) return { ok: false, error: "No generated content to save." };
 
   const selectedStage = keyStage?.trim();
 
   if (type === "spelling" || type === "phonics") {
-    const repaired = repairSpellingItems(records, skillFocus, requestedCount);
+    const repaired = repairSpellingItems(records, skillFocus, requestedCount, yearGroup, keyStage, difficulty);
     if (mode === "repair") {
       if (!repaired.cleaned.length) {
         const label = type === "phonics" ? "phonics" : "spelling";
