@@ -10,7 +10,9 @@ import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
 import PrimaryDashboard from "@/components/student/PrimaryDashboard";
 import SecondaryDashboard from "@/components/student/SecondaryDashboard";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
+import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
+import type { CoverageEntry } from "@/lib/academic-intelligence/types";
 
 type ProgressionRecommendation = {
   scopedSubject: string;
@@ -172,6 +174,7 @@ type StudentAcademicIntelligencePayload = {
     coveredCount: number;
     averageScore: number;
   };
+  curriculumCoverage?: CoverageEntry[];
   masteryExpansion?: {
     needsCatchUpTopics: number;
     nearlySecureTopics: number;
@@ -954,6 +957,15 @@ export default function StudentDashboardPage() {
                       </div>
                     </div>
                   ) : null}
+
+                  <CurriculumMasteryMap
+                    variant="light"
+                    title="Curriculum Mastery Map"
+                    subtitle="Subjects, levels, and topic status across the learner's curriculum."
+                    eyebrow="Mastery map"
+                    summary={academicIntelligence.summary}
+                    rows={academicIntelligence.curriculumCoverage ?? []}
+                  />
 
                   {((academicIntelligence.catchUpTasks ?? []).length === 0 && academicIntelligence.catchUpRecommendations.length === 0) ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">

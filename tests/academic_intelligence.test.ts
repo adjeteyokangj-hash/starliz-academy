@@ -289,6 +289,7 @@ test("student API formatter returns safe response shape", () => {
   assert.ok(typeof safe.examReadinessProfile.score === "number");
   assert.ok(Array.isArray(safe.schoolWeekModePlan.days));
   assert.ok(typeof safe.masteryExpansion.masteredTopics === "number");
+  assert.ok(Array.isArray(safe.curriculumCoverage));
   assert.ok(Array.isArray(safe.nextRecommendedActions));
 });
 

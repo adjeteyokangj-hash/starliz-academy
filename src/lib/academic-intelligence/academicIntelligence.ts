@@ -269,6 +269,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   | "studentId"
   | "summary"
   | "masteryExpansion"
+  | "curriculumCoverage"
   | "catchUpRecommendations"
   | "catchUpTasks"
   | "assessmentRecommendations"
@@ -281,6 +282,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
     studentId: output.studentId,
     summary: output.summary,
     masteryExpansion: output.masteryExpansion,
+    curriculumCoverage: output.curriculumCoverage,
     catchUpRecommendations: output.catchUpRecommendations.map((item) => ({
       ...item,
       reason: item.studentFriendlyReason,

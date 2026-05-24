@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import AdminStatCard from "@/components/admin/AdminStatCard";
+import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
+import type { CoverageEntry } from "@/lib/academic-intelligence/types";
 
 type StudentDetail = {
   id: string;
@@ -71,12 +73,7 @@ type AdminAcademicIntelligencePayload = {
     coveredCount: number;
     averageScore: number;
   };
-  curriculumCoverage: Array<{
-    subject: string;
-    topic?: string | null;
-    masteryStatus: string;
-    coverageStatus: string;
-  }>;
+  curriculumCoverage?: CoverageEntry[];
   catchUpRecommendations: Array<{
     id: string;
     title: string;
@@ -324,6 +321,15 @@ export default function StudentDetailPage() {
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Needs revision: <span className="font-black text-white">{academicIntelligence.summary.needsRevisionCount}</span></div>
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Avg score: <span className="font-black text-white">{academicIntelligence.summary.averageScore}%</span></div>
               </div>
+
+              <CurriculumMasteryMap
+                variant="dark"
+                title="Curriculum Mastery Map"
+                subtitle="Subjects, levels, and topic statuses for this learner."
+                eyebrow="Mastery map"
+                summary={academicIntelligence.summary}
+                rows={academicIntelligence.curriculumCoverage ?? []}
+              />
 
               <div className="grid gap-4 xl:grid-cols-2">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3">

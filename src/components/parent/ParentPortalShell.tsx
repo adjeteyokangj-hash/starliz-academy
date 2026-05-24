@@ -12,7 +12,9 @@ import ConsentAuditView from "./ConsentAuditView";
 import NotificationPreferences from "./NotificationPreferences";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
+import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import { resolveDashboardTier, dashboardTierLabel, isProfileComplete } from "@/lib/dashboardResolver";
+import type { CoverageEntry } from "@/lib/academic-intelligence/types";
 
 type PortalSection =
   | "dashboard"
@@ -221,6 +223,7 @@ type ParentAcademicIntelligencePayload = {
     coveredCount: number;
     averageScore: number;
   };
+  curriculumCoverage?: CoverageEntry[];
   catchUpRecommendations: Array<{
     id: string;
     title: string;
@@ -1138,6 +1141,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         <Metric label="Needs revision" value={String(academicIntelligence.summary.needsRevisionCount)} />
                         <Metric label="Average score" value={`${academicIntelligence.summary.averageScore}%`} />
                       </div>
+
+                      <CurriculumMasteryMap
+                        variant="dark"
+                        title="Curriculum Mastery Map"
+                        subtitle="See each subject, level, and topic status before catch-up is assigned or reviewed."
+                        eyebrow="Mastery map"
+                        summary={academicIntelligence.summary}
+                        rows={academicIntelligence.curriculumCoverage ?? []}
+                      />
 
                       {(academicIntelligence.catchUpTasks ?? []).length === 0 && academicIntelligence.catchUpRecommendations.length === 0 ? (
                         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
