@@ -14,7 +14,7 @@ import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import { resolveDashboardTier, dashboardTierLabel, isProfileComplete } from "@/lib/dashboardResolver";
-import type { CoverageEntry } from "@/lib/academic-intelligence/types";
+import type { CoverageEntry, SchoolWeekday } from "@/lib/academic-intelligence/types";
 
 type PortalSection =
   | "dashboard"
@@ -253,8 +253,66 @@ type ParentAcademicIntelligencePayload = {
     examBoard?: string | null;
     coverageGapCount: number;
   } | null;
+  schoolWeekModePlan?: {
+    enabled: boolean;
+    strategy: string;
+    totalEstimatedMinutes: number;
+    days: Array<{
+      day: SchoolWeekday;
+      focus: string;
+      estimatedMinutes: number;
+    }>;
+    dailySchedules: Array<{
+      day: SchoolWeekday;
+      totalMinutes: number;
+      blocks: Array<{
+        blockId: string;
+        title: string;
+        activityType: string;
+        startTime: string;
+        endTime: string;
+        friendlyLabel: string;
+      }>;
+    }>;
+    settings: {
+      enabled: boolean;
+      activeDays: SchoolWeekday[];
+      startTime: string;
+      endTime: string;
+      lessonBlockMinutes: number;
+      shortBreakMinutes: number;
+      lunchMinutes: number;
+      dailySubjectLimit: number;
+      weeklySubjectSelection: string[];
+      includeCatchUpTasks: boolean;
+      includeRevisionBlocks: boolean;
+      includeHomeworkBlock: boolean;
+      includeQuizReviewBlock: boolean;
+      includeWellbeingBlock: boolean;
+      includeEndOfDaySummary: boolean;
+    };
+  };
   reviewActions: Array<{ action: string; label: string; persistenceSupported: boolean; message: string }>;
   parentExplanation: string;
+};
+
+type SchoolWeekSettingsPayload = {
+  enabled: boolean;
+  activeDays: SchoolWeekday[];
+  startTime: string;
+  endTime: string;
+  lessonBlockMinutes: number;
+  shortBreakMinutes: number;
+  lunchMinutes: number;
+  dailySubjectLimit: number;
+  weeklySubjectSelection: string[];
+  includeCatchUpTasks: boolean;
+  includeRevisionBlocks: boolean;
+  includeHomeworkBlock: boolean;
+  includeQuizReviewBlock: boolean;
+  includeWellbeingBlock: boolean;
+  includeEndOfDaySummary: boolean;
+  parentAdminNotes?: string | null;
 };
 
 type ParentCertificateLibraryEntry = {
@@ -318,6 +376,27 @@ const pathToSection = new Map<string, PortalSection>(
   Object.entries(sectionHref).map(([id, href]) => [href, id as PortalSection]),
 );
 
+const SCHOOL_WEEK_DAYS: SchoolWeekday[] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+const defaultSchoolWeekSettings: SchoolWeekSettingsPayload = {
+  enabled: true,
+  activeDays: [...SCHOOL_WEEK_DAYS],
+  startTime: "16:00",
+  endTime: "19:00",
+  lessonBlockMinutes: 35,
+  shortBreakMinutes: 10,
+  lunchMinutes: 30,
+  dailySubjectLimit: 2,
+  weeklySubjectSelection: [],
+  includeCatchUpTasks: true,
+  includeRevisionBlocks: true,
+  includeHomeworkBlock: true,
+  includeQuizReviewBlock: true,
+  includeWellbeingBlock: false,
+  includeEndOfDaySummary: true,
+  parentAdminNotes: null,
+};
+
 function currency(value: number) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(value / 100);
 }
@@ -366,6 +445,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicError, setAcademicError] = useState<string | null>(null);
   const [academicActionTaskId, setAcademicActionTaskId] = useState<string | null>(null);
+  const [schoolWeekSettings, setSchoolWeekSettings] = useState<SchoolWeekSettingsPayload>(defaultSchoolWeekSettings);
+  const [schoolWeekSaving, setSchoolWeekSaving] = useState(false);
+  const [schoolWeekMessage, setSchoolWeekMessage] = useState<string | null>(null);
   const [childCertificates, setChildCertificates] = useState<ParentCertificateLibraryEntry[]>([]);
   const [childCertificatesLoading, setChildCertificatesLoading] = useState(false);
   const [childCertificatesError, setChildCertificatesError] = useState<string | null>(null);
@@ -498,12 +580,13 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       setChildCertificatesLoading(true);
       setChildCertificatesError(null);
 
-      const [childRes, insightsRes, assignmentsRes, academicRes, certificatesRes] = await Promise.all([
+      const [childRes, insightsRes, assignmentsRes, academicRes, certificatesRes, schoolWeekRes] = await Promise.all([
         fetch(`/api/children/${selectedChildId}/data`, { credentials: "include" }),
         fetch("/api/parent/insights", { credentials: "include" }),
         fetch(`/api/assignments?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
         fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
         fetch(`/api/parent/students/${encodeURIComponent(selectedChildId ?? "")}/certificates`, { credentials: "include" }),
+        fetch(`/api/parent/students/${encodeURIComponent(selectedChildId ?? "")}/school-week-settings`, { credentials: "include" }),
       ]);
       
       if (cancelled) return;
@@ -540,6 +623,13 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         const payload = (await certificatesRes.json().catch(() => null)) as { error?: string } | null;
         setChildCertificates([]);
         setChildCertificatesError(payload?.error ?? "Unable to load child certificates.");
+      }
+
+      if (schoolWeekRes.ok) {
+        const payload = (await schoolWeekRes.json()) as { settings?: SchoolWeekSettingsPayload };
+        setSchoolWeekSettings(payload.settings ?? defaultSchoolWeekSettings);
+      } else {
+        setSchoolWeekSettings(defaultSchoolWeekSettings);
       }
 
       setAcademicLoading(false);
@@ -611,6 +701,39 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       setAcademicActionTaskId(null);
     }
   }, [selectedChildId]);
+
+  const saveSchoolWeekSettings = useCallback(async () => {
+    if (!selectedChildId) return;
+    setSchoolWeekSaving(true);
+    setSchoolWeekMessage(null);
+    try {
+      const response = await fetch(`/api/parent/students/${encodeURIComponent(selectedChildId)}/school-week-settings`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(schoolWeekSettings),
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string; settings?: SchoolWeekSettingsPayload } | null;
+      if (!response.ok) {
+        setSchoolWeekMessage(payload?.error ?? "Unable to save school week settings.");
+        return;
+      }
+
+      if (payload?.settings) {
+        setSchoolWeekSettings(payload.settings);
+      }
+
+      const refresh = await fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId)}`, { credentials: "include" });
+      if (refresh.ok) {
+        setAcademicIntelligence((await refresh.json()) as ParentAcademicIntelligencePayload);
+      }
+      setSchoolWeekMessage("School day and school week mode saved.");
+    } catch {
+      setSchoolWeekMessage("Unable to save school week settings.");
+    } finally {
+      setSchoolWeekSaving(false);
+    }
+  }, [schoolWeekSettings, selectedChildId]);
 
   const modeAdd = activeSection === "children" && searchParams.get("mode") === "add";
   const formVisible = modeAdd || showChildForm;
@@ -1140,6 +1263,131 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         <Metric label="Catch-up required" value={String(academicIntelligence.summary.needsCatchUpCount)} />
                         <Metric label="Needs revision" value={String(academicIntelligence.summary.needsRevisionCount)} />
                         <Metric label="Average score" value={`${academicIntelligence.summary.averageScore}%`} />
+                      </div>
+
+                      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-cyan-100">School Day and School Week Mode</p>
+                            <p className="text-xs text-cyan-100/80">Set active days, timing, and learning block mix for your child.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void saveSchoolWeekSettings()}
+                            disabled={schoolWeekSaving}
+                            className="rounded-lg border border-cyan-300/40 bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100 disabled:opacity-60"
+                          >
+                            {schoolWeekSaving ? "Saving..." : "Save school week mode"}
+                          </button>
+                        </div>
+
+                        <div className="mt-3 grid gap-3 md:grid-cols-4">
+                          <label className="text-xs text-slate-300">Start time
+                            <input
+                              type="time"
+                              value={schoolWeekSettings.startTime}
+                              onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, startTime: event.target.value }))}
+                              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white"
+                            />
+                          </label>
+                          <label className="text-xs text-slate-300">End time
+                            <input
+                              type="time"
+                              value={schoolWeekSettings.endTime}
+                              onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, endTime: event.target.value }))}
+                              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white"
+                            />
+                          </label>
+                          <label className="text-xs text-slate-300">Lesson block (mins)
+                            <input
+                              type="number"
+                              min={20}
+                              max={90}
+                              value={schoolWeekSettings.lessonBlockMinutes}
+                              onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, lessonBlockMinutes: Number(event.target.value) || 35 }))}
+                              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white"
+                            />
+                          </label>
+                          <label className="text-xs text-slate-300">Subjects per day
+                            <input
+                              type="number"
+                              min={1}
+                              max={4}
+                              value={schoolWeekSettings.dailySubjectLimit}
+                              onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, dailySubjectLimit: Number(event.target.value) || 2 }))}
+                              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white"
+                            />
+                          </label>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {SCHOOL_WEEK_DAYS.map((day) => {
+                            const selected = schoolWeekSettings.activeDays.includes(day);
+                            return (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => setSchoolWeekSettings((current) => {
+                                  const nextDays = selected
+                                    ? current.activeDays.filter((item) => item !== day)
+                                    : [...current.activeDays, day];
+                                  return { ...current, activeDays: nextDays };
+                                })}
+                                className={`rounded-full border px-3 py-1 text-xs font-semibold ${selected ? "border-cyan-300/50 bg-cyan-400/20 text-cyan-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}
+                              >
+                                {day}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="mt-3 grid gap-2 md:grid-cols-2">
+                          <label className="flex items-center gap-2 text-xs text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={schoolWeekSettings.includeCatchUpTasks}
+                              onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, includeCatchUpTasks: event.target.checked }))}
+                            />
+                            Include catch-up tasks
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={schoolWeekSettings.includeRevisionBlocks}
+                              onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, includeRevisionBlocks: event.target.checked }))}
+                            />
+                            Include revision block
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={schoolWeekSettings.includeHomeworkBlock}
+                              onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, includeHomeworkBlock: event.target.checked }))}
+                            />
+                            Include homework block
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={schoolWeekSettings.includeEndOfDaySummary}
+                              onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, includeEndOfDaySummary: event.target.checked }))}
+                            />
+                            Include end-of-day summary
+                          </label>
+                        </div>
+
+                        {schoolWeekMessage ? <p className="mt-2 text-xs text-cyan-100">{schoolWeekMessage}</p> : null}
+
+                        {academicIntelligence.schoolWeekModePlan?.dailySchedules?.length ? (
+                          <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                            {academicIntelligence.schoolWeekModePlan.dailySchedules.slice(0, 2).map((day) => (
+                              <div key={day.day} className="rounded-lg border border-cyan-400/20 bg-slate-900/60 p-2">
+                                <p className="text-xs font-semibold text-cyan-100">{day.day} ({day.totalMinutes} mins)</p>
+                                <p className="mt-1 text-xs text-slate-300">{day.blocks.slice(0, 2).map((item) => `${item.startTime} ${item.title}`).join(" • ") || "No planned blocks"}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
 
                       <CurriculumMasteryMap

@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import AdminStatCard from "@/components/admin/AdminStatCard";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
-import type { CoverageEntry } from "@/lib/academic-intelligence/types";
+import type { CoverageEntry, SchoolWeekday } from "@/lib/academic-intelligence/types";
 
 type StudentDetail = {
   id: string;
@@ -96,7 +96,62 @@ type AdminAcademicIntelligencePayload = {
     examBoard?: string | null;
     coverageGapCount: number;
   } | null;
+  schoolWeekModePlan?: {
+    enabled: boolean;
+    strategy: string;
+    totalEstimatedMinutes: number;
+    dailySchedules: Array<{
+      day: SchoolWeekday;
+      totalMinutes: number;
+      blocks: Array<{
+        blockId: string;
+        title: string;
+        startTime: string;
+        endTime: string;
+      }>;
+    }>;
+  };
   reviewActions: Array<{ action: string; label: string; persistenceSupported: boolean; message: string }>;
+};
+
+type SchoolWeekSettingsPayload = {
+  enabled: boolean;
+  activeDays: SchoolWeekday[];
+  startTime: string;
+  endTime: string;
+  lessonBlockMinutes: number;
+  shortBreakMinutes: number;
+  lunchMinutes: number;
+  dailySubjectLimit: number;
+  weeklySubjectSelection: string[];
+  includeCatchUpTasks: boolean;
+  includeRevisionBlocks: boolean;
+  includeHomeworkBlock: boolean;
+  includeQuizReviewBlock: boolean;
+  includeWellbeingBlock: boolean;
+  includeEndOfDaySummary: boolean;
+  parentAdminNotes?: string | null;
+};
+
+const SCHOOL_WEEK_DAYS: SchoolWeekday[] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+const defaultSchoolWeekSettings: SchoolWeekSettingsPayload = {
+  enabled: true,
+  activeDays: [...SCHOOL_WEEK_DAYS],
+  startTime: "16:00",
+  endTime: "19:00",
+  lessonBlockMinutes: 35,
+  shortBreakMinutes: 10,
+  lunchMinutes: 30,
+  dailySubjectLimit: 2,
+  weeklySubjectSelection: [],
+  includeCatchUpTasks: true,
+  includeRevisionBlocks: true,
+  includeHomeworkBlock: true,
+  includeQuizReviewBlock: true,
+  includeWellbeingBlock: false,
+  includeEndOfDaySummary: true,
+  parentAdminNotes: null,
 };
 
 export default function StudentDetailPage() {
@@ -112,6 +167,9 @@ export default function StudentDetailPage() {
   const [academicIntelligence, setAcademicIntelligence] = useState<AdminAcademicIntelligencePayload | null>(null);
   const [academicLoading, setAcademicLoading] = useState(true);
   const [academicError, setAcademicError] = useState<string | null>(null);
+  const [schoolWeekSettings, setSchoolWeekSettings] = useState<SchoolWeekSettingsPayload>(defaultSchoolWeekSettings);
+  const [schoolWeekSaving, setSchoolWeekSaving] = useState(false);
+  const [schoolWeekMessage, setSchoolWeekMessage] = useState<string | null>(null);
 
   async function loadStudent() {
     fetch(`/api/admin/students/${params.id}`)
@@ -136,12 +194,45 @@ export default function StudentDetailPage() {
     setAcademicLoading(false);
   }
 
+  async function loadSchoolWeekSettings() {
+    const response = await fetch(`/api/admin/students/${params.id}/school-week-settings`);
+    if (!response.ok) {
+      setSchoolWeekSettings(defaultSchoolWeekSettings);
+      return;
+    }
+    const payload = (await response.json()) as { settings?: SchoolWeekSettingsPayload };
+    setSchoolWeekSettings(payload.settings ?? defaultSchoolWeekSettings);
+  }
+
   useEffect(() => {
     void loadStudent();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAcademicIntelligence();
+    void loadSchoolWeekSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
+
+  async function saveSchoolWeekSettings() {
+    setSchoolWeekSaving(true);
+    setSchoolWeekMessage(null);
+    const response = await fetch(`/api/admin/students/${params.id}/school-week-settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(schoolWeekSettings),
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string; settings?: SchoolWeekSettingsPayload } | null;
+    if (!response.ok) {
+      setSchoolWeekMessage(payload?.error ?? "Unable to save school week settings.");
+      setSchoolWeekSaving(false);
+      return;
+    }
+    if (payload?.settings) {
+      setSchoolWeekSettings(payload.settings);
+    }
+    await loadAcademicIntelligence();
+    setSchoolWeekMessage("School week controls saved.");
+    setSchoolWeekSaving(false);
+  }
 
   async function seedAttempts(mode: "low" | "high") {
     const response = await fetch(`/api/admin/students/${params.id}/attempts`, {
@@ -320,6 +411,93 @@ export default function StudentDetailPage() {
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Catch-up required: <span className="font-black text-white">{academicIntelligence.summary.needsCatchUpCount}</span></div>
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Needs revision: <span className="font-black text-white">{academicIntelligence.summary.needsRevisionCount}</span></div>
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Avg score: <span className="font-black text-white">{academicIntelligence.summary.averageScore}%</span></div>
+              </div>
+
+              <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-cyan-100">School Day and School Week Controls</p>
+                  <button
+                    type="button"
+                    onClick={() => void saveSchoolWeekSettings()}
+                    disabled={schoolWeekSaving}
+                    className="rounded-lg border border-cyan-400/40 bg-cyan-400/20 px-3 py-1 text-xs font-bold text-cyan-100 disabled:opacity-60"
+                  >
+                    {schoolWeekSaving ? "Saving..." : "Save controls"}
+                  </button>
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                  <label className="text-xs text-slate-300">Start
+                    <input
+                      type="time"
+                      value={schoolWeekSettings.startTime}
+                      onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, startTime: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white"
+                    />
+                  </label>
+                  <label className="text-xs text-slate-300">End
+                    <input
+                      type="time"
+                      value={schoolWeekSettings.endTime}
+                      onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, endTime: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white"
+                    />
+                  </label>
+                  <label className="text-xs text-slate-300">Lesson mins
+                    <input
+                      type="number"
+                      min={20}
+                      max={90}
+                      value={schoolWeekSettings.lessonBlockMinutes}
+                      onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, lessonBlockMinutes: Number(event.target.value) || 35 }))}
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white"
+                    />
+                  </label>
+                  <label className="text-xs text-slate-300">Subjects/day
+                    <input
+                      type="number"
+                      min={1}
+                      max={4}
+                      value={schoolWeekSettings.dailySubjectLimit}
+                      onChange={(event) => setSchoolWeekSettings((current) => ({ ...current, dailySubjectLimit: Number(event.target.value) || 2 }))}
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {SCHOOL_WEEK_DAYS.map((day) => {
+                    const selected = schoolWeekSettings.activeDays.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setSchoolWeekSettings((current) => ({
+                          ...current,
+                          activeDays: selected
+                            ? current.activeDays.filter((item) => item !== day)
+                            : [...current.activeDays, day],
+                        }))}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold ${selected ? "border-cyan-300/50 bg-cyan-400/20 text-cyan-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {academicIntelligence.schoolWeekModePlan?.dailySchedules?.length ? (
+                  <div className="mt-3 grid gap-2 xl:grid-cols-2">
+                    {academicIntelligence.schoolWeekModePlan.dailySchedules.slice(0, 2).map((day) => (
+                      <div key={day.day} className="rounded-xl border border-cyan-500/20 bg-slate-900/40 p-2 text-xs text-slate-200">
+                        <p className="font-semibold text-cyan-100">{day.day} ({day.totalMinutes} mins)</p>
+                        <p className="mt-1 text-slate-300">{day.blocks.slice(0, 2).map((item) => `${item.startTime} ${item.title}`).join(" • ") || "No planned blocks"}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {schoolWeekMessage ? <p className="mt-2 text-xs text-cyan-100">{schoolWeekMessage}</p> : null}
               </div>
 
               <CurriculumMasteryMap

@@ -208,6 +208,7 @@ export type AcademicSourceData = {
   dictionarySignals: DictionarySignalRecord[];
   progressRecords: ProgressRecord[];
   assessmentHistory: AssessmentHistoryRecord[];
+  schoolWeekSettings?: SchoolWeekSettings;
   generatedAt?: string;
 };
 
@@ -312,8 +313,54 @@ export type ExamReadinessProfile = {
   };
 };
 
+export type SchoolWeekday = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
+
+export type SchoolWeekSettings = {
+  enabled: boolean;
+  activeDays: SchoolWeekday[];
+  startTime: string;
+  endTime: string;
+  lessonBlockMinutes: number;
+  shortBreakMinutes: number;
+  lunchMinutes: number;
+  dailySubjectLimit: number;
+  weeklySubjectSelection: string[];
+  includeCatchUpTasks: boolean;
+  includeRevisionBlocks: boolean;
+  includeHomeworkBlock: boolean;
+  includeQuizReviewBlock: boolean;
+  includeWellbeingBlock: boolean;
+  includeEndOfDaySummary: boolean;
+  parentAdminNotes?: string | null;
+};
+
+export type SchoolWeekModeBlock = {
+  blockId: string;
+  day: SchoolWeekday;
+  title: string;
+  activityType:
+    | "check_in"
+    | "subject"
+    | "break"
+    | "lunch"
+    | "catch_up"
+    | "revision"
+    | "quiz"
+    | "homework"
+    | "wellbeing"
+    | "summary";
+  subject?: string | null;
+  topic?: string | null;
+  estimatedMinutes: number;
+  startTime: string;
+  endTime: string;
+  routeTarget: string | null;
+  recommendationId: string | null;
+  friendlyLabel: string;
+};
+
 export type SchoolWeekModeDayPlan = {
-  day: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
+  day: SchoolWeekday;
   focus: string;
   activityType: "catch_up" | "assessment" | "mastery" | "revision";
   estimatedMinutes: number;
@@ -321,11 +368,19 @@ export type SchoolWeekModeDayPlan = {
   recommendationId: string | null;
 };
 
+export type SchoolDaySchedule = {
+  day: SchoolWeekday;
+  totalMinutes: number;
+  blocks: SchoolWeekModeBlock[];
+};
+
 export type SchoolWeekModePlan = {
   enabled: boolean;
   strategy: string;
   totalEstimatedMinutes: number;
   days: SchoolWeekModeDayPlan[];
+  dailySchedules: SchoolDaySchedule[];
+  settings: Omit<SchoolWeekSettings, "parentAdminNotes">;
 };
 
 export type MasteryExpansionSummary = {

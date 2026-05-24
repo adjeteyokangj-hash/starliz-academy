@@ -238,6 +238,19 @@ type StudentAcademicIntelligencePayload = {
       routeTarget: string | null;
       recommendationId: string | null;
     }>;
+    dailySchedules: Array<{
+      day: string;
+      totalMinutes: number;
+      blocks: Array<{
+        blockId: string;
+        title: string;
+        activityType: string;
+        startTime: string;
+        endTime: string;
+        routeTarget: string | null;
+        friendlyLabel: string;
+      }>;
+    }>;
   };
   nextRecommendedActions: string[];
   generatedAt: string;
@@ -1074,19 +1087,45 @@ export default function StudentDashboardPage() {
                         <p className="mt-1 text-xs font-semibold text-cyan-700">
                           Weekly load: {academicIntelligence.schoolWeekModePlan.totalEstimatedMinutes} mins
                         </p>
-                        <div className="mt-2 space-y-1">
-                          {academicIntelligence.schoolWeekModePlan.days.slice(0, 3).map((day) => (
-                            <button
-                              key={`${day.day}-${day.focus}`}
-                              type="button"
-                              onClick={() => router.push(day.routeTarget ?? "/student/dashboard")}
-                              className="flex w-full items-center justify-between rounded-lg border border-cyan-100 bg-cyan-50 px-2 py-1 text-left text-xs text-slate-700 hover:bg-cyan-100"
-                            >
-                              <span>{day.day}: {day.focus}</span>
-                              <span className="font-bold text-cyan-700">{day.estimatedMinutes}m</span>
-                            </button>
-                          ))}
-                        </div>
+                        {(() => {
+                          const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                          const todayName = weekdayNames[new Date().getDay()];
+                          const todaySchedule = academicIntelligence.schoolWeekModePlan?.dailySchedules?.find((item) => item.day === todayName) ?? null;
+                          const nextSchedule = academicIntelligence.schoolWeekModePlan?.dailySchedules?.find((item) => item.day !== todayName && item.blocks.length > 0) ?? null;
+                          const nextBlock = todaySchedule?.blocks[0] ?? nextSchedule?.blocks[0] ?? null;
+
+                          return (
+                            <div className="mt-2 space-y-2">
+                              <div className="rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-xs text-slate-700">
+                                <p className="font-semibold text-cyan-800">Today&apos;s learning plan</p>
+                                {todaySchedule?.blocks?.length ? (
+                                  <p className="mt-1">
+                                    {todaySchedule.blocks.slice(0, 2).map((item) => `${item.startTime} ${item.title}`).join(" • ")}
+                                  </p>
+                                ) : (
+                                  <p className="mt-1">No timed blocks today. Keep up with revision and rest.</p>
+                                )}
+                              </div>
+                              {nextBlock ? (
+                                <button
+                                  type="button"
+                                  onClick={() => router.push(nextBlock.routeTarget ?? "/student/dashboard")}
+                                  className="flex w-full items-center justify-between rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-left text-xs text-slate-700 hover:bg-cyan-100"
+                                >
+                                  <span>Next activity: {nextBlock.startTime} {nextBlock.title}</span>
+                                  <span className="font-bold text-cyan-700">Go</span>
+                                </button>
+                              ) : null}
+                              <div className="space-y-1">
+                                {academicIntelligence.schoolWeekModePlan.days.slice(0, 2).map((day) => (
+                                  <p key={`${day.day}-${day.focus}`} className="text-xs text-slate-600">
+                                    {day.day}: {day.focus} ({day.estimatedMinutes}m)
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ) : null}
                   </div>

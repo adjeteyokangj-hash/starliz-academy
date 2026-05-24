@@ -9,6 +9,11 @@ import {
   buildTaskStatusMap,
 } from "@/lib/academic-intelligence/catchUpTasks";
 import { buildMasteryMap } from "@/lib/academic-intelligence/masteryMap";
+import {
+  DEFAULT_SCHOOL_WEEK_SETTINGS,
+  sanitizeSchoolWeekSettings,
+  stripSchoolWeekSensitiveFields,
+} from "@/lib/academic-intelligence/schoolWeekSettings";
 import type {
   AcademicAuditHistoryDraft,
   AcademicIntelligenceOutput,
@@ -17,8 +22,11 @@ import type {
   CatchUpTaskRecord,
   MasteryExpansionSummary,
   ParentAdminReviewAction,
+  SchoolWeekModeBlock,
   SchoolWeekModeDayPlan,
   SchoolWeekModePlan,
+  SchoolWeekSettings,
+  SchoolWeekday,
 } from "@/lib/academic-intelligence/types";
 
 export function defaultReviewActions(): ParentAdminReviewAction[] {
@@ -112,60 +120,271 @@ function buildMasteryExpansionSummary(output: Pick<AcademicIntelligenceOutput, "
   };
 }
 
-function buildSchoolWeekModePlan(output: Pick<AcademicIntelligenceOutput,
+function addMinutes(time: string, minutes: number): string {
+  const [h, m] = time.split(":").map((value) => Number(value));
+  const total = (h * 60) + m + minutes;
+  const wrapped = ((total % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const nextHour = Math.floor(wrapped / 60).toString().padStart(2, "0");
+  const nextMinute = (wrapped % 60).toString().padStart(2, "0");
+  return `${nextHour}:${nextMinute}`;
+}
+
+function minutesBetween(start: string, end: string): number {
+  const [startHour, startMinute] = start.split(":").map((value) => Number(value));
+  const [endHour, endMinute] = end.split(":").map((value) => Number(value));
+  const startTotal = (startHour * 60) + startMinute;
+  const endTotal = (endHour * 60) + endMinute;
+  if (endTotal <= startTotal) return 0;
+  return endTotal - startTotal;
+}
+
+function buildSchoolWeekModePlan(input: {
+  output: Pick<AcademicIntelligenceOutput,
   | "catchUpRecommendations"
   | "assessmentRecommendations"
+  | "masteryMap"
   | "examReadinessProfile"
->): SchoolWeekModePlan {
-  const days: Array<SchoolWeekModeDayPlan["day"]> = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  >;
+  settings?: SchoolWeekSettings;
+}): SchoolWeekModePlan {
+  const settings = sanitizeSchoolWeekSettings(input.settings, DEFAULT_SCHOOL_WEEK_SETTINGS);
+  const safeSettings = stripSchoolWeekSensitiveFields(settings);
+  const allDays: SchoolWeekday[] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  const enabledDays = settings.activeDays.length ? settings.activeDays : allDays;
 
-  const catchUpPool = output.catchUpRecommendations.slice(0, 3);
-  const assessmentPool = output.assessmentRecommendations.slice(0, 2);
-  const combined = [
-    ...catchUpPool.map((item) => ({
-      focus: item.title,
-      activityType: "catch_up" as const,
-      estimatedMinutes: item.estimatedMinutes,
-      routeTarget: item.routeTarget ?? null,
-      recommendationId: item.id,
-    })),
-    ...assessmentPool.map((item, index) => ({
-      focus: `Assessment: ${item.topic ?? item.subject}`,
-      activityType: "assessment" as const,
-      estimatedMinutes: item.estimatedMinutes,
-      routeTarget: item.routeTarget ?? "/student/dashboard",
-      recommendationId: `assessment-${index}`,
-    })),
-  ];
+  const catchUpPool = settings.includeCatchUpTasks
+    ? input.output.catchUpRecommendations.filter((item) => item.status !== "completed" && item.status !== "waived").slice(0, 8)
+    : [];
+  const assessmentPool = input.output.assessmentRecommendations.slice(0, 5);
+  const masteryPool = input.output.masteryMap
+    .filter((item) => item.masteryStatus === "nearly_secure" || item.masteryStatus === "mastered")
+    .slice(0, 8);
 
-  const fallback = {
-    focus: "Mastery maintenance practice",
-    activityType: "mastery" as const,
-    estimatedMinutes: 20,
-    routeTarget: "/student/dashboard",
-    recommendationId: null,
-  };
+  const selectedSubjects = settings.weeklySubjectSelection.length
+    ? settings.weeklySubjectSelection.map((item) => item.trim().toLowerCase())
+    : [];
 
-  const dayPlans: SchoolWeekModeDayPlan[] = days.map((day, index) => {
-    const selected = combined[index] ?? fallback;
-    return {
-      day,
-      ...selected,
+  let catchUpIndex = 0;
+  let assessmentIndex = 0;
+  let masteryIndex = 0;
+
+  const daySummaries: SchoolWeekModeDayPlan[] = [];
+  const dailySchedules: SchoolWeekModePlan["dailySchedules"] = [];
+
+  for (const day of allDays) {
+    if (!enabledDays.includes(day) || !settings.enabled) {
+      daySummaries.push({
+        day,
+        focus: "Recovery day",
+        activityType: "revision",
+        estimatedMinutes: 0,
+        routeTarget: null,
+        recommendationId: null,
+      });
+      dailySchedules.push({ day, totalMinutes: 0, blocks: [] });
+      continue;
+    }
+
+    const blocks: SchoolWeekModeBlock[] = [];
+    let cursor = settings.startTime;
+    let blockCounter = 0;
+    const availableMinutes = minutesBetween(settings.startTime, settings.endTime);
+    let remainingMinutes = availableMinutes;
+
+    const pushBlock = (block: Omit<SchoolWeekModeBlock, "blockId" | "day" | "startTime" | "endTime">) => {
+      if (remainingMinutes < block.estimatedMinutes || block.estimatedMinutes <= 0) return false;
+      const startTime = cursor;
+      const endTime = addMinutes(startTime, block.estimatedMinutes);
+      blocks.push({
+        blockId: `${day}-${blockCounter}`,
+        day,
+        startTime,
+        endTime,
+        ...block,
+      });
+      blockCounter += 1;
+      cursor = endTime;
+      remainingMinutes -= block.estimatedMinutes;
+      return true;
     };
-  });
 
-  const totalEstimatedMinutes = dayPlans.reduce((sum, day) => sum + day.estimatedMinutes, 0);
-  const strategy = output.examReadinessProfile.band === "ready"
+    pushBlock({
+      title: "Check-in",
+      activityType: "check_in",
+      subject: null,
+      topic: null,
+      estimatedMinutes: 10,
+      routeTarget: "/student/dashboard",
+      recommendationId: null,
+      friendlyLabel: "Start with a short check-in and a clear goal.",
+    });
+
+    let filledSubjects = 0;
+    while (filledSubjects < settings.dailySubjectLimit && remainingMinutes >= settings.lessonBlockMinutes) {
+      const catchUp = catchUpPool[catchUpIndex];
+      const mastery = masteryPool[masteryIndex];
+      const assessment = assessmentPool[assessmentIndex];
+
+      const pickCatchUp = Boolean(catchUp && (filledSubjects % 2 === 0 || !mastery));
+      const pickAssessment = Boolean(assessment && (filledSubjects === settings.dailySubjectLimit - 1));
+
+      if (pickCatchUp && catchUp) {
+        catchUpIndex += 1;
+        if (selectedSubjects.length > 0 && !selectedSubjects.includes(catchUp.subject.trim().toLowerCase())) {
+          continue;
+        }
+        if (!pushBlock({
+          title: catchUp.title,
+          activityType: "catch_up",
+          subject: catchUp.subject,
+          topic: catchUp.topic,
+          estimatedMinutes: Math.min(Math.max(catchUp.estimatedMinutes, 20), settings.lessonBlockMinutes),
+          routeTarget: catchUp.routeTarget ?? "/student/dashboard",
+          recommendationId: catchUp.id,
+          friendlyLabel: "Target the toughest gap first while energy is high.",
+        })) break;
+      } else if (pickAssessment && assessment) {
+        assessmentIndex += 1;
+        if (!pushBlock({
+          title: `Assessment: ${assessment.topic ?? assessment.subject}`,
+          activityType: "quiz",
+          subject: assessment.subject,
+          topic: assessment.topic,
+          estimatedMinutes: Math.min(Math.max(assessment.estimatedMinutes, 20), settings.lessonBlockMinutes),
+          routeTarget: assessment.routeTarget ?? "/student/dashboard",
+          recommendationId: null,
+          friendlyLabel: "Finish with an assessment to lock in confidence.",
+        })) break;
+      } else if (mastery) {
+        masteryIndex += 1;
+        if (!pushBlock({
+          title: `Mastery: ${mastery.topic ?? mastery.subject}`,
+          activityType: "subject",
+          subject: mastery.subject,
+          topic: mastery.topic,
+          estimatedMinutes: settings.lessonBlockMinutes,
+          routeTarget: "/student/dashboard",
+          recommendationId: null,
+          friendlyLabel: "Build fluency with focused mastery practice.",
+        })) break;
+      } else {
+        break;
+      }
+      filledSubjects += 1;
+
+      if (filledSubjects < settings.dailySubjectLimit && remainingMinutes >= settings.shortBreakMinutes) {
+        pushBlock({
+          title: "Short break",
+          activityType: "break",
+          subject: null,
+          topic: null,
+          estimatedMinutes: settings.shortBreakMinutes,
+          routeTarget: null,
+          recommendationId: null,
+          friendlyLabel: "Reset with water and movement before the next block.",
+        });
+      }
+    }
+
+    if (remainingMinutes >= settings.lunchMinutes) {
+      pushBlock({
+        title: "Lunch",
+        activityType: "lunch",
+        subject: null,
+        topic: null,
+        estimatedMinutes: settings.lunchMinutes,
+        routeTarget: null,
+        recommendationId: null,
+        friendlyLabel: "Refuel and rest before continuing.",
+      });
+    }
+
+    if (settings.includeRevisionBlocks && remainingMinutes >= 20) {
+      pushBlock({
+        title: "Revision sprint",
+        activityType: "revision",
+        subject: null,
+        topic: null,
+        estimatedMinutes: Math.min(25, remainingMinutes),
+        routeTarget: "/student/dashboard",
+        recommendationId: null,
+        friendlyLabel: "Revisit earlier topics to strengthen long-term memory.",
+      });
+    }
+
+    if (settings.includeHomeworkBlock && remainingMinutes >= 15) {
+      pushBlock({
+        title: "Homework focus",
+        activityType: "homework",
+        subject: null,
+        topic: null,
+        estimatedMinutes: Math.min(20, remainingMinutes),
+        routeTarget: "/student/dashboard",
+        recommendationId: null,
+        friendlyLabel: "Complete assigned tasks while learning is still fresh.",
+      });
+    }
+
+    if (settings.includeWellbeingBlock && remainingMinutes >= 10) {
+      pushBlock({
+        title: "Wellbeing pause",
+        activityType: "wellbeing",
+        subject: null,
+        topic: null,
+        estimatedMinutes: Math.min(10, remainingMinutes),
+        routeTarget: null,
+        recommendationId: null,
+        friendlyLabel: "Breathe, stretch, and reset focus.",
+      });
+    }
+
+    if (settings.includeEndOfDaySummary && remainingMinutes >= 10) {
+      pushBlock({
+        title: "End-of-day summary",
+        activityType: "summary",
+        subject: null,
+        topic: null,
+        estimatedMinutes: Math.min(10, remainingMinutes),
+        routeTarget: "/student/dashboard",
+        recommendationId: null,
+        friendlyLabel: "Reflect on wins and set tomorrow's first target.",
+      });
+    }
+
+    const primary = blocks.find((item) => item.recommendationId) ?? blocks.find((item) => item.activityType !== "break" && item.activityType !== "lunch") ?? null;
+    const totalMinutes = blocks.reduce((sum, item) => sum + item.estimatedMinutes, 0);
+    daySummaries.push({
+      day,
+      focus: primary?.title ?? "Recovery day",
+      activityType: primary?.activityType === "catch_up"
+        ? "catch_up"
+        : primary?.activityType === "quiz"
+          ? "assessment"
+          : primary?.activityType === "revision"
+            ? "revision"
+            : "mastery",
+      estimatedMinutes: totalMinutes,
+      routeTarget: primary?.routeTarget ?? "/student/dashboard",
+      recommendationId: primary?.recommendationId ?? null,
+    });
+
+    dailySchedules.push({ day, totalMinutes, blocks });
+  }
+
+  const totalEstimatedMinutes = daySummaries.reduce((sum, day) => sum + day.estimatedMinutes, 0);
+  const strategy = input.output.examReadinessProfile.band === "ready"
     ? "Balanced weekly cycle: maintain mastery and run exam-style checks."
-    : output.examReadinessProfile.band === "nearly_ready"
+    : input.output.examReadinessProfile.band === "nearly_ready"
       ? "Catch-up first, then assessment consolidation later in the week."
       : "Foundation-first week: short guided catch-up blocks each day.";
 
   return {
-    enabled: true,
+    enabled: settings.enabled,
     strategy,
     totalEstimatedMinutes,
-    days: dayPlans,
+    days: daySummaries,
+    dailySchedules,
+    settings: safeSettings,
   };
 }
 
@@ -223,6 +442,8 @@ export function buildAcademicIntelligence(
       strategy: "",
       totalEstimatedMinutes: 0,
       days: [],
+      dailySchedules: [],
+      settings: stripSchoolWeekSensitiveFields(DEFAULT_SCHOOL_WEEK_SETTINGS),
     },
     reviewActions: defaultReviewActions(),
     reportNotes: [],
@@ -234,7 +455,7 @@ export function buildAcademicIntelligence(
 
   output.reportNotes = reportNotes(output);
   output.masteryExpansion = buildMasteryExpansionSummary(output);
-  output.schoolWeekModePlan = buildSchoolWeekModePlan(output);
+  output.schoolWeekModePlan = buildSchoolWeekModePlan({ output, settings: data.schoolWeekSettings });
   output.catchUpTasks = output.catchUpTasks.length
     ? output.catchUpTasks
     : output.catchUpRecommendations.map((recommendation) => ({

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { normalizeExamBoard } from "@/lib/curriculum";
 import { parseWeakAreaMetadata } from "@/lib/weakAreas";
+import { readSchoolWeekSettingsFromProfileJson } from "@/lib/academic-intelligence/schoolWeekSettings";
 import type { AcademicSourceData, AssessmentType } from "@/lib/academic-intelligence/types";
 
 function parseMetadata(raw: string | null): {
@@ -161,6 +162,7 @@ export async function buildAcademicSourceForStudent(studentId: string): Promise<
 
   let examBoard: string | null = null;
   let keyStage = child.studentProfile?.keyStageLevel ?? null;
+  const schoolWeekSettings = readSchoolWeekSettingsFromProfileJson(child.studentProfile?.aiLearningProfileJson ?? null);
   try {
     const parsed = child.studentProfile?.aiLearningProfileJson
       ? (JSON.parse(child.studentProfile.aiLearningProfileJson) as Record<string, unknown>)
@@ -305,6 +307,7 @@ export async function buildAcademicSourceForStudent(studentId: string): Promise<
       createdAt: item.createdAt.toISOString(),
     })),
     assessmentHistory,
+    schoolWeekSettings,
     generatedAt: new Date().toISOString(),
   };
 }
