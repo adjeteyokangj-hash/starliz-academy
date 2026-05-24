@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { parseIssuedCertificates, verifyIssuedCertificate } from "@/lib/certificate-issuing";
+import CertificatePreview from "@/components/certificates/CertificatePreview";
 
 type VerifyPageProps = {
   params: Promise<{
@@ -49,6 +50,27 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
             <div className={`rounded-xl border p-4 text-sm ${verification.status === "valid" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}>
               {verification.certificate.verificationMessage}
             </div>
+
+            {verification.status === "valid" ? (
+              <CertificatePreview
+                title={verification.certificate.title}
+                studentDisplayName={verification.certificate.studentDisplayName}
+                certificateType={verification.certificate.certificateType}
+                typeLabel={verification.certificate.certificateType.replaceAll("_", " ")}
+                yearGroup={verification.certificate.yearGroup}
+                keyStage={null}
+                term={verification.certificate.term}
+                subject={verification.certificate.subject}
+                strand={verification.certificate.strand}
+                awardType={verification.certificate.awardType}
+                awardScope={verification.certificate.awardScope}
+                issuedAt={verification.certificate.issuedAt}
+                certificateNumber={verification.certificate.certificateNumber}
+                verificationCode={verification.certificate.verificationCode}
+                verificationUrl={`/certificates/verify/${encodeURIComponent(verification.certificate.verificationCode)}`}
+                status="valid"
+              />
+            ) : null}
 
             <dl className="grid gap-3 text-sm sm:grid-cols-2">
               <div>

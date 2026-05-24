@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
+import CertificatePreview from "@/components/certificates/CertificatePreview";
 
 type CertificateLibraryEntry = {
   certificateNumber: string;
@@ -48,12 +49,22 @@ function statusBadge(status: "issued" | "revoked"): string {
     : "rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-emerald-700";
 }
 
+function safeDisplayName(name: string): string {
+  const clean = String(name || "").trim();
+  if (!clean) return "Learner";
+  const [first] = clean.split(/\s+/g);
+  if (!first) return "Learner";
+  if (first.length <= 1) return `${first}*`;
+  return `${first.charAt(0)}${"*".repeat(Math.max(1, first.length - 1))}`;
+}
+
 export default function StudentCertificatesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [studentName, setStudentName] = useState("Learner");
   const [certificates, setCertificates] = useState<CertificateLibraryEntry[]>([]);
+  const [previewByCertificate, setPreviewByCertificate] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +113,8 @@ export default function StudentCertificatesPage() {
     return Array.from(byGroup.entries());
   }, [certificates]);
 
+  const previewStudentName = useMemo(() => safeDisplayName(studentName), [studentName]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
@@ -133,6 +146,11 @@ export default function StudentCertificatesPage() {
               <div className="grid gap-4 lg:grid-cols-2">
                 {rows.map((row) => (
                   <article key={`${row.verificationCode}-${row.certificateNumber}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    {(() => {
+                      const previewKey = `${row.verificationCode}-${row.certificateNumber}`;
+                      const previewOpen = previewByCertificate[previewKey] ?? false;
+                      return (
+                        <>
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-black uppercase tracking-[0.12em] text-cyan-700">{row.typeLabel}</p>
@@ -157,12 +175,50 @@ export default function StudentCertificatesPage() {
                       </a>
                       <button
                         type="button"
+                        onClick={() => {
+                          setPreviewByCertificate((prev) => ({
+                            ...prev,
+                            [previewKey]: !previewOpen,
+                          }));
+                        }}
+                        className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100"
+                      >
+                        {previewOpen ? "Hide certificate preview" : "Preview certificate"}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => router.push(`/certificates/verify/${encodeURIComponent(row.verificationCode)}`)}
                         className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-700"
                       >
                         Open verification page
                       </button>
                     </div>
+
+                    {previewOpen ? (
+                      <div className="mt-4">
+                        <CertificatePreview
+                          title={row.title}
+                          studentDisplayName={previewStudentName}
+                          certificateType={row.certificateType}
+                          typeLabel={row.typeLabel}
+                          yearGroup={row.yearGroup}
+                          keyStage={row.keyStage}
+                          term={row.term}
+                          subject={row.subject}
+                          strand={row.strand}
+                          awardType={row.awardType}
+                          awardScope={row.awardScope}
+                          issuedAt={row.issuedAt}
+                          certificateNumber={row.certificateNumber}
+                          verificationCode={row.verificationCode}
+                          verificationUrl={row.verificationUrl}
+                          status={row.status}
+                        />
+                      </div>
+                    ) : null}
+                        </>
+                      );
+                    })()}
                   </article>
                 ))}
               </div>

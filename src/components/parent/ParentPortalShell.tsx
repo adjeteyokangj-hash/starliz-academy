@@ -10,6 +10,7 @@ import BillingCard from "./BillingCard";
 import SecuritySettings from "./SecuritySettings";
 import ConsentAuditView from "./ConsentAuditView";
 import NotificationPreferences from "./NotificationPreferences";
+import CertificatePreview from "@/components/certificates/CertificatePreview";
 import { resolveDashboardTier, dashboardTierLabel, isProfileComplete } from "@/lib/dashboardResolver";
 
 type PortalSection =
@@ -351,6 +352,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [childCertificates, setChildCertificates] = useState<ParentCertificateLibraryEntry[]>([]);
   const [childCertificatesLoading, setChildCertificatesLoading] = useState(false);
   const [childCertificatesError, setChildCertificatesError] = useState<string | null>(null);
+  const [previewByCertificate, setPreviewByCertificate] = useState<Record<string, boolean>>({});
   const [goingToDashboard, setGoingToDashboard] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -972,6 +974,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     <div className="space-y-3">
                       {childCertificates.map((item) => (
                         <article key={`${item.verificationCode}-${item.certificateNumber}`} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+                          {(() => {
+                            const previewKey = `${item.verificationCode}-${item.certificateNumber}`;
+                            const previewOpen = previewByCertificate[previewKey] ?? false;
+                            return (
+                              <>
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div>
                               <p className="text-xs font-bold uppercase tracking-[0.12em] text-cyan-300">{item.typeGroupLabel}</p>
@@ -991,10 +998,48 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <a href={item.verificationUrl} className="rounded-xl border border-white/20 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-white/10">
                               Verification link
                             </a>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPreviewByCertificate((prev) => ({
+                                  ...prev,
+                                  [previewKey]: !previewOpen,
+                                }));
+                              }}
+                              className="rounded-xl border border-amber-300/70 bg-amber-300/15 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-300/25"
+                            >
+                              {previewOpen ? "Hide certificate preview" : "Preview certificate"}
+                            </button>
                             <Link href={`/certificates/verify/${encodeURIComponent(item.verificationCode)}`} className="rounded-xl bg-cyan-500 px-3 py-1.5 text-xs font-bold text-slate-950 hover:bg-cyan-400">
                               Open verification page
                             </Link>
                           </div>
+
+                          {previewOpen ? (
+                            <div className="mt-4">
+                              <CertificatePreview
+                                title={item.title}
+                                studentDisplayName={item.studentDisplayName}
+                                certificateType={item.certificateType}
+                                typeLabel={item.typeLabel}
+                                yearGroup={item.yearGroup}
+                                keyStage={item.keyStage}
+                                term={item.term}
+                                subject={item.subject}
+                                strand={item.strand}
+                                awardType={item.awardType}
+                                awardScope={item.awardScope}
+                                issuedAt={item.issuedAt}
+                                certificateNumber={item.certificateNumber}
+                                verificationCode={item.verificationCode}
+                                verificationUrl={item.verificationUrl}
+                                status={item.status}
+                              />
+                            </div>
+                          ) : null}
+                              </>
+                            );
+                          })()}
                         </article>
                       ))}
                     </div>
