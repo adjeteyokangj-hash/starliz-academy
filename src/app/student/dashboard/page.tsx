@@ -97,6 +97,37 @@ type SessionSummaryPayload = {
   };
 };
 
+type StudentAcademicIntelligencePayload = {
+  studentId: string;
+  summary: {
+    totalTopics: number;
+    needsCatchUpCount: number;
+    needsRevisionCount: number;
+    coveredCount: number;
+    averageScore: number;
+  };
+  catchUpRecommendations: Array<{
+    id: string;
+    title: string;
+    subject: string;
+    topic?: string | null;
+    studentFriendlyReason?: string;
+    reason: string;
+    estimatedMinutes: number;
+    status: "recommended" | "active" | "completed" | "skipped" | "waived" | "overdue";
+    routeTarget?: string | null;
+  }>;
+  assessmentRecommendations: Array<{
+    assessmentType: string;
+    subject: string;
+    topic?: string | null;
+    reason: string;
+    readinessStatus: string;
+  }>;
+  nextRecommendedActions: string[];
+  generatedAt: string;
+};
+
 function subjectPath(subject: string, title?: string | null, skillFocus?: string | null): "spelling" | "math" | "reading" | "lesson" {
   const normalized = normalize(subject);
   const context = `${normalized} ${normalize(title)} ${normalize(skillFocus)}`;
@@ -158,6 +189,9 @@ export default function StudentDashboardPage() {
   const [bossPlayedToday, setBossPlayedToday] = useState(false);
   const [ownedBadges, setOwnedBadges] = useState<ShopOwnedItem[]>([]);
   const [sessionSummary, setSessionSummary] = useState<SessionSummaryPayload["summary"] | null>(null);
+  const [academicIntelligence, setAcademicIntelligence] = useState<StudentAcademicIntelligencePayload | null>(null);
+  const [academicLoading, setAcademicLoading] = useState(false);
+  const [academicError, setAcademicError] = useState("");
   const [error, setError] = useState("");
   const [missingChildContext, setMissingChildContext] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
@@ -188,20 +222,26 @@ export default function StudentDashboardPage() {
         setAssignments([]);
         setSkills([]);
         setSessionSummary(null);
+        setAcademicIntelligence(null);
+        setAcademicError("");
         setBossUnlocked(false);
         setBossPlayedToday(false);
         setBossAssignmentId(null);
         return;
       }
 
-      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes] = await Promise.all([
+      setAcademicLoading(true);
+      setAcademicError("");
+
+      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes] = await Promise.all([
         fetch("/api/student/assignments", { credentials: "include" }),
         fetch("/api/student/skills", { credentials: "include" }),
         fetch("/api/student/boss-battle", { credentials: "include" }),
         fetch("/api/student/session-summary", { credentials: "include" }),
+        fetch("/api/student/academic-intelligence", { credentials: "include" }),
       ]);
 
-      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes].some((res) => res.status === 401)) {
+      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes].some((res) => res.status === 401)) {
         setAuthRequired(true);
         setError("Your session expired. Please sign in again.");
         return;
@@ -215,6 +255,9 @@ export default function StudentDashboardPage() {
       const sessionSummaryPayload = sessionSummaryRes.ok
         ? ((await sessionSummaryRes.json()) as SessionSummaryPayload)
         : ({} as SessionSummaryPayload);
+      const academicPayload = academicIntelligenceRes.ok
+        ? ((await academicIntelligenceRes.json()) as StudentAcademicIntelligencePayload)
+        : null;
 
       if (!assignmentsRes.ok) {
         if (assignmentsRes.status === 400 && /active student/i.test(assignmentsPayload.error ?? "")) {
@@ -236,6 +279,12 @@ export default function StudentDashboardPage() {
       setBossPlayedToday(Boolean(bossStatusPayload.alreadyPlayedToday));
       setBossAssignmentId(typeof bossStatusPayload.lessonAssignmentId === "string" ? bossStatusPayload.lessonAssignmentId : null);
       setSessionSummary(sessionSummaryPayload.summary ?? null);
+      if (academicPayload) {
+        setAcademicIntelligence(academicPayload);
+      } else {
+        setAcademicIntelligence(null);
+        setAcademicError("Unable to load Smart Catch-Up right now.");
+      }
 
       if (childPayload.child?.id) {
         const ownedResponse = await fetch(`/api/shop/owned?childId=${encodeURIComponent(childPayload.child.id)}`, { credentials: "include" });
@@ -269,6 +318,7 @@ export default function StudentDashboardPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load dashboard.");
     } finally {
+      setAcademicLoading(false);
       setLoading(false);
     }
   }, []);
@@ -527,6 +577,105 @@ export default function StudentDashboardPage() {
                 </p>
               </div>
             ) : null}
+
+            <section className="mb-6 rounded-3xl border border-cyan-200 bg-cyan-50/70 p-5">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-700">Smart Catch-Up</p>
+              {academicLoading ? (
+                <div className="mt-3 space-y-3">
+                  <div className="h-4 w-52 animate-pulse rounded bg-cyan-200" />
+                  <div className="h-16 animate-pulse rounded-2xl bg-cyan-100" />
+                  <div className="h-16 animate-pulse rounded-2xl bg-cyan-100" />
+                </div>
+              ) : academicError ? (
+                <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                  <p className="text-sm font-semibold text-rose-700">{academicError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void loadDashboard()}
+                    className="mt-3 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-500"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : !academicIntelligence ? (
+                <div className="mt-3 rounded-2xl border border-cyan-200 bg-white/70 p-4 text-sm text-cyan-900">
+                  Complete more lessons to build your learning map.
+                </div>
+              ) : (
+                <div className="mt-3 space-y-4">
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
+                      <p className="text-xs text-cyan-700">Topics covered</p>
+                      <p className="text-lg font-black text-cyan-900">{academicIntelligence.summary.coveredCount}/{academicIntelligence.summary.totalTopics}</p>
+                    </div>
+                    <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
+                      <p className="text-xs text-cyan-700">Needs catch-up</p>
+                      <p className="text-lg font-black text-cyan-900">{academicIntelligence.summary.needsCatchUpCount}</p>
+                    </div>
+                    <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
+                      <p className="text-xs text-cyan-700">Needs revision</p>
+                      <p className="text-lg font-black text-cyan-900">{academicIntelligence.summary.needsRevisionCount}</p>
+                    </div>
+                    <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
+                      <p className="text-xs text-cyan-700">Average score</p>
+                      <p className="text-lg font-black text-cyan-900">{academicIntelligence.summary.averageScore}%</p>
+                    </div>
+                  </div>
+
+                  {academicIntelligence.catchUpRecommendations.length === 0 ? (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                      <p className="font-semibold">No catch-up needed right now.</p>
+                      <p className="mt-1">You are on track. Keep going.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {academicIntelligence.catchUpRecommendations.slice(0, 5).map((task) => (
+                        <div key={task.id} className="rounded-2xl border border-cyan-200 bg-white p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-bold text-slate-900">{task.title}</p>
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                              task.status === "completed"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : task.status === "active"
+                                  ? "bg-cyan-100 text-cyan-700"
+                                  : task.status === "overdue"
+                                    ? "bg-rose-100 text-rose-700"
+                                    : "bg-amber-100 text-amber-700"
+                            }`}>
+                              {task.status.replaceAll("_", " ")}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs uppercase tracking-[0.08em] text-slate-500">
+                            {task.subject} {task.topic ? `• ${task.topic}` : ""}
+                          </p>
+                          <p className="mt-2 text-sm text-slate-700">{task.studentFriendlyReason ?? task.reason}</p>
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-slate-500">Estimated time: {task.estimatedMinutes} mins</p>
+                            <button
+                              type="button"
+                              onClick={() => router.push(task.routeTarget ?? "/student/dashboard")}
+                              className="rounded-xl bg-cyan-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-cyan-500"
+                            >
+                              Start
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {academicIntelligence.assessmentRecommendations.length === 0 ? (
+                    <p className="text-sm text-cyan-900">No assessment due right now.</p>
+                  ) : (
+                    <div className="rounded-2xl border border-cyan-200 bg-white p-4">
+                      <p className="text-sm font-bold text-slate-900">Assessment Readiness</p>
+                      <p className="mt-1 text-sm text-slate-700">{academicIntelligence.assessmentRecommendations[0]?.reason}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
             {dashboardTier === "primary" && (
               <PrimaryDashboard
                 childName={childName}

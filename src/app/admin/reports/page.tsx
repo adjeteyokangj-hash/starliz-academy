@@ -8,6 +8,14 @@ type Report = {
   filters?: { keyStage: string | null; yearGroup: string | null; examBoard: string | null };
   overview: Record<string, number>;
   ai: { contentItems: number; estimatedCostPence: number; totalUses: number };
+  academicIntelligence?: {
+    masteryStatus: string;
+    curriculumCoverage: string;
+    catchUpRequired: number;
+    unresolvedCatchUp: number;
+    assessmentRecommended: number;
+    weakTopic: string | null;
+  };
   weakTopics: { topic: string; count: number }[];
 };
 
@@ -165,6 +173,17 @@ export default function ReportsPage() {
             <p>Content items: <span className="font-bold text-white">{report?.ai.contentItems ?? 0}</span></p>
             <p>Total uses: <span className="font-bold text-white">{report?.ai.totalUses ?? 0}</span></p>
             <p>Estimated cost: <span className="font-bold text-white">£{((report?.ai.estimatedCostPence ?? 0) / 100).toFixed(2)}</span></p>
+          </div>
+        </AdminSectionCard>
+
+        <AdminSectionCard title="Academic Intelligence">
+          <div className="space-y-3 text-sm text-slate-300">
+            <p>Mastery status: <span className="font-bold text-white">{report?.academicIntelligence?.masteryStatus ?? "N/A"}</span></p>
+            <p>Coverage: <span className="font-bold text-white">{report?.academicIntelligence?.curriculumCoverage ?? "N/A"}</span></p>
+            <p>Catch-up required: <span className="font-bold text-white">{report?.academicIntelligence?.catchUpRequired ?? 0}</span></p>
+            <p>Unresolved catch-up: <span className="font-bold text-white">{report?.academicIntelligence?.unresolvedCatchUp ?? 0}</span></p>
+            <p>Assessments recommended: <span className="font-bold text-white">{report?.academicIntelligence?.assessmentRecommended ?? 0}</span></p>
+            <p>Weak topic: <span className="font-bold text-white">{report?.academicIntelligence?.weakTopic ?? "None"}</span></p>
           </div>
         </AdminSectionCard>
       </div>

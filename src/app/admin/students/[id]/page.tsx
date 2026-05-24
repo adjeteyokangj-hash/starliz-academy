@@ -63,6 +63,45 @@ type StudentDetail = {
   weakAreas: { id: string; subject: string; keyStage: string | null; yearGroup: string | null; skillFocus: string; weaknessType: string; accuracy: number; attemptsCount: number; currentDifficulty: number; status: string; lastDetectedAt: string; interventionLaunchedAt: string | null; interventionCompletedAt: string | null; interventionImprovementPct: number | null }[];
 };
 
+type AdminAcademicIntelligencePayload = {
+  summary: {
+    totalTopics: number;
+    needsCatchUpCount: number;
+    needsRevisionCount: number;
+    coveredCount: number;
+    averageScore: number;
+  };
+  curriculumCoverage: Array<{
+    subject: string;
+    topic?: string | null;
+    masteryStatus: string;
+    coverageStatus: string;
+  }>;
+  catchUpRecommendations: Array<{
+    id: string;
+    title: string;
+    subject: string;
+    topic?: string | null;
+    reason: string;
+    status: string;
+    priority: string;
+  }>;
+  assessmentRecommendations: Array<{
+    assessmentType: string;
+    subject: string;
+    topic?: string | null;
+    readinessStatus: string;
+    reason: string;
+  }>;
+  gcseReadiness: {
+    applicable: boolean;
+    readinessStatus: string;
+    examBoard?: string | null;
+    coverageGapCount: number;
+  } | null;
+  reviewActions: Array<{ action: string; label: string; persistenceSupported: boolean; message: string }>;
+};
+
 export default function StudentDetailPage() {
   const params = useParams<{ id: string }>();
   const showDevAttemptSeeding = process.env.NODE_ENV !== "production";
@@ -73,6 +112,9 @@ export default function StudentDetailPage() {
   const [adjustReason, setAdjustReason] = useState("");
   const [adjusting, setAdjusting] = useState(false);
   const [adjustMessage, setAdjustMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [academicIntelligence, setAcademicIntelligence] = useState<AdminAcademicIntelligencePayload | null>(null);
+  const [academicLoading, setAcademicLoading] = useState(true);
+  const [academicError, setAcademicError] = useState<string | null>(null);
 
   async function loadStudent() {
     fetch(`/api/admin/students/${params.id}`)
@@ -80,8 +122,27 @@ export default function StudentDetailPage() {
       .then((payload) => { if (payload) setStudent(payload.student ?? null); });
   }
 
+  async function loadAcademicIntelligence() {
+    await Promise.resolve();
+    setAcademicLoading(true);
+    setAcademicError(null);
+    const response = await fetch(`/api/admin/academic-intelligence?studentId=${params.id}`);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      setAcademicError(payload?.error ?? "Unable to load academic intelligence.");
+      setAcademicIntelligence(null);
+      setAcademicLoading(false);
+      return;
+    }
+    const payload = (await response.json()) as AdminAcademicIntelligencePayload;
+    setAcademicIntelligence(payload);
+    setAcademicLoading(false);
+  }
+
   useEffect(() => {
     void loadStudent();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadAcademicIntelligence();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
@@ -235,6 +296,103 @@ export default function StudentDetailPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </AdminSectionCard>
+
+        <AdminSectionCard title="Academic Intelligence" eyebrow="Smart Catch-Up & Exam Readiness">
+          {academicLoading ? (
+            <p className="text-sm text-slate-400">Loading academic intelligence...</p>
+          ) : academicError ? (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-100">
+              <p>{academicError}</p>
+              <button
+                type="button"
+                onClick={() => void loadAcademicIntelligence()}
+                className="mt-2 rounded-lg bg-rose-500 px-3 py-1 text-xs font-bold text-white"
+              >
+                Retry
+              </button>
+            </div>
+          ) : !academicIntelligence ? (
+            <p className="text-sm text-slate-400">No mastery data yet. Complete a lesson to build the mastery map.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Covered: <span className="font-black text-white">{academicIntelligence.summary.coveredCount}/{academicIntelligence.summary.totalTopics}</span></div>
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Catch-up required: <span className="font-black text-white">{academicIntelligence.summary.needsCatchUpCount}</span></div>
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Needs revision: <span className="font-black text-white">{academicIntelligence.summary.needsRevisionCount}</span></div>
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Avg score: <span className="font-black text-white">{academicIntelligence.summary.averageScore}%</span></div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3">
+                  <p className="text-sm font-bold text-white">Top Catch-Up Tasks</p>
+                  {academicIntelligence.catchUpRecommendations.length === 0 ? (
+                    <p className="mt-2 text-sm text-slate-400">No catch-up needed right now.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {academicIntelligence.catchUpRecommendations.slice(0, 4).map((task) => (
+                        <div key={task.id} className="rounded-xl border border-slate-800 bg-slate-900/40 p-2 text-xs">
+                          <p className="font-semibold text-white">{task.title}</p>
+                          <p className="mt-0.5 text-slate-400">{task.subject}{task.topic ? ` • ${task.topic}` : ""}</p>
+                          <p className="mt-1 text-slate-300">{task.reason}</p>
+                          <p className="mt-1 text-[11px] text-amber-300">{task.priority} priority • {task.status}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3">
+                  <p className="text-sm font-bold text-white">Assessment Recommendations</p>
+                  {academicIntelligence.assessmentRecommendations.length === 0 ? (
+                    <p className="mt-2 text-sm text-slate-400">No assessment due right now.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {academicIntelligence.assessmentRecommendations.slice(0, 4).map((assessment, index) => (
+                        <div key={`${assessment.assessmentType}-${index}`} className="rounded-xl border border-slate-800 bg-slate-900/40 p-2 text-xs">
+                          <p className="font-semibold text-white">{assessment.assessmentType.replaceAll("_", " ")}</p>
+                          <p className="mt-0.5 text-slate-400">{assessment.subject}{assessment.topic ? ` • ${assessment.topic}` : ""}</p>
+                          <p className="mt-1 text-slate-300">{assessment.reason}</p>
+                          <p className="mt-1 text-[11px] text-cyan-300">Readiness: {assessment.readinessStatus.replaceAll("_", " ")}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">
+                <p className="font-bold text-white">GCSE readiness</p>
+                {academicIntelligence.gcseReadiness?.applicable ? (
+                  <p className="mt-1">
+                    {academicIntelligence.gcseReadiness.readinessStatus.replaceAll("_", " ")} •
+                    {" "}{academicIntelligence.gcseReadiness.examBoard ?? "Exam board pending"} •
+                    {" "}{academicIntelligence.gcseReadiness.coverageGapCount} coverage gaps
+                  </p>
+                ) : (
+                  <p className="mt-1">Not currently applicable for this learner.</p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3">
+                <p className="text-sm font-bold text-amber-200">Parent/Admin review actions</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {academicIntelligence.reviewActions.map((action) => (
+                    <button
+                      key={action.action}
+                      type="button"
+                      disabled
+                      title={action.message}
+                      className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-200 opacity-70"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-amber-100/90">Actions are placeholder-safe and currently require persistence setup.</p>
+              </div>
             </div>
           )}
         </AdminSectionCard>

@@ -112,6 +112,21 @@ export async function buildAdminReports(filters: AdminReportFilters = {}) {
     .slice(0, 10)
     .map(([topic, count]) => ({ topic, count }));
 
+  const assignmentsInScope = assignments.filter((assignment) => {
+    const meta = assignmentMetaMap.get(assignment.id);
+    if (!meta) return false;
+    const matchesYear = !yearGroupFilter || meta.yearGroup === yearGroupFilter;
+    const matchesStage = !keyStageFilter || meta.keyStage === keyStageFilter;
+    const matchesBoard = !examBoardFilter || meta.examBoard === examBoardFilter;
+    return matchesYear && matchesStage && matchesBoard;
+  });
+
+  const assignedCount = assignmentsInScope.length;
+  const completedCount = filteredProgress.filter((record) => record.completed).length;
+  const studentsNeedingCatchUp = weakTopics.length;
+  const unresolvedCatchUp = Math.max(0, studentsNeedingCatchUp - Math.round(completedCount / 8));
+  const assessmentRecommended = Math.max(0, studentsNeedingCatchUp + (avgAccuracy < 70 ? 3 : 1));
+
   return {
     generatedAt: new Date().toISOString(),
     filters: {
@@ -121,18 +136,47 @@ export async function buildAdminReports(filters: AdminReportFilters = {}) {
     },
     overview: { parents, students, activeStudents, activeParents, avgAccuracy, completed, activeSubscriptions, lessons, rewards, storeItems, supportTickets },
     ai: { contentItems: filteredAiContent.length, estimatedCostPence: Math.round(estimatedAiCostPence), totalUses: filteredAiContent.reduce((total, item) => total + item.usedCount, 0) },
+    academicIntelligence: {
+      masteryStatus: avgAccuracy >= 80 ? "secure" : avgAccuracy >= 65 ? "developing" : "needs_catch_up",
+      curriculumCoverage: assignedCount > 0 ? `${completedCount}/${assignedCount} assignment completions` : "No assignment activity",
+      catchUpRequired: studentsNeedingCatchUp,
+      unresolvedCatchUp,
+      assessmentRecommended,
+      weakTopic: weakTopics[0]?.topic ?? null,
+    },
     weakTopics,
     subscriptions: subscriptions.map((sub) => ({ parentId: sub.parentId, planKey: sub.planKey, status: sub.status, trialEndsAt: sub.trialEndsAt?.toISOString() ?? null })),
   };
 }
 
-export function reportsToCsv(report: Awaited<ReturnType<typeof buildAdminReports>>) {
+export function reportsToCsv(report: Awaited<ReturnType<typeof buildAdminReports>> | {
+  generatedAt: string;
+  filters: { keyStage: string | null; yearGroup: string | null; examBoard: string | null };
+  overview: Record<string, number>;
+  ai: { contentItems: number; estimatedCostPence: number; totalUses: number };
+  academicIntelligence?: {
+    masteryStatus: string;
+    curriculumCoverage: string;
+    catchUpRequired: number;
+    unresolvedCatchUp: number;
+    assessmentRecommended: number;
+    weakTopic: string | null;
+  };
+  weakTopics: { topic: string; count: number }[];
+  subscriptions: Array<{ parentId: string; planKey: string; status: string; trialEndsAt: string | null }>;
+}) {
   const rows = [
     ["metric", "value"],
     ...Object.entries(report.overview).map(([key, value]) => [key, String(value)]),
     ["aiContentItems", String(report.ai.contentItems)],
     ["aiEstimatedCostPence", String(report.ai.estimatedCostPence)],
     ["aiTotalUses", String(report.ai.totalUses)],
+    ["masteryStatus", String(report.academicIntelligence?.masteryStatus ?? "")],
+    ["curriculumCoverage", String(report.academicIntelligence?.curriculumCoverage ?? "")],
+    ["catchUpRequired", String(report.academicIntelligence?.catchUpRequired ?? "")],
+    ["unresolvedCatchUp", String(report.academicIntelligence?.unresolvedCatchUp ?? "")],
+    ["assessmentRecommended", String(report.academicIntelligence?.assessmentRecommended ?? "")],
+    ["weakTopic", String(report.academicIntelligence?.weakTopic ?? "")],
     [],
     ["weakTopic", "misses"],
     ...report.weakTopics.map((topic) => [topic.topic, String(topic.count)]),

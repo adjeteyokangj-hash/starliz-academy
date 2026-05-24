@@ -4,6 +4,7 @@ import { csvEscape } from "@/lib/csv_escape";
 import { summarizeWalletTransactions } from "@/lib/wallet_ledger";
 import { isGcseYearGroup } from "@/lib/curriculum";
 import { parseWeakAreaMetadata } from "@/lib/weakAreas";
+import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
 
 export type ParentReportRange = "7d" | "30d" | "90d" | "all";
 
@@ -62,6 +63,18 @@ export type ParentProgressReportData = {
     spentPence: number;
   };
   recommendations: string[];
+  academicIntelligence: {
+    masteryStatus: string;
+    curriculumCoverage: string;
+    catchUpRequired: number;
+    catchUpCompleted: number;
+    unresolvedCatchUp: number;
+    assessmentRecommended: number;
+    weakTopic: string | null;
+    overdueRevision: number;
+    gcseReadiness: string | null;
+    parentAdminRecommendedAction: string;
+  };
 };
 
 export type ParentProgressReportTable = {
@@ -228,7 +241,24 @@ export async function buildParentProgressReportData(input: {
         studentId: child.id,
         ...(since ? { createdAt: { gte: since } } : {}),
       },
-      select: { status: true },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        completedAt: true,
+        contentId: true,
+        content: {
+          select: {
+            contentType: true,
+            topic: true,
+            skillFocus: true,
+            keyStage: true,
+            yearGroup: true,
+            metadataJson: true,
+          },
+        },
+      },
       take: 600,
     }),
     prisma.weakArea.findMany({
@@ -237,7 +267,19 @@ export async function buildParentProgressReportData(input: {
         status: "active",
         ...(since ? { lastDetectedAt: { gte: since } } : {}),
       },
-      select: { metadataJson: true },
+      select: {
+        id: true,
+        subject: true,
+        skillFocus: true,
+        keyStage: true,
+        yearGroup: true,
+        weaknessType: true,
+        accuracy: true,
+        attemptsCount: true,
+        status: true,
+        metadataJson: true,
+        lastDetectedAt: true,
+      },
       take: 200,
     }),
   ]);
@@ -271,6 +313,64 @@ export async function buildParentProgressReportData(input: {
   const examReadinessPct = isGcse
     ? Math.max(0, Math.min(100, Math.round((averageAccuracy * 0.7) + ((revisionProgressPct ?? 0) * 0.3) - weakTopicCount * 2)))
     : null;
+
+  const academicOutput = buildAcademicIntelligence({
+    studentId: child.id,
+    studentName: child.name,
+    yearGroup: child.yearGroup,
+    keyStage: null,
+    examBoard: null,
+    assignments: assignments.map((entry) => ({
+      id: entry.id,
+      status: entry.status,
+      subject: entry.content.contentType,
+      topic: entry.content.topic,
+      skill: entry.content.skillFocus,
+      keyStage: entry.content.keyStage,
+      yearGroup: entry.content.yearGroup,
+      createdAt: entry.createdAt.toISOString(),
+      updatedAt: entry.updatedAt.toISOString(),
+      completedAt: entry.completedAt?.toISOString() ?? null,
+      contentId: entry.contentId,
+    })),
+    attempts: attempts.map((entry, index) => ({
+      id: `${index + 1}`,
+      subject: "general",
+      topic: entry.skillFocus,
+      skill: entry.skillFocus,
+      correct: entry.correct,
+      score: entry.correct ? 100 : 0,
+      createdAt: entry.createdAt.toISOString(),
+    })),
+    weakAreas: weakAreaSignals.map((entry) => ({
+      id: entry.id,
+      subject: entry.subject,
+      topic: entry.skillFocus,
+      skill: entry.skillFocus,
+      keyStage: entry.keyStage,
+      yearGroup: entry.yearGroup,
+      weaknessType: entry.weaknessType,
+      accuracy: entry.accuracy,
+      attemptsCount: entry.attemptsCount,
+      status: entry.status,
+      metadata: parseWeakAreaMetadata(entry.metadataJson),
+      lastDetectedAt: entry.lastDetectedAt.toISOString(),
+    })),
+    studentSkills: [],
+    coachUsage: [],
+    dictionarySignals: weakAreaSignals.flatMap((entry) => parseWeakAreaMetadata(entry.metadataJson).weakWords.map((word) => ({
+      word,
+      subject: entry.subject,
+      topic: entry.skillFocus,
+      skill: entry.skillFocus,
+      weak: true,
+      difficult: true,
+      source: "weak_area_metadata",
+    }))),
+    progressRecords: [],
+    assessmentHistory: [],
+    generatedAt: new Date().toISOString(),
+  });
 
   const recommendations = buildRecommendations({
     averageAccuracy,
@@ -321,6 +421,22 @@ export async function buildParentProgressReportData(input: {
       spentPence: rewards.totalSpent,
     },
     recommendations,
+    academicIntelligence: {
+      masteryStatus: academicOutput.summary.needsCatchUpCount > 0
+        ? "needs_catch_up"
+        : academicOutput.summary.needsRevisionCount > 0
+          ? "needs_revision"
+          : "on_track",
+      curriculumCoverage: `${academicOutput.summary.coveredCount}/${academicOutput.summary.totalTopics} covered`,
+      catchUpRequired: academicOutput.catchUpRecommendations.length,
+      catchUpCompleted: academicOutput.catchUpRecommendations.filter((item) => item.status === "completed").length,
+      unresolvedCatchUp: academicOutput.catchUpRecommendations.filter((item) => item.status !== "completed" && item.status !== "waived").length,
+      assessmentRecommended: academicOutput.assessmentRecommendations.length,
+      weakTopic: academicOutput.catchUpRecommendations[0]?.topic ?? null,
+      overdueRevision: academicOutput.curriculumCoverage.filter((item) => item.coverageStatus === "overdue_revision").length,
+      gcseReadiness: academicOutput.gcseReadiness ? academicOutput.gcseReadiness.readinessStatus : null,
+      parentAdminRecommendedAction: academicOutput.nextRecommendedActions[0] ?? "Review weekly progress.",
+    },
   };
 }
 
@@ -404,6 +520,16 @@ export function buildParentProgressReportTables(report: ParentProgressReportData
         ["interventionTrackingCount", report.summary.interventionTrackingCount],
         ["learningMode", report.summary.learningMode ?? ""],
         ["lastActivityAt", formatDateTime(report.summary.lastActivityAt)],
+        ["masteryStatus", report.academicIntelligence.masteryStatus],
+        ["curriculumCoverage", report.academicIntelligence.curriculumCoverage],
+        ["catchUpRequired", report.academicIntelligence.catchUpRequired],
+        ["catchUpCompleted", report.academicIntelligence.catchUpCompleted],
+        ["unresolvedCatchUp", report.academicIntelligence.unresolvedCatchUp],
+        ["assessmentRecommended", report.academicIntelligence.assessmentRecommended],
+        ["weakTopic", report.academicIntelligence.weakTopic ?? ""],
+        ["overdueRevision", report.academicIntelligence.overdueRevision],
+        ["gcseReadiness", report.academicIntelligence.gcseReadiness ?? ""],
+        ["parentAdminRecommendedAction", report.academicIntelligence.parentAdminRecommendedAction],
       ],
     },
     {
@@ -428,6 +554,22 @@ export function buildParentProgressReportTables(report: ParentProgressReportData
         ["balanceGbp", formatCurrency(report.rewards.balancePence)],
         ["earnedGbp", formatCurrency(report.rewards.earnedPence)],
         ["spentGbp", formatCurrency(report.rewards.spentPence)],
+      ],
+    },
+    {
+      name: "AcademicIntelligence",
+      headers: ["field", "value"],
+      rows: [
+        ["masteryStatus", report.academicIntelligence.masteryStatus],
+        ["curriculumCoverage", report.academicIntelligence.curriculumCoverage],
+        ["catchUpRequired", report.academicIntelligence.catchUpRequired],
+        ["catchUpCompleted", report.academicIntelligence.catchUpCompleted],
+        ["unresolvedCatchUp", report.academicIntelligence.unresolvedCatchUp],
+        ["assessmentRecommended", report.academicIntelligence.assessmentRecommended],
+        ["weakTopic", report.academicIntelligence.weakTopic ?? ""],
+        ["overdueRevision", report.academicIntelligence.overdueRevision],
+        ["gcseReadiness", report.academicIntelligence.gcseReadiness ?? ""],
+        ["parentAdminRecommendedAction", report.academicIntelligence.parentAdminRecommendedAction],
       ],
     },
     {
@@ -500,6 +642,7 @@ export function renderParentProgressReportPdf(report: ParentProgressReportData):
     `Learning Mode: ${report.summary.learningMode ?? "Standard"}`,
     `Revision Progress: ${report.summary.revisionProgressPct ?? "N/A"}% | Exam Readiness: ${report.summary.examReadinessPct ?? "N/A"}%`,
     `Weak Topics: ${report.summary.weakTopicCount} | Active Interventions: ${report.summary.interventionTrackingCount}`,
+    `Academic Intelligence: ${report.academicIntelligence.masteryStatus} | Catch-up ${report.academicIntelligence.catchUpRequired} | Assessments ${report.academicIntelligence.assessmentRecommended}`,
   ], y);
 
   y += 10;

@@ -210,6 +210,35 @@ type ChildAssignmentsPayload = {
   assignments: ChildAssignment[];
 };
 
+type ParentAcademicIntelligencePayload = {
+  summary: {
+    totalTopics: number;
+    needsCatchUpCount: number;
+    needsRevisionCount: number;
+    coveredCount: number;
+    averageScore: number;
+  };
+  catchUpRecommendations: Array<{
+    id: string;
+    title: string;
+    subject: string;
+    topic?: string | null;
+    reason: string;
+    studentFriendlyReason?: string;
+    estimatedMinutes: number;
+    status: "recommended" | "active" | "completed" | "skipped" | "waived" | "overdue";
+  }>;
+  assessmentReadiness: string;
+  gcseReadiness: {
+    applicable: boolean;
+    readinessStatus: string;
+    examBoard?: string | null;
+    coverageGapCount: number;
+  } | null;
+  reviewActions: Array<{ action: string; label: string; persistenceSupported: boolean; message: string }>;
+  parentExplanation: string;
+};
+
 const sections: Array<{ id: PortalSection; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
   { id: "children", label: "Children" },
@@ -282,6 +311,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [childDetail, setChildDetail] = useState<ChildDetail | null>(null);
   const [insights, setInsights] = useState<InsightsPayload | null>(null);
   const [childAssignments, setChildAssignments] = useState<ChildAssignment[]>([]);
+  const [academicIntelligence, setAcademicIntelligence] = useState<ParentAcademicIntelligencePayload | null>(null);
+  const [academicLoading, setAcademicLoading] = useState(false);
+  const [academicError, setAcademicError] = useState<string | null>(null);
   const [goingToDashboard, setGoingToDashboard] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -405,10 +437,14 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     let cancelled = false;
 
     async function loadChild() {
-      const [childRes, insightsRes, assignmentsRes] = await Promise.all([
+      setAcademicLoading(true);
+      setAcademicError(null);
+
+      const [childRes, insightsRes, assignmentsRes, academicRes] = await Promise.all([
         fetch(`/api/children/${selectedChildId}/data`, { credentials: "include" }),
         fetch("/api/parent/insights", { credentials: "include" }),
         fetch(`/api/assignments?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
+        fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
       ]);
       
       if (cancelled) return;
@@ -427,6 +463,16 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       } else {
         setChildAssignments([]);
       }
+
+      if (academicRes.ok) {
+        setAcademicIntelligence((await academicRes.json()) as ParentAcademicIntelligencePayload);
+        setAcademicError(null);
+      } else {
+        const payload = await academicRes.json().catch(() => null) as { error?: string } | null;
+        setAcademicIntelligence(null);
+        setAcademicError(payload?.error ?? "Unable to load academic intelligence.");
+      }
+      setAcademicLoading(false);
     }
 
     void loadChild();
@@ -855,6 +901,81 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     >
                       {goingToDashboard ? "Opening..." : `Go to ${activeChild.name}'s Dashboard`}
                     </button>
+                  )}
+                </Panel>
+              ) : null}
+
+              {selectedChildId ? (
+                <Panel title="Academic Intelligence" description="Mastery, catch-up, and assessment readiness insights.">
+                  {academicLoading ? (
+                    <p className="text-sm text-slate-300">Loading academic intelligence...</p>
+                  ) : academicError ? (
+                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-100">
+                      <p>{academicError}</p>
+                    </div>
+                  ) : !academicIntelligence ? (
+                    <div className="space-y-1 text-sm text-slate-300">
+                      <p>No mastery data yet.</p>
+                      <p>Complete a lesson to build your mastery map.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid gap-3 md:grid-cols-4">
+                        <Metric label="Covered" value={`${academicIntelligence.summary.coveredCount}/${academicIntelligence.summary.totalTopics}`} />
+                        <Metric label="Catch-up required" value={String(academicIntelligence.summary.needsCatchUpCount)} />
+                        <Metric label="Needs revision" value={String(academicIntelligence.summary.needsRevisionCount)} />
+                        <Metric label="Average score" value={`${academicIntelligence.summary.averageScore}%`} />
+                      </div>
+
+                      {academicIntelligence.catchUpRecommendations.length === 0 ? (
+                        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+                          <p className="font-semibold">No catch-up needed right now.</p>
+                          <p className="mt-1">Your child is on track. Keep going.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {academicIntelligence.catchUpRecommendations.slice(0, 4).map((item) => (
+                            <div key={item.id} className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="font-semibold text-white">{item.title}</p>
+                                <span className="rounded-full bg-cyan-400/20 px-2 py-0.5 text-xs font-bold text-cyan-200">{item.status.replaceAll("_", " ")}</span>
+                              </div>
+                              <p className="mt-1 text-xs text-slate-400">{item.subject}{item.topic ? ` • ${item.topic}` : ""}</p>
+                              <p className="mt-1 text-slate-300">{item.studentFriendlyReason ?? item.reason}</p>
+                              <p className="mt-1 text-xs text-slate-400">Estimated time: {item.estimatedMinutes} mins</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-slate-300">
+                        <p className="font-semibold text-white">Assessment readiness</p>
+                        <p className="mt-1">{academicIntelligence.assessmentReadiness.replaceAll("_", " ")}</p>
+                        {academicIntelligence.gcseReadiness?.applicable ? (
+                          <p className="mt-1 text-xs text-cyan-300">
+                            GCSE: {academicIntelligence.gcseReadiness.readinessStatus.replaceAll("_", " ")} • {academicIntelligence.gcseReadiness.examBoard ?? "Exam board pending"} • {academicIntelligence.gcseReadiness.coverageGapCount} gaps
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-300">Review actions</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {academicIntelligence.reviewActions.map((action) => (
+                            <button
+                              key={action.action}
+                              type="button"
+                              disabled
+                              title={action.message}
+                              className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-200 opacity-70"
+                            >
+                              {action.label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-xs text-amber-100/90">Actions are placeholder-safe and require persistence setup.</p>
+                      </div>
+                    </div>
                   )}
                 </Panel>
               ) : null}
