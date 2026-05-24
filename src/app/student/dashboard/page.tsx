@@ -10,7 +10,7 @@ import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
 import PrimaryDashboard from "@/components/student/PrimaryDashboard";
 import SecondaryDashboard from "@/components/student/SecondaryDashboard";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
-import type { PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
+import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 
 type StudentAssignment = {
   id: string;
@@ -111,6 +111,15 @@ type QuickLevelFinderLevelsPayload = {
   error?: string;
 };
 
+type PlacementLessonsPayload = {
+  ok?: boolean;
+  placementCompleted?: boolean;
+  grouped?: PlacementLessonGroup[];
+  contentGaps?: PlacementLessonRecommendation[];
+  recommendations?: PlacementLessonRecommendation[];
+  error?: string;
+};
+
 type StudentAcademicIntelligencePayload = {
   studentId: string;
   summary: {
@@ -205,6 +214,8 @@ export default function StudentDashboardPage() {
   const [sessionSummary, setSessionSummary] = useState<SessionSummaryPayload["summary"] | null>(null);
   const [learningState, setLearningState] = useState<StudentLearningState | null>(null);
   const [placementLevels, setPlacementLevels] = useState<PlacementLevels | null>(null);
+  const [placementLessonGroups, setPlacementLessonGroups] = useState<PlacementLessonGroup[]>([]);
+  const [placementContentGaps, setPlacementContentGaps] = useState<PlacementLessonRecommendation[]>([]);
   const [academicIntelligence, setAcademicIntelligence] = useState<StudentAcademicIntelligencePayload | null>(null);
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicError, setAcademicError] = useState("");
@@ -240,6 +251,8 @@ export default function StudentDashboardPage() {
         setSessionSummary(null);
         setLearningState(null);
         setPlacementLevels(null);
+        setPlacementLessonGroups([]);
+        setPlacementContentGaps([]);
         setAcademicIntelligence(null);
         setAcademicError("");
         setBossUnlocked(false);
@@ -251,7 +264,7 @@ export default function StudentDashboardPage() {
       setAcademicLoading(true);
       setAcademicError("");
 
-      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes] = await Promise.all([
+      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes] = await Promise.all([
         fetch("/api/student/assignments", { credentials: "include" }),
         fetch("/api/student/skills", { credentials: "include" }),
         fetch("/api/student/boss-battle", { credentials: "include" }),
@@ -259,9 +272,10 @@ export default function StudentDashboardPage() {
         fetch("/api/student/academic-intelligence", { credentials: "include" }),
         fetch("/api/student/learning-state", { credentials: "include" }),
         fetch("/api/student/quick-level-finder/levels", { credentials: "include" }),
+        fetch("/api/student/placement-lessons", { credentials: "include" }),
       ]);
 
-      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes].some((res) => res.status === 401)) {
+      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes].some((res) => res.status === 401)) {
         setAuthRequired(true);
         setError("Your session expired. Please sign in again.");
         return;
@@ -281,6 +295,9 @@ export default function StudentDashboardPage() {
       const placementLevelsPayload = placementLevelsRes.ok
         ? ((await placementLevelsRes.json()) as QuickLevelFinderLevelsPayload)
         : ({} as QuickLevelFinderLevelsPayload);
+      const placementLessonsPayload = placementLessonsRes.ok
+        ? ((await placementLessonsRes.json()) as PlacementLessonsPayload)
+        : ({} as PlacementLessonsPayload);
       const academicPayload = academicIntelligenceRes.ok
         ? ((await academicIntelligenceRes.json()) as StudentAcademicIntelligencePayload)
         : null;
@@ -292,6 +309,8 @@ export default function StudentDashboardPage() {
           setSkills([]);
           setSessionSummary(null);
           setLearningState(null);
+          setPlacementLessonGroups([]);
+          setPlacementContentGaps([]);
           setBossUnlocked(false);
           setBossPlayedToday(false);
           setBossAssignmentId(null);
@@ -308,6 +327,8 @@ export default function StudentDashboardPage() {
       setSessionSummary(sessionSummaryPayload.summary ?? null);
       setLearningState(learningStatePayload.learningState ?? null);
       setPlacementLevels(placementLevelsPayload.levels ?? null);
+      setPlacementLessonGroups(Array.isArray(placementLessonsPayload.grouped) ? placementLessonsPayload.grouped : []);
+      setPlacementContentGaps(Array.isArray(placementLessonsPayload.contentGaps) ? placementLessonsPayload.contentGaps : []);
       if (academicPayload) {
         const state = learningStatePayload.learningState;
         if (state?.isFirstTimeStudent || !state?.hasAssessmentData) {
@@ -744,6 +765,8 @@ export default function StudentDashboardPage() {
                 sessionSummary={sessionSummary ?? null}
                 learningState={learningState}
                 placementLevels={placementLevels}
+                placementLessonGroups={placementLessonGroups}
+                placementContentGaps={placementContentGaps}
                 loading={loading}
                 error={error}
                 startingJourney={startingJourney}
@@ -775,6 +798,8 @@ export default function StudentDashboardPage() {
                 sessionSummary={sessionSummary ?? null}
                 learningState={learningState}
                 placementLevels={placementLevels}
+                placementLessonGroups={placementLessonGroups}
+                placementContentGaps={placementContentGaps}
                 loading={loading}
                 error={error}
                 startingJourney={startingJourney}

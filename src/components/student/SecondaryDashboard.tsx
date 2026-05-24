@@ -22,6 +22,13 @@ function assignmentSessionLabel(title: string, skillFocus?: string | null): stri
   return title;
 }
 
+function recommendationTone(status: "assigned" | "ready" | "content_needed" | "blocked"): string {
+  if (status === "assigned") return "bg-emerald-100 text-emerald-700";
+  if (status === "ready") return "bg-sky-100 text-sky-700";
+  if (status === "blocked") return "bg-amber-100 text-amber-700";
+  return "bg-rose-100 text-rose-700";
+}
+
 export default function SecondaryDashboard({
   childName,
   stats,
@@ -36,6 +43,8 @@ export default function SecondaryDashboard({
   sessionSummary,
   learningState,
   placementLevels,
+  placementLessonGroups,
+  placementContentGaps,
   loading,
   error,
   startingJourney,
@@ -147,6 +156,64 @@ export default function SecondaryDashboard({
               </div>
             ))}
           </div>
+        </section>
+      ) : null}
+
+      {placementLessonGroups && placementLessonGroups.length > 0 ? (
+        <section className="rounded-3xl border border-violet-200 bg-violet-50 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Your First Lessons</p>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {placementLessonGroups.map((group) => (
+              <div key={group.parentSubject} className="rounded-2xl border border-violet-200 bg-white p-4">
+                <p className="text-sm font-black text-slate-900">{group.label}</p>
+                <div className="mt-3 space-y-2">
+                  {group.recommendations.map((lesson) => (
+                    <div key={lesson.scopedSubject} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-bold text-slate-900">{lesson.strandLabel ?? lesson.subjectLabel}</p>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${recommendationTone(lesson.status)}`}>
+                          {lesson.status.replaceAll("_", " ")}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">L{lesson.level} {lesson.levelLabel} · Accuracy {lesson.accuracy}%</p>
+                      <p className="text-xs text-slate-600">{lesson.reason}</p>
+                      {lesson.assignmentId && lesson.href ? (
+                        <button
+                          type="button"
+                          onClick={() => onStartAssignment({
+                            id: lesson.assignmentId!,
+                            status: "assigned",
+                            subject: lesson.parentSubject,
+                            title: lesson.strandLabel ?? lesson.subjectLabel,
+                            skillFocus: lesson.strandLabel,
+                            updatedAt: new Date().toISOString(),
+                            href: lesson.href ?? undefined,
+                            contentId: lesson.contentId ?? undefined,
+                          })}
+                          className="mt-2 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-black text-white hover:bg-violet-500"
+                        >
+                          Open lesson
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {placementContentGaps && placementContentGaps.length > 0 ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-700">Content Needed</p>
+              <ul className="mt-2 space-y-1 text-sm font-semibold">
+                {placementContentGaps.slice(0, 6).map((gap) => (
+                  <li key={gap.scopedSubject}>
+                    {gap.subjectLabel}{gap.strandLabel ? ` - ${gap.strandLabel}` : ""}: {gap.generatorHint?.skillFocus ?? "Generate matching content"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

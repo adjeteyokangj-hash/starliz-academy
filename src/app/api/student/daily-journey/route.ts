@@ -4,6 +4,9 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { buildDailyJourney } from "@/lib/dailyJourney";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
+import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
+import { selectPlacementLessons } from "@/lib/placement-lesson-selector";
+import { taskHrefForContentType } from "@/lib/assignments";
 import {
   deriveStudentLearningState,
   parseQuickLevelFinderSummary,
@@ -27,7 +30,7 @@ export async function GET() {
 
   const student = await prisma.childProfile.findFirst({
     where: { id: studentId, parentId: parentScope.parentId, archived: false },
-    select: { id: true, name: true },
+    select: { id: true, name: true, yearGroup: true },
   });
   if (!student) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
@@ -36,7 +39,7 @@ export async function GET() {
   const [profile, assignmentCount, skillRows, progressCount, weakAreaCount] = await Promise.all([
     prisma.studentProfile.findUnique({
       where: { childId: student.id },
-      select: { subjectFocus: true, aiLearningProfileJson: true },
+      select: { subjectFocus: true, aiLearningProfileJson: true, keyStageLevel: true },
     }),
     prisma.assignment.count({ where: { studentId: student.id } }),
     prisma.studentSkill.findMany({ where: { studentId: student.id }, select: { attempts: true, skill: true, status: true } }),
@@ -80,18 +83,84 @@ export async function GET() {
 
   try {
     const journey = await buildDailyJourney(student.id);
+    const quick = parseQuickLevelFinderSession(profile?.aiLearningProfileJson ?? null);
+
+    let placementLessons: ReturnType<typeof selectPlacementLessons> | null = null;
+    if (quick && quick.status === "completed") {
+      const [contentRows, assignments] = await Promise.all([
+        prisma.aIContentCache.findMany({
+          where: {
+            status: { not: "rejected" },
+            ...(student.yearGroup ? { yearGroup: student.yearGroup } : {}),
+          },
+          orderBy: { createdAt: "desc" },
+          take: 300,
+          select: {
+            id: true,
+            contentType: true,
+            level: true,
+            status: true,
+            topic: true,
+            skillFocus: true,
+            yearGroup: true,
+            keyStage: true,
+            metadataJson: true,
+          },
+        }),
+        prisma.assignment.findMany({
+          where: {
+            studentId: student.id,
+            student: { parentId: parentScope.parentId },
+          },
+          select: {
+            id: true,
+            contentId: true,
+            status: true,
+            content: {
+              select: {
+                contentType: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      placementLessons = selectPlacementLessons({
+        studentId: student.id,
+        selectedSubjects: parseSelectedSubjectsFromProfileJson(profile?.aiLearningProfileJson ?? null),
+        placementLevels: quick.levels,
+        availableContent: contentRows,
+        existingAssignments: assignments.map((assignment) => ({
+          id: assignment.id,
+          contentId: assignment.contentId,
+          status: assignment.status,
+          href: taskHrefForContentType(assignment.content.contentType, assignment.id),
+        })),
+        yearGroup: student.yearGroup,
+        keyStage: profile?.keyStageLevel ?? null,
+      });
+    }
+
+    const assignedPlacementLesson = placementLessons?.recommendations.find((row) => row.status === "assigned" && row.assignmentId);
 
     return NextResponse.json({
       ok: true,
       student,
       journey,
-      lesson: null,
+      lesson: assignedPlacementLesson?.assignmentId
+        ? {
+            assignmentId: assignedPlacementLesson.assignmentId,
+            contentId: assignedPlacementLesson.contentId,
+            href: assignedPlacementLesson.href,
+          }
+        : null,
+      placementLessons,
       structure: [
-        "1 warm-up",
-        "2 core practice tasks",
-        "1 weak-area repair",
-        "1 mixed reinforcement",
-        "1 boss gate",
+        "Placement-guided first lesson",
+        "Core practice tasks",
+        "Weak-area repair",
+        "Mixed reinforcement",
+        "Boss gate",
       ],
     });
   } catch (err) {

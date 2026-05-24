@@ -2,10 +2,13 @@ export type StudentAssignment = {
   id: string;
   status: "assigned" | "in_progress" | "completed" | string;
   subject: string;
+  contentId?: string;
+  href?: string;
   title: string;
   skillFocus?: string | null;
   difficulty?: number;
   examBoard?: string | null;
+  items?: unknown[];
   updatedAt: string;
 };
 
@@ -66,6 +69,39 @@ export type PlacementLevels = Record<string, {
   level: "below" | "secure" | "advanced";
 }>;
 
+export type PlacementLessonRecommendation = {
+  scopedSubject: string;
+  parentSubject: string;
+  strand: string | null;
+  subjectLabel: string;
+  strandLabel: string | null;
+  status: "assigned" | "ready" | "content_needed" | "blocked";
+  reason: string;
+  accuracy: number;
+  levelBand: "below" | "secure" | "advanced";
+  level: number;
+  levelLabel: string;
+  contentId: string | null;
+  assignmentId: string | null;
+  href: string | null;
+  contentStatus: string | null;
+  generatorHint: {
+    subject: string;
+    strand: string | null;
+    level: number;
+    yearGroup: string | null;
+    keyStage: string | null;
+    skillFocus: string;
+    reason: string;
+  } | null;
+};
+
+export type PlacementLessonGroup = {
+  parentSubject: string;
+  label: string;
+  recommendations: PlacementLessonRecommendation[];
+};
+
 export type DashboardProps = {
   childName: string;
   stats: { stars: number; xp: number; coins: number; streak: number };
@@ -84,6 +120,8 @@ export type DashboardProps = {
   sessionSummary: SessionSummary | null;
   learningState?: StudentLearningState | null;
   placementLevels?: PlacementLevels | null;
+  placementLessonGroups?: PlacementLessonGroup[];
+  placementContentGaps?: PlacementLessonRecommendation[];
   loading: boolean;
   error: string;
   startingJourney: boolean;
