@@ -15,7 +15,8 @@ import {
   shouldUseDeterministicSpellingFallback,
 } from "../src/lib/admin-ai-generator-spelling";
 import { validateAiContentQuality } from "../src/lib/ai/content-quality";
-import { isValidCurriculumPath } from "../src/lib/curriculum";
+import { isValidCurriculumPath, GENERATION_CONTENT_TYPE_BY_SUBJECT } from "../src/lib/curriculum";
+import { parseJsonWithRepair } from "../src/lib/safe-json";
 
 const frenchVocabularyItem = {
   id: "fr-vocab-1",
@@ -562,4 +563,296 @@ test("science validation accepts physics-context equations", () => {
   });
 
   assert.equal(result.ok, true);
+});
+
+// ─── 9 new required tests ────────────────────────────────────────────────────
+
+test("Year 10 GCSE Science Physics AQA creates valid preview items", () => {
+  const items = [
+    {
+      id: "phys-aqa-1",
+      question: "A car of mass 1200 kg accelerates at 2 m/s². Calculate the resultant force using F = m × a.",
+      answer: "2400 N",
+      explanation: "Apply Newton's Second Law: F = 1200 × 2 = 2400 N. Force is measured in Newtons (N). This is an AQA GCSE Physics calculation.",
+      choices: ["2400 N", "600 N", "1200 N"],
+      yearGroup: "Year 10",
+      skillFocus: "Forces",
+      difficulty: 4,
+    },
+    {
+      id: "phys-aqa-2",
+      question: "Describe the difference between weight and mass, using correct SI units and Newton's Law of Gravitation.",
+      answer: "Mass is measured in kg (scalar); weight is a force measured in Newtons (N = kg × g).",
+      explanation: "Weight = mass × gravitational field strength (W = m × g). Mass is constant; weight varies with gravity.",
+      choices: ["Mass is force, weight is mass", "Mass in kg, weight in N", "Both measured in kg"],
+      yearGroup: "Year 10",
+      skillFocus: "Forces",
+      difficulty: 3,
+    },
+  ];
+
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-physics"], "science");
+
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-physics",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Forces",
+    topic: "AQA Physics practice",
+    difficulty: 4,
+    requestedCount: 2,
+    items,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(Array.isArray(result.cleanedItems), true);
+  assert.equal((result.cleanedItems as unknown[]).length, 2);
+});
+
+test("Year 10 GCSE Science Physics Edexcel creates valid preview items", () => {
+  const items = [
+    {
+      id: "phys-edx-1",
+      question: "Explain Newton's Second Law and calculate the force on a 500 g object accelerating at 4 m/s² (Edexcel GCSE Physics).",
+      answer: "F = m × a = 0.5 × 4 = 2 N in the direction of acceleration.",
+      explanation: "Newton's Second Law: resultant force (N) = mass (kg) × acceleration (m/s²). Convert 500 g to 0.5 kg first.",
+      choices: ["2 N", "20 N", "0.125 N"],
+      yearGroup: "Year 10",
+      skillFocus: "Forces",
+      difficulty: 4,
+    },
+  ];
+
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-physics"], "science");
+
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-physics",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Forces",
+    topic: "Edexcel Physics practice",
+    difficulty: 4,
+    requestedCount: 1,
+    items,
+  });
+  assert.equal(result.ok, true);
+});
+
+test("Year 10 GCSE Science Chemistry AQA creates valid preview items", () => {
+  const items = [
+    {
+      id: "chem-aqa-1",
+      question: "Explain what happens during a chemical reaction in terms of atoms, bond energy, and whether the reaction is exothermic or endothermic.",
+      answer: "Atoms rearrange to form new substances. Bond breaking absorbs energy; bond forming releases energy. Net difference determines exothermic or endothermic.",
+      explanation: "AQA GCSE Chemistry: exothermic reactions release energy (e.g. combustion); endothermic reactions absorb energy (e.g. thermal decomposition).",
+      choices: ["Atoms are created", "Atoms rearrange: bond energy determines heat change", "Atoms disappear"],
+      yearGroup: "Year 10",
+      skillFocus: "Chemical reactions",
+      difficulty: 3,
+    },
+    {
+      id: "chem-aqa-2",
+      question: "Describe the structure of an atom in terms of protons, neutrons and electrons. State where each particle is found.",
+      answer: "Protons and neutrons are in the nucleus; electrons orbit the nucleus in shells.",
+      explanation: "The nucleus contains protons (positive charge) and neutrons (no charge). Electrons carry negative charge and are found in energy levels around the nucleus.",
+      choices: ["All particles in the nucleus", "Nucleus: protons+neutrons; electrons in shells", "Electrons in the nucleus"],
+      yearGroup: "Year 10",
+      skillFocus: "Atomic structure",
+      difficulty: 3,
+    },
+  ];
+
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-chemistry"], "science");
+
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-chemistry",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Chemical reactions",
+    topic: "AQA Chemistry practice",
+    difficulty: 3,
+    requestedCount: 2,
+    items,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(Array.isArray(result.cleanedItems), true);
+});
+
+test("Year 10 GCSE Science Chemistry Edexcel creates valid preview items", () => {
+  const items = [
+    {
+      id: "chem-edx-1",
+      question: "Explain the difference between an element, a compound and a mixture. Give one example of each in an Edexcel GCSE Chemistry context.",
+      answer: "Element: one type of atom (e.g. oxygen). Compound: atoms chemically bonded in fixed ratios (e.g. water H₂O). Mixture: substances not chemically combined (e.g. salt water).",
+      explanation: "Edexcel GCSE Chemistry: elements cannot be broken down further. Compounds have fixed ratios of atoms. Mixtures can be separated by physical means.",
+      choices: ["Element has mixed atoms", "Element: one atom type; compound: bonded elements; mixture: unbonded", "Compound is a mixture"],
+      yearGroup: "Year 10",
+      skillFocus: "Elements compounds mixtures",
+      difficulty: 3,
+    },
+  ];
+
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-chemistry"], "science");
+
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-chemistry",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Elements compounds mixtures",
+    topic: "Edexcel Chemistry practice",
+    difficulty: 3,
+    requestedCount: 1,
+    items,
+  });
+  assert.equal(result.ok, true);
+});
+
+test("Maths does not use spelling validation pipeline", () => {
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["maths"], "maths");
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-maths"], "maths");
+  assert.notEqual(GENERATION_CONTENT_TYPE_BY_SUBJECT["maths"], "spelling");
+  assert.notEqual(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-maths"], "spelling");
+
+  // Maths content passes maths validation without requiring spelling-specific fields
+  const result = validateAiContentQuality({
+    type: "maths",
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 5",
+    skillFocus: "Fractions",
+    topic: "Fractions practice",
+    difficulty: 3,
+    items: [{
+      question: "Calculate 3/4 of 240. Show your working.",
+      answer: 180,
+      choices: [180, 200, 120],
+      explanation: "Divide by 4 to get 60, then multiply by 3 to get 180.",
+    }],
+  });
+  assert.equal(result.ok, true);
+
+  // Maths items should NOT carry phonics-stage markers required by spelling validator
+  const cleaned = result.cleanedItems as Record<string, unknown>[] | undefined;
+  assert.equal(cleaned !== undefined, true);
+  assert.equal(cleaned?.some((item) => typeof item.phonicsStage !== "undefined" && item.phonicsStage !== null) ?? false, false);
+});
+
+test("Science does not use spelling validation pipeline", () => {
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-physics"], "science");
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-biology"], "science");
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-science"], "science");
+  assert.notEqual(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-physics"], "spelling");
+  assert.notEqual(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-biology"], "spelling");
+  assert.notEqual(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-chemistry"], "spelling");
+  assert.notEqual(GENERATION_CONTENT_TYPE_BY_SUBJECT["gcse-science"], "spelling");
+
+  // Science content passes science validation without requiring word/hint/sentenceContext spelling fields
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-physics",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Forces",
+    topic: "Physics practice",
+    difficulty: 3,
+    items: [{
+      question: "A force of 30 N acts on an object of mass 5 kg. Calculate the resulting acceleration using Newton's Second Law.",
+      answer: "6 m/s²",
+      explanation: "Newton's Second Law: a = F ÷ m = 30 ÷ 5 = 6 m/s². Acceleration is in the direction of the force.",
+      choices: ["6 m/s²", "150 m/s²", "0.17 m/s²"],
+      yearGroup: "Year 10",
+    }],
+  });
+  assert.equal(result.ok, true);
+});
+
+test("Spelling still uses spelling validation pipeline", () => {
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["spelling"], "spelling");
+  assert.equal(GENERATION_CONTENT_TYPE_BY_SUBJECT["phonics"], "phonics");
+
+  // Spelling items without required hint + sentenceContext fail spelling validation
+  const missingFields = validateAiContentQuality({
+    type: "spelling",
+    subject: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Prefixes",
+    difficulty: 3,
+    items: [{ word: "misbehave" }],
+  });
+  assert.equal(missingFields.ok, false);
+
+  // Proper spelling items with all required fields pass
+  const properItem = validateAiContentQuality({
+    type: "spelling",
+    subject: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Prefixes",
+    difficulty: 3,
+    items: [{
+      word: "misbehave",
+      hint: "Identify the prefix and how it changes the meaning of the root word.",
+      sentenceContext: "The pupils agreed not to misbehave during the school trip.",
+    }],
+  });
+  assert.equal(properItem.ok, true);
+});
+
+test("Error messages are subject-aware and not always 'spelling generator'", () => {
+  const physicsFailure = normalizeAdminAiGeneratorFailure(
+    new Error("No valid gcse-physics content remained after validation."),
+    { subject: "gcse-physics", yearGroup: "Year 10", skillFocus: "Forces", generationType: "science" },
+  );
+  assert.equal(physicsFailure.errorCode, "invalid_generated_content");
+  assert.match(physicsFailure.message, /science content generator/i);
+  assert.doesNotMatch(physicsFailure.message, /spelling generator/i);
+
+  const mathsFailure = normalizeAdminAiGeneratorFailure(
+    new Error("No valid maths content remained after validation."),
+    { subject: "maths", yearGroup: "Year 5", skillFocus: "Fractions", generationType: "maths" },
+  );
+  assert.match(mathsFailure.message, /maths content generator/i);
+  assert.doesNotMatch(mathsFailure.message, /spelling generator/i);
+
+  const spellingFailure = normalizeAdminAiGeneratorFailure(
+    new Error("Unable to generate 5 valid Silent e items after auto-repair."),
+    { subject: "spelling", yearGroup: "Year 3", skillFocus: "Silent e", generationType: "spelling" },
+  );
+  assert.match(spellingFailure.message, /spelling generator/i);
+
+  const frenchFailure = normalizeAdminAiGeneratorFailure(
+    new Error("No valid gcse-french content remained after validation."),
+    { subject: "gcse-french", yearGroup: "Year 11", skillFocus: "Vocabulary", generationType: "languages" },
+  );
+  assert.match(frenchFailure.message, /languages content generator/i);
+  assert.doesNotMatch(frenchFailure.message, /spelling generator/i);
+});
+
+test("Invalid AI JSON can be recovered when valid JSON is embedded in prose", () => {
+  // Plain valid JSON parses directly
+  const direct = parseJsonWithRepair<{ word: string }>('{"word":"hello"}');
+  assert.equal(direct.success, true);
+  if (direct.success) assert.equal(direct.data.word, "hello");
+
+  // Fenced JSON (as OpenAI sometimes returns) is stripped and parsed
+  const fenced = parseJsonWithRepair<unknown[]>('```json\n[{"id":"1","question":"What is force?"}]\n```');
+  assert.equal(fenced.success, true);
+  if (fenced.success) assert.equal(Array.isArray(fenced.data), true);
+
+  // Valid JSON embedded inside prose (extra text before/after) is extracted
+  const withProse = parseJsonWithRepair<unknown[]>(
+    'Here are your items:\n[{"id":"1","question":"Describe Newton\'s Second Law of Motion.","answer":"F=ma"}]\nThank you!',
+  );
+  assert.equal(withProse.success, true);
+  if (withProse.success) assert.equal(Array.isArray(withProse.data), true);
+
+  // Completely invalid JSON fails gracefully with diagnostics
+  const invalid = parseJsonWithRepair("This is not JSON at all — no brackets or braces.");
+  assert.equal(invalid.success, false);
+  assert.equal(Array.isArray(invalid.diagnostics.stagesTried), true);
+  assert.equal(invalid.diagnostics.stagesTried.length > 0, true);
 });

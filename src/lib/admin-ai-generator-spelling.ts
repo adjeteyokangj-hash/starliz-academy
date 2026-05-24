@@ -255,6 +255,42 @@ function formatSpellingContext(context: GeneratorFailureContext) {
   return "spelling items";
 }
 
+function resolveGeneratorLabel(context: GeneratorFailureContext): string {
+  const genType = String(context.generationType ?? "").toLowerCase();
+  const subject = String(context.subject ?? "").toLowerCase();
+  if (genType === "spelling" || genType === "phonics" || subject === "spelling" || subject === "phonics") {
+    return "spelling generator";
+  }
+  if (
+    genType === "science"
+    || subject.includes("science")
+    || subject.includes("biology")
+    || subject.includes("chemistry")
+    || subject.includes("physics")
+  ) {
+    return "science content generator";
+  }
+  if (genType === "maths" || subject.includes("maths") || subject === "times-tables") {
+    return "maths content generator";
+  }
+  if (
+    genType === "languages"
+    || subject.includes("french")
+    || subject.includes("german")
+    || subject.includes("spanish")
+    || subject.includes("italian")
+    || subject.includes("mandarin")
+    || subject.includes("arabic")
+    || subject.includes("latin")
+  ) {
+    return "languages content generator";
+  }
+  if (genType === "reading" || subject.includes("reading") || subject.includes("history") || subject.includes("geography")) {
+    return "reading content generator";
+  }
+  return "content generator";
+}
+
 function toNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -368,9 +404,10 @@ export function normalizeAdminAiGeneratorFailure(
     || lowered.includes("validation")
     || lowered.includes("invalid ")
   ) {
+    const generatorLabel = resolveGeneratorLabel(context);
     return {
       errorCode: "invalid_generated_content",
-      message: `The spelling generator could not create valid ${contextLabel}.`,
+      message: `The ${generatorLabel} could not create valid ${contextLabel}.`,
       details: {
         reason: "validation_failed",
         providerStatus,

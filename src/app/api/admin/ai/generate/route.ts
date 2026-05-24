@@ -1234,21 +1234,25 @@ function buildDeterministicGenericFallback(input: {
 
   if (input.type === "science") {
     const sciencePrompts = [
-      "Explain the difference between mass and weight.",
-      "A car has a mass of 1200 kg and accelerates at 2 m/s². Calculate the resultant force.",
-      "Identify the main energy stores in a moving rollercoaster.",
-      "Describe how current changes in a series circuit when resistance increases.",
-      "Explain the effect of increasing resistance on current and voltage.",
-      "State and apply the equation F = m × a in context.",
+      "Explain the difference between mass and weight, giving the correct SI units and a real-world example for each.",
+      "A car has a mass of 1200 kg and accelerates at 2 m/s². Calculate the resultant force using F = m × a.",
+      "Identify the main energy stores in a moving rollercoaster and describe how energy transfers between them.",
+      "Describe how current changes in a series circuit when resistance increases. State the equation that links voltage, current and resistance.",
+      "Explain the effect of increasing resistance on current in a parallel circuit. Give one practical example to support your answer.",
+      "State Newton's Second Law of Motion and use F = m × a to calculate the resultant force on a 600 g object accelerating at 3 m/s².",
     ];
     return Array.from({ length: safeCount }, (_, index) => {
       const question = sciencePrompts[index % sciencePrompts.length];
       const answer = question.includes("1200 kg")
         ? "2400 N"
-        : `Model science answer for ${baseSkill.toLowerCase()} in ${baseTopic.toLowerCase()}.`;
+        : question.includes("600 g")
+          ? "1.8 N"
+          : `Model science answer for ${baseSkill.toLowerCase()} in ${baseTopic.toLowerCase()}.`;
       const explanation = question.includes("1200 kg")
-        ? "Use F = m × a, so 1200 × 2 = 2400 N."
-        : `Science explanation aligned to ${input.yearGroup} ${difficultyLabel.toLowerCase()} expectations.`;
+        ? "Use F = m × a, so 1200 × 2 = 2400 N. Force is measured in Newtons (N)."
+        : question.includes("600 g")
+          ? "Convert 600 g to 0.6 kg, then F = 0.6 × 3 = 1.8 N."
+          : `Science explanation aligned to ${input.yearGroup} ${difficultyLabel.toLowerCase()} expectations. Use scientific vocabulary and evidence.`;
       return {
         id: `fallback-science-${index + 1}`,
         type: input.subject,
@@ -1508,15 +1512,16 @@ export async function POST(req: Request) {
       },
     }, { status: 422 });
   }
-  const requestedCount = body.numberOfItems ?? body.count;
+  const requestedCount = body.itemCount ?? body.numberOfItems ?? body.count;
   const requestedLevel = body.difficulty ?? body.level;
   const rawYearGroup = typeof body.yearGroup === "string" ? body.yearGroup : "Year 1";
+  const rawTopic = body.topicTheme ?? body.topic;
 
   const parentGenerationType = mapSubjectToGenerationType(sourceSubject);
   const generationType = englishStrand ? englishStrandToGenerationType(englishStrand) : parentGenerationType;
   const promptType = englishStrand ? mapEnglishStrandToPromptType(englishStrand) : mapGenerationTypeToPromptType(generationType);
   const level = typeof requestedLevel === "number" ? requestedLevel : Number(requestedLevel);
-  const topic = typeof body.topic === "string" ? body.topic : "";
+  const topic = typeof rawTopic === "string" ? rawTopic : "";
   const ageGroup = typeof body.ageGroup === "string" ? body.ageGroup : ageGroupForYearGroup(rawYearGroup);
   const count = Math.max(1, Math.min(10, Number(requestedCount ?? BATCH_SIZE)));
   const keyStage = typeof body.keyStage === "string" ? body.keyStage : "KS1";

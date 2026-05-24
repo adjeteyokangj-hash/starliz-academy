@@ -73,7 +73,7 @@ function hasMathContent(value: string) {
 }
 
 function hasScienceSignal(value: string) {
-  return /(science|physics|chemistry|biology|force|energy|waves?|electricity|magnetism|circuit|resistance|current|voltage|particle|atomic|atom|cells?|ecosystem|practical|equation|f\s*=\s*m\s*[x*]\s*a)/i.test(value);
+  return /(science|physics|chemistry|biology|force|energy|waves?|electricity|magnetism|circuit|resistance|current|voltage|particle|atomic|atom|cells?|ecosystem|practical|equation|f\s*=\s*m\s*[x*]\s*a|mass|weight|acceleration|velocity|momentum|density|pressure|chemical\s*reaction|exothermic|endothermic|evolution|genetics|dna|radiation|nuclear|thermal|kinetic|gravitational|elastic\s*potential|newton|joule|watt|hertz|ohm|ampere|photosynthesis|osmosis|diffusion|respiration|mitosis|periodic\s*table|element|compound|mixture|reactant|product|bond|electron|proton|neutron|isotope|half.life|wave.length|frequency|amplitude|refraction|reflection|electromagnetic)/i.test(value);
 }
 
 function isMathOnlyContent(value: string) {
