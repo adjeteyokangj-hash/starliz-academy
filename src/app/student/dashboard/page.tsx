@@ -215,6 +215,33 @@ type CertificateEligibilityPayload = {
     blockers: string[];
     nextBestAction: string;
   }>;
+  issuedCertificates?: Array<{
+    id: string;
+    certificateNumber: string;
+    verificationCode: string;
+    certificateType: "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate";
+    title: string;
+    term: string;
+    status: "issued" | "revoked";
+    issuedAt: string;
+    verificationUrl: string;
+  }>;
+  error?: string;
+};
+
+type IssueCertificatePayload = {
+  ok?: boolean;
+  message?: string;
+  issuedCertificate?: {
+    id: string;
+    certificateNumber: string;
+    verificationCode: string;
+    certificateType: "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate";
+    term: string;
+    issuedAt: string;
+    verificationUrl: string;
+  };
+  code?: string;
   error?: string;
 };
 
@@ -312,6 +339,7 @@ export default function StudentDashboardPage() {
   const [openingStore, setOpeningStore] = useState(false);
   const [bossAssignmentId, setBossAssignmentId] = useState<string | null>(null);
   const [bossLaunching, setBossLaunching] = useState(false);
+  const [issuingCertificate, setIssuingCertificate] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -641,9 +669,58 @@ export default function StudentDashboardPage() {
     }
   }
 
+  function formatIssuedDate(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
+  async function issueCertificate() {
+    if (issuingCertificate || !certificateEligibility?.summary) return;
+    setIssuingCertificate(true);
+    setError("");
+    try {
+      const response = await fetch("/api/student/certificates/issue", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          certificateType: certificateEligibility.summary.primaryCertificateType,
+          term: certificateEligibility.term,
+        }),
+      });
+
+      const payload = (await response.json()) as IssueCertificatePayload;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.message ?? payload.error ?? "Unable to issue certificate right now.");
+      }
+
+      await loadDashboard();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to issue certificate right now.");
+    } finally {
+      setIssuingCertificate(false);
+    }
+  }
+
   const focusAssignment = findAssignmentForSkill(focusSkill);
   const weakAssignment = findAssignmentForSkill(weakSkill ?? focusSkill);
   const reviewAssignment = findAssignmentForSkill(strongSkill);
+  const selectedIssuedCertificate = useMemo(() => {
+    const primaryType = certificateEligibility?.summary?.primaryCertificateType;
+    if (!primaryType || !certificateEligibility?.issuedCertificates?.length) return null;
+    const match = certificateEligibility.issuedCertificates
+      .filter((row) => row.certificateType === primaryType)
+      .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())[0];
+    return match ?? null;
+  }, [certificateEligibility]);
   const weakAccuracy = Math.round(skillMap.get(weakSkill)?.accuracy ?? 45);
   const supportSkill = groupedSkills.improving[0]?.skill ?? focusSkill;
 
@@ -920,10 +997,43 @@ export default function StudentDashboardPage() {
                   </div>
                 ) : null}
 
-                {certificateEligibility.summary?.status !== "eligible" ? (
+                {certificateEligibility.summary?.status !== "eligible" && certificateEligibility.summary?.status !== "issued" ? (
                   <p className="mt-3 text-sm text-amber-900">
                     Your certificate is not ready yet. Complete your catch-up task and end-of-term exam first.
                   </p>
+                ) : null}
+
+                {certificateEligibility.summary?.status === "eligible" ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <p className="text-sm font-semibold text-emerald-900">Ready for certificate review and issuing.</p>
+                    <button
+                      type="button"
+                      onClick={() => void issueCertificate()}
+                      disabled={issuingCertificate}
+                      className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {issuingCertificate ? "Issuing..." : "Issue Certificate"}
+                    </button>
+                  </div>
+                ) : null}
+
+                {selectedIssuedCertificate ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Issued Certificate</p>
+                    <div className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                      <p className="text-slate-700">Number: <span className="font-mono font-semibold text-slate-900">{selectedIssuedCertificate.certificateNumber}</span></p>
+                      <p className="text-slate-700">Issued: <span className="font-semibold text-slate-900">{formatIssuedDate(selectedIssuedCertificate.issuedAt)}</span></p>
+                      <p className="text-slate-700">Verification code: <span className="font-mono font-semibold text-slate-900">{selectedIssuedCertificate.verificationCode}</span></p>
+                      <p className="text-slate-700">Status: <span className="font-semibold capitalize text-slate-900">{selectedIssuedCertificate.status}</span></p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/certificates/verify/${encodeURIComponent(selectedIssuedCertificate.verificationCode)}`)}
+                      className="mt-3 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
+                    >
+                      Open Verification Page
+                    </button>
+                  </div>
                 ) : null}
               </section>
             ) : null}

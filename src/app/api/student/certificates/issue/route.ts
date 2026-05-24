@@ -6,10 +6,15 @@ import { prisma } from "@/lib/db";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 import { parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/student-learning-state";
 import { buildSubjectLevelProgression } from "@/lib/subject-level-progression";
-import { buildCertificateEligibility } from "@/lib/certificate-eligibility";
-import { parseIssuedCertificates } from "@/lib/certificate-issuing";
+import { buildCertificateEligibility, type CertificateType } from "@/lib/certificate-eligibility";
+import {
+  canIssueCertificate,
+  issueCertificateRecord,
+  parseIssuedCertificates,
+  upsertIssuedCertificates,
+} from "@/lib/certificate-issuing";
 
-function resolveAcademicTerm(raw: string | null): string {
+function resolveAcademicTerm(raw: string | null | undefined): string {
   const normalized = String(raw ?? "").trim();
   if (normalized) return normalized;
   const now = new Date();
@@ -19,7 +24,29 @@ function resolveAcademicTerm(raw: string | null): string {
   return "Summer";
 }
 
-export async function GET(request: Request) {
+function parseCertificateType(raw: unknown): CertificateType | null {
+  const value = String(raw ?? "").trim();
+  if (
+    value === "term_completion"
+    || value === "end_of_term_exam"
+    || value === "subject_achievement"
+    || value === "english_achievement"
+    || value === "mastery_certificate"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function resolveBaseUrl(request: Request): string {
+  const envUrl = String(process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? "").trim();
+  if (envUrl) return envUrl.replace(/\/$/, "");
+  const proto = request.headers.get("x-forwarded-proto") ?? "http";
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "localhost:3000";
+  return `${proto}://${host}`;
+}
+
+export async function POST(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
 
@@ -31,6 +58,14 @@ export async function GET(request: Request) {
   const studentId = await resolveParentActiveChildId(parentScope.parentId);
   if (!studentId) {
     return NextResponse.json({ error: "No active student selected." }, { status: 400 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const certificateType = parseCertificateType((body as Record<string, unknown>).certificateType);
+  const term = resolveAcademicTerm((body as Record<string, unknown>).term as string | null | undefined);
+
+  if (!certificateType) {
+    return NextResponse.json({ error: "Valid certificateType is required." }, { status: 400 });
   }
 
   const student = await prisma.childProfile.findFirst({
@@ -53,43 +88,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const params = new URL(request.url).searchParams;
-  const term = resolveAcademicTerm(params.get("term"));
-
   const profileJson = student.studentProfile?.aiLearningProfileJson ?? null;
-  const issuedCertificates = parseIssuedCertificates(profileJson);
   const selectedSubjects = parseSelectedSubjectsFromProfileJson(profileJson).length
     ? parseSelectedSubjectsFromProfileJson(profileJson)
     : parseSubjectFocus(student.studentProfile?.subjectFocus ?? null);
 
   const quick = parseQuickLevelFinderSession(profileJson);
-
   if (!quick || quick.status !== "completed") {
-    const payload = buildCertificateEligibility({
-      studentId: student.id,
-      yearGroup: student.yearGroup,
-      keyStage: student.studentProfile?.keyStageLevel ?? null,
-      term,
-      selectedSubjects,
-      placementLevels: {},
-      progressionRecommendations: [],
-      assignments: [],
-      attempts: [],
-      weakAreas: [],
-      studentSkills: [],
-      progressRecords: [],
-    });
-
     return NextResponse.json({
       ok: false,
       code: "placement_required",
-      student: {
-        id: student.id,
-        name: student.name,
-        yearGroup: student.yearGroup,
-        keyStage: student.studentProfile?.keyStageLevel ?? null,
-      },
-      ...payload,
+      message: "Complete Quick Level Finder before requesting certificate issuance.",
     }, { status: 409 });
   }
 
@@ -177,6 +186,8 @@ export async function GET(request: Request) {
     progressRecords,
   });
 
+  const existingIssued = parseIssuedCertificates(profileJson);
+
   const eligibility = buildCertificateEligibility({
     studentId: student.id,
     yearGroup: student.yearGroup,
@@ -196,18 +207,60 @@ export async function GET(request: Request) {
     weakAreas,
     studentSkills,
     progressRecords,
-    existingIssuedCertificates: issuedCertificates.map((row) => row.certificateType),
+    existingIssuedCertificates: existingIssued.map((row) => row.certificateType),
+  });
+
+  const target = eligibility.certificates.find((row) => row.certificateType === certificateType);
+  if (!target) {
+    return NextResponse.json({ error: "Certificate type was not found for this student profile." }, { status: 404 });
+  }
+
+  const gate = canIssueCertificate(target);
+  if (!gate.ok) {
+    return NextResponse.json({
+      ok: false,
+      code: "not_eligible",
+      message: gate.reason,
+      certificateType,
+      status: gate.eligibilityStatus,
+      blockers: target.blockers,
+      nextBestAction: target.nextBestAction,
+      readinessScore: target.readinessScore,
+    }, { status: 409 });
+  }
+
+  const baseUrl = resolveBaseUrl(request);
+  const issued = issueCertificateRecord({
+    eligibility: target,
+    studentId: student.id,
+    studentName: student.name,
+    yearGroup: student.yearGroup,
+    keyStage: student.studentProfile?.keyStageLevel ?? null,
+    verificationBaseUrl: baseUrl,
+  });
+
+  const updatedIssued = [...existingIssued, issued];
+
+  await prisma.studentProfile.upsert({
+    where: { childId: student.id },
+    create: {
+      childId: student.id,
+      aiLearningProfileJson: upsertIssuedCertificates(profileJson, updatedIssued),
+    },
+    update: {
+      aiLearningProfileJson: upsertIssuedCertificates(profileJson, updatedIssued),
+    },
   });
 
   return NextResponse.json({
     ok: true,
+    message: "Certificate issued successfully.",
     student: {
       id: student.id,
       name: student.name,
       yearGroup: student.yearGroup,
       keyStage: student.studentProfile?.keyStageLevel ?? null,
     },
-    issuedCertificates,
-    ...eligibility,
+    issuedCertificate: issued,
   });
 }
