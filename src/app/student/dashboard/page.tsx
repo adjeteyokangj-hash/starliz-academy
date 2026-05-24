@@ -194,6 +194,30 @@ type StudentAcademicIntelligencePayload = {
   generatedAt: string;
 };
 
+type CertificateEligibilityPayload = {
+  ok?: boolean;
+  code?: "placement_required" | "not_enough_evidence";
+  term?: string;
+  message?: string;
+  summary?: {
+    primaryCertificateType: "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate";
+    status: "locked" | "pending_lessons" | "pending_quizzes" | "pending_catch_up" | "pending_exam" | "pending_review" | "eligible" | "issued" | "not_yet_awarded";
+    readinessPercentage: number;
+    friendlyLabel: "Keep learning" | "Almost ready" | "Catch-up needed" | "Exam needed" | "Ready for certificate";
+    mainBlocker: string | null;
+    nextBestAction: string;
+  };
+  certificates?: Array<{
+    certificateType: "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate";
+    status: "locked" | "pending_lessons" | "pending_quizzes" | "pending_catch_up" | "pending_exam" | "pending_review" | "eligible" | "issued" | "not_yet_awarded";
+    readinessScore: number;
+    completionPercentage: number;
+    blockers: string[];
+    nextBestAction: string;
+  }>;
+  error?: string;
+};
+
 function subjectPath(subject: string, title?: string | null, skillFocus?: string | null): "spelling" | "math" | "reading" | "lesson" {
   const normalized = normalize(subject);
   const context = `${normalized} ${normalize(title)} ${normalize(skillFocus)}`;
@@ -229,6 +253,14 @@ function progressionFriendlyBadge(status: ProgressionRecommendation["status"]): 
   if (status === "secure") return "Almost ready to move up";
   if (status === "ready_to_advance" || status === "advanced") return "Ready for a challenge";
   return "Keep practising";
+}
+
+function certificateTypeLabel(type: NonNullable<CertificateEligibilityPayload["summary"]>["primaryCertificateType"]): string {
+  if (type === "term_completion") return "Term Completion Certificate";
+  if (type === "end_of_term_exam") return "End-of-Term Exam Certificate";
+  if (type === "subject_achievement") return "Subject Achievement Certificate";
+  if (type === "english_achievement") return "English Achievement Certificate";
+  return "Mastery Certificate";
 }
 
 function buildInterventionPath(input: {
@@ -269,6 +301,7 @@ export default function StudentDashboardPage() {
   const [placementLessonGroups, setPlacementLessonGroups] = useState<PlacementLessonGroup[]>([]);
   const [placementContentGaps, setPlacementContentGaps] = useState<PlacementLessonRecommendation[]>([]);
   const [progression, setProgression] = useState<ProgressionPayload | null>(null);
+  const [certificateEligibility, setCertificateEligibility] = useState<CertificateEligibilityPayload | null>(null);
   const [academicIntelligence, setAcademicIntelligence] = useState<StudentAcademicIntelligencePayload | null>(null);
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicError, setAcademicError] = useState("");
@@ -307,6 +340,7 @@ export default function StudentDashboardPage() {
         setPlacementLessonGroups([]);
         setPlacementContentGaps([]);
         setProgression(null);
+        setCertificateEligibility(null);
         setAcademicIntelligence(null);
         setAcademicError("");
         setBossUnlocked(false);
@@ -318,7 +352,7 @@ export default function StudentDashboardPage() {
       setAcademicLoading(true);
       setAcademicError("");
 
-      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes] = await Promise.all([
+      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes] = await Promise.all([
         fetch("/api/student/assignments", { credentials: "include" }),
         fetch("/api/student/skills", { credentials: "include" }),
         fetch("/api/student/boss-battle", { credentials: "include" }),
@@ -328,9 +362,10 @@ export default function StudentDashboardPage() {
         fetch("/api/student/quick-level-finder/levels", { credentials: "include" }),
         fetch("/api/student/placement-lessons", { credentials: "include" }),
         fetch("/api/student/progression/recommendations", { credentials: "include" }),
+        fetch("/api/student/certificates/eligibility", { credentials: "include" }),
       ]);
 
-      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes].some((res) => res.status === 401)) {
+      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes].some((res) => res.status === 401)) {
         setAuthRequired(true);
         setError("Your session expired. Please sign in again.");
         return;
@@ -354,6 +389,7 @@ export default function StudentDashboardPage() {
         ? ((await placementLessonsRes.json()) as PlacementLessonsPayload)
         : ({} as PlacementLessonsPayload);
       const progressionPayload = ((await progressionRes.json()) as ProgressionPayload);
+      const certificateEligibilityPayload = ((await certificateEligibilityRes.json()) as CertificateEligibilityPayload);
       const academicPayload = academicIntelligenceRes.ok
         ? ((await academicIntelligenceRes.json()) as StudentAcademicIntelligencePayload)
         : null;
@@ -368,6 +404,7 @@ export default function StudentDashboardPage() {
           setPlacementLessonGroups([]);
           setPlacementContentGaps([]);
           setProgression(null);
+          setCertificateEligibility(null);
           setBossUnlocked(false);
           setBossPlayedToday(false);
           setBossAssignmentId(null);
@@ -387,6 +424,7 @@ export default function StudentDashboardPage() {
       setPlacementLessonGroups(Array.isArray(placementLessonsPayload.grouped) ? placementLessonsPayload.grouped : []);
       setPlacementContentGaps(Array.isArray(placementLessonsPayload.contentGaps) ? placementLessonsPayload.contentGaps : []);
       setProgression(progressionPayload ?? null);
+      setCertificateEligibility(certificateEligibilityPayload ?? null);
       if (academicPayload) {
         const state = learningStatePayload.learningState;
         if (state?.isFirstTimeStudent || !state?.hasAssessmentData) {
@@ -847,6 +885,45 @@ export default function StudentDashboardPage() {
                       </div>
                     ))}
                   </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {certificateEligibility && (certificateEligibility.summary || certificateEligibility.message) ? (
+              <section className="mb-6 rounded-3xl border border-amber-200 bg-amber-50/70 p-5">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Certificate Progress</p>
+                <p className="mt-1 text-sm font-semibold text-amber-900">
+                  {certificateEligibility.summary?.friendlyLabel ?? "Keep learning"}
+                </p>
+                <p className="mt-1 text-sm text-amber-900">
+                  {certificateEligibility.message ?? "Your certificate is not ready yet. Keep building evidence."}
+                </p>
+
+                {certificateEligibility.summary ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                    <div className="rounded-xl border border-amber-200 bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">Type</p>
+                      <p className="mt-1 text-sm font-black text-slate-900">{certificateTypeLabel(certificateEligibility.summary.primaryCertificateType)}</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-200 bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">Readiness</p>
+                      <p className="mt-1 text-sm font-black text-slate-900">{certificateEligibility.summary.readinessPercentage}%</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-200 bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">Main blocker</p>
+                      <p className="mt-1 text-sm font-black text-slate-900">{certificateEligibility.summary.mainBlocker ?? "No blocker"}</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-200 bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">Next action</p>
+                      <p className="mt-1 text-sm font-black text-slate-900">{certificateEligibility.summary.nextBestAction}</p>
+                    </div>
+                  </div>
+                ) : null}
+
+                {certificateEligibility.summary?.status !== "eligible" ? (
+                  <p className="mt-3 text-sm text-amber-900">
+                    Your certificate is not ready yet. Complete your catch-up task and end-of-term exam first.
+                  </p>
                 ) : null}
               </section>
             ) : null}
