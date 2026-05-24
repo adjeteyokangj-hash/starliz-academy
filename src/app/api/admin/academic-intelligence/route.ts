@@ -3,6 +3,7 @@ import { requireAdminPermission } from "@/lib/api_guard";
 import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data";
 import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
 import { listCatchUpTasks, syncCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
+import { listHomeworkTasks, syncHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
 
 export async function GET(request: Request) {
   const { session, response } = await requireAdminPermission("reports:view");
@@ -16,14 +17,20 @@ export async function GET(request: Request) {
   if (!source) return NextResponse.json({ error: "Student not found." }, { status: 404 });
 
   const existingTasks = await listCatchUpTasks(studentId);
-  let output = buildAcademicIntelligence(source, { existingCatchUpTasks: existingTasks });
+  const existingHomework = await listHomeworkTasks(studentId);
+  let output = buildAcademicIntelligence(source, { existingCatchUpTasks: existingTasks, existingHomeworkTasks: existingHomework });
   const syncedTasks = await syncCatchUpTasks({
     studentId,
     recommendations: output.catchUpRecommendations,
     schoolWeekModePlan: output.schoolWeekModePlan,
     actorUserId: session.userId,
   });
-  output = buildAcademicIntelligence(source, { existingCatchUpTasks: syncedTasks });
+  const syncedHomework = await syncHomeworkTasks({
+    studentId,
+    schoolWeekModePlan: output.schoolWeekModePlan,
+    actorUserId: session.userId,
+  });
+  output = buildAcademicIntelligence(source, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
 
   return NextResponse.json(output);
 }

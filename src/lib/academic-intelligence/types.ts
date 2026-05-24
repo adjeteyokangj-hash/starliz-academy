@@ -27,6 +27,28 @@ export type CatchUpTaskAction =
   | "complete_task"
   | "skip_task";
 
+export type HomeworkStatus = "assigned" | "in_progress" | "completed" | "waived" | "overdue";
+
+export type HomeworkTaskAction = "start_homework" | "complete_homework" | "waive_homework" | "reschedule_homework" | "add_note";
+
+export type HomeworkTaskRecord = {
+  taskId: string;
+  studentId: string;
+  blockId: string;
+  title: string;
+  subject?: string | null;
+  topic?: string | null;
+  status: HomeworkStatus;
+  estimatedMinutes: number;
+  dueDate?: string | null;
+  scheduledDay?: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | null;
+  routeTarget?: string | null;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CatchUpTaskRecord = {
   taskId: string;
   studentId: string;
@@ -436,6 +458,7 @@ export type AcademicIntelligenceOutput = {
   catchUpTriggers: CatchUpTrigger[];
   catchUpRecommendations: CatchUpRecommendation[];
   catchUpTasks: CatchUpTaskRecord[];
+  homeworkTasks: HomeworkTaskRecord[];
   assessmentRecommendations: AssessmentRecommendation[];
   assessmentReadiness: AssessmentReadinessStatus;
   examReadinessProfile: ExamReadinessProfile;

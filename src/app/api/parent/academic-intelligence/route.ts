@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data";
 import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
 import { listCatchUpTasks, syncCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
+import { listHomeworkTasks, syncHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -29,14 +30,20 @@ export async function GET(request: Request) {
   if (!child) return NextResponse.json({ error: "Child not found." }, { status: 404 });
 
   const existingTasks = await listCatchUpTasks(childId);
-  let output = buildAcademicIntelligence(child, { existingCatchUpTasks: existingTasks });
+  const existingHomework = await listHomeworkTasks(childId);
+  let output = buildAcademicIntelligence(child, { existingCatchUpTasks: existingTasks, existingHomeworkTasks: existingHomework });
   const syncedTasks = await syncCatchUpTasks({
     studentId: childId,
     recommendations: output.catchUpRecommendations,
     schoolWeekModePlan: output.schoolWeekModePlan,
     actorUserId: session.userId,
   });
-  output = buildAcademicIntelligence(child, { existingCatchUpTasks: syncedTasks });
+  const syncedHomework = await syncHomeworkTasks({
+    studentId: childId,
+    schoolWeekModePlan: output.schoolWeekModePlan,
+    actorUserId: session.userId,
+  });
+  output = buildAcademicIntelligence(child, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
 
   return NextResponse.json({
     studentId: output.studentId,
@@ -44,6 +51,7 @@ export async function GET(request: Request) {
     curriculumCoverage: output.curriculumCoverage,
     catchUpRecommendations: output.catchUpRecommendations,
     catchUpTasks: output.catchUpTasks,
+    homeworkTasks: output.homeworkTasks,
     assessmentReadiness: output.assessmentReadiness,
     examReadinessProfile: output.examReadinessProfile,
     schoolWeekModePlan: output.schoolWeekModePlan,

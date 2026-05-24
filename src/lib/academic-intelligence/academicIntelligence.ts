@@ -20,6 +20,7 @@ import type {
   AcademicReportNote,
   AcademicSourceData,
   CatchUpTaskRecord,
+  HomeworkTaskRecord,
   MasteryExpansionSummary,
   ParentAdminReviewAction,
   SchoolWeekModeBlock,
@@ -392,11 +393,13 @@ export function buildAcademicIntelligence(
   data: AcademicSourceData,
   options?: {
     existingCatchUpTasks?: CatchUpTaskRecord[];
+    existingHomeworkTasks?: HomeworkTaskRecord[];
   },
 ): AcademicIntelligenceOutput {
   const generatedAt = data.generatedAt ?? new Date().toISOString();
   const masteryBuilt = buildMasteryMap(data);
   const existingTasks = options?.existingCatchUpTasks ?? [];
+  const existingHomeworkTasks = options?.existingHomeworkTasks ?? [];
 
   const triggers = detectCatchUpTriggers({
     masteryMap: masteryBuilt.masteryMap,
@@ -433,6 +436,7 @@ export function buildAcademicIntelligence(
     catchUpTriggers: allTriggers,
     catchUpRecommendations,
     catchUpTasks: existingTasks,
+    homeworkTasks: existingHomeworkTasks,
     assessmentRecommendations: assessmentBuilt.recommendations,
     assessmentReadiness: assessmentBuilt.readinessStatus,
     examReadinessProfile: assessmentBuilt.examReadinessProfile,
@@ -493,6 +497,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   | "curriculumCoverage"
   | "catchUpRecommendations"
   | "catchUpTasks"
+  | "homeworkTasks"
   | "assessmentRecommendations"
   | "examReadinessProfile"
   | "schoolWeekModePlan"
@@ -509,6 +514,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
       reason: item.studentFriendlyReason,
     })),
     catchUpTasks: output.catchUpTasks,
+    homeworkTasks: output.homeworkTasks,
     assessmentRecommendations: output.assessmentRecommendations.map((item) => ({
       ...item,
       reason: item.reason,

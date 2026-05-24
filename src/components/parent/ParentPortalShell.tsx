@@ -246,6 +246,18 @@ type ParentAcademicIntelligencePayload = {
     scheduledDay?: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | null;
     note?: string | null;
   }>;
+  homeworkTasks?: Array<{
+    taskId: string;
+    blockId: string;
+    title: string;
+    subject?: string | null;
+    topic?: string | null;
+    status: "assigned" | "in_progress" | "completed" | "waived" | "overdue";
+    estimatedMinutes: number;
+    dueDate?: string | null;
+    scheduledDay?: SchoolWeekday | null;
+    note?: string | null;
+  }>;
   assessmentReadiness: string;
   gcseReadiness: {
     applicable: boolean;
@@ -1467,6 +1479,30 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                           </p>
                         ) : null}
                       </div>
+
+                      <div className="rounded-xl border border-indigo-400/20 bg-indigo-500/10 p-3 text-sm text-indigo-100">
+                        <p className="font-semibold text-white">School Week Report</p>
+                        <p className="mt-1 text-xs">
+                          Catch-up completed: {(academicIntelligence.catchUpTasks ?? []).filter((task) => task.status === "completed").length} •
+                          Homework completed: {(academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "completed").length} •
+                          Overdue: {(academicIntelligence.catchUpTasks ?? []).filter((task) => task.status === "overdue").length + (academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "overdue").length}
+                        </p>
+                      </div>
+
+                      {(academicIntelligence.homeworkTasks ?? []).length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-200">Homework tracking</p>
+                          {(academicIntelligence.homeworkTasks ?? []).slice(0, 4).map((task) => (
+                            <div key={task.taskId} className="rounded-xl border border-indigo-400/20 bg-indigo-500/10 p-3 text-xs text-indigo-100">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="font-semibold text-white">{task.title}</p>
+                                <span className="rounded-full bg-indigo-400/20 px-2 py-0.5 font-bold">{task.status.replaceAll("_", " ")}</span>
+                              </div>
+                              <p className="mt-1">{task.subject ?? "General"}{task.topic ? ` • ${task.topic}` : ""} • {task.estimatedMinutes} mins</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
 
                       <div>
                         <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-300">Review actions</p>

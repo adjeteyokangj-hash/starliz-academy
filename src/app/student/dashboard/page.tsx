@@ -206,6 +206,18 @@ type StudentAcademicIntelligencePayload = {
     scheduledDay?: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | null;
     routeTarget?: string | null;
   }>;
+  homeworkTasks?: Array<{
+    taskId: string;
+    blockId: string;
+    title: string;
+    subject?: string | null;
+    topic?: string | null;
+    status: "assigned" | "in_progress" | "completed" | "waived" | "overdue";
+    estimatedMinutes: number;
+    dueDate?: string | null;
+    scheduledDay?: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | null;
+    routeTarget?: string | null;
+  }>;
   assessmentRecommendations: Array<{
     assessmentType: string;
     subject: string;
@@ -395,6 +407,8 @@ export default function StudentDashboardPage() {
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicError, setAcademicError] = useState("");
   const [academicTaskPendingId, setAcademicTaskPendingId] = useState<string | null>(null);
+  const [homeworkPendingId, setHomeworkPendingId] = useState<string | null>(null);
+  const [liveNow, setLiveNow] = useState(() => new Date());
   const [error, setError] = useState("");
   const [missingChildContext, setMissingChildContext] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
@@ -578,6 +592,11 @@ export default function StudentDashboardPage() {
     router.prefetch("/games/reading");
   }, [router]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setLiveNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   // Reset "stuck" loading states when the user navigates back to this page
   useEffect(() => {
     function handleVisibilityChange() {
@@ -696,6 +715,30 @@ export default function StudentDashboardPage() {
       setAcademicError(err instanceof Error ? err.message : "Unable to update catch-up task.");
     } finally {
       setAcademicTaskPendingId(null);
+    }
+  }
+
+  async function handleStudentHomeworkTaskAction(taskId: string, action: "start_homework" | "complete_homework") {
+    setHomeworkPendingId(taskId);
+    setAcademicError("");
+    try {
+      const response = await fetch("/api/student/academic-intelligence/homework-tasks", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, action }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error ?? "Unable to update homework task.");
+      }
+
+      await loadDashboard();
+    } catch (err) {
+      setAcademicError(err instanceof Error ? err.message : "Unable to update homework task.");
+    } finally {
+      setHomeworkPendingId(null);
     }
   }
 
@@ -1089,13 +1132,30 @@ export default function StudentDashboardPage() {
                         </p>
                         {(() => {
                           const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-                          const todayName = weekdayNames[new Date().getDay()];
+                          const todayName = weekdayNames[liveNow.getDay()];
                           const todaySchedule = academicIntelligence.schoolWeekModePlan?.dailySchedules?.find((item) => item.day === todayName) ?? null;
                           const nextSchedule = academicIntelligence.schoolWeekModePlan?.dailySchedules?.find((item) => item.day !== todayName && item.blocks.length > 0) ?? null;
                           const nextBlock = todaySchedule?.blocks[0] ?? nextSchedule?.blocks[0] ?? null;
+                          const currentMinutes = (liveNow.getHours() * 60) + liveNow.getMinutes();
+                          const currentBlock = todaySchedule?.blocks.find((item) => {
+                            const [startH, startM] = item.startTime.split(":").map((value) => Number(value));
+                            const [endH, endM] = item.endTime.split(":").map((value) => Number(value));
+                            const start = (startH * 60) + startM;
+                            const end = (endH * 60) + endM;
+                            return currentMinutes >= start && currentMinutes < end;
+                          }) ?? null;
+                          const minutesRemaining = currentBlock
+                            ? Math.max(0, ((Number(currentBlock.endTime.split(":")[0]) * 60) + Number(currentBlock.endTime.split(":")[1])) - currentMinutes)
+                            : 0;
 
                           return (
                             <div className="mt-2 space-y-2">
+                              {currentBlock ? (
+                                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                                  <p className="font-semibold">Current block: {currentBlock.title}</p>
+                                  <p className="mt-1">{minutesRemaining} minute{minutesRemaining === 1 ? "" : "s"} remaining ({currentBlock.startTime} - {currentBlock.endTime})</p>
+                                </div>
+                              ) : null}
                               <div className="rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-xs text-slate-700">
                                 <p className="font-semibold text-cyan-800">Today&apos;s learning plan</p>
                                 {todaySchedule?.blocks?.length ? (
@@ -1128,6 +1188,50 @@ export default function StudentDashboardPage() {
                         })()}
                       </div>
                     ) : null}
+                  </div>
+
+                  {academicIntelligence.homeworkTasks && academicIntelligence.homeworkTasks.length > 0 ? (
+                    <div className="rounded-2xl border border-indigo-200 bg-white p-4">
+                      <p className="text-sm font-bold text-slate-900">School Week Homework</p>
+                      <div className="mt-2 space-y-2">
+                        {academicIntelligence.homeworkTasks.slice(0, 4).map((task) => (
+                          <div key={task.taskId} className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-slate-700">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="font-semibold text-indigo-900">{task.title}</p>
+                              <span className="rounded-full bg-indigo-100 px-2 py-0.5 font-bold text-indigo-700">{task.status.replaceAll("_", " ")}</span>
+                            </div>
+                            <p className="mt-1">{task.subject ?? "General"}{task.topic ? ` - ${task.topic}` : ""} • {task.estimatedMinutes}m</p>
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                type="button"
+                                disabled={homeworkPendingId === task.taskId}
+                                onClick={() => void handleStudentHomeworkTaskAction(task.taskId, "start_homework")}
+                                className="rounded-lg bg-indigo-600 px-2 py-1 font-bold text-white disabled:opacity-60"
+                              >
+                                Start
+                              </button>
+                              <button
+                                type="button"
+                                disabled={homeworkPendingId === task.taskId}
+                                onClick={() => void handleStudentHomeworkTaskAction(task.taskId, "complete_homework")}
+                                className="rounded-lg bg-emerald-600 px-2 py-1 font-bold text-white disabled:opacity-60"
+                              >
+                                Complete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <p className="text-sm font-bold text-slate-900">School Week Report</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Catch-up completed: {(academicIntelligence.catchUpTasks ?? []).filter((task) => task.status === "completed").length} •
+                      Homework completed: {(academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "completed").length} •
+                      Overdue items: {(academicIntelligence.catchUpTasks ?? []).filter((task) => task.status === "overdue").length + (academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "overdue").length}
+                    </p>
                   </div>
                 </div>
               )}

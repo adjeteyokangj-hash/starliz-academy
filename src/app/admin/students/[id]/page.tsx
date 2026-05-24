@@ -111,6 +111,17 @@ type AdminAcademicIntelligencePayload = {
       }>;
     }>;
   };
+  homeworkTasks?: Array<{
+    taskId: string;
+    blockId: string;
+    title: string;
+    subject?: string | null;
+    topic?: string | null;
+    status: "assigned" | "in_progress" | "completed" | "waived" | "overdue";
+    estimatedMinutes: number;
+    dueDate?: string | null;
+    scheduledDay?: SchoolWeekday | null;
+  }>;
   reviewActions: Array<{ action: string; label: string; persistenceSupported: boolean; message: string }>;
 };
 
@@ -559,6 +570,30 @@ export default function StudentDetailPage() {
                   <p className="mt-1">Not currently applicable for this learner.</p>
                 )}
               </div>
+
+              <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm text-indigo-100">
+                <p className="font-bold text-white">School Week Report</p>
+                <p className="mt-1 text-xs">
+                  Catch-up completed: {academicIntelligence.catchUpRecommendations.filter((task) => task.status === "completed").length} •
+                  Homework completed: {(academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "completed").length} •
+                  Overdue: {academicIntelligence.catchUpRecommendations.filter((task) => task.status === "overdue").length + (academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "overdue").length}
+                </p>
+              </div>
+
+              {(academicIntelligence.homeworkTasks ?? []).length > 0 ? (
+                <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-3">
+                  <p className="text-sm font-bold text-white">Homework Tracking</p>
+                  <div className="mt-2 space-y-2">
+                    {(academicIntelligence.homeworkTasks ?? []).slice(0, 5).map((task) => (
+                      <div key={task.taskId} className="rounded-xl border border-indigo-400/20 bg-slate-900/40 p-2 text-xs text-indigo-100">
+                        <p className="font-semibold text-white">{task.title}</p>
+                        <p className="mt-0.5">{task.subject ?? "General"}{task.topic ? ` • ${task.topic}` : ""} • {task.estimatedMinutes}m</p>
+                        <p className="mt-1 text-indigo-200">Status: {task.status.replaceAll("_", " ")}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3">
                 <p className="text-sm font-bold text-amber-200">Parent/Admin review actions</p>

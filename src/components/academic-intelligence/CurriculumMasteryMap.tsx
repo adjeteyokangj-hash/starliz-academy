@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import type { CoverageEntry } from "@/lib/academic-intelligence/types";
 
 type MasterySummaryView = {
@@ -138,10 +139,18 @@ export default function CurriculumMasteryMap({
   emptyMessage = "No mastery data yet. Complete a lesson to build the mastery map.",
   className = "",
 }: CurriculumMasteryMapProps) {
+  const [subjectFilter, setSubjectFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [expandedLevels, setExpandedLevels] = useState<Record<string, boolean>>({});
   const styles = variantStyles[variant];
+  const filteredRows = useMemo(() => rows.filter((row) => {
+    const subjectMatch = subjectFilter === "all" || (row.subject || "General") === subjectFilter;
+    const statusMatch = statusFilter === "all" || row.masteryStatus === statusFilter || row.coverageStatus === statusFilter;
+    return subjectMatch && statusMatch;
+  }), [rows, statusFilter, subjectFilter]);
   const rowsBySubject = new Map<string, CoverageEntry[]>();
 
-  for (const row of rows) {
+  for (const row of filteredRows) {
     const key = row.subject || "General";
     const next = rowsBySubject.get(key) ?? [];
     next.push(row);
@@ -157,10 +166,12 @@ export default function CurriculumMasteryMap({
       return subjectLabel(left.subject).localeCompare(subjectLabel(right.subject));
     });
 
-  const overdueRevisionCount = countByCoverageStatus(rows, "overdue_revision");
-  const secureCount = summary.coveredCount;
-  const nearlySecureCount = countByMasteryStatus(rows, "nearly_secure");
-  const catchUpCount = summary.needsCatchUpCount;
+  const overdueRevisionCount = countByCoverageStatus(filteredRows, "overdue_revision");
+  const secureCount = countByCoverageStatus(filteredRows, "covered");
+  const nearlySecureCount = countByMasteryStatus(filteredRows, "nearly_secure");
+  const catchUpCount = filteredRows.filter((row) => row.masteryStatus === "needs_catch_up").length;
+  const averageScore = summary.averageScore;
+  const subjectOptions = Array.from(new Set(rows.map((row) => row.subject || "General"))).sort((left, right) => subjectLabel(left).localeCompare(subjectLabel(right)));
 
   return (
     <div className={`rounded-3xl border p-5 ${styles.root} ${className}`}>
@@ -174,7 +185,7 @@ export default function CurriculumMasteryMap({
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           <div className={`rounded-2xl border px-3 py-2 ${styles.panel}`}>
             <p className={`text-[10px] font-bold uppercase tracking-wide ${styles.eyebrow}`}>Topics</p>
-            <p className={`mt-1 text-lg font-black ${styles.title}`}>{summary.totalTopics}</p>
+            <p className={`mt-1 text-lg font-black ${styles.title}`}>{filteredRows.length}</p>
           </div>
           <div className={`rounded-2xl border px-3 py-2 ${styles.panel}`}>
             <p className={`text-[10px] font-bold uppercase tracking-wide ${styles.eyebrow}`}>Secure</p>
@@ -195,8 +206,45 @@ export default function CurriculumMasteryMap({
         </div>
       </div>
 
-      {rows.length > 0 ? (
+      {filteredRows.length > 0 ? (
         <>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <label className={`rounded-xl border px-3 py-2 text-xs ${styles.panel}`}>
+              Subject
+              <select
+                value={subjectFilter}
+                onChange={(event) => setSubjectFilter(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-transparent px-2 py-1 text-xs"
+              >
+                <option value="all">All subjects</option>
+                {subjectOptions.map((subject) => (
+                  <option key={subject} value={subject}>{subjectLabel(subject)}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className={`rounded-xl border px-3 py-2 text-xs ${styles.panel}`}>
+              Status
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-transparent px-2 py-1 text-xs"
+              >
+                <option value="all">All statuses</option>
+                <option value="needs_catch_up">Needs catch-up</option>
+                <option value="needs_revision">Needs revision</option>
+                <option value="nearly_secure">Nearly secure</option>
+                <option value="mastered">Mastered</option>
+                <option value="overdue_revision">Overdue revision</option>
+                <option value="gap_detected">Gap detected</option>
+              </select>
+            </label>
+
+            <div className={`rounded-xl border px-3 py-2 text-xs ${styles.panel}`}>
+              Showing {filteredRows.length} of {rows.length} topics • Avg {averageScore}%
+            </div>
+          </div>
+
           <div className={`mt-4 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.16em] ${styles.muted}`}>
             <span className={`rounded-full border px-3 py-1 ${styles.label}`}>Mastered</span>
             <span className={`rounded-full border px-3 py-1 ${styles.label}`}>Nearly secure</span>
@@ -245,7 +293,10 @@ export default function CurriculumMasteryMap({
 
                   <div className="mt-4 grid gap-3 lg:grid-cols-2">
                     {levels.map((levelGroup) => {
-                      const visibleRows = levelGroup.rows.slice(0, 5).sort((left, right) => severityScore(left) - severityScore(right));
+                      const levelKey = `${group.subject}-${levelGroup.level}`;
+                      const isExpanded = Boolean(expandedLevels[levelKey]);
+                      const sortedRows = levelGroup.rows.slice().sort((left, right) => severityScore(left) - severityScore(right));
+                      const visibleRows = isExpanded ? sortedRows : sortedRows.slice(0, 5);
                       const hiddenCount = Math.max(0, levelGroup.rows.length - visibleRows.length);
 
                       return (
@@ -285,7 +336,13 @@ export default function CurriculumMasteryMap({
                           </div>
 
                           {hiddenCount > 0 ? (
-                            <p className={`mt-2 text-[11px] font-semibold ${styles.subtitle}`}>+ {hiddenCount} more topic{hiddenCount === 1 ? "" : "s"}</p>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedLevels((current) => ({ ...current, [levelKey]: !isExpanded }))}
+                              className={`mt-2 text-[11px] font-semibold ${styles.subtitle}`}
+                            >
+                              {isExpanded ? "Show less" : `+ ${hiddenCount} more topic${hiddenCount === 1 ? "" : "s"}`}
+                            </button>
                           ) : null}
                         </div>
                       );
