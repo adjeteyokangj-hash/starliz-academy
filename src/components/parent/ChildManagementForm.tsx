@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import Button from '@/components/ui/Button';
 import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup } from '@/lib/curriculum';
 
@@ -13,6 +13,7 @@ type ChildFormData = {
   subjectLevel: string;
   learningGoals: string;
   supportNeeds: string;
+  selectedSubjects: string[];
   ageYears: number | '';
   startLevelChoice: 'Beginner' | 'Intermediate' | 'Confident';
   avatar: string;
@@ -22,10 +23,32 @@ type FieldErrors = Partial<Record<keyof ChildFormData, string>>;
 
 type ChildManagementFormProps = {
   mode: 'add' | 'edit';
-  initialData?: ChildFormData & { id: string };
+  initialData?: ChildFormData & { id: string; selectedSubjects?: string[] };
   onSuccess: () => void;
   onCancel: () => void;
 };
+
+type SubjectPolicy = {
+  minSubjects: number;
+  maxSubjects: number;
+  requiredSubjectKeys: string[];
+};
+
+const SUBJECT_OPTIONS: Array<{ key: string; label: string; core: boolean }> = [
+  { key: 'english', label: 'English', core: true },
+  { key: 'maths', label: 'Maths', core: true },
+  { key: 'science', label: 'Science', core: true },
+  { key: 'history', label: 'History', core: false },
+  { key: 'geography', label: 'Geography', core: false },
+  { key: 'french', label: 'French', core: false },
+  { key: 'spanish', label: 'Spanish', core: false },
+  { key: 'german', label: 'German', core: false },
+  { key: 'mandarin', label: 'Mandarin', core: false },
+  { key: 'computing', label: 'Computing', core: false },
+  { key: 'citizenship-pshe', label: 'Citizenship / PSHE', core: false },
+  { key: 'pe-health', label: 'PE / Health Education', core: false },
+  { key: 'gcse-practice', label: 'GCSE Practice', core: false },
+];
 
 const AVATAR_OPTIONS = [
   { value: 'star',    emoji: '⭐', label: 'Star' },
@@ -59,7 +82,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
       const computedAge = initialData.dateOfBirth
         ? calcAgeFromDob(initialData.dateOfBirth)
         : initialData.ageYears;
-      return { ...initialData, ageYears: computedAge };
+      return { ...initialData, ageYears: computedAge, selectedSubjects: initialData.selectedSubjects ?? ['english', 'maths'] };
     }
     return {
       name: '',
@@ -70,6 +93,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
       subjectLevel: '',
       learningGoals: '',
       supportNeeds: '',
+      selectedSubjects: ['english', 'maths'],
       ageYears: '',
       startLevelChoice: 'Beginner',
       avatar: 'star',
@@ -78,12 +102,36 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [subjectPolicy, setSubjectPolicy] = useState<SubjectPolicy>({
+    minSubjects: 2,
+    maxSubjects: 4,
+    requiredSubjectKeys: ['english', 'maths'],
+  });
 
   const yearGroups = [...YEAR_GROUPS];
   const keyStages = [...KEY_STAGES];
   const subjectLevels = ['Foundation', 'Core', 'Developing', 'Secure', 'Greater Depth'];
   const expectedKeyStage = formData.yearGroup ? keyStageForYearGroup(formData.yearGroup) : null;
   const keyStageMismatch = Boolean(expectedKeyStage && formData.keyStageLevel && expectedKeyStage !== formData.keyStageLevel);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPolicy() {
+      const response = await fetch('/api/parent/subject-selection-policy', { credentials: 'include' });
+      if (!response.ok || cancelled) return;
+      const payload = (await response.json()) as { policy?: SubjectPolicy };
+      if (!payload.policy) return;
+      setSubjectPolicy(payload.policy);
+      setFormData((current) => {
+        const merged = Array.from(new Set([...payload.policy!.requiredSubjectKeys, ...current.selectedSubjects]));
+        return { ...current, selectedSubjects: merged.slice(0, payload.policy!.maxSubjects) };
+      });
+    }
+    void loadPolicy();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function getAgeRange(ageYears: number): '5-7' | '8-10' {
     return ageYears >= 8 ? '8-10' : '5-7';
@@ -119,6 +167,17 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
     if (formData.supportNeeds.trim().length > 500) {
       nextErrors.supportNeeds = 'Support needs must be 500 characters or fewer.';
     }
+    if (formData.selectedSubjects.length < subjectPolicy.minSubjects) {
+      nextErrors.subjectLevel = `Please select at least ${subjectPolicy.minSubjects} subjects.`;
+    }
+    if (formData.selectedSubjects.length > subjectPolicy.maxSubjects) {
+      nextErrors.subjectLevel = `Please select up to ${subjectPolicy.maxSubjects} subjects.`;
+    }
+    for (const required of subjectPolicy.requiredSubjectKeys) {
+      if (!formData.selectedSubjects.includes(required)) {
+        nextErrors.subjectLevel = 'English and Maths are required.';
+      }
+    }
     return nextErrors;
   }
 
@@ -153,6 +212,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
         dateOfBirth: formData.dateOfBirth || undefined,
         keyStageLevel: formData.keyStageLevel.trim(),
         subjectLevel: formData.subjectLevel.trim(),
+        selectedSubjects: formData.selectedSubjects,
         learningGoals: learningGoals.length ? learningGoals : undefined,
         senSupportNeeds: supportNeeds || undefined,
         startLevelChoice: formData.startLevelChoice,
@@ -346,6 +406,42 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
             ))}
           </select>
           {fieldErrors.subjectLevel ? <p className="mt-1 text-xs text-red-400">{fieldErrors.subjectLevel}</p> : null}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-slate-300 mb-2">
+          Subject selection *
+        </label>
+        <p className="mb-2 text-xs text-slate-400">
+          Select up to {subjectPolicy.maxSubjects} subjects for this term. English counts as one subject and includes reading, spelling, writing, grammar, vocabulary, comprehension, phonics, and speaking/listening.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {SUBJECT_OPTIONS.map((subject) => {
+            const checked = formData.selectedSubjects.includes(subject.key);
+            const required = subjectPolicy.requiredSubjectKeys.includes(subject.key);
+            const limitReached = !checked && formData.selectedSubjects.length >= subjectPolicy.maxSubjects;
+            return (
+              <label key={subject.key} className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm ${checked ? 'border-cyan-400 bg-cyan-500/10 text-cyan-100' : 'border-white/10 bg-slate-900 text-slate-300'} ${limitReached ? 'opacity-50' : ''}`}>
+                <span>
+                  {subject.label}
+                  {subject.core ? <span className="ml-2 text-[10px] uppercase tracking-wide text-slate-400">Core</span> : null}
+                </span>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={required || limitReached}
+                  onChange={(event) => {
+                    const next = event.target.checked
+                      ? [...formData.selectedSubjects, subject.key]
+                      : formData.selectedSubjects.filter((entry) => entry !== subject.key);
+                    const deduped = Array.from(new Set([...subjectPolicy.requiredSubjectKeys, ...next]));
+                    setFormData({ ...formData, selectedSubjects: deduped.slice(0, subjectPolicy.maxSubjects) });
+                  }}
+                />
+              </label>
+            );
+          })}
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { generatePassword } from "@/lib/password";
 
 type AdminUserRow = {
@@ -133,36 +133,36 @@ export default function SettingsPage() {
   const [showEditPw, setShowEditPw] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  function redirectToAdminLogin() {
+  const redirectToAdminLogin = useCallback(() => {
     const nextPath = typeof window !== "undefined"
       ? `${window.location.pathname}${window.location.search}`
       : "/admin/settings";
     window.location.replace(`/admin/login?next=${encodeURIComponent(nextPath)}`);
-  }
+  }, []);
 
-  function handleUnauthorized(response: Response): boolean {
+  const handleUnauthorized = useCallback((response: Response): boolean => {
     if (response.status !== 401) return false;
     redirectToAdminLogin();
     return true;
-  }
+  }, [redirectToAdminLogin]);
 
-  async function loadAdmins() {
+  const loadAdmins = useCallback(async () => {
     const res = await fetch("/api/admin/users");
     if (handleUnauthorized(res)) return;
     const payload = await res.json();
     setAdmins(payload.admins ?? []);
-  }
+  }, [handleUnauthorized]);
 
-  async function loadRoles() {
+  const loadRoles = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/roles");
       if (handleUnauthorized(res)) return;
       const payload = await res.json();
       if (res.ok) setRoles(payload.roles ?? []);
     } catch { /* ignore */ }
-  }
+  }, [handleUnauthorized]);
 
-  async function loadKeys() {
+  const loadKeys = useCallback(async () => {
     try {
       const response = await fetch("/api/admin/settings/api-keys");
       if (handleUnauthorized(response)) return;
@@ -177,14 +177,14 @@ export default function SettingsPage() {
     } catch {
       setMessage("Unable to load saved API keys.");
     }
-  }
+  }, [handleUnauthorized]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadKeys();
     void loadAdmins();
     void loadRoles();
-  }, []);
+  }, [loadKeys, loadAdmins, loadRoles]);
 
   async function saveKey(event: FormEvent, provider: Provider, label: string) {
     event.preventDefault();

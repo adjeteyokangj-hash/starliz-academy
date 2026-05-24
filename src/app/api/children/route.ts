@@ -7,6 +7,14 @@ import { childPayloadSchema } from "@/lib/child_profile_schema";
 import { canAddChild } from "@/lib/subscriptions/enforcement";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { writeAuditLog } from "@/lib/audit";
+import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import {
+  ENGLISH_STRANDS,
+  applySubjectSelectionPolicy,
+  resolveSubjectSelectionPolicy,
+  sanitizeSelectedSubjects,
+  selectedSubjectsToFocusText,
+} from "@/lib/subject-selection";
 
 function isTransientDbSaturationError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -40,6 +48,7 @@ export async function GET(request: Request) {
 
   let childrenRows: Awaited<ReturnType<typeof prisma.childProfile.findMany>> = [];
   let user: { activeChildId: string | null } | null = null;
+  let profileRows: Array<{ childId: string; subjectFocus: string | null }> = [];
   try {
     [childrenRows, user] = await Promise.all([
       prisma.childProfile.findMany({
@@ -48,6 +57,10 @@ export async function GET(request: Request) {
       }),
       prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { activeChildId: true } }),
     ]);
+    profileRows = await prisma.studentProfile.findMany({
+      where: { childId: { in: childrenRows.map((child) => child.id) } },
+      select: { childId: true, subjectFocus: true },
+    });
   } catch (error) {
     if (isTransientDbSaturationError(error)) {
       return NextResponse.json(
@@ -64,8 +77,17 @@ export async function GET(request: Request) {
     );
   }
 
+  const focusByChildId = new Map<string, string | null>(profileRows.map((row) => [row.childId, row.subjectFocus]));
+
   return NextResponse.json({
-    children: childrenRows.map(fromDbRecord),
+    children: childrenRows.map((row) => {
+      const profile = fromDbRecord(row) as Record<string, unknown>;
+      const selectedSubjects = sanitizeSelectedSubjects((focusByChildId.get(row.id) ?? "").split(",").map((entry) => entry.trim()));
+      return {
+        ...profile,
+        selectedSubjects,
+      };
+    }),
     activeChildId: user?.activeChildId ?? null,
     ...(process.env.NODE_ENV !== "production"
       ? { debug: { email: session.email.toLowerCase(), parentId: parentScope.parentId, childrenCount: childrenRows.length } }
@@ -95,6 +117,32 @@ export async function POST(request: Request) {
 
     const body = parsed.data;
     const normalized = withChildDefaults(body as Partial<ChildProfile>);
+    const subscription = await prisma.subscription.findFirst({
+      where: { parentId: parentScope.parentId },
+      orderBy: { updatedAt: "desc" },
+      select: { pricingPlanId: true, planKey: true },
+    });
+    const currentPricingPlan = await resolveCurrentPricingPlan({
+      pricingPlanId: subscription?.pricingPlanId ?? null,
+      legacyPlanKey: subscription?.planKey ?? null,
+    });
+    const subjectPolicy = resolveSubjectSelectionPolicy({
+      planName: currentPricingPlan?.name ?? subscription?.planKey ?? "free",
+      childLimit: currentPricingPlan?.childLimit ?? 1,
+    });
+    const selectedSubjects = applySubjectSelectionPolicy({
+      selected: sanitizeSelectedSubjects(body.selectedSubjects),
+      policy: subjectPolicy,
+    });
+    if (selectedSubjects.errors.length > 0) {
+      return NextResponse.json(
+        {
+          error: selectedSubjects.errors[0],
+          fieldErrors: { selectedSubjects: selectedSubjects.errors },
+        },
+        { status: 400 },
+      );
+    }
     const existingChild = await prisma.childProfile.findFirst({ where: { id: normalized.id, parentId: parentScope.parentId } });
     if (!existingChild) {
       const access = await canAddChild(parentScope.parentId);
@@ -124,7 +172,11 @@ export async function POST(request: Request) {
         learningLevel: body.subjectLevel ?? null,
         senSupportNeeds: body.senSupportNeeds ?? null,
         weakAreasText: body.learningGoals?.join(", ") ?? null,
-        subjectFocus: body.subjectLevel ?? null,
+        subjectFocus: selectedSubjectsToFocusText(selectedSubjects.selected),
+        aiLearningProfileJson: JSON.stringify({
+          selectedParentSubjects: selectedSubjects.selected,
+          englishStrands: ENGLISH_STRANDS,
+        }),
       },
       create: {
         childId: normalized.id,
@@ -133,7 +185,11 @@ export async function POST(request: Request) {
         learningLevel: body.subjectLevel ?? null,
         senSupportNeeds: body.senSupportNeeds ?? null,
         weakAreasText: body.learningGoals?.join(", ") ?? null,
-        subjectFocus: body.subjectLevel ?? null,
+        subjectFocus: selectedSubjectsToFocusText(selectedSubjects.selected),
+        aiLearningProfileJson: JSON.stringify({
+          selectedParentSubjects: selectedSubjects.selected,
+          englishStrands: ENGLISH_STRANDS,
+        }),
       },
     });
 
@@ -151,6 +207,7 @@ export async function POST(request: Request) {
         parentId: parentScope.parentId,
         yearGroup: body.yearGroup,
         keyStageLevel: body.keyStageLevel ?? null,
+        selectedSubjects: selectedSubjects.selected,
       },
     });
 

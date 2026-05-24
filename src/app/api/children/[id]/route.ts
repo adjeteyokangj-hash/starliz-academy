@@ -6,6 +6,14 @@ import { fromDbRecord, toDbUpdateInput, withChildDefaults } from "@/lib/child_pr
 import { childPayloadSchema } from "@/lib/child_profile_schema";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { writeAuditLog } from "@/lib/audit";
+import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import {
+  ENGLISH_STRANDS,
+  applySubjectSelectionPolicy,
+  resolveSubjectSelectionPolicy,
+  sanitizeSelectedSubjects,
+  selectedSubjectsToFocusText,
+} from "@/lib/subject-selection";
 
 function normalizeOptionalString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -60,8 +68,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const { id } = await params;
   let child: Awaited<ReturnType<typeof prisma.childProfile.findFirst>> = null;
+  let profile: { subjectFocus: string | null } | null = null;
   try {
     child = await prisma.childProfile.findFirst({ where: { id, parentId: parentScope.parentId } });
+    profile = await prisma.studentProfile.findUnique({ where: { childId: id }, select: { subjectFocus: true } });
   } catch (error) {
     if (isTransientDbSaturationError(error)) {
       return NextResponse.json(
@@ -75,7 +85,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     return NextResponse.json({ error: "Child not found." }, { status: 404 });
   }
 
-  return NextResponse.json({ child: fromDbRecord(child) });
+  const selectedSubjects = sanitizeSelectedSubjects((profile?.subjectFocus ?? "").split(",").map((entry) => entry.trim()));
+  return NextResponse.json({ child: { ...fromDbRecord(child), selectedSubjects } });
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -117,6 +128,32 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     const body = parsed.data;
     const normalized = withChildDefaults({ ...(body as Partial<ChildProfile>), id });
+    const subscription = await prisma.subscription.findFirst({
+      where: { parentId: parentScope.parentId },
+      orderBy: { updatedAt: "desc" },
+      select: { pricingPlanId: true, planKey: true },
+    });
+    const currentPricingPlan = await resolveCurrentPricingPlan({
+      pricingPlanId: subscription?.pricingPlanId ?? null,
+      legacyPlanKey: subscription?.planKey ?? null,
+    });
+    const subjectPolicy = resolveSubjectSelectionPolicy({
+      planName: currentPricingPlan?.name ?? subscription?.planKey ?? "free",
+      childLimit: currentPricingPlan?.childLimit ?? 1,
+    });
+    const selectedSubjects = applySubjectSelectionPolicy({
+      selected: sanitizeSelectedSubjects(body.selectedSubjects),
+      policy: subjectPolicy,
+    });
+    if (selectedSubjects.errors.length > 0) {
+      return NextResponse.json(
+        {
+          error: selectedSubjects.errors[0],
+          fieldErrors: { selectedSubjects: selectedSubjects.errors },
+        },
+        { status: 400 },
+      );
+    }
 
     const updated = await prisma.childProfile.update({
       where: { id },
@@ -133,7 +170,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         learningLevel: body.subjectLevel ?? null,
         senSupportNeeds: body.senSupportNeeds ?? null,
         weakAreasText: body.learningGoals?.join(", ") ?? null,
-        subjectFocus: body.subjectLevel ?? null,
+        subjectFocus: selectedSubjectsToFocusText(selectedSubjects.selected),
+        aiLearningProfileJson: JSON.stringify({
+          selectedParentSubjects: selectedSubjects.selected,
+          englishStrands: ENGLISH_STRANDS,
+        }),
       },
       create: {
         childId: id,
@@ -142,7 +183,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         learningLevel: body.subjectLevel ?? null,
         senSupportNeeds: body.senSupportNeeds ?? null,
         weakAreasText: body.learningGoals?.join(", ") ?? null,
-        subjectFocus: body.subjectLevel ?? null,
+        subjectFocus: selectedSubjectsToFocusText(selectedSubjects.selected),
+        aiLearningProfileJson: JSON.stringify({
+          selectedParentSubjects: selectedSubjects.selected,
+          englishStrands: ENGLISH_STRANDS,
+        }),
       },
     });
 
@@ -155,6 +200,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         parentId: parentScope.parentId,
         yearGroup: body.yearGroup,
         keyStageLevel: body.keyStageLevel ?? null,
+        selectedSubjects: selectedSubjects.selected,
       },
     });
 

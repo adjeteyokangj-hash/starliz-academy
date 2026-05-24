@@ -72,6 +72,7 @@ type ChildListResponse = {
     dateOfBirth?: string | null;
     learningGoals?: string[];
     senSupportNeeds?: string;
+    selectedSubjects?: string[];
   }>;
   activeChildId: string | null;
 };
@@ -1102,6 +1103,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         yearGroup: child.yearGroup ?? '',
                         keyStageLevel: child.keyStageLevel ?? '',
                         subjectLevel: child.subjectLevel ?? '',
+                        selectedSubjects: child.selectedSubjects ?? ['english', 'maths'],
                         learningGoals: (child.learningGoals ?? []).join('\n').replace(/\\n/g, '\n'),
                         supportNeeds: child.senSupportNeeds ?? '',
                         ageYears: child.ageYears ?? '',

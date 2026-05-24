@@ -92,6 +92,7 @@ export const childPayloadSchema = z
     dateOfBirth: z.string().date().optional(),
     keyStageLevel: z.string().trim().min(1).max(40).optional(),
     subjectLevel: z.string().trim().min(1).max(40).optional(),
+    selectedSubjects: z.array(z.string().trim().min(1).max(40)).max(10).optional(),
     learningGoals: z.array(z.string().trim().min(1).max(120)).max(8).optional(),
     senSupportNeeds: z.string().trim().max(500).optional(),
     weaknessMap: z.record(z.string(), z.number().int().min(0)).optional(),

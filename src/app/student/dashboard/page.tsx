@@ -10,6 +10,7 @@ import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
 import PrimaryDashboard from "@/components/student/PrimaryDashboard";
 import SecondaryDashboard from "@/components/student/SecondaryDashboard";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
+import type { PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 
 type StudentAssignment = {
   id: string;
@@ -95,6 +96,19 @@ type SessionSummaryPayload = {
     frustrationSignals: string;
     dominantMood: string;
   };
+};
+
+type StudentLearningStatePayload = {
+  ok?: boolean;
+  studentId?: string;
+  learningState?: StudentLearningState;
+  error?: string;
+};
+
+type QuickLevelFinderLevelsPayload = {
+  ok?: boolean;
+  levels?: PlacementLevels;
+  error?: string;
 };
 
 type StudentAcademicIntelligencePayload = {
@@ -189,6 +203,8 @@ export default function StudentDashboardPage() {
   const [bossPlayedToday, setBossPlayedToday] = useState(false);
   const [ownedBadges, setOwnedBadges] = useState<ShopOwnedItem[]>([]);
   const [sessionSummary, setSessionSummary] = useState<SessionSummaryPayload["summary"] | null>(null);
+  const [learningState, setLearningState] = useState<StudentLearningState | null>(null);
+  const [placementLevels, setPlacementLevels] = useState<PlacementLevels | null>(null);
   const [academicIntelligence, setAcademicIntelligence] = useState<StudentAcademicIntelligencePayload | null>(null);
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicError, setAcademicError] = useState("");
@@ -222,6 +238,8 @@ export default function StudentDashboardPage() {
         setAssignments([]);
         setSkills([]);
         setSessionSummary(null);
+        setLearningState(null);
+        setPlacementLevels(null);
         setAcademicIntelligence(null);
         setAcademicError("");
         setBossUnlocked(false);
@@ -233,15 +251,17 @@ export default function StudentDashboardPage() {
       setAcademicLoading(true);
       setAcademicError("");
 
-      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes] = await Promise.all([
+      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes] = await Promise.all([
         fetch("/api/student/assignments", { credentials: "include" }),
         fetch("/api/student/skills", { credentials: "include" }),
         fetch("/api/student/boss-battle", { credentials: "include" }),
         fetch("/api/student/session-summary", { credentials: "include" }),
         fetch("/api/student/academic-intelligence", { credentials: "include" }),
+        fetch("/api/student/learning-state", { credentials: "include" }),
+        fetch("/api/student/quick-level-finder/levels", { credentials: "include" }),
       ]);
 
-      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes].some((res) => res.status === 401)) {
+      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes].some((res) => res.status === 401)) {
         setAuthRequired(true);
         setError("Your session expired. Please sign in again.");
         return;
@@ -255,6 +275,12 @@ export default function StudentDashboardPage() {
       const sessionSummaryPayload = sessionSummaryRes.ok
         ? ((await sessionSummaryRes.json()) as SessionSummaryPayload)
         : ({} as SessionSummaryPayload);
+      const learningStatePayload = learningStateRes.ok
+        ? ((await learningStateRes.json()) as StudentLearningStatePayload)
+        : ({} as StudentLearningStatePayload);
+      const placementLevelsPayload = placementLevelsRes.ok
+        ? ((await placementLevelsRes.json()) as QuickLevelFinderLevelsPayload)
+        : ({} as QuickLevelFinderLevelsPayload);
       const academicPayload = academicIntelligenceRes.ok
         ? ((await academicIntelligenceRes.json()) as StudentAcademicIntelligencePayload)
         : null;
@@ -265,6 +291,7 @@ export default function StudentDashboardPage() {
           setAssignments([]);
           setSkills([]);
           setSessionSummary(null);
+          setLearningState(null);
           setBossUnlocked(false);
           setBossPlayedToday(false);
           setBossAssignmentId(null);
@@ -279,8 +306,15 @@ export default function StudentDashboardPage() {
       setBossPlayedToday(Boolean(bossStatusPayload.alreadyPlayedToday));
       setBossAssignmentId(typeof bossStatusPayload.lessonAssignmentId === "string" ? bossStatusPayload.lessonAssignmentId : null);
       setSessionSummary(sessionSummaryPayload.summary ?? null);
+      setLearningState(learningStatePayload.learningState ?? null);
+      setPlacementLevels(placementLevelsPayload.levels ?? null);
       if (academicPayload) {
-        setAcademicIntelligence(academicPayload);
+        const state = learningStatePayload.learningState;
+        if (state?.isFirstTimeStudent || !state?.hasAssessmentData) {
+          setAcademicIntelligence(null);
+        } else {
+          setAcademicIntelligence(academicPayload);
+        }
       } else {
         setAcademicIntelligence(null);
         setAcademicError("Unable to load Smart Catch-Up right now.");
@@ -376,15 +410,21 @@ export default function StudentDashboardPage() {
   const weakSkill = journey?.weakSkill ?? groupedSkills.weak[0]?.skill ?? "syllable_2";
   const strongSkill = journey?.warmupSkill ?? groupedSkills.mastered[0]?.skill ?? "letter_sound";
 
-  const coachRows = [focusSkill, weakSkill, strongSkill]
-    .filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index)
-    .slice(0, 3)
-    .map((skill) => ({
-      code: skill,
-      label: skillLabel(skill),
-      accuracy: Math.round(skillMap.get(skill)?.accuracy ?? (skill === strongSkill ? 90 : skill === weakSkill ? 45 : 62)),
-      status: skillMap.get(skill)?.status ?? (skill === strongSkill ? "mastered" : skill === weakSkill ? "weak" : "improving"),
-    }));
+  const coachRows = !learningState?.coachUnlocked
+    ? []
+    : [focusSkill, weakSkill, strongSkill]
+      .filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index)
+      .slice(0, 3)
+      .map((skill) => {
+        const row = skillMap.get(skill);
+        return {
+          code: skill,
+          label: skillLabel(skill),
+          accuracy: Math.round(row?.accuracy ?? 0),
+          status: row?.status ?? "improving",
+        };
+      })
+      .filter((row) => row.accuracy > 0);
 
   function findAssignmentForSkill(skillCode: string): StudentAssignment | null {
     const label = normalize(skillLabel(skillCode));
@@ -434,6 +474,10 @@ export default function StudentDashboardPage() {
       const response = await fetch("/api/student/daily-journey", { credentials: "include" });
       const payload = (await response.json()) as DailyJourneyPayload;
       if (!response.ok) {
+        if (response.status === 409 && payload && typeof payload === "object" && "code" in payload && (payload as { code?: string }).code === "ONBOARDING_REQUIRED") {
+          router.push("/student/onboarding");
+          return;
+        }
         throw new Error(payload.error ?? "Unable to start today's journey.");
       }
       const assignmentId = payload.lesson?.assignmentId;
@@ -580,6 +624,11 @@ export default function StudentDashboardPage() {
 
             <section className="mb-6 rounded-3xl border border-cyan-200 bg-cyan-50/70 p-5">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-700">Smart Catch-Up</p>
+              {learningState?.isFirstTimeStudent ? (
+                <div className="mt-3 rounded-2xl border border-cyan-200 bg-white/70 p-4 text-sm text-cyan-900">
+                  Smart Catch-Up unlocks after your Quick Level Finder and first learning activities.
+                </div>
+              ) : null}
               {academicLoading ? (
                 <div className="mt-3 space-y-3">
                   <div className="h-4 w-52 animate-pulse rounded bg-cyan-200" />
@@ -597,7 +646,7 @@ export default function StudentDashboardPage() {
                     Retry
                   </button>
                 </div>
-              ) : !academicIntelligence ? (
+              ) : !academicIntelligence || learningState?.isFirstTimeStudent ? (
                 <div className="mt-3 rounded-2xl border border-cyan-200 bg-white/70 p-4 text-sm text-cyan-900">
                   Complete more lessons to build your learning map.
                 </div>
@@ -693,6 +742,8 @@ export default function StudentDashboardPage() {
                 bossPlayedToday={bossPlayedToday}
                 ownedBadges={ownedBadges}
                 sessionSummary={sessionSummary ?? null}
+                learningState={learningState}
+                placementLevels={placementLevels}
                 loading={loading}
                 error={error}
                 startingJourney={startingJourney}
@@ -722,6 +773,8 @@ export default function StudentDashboardPage() {
                 bossPlayedToday={bossPlayedToday}
                 ownedBadges={ownedBadges}
                 sessionSummary={sessionSummary ?? null}
+                learningState={learningState}
+                placementLevels={placementLevels}
                 loading={loading}
                 error={error}
                 startingJourney={startingJourney}

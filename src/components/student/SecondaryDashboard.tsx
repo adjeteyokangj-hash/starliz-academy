@@ -34,6 +34,8 @@ export default function SecondaryDashboard({
   bossUnlocked,
   bossPlayedToday,
   sessionSummary,
+  learningState,
+  placementLevels,
   loading,
   error,
   startingJourney,
@@ -46,6 +48,8 @@ export default function SecondaryDashboard({
   pendingAssignmentId,
 }: DashboardProps) {
   const isGcse = pathway === "gcse";
+  const isFirstTimeStudent = Boolean(learningState?.isFirstTimeStudent);
+  const coachAwaitingAssessment = !learningState?.coachUnlocked;
   const masteredCount = skills.filter((s) => s.status === "mastered").length;
   const weakCount = skills.filter((s) => s.status === "weak").length;
   const improvingCount = skills.filter((s) => s.status === "improving").length;
@@ -131,11 +135,45 @@ export default function SecondaryDashboard({
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-700">{error}</div>
       )}
 
+      {placementLevels && Object.keys(placementLevels).length > 0 ? (
+        <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Placement Baseline</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {Object.entries(placementLevels).map(([subject, level]) => (
+              <div key={subject} className="rounded-xl border border-emerald-200 bg-white p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{subject}</p>
+                <p className="mt-1 text-sm font-black capitalize text-slate-900">{level.level}</p>
+                <p className="text-xs font-semibold text-slate-600">Accuracy: {level.accuracy}%</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {/* Daily Study Session */}
       <section className="rounded-3xl border border-indigo-200 bg-indigo-950 p-6 text-indigo-50">
-        <p className="text-xs font-bold uppercase tracking-[0.3em] text-indigo-300">Today&apos;s Session</p>
-        <h2 className="mt-2 text-xl font-black">{isGcse ? "Revision Session" : "Adaptive Study Session"}</h2>
-        {sessionAssignments.length > 0 ? (
+        {isFirstTimeStudent ? (
+          <>
+            <p className="text-xs font-bold uppercase tracking-[0.3em] text-indigo-300">Welcome</p>
+            <h2 className="mt-2 text-xl font-black">Welcome to StarLiz Academy</h2>
+            <p className="mt-2 text-sm text-indigo-100">
+              We need to learn your level before we build your personalised learning journey.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = "/student/onboarding";
+              }}
+              className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-indigo-400 px-5 py-3 font-black text-indigo-950 hover:bg-indigo-300"
+            >
+              Start My Level Finder
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-xs font-bold uppercase tracking-[0.3em] text-indigo-300">Today&apos;s Session</p>
+            <h2 className="mt-2 text-xl font-black">{isGcse ? "Revision Session" : "Adaptive Study Session"}</h2>
+            {sessionAssignments.length > 0 ? (
           <div className="mt-3 space-y-2 text-sm text-indigo-100">
             {sessionAssignments.map((assignment, index) => (
               <button
@@ -154,20 +192,26 @@ export default function SecondaryDashboard({
               </button>
             ))}
           </div>
-        ) : (
-          <p className="mt-1 text-sm text-indigo-200">
-            No assigned tasks are queued yet. Ask your teacher/admin to assign work.
-          </p>
+            ) : (
+              <p className="mt-1 text-sm text-indigo-200">
+                No assigned tasks are queued yet. Ask your teacher/admin to assign work.
+              </p>
+            )}
+            {sessionAssignments.length > 0 ? (
+              <>
+                <p className="mt-3 text-sm text-indigo-200">Estimated time: {Math.max(7, sessionAssignments.length * 4)} minutes.</p>
+                <button
+                  type="button"
+                  onClick={() => void onStartJourney()}
+                  disabled={startingJourney || loading || sessionAssignments.length === 0}
+                  className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-indigo-400 px-5 py-3 font-black text-indigo-950 hover:bg-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {startingJourney ? "Starting session..." : "Begin Session"}
+                </button>
+              </>
+            ) : null}
+          </>
         )}
-        <p className="mt-3 text-sm text-indigo-200">Estimated time: {Math.max(7, sessionAssignments.length * 4)} minutes.</p>
-        <button
-          type="button"
-          onClick={() => void onStartJourney()}
-          disabled={startingJourney || loading || sessionAssignments.length === 0}
-          className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-indigo-400 px-5 py-3 font-black text-indigo-950 hover:bg-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {startingJourney ? "Starting session..." : "Begin Session"}
-        </button>
       </section>
 
       {isGcse && (
@@ -271,7 +315,7 @@ export default function SecondaryDashboard({
       </section>
 
       {/* Skill Mastery */}
-      {coachRows.length > 0 && (
+      {!coachAwaitingAssessment && coachRows.length > 0 && (
         <section className="rounded-3xl border border-slate-200 bg-white p-6">
           <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Skill Tracker</p>
           <h2 className="mt-1 text-lg font-black text-slate-900">Your Progress</h2>
@@ -298,6 +342,28 @@ export default function SecondaryDashboard({
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {coachAwaitingAssessment && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-6">
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Smart Coach</p>
+          <h2 className="mt-1 text-lg font-black text-slate-900">AI Profile Status</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Your AI Coach has not analysed enough learning activity yet.
+          </p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {[
+              "Voice confidence - analysing",
+              "Reading fluency - analysing",
+              "Spelling patterns - analysing",
+              "Memory recall - analysing",
+            ].map((item) => (
+              <div key={item} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-700">
+                {item}
+              </div>
+            ))}
           </div>
         </section>
       )}

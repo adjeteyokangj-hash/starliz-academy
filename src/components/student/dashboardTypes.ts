@@ -36,6 +36,36 @@ export type SessionSummary = {
   dominantMood: string;
 };
 
+export type StudentLearningState = {
+  isFirstTimeStudent: boolean;
+  hasAssignments: boolean;
+  hasChosenSubjects: boolean;
+  hasCompletedPlacement: boolean;
+  hasAssessmentData: boolean;
+  hasWeakAreas: boolean;
+  hasMasteryData: boolean;
+  onboardingStage: "NEW" | "SUBJECT_SELECTION" | "PLACEMENT_PENDING" | "ASSESSING" | "LEARNING" | "RECOVERY" | "MASTERY";
+  coachUnlocked: boolean;
+  aiSignalsReady: boolean;
+  evidence: {
+    assignmentCount: number;
+    skillAttempts: number;
+    progressEvents: number;
+    weakAreaCount: number;
+    masteredSkills: number;
+    spellingAttempts: number;
+    readingAttempts: number;
+    speechSamples: number;
+    placementResponses: number;
+  };
+  integrityWarnings: string[];
+};
+
+export type PlacementLevels = Record<string, {
+  accuracy: number;
+  level: "below" | "secure" | "advanced";
+}>;
+
 export type DashboardProps = {
   childName: string;
   stats: { stars: number; xp: number; coins: number; streak: number };
@@ -52,6 +82,8 @@ export type DashboardProps = {
   bossPlayedToday: boolean;
   ownedBadges: ShopOwnedItem[];
   sessionSummary: SessionSummary | null;
+  learningState?: StudentLearningState | null;
+  placementLevels?: PlacementLevels | null;
   loading: boolean;
   error: string;
   startingJourney: boolean;
