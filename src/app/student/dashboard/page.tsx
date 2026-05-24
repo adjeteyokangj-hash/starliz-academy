@@ -188,7 +188,19 @@ type StudentAcademicIntelligencePayload = {
     studentFriendlyReason?: string;
     reason: string;
     estimatedMinutes: number;
-    status: "recommended" | "active" | "completed" | "skipped" | "waived" | "overdue";
+    status: "recommended" | "scheduled" | "active" | "in_progress" | "completed" | "skipped" | "waived" | "overdue";
+    routeTarget?: string | null;
+  }>;
+  catchUpTasks?: Array<{
+    taskId: string;
+    recommendationId: string;
+    title: string;
+    subject: string;
+    topic?: string | null;
+    status: "recommended" | "scheduled" | "active" | "in_progress" | "completed" | "skipped" | "waived" | "overdue";
+    estimatedMinutes: number;
+    dueDate?: string | null;
+    scheduledDay?: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | null;
     routeTarget?: string | null;
   }>;
   assessmentRecommendations: Array<{
@@ -366,6 +378,7 @@ export default function StudentDashboardPage() {
   const [academicIntelligence, setAcademicIntelligence] = useState<StudentAcademicIntelligencePayload | null>(null);
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicError, setAcademicError] = useState("");
+  const [academicTaskPendingId, setAcademicTaskPendingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [missingChildContext, setMissingChildContext] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
@@ -646,6 +659,30 @@ export default function StudentDashboardPage() {
     router.push("/shop");
   }
 
+  async function handleStudentCatchUpTaskAction(taskId: string, action: "start_task" | "complete_task" | "skip_task") {
+    setAcademicTaskPendingId(taskId);
+    setAcademicError("");
+    try {
+      const response = await fetch("/api/student/academic-intelligence/catch-up-tasks", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, action }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error ?? "Unable to update catch-up task.");
+      }
+
+      await loadDashboard();
+    } catch (err) {
+      setAcademicError(err instanceof Error ? err.message : "Unable to update catch-up task.");
+    } finally {
+      setAcademicTaskPendingId(null);
+    }
+  }
+
   async function startTodayJourney() {
     setStartingJourney(true);
     setError("");
@@ -918,21 +955,21 @@ export default function StudentDashboardPage() {
                     </div>
                   ) : null}
 
-                  {academicIntelligence.catchUpRecommendations.length === 0 ? (
+                  {((academicIntelligence.catchUpTasks ?? []).length === 0 && academicIntelligence.catchUpRecommendations.length === 0) ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                       <p className="font-semibold">No catch-up needed right now.</p>
                       <p className="mt-1">You are on track. Keep going.</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {academicIntelligence.catchUpRecommendations.slice(0, 5).map((task) => (
-                        <div key={task.id} className="rounded-2xl border border-cyan-200 bg-white p-4">
+                      {(academicIntelligence.catchUpTasks ?? []).slice(0, 5).map((task) => (
+                        <div key={task.taskId} className="rounded-2xl border border-cyan-200 bg-white p-4">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="font-bold text-slate-900">{task.title}</p>
                             <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
                               task.status === "completed"
                                 ? "bg-emerald-100 text-emerald-700"
-                                : task.status === "active"
+                                : task.status === "active" || task.status === "in_progress" || task.status === "scheduled"
                                   ? "bg-cyan-100 text-cyan-700"
                                   : task.status === "overdue"
                                     ? "bg-rose-100 text-rose-700"
@@ -944,16 +981,43 @@ export default function StudentDashboardPage() {
                           <p className="mt-1 text-xs uppercase tracking-[0.08em] text-slate-500">
                             {task.subject} {task.topic ? `• ${task.topic}` : ""}
                           </p>
-                          <p className="mt-2 text-sm text-slate-700">{task.studentFriendlyReason ?? task.reason}</p>
+                          <p className="mt-2 text-sm text-slate-700">
+                            {academicIntelligence.catchUpRecommendations.find((row) => row.id === task.recommendationId)?.studentFriendlyReason ?? "Targeted recovery task from your learning map."}
+                          </p>
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs font-semibold text-slate-500">Estimated time: {task.estimatedMinutes} mins</p>
-                            <button
-                              type="button"
-                              onClick={() => router.push(task.routeTarget ?? "/student/dashboard")}
-                              className="rounded-xl bg-cyan-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-cyan-500"
-                            >
-                              Start
-                            </button>
+                            <p className="text-xs font-semibold text-slate-500">
+                              {task.scheduledDay ? `${task.scheduledDay} plan • ` : ""}
+                              Estimated time: {task.estimatedMinutes} mins
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={academicTaskPendingId === task.taskId}
+                                onClick={() => {
+                                  void handleStudentCatchUpTaskAction(task.taskId, "start_task");
+                                  router.push(task.routeTarget ?? "/student/dashboard");
+                                }}
+                                className="rounded-xl bg-cyan-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-cyan-500 disabled:opacity-60"
+                              >
+                                Start
+                              </button>
+                              <button
+                                type="button"
+                                disabled={academicTaskPendingId === task.taskId}
+                                onClick={() => void handleStudentCatchUpTaskAction(task.taskId, "complete_task")}
+                                className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-60"
+                              >
+                                Complete
+                              </button>
+                              <button
+                                type="button"
+                                disabled={academicTaskPendingId === task.taskId}
+                                onClick={() => void handleStudentCatchUpTaskAction(task.taskId, "skip_task")}
+                                className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-500 disabled:opacity-60"
+                              >
+                                Skip
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ))}

@@ -4,12 +4,17 @@ import {
   detectCatchUpTriggers,
   unresolvedAcademicGapsFromCatchUp,
 } from "@/lib/academic-intelligence/catchUpPlanner";
+import {
+  buildTaskDueDateMap,
+  buildTaskStatusMap,
+} from "@/lib/academic-intelligence/catchUpTasks";
 import { buildMasteryMap } from "@/lib/academic-intelligence/masteryMap";
 import type {
   AcademicAuditHistoryDraft,
   AcademicIntelligenceOutput,
   AcademicReportNote,
   AcademicSourceData,
+  CatchUpTaskRecord,
   MasteryExpansionSummary,
   ParentAdminReviewAction,
   SchoolWeekModeDayPlan,
@@ -18,13 +23,13 @@ import type {
 
 export function defaultReviewActions(): ParentAdminReviewAction[] {
   return [
-    { action: "approve_catch_up", label: "Approve catch-up", persistenceSupported: false, message: "Requires persistence setup" },
-    { action: "reschedule_catch_up", label: "Reschedule catch-up", persistenceSupported: false, message: "Requires persistence setup" },
-    { action: "convert_to_homework", label: "Convert to homework", persistenceSupported: false, message: "Requires persistence setup" },
-    { action: "waive_catch_up", label: "Waive catch-up", persistenceSupported: false, message: "Requires persistence setup" },
-    { action: "assign_assessment", label: "Assign assessment", persistenceSupported: false, message: "Requires persistence setup" },
-    { action: "mark_reviewed", label: "Mark reviewed", persistenceSupported: false, message: "Requires persistence setup" },
-    { action: "add_note", label: "Add note", persistenceSupported: false, message: "Requires persistence setup" },
+    { action: "approve_catch_up", label: "Approve catch-up", persistenceSupported: true, message: "Schedules task for this week." },
+    { action: "reschedule_catch_up", label: "Reschedule catch-up", persistenceSupported: true, message: "Moves task date/day safely." },
+    { action: "convert_to_homework", label: "Convert to homework", persistenceSupported: true, message: "Marks task as active homework." },
+    { action: "waive_catch_up", label: "Waive catch-up", persistenceSupported: true, message: "Waives task with optional note." },
+    { action: "assign_assessment", label: "Assign assessment", persistenceSupported: false, message: "Assessment auto-assignment pending next phase." },
+    { action: "mark_reviewed", label: "Mark reviewed", persistenceSupported: true, message: "Records parent/admin review action." },
+    { action: "add_note", label: "Add note", persistenceSupported: true, message: "Persists contextual note for this task." },
   ];
 }
 
@@ -164,9 +169,15 @@ function buildSchoolWeekModePlan(output: Pick<AcademicIntelligenceOutput,
   };
 }
 
-export function buildAcademicIntelligence(data: AcademicSourceData): AcademicIntelligenceOutput {
+export function buildAcademicIntelligence(
+  data: AcademicSourceData,
+  options?: {
+    existingCatchUpTasks?: CatchUpTaskRecord[];
+  },
+): AcademicIntelligenceOutput {
   const generatedAt = data.generatedAt ?? new Date().toISOString();
   const masteryBuilt = buildMasteryMap(data);
+  const existingTasks = options?.existingCatchUpTasks ?? [];
 
   const triggers = detectCatchUpTriggers({
     masteryMap: masteryBuilt.masteryMap,
@@ -181,7 +192,11 @@ export function buildAcademicIntelligence(data: AcademicSourceData): AcademicInt
   });
 
   const allTriggers = [...triggers, ...assessmentBuilt.assessmentLinkedCatchUpTriggers];
-  const catchUpRecommendations = buildCatchUpRecommendations({ triggers: allTriggers });
+  const catchUpRecommendations = buildCatchUpRecommendations({
+    triggers: allTriggers,
+    existingStatuses: buildTaskStatusMap(existingTasks),
+    existingDueDates: buildTaskDueDateMap(existingTasks),
+  });
 
   const output: AcademicIntelligenceOutput = {
     studentId: data.studentId,
@@ -198,6 +213,7 @@ export function buildAcademicIntelligence(data: AcademicSourceData): AcademicInt
     curriculumCoverage: masteryBuilt.curriculumCoverage,
     catchUpTriggers: allTriggers,
     catchUpRecommendations,
+    catchUpTasks: existingTasks,
     assessmentRecommendations: assessmentBuilt.recommendations,
     assessmentReadiness: assessmentBuilt.readinessStatus,
     examReadinessProfile: assessmentBuilt.examReadinessProfile,
@@ -219,6 +235,28 @@ export function buildAcademicIntelligence(data: AcademicSourceData): AcademicInt
   output.reportNotes = reportNotes(output);
   output.masteryExpansion = buildMasteryExpansionSummary(output);
   output.schoolWeekModePlan = buildSchoolWeekModePlan(output);
+  output.catchUpTasks = output.catchUpTasks.length
+    ? output.catchUpTasks
+    : output.catchUpRecommendations.map((recommendation) => ({
+      taskId: `catch-up-${recommendation.id}`,
+      studentId: output.studentId,
+      recommendationId: recommendation.id,
+      title: recommendation.title,
+      subject: recommendation.subject,
+      topic: recommendation.topic,
+      skill: recommendation.skill,
+      status: recommendation.status,
+      priority: recommendation.priority,
+      estimatedMinutes: recommendation.estimatedMinutes,
+      dueDate: recommendation.dueDate,
+      scheduledDay: output.schoolWeekModePlan.days.find((day) => day.recommendationId === recommendation.id)?.day ?? null,
+      routeTarget: recommendation.routeTarget ?? null,
+      sourceTrigger: recommendation.sourceTrigger,
+      note: null,
+      metadata: undefined,
+      createdAt: output.generatedAt,
+      updatedAt: output.generatedAt,
+    }));
   output.unresolvedAcademicGaps = unresolvedAcademicGapsFromCatchUp(output);
   output.nextRecommendedActions = nextActions(output);
   output.auditHistoryDraft = buildAuditDrafts(output);
@@ -232,6 +270,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   | "summary"
   | "masteryExpansion"
   | "catchUpRecommendations"
+  | "catchUpTasks"
   | "assessmentRecommendations"
   | "examReadinessProfile"
   | "schoolWeekModePlan"
@@ -246,6 +285,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
       ...item,
       reason: item.studentFriendlyReason,
     })),
+    catchUpTasks: output.catchUpTasks,
     assessmentRecommendations: output.assessmentRecommendations.map((item) => ({
       ...item,
       reason: item.reason,

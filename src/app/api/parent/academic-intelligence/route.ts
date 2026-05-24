@@ -4,6 +4,7 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data";
 import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
+import { listCatchUpTasks, syncCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -27,12 +28,22 @@ export async function GET(request: Request) {
   const child = await buildAcademicSourceForStudent(childId);
   if (!child) return NextResponse.json({ error: "Child not found." }, { status: 404 });
 
-  const output = buildAcademicIntelligence(child);
+  const existingTasks = await listCatchUpTasks(childId);
+  let output = buildAcademicIntelligence(child, { existingCatchUpTasks: existingTasks });
+  const syncedTasks = await syncCatchUpTasks({
+    studentId: childId,
+    recommendations: output.catchUpRecommendations,
+    schoolWeekModePlan: output.schoolWeekModePlan,
+    actorUserId: session.userId,
+  });
+  output = buildAcademicIntelligence(child, { existingCatchUpTasks: syncedTasks });
+
   return NextResponse.json({
     studentId: output.studentId,
     summary: output.summary,
     curriculumCoverage: output.curriculumCoverage,
     catchUpRecommendations: output.catchUpRecommendations,
+    catchUpTasks: output.catchUpTasks,
     assessmentReadiness: output.assessmentReadiness,
     examReadinessProfile: output.examReadinessProfile,
     schoolWeekModePlan: output.schoolWeekModePlan,

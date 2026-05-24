@@ -345,3 +345,63 @@ test("exam readiness band and school week strategy adapt to weak performance", (
   assert.ok(output.schoolWeekModePlan.strategy.toLowerCase().includes("foundation"));
   assert.ok(output.schoolWeekModePlan.days.length >= 5);
 });
+
+test("existing catch-up task status is respected in recommendation output", () => {
+  const source = baseSource({
+    attempts: [{
+      id: "at-1",
+      subject: "math",
+      topic: "Algebra",
+      skill: "linear_equations",
+      correct: false,
+      hintsUsed: 2,
+      createdAt: new Date().toISOString(),
+      score: 25,
+    }],
+  });
+
+  const output = buildAcademicIntelligence(source, {
+    existingCatchUpTasks: [{
+      taskId: "catch-up-low-attempt-score-math-algebra-linear-equations",
+      studentId: "student-1",
+      recommendationId: "low-attempt-score-math-algebra-linear-equations",
+      title: "Algebra catch-up",
+      subject: "math",
+      topic: "Algebra",
+      skill: "linear_equations",
+      status: "scheduled",
+      priority: "high",
+      estimatedMinutes: 15,
+      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+      scheduledDay: "Monday",
+      routeTarget: "/student/dashboard",
+      sourceTrigger: "low_attempt_score",
+      note: null,
+      metadata: undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }],
+  });
+
+  assert.ok(output.catchUpRecommendations.some((item) => item.status === "scheduled"));
+  assert.ok(output.catchUpTasks.some((item) => item.status === "scheduled"));
+});
+
+test("fallback catch-up tasks are generated when no persisted tasks exist", () => {
+  const output = buildAcademicIntelligence(baseSource({
+    attempts: [{
+      id: "at-1",
+      subject: "reading",
+      topic: "Inference",
+      skill: "inference",
+      correct: false,
+      hintsUsed: 2,
+      createdAt: new Date().toISOString(),
+      score: 20,
+    }],
+  }));
+
+  assert.ok(output.catchUpRecommendations.length > 0);
+  assert.ok(output.catchUpTasks.length > 0);
+  assert.equal(output.catchUpTasks[0]?.recommendationId, output.catchUpRecommendations[0]?.id);
+});

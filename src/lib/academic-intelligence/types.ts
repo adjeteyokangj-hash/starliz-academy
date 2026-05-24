@@ -14,7 +14,39 @@ export type CurriculumCoverageStatus =
   | "overdue_revision"
   | "gap_detected";
 
-export type CatchUpStatus = "recommended" | "active" | "completed" | "skipped" | "waived" | "overdue";
+export type CatchUpStatus = "recommended" | "scheduled" | "active" | "in_progress" | "completed" | "skipped" | "waived" | "overdue";
+
+export type CatchUpTaskAction =
+  | "approve_catch_up"
+  | "reschedule_catch_up"
+  | "convert_to_homework"
+  | "waive_catch_up"
+  | "mark_reviewed"
+  | "add_note"
+  | "start_task"
+  | "complete_task"
+  | "skip_task";
+
+export type CatchUpTaskRecord = {
+  taskId: string;
+  studentId: string;
+  recommendationId: string;
+  title: string;
+  subject: string;
+  topic?: string | null;
+  skill?: string | null;
+  status: CatchUpStatus;
+  priority: AcademicPriority;
+  estimatedMinutes: number;
+  dueDate?: string | null;
+  scheduledDay?: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | null;
+  routeTarget?: string | null;
+  sourceTrigger: CatchUpTriggerType;
+  note?: string | null;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type AssessmentReadinessStatus = "not_ready" | "developing" | "nearly_ready" | "ready" | "needs_catch_up";
 
@@ -306,14 +338,7 @@ export type MasteryExpansionSummary = {
 };
 
 export type ParentAdminReviewAction = {
-  action:
-    | "approve_catch_up"
-    | "reschedule_catch_up"
-    | "convert_to_homework"
-    | "waive_catch_up"
-    | "assign_assessment"
-    | "mark_reviewed"
-    | "add_note";
+  action: CatchUpTaskAction | "assign_assessment";
   label: string;
   persistenceSupported: boolean;
   message: string;
@@ -355,6 +380,7 @@ export type AcademicIntelligenceOutput = {
   curriculumCoverage: CoverageEntry[];
   catchUpTriggers: CatchUpTrigger[];
   catchUpRecommendations: CatchUpRecommendation[];
+  catchUpTasks: CatchUpTaskRecord[];
   assessmentRecommendations: AssessmentRecommendation[];
   assessmentReadiness: AssessmentReadinessStatus;
   examReadinessProfile: ExamReadinessProfile;

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
 import ChildManagementForm from "./ChildManagementForm";
 import BillingCard from "./BillingCard";
@@ -229,7 +229,19 @@ type ParentAcademicIntelligencePayload = {
     reason: string;
     studentFriendlyReason?: string;
     estimatedMinutes: number;
-    status: "recommended" | "active" | "completed" | "skipped" | "waived" | "overdue";
+    status: "recommended" | "scheduled" | "active" | "in_progress" | "completed" | "skipped" | "waived" | "overdue";
+  }>;
+  catchUpTasks?: Array<{
+    taskId: string;
+    recommendationId: string;
+    title: string;
+    subject: string;
+    topic?: string | null;
+    status: "recommended" | "scheduled" | "active" | "in_progress" | "completed" | "skipped" | "waived" | "overdue";
+    estimatedMinutes: number;
+    dueDate?: string | null;
+    scheduledDay?: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | null;
+    note?: string | null;
   }>;
   assessmentReadiness: string;
   gcseReadiness: {
@@ -350,6 +362,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [academicIntelligence, setAcademicIntelligence] = useState<ParentAcademicIntelligencePayload | null>(null);
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicError, setAcademicError] = useState<string | null>(null);
+  const [academicActionTaskId, setAcademicActionTaskId] = useState<string | null>(null);
   const [childCertificates, setChildCertificates] = useState<ParentCertificateLibraryEntry[]>([]);
   const [childCertificatesLoading, setChildCertificatesLoading] = useState(false);
   const [childCertificatesError, setChildCertificatesError] = useState<string | null>(null);
@@ -554,6 +567,47 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     if (!selectedChildId || !insights?.learningDna?.length) return null;
     return insights.learningDna.find((entry) => entry.childId === selectedChildId) ?? null;
   }, [insights, selectedChildId]);
+
+  const handleAcademicTaskAction = useCallback(async (
+    taskId: string,
+    action: "approve_catch_up" | "reschedule_catch_up" | "waive_catch_up" | "add_note",
+  ) => {
+    if (!selectedChildId) return;
+    setAcademicActionTaskId(taskId);
+    setAcademicError(null);
+    try {
+      const dueDate = action === "reschedule_catch_up"
+        ? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+
+      const response = await fetch("/api/parent/academic-intelligence/catch-up-tasks", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          childId: selectedChildId,
+          taskId,
+          action,
+          dueDate,
+          note: action === "add_note" ? "Parent reviewed this task and added context." : null,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error ?? "Unable to update catch-up task.");
+      }
+
+      const refresh = await fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId)}`, { credentials: "include" });
+      if (refresh.ok) {
+        setAcademicIntelligence((await refresh.json()) as ParentAcademicIntelligencePayload);
+      }
+    } catch (err) {
+      setAcademicError(err instanceof Error ? err.message : "Unable to update catch-up task.");
+    } finally {
+      setAcademicActionTaskId(null);
+    }
+  }, [selectedChildId]);
 
   const modeAdd = activeSection === "children" && searchParams.get("mode") === "add";
   const formVisible = modeAdd || showChildForm;
@@ -1085,22 +1139,60 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         <Metric label="Average score" value={`${academicIntelligence.summary.averageScore}%`} />
                       </div>
 
-                      {academicIntelligence.catchUpRecommendations.length === 0 ? (
+                      {(academicIntelligence.catchUpTasks ?? []).length === 0 && academicIntelligence.catchUpRecommendations.length === 0 ? (
                         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
                           <p className="font-semibold">No catch-up needed right now.</p>
                           <p className="mt-1">Your child is on track. Keep going.</p>
                         </div>
                       ) : (
                         <div className="space-y-2">
-                          {academicIntelligence.catchUpRecommendations.slice(0, 4).map((item) => (
-                            <div key={item.id} className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
+                          {(academicIntelligence.catchUpTasks ?? []).slice(0, 4).map((item) => (
+                            <div key={item.taskId} className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
                               <div className="flex items-center justify-between gap-2">
                                 <p className="font-semibold text-white">{item.title}</p>
                                 <span className="rounded-full bg-cyan-400/20 px-2 py-0.5 text-xs font-bold text-cyan-200">{item.status.replaceAll("_", " ")}</span>
                               </div>
                               <p className="mt-1 text-xs text-slate-400">{item.subject}{item.topic ? ` • ${item.topic}` : ""}</p>
-                              <p className="mt-1 text-slate-300">{item.studentFriendlyReason ?? item.reason}</p>
+                              <p className="mt-1 text-slate-300">{academicIntelligence.catchUpRecommendations.find((row) => row.id === item.recommendationId)?.studentFriendlyReason ?? "Targeted recovery task."}</p>
                               <p className="mt-1 text-xs text-slate-400">Estimated time: {item.estimatedMinutes} mins</p>
+                              <p className="mt-1 text-xs text-cyan-300">
+                                {item.scheduledDay ? `${item.scheduledDay} plan` : "Schedule pending"}
+                                {item.dueDate ? ` • Due ${new Date(item.dueDate).toLocaleDateString()}` : ""}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  disabled={academicActionTaskId === item.taskId}
+                                  onClick={() => void handleAcademicTaskAction(item.taskId, "approve_catch_up")}
+                                  className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-200 disabled:opacity-60"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={academicActionTaskId === item.taskId}
+                                  onClick={() => void handleAcademicTaskAction(item.taskId, "reschedule_catch_up")}
+                                  className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-xs font-semibold text-cyan-200 disabled:opacity-60"
+                                >
+                                  Reschedule
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={academicActionTaskId === item.taskId}
+                                  onClick={() => void handleAcademicTaskAction(item.taskId, "waive_catch_up")}
+                                  className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-xs font-semibold text-amber-200 disabled:opacity-60"
+                                >
+                                  Waive
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={academicActionTaskId === item.taskId}
+                                  onClick={() => void handleAcademicTaskAction(item.taskId, "add_note")}
+                                  className="rounded-lg border border-violet-400/30 bg-violet-500/10 px-2 py-1 text-xs font-semibold text-violet-200 disabled:opacity-60"
+                                >
+                                  Add note
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1123,15 +1215,17 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <button
                               key={action.action}
                               type="button"
-                              disabled
+                              disabled={!action.persistenceSupported}
                               title={action.message}
-                              className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-200 opacity-70"
+                              className={`rounded-lg border px-3 py-1 text-xs font-semibold ${action.persistenceSupported
+                                ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                                : "border-amber-400/30 bg-amber-400/10 text-amber-200 opacity-70"}`}
                             >
                               {action.label}
                             </button>
                           ))}
                         </div>
-                        <p className="mt-2 text-xs text-amber-100/90">Actions are placeholder-safe and require persistence setup.</p>
+                        <p className="mt-2 text-xs text-amber-100/90">Persisted controls are now active for catch-up task workflow.</p>
                       </div>
                     </div>
                   )}

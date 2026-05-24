@@ -297,24 +297,25 @@ export function detectCatchUpTriggers(input: {
 export function buildCatchUpRecommendations(input: {
   triggers: CatchUpTrigger[];
   existingStatuses?: Record<string, CatchUpStatus>;
+  existingDueDates?: Record<string, string | null | undefined>;
   maxTasks?: number;
 }): CatchUpRecommendation[] {
   const maxTasks = input.maxTasks ?? MAX_STUDENT_TASKS;
-  const recommendations: CatchUpRecommendation[] = input.triggers.map((trigger, index) => {
+  const recommendations: CatchUpRecommendation[] = input.triggers.map((trigger) => {
     const taskType = mapTriggerToTask(trigger.triggerType, trigger.subject);
     const id = buildId([
       trigger.triggerType,
       trigger.subject,
       trigger.topic ?? "topic",
       trigger.skill ?? "skill",
-      String(index + 1),
     ]);
     const currentStatus = input.existingStatuses?.[id] ?? "recommended";
-    const dueDate = trigger.priority === "high"
+    const derivedDueDate = trigger.priority === "high"
       ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
       : trigger.priority === "medium"
         ? new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString()
         : null;
+    const dueDate = input.existingDueDates?.[id] ?? derivedDueDate;
     const status: CatchUpStatus = dueDate && new Date(dueDate).getTime() < Date.now() && (currentStatus === "recommended" || currentStatus === "active")
       ? "overdue"
       : currentStatus;
