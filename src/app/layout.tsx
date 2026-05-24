@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import PwaInstaller from "@/components/layout/PwaInstaller";
+import ChunkLoadRecovery from "@/components/layout/ChunkLoadRecovery";
 import ServiceWorkerRegistration from "@/components/layout/ServiceWorkerRegistration";
 import ThemeProvider from "@/components/layout/ThemeProvider";
 import OfflineBadge from "@/components/layout/OfflineBadge";
@@ -34,6 +35,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased">
       <body className="flex min-h-full flex-col overflow-x-hidden">
+        <ChunkLoadRecovery />
         <ServiceWorkerRegistration />
         <ThemeProvider />
         <AppSplash />

@@ -21,11 +21,11 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       summary: {
-        learningConfidence: "Unknown",
-        engagementLevel: "Unknown",
-        speechConfidence: "Unknown",
-        frustrationSignals: "Unknown",
-        dominantMood: "neutral",
+        learningConfidence: "Not enough data yet",
+        engagementLevel: "Not enough data yet",
+        speechConfidence: "Not enough data yet",
+        frustrationSignals: "Not enough data yet",
+        dominantMood: "unknown",
       },
     });
   }
@@ -35,11 +35,11 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       summary: {
-        learningConfidence: "Unknown",
-        engagementLevel: "Unknown",
-        speechConfidence: "Unknown",
-        frustrationSignals: "Unknown",
-        dominantMood: "neutral",
+        learningConfidence: "Not enough data yet",
+        engagementLevel: "Not enough data yet",
+        speechConfidence: "Not enough data yet",
+        frustrationSignals: "Not enough data yet",
+        dominantMood: "unknown",
       },
     });
   }
@@ -70,11 +70,11 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       summary: {
-        learningConfidence: "Unknown",
-        engagementLevel: "Unknown",
-        speechConfidence: "Unknown",
-        frustrationSignals: "Unknown",
-        dominantMood: "neutral",
+        learningConfidence: "Not enough data yet",
+        engagementLevel: "Not enough data yet",
+        speechConfidence: "Not enough data yet",
+        frustrationSignals: "Not enough data yet",
+        dominantMood: "unknown",
       },
     });
   }
@@ -107,7 +107,7 @@ export async function GET() {
     }
   }
 
-  const dominantMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "neutral";
+  const dominantMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "unknown";
   const speechAverage = speechConfidenceValues.length
     ? Math.round(speechConfidenceValues.reduce((sum, value) => sum + value, 0) / speechConfidenceValues.length)
     : null;

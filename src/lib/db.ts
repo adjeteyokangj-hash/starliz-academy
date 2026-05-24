@@ -17,6 +17,9 @@ function withConservativePoolParams(rawUrl: string | undefined): string | undefi
     if (!parsed.searchParams.has("pool_timeout")) {
       parsed.searchParams.set("pool_timeout", "20");
     }
+    if (!parsed.searchParams.has("connect_timeout")) {
+      parsed.searchParams.set("connect_timeout", "5");
+    }
 
     return parsed.toString();
   } catch {
