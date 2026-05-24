@@ -17,6 +17,15 @@ export type CertificateTemplateSetting = {
 
 export type CertificateTemplateSettings = Record<CertificateTemplateType, CertificateTemplateSetting>;
 
+export const certificateTemplateTypes: ReadonlyArray<CertificateTemplateType> = [
+  "term_completion",
+  "end_of_term_exam",
+  "subject_achievement",
+  "english_achievement",
+  "mastery_certificate",
+  "award_certificate",
+];
+
 export const availableCertificateTemplates: ReadonlyArray<{ value: CertificateTemplateOption; label: string; description: string }> = [
   {
     value: "classic_academic",
@@ -47,6 +56,39 @@ export const availableCertificateTemplates: ReadonlyArray<{ value: CertificateTe
     value: "assessment_achievement",
     label: "Assessment Achievement",
     description: "Assessment-forward style for exam and achievement certificates.",
+  },
+];
+
+export const availableCertificateThemes: ReadonlyArray<{ value: CertificateThemeName; label: string; description: string }> = [
+  {
+    value: "classic_academic",
+    label: "Classic Academic",
+    description: "Traditional academic visual style.",
+  },
+  {
+    value: "exam_honours",
+    label: "Assessment Achievement",
+    description: "Assessment-focused honours theme.",
+  },
+  {
+    value: "subject_focus",
+    label: "Modern Clean",
+    description: "Clean subject-first presentation.",
+  },
+  {
+    value: "english_scholar",
+    label: "English Learning",
+    description: "English strand-first presentation.",
+  },
+  {
+    value: "mastery_prestige",
+    label: "Mastery Premium",
+    description: "Premium mastery certificate theme.",
+  },
+  {
+    value: "award_prestige",
+    label: "Gold Award",
+    description: "Prestige award recognition theme.",
   },
 ];
 
@@ -92,16 +134,7 @@ export const defaultCertificateTemplateSettings: CertificateTemplateSettings = {
   },
 };
 
-const VALID_TYPES: CertificateTemplateType[] = [
-  "term_completion",
-  "end_of_term_exam",
-  "subject_achievement",
-  "english_achievement",
-  "mastery_certificate",
-  "award_certificate",
-];
-
-function isThemeName(value: string): value is CertificateThemeName {
+export function isCertificateThemeName(value: string): value is CertificateThemeName {
   return value === "classic_academic"
     || value === "exam_honours"
     || value === "subject_focus"
@@ -110,7 +143,7 @@ function isThemeName(value: string): value is CertificateThemeName {
     || value === "award_prestige";
 }
 
-function isTemplateOption(value: string): value is CertificateTemplateOption {
+export function isCertificateTemplateOption(value: string): value is CertificateTemplateOption {
   return value === "classic_academic"
     || value === "gold_award"
     || value === "modern_clean"
@@ -119,21 +152,25 @@ function isTemplateOption(value: string): value is CertificateTemplateOption {
     || value === "assessment_achievement";
 }
 
+export function isCertificateTemplateType(value: string): value is CertificateTemplateType {
+  return certificateTemplateTypes.includes(value as CertificateTemplateType);
+}
+
 export function validateCertificateTemplateSettings(input: unknown): CertificateTemplateSettings {
   const base = { ...defaultCertificateTemplateSettings };
   if (!input || typeof input !== "object" || Array.isArray(input)) return base;
 
   const raw = input as Record<string, unknown>;
 
-  for (const type of VALID_TYPES) {
+  for (const type of certificateTemplateTypes) {
     const rawEntry = raw[type];
     if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) continue;
 
     const entry = rawEntry as Record<string, unknown>;
-    const template = typeof entry.template === "string" && isTemplateOption(entry.template)
+    const template = typeof entry.template === "string" && isCertificateTemplateOption(entry.template)
       ? entry.template
       : base[type].template;
-    const theme = typeof entry.theme === "string" && isThemeName(entry.theme)
+    const theme = typeof entry.theme === "string" && isCertificateThemeName(entry.theme)
       ? entry.theme
       : TEMPLATE_TO_THEME[template] ?? base[type].theme;
 
@@ -145,6 +182,41 @@ export function validateCertificateTemplateSettings(input: unknown): Certificate
   }
 
   return base;
+}
+
+export function validateCertificateTemplateSettingsStrict(input: unknown):
+  | { ok: true; settings: CertificateTemplateSettings }
+  | { ok: false; error: string } {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { ok: false, error: "Settings payload must be an object." };
+  }
+
+  const raw = input as Record<string, unknown>;
+  for (const key of Object.keys(raw)) {
+    if (!isCertificateTemplateType(key)) {
+      return { ok: false, error: `Invalid certificate type: ${key}` };
+    }
+  }
+
+  for (const type of certificateTemplateTypes) {
+    const rawEntry = raw[type];
+    if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
+      return { ok: false, error: `Missing settings for certificate type: ${type}` };
+    }
+
+    const entry = rawEntry as Record<string, unknown>;
+    if (entry.certificateType !== type) {
+      return { ok: false, error: `Invalid certificateType for ${type}` };
+    }
+    if (typeof entry.template !== "string" || !isCertificateTemplateOption(entry.template)) {
+      return { ok: false, error: `Invalid template for certificate type: ${type}` };
+    }
+    if (typeof entry.theme !== "string" || !isCertificateThemeName(entry.theme)) {
+      return { ok: false, error: `Invalid theme for certificate type: ${type}` };
+    }
+  }
+
+  return { ok: true, settings: validateCertificateTemplateSettings(raw) };
 }
 
 export function resolveCertificateTemplateForType(input: {
