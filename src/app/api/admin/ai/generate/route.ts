@@ -168,6 +168,16 @@ function mapGenerationTypeToPromptType(type: GenerationType): PromptType {
   return "spelling";
 }
 
+function shouldAutoGenerateVisuals(type: GenerationType): boolean {
+  return type === "maths"
+    || type === "science"
+    || type === "languages"
+    || type === "reading"
+    || type === "english-language"
+    || type === "english-literature"
+    || type === "exam-practice";
+}
+
 function mapEnglishStrandToPromptType(strand: EnglishStrand): PromptType {
   if (strand === "phonics" || strand === "spelling") return "spelling";
   if (strand === "reading" || strand === "vocabulary") return "reading";
@@ -2083,11 +2093,18 @@ export async function POST(req: Request) {
   const visualAllowedSubjects = allowedSubjectsRaw
     .map((entry) => normalizeSubject(typeof entry === "string" ? entry : ""))
     .filter((entry): entry is Subject => Boolean(entry));
+  const visualEnabled = typeof requestVisualEnabled === "boolean" ? requestVisualEnabled : envVisualEnabled;
+  const effectiveVisualMode: VisualGenerationMode = visualEnabled && visualMode === "planned_only" && shouldAutoGenerateVisuals(generationType)
+    ? "generate_now"
+    : visualMode;
+  const effectiveVisualAllowedSubjects = visualAllowedSubjects.length > 0 && !visualAllowedSubjects.includes(sourceSubject)
+    ? [...visualAllowedSubjects, sourceSubject]
+    : visualAllowedSubjects;
   const visualPlan: VisualGenerationPlan = {
-    enabled: typeof requestVisualEnabled === "boolean" ? requestVisualEnabled : envVisualEnabled,
-    mode: visualMode,
+    enabled: visualEnabled,
+    mode: effectiveVisualMode,
     maxPerContent: Math.max(0, Math.min(6, Number.isFinite(Number(maxVisualsRaw)) ? Number(maxVisualsRaw) : 2)),
-    allowedSubjects: visualAllowedSubjects,
+    allowedSubjects: effectiveVisualAllowedSubjects,
     requireAdminApproval: body.requireVisualApproval !== false,
   };
 

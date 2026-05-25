@@ -261,10 +261,39 @@ function isEnglishParentSubject(value: Subject): boolean {
   return value === "english-language" || value === "gcse-english" || value === "gcse-english-language";
 }
 
-function deriveSkillFocusFromEnglishStrand(strand: EnglishStrand | "", yearGroup: string): string {
+function isGcseEnglishSubject(value: Subject): boolean {
+  return value === "gcse-english" || value === "gcse-english-language" || value === "gcse-english-literature";
+}
+
+function resolvePathValidationSubject(subject: Subject, strand: EnglishStrand | "" | null | undefined): Subject {
+  if (!isEnglishParentSubject(subject) || !strand) return subject;
+  if (isGcseEnglishSubject(subject)) {
+    return subject === "gcse-english" ? "gcse-english-language" : subject;
+  }
+  return strand as Subject;
+}
+
+function deriveSkillFocusFromEnglishStrand(strand: EnglishStrand | "", yearGroup: string, subject: Subject): string {
   if (!strand) return "";
-  const strandSkills = getAvailableSkills(strand as Subject, yearGroup);
-  return strandSkills[0] ?? strand;
+  const mappedSubject = resolvePathValidationSubject(subject, strand);
+  const mappedSkills = getAvailableSkills(mappedSubject, yearGroup);
+  if (!mappedSkills.length) return strand;
+
+  const strandKeywords: Record<EnglishStrand, string[]> = {
+    phonics: ["phonics", "grapheme", "blending", "segmenting"],
+    spelling: ["spelling"],
+    reading: ["reading", "comprehension", "inference", "analysis", "retrieval"],
+    grammar: ["grammar"],
+    punctuation: ["punctuation"],
+    writing: ["writing", "creative", "transactional", "response", "extended"],
+    vocabulary: ["vocabulary"],
+  };
+  const keywords = strandKeywords[strand];
+  const matchedSkill = mappedSkills.find((skill) => {
+    const normalized = skill.toLowerCase();
+    return keywords.some((keyword) => normalized.includes(keyword));
+  });
+  return matchedSkill ?? mappedSkills[0];
 }
 
 function deriveScienceDiscipline(subject: Subject, skillFocus: string): "chemistry" | "physics" | "biology" | null {
@@ -649,7 +678,7 @@ export default function AiGeneratorPage() {
   const [englishStrand, setEnglishStrand] = useState<EnglishStrand | "">(
     isEnglishParentSubject(subject) ? "reading" : ""
   );
-  const skillSubject = requiresEnglishStrand && englishStrand ? (englishStrand as Subject) : subject;
+  const skillSubject = resolvePathValidationSubject(subject, requiresEnglishStrand ? englishStrand : null);
   const availableSkills = getAvailableSkills(skillSubject, yearGroup);
   const [skillFocus, setSkillFocus] = useState(
     prefillSkill && availableSkills.includes(prefillSkill) ? prefillSkill : availableSkills[0] ?? ""
@@ -696,6 +725,7 @@ export default function AiGeneratorPage() {
   const [savedContentId, setSavedContentId] = useState<string | null>(null);
   const [assetUploadBusy, setAssetUploadBusy] = useState<"image" | "audio" | null>(null);
   const [visualAssetActionId, setVisualAssetActionId] = useState<string | null>(null);
+  const [visualBatchBusy, setVisualBatchBusy] = useState(false);
   const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId);
   const [generationPhase, setGenerationPhase] = useState<"idle" | "generating" | "repairing-response" | "validating-content" | "retrying-parse">("idle");
   const [generationDiagnostics, setGenerationDiagnostics] = useState<{
@@ -884,6 +914,11 @@ export default function AiGeneratorPage() {
     };
   }, []);
 
+  const effectiveVisualAllowedSubjects = useMemo(() => {
+    if (!subject) return visualAllowedSubjects;
+    return Array.from(new Set([...visualAllowedSubjects, subject]));
+  }, [subject, visualAllowedSubjects]);
+
   function formatRepairMessage(error: string) {
     const [type, word] = error.split(":");
     if (type === "duplicate") return `Removed duplicate: ${word}`;
@@ -932,9 +967,7 @@ export default function AiGeneratorPage() {
       setError("Please choose an English strand before generating content.");
       return;
     }
-    const mappedPathSubject = isEnglishParentSubject(context.subject) && context.englishStrand
-      ? (context.englishStrand as Subject)
-      : context.subject;
+    const mappedPathSubject = resolvePathValidationSubject(context.subject, context.englishStrand ?? null);
     const pathValidation = isValidCurriculumPath({
       yearGroup: context.yearGroup,
       subject: mappedPathSubject,
@@ -1013,7 +1046,7 @@ export default function AiGeneratorPage() {
           aiVisualGenerationEnabled: visualGenerationEnabled,
           visualGenerationMode,
           maxVisualsPerLesson,
-          visualAllowedSubjects,
+          visualAllowedSubjects: effectiveVisualAllowedSubjects,
           requireVisualApproval,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
@@ -1248,7 +1281,7 @@ export default function AiGeneratorPage() {
             enabled: visualGenerationEnabled,
             mode: visualGenerationMode,
             maxPerLesson: maxVisualsPerLesson,
-            allowedSubjects: visualAllowedSubjects,
+            allowedSubjects: effectiveVisualAllowedSubjects,
             requireApproval: requireVisualApproval,
           },
         }),
@@ -1337,6 +1370,68 @@ export default function AiGeneratorPage() {
     updatePreviewItem(index, { status });
   }
 
+  function extractVisualActionMessage(payload: Record<string, unknown> | null, fallback = "Visual asset action failed.") {
+    if (!payload) return fallback;
+    if (typeof payload.error === "string" && payload.error.trim()) return payload.error;
+    if (typeof payload.message === "string" && payload.message.trim()) return payload.message;
+    const asset = payload.asset as { error?: unknown } | undefined;
+    if (typeof asset?.error === "string" && asset.error.trim()) return asset.error;
+    return fallback;
+  }
+
+  async function requestVisualAssetAction(asset: VisualAsset, action: "generate" | "regenerate" | "remove") {
+    const response = await fetchWithAdminSessionRetry("/api/admin/ai/visual-assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        asset,
+        imageModel: (process.env.NEXT_PUBLIC_OPENAI_IMAGE_MODEL ?? "").trim() || undefined,
+        maxVisuals: 1,
+      }),
+    }, AI_REQUEST_TIMEOUT_MS);
+
+    const parsed = await parseApiResponse<Record<string, unknown>>(response);
+    const payload = parsed.payload;
+    const updatedAsset = payload?.asset as VisualAsset | undefined;
+
+    if (!parsed.ok || !payload || !response.ok) {
+      return {
+        ok: false,
+        asset: updatedAsset,
+        message: extractVisualActionMessage(payload, parsed.message ?? "Visual asset action failed."),
+      };
+    }
+
+    if (!updatedAsset) {
+      return {
+        ok: false,
+        asset: undefined,
+        message: "Visual asset action returned no asset payload.",
+      };
+    }
+
+    if (updatedAsset.status === "failed") {
+      return {
+        ok: false,
+        asset: updatedAsset,
+        message: updatedAsset.error ?? "Visual asset generation failed.",
+      };
+    }
+
+    return { ok: true, asset: updatedAsset, message: null as string | null };
+  }
+
+  function updateSingleVisualAsset(assetId: string, updatedAsset: VisualAsset) {
+    setPreview((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        visualAssets: (current.visualAssets ?? []).map((entry) => (entry.id === assetId ? updatedAsset : entry)),
+      };
+    });
+  }
+
   async function applyVisualAssetAction(assetId: string, action: "generate" | "regenerate" | "remove") {
     if (!preview) return;
     const asset = (preview.visualAssets ?? []).find((entry) => entry.id === assetId);
@@ -1345,36 +1440,13 @@ export default function AiGeneratorPage() {
     setVisualAssetActionId(assetId);
     setError(null);
     try {
-      const response = await fetchWithAdminSessionRetry("/api/admin/ai/visual-assets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          asset,
-          imageModel: (process.env.NEXT_PUBLIC_OPENAI_IMAGE_MODEL ?? "").trim() || undefined,
-          maxVisuals: 1,
-        }),
-      }, AI_REQUEST_TIMEOUT_MS);
-
-      const parsed = await parseApiResponse<Record<string, unknown>>(response);
-      if (!parsed.ok || !parsed.payload || !response.ok) {
-        setError(parsed.message ?? "Visual asset action failed.");
-        return;
+      const result = await requestVisualAssetAction(asset, action);
+      if (result.asset) {
+        updateSingleVisualAsset(assetId, result.asset);
       }
-
-      const updatedAsset = parsed.payload.asset as VisualAsset | undefined;
-      if (!updatedAsset) {
-        setError("Visual asset action returned no asset payload.");
-        return;
+      if (!result.ok) {
+        setError(result.message ?? "Visual asset action failed.");
       }
-
-      setPreview((current) => {
-        if (!current) return current;
-        return {
-          ...current,
-          visualAssets: (current.visualAssets ?? []).map((entry) => (entry.id === assetId ? updatedAsset : entry)),
-        };
-      });
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Visual asset action failed.");
     } finally {
@@ -1382,11 +1454,57 @@ export default function AiGeneratorPage() {
     }
   }
 
-  function regenerateVisualAssetsNow() {
-    if (!previewContext) return;
-    setVisualGenerationEnabled(true);
-    setVisualGenerationMode("generate_now");
-    void generatePreview(0, previewContext);
+  async function generateAllVisualAssetsNow() {
+    if (!preview?.visualAssets?.length) return;
+
+    const targetAssets = preview.visualAssets.filter((asset) => asset.status !== "removed");
+    if (!targetAssets.length) return;
+
+    setVisualBatchBusy(true);
+    setError(null);
+    let updatedCount = 0;
+    let failedCount = 0;
+    let firstFailure: string | null = null;
+
+    try {
+      for (const asset of targetAssets) {
+        setVisualAssetActionId(asset.id);
+        const action: "generate" | "regenerate" = asset.status === "generated" ? "regenerate" : "generate";
+        try {
+          const result = await requestVisualAssetAction(asset, action);
+          if (result.asset) {
+            updateSingleVisualAsset(asset.id, result.asset);
+          }
+          if (result.ok) {
+            updatedCount += 1;
+          } else {
+            failedCount += 1;
+            if (!firstFailure) {
+              firstFailure = `${asset.title}: ${result.message ?? "Visual asset action failed."}`;
+            }
+          }
+        } catch (actionError) {
+          failedCount += 1;
+          if (!firstFailure) {
+            firstFailure = `${asset.title}: ${actionError instanceof Error ? actionError.message : "Visual asset action failed."}`;
+          }
+        }
+      }
+
+      if (updatedCount > 0) {
+        setMessage(
+          failedCount > 0
+            ? `Visual generation completed with partial success (${updatedCount} updated, ${failedCount} failed).`
+            : `Visual generation completed (${updatedCount} updated).`
+        );
+      }
+      if (failedCount > 0 && firstFailure) {
+        setError(firstFailure);
+      }
+    } finally {
+      setVisualAssetActionId(null);
+      setVisualBatchBusy(false);
+    }
   }
 
   async function regenerateItem(index: number) {
@@ -1431,7 +1549,7 @@ export default function AiGeneratorPage() {
           aiVisualGenerationEnabled: visualGenerationEnabled,
           visualGenerationMode,
           maxVisualsPerLesson,
-          visualAllowedSubjects,
+          visualAllowedSubjects: effectiveVisualAllowedSubjects,
           requireVisualApproval,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
@@ -1743,7 +1861,7 @@ export default function AiGeneratorPage() {
                   } else {
                     // Update skill focus if current is no longer available
                     if (isEnglishParentSubject(subject) && englishStrand) {
-                      setSkillFocus(deriveSkillFocusFromEnglishStrand(englishStrand, nextYear));
+                      setSkillFocus(deriveSkillFocusFromEnglishStrand(englishStrand, nextYear, subject));
                     } else {
                       const nextSkills = getAvailableSkills(subject, nextYear);
                       if (!nextSkills.includes(skillFocus)) {
@@ -1782,7 +1900,7 @@ export default function AiGeneratorPage() {
                 if (isEnglishParentSubject(nextSubject)) {
                   const defaultStrand: EnglishStrand = "reading";
                   setEnglishStrand(defaultStrand);
-                  setSkillFocus(deriveSkillFocusFromEnglishStrand(defaultStrand, yearGroup));
+                  setSkillFocus(deriveSkillFocusFromEnglishStrand(defaultStrand, yearGroup, nextSubject));
                 } else {
                   setEnglishStrand("");
                   const nextSkills = getAvailableSkills(nextSubject, yearGroup);
@@ -1823,7 +1941,7 @@ export default function AiGeneratorPage() {
                   clearWeakAreaLink();
                   const nextStrand = event.target.value as EnglishStrand | "";
                   setEnglishStrand(nextStrand);
-                  setSkillFocus(deriveSkillFocusFromEnglishStrand(nextStrand, yearGroup));
+                  setSkillFocus(deriveSkillFocusFromEnglishStrand(nextStrand, yearGroup, subject));
                   setTopicChoice("");
                   setCustomTopic("");
                 }}
@@ -2037,68 +2155,6 @@ export default function AiGeneratorPage() {
             <p className="mt-2 text-xs font-medium text-slate-400">{aiModeHelperText}</p>
           </label>
 
-          <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 space-y-3">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Visual Generation Settings</p>
-            <label className="flex items-center justify-between gap-3 text-sm font-bold text-slate-200">
-              <span>Enable AI visuals</span>
-              <input
-                type="checkbox"
-                checked={visualGenerationEnabled}
-                onChange={(event) => setVisualGenerationEnabled(event.target.checked)}
-                className="h-4 w-4 accent-cyan-500"
-              />
-            </label>
-            <label className="block text-sm font-bold text-slate-300">
-              Default mode
-              <select
-                value={visualGenerationMode}
-                onChange={(event) => setVisualGenerationMode(event.target.value as "none" | "planned_only" | "generate_now")}
-                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
-              >
-                <option value="none">No visuals</option>
-                <option value="planned_only">Planned visuals only</option>
-                <option value="generate_now">Generate visuals now</option>
-              </select>
-            </label>
-            <label className="block text-sm font-bold text-slate-300">
-              Max visuals per lesson
-              <input
-                type="number"
-                min={0}
-                max={6}
-                value={maxVisualsPerLesson}
-                onChange={(event) => setMaxVisualsPerLesson(Math.max(0, Math.min(6, Number(event.target.value))))}
-                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
-              />
-            </label>
-            <label className="block text-sm font-bold text-slate-300">
-              Allowed subjects
-              <select
-                multiple
-                value={visualAllowedSubjects}
-                onChange={(event) => {
-                  const next = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
-                  setVisualAllowedSubjects(next);
-                }}
-                className="mt-2 h-28 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-              >
-                {availableSubjects.map((entry) => (
-                  <option key={entry} value={entry}>{formatSubjectLabel(entry)}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center justify-between gap-3 text-sm font-bold text-slate-200">
-              <span>Require admin approval before student display</span>
-              <input
-                type="checkbox"
-                checked={requireVisualApproval}
-                onChange={(event) => setRequireVisualApproval(event.target.checked)}
-                className="h-4 w-4 accent-cyan-500"
-              />
-            </label>
-            <p className="text-xs text-amber-200">Cost warning: generating visuals can increase OpenAI and storage usage. Review planned visuals first where possible.</p>
-          </div>
-
           <div className="rounded-2xl border border-slate-800 bg-slate-950/55 p-4">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Visual Generation Settings</p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -2148,7 +2204,7 @@ export default function AiGeneratorPage() {
               Allowed subjects for visuals
               <select
                 multiple
-                value={visualAllowedSubjects}
+                value={effectiveVisualAllowedSubjects}
                 onChange={(event) => {
                   const values = Array.from(event.target.selectedOptions).map((option) => option.value);
                   setVisualAllowedSubjects(values);
@@ -2633,10 +2689,11 @@ export default function AiGeneratorPage() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={regenerateVisualAssetsNow}
-                  className="rounded-lg border border-cyan-500/50 px-3 py-1.5 text-xs font-black text-cyan-100"
+                  onClick={() => void generateAllVisualAssetsNow()}
+                  disabled={visualBatchBusy || !preview.visualAssets?.length}
+                  className="rounded-lg border border-cyan-500/50 px-3 py-1.5 text-xs font-black text-cyan-100 disabled:opacity-60"
                 >
-                  Generate / Regenerate visuals now
+                  {visualBatchBusy ? "Generating visuals..." : "Generate / Regenerate visuals now"}
                 </button>
               </div>
               {preview.visualAssets?.length ? (
