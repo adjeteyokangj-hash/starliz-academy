@@ -13,8 +13,29 @@ type JobLog = {
   metadata: Record<string, unknown> | null;
 };
 
+type StripeWebhookMonitoring = {
+  tableExists: boolean;
+  unavailable?: boolean;
+  totalTrackedEvents: number;
+  processedEvents: number;
+  processingEvents: number;
+  staleProcessingEvents: number;
+  oldestProcessingAgeMinutes: number | null;
+  duplicateEventsLast24h: number;
+  timestampToleranceSeconds: number;
+  staleThresholdMinutes: number;
+  duplicateWindowHours: number;
+};
+
+type MonitoringPayload = {
+  webhooks?: {
+    stripe?: StripeWebhookMonitoring;
+  };
+};
+
 export default function SystemHealthPage() {
   const [logs, setLogs] = useState<JobLog[]>([]);
+  const [stripeWebhookMonitoring, setStripeWebhookMonitoring] = useState<StripeWebhookMonitoring | null>(null);
   const [running, setRunning] = useState(false);
 
   async function loadLogs() {
@@ -31,9 +52,17 @@ export default function SystemHealthPage() {
     setRunning(false);
   }
 
+  async function loadMonitoring() {
+    const response = await fetch("/api/admin/monitoring");
+    if (!response.ok) return;
+    const data = (await response.json()) as MonitoringPayload;
+    setStripeWebhookMonitoring(data.webhooks?.stripe ?? null);
+  }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadLogs();
+    void loadMonitoring();
   }, []);
 
   return (
@@ -88,6 +117,51 @@ export default function SystemHealthPage() {
           </table>
         </div>
       </AdminSectionCard>
+
+      <AdminSectionCard title="Stripe Webhook Monitoring">
+        {!stripeWebhookMonitoring ? (
+          <p className="text-sm text-slate-500">Webhook metrics unavailable.</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <MetricPill label="Tracked events" value={String(stripeWebhookMonitoring.totalTrackedEvents)} />
+              <MetricPill label="Processed" value={String(stripeWebhookMonitoring.processedEvents)} />
+              <MetricPill label="Processing" value={String(stripeWebhookMonitoring.processingEvents)} />
+              <MetricPill label={`Stale > ${stripeWebhookMonitoring.staleThresholdMinutes}m`} value={String(stripeWebhookMonitoring.staleProcessingEvents)} tone={stripeWebhookMonitoring.staleProcessingEvents > 0 ? "danger" : "default"} />
+              <MetricPill label={`Replays ${stripeWebhookMonitoring.duplicateWindowHours}h`} value={String(stripeWebhookMonitoring.duplicateEventsLast24h)} tone={stripeWebhookMonitoring.duplicateEventsLast24h > 0 ? "warning" : "default"} />
+              <MetricPill label="Timestamp tolerance" value={`${stripeWebhookMonitoring.timestampToleranceSeconds}s`} />
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
+              <p>
+                Oldest in-flight event age: {stripeWebhookMonitoring.oldestProcessingAgeMinutes === null ? "-" : `${stripeWebhookMonitoring.oldestProcessingAgeMinutes} minutes`}
+              </p>
+              {!stripeWebhookMonitoring.tableExists ? (
+                <p className="mt-2 text-amber-300">Webhook event table is not initialized yet. It is created automatically on first processed Stripe webhook event.</p>
+              ) : null}
+              {stripeWebhookMonitoring.unavailable ? (
+                <p className="mt-2 text-rose-300">Webhook metrics are temporarily unavailable. Check database connectivity and retry.</p>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </AdminSectionCard>
     </div>
+  );
+}
+
+function MetricPill({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "warning" | "danger" }) {
+  const toneClassName =
+    tone === "danger"
+      ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
+      : tone === "warning"
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+      : "border-slate-700 bg-slate-900/70 text-slate-200";
+
+  return (
+    <article className={`rounded-xl border px-4 py-3 ${toneClassName}`}>
+      <p className="text-xs uppercase tracking-[0.16em]">{label}</p>
+      <p className="mt-2 text-xl font-black">{value}</p>
+    </article>
   );
 }

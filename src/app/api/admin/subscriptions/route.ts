@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { addDays, getPlan, normalizePlanKey } from "@/lib/subscriptions/plans";
-import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import { planKeyFromPricingPlan, resolveCurrentPricingPlan } from "@/lib/pricing/service";
 import { writeAuditLog } from "@/lib/audit";
 
 const actionSchema = z.enum([
@@ -150,7 +150,7 @@ export async function GET() {
       parentId: parent.id,
       parentName: parent.name,
       parentEmail: parent.email,
-      planKey: adminPlanKey,
+      planKey: currentPricingPlan ? planKeyFromPricingPlan(currentPricingPlan) : adminPlanKey,
       planName: currentPricingPlan?.name ?? getPlan(normalizedPlan).name,
       status: uiStatus,
       trialStatus: parent.parentProfile?.trialStatus ?? null,
@@ -248,22 +248,14 @@ export async function PATCH(request: Request) {
     let selectedPricingPlanId = current?.pricingPlanId ?? null;
     if (body.action === "change_plan") {
       const planMatcher = nextPlan;
-      const candidate = await prisma.pricingPlan.findFirst({
-        where: {
-          isActive: true,
-          OR: [
-            { name: { contains: planMatcher, mode: "insensitive" } },
-            planMatcher === "standard" ? { interval: "month", audience: "family" } : { id: "__none__" },
-            planMatcher === "pro" ? { name: { contains: "pro", mode: "insensitive" } } : { id: "__none__" },
-            planMatcher === "enterprise" ? { interval: "custom" } : { id: "__none__" },
-          ],
-        },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      });
+      const candidate = await resolveCurrentPricingPlan({ legacyPlanKey: planMatcher });
       selectedPricingPlanId = candidate?.id ?? current?.pricingPlanId ?? null;
     }
 
-    const storedPlanKey = toStoredPlanKey(nextPlan);
+    const resolvedNextPricingPlan = selectedPricingPlanId
+      ? await resolveCurrentPricingPlan({ pricingPlanId: selectedPricingPlanId, legacyPlanKey: nextPlan })
+      : null;
+    const storedPlanKey = resolvedNextPricingPlan ? planKeyFromPricingPlan(resolvedNextPricingPlan) : toStoredPlanKey(nextPlan);
 
     const data = {
       planKey: storedPlanKey,
