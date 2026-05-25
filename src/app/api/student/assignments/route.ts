@@ -14,6 +14,7 @@ function parseContentMetadata(raw: string | null): {
   keyStage: string | null;
   ageGroup: string | null;
   subject: string | null;
+  visualAssets: Array<Record<string, unknown>>;
 } {
   if (!raw) {
     return {
@@ -22,16 +23,26 @@ function parseContentMetadata(raw: string | null): {
       keyStage: null,
       ageGroup: null,
       subject: null,
+      visualAssets: [],
     };
   }
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const visualAssets = Array.isArray(parsed.visualAssets)
+      ? parsed.visualAssets
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object"))
+        .filter((entry) => {
+          const status = typeof entry.status === "string" ? entry.status : "";
+          return status === "approved" || status === "generated";
+        })
+      : [];
     return {
       examBoard: normalizeExamBoard(typeof parsed.examBoard === "string" ? parsed.examBoard : null),
       yearGroup: typeof parsed.yearGroup === "string" ? parsed.yearGroup : null,
       keyStage: typeof parsed.keyStage === "string" ? parsed.keyStage : null,
       ageGroup: typeof parsed.ageGroup === "string" ? parsed.ageGroup : null,
       subject: typeof parsed.subject === "string" ? parsed.subject : null,
+      visualAssets,
     };
   } catch {
     return {
@@ -40,6 +51,7 @@ function parseContentMetadata(raw: string | null): {
       keyStage: null,
       ageGroup: null,
       subject: null,
+      visualAssets: [],
     };
   }
 }
@@ -153,8 +165,10 @@ export async function GET(request: Request) {
             keyStage: contentMeta.keyStage,
             ageGroup: contentMeta.ageGroup,
             subject: contentMeta.subject,
+            visualAssets: contentMeta.visualAssets,
           },
           items,
+          visualAssets: contentMeta.visualAssets,
         },
       });
     }
@@ -221,7 +235,9 @@ export async function GET(request: Request) {
           keyStage: contentMeta.keyStage,
           ageGroup: contentMeta.ageGroup,
           subject: contentMeta.subject,
+          visualAssets: contentMeta.visualAssets,
         },
+        visualAssets: contentMeta.visualAssets,
         href: taskHrefForContentType(assignment.content.contentType, assignment.id),
         createdAt: assignment.createdAt.toISOString(),
         updatedAt: assignment.updatedAt.toISOString(),

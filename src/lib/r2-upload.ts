@@ -64,11 +64,16 @@ function requiredEnv(name: string): string {
 }
 
 function getR2Config(): R2Config {
+  const endpoint = process.env.CLOUDFLARE_R2_ENDPOINT?.trim()
+    || (process.env.CLOUDFLARE_R2_ACCOUNT_ID?.trim()
+      ? `https://${process.env.CLOUDFLARE_R2_ACCOUNT_ID.trim()}.r2.cloudflarestorage.com`
+      : "");
+  const bucket = process.env.CLOUDFLARE_R2_BUCKET?.trim() || process.env.CLOUDFLARE_R2_BUCKET_NAME?.trim() || "";
   return {
-    endpoint: requiredEnv("CLOUDFLARE_R2_ENDPOINT"),
+    endpoint: endpoint || requiredEnv("CLOUDFLARE_R2_ENDPOINT"),
     accessKeyId: requiredEnv("CLOUDFLARE_R2_ACCESS_KEY_ID"),
     secretAccessKey: requiredEnv("CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
-    bucket: requiredEnv("CLOUDFLARE_R2_BUCKET"),
+    bucket: bucket || requiredEnv("CLOUDFLARE_R2_BUCKET"),
     region: process.env.CLOUDFLARE_R2_REGION?.trim() || "auto",
   };
 }

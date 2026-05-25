@@ -16,6 +16,8 @@ import {
   shouldUseDeterministicSpellingFallback,
 } from "@/lib/admin-ai-generator-spelling";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
+import { resolveExamBoardRecommendation, resolveExamBoardSelection } from "@/lib/ai/exam-board-resolver";
+import { buildPlannedVisualAssets, executeVisualGeneration, type PlannedVisualAsset } from "@/lib/ai/visual-generation";
 import { SKILL_MAP, serializeSkills } from "@/lib/skills";
 import { parseJsonWithRepair } from "@/lib/safe-json";
 import {
@@ -81,6 +83,15 @@ const DIFFICULTY_PROFILE: Record<number, {
 
 type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" | "writing" | "science" | "languages";
 type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuation" | "writing" | "vocabulary";
+type VisualGenerationMode = "none" | "planned_only" | "generate_now";
+
+type VisualGenerationPlan = {
+  enabled: boolean;
+  mode: VisualGenerationMode;
+  maxPerContent: number;
+  allowedSubjects: Subject[];
+  requireAdminApproval: boolean;
+};
 
 function isEnglishParentSubject(subject: Subject): boolean {
   return subject === "english-language" || subject === "gcse-english" || subject === "gcse-english-language";
@@ -177,7 +188,12 @@ type GeneratedPreview = {
   keyStage: string;
   yearGroup: string;
   curriculumPathway?: string;
+  curriculumFramework?: string;
+  countryRegion?: string;
   examBoard?: string | null;
+  examBoardSource?: "auto" | "manual" | "school_default";
+  examBoardConfidence?: number;
+  examBoardReason?: string;
   skillFocus: string;
   difficulty: number;
   topic: string;
@@ -187,6 +203,7 @@ type GeneratedPreview = {
   voiceScript: string;
   imagePrompt: string;
   items: unknown[];
+  visualAssets: PlannedVisualAsset[];
   metadata: {
     generationType: GenerationType;
     promptType: PromptType;
@@ -200,6 +217,11 @@ type GeneratedPreview = {
     subject: Subject;
     skillFocus: string;
     topic: string;
+    examBoardSource: "auto" | "manual" | "school_default";
+    examBoardConfidence: number;
+    examBoardReason: string;
+    curriculumFramework: string;
+    countryRegion: string;
   };
 };
 
@@ -786,11 +808,17 @@ function buildGeneratedPreview({
   keyStage,
   yearGroup,
   curriculumPathway,
+  curriculumFramework,
+  countryRegion,
   examBoard,
+  examBoardSource,
+  examBoardConfidence,
+  examBoardReason,
   skillFocus,
   difficulty,
   topic,
   content,
+  visualPlan,
 }: {
   subject: Subject;
   generationType: GenerationType;
@@ -798,22 +826,57 @@ function buildGeneratedPreview({
   keyStage: string;
   yearGroup: string;
   curriculumPathway: string;
+  curriculumFramework?: string;
+  countryRegion?: string;
   examBoard: string | null;
+  examBoardSource?: "auto" | "manual" | "school_default";
+  examBoardConfidence?: number;
+  examBoardReason?: string;
   skillFocus: string;
   difficulty: number;
   topic: string;
   content: unknown;
+  visualPlan?: VisualGenerationPlan;
 }): GeneratedPreview {
   const items = normalizePreviewItems(generationType, promptType, subject, content, { yearGroup, skillFocus, difficulty, topic });
   const safeTopic = topic || skillFocus || generationType;
   const titleSuffix = promptType === "maths" ? "questions" : promptType === "science" ? "science set" : promptType === "reading" ? "reading set" : "practice";
+  const effectiveVisualPlan: VisualGenerationPlan = visualPlan ?? {
+    enabled: false,
+    mode: "planned_only",
+    maxPerContent: 0,
+    allowedSubjects: [],
+    requireAdminApproval: true,
+  };
+  const visualAssets = effectiveVisualPlan.enabled && effectiveVisualPlan.mode !== "none"
+    ? buildPlannedVisualAssets({
+      subject,
+      yearGroup,
+      keyStage,
+      skillFocus,
+      topic: safeTopic,
+      items,
+      maxVisuals: effectiveVisualPlan.maxPerContent,
+      allowedSubjects: effectiveVisualPlan.allowedSubjects,
+    })
+    : [];
+  const safeExamBoardSource = examBoardSource ?? "auto";
+  const safeExamBoardConfidence = typeof examBoardConfidence === "number" ? examBoardConfidence : 0;
+  const safeExamBoardReason = examBoardReason ?? "Not specified.";
+  const safeCurriculumFramework = curriculumFramework ?? "National Curriculum England";
+  const safeCountryRegion = countryRegion ?? "UK";
   return {
     title: `${yearGroup} ${skillFocus || subject} ${titleSuffix}`,
     subject,
     keyStage,
     yearGroup,
     curriculumPathway,
+    curriculumFramework: safeCurriculumFramework,
+    countryRegion: safeCountryRegion,
     examBoard,
+    examBoardSource: safeExamBoardSource,
+    examBoardConfidence: safeExamBoardConfidence,
+    examBoardReason: safeExamBoardReason,
     skillFocus,
     difficulty,
     topic: safeTopic,
@@ -823,6 +886,7 @@ function buildGeneratedPreview({
     voiceScript: `Today we are practising ${skillFocus || subject}. Listen carefully, try your best, and use hints when you need them.`,
     imagePrompt: `Friendly UK curriculum illustration for ${yearGroup} ${subject} lesson about ${safeTopic}. Bright, safe, learner-friendly style.`,
     items,
+    visualAssets,
     metadata: {
       generationType,
       promptType,
@@ -836,7 +900,36 @@ function buildGeneratedPreview({
       subject,
       skillFocus,
       topic: safeTopic,
+      examBoardSource: safeExamBoardSource,
+      examBoardConfidence: safeExamBoardConfidence,
+      examBoardReason: safeExamBoardReason,
+      curriculumFramework: safeCurriculumFramework,
+      countryRegion: safeCountryRegion,
     },
+  };
+}
+
+async function withExecutedVisualAssets(input: {
+  preview: GeneratedPreview;
+  visualPlan: VisualGenerationPlan;
+  apiKey: string | null;
+}) {
+  const imageModel = (process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1").trim() || "gpt-image-1";
+  const executed = await executeVisualGeneration({
+    assets: input.preview.visualAssets,
+    enabled: input.visualPlan.enabled,
+    mode: input.visualPlan.mode,
+    apiKey: input.apiKey,
+    imageModel,
+    maxVisuals: input.visualPlan.maxPerContent,
+  });
+
+  return {
+    preview: {
+      ...input.preview,
+      visualAssets: executed.assets,
+    },
+    visualDiagnostics: executed.diagnostics,
   };
 }
 
@@ -850,6 +943,11 @@ function attachSelectedMetadataToGeneratedItems(
     keyStage: string;
     curriculumPathway: string;
     examBoard: string | null;
+    examBoardSource?: "auto" | "manual" | "school_default";
+    examBoardConfidence?: number;
+    examBoardReason?: string;
+    curriculumFramework?: string;
+    countryRegion?: string;
     skillFocus: string;
     difficulty: number;
     difficultyLabel: string;
@@ -873,6 +971,11 @@ function attachSelectedMetadataToGeneratedItems(
       keyStage: meta.keyStage,
       curriculumPathway: meta.curriculumPathway,
       examBoard: meta.examBoard,
+      examBoardSource: meta.examBoardSource ?? "auto",
+      examBoardConfidence: typeof meta.examBoardConfidence === "number" ? meta.examBoardConfidence : 0,
+      examBoardReason: meta.examBoardReason ?? "Not specified.",
+      curriculumFramework: meta.curriculumFramework ?? "National Curriculum England",
+      countryRegion: meta.countryRegion ?? "UK",
       skillFocus: meta.skillFocus,
       difficulty: meta.difficulty,
       level: meta.difficulty,
@@ -897,6 +1000,11 @@ function pickMetadataSnapshot(item: unknown) {
     subject: row.subject ?? null,
     curriculumPathway: row.curriculumPathway ?? null,
     examBoard: row.examBoard ?? null,
+    examBoardSource: row.examBoardSource ?? null,
+    examBoardConfidence: row.examBoardConfidence ?? null,
+    examBoardReason: row.examBoardReason ?? null,
+    curriculumFramework: row.curriculumFramework ?? null,
+    countryRegion: row.countryRegion ?? null,
     strand: row.strand ?? row.module ?? null,
     skillFocus: row.skillFocus ?? null,
     topic: row.topic ?? null,
@@ -1599,6 +1707,20 @@ export async function POST(req: Request) {
     ? body.curriculumPathway
     : curriculumPathwayForYearGroup(yearGroup);
   const requestedExamBoard = typeof body.examBoard === "string" ? body.examBoard : null;
+  const countryRegion = typeof body.countryRegion === "string" ? body.countryRegion : "UK";
+  const requestedCurriculumFramework = typeof body.curriculumFramework === "string" ? body.curriculumFramework : null;
+  const autoSelectExamBoard = body.autoSelectExamBoard !== false;
+  const manualOverrideAllowed = body.manualExamBoardOverrideAllowed !== false;
+  const schoolDefaults = body.schoolExamBoardSettings && typeof body.schoolExamBoardSettings === "object"
+    ? body.schoolExamBoardSettings as {
+      defaultCountryRegion?: string | null;
+      defaultCurriculumFramework?: string | null;
+      preferredGcseBoardsBySubject?: Record<string, string | null | undefined>;
+      preferredSchoolExamBoard?: string | null;
+      autoSelectEnabled?: boolean;
+      manualOverrideAllowed?: boolean;
+    }
+    : undefined;
   const skillFocus = typeof body.skillFocus === "string" ? body.skillFocus : "";
   // Skill-first targeting
   const targetSkills: string[] = Array.isArray(body.targetSkills) ? (body.targetSkills as string[]) : [];
@@ -1616,12 +1738,54 @@ export async function POST(req: Request) {
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
   const safeKeyStage = keyStageForYearGroup(safeYearGroup);
   const safeCurriculumPathway = requestedCurriculumPathway || curriculumPathwayForYearGroup(safeYearGroup);
+  const examBoardRecommendation = resolveExamBoardRecommendation({
+    subject: sourceSubject,
+    yearGroup: safeYearGroup,
+    keyStage: safeKeyStage,
+    skillFocus: resolvedSkillFocus,
+    countryRegion,
+    curriculumFramework: requestedCurriculumFramework,
+    schoolDefaults,
+  });
+  const effectiveAutoSelectExamBoard = autoSelectExamBoard && schoolDefaults?.autoSelectEnabled !== false;
+  const selectedExamBoard = resolveExamBoardSelection({
+    manualExamBoard: requestedExamBoard,
+    recommendation: examBoardRecommendation,
+    manualOverrideAllowed: schoolDefaults?.manualOverrideAllowed ?? manualOverrideAllowed,
+  });
   const safeExamBoard = shouldApplyExamBoardTag({
     yearGroup: safeYearGroup,
     keyStage: safeKeyStage,
     curriculumPathway: safeCurriculumPathway,
     subject: sourceSubject,
-  }) ? normalizeExamBoard(requestedExamBoard) : null;
+  }) ? (effectiveAutoSelectExamBoard ? (selectedExamBoard.examBoard ?? normalizeExamBoard(requestedExamBoard)) : normalizeExamBoard(requestedExamBoard)) : null;
+  const examBoardSource = effectiveAutoSelectExamBoard
+    ? selectedExamBoard.examBoardSource
+    : (normalizeExamBoard(requestedExamBoard) ? "manual" : "auto");
+  const curriculumFramework = selectedExamBoard.curriculumFramework || examBoardRecommendation.curriculumFramework;
+  const examBoardConfidence = selectedExamBoard.examBoardConfidence;
+  const examBoardReason = selectedExamBoard.examBoardReason;
+
+  const envVisualEnabled = process.env.AI_VISUAL_GENERATION_ENABLED === "1";
+  const envVisualMode = (process.env.AI_VISUAL_GENERATION_DEFAULT_MODE ?? "planned_only").trim().toLowerCase();
+  const envVisualMax = Number(process.env.AI_VISUAL_GENERATION_MAX_PER_CONTENT ?? "2");
+  const requestVisualEnabled = body.aiVisualGenerationEnabled;
+  const visualModeRaw = typeof body.visualGenerationMode === "string" ? body.visualGenerationMode.trim().toLowerCase() : envVisualMode;
+  const visualMode: VisualGenerationMode = visualModeRaw === "none" || visualModeRaw === "generate_now" || visualModeRaw === "planned_only"
+    ? visualModeRaw
+    : "planned_only";
+  const maxVisualsRaw = typeof body.maxVisualsPerLesson === "number" ? body.maxVisualsPerLesson : envVisualMax;
+  const allowedSubjectsRaw = Array.isArray(body.visualAllowedSubjects) ? body.visualAllowedSubjects : [];
+  const visualAllowedSubjects = allowedSubjectsRaw
+    .map((entry) => normalizeSubject(typeof entry === "string" ? entry : ""))
+    .filter((entry): entry is Subject => Boolean(entry));
+  const visualPlan: VisualGenerationPlan = {
+    enabled: typeof requestVisualEnabled === "boolean" ? requestVisualEnabled : envVisualEnabled,
+    mode: visualMode,
+    maxPerContent: Math.max(0, Math.min(6, Number.isFinite(Number(maxVisualsRaw)) ? Number(maxVisualsRaw) : 2)),
+    allowedSubjects: visualAllowedSubjects,
+    requireAdminApproval: body.requireVisualApproval !== false,
+  };
 
   const examBoardRequired = shouldApplyExamBoardTag({
     yearGroup: safeYearGroup,
@@ -1733,12 +1897,24 @@ export async function POST(req: Request) {
     subject: sourceSubject,
     pathway: safeCurriculumPathway,
     examBoard: safeExamBoard,
+    examBoardSource,
+    examBoardConfidence,
+    examBoardReason,
+    curriculumFramework,
+    countryRegion: examBoardRecommendation.countryRegion,
     skillFocus: resolvedSkillFocus,
     generationType,
     parentGenerationType,
     englishStrand,
     promptBuilder: promptType,
     parserUsed: promptType === "reading" ? "reading-object" : "array-items",
+    visualGeneration: {
+      enabled: visualPlan.enabled,
+      mode: visualPlan.mode,
+      maxPerContent: visualPlan.maxPerContent,
+      allowedSubjects: visualPlan.allowedSubjects,
+      requireAdminApproval: visualPlan.requireAdminApproval,
+    },
   };
   const subjectRoute = `${pathSubject}->${generationType}`;
   const sharedGenerationFields = {
@@ -1751,6 +1927,9 @@ export async function POST(req: Request) {
     topic,
     activityType,
     strand: englishStrand,
+    examBoardSource,
+    curriculumFramework,
+    countryRegion: examBoardRecommendation.countryRegion,
   };
   const buildGenerationDebug = (input: {
     providerAttempted: boolean;
@@ -1865,6 +2044,7 @@ export async function POST(req: Request) {
           difficulty: safeLevel,
           topic,
           content: fallback.content,
+          visualPlan,
         });
         const generationMetadata = buildMetadata({
           generationSource: "fallback",
@@ -1937,6 +2117,7 @@ export async function POST(req: Request) {
         difficulty: safeLevel,
         topic,
         content: fallback.content,
+        visualPlan,
       });
       const generationMetadata = buildMetadata({
         generationSource: "fallback",
@@ -2035,6 +2216,7 @@ export async function POST(req: Request) {
         difficulty: safeLevel,
         topic,
         content: fallback.content,
+        visualPlan,
       });
       console.warn("[admin-ai-generate] using spelling fallback", {
         errorCode: failure.errorCode,
@@ -2113,6 +2295,7 @@ export async function POST(req: Request) {
         difficulty: safeLevel,
         topic,
         content: fallback.content,
+        visualPlan,
       });
       return NextResponse.json({
         success: true,
@@ -2219,8 +2402,12 @@ export async function POST(req: Request) {
     englishStrand,
     activityType,
     masteryOutcome,
+    visualGenerationMode: visualPlan.mode,
+    visualGenerationEnabled: visualPlan.enabled,
+    maxVisuals: visualPlan.maxPerContent,
   });
-  const cached = generationCache.get(requestKey);
+  const shouldUseCache = !(visualPlan.enabled && visualPlan.mode === "generate_now");
+  const cached = shouldUseCache ? generationCache.get(requestKey) : undefined;
   if (cached) {
     const cachedValidation = (cached.meta.validation ?? {}) as Record<string, unknown>;
     const generationMetadata = buildMetadata({
@@ -2267,7 +2454,20 @@ export async function POST(req: Request) {
         fallbackTemplate: null,
       }),
       content: cached.content,
-      meta: { ...cachedValidation, cached: true },
+      meta: {
+        ...cachedValidation,
+        cached: true,
+        visualDiagnostics: {
+          visualsRequested: Array.isArray((cached.content as { visualAssets?: unknown[] })?.visualAssets)
+            ? ((cached.content as { visualAssets?: unknown[] }).visualAssets ?? []).length
+            : 0,
+          visualsGenerated: 0,
+          visualsUploaded: 0,
+          visualsFailed: 0,
+          visualGenerationEnabled: visualPlan.enabled,
+          imageModelUsed: (process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1").trim() || "gpt-image-1",
+        },
+      },
     });
   }
 
@@ -2338,6 +2538,11 @@ export async function POST(req: Request) {
       keyStage: safeKeyStage,
       curriculumPathway: safeCurriculumPathway,
       examBoard: safeExamBoard,
+      examBoardSource,
+      examBoardConfidence,
+      examBoardReason,
+      curriculumFramework,
+      countryRegion: examBoardRecommendation.countryRegion,
       skillFocus: resolvedSkillFocus,
       difficulty: safeLevel,
       difficultyLabel: difficultyProfile.difficultyLabel,
@@ -2391,17 +2596,26 @@ export async function POST(req: Request) {
       difficulty: safeLevel,
       topic,
       content: parsed,
+      visualPlan,
     });
+    const executedVisuals = await withExecutedVisualAssets({
+      preview,
+      visualPlan,
+      apiKey,
+    });
+    const finalPreview = executedVisuals.preview;
 
-    generationCache.set(requestKey, {
-      content: preview,
-      meta: {
-        prompt: promptUsed,
-        estimatedCostPence: estimated.estimatedCostPence,
-        estimatedTokens: estimated.estimatedTokens,
-        validation,
-      },
-    });
+    if (shouldUseCache) {
+      generationCache.set(requestKey, {
+        content: finalPreview,
+        meta: {
+          prompt: promptUsed,
+          estimatedCostPence: estimated.estimatedCostPence,
+          estimatedTokens: estimated.estimatedTokens,
+          validation,
+        },
+      });
+    }
 
     const generationMetadata = buildMetadata({
       generationSource: validation.repaired === true ? "repair" : "openai",
@@ -2448,9 +2662,10 @@ export async function POST(req: Request) {
         mappingStatus: "mapped",
         fallbackTemplate: null,
       }),
-      content: preview,
+      content: finalPreview,
       meta: {
         ...validation,
+        visualDiagnostics: executedVisuals.visualDiagnostics,
         metadataDebug: {
           requestedMetadata: {
             yearGroup: safeYearGroup,
@@ -2531,6 +2746,7 @@ export async function POST(req: Request) {
           difficulty: safeLevel,
           topic,
           content: fallback.content,
+          visualPlan,
         });
         console.warn("[admin-ai-generate] recovered with spelling fallback", {
           errorCode: failure.errorCode,
@@ -2614,6 +2830,7 @@ export async function POST(req: Request) {
           difficulty: safeLevel,
           topic,
           content: fallback.content,
+          visualPlan,
         });
         console.warn("[admin-ai-generate] recovered with non-spelling fallback", {
           errorCode: failure.errorCode,
@@ -2725,3 +2942,7 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
+
+

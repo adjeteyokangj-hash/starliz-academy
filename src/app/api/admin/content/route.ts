@@ -42,7 +42,12 @@ const saveContentSchema = z.object({
   keyStage: z.string().optional(),
   yearGroup: z.string().optional(),
   curriculumPathway: z.string().optional(),
+  curriculumFramework: z.string().optional(),
+  countryRegion: z.string().optional(),
   examBoard: z.string().optional(),
+  examBoardSource: z.enum(["auto", "manual", "school_default"]).optional(),
+  examBoardConfidence: z.number().min(0).max(1).optional(),
+  examBoardReason: z.string().optional(),
   skillFocus: z.string().optional(),
   generationType: z.string().optional(),
   itemSchema: z.string().optional(),
@@ -53,6 +58,13 @@ const saveContentSchema = z.object({
   model: z.string().optional(),
   prompt: z.string().optional(),
   estimatedCostPence: z.number().int().min(0).optional(),
+  visualSettings: z.object({
+    enabled: z.boolean().optional(),
+    mode: z.enum(["none", "planned_only", "generate_now"]).optional(),
+    maxPerLesson: z.number().int().min(0).max(6).optional(),
+    allowedSubjects: z.array(z.string()).optional(),
+    requireApproval: z.boolean().optional(),
+  }).optional(),
 });
 
 function extractGeneratedItems(items: unknown): unknown {
@@ -70,6 +82,11 @@ function attachSelectedMetadataToItems(
     keyStage?: string;
     curriculumPathway?: string;
     examBoard?: string | null;
+    examBoardSource?: string;
+    examBoardConfidence?: number;
+    examBoardReason?: string;
+    curriculumFramework?: string;
+    countryRegion?: string;
     skillFocus?: string;
     difficulty: number;
     topic?: string;
@@ -85,6 +102,11 @@ function attachSelectedMetadataToItems(
       keyStage: meta.keyStage ?? null,
       curriculumPathway: meta.curriculumPathway ?? null,
       examBoard: meta.examBoard ?? null,
+      examBoardSource: meta.examBoardSource ?? "auto",
+      examBoardConfidence: typeof meta.examBoardConfidence === "number" ? meta.examBoardConfidence : 0,
+      examBoardReason: meta.examBoardReason ?? null,
+      curriculumFramework: meta.curriculumFramework ?? "National Curriculum England",
+      countryRegion: meta.countryRegion ?? "UK",
       skillFocus: meta.skillFocus ?? null,
       difficulty: meta.difficulty,
       topic: meta.topic ?? row.topic ?? null,
@@ -198,6 +220,11 @@ export async function POST(req: Request) {
       keyStage: body.keyStage,
       curriculumPathway: body.curriculumPathway,
       examBoard: normalizeExamBoard(body.examBoard),
+      examBoardSource: body.examBoardSource,
+      examBoardConfidence: body.examBoardConfidence,
+      examBoardReason: body.examBoardReason,
+      curriculumFramework: body.curriculumFramework,
+      countryRegion: body.countryRegion,
       skillFocus: body.skillFocus,
       difficulty: body.difficulty,
       topic: body.topic,
@@ -288,13 +315,25 @@ export async function POST(req: Request) {
           yearGroup: body.yearGroup,
           keyStage: body.keyStage,
           curriculumPathway: body.curriculumPathway,
+          curriculumFramework: body.curriculumFramework,
+          countryRegion: body.countryRegion,
           examBoard: normalizedExamBoard,
+          examBoardSource: body.examBoardSource ?? "auto",
+          examBoardConfidence: body.examBoardConfidence ?? null,
+          examBoardReason: body.examBoardReason ?? null,
           skillFocus: body.skillFocus,
           difficulty: body.difficulty,
           topic: body.topic,
           qualityScore: (body.items as Record<string, unknown> | null)?.qualityScore ?? null,
           safetyStatus: (body.items as Record<string, unknown> | null)?.safetyStatus ?? null,
           approvalStatus: body.status,
+          visualSettings: body.visualSettings,
+          visualAssets: (() => {
+            const preview = body.items && typeof body.items === "object" && !Array.isArray(body.items)
+              ? body.items as Record<string, unknown>
+              : null;
+            return Array.isArray(preview?.visualAssets) ? preview?.visualAssets : [];
+          })(),
           generatedPreview: body.items && typeof body.items === "object" && !Array.isArray(body.items) ? body.items : undefined,
         }),
       },
@@ -315,6 +354,11 @@ export async function POST(req: Request) {
         yearGroup: body.yearGroup,
         curriculumPathway: body.curriculumPathway,
         examBoard: normalizedExamBoard,
+        examBoardSource: body.examBoardSource ?? "auto",
+        examBoardConfidence: body.examBoardConfidence ?? null,
+        examBoardReason: body.examBoardReason ?? null,
+        curriculumFramework: body.curriculumFramework,
+        countryRegion: body.countryRegion,
         skillFocus: body.skillFocus,
       },
     });

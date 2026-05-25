@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import {
@@ -32,6 +33,12 @@ import {
   type YearGroup,
 } from "@/lib/curriculum";
 import { generationDisplayLabel, type AiGenerationMode } from "@/lib/admin-ai-generation-meta";
+import {
+  resolveExamBoardRecommendation,
+  resolveExamBoardSelection,
+  type ExamBoardRecommendation,
+} from "@/lib/ai/exam-board-resolver";
+import type { VisualAsset } from "@/lib/ai/visual-generation";
 import { uploadMediaFile } from "@/lib/upload-client";
 
 type GeneratedPreviewItem = Record<string, unknown> & {
@@ -51,6 +58,12 @@ type GeneratedPreview = {
   subject: Subject;
   keyStage: string;
   yearGroup: string;
+  curriculumFramework?: string;
+  countryRegion?: string;
+  examBoard?: string | null;
+  examBoardSource?: "auto" | "manual" | "school_default";
+  examBoardConfidence?: number;
+  examBoardReason?: string;
   skillFocus: string;
   difficulty: number;
   topic: string;
@@ -60,6 +73,7 @@ type GeneratedPreview = {
   voiceScript: string;
   imagePrompt: string;
   items: GeneratedPreviewItem[];
+  visualAssets?: VisualAsset[];
 };
 
 function getAvailableSubjects(yearGroup: string | null | undefined): readonly Subject[] {
@@ -178,7 +192,12 @@ type GenerationContext = {
   keyStage: (typeof KEY_STAGES)[number];
   yearGroup: YearGroup;
   curriculumPathway: string;
+  curriculumFramework?: string;
+  countryRegion?: string;
   examBoard?: string;
+  examBoardSource?: "auto" | "manual" | "school_default";
+  examBoardConfidence?: number;
+  examBoardReason?: string;
   englishStrand?: EnglishStrand;
   skillFocus: string;
   ageGroup: (typeof AGE_GROUPS)[number];
@@ -561,6 +580,16 @@ export default function AiGeneratorPage() {
 
   const [yearGroup, setYearGroup] = useState<string>(initialYearGroup);
   const [examBoard, setExamBoard] = useState("");
+  const [autoSelectExamBoard, setAutoSelectExamBoard] = useState(true);
+  const [countryRegion, setCountryRegion] = useState("UK");
+  const [curriculumFramework, setCurriculumFramework] = useState("National Curriculum England");
+  const [allowManualExamBoardOverride, setAllowManualExamBoardOverride] = useState(true);
+  const [schoolPreferredGcseBoard, setSchoolPreferredGcseBoard] = useState("");
+  const [visualGenerationEnabled, setVisualGenerationEnabled] = useState(false);
+  const [visualGenerationMode, setVisualGenerationMode] = useState<"none" | "planned_only" | "generate_now">("planned_only");
+  const [maxVisualsPerLesson, setMaxVisualsPerLesson] = useState(2);
+  const [visualAllowedSubjects, setVisualAllowedSubjects] = useState<string[]>([]);
+  const [requireVisualApproval, setRequireVisualApproval] = useState(true);
   const [ageGroup, setAgeGroup] = useState(initialAgeGroup);
   const availableSubjects = getAvailableSubjects(yearGroup);
   const [subject, setSubject] = useState<Subject>(
@@ -619,6 +648,7 @@ export default function AiGeneratorPage() {
   const [weakAreaSubjectFilter, setWeakAreaSubjectFilter] = useState<"manual" | "all">("manual");
   const [savedContentId, setSavedContentId] = useState<string | null>(null);
   const [assetUploadBusy, setAssetUploadBusy] = useState<"image" | "audio" | null>(null);
+  const [visualAssetActionId, setVisualAssetActionId] = useState<string | null>(null);
   const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId);
   const [generationPhase, setGenerationPhase] = useState<"idle" | "generating" | "repairing-response" | "validating-content" | "retrying-parse">("idle");
   const [generationDiagnostics, setGenerationDiagnostics] = useState<{
@@ -656,6 +686,39 @@ export default function AiGeneratorPage() {
     curriculumPathway,
     subject,
   });
+  const examBoardRecommendation: ExamBoardRecommendation = useMemo(() => resolveExamBoardRecommendation({
+    subject,
+    yearGroup,
+    keyStage,
+    skillFocus,
+    countryRegion,
+    curriculumFramework,
+    schoolDefaults: {
+      preferredGcseBoardsBySubject: schoolPreferredGcseBoard ? { [subject]: schoolPreferredGcseBoard } : undefined,
+      autoSelectEnabled: autoSelectExamBoard,
+      manualOverrideAllowed: allowManualExamBoardOverride,
+      defaultCountryRegion: countryRegion,
+      defaultCurriculumFramework: curriculumFramework,
+    },
+  }), [
+    subject,
+    yearGroup,
+    keyStage,
+    skillFocus,
+    countryRegion,
+    curriculumFramework,
+    schoolPreferredGcseBoard,
+    autoSelectExamBoard,
+    allowManualExamBoardOverride,
+  ]);
+  const resolvedExamBoardSelection = useMemo(() => resolveExamBoardSelection({
+    manualExamBoard: examBoard,
+    recommendation: examBoardRecommendation,
+    manualOverrideAllowed: allowManualExamBoardOverride,
+  }), [examBoard, examBoardRecommendation, allowManualExamBoardOverride]);
+  const effectiveExamBoardForRequest = shouldTagExamBoard
+    ? (autoSelectExamBoard ? (resolvedExamBoardSelection.examBoard ?? examBoard) : examBoard)
+    : "";
 
   const canGenerate = Boolean(
     subject
@@ -664,7 +727,7 @@ export default function AiGeneratorPage() {
     && skillFocus.trim()
     && selectedTopicTheme
     && (!requiresEnglishStrand || Boolean(englishStrand))
-    && (!shouldTagExamBoard || Boolean(examBoard))
+    && (!shouldTagExamBoard || Boolean(effectiveExamBoardForRequest))
   );
 
   const automationDurationLabel = automationDurationMs === null
@@ -691,7 +754,12 @@ export default function AiGeneratorPage() {
     keyStage,
     yearGroup: yearGroup as YearGroup,
     curriculumPathway,
-    examBoard: shouldTagExamBoard ? examBoard : undefined,
+    curriculumFramework,
+    countryRegion,
+    examBoard: shouldTagExamBoard ? effectiveExamBoardForRequest || undefined : undefined,
+    examBoardSource: resolvedExamBoardSelection.examBoardSource,
+    examBoardConfidence: resolvedExamBoardSelection.examBoardConfidence,
+    examBoardReason: resolvedExamBoardSelection.examBoardReason,
     englishStrand: englishStrand || undefined,
     skillFocus,
     ageGroup: ageGroup as (typeof AGE_GROUPS)[number],
@@ -786,7 +854,12 @@ export default function AiGeneratorPage() {
       keyStage,
       yearGroup: yearGroup as YearGroup,
       curriculumPathway,
-      examBoard: shouldTagExamBoard ? examBoard : undefined,
+      curriculumFramework,
+      countryRegion,
+      examBoard: shouldTagExamBoard ? effectiveExamBoardForRequest || undefined : undefined,
+      examBoardSource: resolvedExamBoardSelection.examBoardSource,
+      examBoardConfidence: resolvedExamBoardSelection.examBoardConfidence,
+      examBoardReason: resolvedExamBoardSelection.examBoardReason,
       englishStrand: englishStrand || undefined,
       skillFocus,
       ageGroup: ageGroup as (typeof AGE_GROUPS)[number],
@@ -863,7 +936,21 @@ export default function AiGeneratorPage() {
           keyStage: context.keyStage,
           yearGroup: context.yearGroup,
           curriculumPathway: context.curriculumPathway,
+          curriculumFramework: context.curriculumFramework,
+          countryRegion: context.countryRegion,
           examBoard: context.examBoard,
+          examBoardSource: context.examBoardSource,
+          examBoardConfidence: context.examBoardConfidence,
+          examBoardReason: context.examBoardReason,
+          autoSelectExamBoard,
+          manualExamBoardOverrideAllowed: allowManualExamBoardOverride,
+          schoolExamBoardSettings: {
+            preferredGcseBoardsBySubject: schoolPreferredGcseBoard ? { [context.subject]: schoolPreferredGcseBoard } : undefined,
+            defaultCountryRegion: countryRegion,
+            defaultCurriculumFramework: curriculumFramework,
+            autoSelectEnabled: autoSelectExamBoard,
+            manualOverrideAllowed: allowManualExamBoardOverride,
+          },
           englishStrand: context.englishStrand,
           skillFocus: context.skillFocus,
           ageGroup: context.ageGroup,
@@ -873,6 +960,11 @@ export default function AiGeneratorPage() {
           activityType: context.activityType,
           masteryOutcome: context.masteryOutcome,
           aiMode: context.aiMode,
+          aiVisualGenerationEnabled: visualGenerationEnabled,
+          visualGenerationMode,
+          maxVisualsPerLesson,
+          visualAllowedSubjects,
+          requireVisualApproval,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
       setGenerationPhase("repairing-response");
@@ -966,6 +1058,12 @@ export default function AiGeneratorPage() {
           subject: context.subject,
           keyStage: context.keyStage,
           yearGroup: context.yearGroup,
+          curriculumFramework: typeof content?.curriculumFramework === "string" ? content.curriculumFramework : context.curriculumFramework,
+          countryRegion: typeof content?.countryRegion === "string" ? content.countryRegion : context.countryRegion,
+          examBoard: typeof content?.examBoard === "string" ? content.examBoard : context.examBoard,
+          examBoardSource: content?.examBoardSource ?? context.examBoardSource,
+          examBoardConfidence: typeof content?.examBoardConfidence === "number" ? content.examBoardConfidence : context.examBoardConfidence,
+          examBoardReason: typeof content?.examBoardReason === "string" ? content.examBoardReason : context.examBoardReason,
           skillFocus: context.skillFocus,
           difficulty: context.difficulty,
           status: "draft",
@@ -976,6 +1074,7 @@ export default function AiGeneratorPage() {
           topic: context.topic,
           title: `${formatSubjectLabel(context.subject)} - ${context.topic}`,
           items: applyDefaultItemStatuses(incomingItems),
+          visualAssets: Array.isArray(content?.visualAssets) ? (content.visualAssets as VisualAsset[]) : [],
         });
         setGenerationMeta({
           model: payload.model,
@@ -1032,7 +1131,12 @@ export default function AiGeneratorPage() {
       keyStage,
       yearGroup: yearGroup as YearGroup,
       curriculumPathway,
-      examBoard: shouldTagExamBoard ? examBoard : undefined,
+      curriculumFramework,
+      countryRegion,
+      examBoard: shouldTagExamBoard ? effectiveExamBoardForRequest || undefined : undefined,
+      examBoardSource: resolvedExamBoardSelection.examBoardSource,
+      examBoardConfidence: resolvedExamBoardSelection.examBoardConfidence,
+      examBoardReason: resolvedExamBoardSelection.examBoardReason,
       englishStrand: englishStrand || undefined,
       skillFocus,
       ageGroup: ageGroup as (typeof AGE_GROUPS)[number],
@@ -1067,7 +1171,12 @@ export default function AiGeneratorPage() {
           keyStage: context.keyStage,
           yearGroup: context.yearGroup,
           curriculumPathway: context.curriculumPathway,
+          curriculumFramework: context.curriculumFramework,
+          countryRegion: context.countryRegion,
           examBoard: context.examBoard,
+          examBoardSource: context.examBoardSource,
+          examBoardConfidence: context.examBoardConfidence,
+          examBoardReason: context.examBoardReason,
           englishStrand: context.englishStrand,
           skillFocus: context.skillFocus,
           difficulty: context.difficulty,
@@ -1085,6 +1194,13 @@ export default function AiGeneratorPage() {
           estimatedCostPence: generationMeta?.estimatedCostPence,
           generationSource: context.source,
           weakAreaId: context.weakAreaId,
+          visualSettings: {
+            enabled: visualGenerationEnabled,
+            mode: visualGenerationMode,
+            maxPerLesson: maxVisualsPerLesson,
+            allowedSubjects: visualAllowedSubjects,
+            requireApproval: requireVisualApproval,
+          },
         }),
       });
       const payload = await response.json();
@@ -1171,6 +1287,58 @@ export default function AiGeneratorPage() {
     updatePreviewItem(index, { status });
   }
 
+  async function applyVisualAssetAction(assetId: string, action: "generate" | "regenerate" | "remove") {
+    if (!preview) return;
+    const asset = (preview.visualAssets ?? []).find((entry) => entry.id === assetId);
+    if (!asset) return;
+
+    setVisualAssetActionId(assetId);
+    setError(null);
+    try {
+      const response = await fetchWithAdminSessionRetry("/api/admin/ai/visual-assets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          asset,
+          imageModel: (process.env.NEXT_PUBLIC_OPENAI_IMAGE_MODEL ?? "").trim() || undefined,
+          maxVisuals: 1,
+        }),
+      }, AI_REQUEST_TIMEOUT_MS);
+
+      const parsed = await parseApiResponse<Record<string, unknown>>(response);
+      if (!parsed.ok || !parsed.payload || !response.ok) {
+        setError(parsed.message ?? "Visual asset action failed.");
+        return;
+      }
+
+      const updatedAsset = parsed.payload.asset as VisualAsset | undefined;
+      if (!updatedAsset) {
+        setError("Visual asset action returned no asset payload.");
+        return;
+      }
+
+      setPreview((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          visualAssets: (current.visualAssets ?? []).map((entry) => (entry.id === assetId ? updatedAsset : entry)),
+        };
+      });
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Visual asset action failed.");
+    } finally {
+      setVisualAssetActionId(null);
+    }
+  }
+
+  function regenerateVisualAssetsNow() {
+    if (!previewContext) return;
+    setVisualGenerationEnabled(true);
+    setVisualGenerationMode("generate_now");
+    void generatePreview(0, previewContext);
+  }
+
   async function regenerateItem(index: number) {
     if (loading) return;
     const requestId = ++regenerateRequestIdRef.current;
@@ -1186,7 +1354,21 @@ export default function AiGeneratorPage() {
           keyStage,
           yearGroup,
           curriculumPathway,
-          examBoard: shouldTagExamBoard ? examBoard : undefined,
+          curriculumFramework,
+          countryRegion,
+          examBoard: shouldTagExamBoard ? effectiveExamBoardForRequest || undefined : undefined,
+          examBoardSource: resolvedExamBoardSelection.examBoardSource,
+          examBoardConfidence: resolvedExamBoardSelection.examBoardConfidence,
+          examBoardReason: resolvedExamBoardSelection.examBoardReason,
+          autoSelectExamBoard,
+          manualExamBoardOverrideAllowed: allowManualExamBoardOverride,
+          schoolExamBoardSettings: {
+            preferredGcseBoardsBySubject: schoolPreferredGcseBoard ? { [subject]: schoolPreferredGcseBoard } : undefined,
+            defaultCountryRegion: countryRegion,
+            defaultCurriculumFramework: curriculumFramework,
+            autoSelectEnabled: autoSelectExamBoard,
+            manualOverrideAllowed: allowManualExamBoardOverride,
+          },
           englishStrand: englishStrand || undefined,
           skillFocus,
           ageGroup,
@@ -1196,6 +1378,11 @@ export default function AiGeneratorPage() {
           activityType,
           masteryOutcome,
           aiMode,
+          aiVisualGenerationEnabled: visualGenerationEnabled,
+          visualGenerationMode,
+          maxVisualsPerLesson,
+          visualAllowedSubjects,
+          requireVisualApproval,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
       const parsed = await parseApiResponse<Record<string, unknown>>(response);
@@ -1632,24 +1819,114 @@ export default function AiGeneratorPage() {
               />
             </label>
             <label className="block text-sm font-bold text-slate-300">
-              Exam board {shouldTagExamBoard ? "(required)" : "(not needed)"}
+              Country / region
               <select
-                value={examBoard}
+                value={countryRegion}
                 onChange={(event) => {
                   clearWeakAreaLink();
-                  setExamBoard(event.target.value);
+                  setCountryRegion(event.target.value);
                 }}
                 className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
-                disabled={!shouldTagExamBoard}
               >
-                <option value="">{shouldTagExamBoard ? "Select exam board" : "Not required"}</option>
+                <option value="UK">UK</option>
+                <option value="Ghana">Ghana</option>
+                <option value="Nigeria">Nigeria</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-bold text-slate-300">
+              Curriculum framework
+              <input
+                value={curriculumFramework}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setCurriculumFramework(event.target.value);
+                }}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+              />
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              School preferred GCSE board (optional)
+              <select
+                value={schoolPreferredGcseBoard}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setSchoolPreferredGcseBoard(event.target.value);
+                }}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+              >
+                <option value="">No school default</option>
                 {EXAM_BOARDS.map((board) => (
                   <option key={board} value={board}>{board}</option>
                 ))}
               </select>
             </label>
           </div>
-          {shouldTagExamBoard && !examBoard ? (
+
+          <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+            <label className="flex items-center justify-between gap-3 text-sm font-bold text-slate-200">
+              <span>Auto-select exam board</span>
+              <input
+                type="checkbox"
+                checked={autoSelectExamBoard}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setAutoSelectExamBoard(event.target.checked);
+                }}
+                className="h-4 w-4 accent-cyan-500"
+              />
+            </label>
+            <label className="mt-2 flex items-center justify-between gap-3 text-xs font-semibold text-slate-300">
+              <span>Allow manual override</span>
+              <input
+                type="checkbox"
+                checked={allowManualExamBoardOverride}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setAllowManualExamBoardOverride(event.target.checked);
+                }}
+                className="h-4 w-4 accent-cyan-500"
+              />
+            </label>
+            <p className="mt-2 text-xs text-cyan-200">
+              Recommended: {examBoardRecommendation.recommendedExamBoard ?? "Not required"} • Confidence {Math.round(examBoardRecommendation.confidence * 100)}%
+            </p>
+            <p className="mt-1 text-xs text-slate-400">{examBoardRecommendation.reason}</p>
+            {examBoardRecommendation.alternatives.length > 1 ? (
+              <p className="mt-1 text-xs text-slate-500">Alternatives: {examBoardRecommendation.alternatives.join(", ")}</p>
+            ) : null}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-bold text-slate-300">
+              Exam board {shouldTagExamBoard ? "(required)" : "(not needed)"}
+              <select
+                value={effectiveExamBoardForRequest || ""}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setExamBoard(event.target.value);
+                }}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+                disabled={!shouldTagExamBoard || (autoSelectExamBoard && !allowManualExamBoardOverride)}
+              >
+                <option value="">{shouldTagExamBoard ? "Select exam board" : "Not required"}</option>
+                {(examBoardRecommendation.alternatives.length ? examBoardRecommendation.alternatives : EXAM_BOARDS).map((board) => (
+                  <option key={board} value={board}>{board}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Exam board source
+              <input
+                readOnly
+                value={resolvedExamBoardSelection.examBoardSource}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-white"
+              />
+            </label>
+          </div>
+          {shouldTagExamBoard && !effectiveExamBoardForRequest ? (
             <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{GCSE_EXAM_BOARD_WARNING}</p>
           ) : null}
 
@@ -1709,6 +1986,136 @@ export default function AiGeneratorPage() {
             </select>
             <p className="mt-2 text-xs font-medium text-slate-400">{aiModeHelperText}</p>
           </label>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 space-y-3">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Visual Generation Settings</p>
+            <label className="flex items-center justify-between gap-3 text-sm font-bold text-slate-200">
+              <span>Enable AI visuals</span>
+              <input
+                type="checkbox"
+                checked={visualGenerationEnabled}
+                onChange={(event) => setVisualGenerationEnabled(event.target.checked)}
+                className="h-4 w-4 accent-cyan-500"
+              />
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Default mode
+              <select
+                value={visualGenerationMode}
+                onChange={(event) => setVisualGenerationMode(event.target.value as "none" | "planned_only" | "generate_now")}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+              >
+                <option value="none">No visuals</option>
+                <option value="planned_only">Planned visuals only</option>
+                <option value="generate_now">Generate visuals now</option>
+              </select>
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Max visuals per lesson
+              <input
+                type="number"
+                min={0}
+                max={6}
+                value={maxVisualsPerLesson}
+                onChange={(event) => setMaxVisualsPerLesson(Math.max(0, Math.min(6, Number(event.target.value))))}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+              />
+            </label>
+            <label className="block text-sm font-bold text-slate-300">
+              Allowed subjects
+              <select
+                multiple
+                value={visualAllowedSubjects}
+                onChange={(event) => {
+                  const next = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
+                  setVisualAllowedSubjects(next);
+                }}
+                className="mt-2 h-28 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+              >
+                {availableSubjects.map((entry) => (
+                  <option key={entry} value={entry}>{formatSubjectLabel(entry)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm font-bold text-slate-200">
+              <span>Require admin approval before student display</span>
+              <input
+                type="checkbox"
+                checked={requireVisualApproval}
+                onChange={(event) => setRequireVisualApproval(event.target.checked)}
+                className="h-4 w-4 accent-cyan-500"
+              />
+            </label>
+            <p className="text-xs text-amber-200">Cost warning: generating visuals can increase OpenAI and storage usage. Review planned visuals first where possible.</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/55 p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Visual Generation Settings</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm font-semibold text-slate-200">
+                <span>Enable AI visuals</span>
+                <input
+                  type="checkbox"
+                  checked={visualGenerationEnabled}
+                  onChange={(event) => setVisualGenerationEnabled(event.target.checked)}
+                  className="h-4 w-4 accent-cyan-500"
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm font-semibold text-slate-200">
+                <span>Require admin approval</span>
+                <input
+                  type="checkbox"
+                  checked={requireVisualApproval}
+                  onChange={(event) => setRequireVisualApproval(event.target.checked)}
+                  className="h-4 w-4 accent-cyan-500"
+                />
+              </label>
+              <label className="block text-sm font-bold text-slate-300">
+                Default mode
+                <select
+                  value={visualGenerationMode}
+                  onChange={(event) => setVisualGenerationMode(event.target.value as "none" | "planned_only" | "generate_now")}
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                >
+                  <option value="none">No visuals</option>
+                  <option value="planned_only">Planned visuals only</option>
+                  <option value="generate_now">Generate visuals now</option>
+                </select>
+              </label>
+              <label className="block text-sm font-bold text-slate-300">
+                Max visuals per lesson
+                <input
+                  type="number"
+                  min={0}
+                  max={6}
+                  value={maxVisualsPerLesson}
+                  onChange={(event) => setMaxVisualsPerLesson(Math.max(0, Math.min(6, Number(event.target.value) || 0)))}
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+                />
+              </label>
+            </div>
+            <label className="mt-3 block text-sm font-bold text-slate-300">
+              Allowed subjects for visuals
+              <select
+                multiple
+                value={visualAllowedSubjects}
+                onChange={(event) => {
+                  const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+                  setVisualAllowedSubjects(values);
+                }}
+                className="mt-2 min-h-24 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+              >
+                {availableSubjects.map((option) => (
+                  <option key={option} value={option}>{formatSubjectLabel(option)}</option>
+                ))}
+              </select>
+            </label>
+            {visualGenerationEnabled && visualGenerationMode === "generate_now" ? (
+              <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                Estimated cost warning: enabling image generation can incur extra provider and storage costs.
+              </p>
+            ) : null}
+          </div>
 
           <label className="block text-sm font-bold text-slate-300">
             Topic / theme
@@ -2157,6 +2564,69 @@ export default function AiGeneratorPage() {
                 <p className="font-bold">{formatAiGeneratorValidationSuccessMessage(effectiveGenerationContext.subject, effectiveGenerationContext.skillFocus)}</p>
               )}
             </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/55 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Planned Visual Assets</p>
+              <p className="mt-1 text-xs text-slate-500">Visuals are optional. Failed visuals do not block lesson save.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={regenerateVisualAssetsNow}
+                  className="rounded-lg border border-cyan-500/50 px-3 py-1.5 text-xs font-black text-cyan-100"
+                >
+                  Generate / Regenerate visuals now
+                </button>
+              </div>
+              {preview.visualAssets?.length ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {preview.visualAssets.map((asset) => (
+                    <article key={asset.id} className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+                      {asset.imageUrl ? (
+                        <Image src={asset.imageUrl} alt={asset.altText} width={640} height={320} className="mb-2 h-40 w-full rounded-lg border border-slate-800 object-cover" unoptimized />
+                      ) : null}
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-bold text-white">{asset.title}</p>
+                        <span className="rounded-full bg-cyan-500/15 px-2 py-1 text-[10px] font-black uppercase text-cyan-200">{asset.type}</span>
+                      </div>
+                      <p className="mt-2 text-xs text-slate-300"><span className="font-semibold text-slate-200">Alt text:</span> {asset.altText}</p>
+                      <p className="mt-1 text-xs text-slate-400"><span className="font-semibold text-slate-200">Prompt:</span> {asset.prompt}</p>
+                      <p className="mt-2 text-[11px] text-amber-200">Status: {asset.status}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">Provider: {asset.provider ?? "pending"}</p>
+                      {asset.error ? <p className="mt-1 text-[11px] text-rose-300">Error: {asset.error}</p> : null}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={visualAssetActionId === asset.id}
+                          onClick={() => void applyVisualAssetAction(asset.id, "generate")}
+                          className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] font-black text-slate-200 disabled:opacity-60"
+                        >
+                          {visualAssetActionId === asset.id ? "Working..." : "Generate image"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={visualAssetActionId === asset.id}
+                          onClick={() => void applyVisualAssetAction(asset.id, "regenerate")}
+                          className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] font-black text-slate-200 disabled:opacity-60"
+                        >
+                          Regenerate
+                        </button>
+                        <button
+                          type="button"
+                          disabled={visualAssetActionId === asset.id}
+                          onClick={() => void applyVisualAssetAction(asset.id, "remove")}
+                          className="rounded-lg border border-rose-500/50 px-2 py-1 text-[11px] font-black text-rose-200 disabled:opacity-60"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">No visual assets planned for this preview.</p>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
               {preview.items.map((item, index) => (
                 <article key={`${String(item.id ?? "item")}-${index}`} className={`relative z-10 flex min-h-0 flex-col rounded-2xl border p-3 ${item.status === "rejected" ? "border-rose-500/40 bg-rose-950/30 opacity-70" : item.status === "approved" ? "border-emerald-500/35 bg-emerald-950/20" : "border-amber-500/30 bg-amber-950/20"}`}>
