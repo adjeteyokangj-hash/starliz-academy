@@ -26,6 +26,7 @@ type EditState = {
 };
 
 type Provider = "openai" | "payment" | "email" | "voice" | "storage";
+type VoiceTestVoice = "alloy" | "aria" | "sage" | "verse";
 
 type ApiKeyRow = {
   id: string;
@@ -89,6 +90,9 @@ const settingsModules = [
   { title: "AI Configuration",    icon: "🤖", desc: "Models, prompts, limits",            href: "/admin/ai" },
 ];
 
+const VOICE_TEST_TEXT_DEFAULT = "Hello, this is a live OpenAI voice test from StarLiz Academy.";
+const VOICE_TEST_VOICES: readonly VoiceTestVoice[] = ["alloy", "aria", "sage", "verse"];
+
 function SectionHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }) {
   return (
     <div className="mb-6">
@@ -116,6 +120,11 @@ export default function SettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [emailFrom, setEmailFrom] = useState("");
   const [cardMsg, setCardMsg] = useState<{ provider: Provider; text: string; ok: boolean } | null>(null);
+  const [testingProvider, setTestingProvider] = useState<Provider | null>(null);
+  const [voiceTestText, setVoiceTestText] = useState(VOICE_TEST_TEXT_DEFAULT);
+  const [voiceTestVoice, setVoiceTestVoice] = useState<VoiceTestVoice>("alloy");
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
+  const [voiceFallbackUsed, setVoiceFallbackUsed] = useState(false);
 
   const [admins, setAdmins] = useState<AdminUserRow[]>([]);
   const [roles, setRoles] = useState<RoleRow[]>([]);
@@ -186,6 +195,14 @@ export default function SettingsPage() {
     void loadRoles();
   }, [loadKeys, loadAdmins, loadRoles]);
 
+  useEffect(() => {
+    return () => {
+      if (voicePreviewUrl) {
+        URL.revokeObjectURL(voicePreviewUrl);
+      }
+    };
+  }, [voicePreviewUrl]);
+
   async function saveKey(event: FormEvent, provider: Provider, label: string) {
     event.preventDefault();
     setMessage(null);
@@ -222,17 +239,91 @@ export default function SettingsPage() {
     await loadKeys();
   }
 
+  function playBrowserSpeechFallback(text: string): boolean {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      return false;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-GB";
+    utterance.rate = 0.96;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+    return true;
+  }
+
   async function testKey(provider: Provider) {
     setCardMsg(null);
-    const response = await fetch("/api/admin/settings/api-keys/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider }),
-    });
-    if (handleUnauthorized(response)) return;
-    const payload = await response.json();
-    setCardMsg({ provider, text: payload.message ?? payload.error ?? "Test complete.", ok: response.ok });
-    await loadKeys();
+    setTestingProvider(provider);
+
+    if (provider === "voice") {
+      const testText = voiceTestText.trim();
+      if (!testText) {
+        setCardMsg({ provider, text: "Enter test text before running voice test.", ok: false });
+        setTestingProvider(null);
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/admin/voice/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: testText, voice: voiceTestVoice }),
+        });
+        if (handleUnauthorized(response)) return;
+
+        if (response.ok) {
+          const audioBlob = await response.blob();
+          const nextUrl = URL.createObjectURL(audioBlob);
+          setVoiceFallbackUsed(false);
+          setVoicePreviewUrl((current) => {
+            if (current) URL.revokeObjectURL(current);
+            return nextUrl;
+          });
+          setCardMsg({ provider, text: `Voice test succeeded using ${voiceTestVoice}. Preview is ready below.`, ok: true });
+          await loadKeys();
+          return;
+        }
+
+        const payload = await response.json().catch(() => ({} as { error?: string }));
+        const fallbackOk = playBrowserSpeechFallback(testText);
+        setVoiceFallbackUsed(fallbackOk);
+        setCardMsg({
+          provider,
+          text: fallbackOk
+            ? `OpenAI TTS failed (${payload.error ?? "voice provider error"}). Browser speech fallback played instead.`
+            : (payload.error ?? "Voice test failed and browser speech fallback is unavailable."),
+          ok: fallbackOk,
+        });
+      } catch {
+        const fallbackOk = playBrowserSpeechFallback(testText);
+        setVoiceFallbackUsed(fallbackOk);
+        setCardMsg({
+          provider,
+          text: fallbackOk
+            ? "Voice test request failed. Browser speech fallback played instead."
+            : "Voice test request failed and browser speech fallback is unavailable.",
+          ok: fallbackOk,
+        });
+      } finally {
+        setTestingProvider(null);
+      }
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/admin/settings/api-keys/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+      if (handleUnauthorized(response)) return;
+      const payload = await response.json();
+      setCardMsg({ provider, text: payload.message ?? payload.error ?? "Test complete.", ok: response.ok });
+      await loadKeys();
+    } finally {
+      setTestingProvider(null);
+    }
   }
 
   async function createAdmin(event: FormEvent) {
@@ -350,6 +441,32 @@ export default function SettingsPage() {
                     className={inputCls + " text-xs"}
                   />
                 )}
+                {item.provider === "voice" && (
+                  <>
+                    <select
+                      value={voiceTestVoice}
+                      onChange={(e) => setVoiceTestVoice(e.target.value as VoiceTestVoice)}
+                      className={inputCls + " text-xs"}
+                    >
+                      {VOICE_TEST_VOICES.map((voice) => (
+                        <option key={voice} value={voice}>{voice}</option>
+                      ))}
+                    </select>
+                    <textarea
+                      value={voiceTestText}
+                      onChange={(e) => setVoiceTestText(e.target.value)}
+                      rows={3}
+                      maxLength={500}
+                      placeholder="Text for live voice testing"
+                      className={inputCls + " resize-none text-xs"}
+                    />
+                    {voicePreviewUrl ? (
+                      <audio controls preload="metadata" src={voicePreviewUrl} className="w-full rounded-xl border border-slate-800 bg-slate-900/70">
+                        Your browser does not support audio playback.
+                      </audio>
+                    ) : null}
+                  </>
+                )}
                 <input
                   value={values[item.provider] ?? ""}
                   onChange={(e) => setValues((c) => ({ ...c, [item.provider]: e.target.value }))}
@@ -363,10 +480,30 @@ export default function SettingsPage() {
                 )}
                 <div className="flex gap-2">
                   <button className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-black text-white hover:bg-indigo-500 transition">Save key</button>
-                  <button type="button" onClick={() => void testKey(item.provider)} className="rounded-xl border border-slate-700 px-4 text-sm font-bold text-slate-300 hover:bg-slate-800 transition">
-                    Test
+                  <button
+                    type="button"
+                    onClick={() => void testKey(item.provider)}
+                    disabled={testingProvider === item.provider}
+                    className="rounded-xl border border-slate-700 px-4 text-sm font-bold text-slate-300 hover:bg-slate-800 transition disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {testingProvider === item.provider ? "Testing..." : "Test"}
                   </button>
+                  {item.provider === "voice" && cardMsg?.provider === "voice" && !cardMsg.ok ? (
+                    <button
+                      type="button"
+                      onClick={() => void testKey("voice")}
+                      disabled={testingProvider === "voice"}
+                      className="rounded-xl border border-amber-500/40 px-4 text-sm font-bold text-amber-300 hover:bg-amber-500/10 transition disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Retry
+                    </button>
+                  ) : null}
                 </div>
+                {item.provider === "voice" && voiceFallbackUsed ? (
+                  <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200">
+                    Browser speech fallback is active for this test session.
+                  </p>
+                ) : null}
               </form>
             );
           })}
