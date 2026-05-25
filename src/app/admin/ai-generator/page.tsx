@@ -31,7 +31,7 @@ import {
   type Subject,
   type YearGroup,
 } from "@/lib/curriculum";
-import { generationDisplayLabel } from "@/lib/admin-ai-generation-meta";
+import { generationDisplayLabel, type AiGenerationMode } from "@/lib/admin-ai-generation-meta";
 
 type GeneratedPreviewItem = Record<string, unknown> & {
   id?: string;
@@ -131,7 +131,7 @@ type GenerationApiMetadata = {
   keySource: "database" | "environment" | "none";
   openAiAttempted: boolean;
   openAiSucceeded: boolean;
-  aiMode: "live_openai_only" | "openai_with_fallback" | "fallback_only";
+  aiMode: AiGenerationMode;
 };
 
 type GenerationDebug = {
@@ -185,6 +185,7 @@ type GenerationContext = {
   topic: string;
   activityType?: string;
   masteryOutcome?: string;
+  aiMode: AiGenerationMode;
   targetStudentId: string | null;
   source: "manual" | "weak-area";
   weakAreaId: string | null;
@@ -374,7 +375,24 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
 }
 
 const AI_REQUEST_TIMEOUT_MS = 180000;
-const DEFAULT_AI_MODE = "live_openai_only" as const;
+const DEFAULT_AI_MODE: AiGenerationMode = "live_openai_only";
+const AI_MODE_OPTIONS: Array<{ value: AiGenerationMode; label: string; helper: string }> = [
+  {
+    value: "live_openai_only",
+    label: "Live OpenAI only",
+    helper: "OpenAI must succeed. Fallback content will not be shown.",
+  },
+  {
+    value: "openai_with_fallback",
+    label: "OpenAI with fallback",
+    helper: "If OpenAI fails, fallback content may be shown and clearly labelled.",
+  },
+  {
+    value: "fallback_only",
+    label: "Fallback only / testing",
+    helper: "Uses local fallback content for testing. It will be labelled as fallback.",
+  },
+];
 
 let inFlightAdminRefresh: Promise<boolean> | null = null;
 
@@ -562,6 +580,7 @@ export default function AiGeneratorPage() {
   const [difficulty, setDifficulty] = useState(
     Number.isFinite(prefillDifficulty) && prefillDifficulty >= 1 ? prefillDifficulty : prefillWords ? 1 : 2
   );
+  const [aiMode, setAiMode] = useState<AiGenerationMode>(DEFAULT_AI_MODE);
   const [items, setItems] = useState(5);
   const [topicChoice, setTopicChoice] = useState<string>(prefillWords ? CUSTOM_TOPIC_VALUE : "");
   const [customTopic, setCustomTopic] = useState(prefillWords ? `Focus practice on: ${prefillWords}` : "");
@@ -678,6 +697,7 @@ export default function AiGeneratorPage() {
     topic: selectedTopicTheme,
     activityType,
     masteryOutcome,
+    aiMode,
     targetStudentId,
     source: "manual" as const,
     weakAreaId: null,
@@ -709,6 +729,7 @@ export default function AiGeneratorPage() {
       ? { label: "Auto-Repaired", className: "bg-amber-500/15 text-amber-200" }
       : { label: "Valid", className: "bg-emerald-500/15 text-emerald-200" };
   const generationSourceLabel = generationDisplayLabel(generationMeta?.generationMetadata);
+  const aiModeHelperText = AI_MODE_OPTIONS.find((option) => option.value === aiMode)?.helper ?? AI_MODE_OPTIONS[0].helper;
   const providerStatusBadge = generationMeta?.generationMetadata
     ? generationMeta.generationMetadata.openAiSucceeded
       ? { label: "Provider: OpenAI healthy", className: "bg-emerald-500/15 text-emerald-200" }
@@ -771,6 +792,7 @@ export default function AiGeneratorPage() {
       topic: selectedTopicTheme,
       activityType,
       masteryOutcome,
+      aiMode,
       targetStudentId,
       source: "manual",
       weakAreaId: null,
@@ -848,7 +870,7 @@ export default function AiGeneratorPage() {
           topic: context.topic,
           activityType: context.activityType,
           masteryOutcome: context.masteryOutcome,
-          aiMode: DEFAULT_AI_MODE,
+          aiMode: context.aiMode,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
       setGenerationPhase("repairing-response");
@@ -906,7 +928,7 @@ export default function AiGeneratorPage() {
         fallbackReason?: string | null;
         validationReason?: string | null;
         keySource?: "database" | "environment" | "none";
-        aiMode?: "live_openai_only" | "openai_with_fallback" | "fallback_only";
+        aiMode?: AiGenerationMode;
         generationMetadata?: GenerationApiMetadata;
         generationDebug?: GenerationDebug;
         meta?: ValidationMeta;
@@ -1152,7 +1174,7 @@ export default function AiGeneratorPage() {
           topic: `${selectedTopicTheme || skillFocus} replacement item`,
           activityType,
           masteryOutcome,
-          aiMode: DEFAULT_AI_MODE,
+          aiMode,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
       const parsed = await parseApiResponse<Record<string, unknown>>(response);
@@ -1390,6 +1412,7 @@ export default function AiGeneratorPage() {
       ageGroup: ageGroupForYearGroup(derivedYearGroup),
       difficulty: recommendedDifficulty,
       topic: recommendedTopic,
+      aiMode,
       targetStudentId: area.studentId,
       source: "weak-area",
       weakAreaId: area.id,
@@ -1650,6 +1673,23 @@ export default function AiGeneratorPage() {
           </label>
 
           <label className="block text-sm font-bold text-slate-300">
+            AI mode
+            <select
+              value={aiMode}
+              onChange={(event) => {
+                clearWeakAreaLink();
+                setAiMode(event.target.value as AiGenerationMode);
+              }}
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+            >
+              {AI_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs font-medium text-slate-400">{aiModeHelperText}</p>
+          </label>
+
+          <label className="block text-sm font-bold text-slate-300">
             Topic / theme
             <select
               value={effectiveTopicChoice}
@@ -1738,6 +1778,7 @@ export default function AiGeneratorPage() {
               <p className="font-bold text-slate-300 mb-2">Diagnostic Info:</p>
               <ul className="space-y-1">
                 <li><strong>Source:</strong> {effectiveGenerationContext.source === "weak-area" ? "AI Intervention Engine" : "Manual generator"}</li>
+                <li><strong>AI Mode:</strong> {effectiveGenerationContext.aiMode}</li>
                 <li><strong>Year Group:</strong> {effectiveGenerationContext.yearGroup}</li>
                 <li><strong>Subject:</strong> {formatSubjectLabel(effectiveGenerationContext.subject)}</li>
                 {effectiveGenerationContext.englishStrand ? <li><strong>English Strand:</strong> {effectiveGenerationContext.englishStrand}</li> : null}
@@ -1751,11 +1792,13 @@ export default function AiGeneratorPage() {
                 {generationMeta?.generationMetadata ? <li><strong>Key Source:</strong> {generationMeta.generationMetadata.keySource}</li> : null}
                 {generationMeta?.generationMetadata ? <li><strong>OpenAI attempted:</strong> {generationMeta.generationMetadata.openAiAttempted ? "Yes" : "No"}</li> : null}
                 {generationMeta?.generationMetadata ? <li><strong>OpenAI succeeded:</strong> {generationMeta.generationMetadata.openAiSucceeded ? "Yes" : "No"}</li> : null}
+                {generationMeta?.generationMetadata ? <li><strong>Fallback used:</strong> {generationMeta.generationMetadata.usedFallback ? "Yes" : "No"}</li> : null}
+                {generationMeta?.generationMetadata ? <li><strong>Fallback reason:</strong> {generationMeta.generationMetadata.fallbackReason ?? "None"}</li> : null}
                 <li><strong>Difficulty:</strong> {effectiveGenerationContext.difficulty}/5</li>
                 <li><strong>Items Requested:</strong> {items}</li>
                 {generationMeta?.model ? <li><strong>Model:</strong> {generationMeta.model}</li> : null}
                 {generationMeta?.fallback?.used ? <li><strong>Fallback:</strong> {generationMeta.fallback.reasonCode}</li> : null}
-                {generationMeta?.fallbackReason ? <li><strong>Fallback Reason:</strong> {generationMeta.fallbackReason}</li> : null}
+                {generationMeta?.fallbackReason ? <li><strong>Legacy fallback reason:</strong> {generationMeta.fallbackReason}</li> : null}
                 {generationMeta?.validationReason ? <li><strong>Validation Reason:</strong> {generationMeta.validationReason}</li> : null}
                 {generationMeta?.debug ? (
                   <>
@@ -1772,7 +1815,7 @@ export default function AiGeneratorPage() {
                     <li><strong>Repaired:</strong> {generationMeta.validation.repaired ? "Yes" : "No"}</li>
                     <li><strong>AI generated:</strong> {generationMeta.validation.aiGenerated === false ? "No" : "Yes"}</li>
                     <li><strong>Regenerated after validation:</strong> {generationMeta.validation.regeneratedAfterValidation ? "Yes" : "No"}</li>
-                    <li><strong>Fallback used:</strong> {generationMeta.validation.fallbackUsed ? "Yes" : "No"}</li>
+                    <li><strong>Validation fallback used:</strong> {generationMeta.validation.fallbackUsed ? "Yes" : "No"}</li>
                     <li><strong>Year level match:</strong> {generationMeta.validation.yearLevelMatch === false ? "No" : "Yes"}</li>
                     <li><strong>Subject match:</strong> {generationMeta.validation.subjectMatch === false ? "No" : "Yes"}</li>
                     <li><strong>Skill/topic match:</strong> {generationMeta.validation.skillTopicMatch === false ? "No" : "Yes"}</li>
