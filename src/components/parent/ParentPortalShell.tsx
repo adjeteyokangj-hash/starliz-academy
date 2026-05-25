@@ -464,6 +464,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [childCertificatesLoading, setChildCertificatesLoading] = useState(false);
   const [childCertificatesError, setChildCertificatesError] = useState<string | null>(null);
   const [previewByCertificate, setPreviewByCertificate] = useState<Record<string, boolean>>({});
+  const [childPanelsLoading, setChildPanelsLoading] = useState(false);
+  const [childPanelsLoadedFor, setChildPanelsLoadedFor] = useState<string | null>(null);
   const [goingToDashboard, setGoingToDashboard] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -519,13 +521,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       }
 
       setLoading(true);
-      const [accountRes, childrenRes, subscriptionRes, consentRes, ticketsRes, messagesRes] = await Promise.all([
+      const [accountRes, childrenRes, subscriptionRes, consentRes] = await Promise.all([
         fetch("/api/account", { credentials: "include" }),
         fetch("/api/children", { credentials: "include" }),
         fetch("/api/subscription", { credentials: "include" }),
         fetch("/api/consent", { credentials: "include" }),
-        fetch("/api/parent/support", { credentials: "include" }),
-        fetch("/api/parent/messages", { credentials: "include" }),
       ]);
 
       if (cancelled) return;
@@ -559,18 +559,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         setConsent((await consentRes.json()) as ConsentPayload);
       }
 
-      if (ticketsRes.ok) {
-        const payload = (await ticketsRes.json()) as { tickets: SupportTicket[] };
-        setTickets(payload.tickets ?? []);
-      }
-
-      if (messagesRes.ok) {
-        const payload = (await messagesRes.json()) as MessagesPayload;
-        setThreads(payload.threads ?? []);
-        setActiveThreadId(payload.selectedThreadId ?? null);
-        setThreadMessages(payload.messages ?? []);
-      }
-
       setLoading(false);
     }
 
@@ -582,78 +570,162 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   }, [pathname, router, section]);
 
   useEffect(() => {
-    if (!selectedChildId) return;
+    if (loading || !selectedChildId) return;
+
+    const resolvedSection = pathname && pathToSection.has(pathname)
+      ? (pathToSection.get(pathname) as PortalSection)
+      : section;
+    const summaryMode = resolvedSection === "dashboard";
+    const loadKey = `${selectedChildId}:${summaryMode ? "summary" : "full"}`;
+    if (childPanelsLoadedFor === loadKey) return;
 
     let cancelled = false;
 
-    async function loadChild() {
-      setAcademicLoading(true);
-      setAcademicError(null);
-      setChildCertificatesLoading(true);
-      setChildCertificatesError(null);
-
-      const [childRes, insightsRes, assignmentsRes, academicRes, certificatesRes, schoolWeekRes] = await Promise.all([
-        fetch(`/api/children/${selectedChildId}/data`, { credentials: "include" }),
-        fetch("/api/parent/insights", { credentials: "include" }),
-        fetch(`/api/assignments?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
-        fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
-        fetch(`/api/parent/students/${encodeURIComponent(selectedChildId ?? "")}/certificates`, { credentials: "include" }),
-        fetch(`/api/parent/students/${encodeURIComponent(selectedChildId ?? "")}/school-week-settings`, { credentials: "include" }),
-      ]);
-      
-      if (cancelled) return;
-      
-      if (childRes.ok) {
-        setChildDetail((await childRes.json()) as ChildDetail);
-      }
-      
-      if (insightsRes.ok) {
-        setInsights((await insightsRes.json()) as InsightsPayload);
-      }
-
-      if (assignmentsRes.ok) {
-        const payload = (await assignmentsRes.json()) as ChildAssignmentsPayload;
-        setChildAssignments(payload.assignments ?? []);
-      } else {
-        setChildAssignments([]);
-      }
-
-      if (academicRes.ok) {
-        setAcademicIntelligence((await academicRes.json()) as ParentAcademicIntelligencePayload);
+    const timer = window.setTimeout(() => {
+      async function loadChildPanels() {
+        setChildPanelsLoading(true);
+        setAcademicLoading(true);
+        setChildCertificatesLoading(true);
         setAcademicError(null);
-      } else {
-        const payload = await academicRes.json().catch(() => null) as { error?: string } | null;
-        setAcademicIntelligence(null);
-        setAcademicError(payload?.error ?? "Unable to load academic intelligence.");
-      }
-
-      if (certificatesRes.ok) {
-        const payload = (await certificatesRes.json()) as ParentCertificatesPayload;
-        setChildCertificates(payload.certificates ?? []);
         setChildCertificatesError(null);
-      } else {
-        const payload = (await certificatesRes.json().catch(() => null)) as { error?: string } | null;
-        setChildCertificates([]);
-        setChildCertificatesError(payload?.error ?? "Unable to load child certificates.");
+
+        try {
+          const [childRes, insightsRes, assignmentsRes, academicRes, certificatesRes, schoolWeekRes, ticketsRes, messagesRes] = await Promise.all([
+            fetch(`/api/children/${selectedChildId}/data${summaryMode ? "?summary=1" : ""}`, { credentials: "include" }),
+            fetch(`/api/parent/insights${summaryMode ? "?summary=1" : ""}`, { credentials: "include" }),
+            fetch(`/api/assignments?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
+            fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
+            fetch(`/api/parent/students/${encodeURIComponent(selectedChildId ?? "")}/certificates`, { credentials: "include" }),
+            fetch(`/api/parent/students/${encodeURIComponent(selectedChildId ?? "")}/school-week-settings`, { credentials: "include" }),
+            fetch("/api/parent/support", { credentials: "include" }),
+            fetch("/api/parent/messages", { credentials: "include" }),
+          ]);
+
+          if (cancelled) return;
+
+          if (childRes.ok) {
+            setChildDetail((await childRes.json()) as ChildDetail);
+          }
+
+          if (insightsRes.ok) {
+            setInsights((await insightsRes.json()) as InsightsPayload);
+          }
+
+          if (assignmentsRes.ok) {
+            const payload = (await assignmentsRes.json()) as ChildAssignmentsPayload;
+            setChildAssignments(payload.assignments ?? []);
+          } else {
+            setChildAssignments([]);
+          }
+
+          if (academicRes.ok) {
+            setAcademicIntelligence((await academicRes.json()) as ParentAcademicIntelligencePayload);
+            setAcademicError(null);
+          } else {
+            const payload = await academicRes.json().catch(() => null) as { error?: string } | null;
+            setAcademicIntelligence(null);
+            setAcademicError(payload?.error ?? "Unable to load academic intelligence.");
+          }
+
+          if (certificatesRes.ok) {
+            const payload = (await certificatesRes.json()) as ParentCertificatesPayload;
+            setChildCertificates(payload.certificates ?? []);
+            setChildCertificatesError(null);
+          } else {
+            const payload = (await certificatesRes.json().catch(() => null)) as { error?: string } | null;
+            setChildCertificates([]);
+            setChildCertificatesError(payload?.error ?? "Unable to load child certificates.");
+          }
+
+          if (schoolWeekRes.ok) {
+            const payload = (await schoolWeekRes.json()) as { settings?: SchoolWeekSettingsPayload };
+            setSchoolWeekSettings(payload.settings ?? defaultSchoolWeekSettings);
+          } else {
+            setSchoolWeekSettings(defaultSchoolWeekSettings);
+          }
+
+          if (ticketsRes.ok) {
+            const payload = (await ticketsRes.json()) as { tickets: SupportTicket[] };
+            setTickets(payload.tickets ?? []);
+          }
+
+          if (messagesRes.ok) {
+            const payload = (await messagesRes.json()) as MessagesPayload;
+            setThreads(payload.threads ?? []);
+            setActiveThreadId(payload.selectedThreadId ?? null);
+            setThreadMessages(payload.messages ?? []);
+          }
+
+          setChildPanelsLoadedFor(loadKey);
+        } finally {
+          if (!cancelled) {
+            setAcademicLoading(false);
+            setChildCertificatesLoading(false);
+            setChildPanelsLoading(false);
+          }
+        }
       }
 
-      if (schoolWeekRes.ok) {
-        const payload = (await schoolWeekRes.json()) as { settings?: SchoolWeekSettingsPayload };
-        setSchoolWeekSettings(payload.settings ?? defaultSchoolWeekSettings);
-      } else {
-        setSchoolWeekSettings(defaultSchoolWeekSettings);
-      }
-
-      setAcademicLoading(false);
-      setChildCertificatesLoading(false);
-    }
-
-    void loadChild();
+      void loadChildPanels();
+    }, 300);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [selectedChildId]);
+  }, [childPanelsLoadedFor, loading, pathname, section, selectedChildId]);
+
+  useEffect(() => {
+    if (loading) return;
+    const resolvedSection = pathname && pathToSection.has(pathname)
+      ? (pathToSection.get(pathname) as PortalSection)
+      : section;
+    if (resolvedSection !== "support") return;
+    if (tickets.length > 0) return;
+
+    let cancelled = false;
+
+    async function loadSupportTickets() {
+      const refreshed = await fetch("/api/parent/support", { credentials: "include" });
+      if (!refreshed.ok || cancelled) return;
+      const payload = (await refreshed.json()) as { tickets: SupportTicket[] };
+      if (!cancelled) {
+        setTickets(payload.tickets ?? []);
+      }
+    }
+
+    void loadSupportTickets();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, pathname, section, tickets.length]);
+
+  useEffect(() => {
+    if (loading) return;
+    const resolvedSection = pathname && pathToSection.has(pathname)
+      ? (pathToSection.get(pathname) as PortalSection)
+      : section;
+    if (resolvedSection !== "messages") return;
+    if (threads.length > 0 || threadMessages.length > 0) return;
+
+    let cancelled = false;
+
+    async function loadMessages() {
+      const response = await fetch("/api/parent/messages", { credentials: "include" });
+      if (!response.ok || cancelled) return;
+      const payload = (await response.json()) as MessagesPayload;
+      if (!cancelled) {
+        setThreads(payload.threads ?? []);
+        setActiveThreadId(payload.selectedThreadId ?? null);
+        setThreadMessages(payload.messages ?? []);
+      }
+    }
+
+    void loadMessages();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, pathname, section, threadMessages.length, threads.length]);
 
   const activeChild = useMemo(() => {
     if (!children?.children?.length) return null;
@@ -703,7 +775,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         throw new Error(payload?.error ?? "Unable to update catch-up task.");
       }
 
-      const refresh = await fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId)}`, { credentials: "include" });
+      const refresh = await fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId)}&includeSync=1`, { credentials: "include" });
       if (refresh.ok) {
         setAcademicIntelligence((await refresh.json()) as ParentAcademicIntelligencePayload);
       }
@@ -735,7 +807,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         setSchoolWeekSettings(payload.settings);
       }
 
-      const refresh = await fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId)}`, { credentials: "include" });
+      const refresh = await fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId)}&includeSync=1`, { credentials: "include" });
       if (refresh.ok) {
         setAcademicIntelligence((await refresh.json()) as ParentAcademicIntelligencePayload);
       }
@@ -966,6 +1038,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <p className="mt-1">Key Stage: <span className="font-semibold text-cyan-300">{activeChild.keyStageLevel}</span></p>
                           )}
                           <p className="mt-1">Dashboard: <span className="font-semibold text-white">{dashboardTierLabel(resolveDashboardTier({ yearGroup: activeChild.yearGroup, ageYears: activeChild.ageYears, dateOfBirth: activeChild.dateOfBirth }))}</span></p>
+                          {childPanelsLoading ? (
+                            <p className="mt-1 text-xs text-slate-400">Loading progress insights...</p>
+                          ) : null}
                           {insights?.lastActivityAt && (
                             <p className="mt-1">Last active: <span className="font-semibold text-cyan-400">{formatLastActivity(insights.lastActivityAt)}</span></p>
                           )}
@@ -1116,6 +1191,16 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       disabled
                       helpText="Add a child first to start a lesson."
                     />
+                  </div>
+                </Panel>
+              ) : null}
+
+              {selectedChildId && childPanelsLoading && childAssignments.length === 0 ? (
+                <Panel title="Assigned tasks" description="Loading assigned work for this child.">
+                  <div className="space-y-2">
+                    <div className="h-10 animate-pulse rounded-xl bg-white/10" />
+                    <div className="h-10 animate-pulse rounded-xl bg-white/10" />
+                    <div className="h-10 animate-pulse rounded-xl bg-white/10" />
                   </div>
                 </Panel>
               ) : null}

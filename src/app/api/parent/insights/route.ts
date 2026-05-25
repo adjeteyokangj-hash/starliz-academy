@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from "@/lib/learning_dna";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
 
@@ -13,11 +13,13 @@ export async function GET() {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
 
+  const summaryMode = new URL(request.url).searchParams.get("summary") === "1";
+
   const attempts = await prisma.attempt.findMany({
     where: { student: { parentId: parentScope.parentId } },
     select: { skillFocus: true, correct: true, subject: true, spellingMode: true, createdAt: true },
     orderBy: { createdAt: "desc" },
-    take: 300,
+    take: summaryMode ? 120 : 300,
   });
 
   const buckets = new Map<string, { total: number; correct: number }>();
@@ -63,26 +65,40 @@ export async function GET() {
     .map(([mode]) => mode)
     .slice(0, 1)[0] ?? null;
 
-  const studentProfiles = await prisma.studentProfile.findMany({
-    where: { child: { parentId: parentScope.parentId } },
-    select: {
-      childId: true,
-      aiLearningProfileJson: true,
-      child: { select: { name: true } },
-    },
-  });
+  let learningDna: Array<{
+    childId: string;
+    childName: string;
+    totalAttempts?: number;
+    enoughHistory?: boolean;
+    readinessLabel?: string;
+    fallbackMessage?: string | null;
+    confidenceTrend?: number;
+    preferredPace?: string;
+    recommendations?: string[];
+  }> = [];
 
-  const learningDna = studentProfiles
-    .map((entry) => {
-      const snapshot = extractLearningDnaFromProfileJson(entry.aiLearningProfileJson);
-      if (!snapshot) return null;
-      return {
-        childId: entry.childId,
-        childName: entry.child.name,
-        ...buildParentLearningDnaSummary(snapshot),
-      };
-    })
-    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  if (!summaryMode) {
+    const studentProfiles = await prisma.studentProfile.findMany({
+      where: { child: { parentId: parentScope.parentId } },
+      select: {
+        childId: true,
+        aiLearningProfileJson: true,
+        child: { select: { name: true } },
+      },
+    });
+
+    learningDna = studentProfiles
+      .map((entry) => {
+        const snapshot = extractLearningDnaFromProfileJson(entry.aiLearningProfileJson);
+        if (!snapshot) return null;
+        return {
+          childId: entry.childId,
+          childName: entry.child.name,
+          ...buildParentLearningDnaSummary(snapshot),
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  }
 
   // Calculate daily activity for the past 30 days
   const now = new Date();

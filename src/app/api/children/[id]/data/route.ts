@@ -9,16 +9,22 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (!session) return response;
 
   const { id } = await params;
+  const requestUrl = new URL(_.url);
+  const summaryMode = requestUrl.searchParams.get("summary") === "1";
   const child = await prisma.childProfile.findFirst({ where: { id, parentId: session.userId } });
   if (!child) {
     return NextResponse.json({ error: "Child not found." }, { status: 404 });
   }
 
+  const progressTake = summaryMode ? 80 : 500;
+  const historyTake = summaryMode ? 160 : 1000;
+  const walletTake = summaryMode ? 80 : 250;
+
   const [progressRecords, rewards, questionHistory, walletTransactions] = await Promise.all([
-    prisma.progressRecord.findMany({ where: { childId: id }, orderBy: { createdAt: "desc" }, take: 500 }),
+    prisma.progressRecord.findMany({ where: { childId: id }, orderBy: { createdAt: "desc" }, take: progressTake }),
     prisma.childReward.findMany({ where: { childId: id }, include: { reward: true }, orderBy: { purchasedAt: "desc" } }),
-    prisma.questionHistory.findMany({ where: { childId: id }, orderBy: { createdAt: "desc" }, take: 1000 }),
-    prisma.walletTransaction.findMany({ where: { childId: id }, orderBy: { createdAt: "desc" }, take: 250 }),
+    prisma.questionHistory.findMany({ where: { childId: id }, orderBy: { createdAt: "desc" }, take: historyTake }),
+    prisma.walletTransaction.findMany({ where: { childId: id }, orderBy: { createdAt: "desc" }, take: walletTake }),
   ]);
 
   const normalizedChild = fromDbRecord(child);

@@ -14,7 +14,7 @@ import {
   parseSubjectFocus,
 } from "@/lib/student-learning-state";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
 
@@ -22,6 +22,9 @@ export async function GET() {
   if (!parentScope) {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
+
+  const params = new URL(request.url).searchParams;
+  const quickMode = params.get("quick") === "1";
 
   const studentId = await resolveParentActiveChildId(parentScope.parentId);
   if (!studentId) {
@@ -83,6 +86,44 @@ export async function GET() {
 
   try {
     const journey = await buildDailyJourney(student.id);
+
+    if (quickMode) {
+      const quickAssignment = await prisma.assignment.findFirst({
+        where: {
+          studentId: student.id,
+          student: { parentId: parentScope.parentId },
+          status: { in: ["assigned", "in_progress"] },
+        },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          contentId: true,
+          content: { select: { contentType: true } },
+        },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        student,
+        journey,
+        lesson: quickAssignment
+          ? {
+              assignmentId: quickAssignment.id,
+              contentId: quickAssignment.contentId,
+              href: taskHrefForContentType(quickAssignment.content.contentType, quickAssignment.id),
+            }
+          : null,
+        placementLessons: null,
+        structure: [
+          "Placement-guided first lesson",
+          "Core practice tasks",
+          "Weak-area repair",
+          "Mixed reinforcement",
+          "Boss gate",
+        ],
+      });
+    }
+
     const quick = parseQuickLevelFinderSession(profile?.aiLearningProfileJson ?? null);
 
     let placementLessons: ReturnType<typeof selectPlacementLessons> | null = null;

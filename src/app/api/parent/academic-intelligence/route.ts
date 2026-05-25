@@ -18,6 +18,7 @@ export async function GET(request: Request) {
 
   const params = new URL(request.url).searchParams;
   const childId = params.get("childId")?.trim();
+  const includeSync = params.get("includeSync") === "1";
   if (!childId) return NextResponse.json({ error: "childId is required." }, { status: 400 });
 
   const ownedChild = await prisma.childProfile.findFirst({
@@ -32,18 +33,21 @@ export async function GET(request: Request) {
   const existingTasks = await listCatchUpTasks(childId);
   const existingHomework = await listHomeworkTasks(childId);
   let output = buildAcademicIntelligence(child, { existingCatchUpTasks: existingTasks, existingHomeworkTasks: existingHomework });
-  const syncedTasks = await syncCatchUpTasks({
-    studentId: childId,
-    recommendations: output.catchUpRecommendations,
-    schoolWeekModePlan: output.schoolWeekModePlan,
-    actorUserId: session.userId,
-  });
-  const syncedHomework = await syncHomeworkTasks({
-    studentId: childId,
-    schoolWeekModePlan: output.schoolWeekModePlan,
-    actorUserId: session.userId,
-  });
-  output = buildAcademicIntelligence(child, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
+
+  if (includeSync) {
+    const syncedTasks = await syncCatchUpTasks({
+      studentId: childId,
+      recommendations: output.catchUpRecommendations,
+      schoolWeekModePlan: output.schoolWeekModePlan,
+      actorUserId: session.userId,
+    });
+    const syncedHomework = await syncHomeworkTasks({
+      studentId: childId,
+      schoolWeekModePlan: output.schoolWeekModePlan,
+      actorUserId: session.userId,
+    });
+    output = buildAcademicIntelligence(child, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
+  }
 
   return NextResponse.json({
     studentId: output.studentId,

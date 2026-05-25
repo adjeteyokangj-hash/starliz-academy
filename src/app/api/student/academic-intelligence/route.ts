@@ -18,6 +18,7 @@ export async function GET(request: Request) {
   }
 
   const params = new URL(request.url).searchParams;
+  const includeSync = params.get("includeSync") === "1";
   const studentId = params.get("studentId") ?? await resolveParentActiveChildId(parentScope.parentId);
   if (!studentId) {
     return NextResponse.json({
@@ -59,18 +60,21 @@ export async function GET(request: Request) {
   const existingTasks = await listCatchUpTasks(studentId);
   const existingHomework = await listHomeworkTasks(studentId);
   let output = buildAcademicIntelligence(source, { existingCatchUpTasks: existingTasks, existingHomeworkTasks: existingHomework });
-  const syncedTasks = await syncCatchUpTasks({
-    studentId,
-    recommendations: output.catchUpRecommendations,
-    schoolWeekModePlan: output.schoolWeekModePlan,
-    actorUserId: session.userId,
-  });
-  const syncedHomework = await syncHomeworkTasks({
-    studentId,
-    schoolWeekModePlan: output.schoolWeekModePlan,
-    actorUserId: session.userId,
-  });
-  output = buildAcademicIntelligence(source, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
+
+  if (includeSync) {
+    const syncedTasks = await syncCatchUpTasks({
+      studentId,
+      recommendations: output.catchUpRecommendations,
+      schoolWeekModePlan: output.schoolWeekModePlan,
+      actorUserId: session.userId,
+    });
+    const syncedHomework = await syncHomeworkTasks({
+      studentId,
+      schoolWeekModePlan: output.schoolWeekModePlan,
+      actorUserId: session.userId,
+    });
+    output = buildAcademicIntelligence(source, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
+  }
 
   return NextResponse.json(toStudentSafeAcademicIntelligence(output));
 }

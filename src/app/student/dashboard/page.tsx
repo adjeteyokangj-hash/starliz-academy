@@ -391,6 +391,7 @@ export default function StudentDashboardPage() {
   const [stats, setStats] = useState({ stars: 0, xp: 0, coins: 0, streak: 0 });
   const [dashboardTier, setDashboardTier] = useState<"primary" | "ks3" | "gcse">("primary");
   const [profileContext, setProfileContext] = useState<{ yearGroup: string; ageGroup: string; keyStage: string } | null>(null);
+  const [activeChildId, setActiveChildId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [startingJourney, setStartingJourney] = useState(false);
   const [bossUnlocked, setBossUnlocked] = useState(false);
@@ -417,6 +418,7 @@ export default function StudentDashboardPage() {
   const [bossAssignmentId, setBossAssignmentId] = useState<string | null>(null);
   const [bossLaunching, setBossLaunching] = useState(false);
   const [issuingCertificate, setIssuingCertificate] = useState(false);
+  const [deferredPanelsLoadedFor, setDeferredPanelsLoadedFor] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -437,6 +439,8 @@ export default function StudentDashboardPage() {
       const childPayload = (await childRes.json()) as ActiveChildPayload;
       if (!childPayload.child?.id) {
         setMissingChildContext(true);
+        setActiveChildId(null);
+        setAcademicLoading(false);
         setAssignments([]);
         setSkills([]);
         setSessionSummary(null);
@@ -454,23 +458,13 @@ export default function StudentDashboardPage() {
         return;
       }
 
-      setAcademicLoading(true);
-      setAcademicError("");
-
-      const [assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes] = await Promise.all([
+      const [assignmentsRes, skillsRes, bossStatusRes] = await Promise.all([
         fetch("/api/student/assignments", { credentials: "include" }),
         fetch("/api/student/skills", { credentials: "include" }),
         fetch("/api/student/boss-battle", { credentials: "include" }),
-        fetch("/api/student/session-summary", { credentials: "include" }),
-        fetch("/api/student/academic-intelligence", { credentials: "include" }),
-        fetch("/api/student/learning-state", { credentials: "include" }),
-        fetch("/api/student/quick-level-finder/levels", { credentials: "include" }),
-        fetch("/api/student/placement-lessons", { credentials: "include" }),
-        fetch("/api/student/progression/recommendations", { credentials: "include" }),
-        fetch("/api/student/certificates/eligibility", { credentials: "include" }),
       ]);
 
-      if ([assignmentsRes, skillsRes, bossStatusRes, sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes].some((res) => res.status === 401)) {
+      if ([assignmentsRes, skillsRes, bossStatusRes].some((res) => res.status === 401)) {
         setAuthRequired(true);
         setError("Your session expired. Please sign in again.");
         return;
@@ -481,23 +475,6 @@ export default function StudentDashboardPage() {
       const bossStatusPayload = bossStatusRes.ok
         ? ((await bossStatusRes.json()) as BossBattleStatusPayload)
         : ({ unlocked: false, alreadyPlayedToday: false, lessonAssignmentId: null } as BossBattleStatusPayload);
-      const sessionSummaryPayload = sessionSummaryRes.ok
-        ? ((await sessionSummaryRes.json()) as SessionSummaryPayload)
-        : ({} as SessionSummaryPayload);
-      const learningStatePayload = learningStateRes.ok
-        ? ((await learningStateRes.json()) as StudentLearningStatePayload)
-        : ({} as StudentLearningStatePayload);
-      const placementLevelsPayload = placementLevelsRes.ok
-        ? ((await placementLevelsRes.json()) as QuickLevelFinderLevelsPayload)
-        : ({} as QuickLevelFinderLevelsPayload);
-      const placementLessonsPayload = placementLessonsRes.ok
-        ? ((await placementLessonsRes.json()) as PlacementLessonsPayload)
-        : ({} as PlacementLessonsPayload);
-      const progressionPayload = ((await progressionRes.json()) as ProgressionPayload);
-      const certificateEligibilityPayload = ((await certificateEligibilityRes.json()) as CertificateEligibilityPayload);
-      const academicPayload = academicIntelligenceRes.ok
-        ? ((await academicIntelligenceRes.json()) as StudentAcademicIntelligencePayload)
-        : null;
 
       if (!assignmentsRes.ok) {
         if (assignmentsRes.status === 400 && /active student/i.test(assignmentsPayload.error ?? "")) {
@@ -513,6 +490,7 @@ export default function StudentDashboardPage() {
           setBossUnlocked(false);
           setBossPlayedToday(false);
           setBossAssignmentId(null);
+          setActiveChildId(null);
           return;
         }
         throw new Error(assignmentsPayload.error ?? "Unable to load assignments.");
@@ -523,32 +501,9 @@ export default function StudentDashboardPage() {
       setBossUnlocked(Boolean(bossStatusPayload.unlocked));
       setBossPlayedToday(Boolean(bossStatusPayload.alreadyPlayedToday));
       setBossAssignmentId(typeof bossStatusPayload.lessonAssignmentId === "string" ? bossStatusPayload.lessonAssignmentId : null);
-      setSessionSummary(sessionSummaryPayload.summary ?? null);
-      setLearningState(learningStatePayload.learningState ?? null);
-      setPlacementLevels(placementLevelsPayload.levels ?? null);
-      setPlacementLessonGroups(Array.isArray(placementLessonsPayload.grouped) ? placementLessonsPayload.grouped : []);
-      setPlacementContentGaps(Array.isArray(placementLessonsPayload.contentGaps) ? placementLessonsPayload.contentGaps : []);
-      setProgression(progressionPayload ?? null);
-      setCertificateEligibility(certificateEligibilityPayload ?? null);
-      if (academicPayload) {
-        const state = learningStatePayload.learningState;
-        if (state?.isFirstTimeStudent || !state?.hasAssessmentData) {
-          setAcademicIntelligence(null);
-        } else {
-          setAcademicIntelligence(academicPayload);
-        }
-      } else {
-        setAcademicIntelligence(null);
-        setAcademicError("Unable to load Smart Catch-Up right now.");
-      }
-
-      if (childPayload.child?.id) {
-        const ownedResponse = await fetch(`/api/shop/owned?childId=${encodeURIComponent(childPayload.child.id)}`, { credentials: "include" });
-        if (ownedResponse.ok) {
-          const ownedPayload = (await ownedResponse.json()) as ShopOwnedPayload;
-          setOwnedBadges((ownedPayload.owned ?? []).filter((item) => item.category === "badges"));
-        }
-      }
+      setActiveChildId(childPayload.child.id);
+      setDeferredPanelsLoadedFor(null);
+      setAcademicLoading(true);
 
       if (childPayload.child) {
         setChildName(childPayload.child.name || "Learner");
@@ -574,10 +529,99 @@ export default function StudentDashboardPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load dashboard.");
     } finally {
-      setAcademicLoading(false);
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (loading || !activeChildId) return;
+    if (deferredPanelsLoadedFor === activeChildId) return;
+
+    let cancelled = false;
+
+    const timer = window.setTimeout(() => {
+      async function loadDeferredPanels() {
+        setAcademicLoading(true);
+        setAcademicError("");
+
+        try {
+          const [sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes, ownedResponse] = await Promise.all([
+            fetch("/api/student/session-summary", { credentials: "include" }),
+            fetch("/api/student/academic-intelligence", { credentials: "include" }),
+            fetch("/api/student/learning-state", { credentials: "include" }),
+            fetch("/api/student/quick-level-finder/levels", { credentials: "include" }),
+            fetch("/api/student/placement-lessons", { credentials: "include" }),
+            fetch("/api/student/progression/recommendations", { credentials: "include" }),
+            fetch("/api/student/certificates/eligibility", { credentials: "include" }),
+            fetch(`/api/shop/owned?childId=${encodeURIComponent(activeChildId ?? "")}`, { credentials: "include" }),
+          ]);
+
+          if (cancelled) return;
+          if ([sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes].some((res) => res.status === 401)) {
+            setAuthRequired(true);
+            setError("Your session expired. Please sign in again.");
+            return;
+          }
+
+          const sessionSummaryPayload = sessionSummaryRes.ok
+            ? ((await sessionSummaryRes.json()) as SessionSummaryPayload)
+            : ({} as SessionSummaryPayload);
+          const learningStatePayload = learningStateRes.ok
+            ? ((await learningStateRes.json()) as StudentLearningStatePayload)
+            : ({} as StudentLearningStatePayload);
+          const placementLevelsPayload = placementLevelsRes.ok
+            ? ((await placementLevelsRes.json()) as QuickLevelFinderLevelsPayload)
+            : ({} as QuickLevelFinderLevelsPayload);
+          const placementLessonsPayload = placementLessonsRes.ok
+            ? ((await placementLessonsRes.json()) as PlacementLessonsPayload)
+            : ({} as PlacementLessonsPayload);
+          const progressionPayload = ((await progressionRes.json()) as ProgressionPayload);
+          const certificateEligibilityPayload = ((await certificateEligibilityRes.json()) as CertificateEligibilityPayload);
+          const academicPayload = academicIntelligenceRes.ok
+            ? ((await academicIntelligenceRes.json()) as StudentAcademicIntelligencePayload)
+            : null;
+
+          setSessionSummary(sessionSummaryPayload.summary ?? null);
+          setLearningState(learningStatePayload.learningState ?? null);
+          setPlacementLevels(placementLevelsPayload.levels ?? null);
+          setPlacementLessonGroups(Array.isArray(placementLessonsPayload.grouped) ? placementLessonsPayload.grouped : []);
+          setPlacementContentGaps(Array.isArray(placementLessonsPayload.contentGaps) ? placementLessonsPayload.contentGaps : []);
+          setProgression(progressionPayload ?? null);
+          setCertificateEligibility(certificateEligibilityPayload ?? null);
+
+          if (academicPayload) {
+            const state = learningStatePayload.learningState;
+            if (state?.isFirstTimeStudent || !state?.hasAssessmentData) {
+              setAcademicIntelligence(null);
+            } else {
+              setAcademicIntelligence(academicPayload);
+            }
+          } else {
+            setAcademicIntelligence(null);
+            setAcademicError("Unable to load Smart Catch-Up right now.");
+          }
+
+          if (ownedResponse.ok) {
+            const ownedPayload = (await ownedResponse.json()) as ShopOwnedPayload;
+            setOwnedBadges((ownedPayload.owned ?? []).filter((item) => item.category === "badges"));
+          }
+
+          setDeferredPanelsLoadedFor(activeChildId);
+        } finally {
+          if (!cancelled) {
+            setAcademicLoading(false);
+          }
+        }
+      }
+
+      void loadDeferredPanels();
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeChildId, deferredPanelsLoadedFor, loading]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -746,7 +790,7 @@ export default function StudentDashboardPage() {
     setStartingJourney(true);
     setError("");
     try {
-      const response = await fetch("/api/student/daily-journey", { credentials: "include" });
+      const response = await fetch("/api/student/daily-journey?quick=1", { credentials: "include" });
       const payload = (await response.json()) as DailyJourneyPayload;
       if (!response.ok) {
         if (response.status === 409 && payload && typeof payload === "object" && "code" in payload && (payload as { code?: string }).code === "ONBOARDING_REQUIRED") {
