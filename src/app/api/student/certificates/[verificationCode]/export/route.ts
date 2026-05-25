@@ -5,6 +5,7 @@ import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import { listIssuedCertificatesForLibrary } from "@/lib/certificate-library";
 import { buildCertificateExportHtml, buildCertificateExportPayload } from "@/lib/certificate-pdf-export";
+import { storeCertificateExportHtml } from "@/lib/certificate-export-storage";
 
 export async function GET(request: Request, { params }: { params: Promise<{ verificationCode: string }> }) {
   const { session, response } = await requireSession();
@@ -69,17 +70,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ veri
 
   const url = new URL(request.url);
   const mode = url.searchParams.get("mode");
-  if (mode === "json") {
-    return NextResponse.json({ ok: true, export: exportResult.payload });
-  }
+  const shouldStore = ["1", "true", "yes"].includes((url.searchParams.get("store") ?? "").toLowerCase());
 
   const html = buildCertificateExportHtml(exportResult.payload);
+  const upload = shouldStore
+    ? await storeCertificateExportHtml({ certificateNumber: exportResult.payload.certificateNumber, html }).catch(() => null)
+    : null;
+
+  if (mode === "json") {
+    return NextResponse.json({ ok: true, export: exportResult.payload, upload });
+  }
+
   return new Response(html, {
     status: 200,
     headers: {
       "content-type": "text/html; charset=utf-8",
       "content-disposition": `inline; filename="${exportResult.payload.certificateNumber}.html"`,
       "cache-control": "no-store",
+      ...(upload?.publicUrl ? { "x-certificate-export-url": upload.publicUrl } : {}),
     },
   });
 }

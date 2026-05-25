@@ -13,6 +13,7 @@ import {
   isGcseYearGroup,
   keyStageForYearGroup,
 } from "@/lib/curriculum";
+import { uploadMediaFile } from "@/lib/upload-client";
 
 type ParentOption = { id: string; name: string | null; email: string };
 
@@ -63,6 +64,7 @@ export default function NewStudentPage() {
   const [level, setLevel] = useState("1");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/parents")
@@ -137,6 +139,20 @@ export default function NewStudentPage() {
       setError("An error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleAvatarUpload(file: File | null) {
+    if (!file) return;
+    setAvatarUploading(true);
+    setError(null);
+    try {
+      const uploaded = await uploadMediaFile(file, "avatars");
+      setAvatar(uploaded.publicUrl);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Avatar upload failed.");
+    } finally {
+      setAvatarUploading(false);
     }
   }
 
@@ -238,6 +254,18 @@ export default function NewStudentPage() {
                 className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
                 placeholder="https://..."
               />
+              <input
+                type="file"
+                accept="image/*"
+                disabled={avatarUploading}
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  void handleAvatarUpload(file);
+                  event.currentTarget.value = "";
+                }}
+                className="mt-2 block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-500 file:px-3 file:py-2 file:font-bold file:text-white"
+              />
+              <p className="mt-1 text-xs text-slate-500">{avatarUploading ? "Uploading avatar..." : "Upload an image to generate the avatar URL automatically."}</p>
             </label>
           </div>
         </fieldset>

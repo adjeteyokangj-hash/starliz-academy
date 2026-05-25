@@ -55,7 +55,7 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
             {verification.status === "valid" ? (
               <div className="space-y-2 print:hidden">
                 <a
-                  href={`/api/certificates/verify/${encodeURIComponent(verification.certificate.verificationCode)}/export`}
+                  href={`/api/certificates/verify/${encodeURIComponent(verification.certificate.verificationCode)}/export?store=1`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100"

@@ -1193,7 +1193,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             </a>
                             {selectedChildId && item.status === "issued" ? (
                               <a
-                                href={`/api/parent/students/${encodeURIComponent(selectedChildId)}/certificates/${encodeURIComponent(item.verificationCode)}/export`}
+                                href={`/api/parent/students/${encodeURIComponent(selectedChildId)}/certificates/${encodeURIComponent(item.verificationCode)}/export?store=1`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="rounded-xl border border-emerald-300/70 bg-emerald-300/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:bg-emerald-300/25"

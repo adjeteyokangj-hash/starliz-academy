@@ -32,6 +32,7 @@ import {
   type YearGroup,
 } from "@/lib/curriculum";
 import { generationDisplayLabel, type AiGenerationMode } from "@/lib/admin-ai-generation-meta";
+import { uploadMediaFile } from "@/lib/upload-client";
 
 type GeneratedPreviewItem = Record<string, unknown> & {
   id?: string;
@@ -617,6 +618,7 @@ export default function AiGeneratorPage() {
   const [weakAreaYearGroupFilter, setWeakAreaYearGroupFilter] = useState("");
   const [weakAreaSubjectFilter, setWeakAreaSubjectFilter] = useState<"manual" | "all">("manual");
   const [savedContentId, setSavedContentId] = useState<string | null>(null);
+  const [assetUploadBusy, setAssetUploadBusy] = useState<"image" | "audio" | null>(null);
   const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId);
   const [generationPhase, setGenerationPhase] = useState<"idle" | "generating" | "repairing-response" | "validating-content" | "retrying-parse">("idle");
   const [generationDiagnostics, setGenerationDiagnostics] = useState<{
@@ -1113,6 +1115,25 @@ export default function AiGeneratorPage() {
       setError("Unable to save to Content Library.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function uploadGeneratedAsset(file: File | null, kind: "image" | "audio") {
+    if (!file || !preview) return;
+    setAssetUploadBusy(kind);
+    setError(null);
+    try {
+      const folder = kind === "audio" ? "audio" : "admin";
+      const uploaded = await uploadMediaFile(file, folder);
+      if (kind === "audio") {
+        setPreview((current) => current ? { ...current, voiceScript: `${current.voiceScript}\nAudio asset: ${uploaded.publicUrl}`.trim() } : current);
+      } else {
+        setPreview((current) => current ? { ...current, imagePrompt: `${current.imagePrompt}\nImage asset: ${uploaded.publicUrl}`.trim() } : current);
+      }
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Asset upload failed.");
+    } finally {
+      setAssetUploadBusy(null);
     }
   }
 
@@ -2067,6 +2088,17 @@ export default function AiGeneratorPage() {
                   onChange={(event) => setPreview((current) => current ? { ...current, voiceScript: event.target.value } : current)}
                   className="mt-2 min-h-24 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-200 outline-none"
                 />
+                <input
+                  type="file"
+                  accept="audio/*"
+                  disabled={assetUploadBusy !== null}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    void uploadGeneratedAsset(file, "audio");
+                    event.currentTarget.value = "";
+                  }}
+                  className="mt-2 block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-600 file:px-3 file:py-2 file:font-bold file:text-white"
+                />
               </label>
               <label className="block rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Image prompt</span>
@@ -2074,6 +2106,17 @@ export default function AiGeneratorPage() {
                   value={preview.imagePrompt}
                   onChange={(event) => setPreview((current) => current ? { ...current, imagePrompt: event.target.value } : current)}
                   className="mt-2 min-h-24 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-200 outline-none"
+                />
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  disabled={assetUploadBusy !== null}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    void uploadGeneratedAsset(file, "image");
+                    event.currentTarget.value = "";
+                  }}
+                  className="mt-2 block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-600 file:px-3 file:py-2 file:font-bold file:text-white"
                 />
               </label>
             </div>

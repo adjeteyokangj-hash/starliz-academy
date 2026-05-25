@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import { AGE_GROUPS, KEY_STAGES, YEAR_GROUPS, ageGroupForYearGroup, keyStageForYearGroup, subjectsForYearGroup, skillsForSubjectAndYear, type Subject, type YearGroup } from "@/lib/curriculum";
 import { buildLessonPathway, LESSON_DIFFICULTY_BANDS, LESSON_STATUS_OPTIONS, LESSON_TEMPLATES, type LessonDifficultyBand, type LessonTemplateValue, type LessonPathwayStep } from "@/lib/lesson-curriculum";
+import { uploadMediaFile } from "@/lib/upload-client";
 
 type ContentItem = {
   id: string;
@@ -85,6 +86,7 @@ export default function LessonsPage() {
   const [contentSearch, setContentSearch] = useState("");
   const [skillSearch, setSkillSearch] = useState("");
   const [aiBuilding, setAiBuilding] = useState(false);
+  const [lessonUploadBusy, setLessonUploadBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const availableSubjects = useMemo(() => subjectsForYearGroup(form.yearGroup), [form.yearGroup]);
@@ -293,6 +295,26 @@ export default function LessonsPage() {
     }
   }
 
+  async function handleLessonMediaUpload(file: File | null) {
+    if (!file) return;
+    setLessonUploadBusy(true);
+    setMsg(null);
+    try {
+      const uploaded = await uploadMediaFile(file, "lessons");
+      setForm((prev) => ({
+        ...prev,
+        objectives: prev.objectives.trim()
+          ? `${prev.objectives.trim()}\nLesson media: ${uploaded.publicUrl}`
+          : `Lesson media: ${uploaded.publicUrl}`,
+      }));
+      setMsg({ text: "Lesson media uploaded and linked in objective text.", ok: true });
+    } catch (error) {
+      setMsg({ text: error instanceof Error ? error.message : "Lesson media upload failed.", ok: false });
+    } finally {
+      setLessonUploadBusy(false);
+    }
+  }
+
   async function remove(id: string, title: string) {
     if (!window.confirm(`Delete lesson "${title}"? This cannot be undone.`)) return;
     setBusy(true);
@@ -332,6 +354,21 @@ export default function LessonsPage() {
           <label><span className="mb-1 block text-xs font-bold uppercase tracking-widest text-slate-500">Difficulty — <span className="text-violet-300">{form.difficulty}</span></span><input type="range" min={1} max={10} value={form.difficulty} onChange={(e) => setField("difficulty", Number(e.target.value))} className="w-full accent-violet-500" /></label>
           <label><span className="mb-1 block text-xs font-bold uppercase tracking-widest text-slate-500">Status</span><select className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-violet-500" value={form.status} onChange={(e) => setField("status", e.target.value as LessonFormState["status"]) }>{LESSON_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status.replace(/_/g, " ")}</option>)}</select></label>
           <label className="md:col-span-2"><span className="mb-1 block text-xs font-bold uppercase tracking-widest text-slate-500">Lesson Objective</span><textarea className="min-h-24 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-violet-500" value={form.objectives} onChange={(e) => setField("objectives", e.target.value)} placeholder="What should the learner be able to do by the end of the lesson?" /></label>
+          <label className="md:col-span-2">
+            <span className="mb-1 block text-xs font-bold uppercase tracking-widest text-slate-500">Lesson Media Upload</span>
+            <input
+              type="file"
+              accept="image/*,application/pdf,audio/*,video/*"
+              disabled={lessonUploadBusy}
+              onChange={(event) => {
+                const next = event.target.files?.[0] ?? null;
+                void handleLessonMediaUpload(next);
+                event.currentTarget.value = "";
+              }}
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 file:mr-3 file:rounded-xl file:border-0 file:bg-violet-600 file:px-3 file:py-2 file:text-xs file:font-bold file:text-white"
+            />
+            <p className="mt-1 text-xs text-slate-500">Uploads to R2 lessons folder and appends the media URL to the objective field.</p>
+          </label>
         </div>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
