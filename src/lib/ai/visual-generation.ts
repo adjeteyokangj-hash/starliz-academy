@@ -249,12 +249,11 @@ async function generateImageWithOpenAi(input: {
       model: input.imageModel,
       prompt: input.prompt,
       size: "1024x1024",
-      response_format: "b64_json",
     }),
   });
 
   const payload = await response.json().catch(() => null) as {
-    data?: Array<{ b64_json?: string }>;
+    data?: Array<{ b64_json?: string; url?: string }>;
     error?: { message?: string; code?: string };
   } | null;
 
@@ -264,14 +263,28 @@ async function generateImageWithOpenAi(input: {
   }
 
   const base64 = payload?.data?.[0]?.b64_json;
-  if (!base64) {
-    throw new Error("OpenAI image generation returned empty image data.");
+  if (base64) {
+    return {
+      bytes: Buffer.from(base64, "base64"),
+      mimeType: "image/png",
+    };
   }
 
-  return {
-    bytes: Buffer.from(base64, "base64"),
-    mimeType: "image/png",
-  };
+  const imageUrl = payload?.data?.[0]?.url;
+  if (imageUrl) {
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(`OpenAI image URL fetch failed: status ${imageResponse.status}`);
+    }
+    const bytes = Buffer.from(await imageResponse.arrayBuffer());
+    return {
+      bytes,
+      mimeType: "image/png",
+    };
+  }
+
+  throw new Error("OpenAI image generation returned empty image data.");
+
 }
 
 async function uploadVisualToR2(input: {

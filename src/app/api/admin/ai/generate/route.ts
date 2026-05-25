@@ -34,6 +34,8 @@ import {
   topicSuggestionsForSelection,
   type GenerationType,
   type Subject,
+  skillsForSubjectAndYear,
+  subjectsForYearGroup,
 } from "@/lib/curriculum";
 
 const BATCH_SIZE = 12;
@@ -2051,6 +2053,23 @@ export async function POST(req: Request) {
   const safeLevel = Math.max(1, Math.min(maxLevel, Number.isFinite(level) ? level : 1));
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
   const safeKeyStage = keyStageForYearGroup(safeYearGroup);
+
+  const allowedSubjectsForYear = subjectsForYearGroup(safeYearGroup);
+  if (!allowedSubjectsForYear.includes(sourceSubject)) {
+    return NextResponse.json({
+      success: false,
+      error: `${sourceSubject} is not available for ${safeYearGroup}.`,
+      aiMode,
+      keySource,
+      details: {
+        category: "unsupported_subject_for_year",
+        yearGroup: safeYearGroup,
+        subject: sourceSubject,
+        allowedSubjects: allowedSubjectsForYear,
+      },
+    }, { status: 422 });
+  }
+
   const safeCurriculumPathway = requestedCurriculumPathway || curriculumPathwayForYearGroup(safeYearGroup);
   const examBoardRecommendation = resolveExamBoardRecommendation({
     subject: sourceSubject,
@@ -2150,6 +2169,22 @@ export async function POST(req: Request) {
     }
     return englishStrandToSubject(englishStrand);
   })();
+  const allowedSkillsForPath = skillsForSubjectAndYear(pathSubject, safeYearGroup);
+  if (resolvedSkillFocus && allowedSkillsForPath.length > 0 && !allowedSkillsForPath.includes(resolvedSkillFocus)) {
+    return NextResponse.json({
+      success: false,
+      error: `Skill focus \"${resolvedSkillFocus}\" is not mapped for ${pathSubject} in ${safeYearGroup}.`,
+      aiMode,
+      keySource,
+      details: {
+        category: "unsupported_skill_for_subject_year",
+        yearGroup: safeYearGroup,
+        subject: pathSubject,
+        skillFocus: resolvedSkillFocus,
+        allowedSkills: allowedSkillsForPath,
+      },
+    }, { status: 422 });
+  }
   const pathValidation = isValidCurriculumPath({
     yearGroup: safeYearGroup,
     subject: pathSubject,

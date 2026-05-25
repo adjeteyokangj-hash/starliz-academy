@@ -23,12 +23,13 @@ function isReadingComprehensionSkill(skillFocus: string | null | undefined): boo
 function mapSubjectToGenerationType(
   subject: Subject,
   skillFocus?: string,
-): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages" {
+): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages" | "science" {
   const mapped = GENERATION_CONTENT_TYPE_BY_SUBJECT[subject];
   if (mapped === "phonics") return "phonics";
   if (mapped === "spelling") return "spelling";
   if (mapped === "punctuation") return "punctuation";
   if (mapped === "grammar") return "grammar";
+  if (mapped === "science") return "science";
   if (mapped === "languages") return "languages";
   if (mapped === "english-language" && isReadingComprehensionSkill(skillFocus)) return "reading";
   if (mapped === "writing" || mapped === "english-language") return "writing";
@@ -72,6 +73,45 @@ function extractGeneratedItems(items: unknown): unknown {
     return (items as Record<string, unknown>).items;
   }
   return items;
+}
+
+function normalizeToken(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function contentItemSignature(item: unknown): string {
+  if (!item || typeof item !== "object") return normalizeToken(item);
+  const row = item as Record<string, unknown>;
+  return [
+    row.type,
+    row.question,
+    row.prompt,
+    row.word,
+    row.title,
+    row.answer,
+    row.sentence,
+    row.sentenceContext,
+    row.topic,
+  ]
+    .map((value) => normalizeToken(value))
+    .filter(Boolean)
+    .join("|");
+}
+
+function lessonContentSignature(content: unknown): string {
+  const records = Array.isArray(content)
+    ? content
+    : content && typeof content === "object"
+      ? [content]
+      : [];
+  return records
+    .map((item) => contentItemSignature(item))
+    .filter(Boolean)
+    .sort()
+    .join("||");
 }
 
 function attachSelectedMetadataToItems(
@@ -283,6 +323,44 @@ export async function POST(req: Request) {
     });
     const normalizedExamBoard = shouldTagExamBoard ? normalizeExamBoard(body.examBoard) : null;
     const warnings: string[] = [];
+    const topicKey = body.topic || body.skillFocus || body.ageGroup || "";
+    const incomingSignature = lessonContentSignature(contentItems);
+
+    if (incomingSignature) {
+      const candidates = await prisma.aIContentCache.findMany({
+        where: {
+          contentType: legacyType,
+          level: body.difficulty,
+          topic: topicKey,
+          keyStage: body.keyStage,
+          yearGroup: body.yearGroup,
+          skillFocus: body.skillFocus,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 25,
+      });
+
+      const duplicate = candidates.find((candidate) => {
+        let parsedContent: unknown = [];
+        try {
+          parsedContent = candidate.contentJson ? JSON.parse(candidate.contentJson) : [];
+        } catch {
+          parsedContent = [];
+        }
+        const candidateSignature = lessonContentSignature(extractGeneratedItems(parsedContent));
+        return Boolean(candidateSignature) && candidateSignature === incomingSignature;
+      });
+
+      if (duplicate) {
+        return NextResponse.json({
+          duplicate: true,
+          message: "Duplicate lesson already exists in Content Library.",
+          item: duplicate,
+          warnings: [...warnings, ...questionFormulaWarnings],
+        }, { status: 200 });
+      }
+    }
+
     if (shouldTagExamBoard && !normalizedExamBoard) {
       warnings.push(GCSE_EXAM_BOARD_WARNING);
     }
@@ -291,7 +369,7 @@ export async function POST(req: Request) {
       data: {
         contentType: legacyType,
         level: body.difficulty,
-        topic: body.topic || body.skillFocus || body.ageGroup || "",
+        topic: topicKey,
         contentJson: JSON.stringify(contentItems),
         status,
         reviewedAt: status === "reviewed" ? new Date() : undefined,

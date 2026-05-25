@@ -642,6 +642,26 @@ function formatGeneratorFailureMessage(payload: {
   return rawMessage;
 }
 
+function recommendItemCount(input: {
+  yearGroup: string;
+  keyStage: string;
+  difficulty: number;
+  subject: Subject;
+}): number {
+  const yearGroup = String(input.yearGroup ?? "");
+  const isGcse = yearGroup === "Year 10" || yearGroup === "Year 11" || input.keyStage === "KS4";
+  if (isGcse) {
+    return input.difficulty >= 4 ? 5 : 6;
+  }
+  if (input.keyStage === "KS1") return 4;
+  if (input.keyStage === "KS2") return 5;
+  if (input.keyStage === "KS3") return 6;
+  if (input.subject === "science" || input.subject === "gcse-science" || input.subject === "gcse-combined-science") {
+    return 6;
+  }
+  return 5;
+}
+
 export default function AiGeneratorPage() {
   const searchParams = useSearchParams();
   const prefillSubject = searchParams.get("subject");
@@ -688,6 +708,7 @@ export default function AiGeneratorPage() {
   );
   const [aiMode, setAiMode] = useState<AiGenerationMode>(DEFAULT_AI_MODE);
   const [items, setItems] = useState(5);
+  const [autoItemsEnabled, setAutoItemsEnabled] = useState(true);
   const [topicChoice, setTopicChoice] = useState<string>(prefillWords ? CUSTOM_TOPIC_VALUE : "");
   const [customTopic, setCustomTopic] = useState(prefillWords ? `Focus practice on: ${prefillWords}` : "");
   const [activityType, setActivityType] = useState("");
@@ -750,6 +771,13 @@ export default function AiGeneratorPage() {
     subject,
     skillFocus,
   }), [yearGroup, subject, skillFocus]);
+  const recommendedItemCount = useMemo(() => recommendItemCount({
+    yearGroup,
+    keyStage,
+    difficulty,
+    subject,
+  }), [yearGroup, keyStage, difficulty, subject]);
+  const effectiveItemCount = autoItemsEnabled ? recommendedItemCount : items;
   const effectiveTopicChoice = topicChoice === CUSTOM_TOPIC_VALUE
     ? CUSTOM_TOPIC_VALUE
     : topicSuggestions.includes(topicChoice)
@@ -915,9 +943,11 @@ export default function AiGeneratorPage() {
   }, []);
 
   const effectiveVisualAllowedSubjects = useMemo(() => {
-    if (!subject) return visualAllowedSubjects;
-    return Array.from(new Set([...visualAllowedSubjects, subject]));
-  }, [subject, visualAllowedSubjects]);
+    const allowedSubjectsForYear = getAvailableSubjects(yearGroup);
+    const filtered = visualAllowedSubjects.filter((entry) => allowedSubjectsForYear.includes(entry as Subject));
+    if (!subject) return filtered;
+    return Array.from(new Set([...filtered, subject]));
+  }, [yearGroup, subject, visualAllowedSubjects]);
 
   function formatRepairMessage(error: string) {
     const [type, word] = error.split(":");
@@ -978,7 +1008,7 @@ export default function AiGeneratorPage() {
       setError(pathValidation.reason);
       return;
     }
-    if (items < 1 || items > 10) {
+    if (effectiveItemCount < 1 || effectiveItemCount > 10) {
       setError("Number of preview items must be between 1 and 10.");
       return;
     }
@@ -1007,7 +1037,7 @@ export default function AiGeneratorPage() {
         topic: context.topic,
         generationType: GENERATION_CONTENT_TYPE_BY_SUBJECT[context.subject],
         difficulty: context.difficulty,
-        numberOfItems: items,
+        numberOfItems: effectiveItemCount,
       });
       const response = await fetchWithAdminSessionRetry("/api/admin/ai/generate", {
         method: "POST",
@@ -1038,7 +1068,7 @@ export default function AiGeneratorPage() {
           skillFocus: context.skillFocus,
           ageGroup: context.ageGroup,
           difficulty: context.difficulty,
-          numberOfItems: items,
+          numberOfItems: effectiveItemCount,
           topic: context.topic,
           activityType: context.activityType,
           masteryOutcome: context.masteryOutcome,
@@ -1294,7 +1324,16 @@ export default function AiGeneratorPage() {
         const warnings = Array.isArray(payload.warnings)
           ? payload.warnings.filter((entry: unknown): entry is string => typeof entry === "string")
           : [];
-        setMessage(warnings.length ? `Saved to Content Library. Warning: ${warnings.join(" ")}` : "Saved to Content Library");
+        const duplicate = payload.duplicate === true;
+        setMessage(
+          duplicate
+            ? (warnings.length
+              ? `Duplicate lesson blocked. Reused existing content from library. Warning: ${warnings.join(" ")}`
+              : "Duplicate lesson blocked. Reused existing content from library.")
+            : (warnings.length
+              ? `Saved to Content Library. Warning: ${warnings.join(" ")}`
+              : "Saved to Content Library")
+        );
         setSavedContentId(payload.item?.id ?? null);
         if (context.targetStudentId && payload.item?.id) {
           const assignResponse = await fetch("/api/admin/assignments", {
@@ -2125,17 +2164,35 @@ export default function AiGeneratorPage() {
 
           <label className="block text-sm font-bold text-slate-300">
             Number of items
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
+              <span>Auto item count</span>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={autoItemsEnabled}
+                  onChange={(event) => setAutoItemsEnabled(event.target.checked)}
+                  className="h-4 w-4 accent-cyan-500"
+                />
+                <span className="text-cyan-200">Recommended: {recommendedItemCount}</span>
+              </label>
+            </div>
             <input
               type="number"
               min={1}
               max={10}
-              value={items}
+              value={effectiveItemCount}
+              disabled={autoItemsEnabled}
               onChange={(event) => {
                 clearWeakAreaLink();
                 setItems(Math.max(1, Math.min(10, Number(event.target.value))));
               }}
-              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white disabled:cursor-not-allowed disabled:opacity-70"
             />
+            <p className="mt-1 text-xs text-slate-400">
+              {autoItemsEnabled
+                ? "Auto mode optimizes item count by year group and difficulty for higher reliability."
+                : "Manual mode lets you choose exactly how many items to generate."}
+            </p>
           </label>
 
           <label className="block text-sm font-bold text-slate-300">
@@ -2329,7 +2386,7 @@ export default function AiGeneratorPage() {
                 {generationMeta?.generationMetadata ? <li><strong>Fallback used:</strong> {generationMeta.generationMetadata.usedFallback ? "Yes" : "No"}</li> : null}
                 {generationMeta?.generationMetadata ? <li><strong>Fallback reason:</strong> {generationMeta.generationMetadata.fallbackReason ?? "None"}</li> : null}
                 <li><strong>Difficulty:</strong> {effectiveGenerationContext.difficulty}/5</li>
-                <li><strong>Items Requested:</strong> {items}</li>
+                <li><strong>Items Requested:</strong> {effectiveItemCount}{autoItemsEnabled ? " (auto)" : ""}</li>
                 {generationMeta?.model ? <li><strong>Model:</strong> {generationMeta.model}</li> : null}
                 {generationMeta?.fallback?.used ? <li><strong>Fallback:</strong> {generationMeta.fallback.reasonCode}</li> : null}
                 {generationMeta?.fallbackReason ? <li><strong>Legacy fallback reason:</strong> {generationMeta.fallbackReason}</li> : null}
