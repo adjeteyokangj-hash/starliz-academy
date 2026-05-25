@@ -31,6 +31,7 @@ import {
   type Subject,
   type YearGroup,
 } from "@/lib/curriculum";
+import { generationDisplayLabel } from "@/lib/admin-ai-generation-meta";
 
 type GeneratedPreviewItem = Record<string, unknown> & {
   id?: string;
@@ -118,6 +119,19 @@ type GeneratorFallbackInfo = {
   used: boolean;
   reasonCode: string;
   message: string;
+};
+
+type GenerationApiMetadata = {
+  generationSource: "openai" | "fallback" | "repair" | "mock";
+  provider: "openai" | "local";
+  model: string;
+  usedFallback: boolean;
+  fallbackReason: string | null;
+  validationStatus: "passed" | "failed" | "repaired";
+  keySource: "database" | "environment" | "none";
+  openAiAttempted: boolean;
+  openAiSucceeded: boolean;
+  aiMode: "live_openai_only" | "openai_with_fallback" | "fallback_only";
 };
 
 type GenerationDebug = {
@@ -360,6 +374,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
 }
 
 const AI_REQUEST_TIMEOUT_MS = 180000;
+const DEFAULT_AI_MODE = "live_openai_only" as const;
 
 let inFlightAdminRefresh: Promise<boolean> | null = null;
 
@@ -495,6 +510,9 @@ function formatGeneratorFailureMessage(payload: {
       ? payload.error
       : "AI generation failed. Please try again.";
 
+  if (rawMessage.toLowerCase().includes("live openai mode")) {
+    return rawMessage;
+  }
   if (details.reason === "invalid_openai_key") {
     return "AI generation failed because the configured OpenAI API key was rejected.";
   }
@@ -563,6 +581,7 @@ export default function AiGeneratorPage() {
     providerUsed?: "openai" | "local_fallback";
     fallbackReason?: string | null;
     validationReason?: string | null;
+    generationMetadata?: GenerationApiMetadata;
     debug?: GenerationDebug;
   } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -689,6 +708,14 @@ export default function AiGeneratorPage() {
   const previewBadge = generationMeta?.validation?.repaired
       ? { label: "Auto-Repaired", className: "bg-amber-500/15 text-amber-200" }
       : { label: "Valid", className: "bg-emerald-500/15 text-emerald-200" };
+  const generationSourceLabel = generationDisplayLabel(generationMeta?.generationMetadata);
+  const providerStatusBadge = generationMeta?.generationMetadata
+    ? generationMeta.generationMetadata.openAiSucceeded
+      ? { label: "Provider: OpenAI healthy", className: "bg-emerald-500/15 text-emerald-200" }
+      : generationMeta.generationMetadata.openAiAttempted
+        ? { label: "Provider: OpenAI failed", className: "bg-rose-500/15 text-rose-200" }
+        : { label: "Provider: local fallback", className: "bg-amber-500/15 text-amber-200" }
+    : null;
 
   const clearWeakAreaLink = () => {
     setLoadedWeakAreaId(null);
@@ -821,6 +848,7 @@ export default function AiGeneratorPage() {
           topic: context.topic,
           activityType: context.activityType,
           masteryOutcome: context.masteryOutcome,
+          aiMode: DEFAULT_AI_MODE,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
       setGenerationPhase("repairing-response");
@@ -877,6 +905,9 @@ export default function AiGeneratorPage() {
         providerUsed?: "openai" | "local_fallback";
         fallbackReason?: string | null;
         validationReason?: string | null;
+        keySource?: "database" | "environment" | "none";
+        aiMode?: "live_openai_only" | "openai_with_fallback" | "fallback_only";
+        generationMetadata?: GenerationApiMetadata;
         generationDebug?: GenerationDebug;
         meta?: ValidationMeta;
         fallback?: GeneratorFallbackInfo;
@@ -932,9 +963,10 @@ export default function AiGeneratorPage() {
           providerUsed: payload.providerUsed,
           fallbackReason: payload.fallbackReason,
           validationReason: payload.validationReason,
+          generationMetadata: payload.generationMetadata,
           debug: payload.generationDebug,
         });
-        if (payload.fallback?.used) {
+        if (payload.fallback?.used || payload.generationMetadata?.usedFallback) {
           setGenerationDiagnostics((current) => current ? { ...current, reason: "fallback_used" } : current);
         }
         setPreviewContext(context);
@@ -1120,6 +1152,7 @@ export default function AiGeneratorPage() {
           topic: `${selectedTopicTheme || skillFocus} replacement item`,
           activityType,
           masteryOutcome,
+          aiMode: DEFAULT_AI_MODE,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
       const parsed = await parseApiResponse<Record<string, unknown>>(response);
@@ -1714,6 +1747,10 @@ export default function AiGeneratorPage() {
                 {effectiveGenerationContext.masteryOutcome ? <li><strong>Mastery Outcome:</strong> {effectiveGenerationContext.masteryOutcome}</li> : null}
                 <li><strong>Generation Type:</strong> {selectedGenerationTypeForContext || "(unknown)"}</li>
                 {generationMeta?.providerUsed ? <li><strong>Provider Used:</strong> {generationMeta.providerUsed === "openai" ? "openai" : "local_fallback"}</li> : null}
+                {generationMeta?.generationMetadata ? <li><strong>Generation Source:</strong> {generationMeta.generationMetadata.generationSource}</li> : null}
+                {generationMeta?.generationMetadata ? <li><strong>Key Source:</strong> {generationMeta.generationMetadata.keySource}</li> : null}
+                {generationMeta?.generationMetadata ? <li><strong>OpenAI attempted:</strong> {generationMeta.generationMetadata.openAiAttempted ? "Yes" : "No"}</li> : null}
+                {generationMeta?.generationMetadata ? <li><strong>OpenAI succeeded:</strong> {generationMeta.generationMetadata.openAiSucceeded ? "Yes" : "No"}</li> : null}
                 <li><strong>Difficulty:</strong> {effectiveGenerationContext.difficulty}/5</li>
                 <li><strong>Items Requested:</strong> {items}</li>
                 {generationMeta?.model ? <li><strong>Model:</strong> {generationMeta.model}</li> : null}
@@ -1956,6 +1993,16 @@ export default function AiGeneratorPage() {
               <span className={`rounded-full px-3 py-1 text-xs font-black ${previewBadge.className}`}>
                 {previewBadge.label}
               </span>
+              {providerStatusBadge ? (
+                <span className={`rounded-full px-3 py-1 text-xs font-black ${providerStatusBadge.className}`}>
+                  {providerStatusBadge.label}
+                </span>
+              ) : null}
+              {generationSourceLabel ? (
+                <span className="rounded-full bg-cyan-500/15 px-3 py-1 text-xs font-black text-cyan-200">
+                  {generationSourceLabel}
+                </span>
+              ) : null}
               <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-black text-slate-200">
                 {effectiveGenerationContext.source === "weak-area" ? "Source: AI Intervention Engine" : "Source: Manual generator"}
               </span>
@@ -1995,16 +2042,16 @@ export default function AiGeneratorPage() {
               </div>
             ) : null}
 
-            {generationMeta?.providerUsed === "openai" ? (
+            {generationMeta?.generationMetadata?.generationSource === "openai" || generationMeta?.generationMetadata?.generationSource === "repair" ? (
               <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100">
-                <p className="font-bold">OpenAI generation used.</p>
+                <p className="font-bold">Generated by OpenAI.</p>
               </div>
             ) : null}
 
-            {generationMeta?.fallback?.used ? (
+            {generationMeta?.generationMetadata?.generationSource === "fallback" ? (
               <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100">
-                <p className="font-bold">Local fallback used{generationMeta.fallbackReason ? `: ${generationMeta.fallbackReason}.` : "."}</p>
-                <p className="mt-1 text-xs text-amber-100/90">{generationMeta.fallback.message}</p>
+                <p className="font-bold">Generated by fallback{generationMeta.generationMetadata.fallbackReason ? `: ${generationMeta.generationMetadata.fallbackReason}.` : "."}</p>
+                <p className="mt-1 text-xs text-amber-100/90">{generationMeta.fallback?.message ?? "Fallback mode was used for this preview."}</p>
               </div>
             ) : null}
 

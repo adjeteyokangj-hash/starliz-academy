@@ -55,6 +55,34 @@ export async function getOpenAiApiKey(): Promise<string | null> {
   return getProviderSecret("openai", "OPENAI_API_KEY");
 }
 
+export type OpenAiKeySource = "database" | "environment" | "none";
+
+export async function getOpenAiApiKeyWithSource(): Promise<{
+  apiKey: string | null;
+  keySource: OpenAiKeySource;
+}> {
+  const saved = await getStoredProviderKey("openai");
+  if (saved?.secret) {
+    return {
+      apiKey: saved.secret,
+      keySource: "database",
+    };
+  }
+
+  const envKey = cleanSecret(process.env.OPENAI_API_KEY);
+  if (envKey) {
+    return {
+      apiKey: envKey,
+      keySource: "environment",
+    };
+  }
+
+  return {
+    apiKey: null,
+    keySource: "none",
+  };
+}
+
 export async function getVoiceApiKey(): Promise<string | null> {
   const voiceKey = await getProviderSecret("voice");
   if (voiceKey) {

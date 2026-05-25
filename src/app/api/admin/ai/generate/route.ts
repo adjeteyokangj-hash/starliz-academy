@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
-import { getOpenAiApiKey } from "@/lib/api-key-config";
+import { getOpenAiApiKeyWithSource } from "@/lib/api-key-config";
+import {
+  buildGenerationMetadata,
+  isFallbackAllowed,
+  parseAiGenerationMode,
+  type AiGenerationMode,
+} from "@/lib/admin-ai-generation-meta";
 import {
   detectSpellingSkillFocusKind,
   buildDeterministicSpellingFallback,
@@ -1473,7 +1479,24 @@ export async function POST(req: Request) {
   if (!session) return response;
 
   if (!checkGenerationRateLimit(session.userId)) {
-    return NextResponse.json({ success: false, error: "AI generation limit reached. Please wait a minute before trying again." }, { status: 429 });
+    return NextResponse.json({
+      success: false,
+      error: "AI generation limit reached. Please wait a minute before trying again.",
+      aiMode: "live_openai_only",
+      keySource: "none",
+      generationMetadata: {
+        aiMode: "live_openai_only",
+        generationSource: "mock",
+        provider: "openai",
+        model: OPENAI_MODEL,
+        usedFallback: false,
+        fallbackReason: "rate_limited",
+        validationStatus: "failed",
+        keySource: "none",
+        openAiAttempted: false,
+        openAiSucceeded: false,
+      },
+    }, { status: 429 });
   }
 
   let body: Record<string, unknown>;
@@ -1483,15 +1506,47 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: false,
       error: "Invalid JSON payload for AI generation request.",
+      aiMode: "live_openai_only",
+      keySource: "none",
+      generationMetadata: {
+        aiMode: "live_openai_only",
+        generationSource: "mock",
+        provider: "openai",
+        model: OPENAI_MODEL,
+        usedFallback: false,
+        fallbackReason: "invalid_json_payload",
+        validationStatus: "failed",
+        keySource: "none",
+        openAiAttempted: false,
+        openAiSucceeded: false,
+      },
       details: { category: "validation", stage: "request-body" },
     }, { status: 400 });
   }
+  const aiMode: AiGenerationMode = parseAiGenerationMode(body.aiMode);
+  const openAiConfig = await getOpenAiApiKeyWithSource();
+  const keySource = openAiConfig.keySource;
+
   const requestedSubject = (body.subject ?? body.type) as string;
   const normalizedSubject = normalizeSubject(String(requestedSubject ?? ""));
   if (!normalizedSubject) {
     return NextResponse.json({
       success: false,
       error: `Unsupported subject: ${requestedSubject || "(empty)"}.`,
+      aiMode,
+      keySource,
+      generationMetadata: {
+        aiMode,
+        generationSource: "mock",
+        provider: "openai",
+        model: OPENAI_MODEL,
+        usedFallback: false,
+        fallbackReason: "unsupported_subject",
+        validationStatus: "failed",
+        keySource,
+        openAiAttempted: false,
+        openAiSucceeded: false,
+      },
       details: {
         category: "unsupported_subject",
         supportedSubjects: Object.keys(GENERATION_CONTENT_TYPE_BY_SUBJECT),
@@ -1505,6 +1560,20 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: false,
       error: "Please choose an English strand before generating content.",
+      aiMode,
+      keySource,
+      generationMetadata: {
+        aiMode,
+        generationSource: "mock",
+        provider: "openai",
+        model: OPENAI_MODEL,
+        usedFallback: false,
+        fallbackReason: "missing_english_strand",
+        validationStatus: "failed",
+        keySource,
+        openAiAttempted: false,
+        openAiSucceeded: false,
+      },
       details: {
         category: "validation_error",
         field: "englishStrand",
@@ -1564,6 +1633,20 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: false,
       error: "GCSE content requires an exam board.",
+      aiMode,
+      keySource,
+      generationMetadata: {
+        aiMode,
+        generationSource: "mock",
+        provider: "openai",
+        model: OPENAI_MODEL,
+        usedFallback: false,
+        fallbackReason: "missing_exam_board",
+        validationStatus: "failed",
+        keySource,
+        openAiAttempted: false,
+        openAiSucceeded: false,
+      },
       details: {
         category: "validation_error",
         field: "examBoard",
@@ -1588,6 +1671,20 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: false,
       error: pathValidation.reason,
+      aiMode,
+      keySource,
+      generationMetadata: {
+        aiMode,
+        generationSource: "mock",
+        provider: "local",
+        model: "local-fallback",
+        usedFallback: false,
+        fallbackReason: "subject_mapping_failure",
+        validationStatus: "failed",
+        keySource,
+        openAiAttempted: false,
+        openAiSucceeded: false,
+      },
       providerUsed: "local_fallback",
       fallbackReason: "subject_mapping_failure",
       validationReason: pathValidation.reason,
@@ -1645,6 +1742,7 @@ export async function POST(req: Request) {
   };
   const subjectRoute = `${pathSubject}->${generationType}`;
   const sharedGenerationFields = {
+    aiMode,
     generationType,
     subject: sourceSubject,
     yearGroup: safeYearGroup,
@@ -1674,7 +1772,230 @@ export async function POST(req: Request) {
     topic,
   });
 
-  const apiKey = await getOpenAiApiKey();
+  const apiKey = openAiConfig.apiKey;
+  const fallbackAllowed = isFallbackAllowed(aiMode);
+
+  const buildMetadata = (input: {
+    generationSource: "openai" | "fallback" | "repair" | "mock";
+    provider: "openai" | "local";
+    model: string;
+    fallbackReason?: string | null;
+    validation: unknown;
+    openAiAttempted: boolean;
+    openAiSucceeded: boolean;
+  }) => buildGenerationMetadata({
+    aiMode,
+    generationSource: input.generationSource,
+    provider: input.provider,
+    model: input.model,
+    fallbackReason: input.fallbackReason ?? null,
+    validation: input.validation,
+    keySource,
+    openAiAttempted: input.openAiAttempted,
+    openAiSucceeded: input.openAiSucceeded,
+  });
+
+  const buildLiveOnlyFailure = (input: {
+    code: string;
+    message: string;
+    reason: string;
+    status: number;
+    openAiAttempted: boolean;
+  }) => {
+    const generationMetadata = buildMetadata({
+      generationSource: "mock",
+      provider: "openai",
+      model: OPENAI_MODEL,
+      fallbackReason: input.reason,
+      validation: { valid: false, repaired: false },
+      openAiAttempted: input.openAiAttempted,
+      openAiSucceeded: false,
+    });
+    return NextResponse.json({
+      success: false,
+      errorCode: input.code,
+      message: input.message,
+      error: input.message,
+      aiMode,
+      keySource,
+      generationMetadata,
+      providerUsed: "openai",
+      fallbackReason: input.reason,
+      validationReason: input.message,
+      generationType,
+      subject: sourceSubject,
+      yearGroup: safeYearGroup,
+      keyStage: safeKeyStage,
+      skillFocus: resolvedSkillFocus,
+      topic,
+      activityType,
+      strand: englishStrand,
+      generationDebug: buildGenerationDebug({
+        providerAttempted: aiMode !== "fallback_only",
+        providerUsed: "openai",
+        openAiKeyFoundServerSide: keySource !== "none",
+        fallbackReason: input.reason,
+        validationReason: input.message,
+        mappingStatus: "mapped",
+        fallbackTemplate: null,
+      }),
+    }, { status: input.status });
+  };
+
+  if (aiMode === "fallback_only") {
+    try {
+      if (generationType === "spelling") {
+        const fallback = buildValidatedSpellingFallback({
+          keyStage: safeKeyStage,
+          yearGroup: safeYearGroup,
+          skillFocus: resolvedSkillFocus || "Prefixes",
+          topic,
+          count,
+          difficulty: safeLevel,
+        });
+        const preview = buildGeneratedPreview({
+          subject: sourceSubject,
+          generationType,
+          promptType,
+          keyStage: safeKeyStage,
+          yearGroup: safeYearGroup,
+          curriculumPathway: safeCurriculumPathway,
+          examBoard: safeExamBoard,
+          skillFocus: resolvedSkillFocus,
+          difficulty: safeLevel,
+          topic,
+          content: fallback.content,
+        });
+        const generationMetadata = buildMetadata({
+          generationSource: "fallback",
+          provider: "local",
+          model: "local-fallback",
+          fallbackReason: "fallback_only_mode",
+          validation: fallback.validation,
+          openAiAttempted: false,
+          openAiSucceeded: false,
+        });
+        return NextResponse.json({
+          success: true,
+          aiMode,
+          keySource,
+          generationMetadata,
+          type: promptType,
+          generationType,
+          level: safeLevel,
+          topic,
+          keyStage: safeKeyStage,
+          yearGroup: safeYearGroup,
+          curriculumPathway: safeCurriculumPathway,
+          examBoard: safeExamBoard,
+          skillFocus: resolvedSkillFocus,
+          model: "local-fallback",
+          prompt: "Deterministic spelling fallback",
+          estimatedCostPence: 0,
+          estimatedTokens: 0,
+          providerUsed: "local_fallback",
+          fallbackReason: "fallback_only_mode",
+          validationReason: null,
+          generationDebug: buildGenerationDebug({
+            providerAttempted: false,
+            providerUsed: "local_fallback",
+            openAiKeyFoundServerSide: keySource !== "none",
+            fallbackReason: "fallback_only_mode",
+            validationReason: null,
+            mappingStatus: "mapped",
+            fallbackTemplate: "deterministic_spelling",
+          }),
+          content: preview,
+          meta: fallback.validation,
+          fallback: {
+            used: true,
+            reasonCode: "fallback_only_mode",
+            message: "Generated in fallback-only mode.",
+          },
+        });
+      }
+
+      const fallback = buildValidatedGenericFallback({
+        type: validatorType,
+        subject: sourceSubject,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        skillFocus: resolvedSkillFocus || "Core skill",
+        topic,
+        count,
+        difficulty: safeLevel,
+      });
+      const preview = buildGeneratedPreview({
+        subject: sourceSubject,
+        generationType,
+        promptType,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        curriculumPathway: safeCurriculumPathway,
+        examBoard: safeExamBoard,
+        skillFocus: resolvedSkillFocus,
+        difficulty: safeLevel,
+        topic,
+        content: fallback.content,
+      });
+      const generationMetadata = buildMetadata({
+        generationSource: "fallback",
+        provider: "local",
+        model: "local-fallback",
+        fallbackReason: "fallback_only_mode",
+        validation: fallback.validation,
+        openAiAttempted: false,
+        openAiSucceeded: false,
+      });
+      return NextResponse.json({
+        success: true,
+        aiMode,
+        keySource,
+        generationMetadata,
+        type: promptType,
+        generationType,
+        level: safeLevel,
+        topic,
+        keyStage: safeKeyStage,
+        yearGroup: safeYearGroup,
+        curriculumPathway: safeCurriculumPathway,
+        examBoard: safeExamBoard,
+        skillFocus: resolvedSkillFocus,
+        model: "local-fallback",
+        prompt: "Deterministic subject fallback",
+        estimatedCostPence: 0,
+        estimatedTokens: 0,
+        providerUsed: "local_fallback",
+        fallbackReason: "fallback_only_mode",
+        validationReason: null,
+        generationDebug: buildGenerationDebug({
+          providerAttempted: false,
+          providerUsed: "local_fallback",
+          openAiKeyFoundServerSide: keySource !== "none",
+          fallbackReason: "fallback_only_mode",
+          validationReason: null,
+          mappingStatus: "mapped",
+          fallbackTemplate: `deterministic_${validatorType}`,
+        }),
+        content: preview,
+        meta: fallback.validation,
+        fallback: {
+          used: true,
+          reasonCode: "fallback_only_mode",
+          message: "Generated in fallback-only mode.",
+        },
+      });
+    } catch {
+      return buildLiveOnlyFailure({
+        code: "generation_error",
+        message: "Fallback-only generation failed.",
+        reason: "fallback_generation_failed",
+        status: 500,
+        openAiAttempted: false,
+      });
+    }
+  }
+
   if (!apiKey) {
     const failure = normalizeAdminAiGeneratorFailure(new Error("OpenAI API key not configured."), {
       subject: sourceSubject,
@@ -1682,6 +2003,17 @@ export async function POST(req: Request) {
       skillFocus: resolvedSkillFocus,
       generationType,
     });
+
+    if (!fallbackAllowed) {
+      return buildLiveOnlyFailure({
+        code: failure.errorCode,
+        message: "Live OpenAI mode is enabled, but no OpenAI API key is configured.",
+        reason: String(failure.details.reason ?? failure.errorCode),
+        status: 503,
+        openAiAttempted: false,
+      });
+    }
+
     if (generationType === "spelling") {
       const fallback = buildValidatedSpellingFallback({
         keyStage: safeKeyStage,
@@ -1710,8 +2042,20 @@ export async function POST(req: Request) {
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus,
       });
+      const generationMetadata = buildMetadata({
+        generationSource: "fallback",
+        provider: "local",
+        model: "local-fallback",
+        fallbackReason: String(failure.details.reason ?? failure.errorCode),
+        validation: fallback.validation,
+        openAiAttempted: false,
+        openAiSucceeded: false,
+      });
       return NextResponse.json({
         success: true,
+        aiMode,
+        keySource,
+        generationMetadata,
         type: promptType,
         generationType,
         level: safeLevel,
@@ -1772,6 +2116,17 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({
         success: true,
+        aiMode,
+        keySource,
+        generationMetadata: buildMetadata({
+          generationSource: "fallback",
+          provider: "local",
+          model: "local-fallback",
+          fallbackReason: String(failure.details.reason ?? failure.errorCode),
+          validation: fallback.validation,
+          openAiAttempted: false,
+          openAiSucceeded: false,
+        }),
         type: promptType,
         generationType,
         level: safeLevel,
@@ -1810,6 +2165,17 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({
       success: false,
+      aiMode,
+      keySource,
+      generationMetadata: buildMetadata({
+        generationSource: "mock",
+        provider: "local",
+        model: "local-fallback",
+        fallbackReason: String(failure.details.reason ?? failure.errorCode),
+        validation: { valid: false, repaired: false },
+        openAiAttempted: false,
+        openAiSucceeded: false,
+      }),
       errorCode: failure.errorCode,
       message: failure.message,
       error: failure.message,
@@ -1857,8 +2223,20 @@ export async function POST(req: Request) {
   const cached = generationCache.get(requestKey);
   if (cached) {
     const cachedValidation = (cached.meta.validation ?? {}) as Record<string, unknown>;
+    const generationMetadata = buildMetadata({
+      generationSource: "openai",
+      provider: "openai",
+      model: OPENAI_MODEL,
+      fallbackReason: null,
+      validation: { ...cachedValidation, repaired: cachedValidation.repaired === true },
+      openAiAttempted: false,
+      openAiSucceeded: true,
+    });
     return NextResponse.json({
       success: true,
+      aiMode,
+      keySource,
+      generationMetadata,
       type: promptType,
       generationType,
       parentGenerationType,
@@ -2025,8 +2403,21 @@ export async function POST(req: Request) {
       },
     });
 
+    const generationMetadata = buildMetadata({
+      generationSource: validation.repaired === true ? "repair" : "openai",
+      provider: "openai",
+      model: OPENAI_MODEL,
+      fallbackReason: null,
+      validation,
+      openAiAttempted: true,
+      openAiSucceeded: true,
+    });
+
     return NextResponse.json({
       success: true,
+      aiMode,
+      keySource,
+      generationMetadata,
       type: promptType,
       generationType,
       parentGenerationType,
@@ -2108,6 +2499,16 @@ export async function POST(req: Request) {
       },
     });
 
+    if (!fallbackAllowed) {
+      return buildLiveOnlyFailure({
+        code: failure.errorCode,
+        message: `Live OpenAI mode failed: ${failure.message}`,
+        reason: String(failure.details.reason ?? failure.errorCode),
+        status: failure.status,
+        openAiAttempted: true,
+      });
+    }
+
     if (generationType === "spelling" && shouldUseDeterministicSpellingFallback(failure.errorCode)) {
       try {
         const fallback = buildValidatedSpellingFallback({
@@ -2137,8 +2538,20 @@ export async function POST(req: Request) {
           providerStatus: failure.details.providerStatus,
           providerCode: failure.details.providerCode,
         });
+        const generationMetadata = buildMetadata({
+          generationSource: "fallback",
+          provider: "local",
+          model: "local-fallback",
+          fallbackReason: String(failure.details.reason ?? failure.errorCode),
+          validation: fallback.validation,
+          openAiAttempted: true,
+          openAiSucceeded: false,
+        });
         return NextResponse.json({
           success: true,
+          aiMode,
+          keySource,
+          generationMetadata,
           type: promptType,
           generationType,
           level: safeLevel,
@@ -2208,8 +2621,20 @@ export async function POST(req: Request) {
           providerStatus: failure.details.providerStatus,
           providerCode: failure.details.providerCode,
         });
+        const generationMetadata = buildMetadata({
+          generationSource: "fallback",
+          provider: "local",
+          model: "local-fallback",
+          fallbackReason: String(failure.details.reason ?? failure.errorCode),
+          validation: fallback.validation,
+          openAiAttempted: true,
+          openAiSucceeded: false,
+        });
         return NextResponse.json({
           success: true,
+          aiMode,
+          keySource,
+          generationMetadata,
           type: promptType,
           generationType,
           level: safeLevel,
@@ -2251,6 +2676,17 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         success: false,
+        aiMode,
+        keySource,
+        generationMetadata: buildMetadata({
+          generationSource: "mock",
+          provider: "openai",
+          model: OPENAI_MODEL,
+          fallbackReason: String(failure.details.reason ?? failure.errorCode),
+          validation: { valid: false, repaired: false },
+          openAiAttempted: true,
+          openAiSucceeded: false,
+        }),
         errorCode: failure.errorCode,
         message: failure.message,
         error: failure.message,
