@@ -569,6 +569,7 @@ const SUBJECTS_BY_YEAR: Record<YearGroup, readonly Subject[]> = {
   "Year 8": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
   "Year 9": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
   "Year 10": [
+    "gcse-english",
     "gcse-english-language",
     "gcse-english-literature",
     "gcse-maths",
@@ -604,6 +605,7 @@ const SUBJECTS_BY_YEAR: Record<YearGroup, readonly Subject[]> = {
     "gcse-sociology",
   ] as const,
   "Year 11": [
+    "gcse-english",
     "gcse-english-language",
     "gcse-english-literature",
     "gcse-maths",

@@ -512,6 +512,40 @@ test("GCSE English Language punctuation mapping accepts strategic punctuation fl
   assert.equal(result.ok, true);
 });
 
+test("GCSE English parent subject maps as valid in Year 10", () => {
+  const result = isValidCurriculumPath({
+    yearGroup: "Year 10",
+    subject: "gcse-english",
+    skillFocus: "English Language",
+    topic: "English language practice",
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("GCSE maths validator accepts algebraic multi-step format", () => {
+  const result = validateAiContentQuality({
+    type: "maths",
+    subject: "gcse-maths",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Algebra",
+    topic: "Algebra practice",
+    difficulty: 4,
+    items: [{
+      id: "gcse-maths-1",
+      question: "Solve 3x + 5 = 20 and justify each step in your method.",
+      answer: "x = 5",
+      explanation: "Subtract 5 from both sides to get 3x = 15, then divide by 3.",
+      yearGroup: "Year 10",
+      skillFocus: "Algebra",
+      difficulty: 4,
+    }],
+  });
+
+  assert.equal(result.ok, true);
+});
+
 test("GCSE Physics mapping accepts forces route", () => {
   const result = isValidCurriculumPath({
     yearGroup: "Year 10",
@@ -559,6 +593,183 @@ test("science validation accepts physics-context equations", () => {
       yearGroup: "Year 10",
       skillFocus: "Forces",
       difficulty: 5,
+    }],
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("GCSE Chemistry validation rejects physics contamination", () => {
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-chemistry",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Chemical reactions",
+    topic: "Chemistry practice",
+    difficulty: 4,
+    items: [{
+      id: "chem-contam-1",
+      question: "Explain the role of acids in neutralisation and calculate acceleration from force and mass.",
+      answer: "Use pH scale and then apply F = ma.",
+      explanation: "This mixes acid chemistry with force and acceleration.",
+    }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "Generated content drifted into another science discipline. Please regenerate.");
+});
+
+test("GCSE Physics validation rejects biology contamination", () => {
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-physics",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Forces",
+    topic: "Physics practice",
+    difficulty: 4,
+    items: [{
+      id: "phys-contam-1",
+      question: "Explain force and acceleration in motion and describe photosynthesis in cells.",
+      answer: "Force causes acceleration; photosynthesis happens in chloroplasts.",
+      explanation: "Physics prompt contaminated with biology vocabulary.",
+    }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "Generated content drifted into another science discipline. Please regenerate.");
+});
+
+test("GCSE science command-word validation rejects weak prompts", () => {
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-physics",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Forces",
+    topic: "Physics practice",
+    difficulty: 4,
+    items: [{
+      id: "phys-weak-command-1",
+      question: "Newton's second law and force equation", 
+      answer: "F = ma",
+      explanation: "short",
+    }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "Generated science questions must use GCSE command words.");
+  assert.equal((result.meta?.diagnostics?.weakCommandWords ?? 0) > 0, true);
+});
+
+test("GCSE science mark-scheme validation requires stronger reasoning", () => {
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-chemistry",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Chemical reactions",
+    topic: "Chemistry practice",
+    difficulty: 4,
+    items: [{
+      id: "chem-weak-answer-1",
+      question: "Explain why exothermic reactions release energy.",
+      answer: "they do",
+      explanation: "quick note",
+    }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "Generated science answers must use mark-scheme style scientific reasoning.");
+  assert.equal((result.meta?.diagnostics?.answerMismatch ?? 0) > 0, true);
+});
+
+test("mixed-subject science responses trigger repair mode and keep valid chemistry items", () => {
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-chemistry",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Chemical reactions",
+    topic: "Chemistry practice",
+    difficulty: 4,
+    mode: "repair",
+    requestedCount: 3,
+    items: [
+      {
+        id: "chem-valid-1",
+        question: "Explain how bond breaking and bond making determine whether a reaction is exothermic or endothermic.",
+        answer: "Bond breaking absorbs energy and bond making releases energy; the net energy change determines reaction type.",
+        explanation: "Mark-scheme style: compare total energy absorbed vs released and link to observable temperature change.",
+      },
+      {
+        id: "chem-valid-2",
+        question: "Describe how pH changes during the neutralisation of an acid by an alkali.",
+        answer: "pH moves toward 7 as H+ ions are removed by OH- ions to form water.",
+        explanation: "Use ionic idea and pH scale language to justify direction of change.",
+      },
+      {
+        id: "chem-bad-1",
+        question: "Explain acceleration when force acts on mass in a circuit.",
+        answer: "Use F = ma and current equals voltage over resistance.",
+        explanation: "Physics contamination.",
+      },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  const cleaned = (result.cleanedItems ?? []) as unknown[];
+  assert.equal(cleaned.length, 2);
+  assert.equal(result.meta?.diagnostics?.contaminationDetected, true);
+  assert.equal((result.meta?.diagnostics?.repairedItemsCount ?? 0) >= 1, true);
+});
+
+test("fully contaminated chemistry responses fail repair and force fallback path", () => {
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-chemistry",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Chemical reactions",
+    topic: "Chemistry practice",
+    difficulty: 4,
+    mode: "repair",
+    requestedCount: 2,
+    items: [
+      {
+        id: "bad-phys-1",
+        question: "Calculate momentum and acceleration in a moving car.",
+        answer: "Use p = mv and F = ma.",
+        explanation: "Pure physics context.",
+      },
+      {
+        id: "bad-bio-1",
+        question: "Explain photosynthesis in plant cells.",
+        answer: "Use carbon dioxide and sunlight.",
+        explanation: "Pure biology context.",
+      },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.error), /No valid science content remained after validation/i);
+});
+
+test("GCSE Science + Chemistry skill focus enforces chemistry-only containment", () => {
+  const result = validateAiContentQuality({
+    type: "science",
+    subject: "gcse-science",
+    keyStage: "KS4",
+    yearGroup: "Year 10",
+    skillFocus: "Chemistry",
+    topic: "Chemical reactions",
+    difficulty: 4,
+    items: [{
+      id: "gcse-science-chem-1",
+      question: "Explain why electrolysis of molten ionic compounds produces products at each electrode.",
+      answer: "Positive ions gain electrons at the cathode and negative ions lose electrons at the anode.",
+      explanation: "Use ion movement, charge, and oxidation/reduction language in a mark-scheme style sequence.",
     }],
   });
 

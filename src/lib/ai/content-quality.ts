@@ -27,6 +27,23 @@ type QualityMeta = {
   subjectMatch: boolean;
   skillTopicMatch: boolean;
   difficultyMatch: boolean;
+  diagnostics: {
+    validationStepFailed: boolean;
+    missingFields: number;
+    malformedStructure: number;
+    weakCommandWords: number;
+    answerMismatch: number;
+    difficultyMismatch: number;
+    schemaMismatch: number;
+    contaminationDetected: boolean;
+    contaminationScore: number;
+    contaminationThreshold: number;
+    rejectedKeywords: string[];
+    detectedSubjectDrift: string[];
+    repairedItemsCount: number;
+    rejectedItemsCount: number;
+    rejectionReasons: string[];
+  };
 };
 
 type QualityResult = {
@@ -45,6 +62,12 @@ type ValidationAccumulator = {
   subjectMismatches: number;
   skillTopicMismatches: number;
   difficultyMismatches: number;
+  rejectedKeywords: string[];
+  detectedSubjectDrift: string[];
+  repairedItemsCount: number;
+  rejectedItemsCount: number;
+  contaminationScore: number;
+  contaminationThreshold: number;
 };
 
 function createAccumulator(): ValidationAccumulator {
@@ -57,7 +80,76 @@ function createAccumulator(): ValidationAccumulator {
     subjectMismatches: 0,
     skillTopicMismatches: 0,
     difficultyMismatches: 0,
+    rejectedKeywords: [],
+    detectedSubjectDrift: [],
+    repairedItemsCount: 0,
+    rejectedItemsCount: 0,
+    contaminationScore: 0,
+    contaminationThreshold: 0.2,
   };
+}
+
+type ScienceDiscipline = "chemistry" | "physics" | "biology";
+
+const COMMAND_WORDS = ["explain", "describe", "calculate", "evaluate", "compare", "justify", "analyse", "state", "outline", "predict"];
+
+const SCIENCE_DISCIPLINE_KEYWORDS: Record<ScienceDiscipline, { allowed: string[]; forbidden: string[]; drift: ScienceDiscipline[] }> = {
+  chemistry: {
+    allowed: ["reaction", "acid", "alkali", "electrolysis", "atom", "ion", "periodic table", "ph", "compound", "element", "bond"],
+    forbidden: ["force", "acceleration", "velocity", "current", "resistance", "momentum", "cell", "organ", "photosynthesis", "respiration"],
+    drift: ["physics", "biology"],
+  },
+  physics: {
+    allowed: ["force", "acceleration", "velocity", "current", "resistance", "momentum", "energy", "voltage", "circuit", "wave"],
+    forbidden: ["acid", "alkali", "electrolysis", "periodic table", "ion", "ph", "cell", "organ", "photosynthesis", "respiration"],
+    drift: ["chemistry", "biology"],
+  },
+  biology: {
+    allowed: ["cell", "organ", "photosynthesis", "respiration", "enzyme", "osmosis", "diffusion", "ecosystem", "dna", "mitosis"],
+    forbidden: ["force", "acceleration", "velocity", "current", "resistance", "momentum", "acid", "alkali", "electrolysis", "periodic table"],
+    drift: ["physics", "chemistry"],
+  },
+};
+
+function resolveScienceDiscipline(subject: string | undefined, skillFocus: string | undefined): ScienceDiscipline | null {
+  const normalizedSubject = String(subject ?? "").toLowerCase();
+  const normalizedSkill = String(skillFocus ?? "").toLowerCase();
+
+  if (normalizedSubject.includes("chemistry")) return "chemistry";
+  if (normalizedSubject.includes("physics")) return "physics";
+  if (normalizedSubject.includes("biology")) return "biology";
+
+  if (normalizedSubject.includes("gcse-science") || normalizedSubject.includes("combined-science") || normalizedSubject === "science") {
+    if (/(chemistry|chemical|acid|alkali|electrolysis|periodic)/i.test(normalizedSkill)) return "chemistry";
+    if (/(physics|force|motion|electric|energy|wave|circuit)/i.test(normalizedSkill)) return "physics";
+    if (/(biology|cell|photosynthesis|respiration|organ|ecosystem)/i.test(normalizedSkill)) return "biology";
+  }
+
+  return null;
+}
+
+function countMatches(value: string, words: string[]): string[] {
+  const lowered = value.toLowerCase();
+  return words.filter((word) => {
+    const escaped = word
+      .trim()
+      .split(/\s+/)
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s+");
+    const rx = new RegExp(`\\b${escaped}\\b`, "i");
+    return rx.test(lowered);
+  });
+}
+
+function hasCommandWord(prompt: string): boolean {
+  const lowered = prompt.toLowerCase();
+  return COMMAND_WORDS.some((word) => lowered.includes(word));
+}
+
+function hasMarkSchemeStyleAnswer(answer: string, explanation: string): boolean {
+  const text = `${answer} ${explanation}`.toLowerCase();
+  if (text.length >= 36) return true;
+  return /(because|therefore|so that|for example|evidence|method|equation|unit|mark scheme|steps?)/i.test(text);
 }
 
 function asArray(items: unknown) {
@@ -69,11 +161,21 @@ function itemText(item: unknown) {
 }
 
 function hasMathContent(value: string) {
-  return /(\d+\s*[+\-x÷*/]\s*\d+|\bfractions?\b|\bnumber bonds?\b|\btimes tables?\b|\baddition\b|\bsubtraction\b|\bmultiplication\b|\bdivision\b|\bratio\b|\bdecimal\b|\bpercent(?:age)?\b)/i.test(value);
+  return /(\d+\s*[+\-x÷*/]\s*\d+|\b\d+[a-z]\b|\b[a-z]\s*=\s*\d+|\bfractions?\b|\bnumber bonds?\b|\btimes tables?\b|\baddition\b|\bsubtraction\b|\bmultiplication\b|\bdivision\b|\bratio\b|\bproportion\b|\bdecimal\b|\bpercent(?:age)?\b|\bequation\b|\balgebra\b|\bsimplify\b|\bexpression\b|\binequality\b|\bgraph\b|\bprobability\b|\bstatistics?\b|\bfrequency\b|\btable\b|\bchart\b|\bhistogram\b|\bscatter\s*graph\b|\bmedian\b|\brange\b|\bperimeter\b|\bvolume\b|\bfind\s+the\s+mean\b|\bcalculate\s+the\s+mean\b|\bmean\s+from\b|\bfind\s+the\s+mode\b|\bcalculate\s+the\s+mode\b|\bmode\s+from\b)/i.test(value);
+}
+
+function hasMathIntent(value: string) {
+  const lower = value.toLowerCase();
+  return /(calculate|solve|work out|estimate|find|equation|algebra|ratio|percentage|fraction|graph|statistics|probability|mean|median|mode|range|frequency|table|chart)/i.test(lower)
+    && (/\d/.test(lower) || /(equation|algebra|ratio|probability|statistics|mean|median|mode|range|frequency|graph|table|chart)/i.test(lower));
+}
+
+function hasLiteracySignal(value: string) {
+  return /(passage|paragraph|author|language analysis|text|sentence|infer|inference|evidence|character|theme|comprehension|extract|write|writing|reading)/i.test(value);
 }
 
 function hasScienceSignal(value: string) {
-  return /(science|physics|chemistry|biology|force|energy|waves?|electricity|magnetism|circuit|resistance|current|voltage|particle|atomic|atom|cells?|ecosystem|practical|equation|f\s*=\s*m\s*[x*]\s*a|mass|weight|acceleration|velocity|momentum|density|pressure|chemical\s*reaction|exothermic|endothermic|evolution|genetics|dna|radiation|nuclear|thermal|kinetic|gravitational|elastic\s*potential|newton|joule|watt|hertz|ohm|ampere|photosynthesis|osmosis|diffusion|respiration|mitosis|periodic\s*table|element|compound|mixture|reactant|product|bond|electron|proton|neutron|isotope|half.life|wave.length|frequency|amplitude|refraction|reflection|electromagnetic)/i.test(value);
+  return /(science|physics|chemistry|biology|force|energy|waves?|electricity|magnetism|circuit|resistance|current|voltage|particle|atomic|atom|cells?|ecosystem|practical|equation|f\s*=\s*m\s*[x*]\s*a|mass|weight|acceleration|velocity|momentum|density|pressure|chemical\s*reaction|exothermic|endothermic|evolution|genetics|dna|radiation|nuclear|thermal|kinetic|gravitational|elastic\s*potential|newton|joule|watt|hertz|ohm|ampere|photosynthesis|osmosis|diffusion|respiration|mitosis|periodic\s*table|element|compound|mixture|reactant|product|bond|electron|proton|neutron|isotope|half.life|wave.length|frequency|amplitude|refraction|reflection|electromagnetic|acid|alkali|neutrali[sz]ation|electrolysis|ion|ionic|ph\b)/i.test(value);
 }
 
 function isMathOnlyContent(value: string) {
@@ -179,7 +281,7 @@ function difficultyThresholdByType(type: QualityInput["type"], difficulty: numbe
     return safeDifficulty >= 4 ? 2 : 1;
   }
   if (type === "science") {
-    return 28 + (safeDifficulty - 1) * 10 + yearBoost;
+    return 22 + (safeDifficulty - 1) * 8 + yearBoost;
   }
   return 35 + (safeDifficulty - 1) * 8 + yearBoost;
 }
@@ -194,7 +296,7 @@ function validateSkillTopicMatch(item: Record<string, unknown>, skillFocus?: str
 function classifySubjectMatch(subject: string | undefined, text: string, type: QualityInput["type"]) {
   const normalized = String(subject ?? "").toLowerCase();
   const lower = text.toLowerCase();
-  if (type === "maths") return hasMathContent(lower);
+  if (type === "maths") return hasMathContent(lower) || hasMathIntent(lower);
   if (type === "science") return hasScienceSignal(lower) && !isMathOnlyContent(lower);
   if (type === "languages" || ((normalized.includes("french") || normalized.includes("german") || normalized.includes("spanish") || normalized.includes("latin") || normalized.includes("mandarin") || normalized.includes("arabic")) && !normalized.includes("english-language"))) {
     return /(translation|vocabulary|verb|tense|conjugat|speaking|listening|bonjour|hola|guten|fran|espan|deutsch)/i.test(lower);
@@ -215,7 +317,7 @@ function classifySubjectMatch(subject: string | undefined, text: string, type: Q
   if (type === "grammar") {
     return /(grammar|clause|verb|noun|adjective|adverb|tense|syntax|sentence)/i.test(lower) && !hasMathContent(lower);
   }
-  if (type === "reading" || type === "writing") return !hasMathContent(lower);
+  if (type === "reading" || type === "writing") return hasLiteracySignal(lower) || !hasMathContent(lower);
   return true;
 }
 
@@ -241,13 +343,36 @@ function addOrReject(
     acc.cleaned.push(item);
     return;
   }
+  acc.rejectedItemsCount += 1;
+  for (const error of errors) {
+    if (error.startsWith("science_contamination:")) {
+      const keyword = error.split(":")[1];
+      if (keyword) acc.rejectedKeywords.push(keyword);
+    }
+    if (error.startsWith("science_subject_drift:")) {
+      const drift = error.split(":")[1];
+      if (drift) acc.detectedSubjectDrift.push(drift);
+    }
+  }
   if (shouldRepair(mode)) {
     acc.errors.push(...errors);
     acc.fixesApplied.push(`Removed invalid item: ${keyLabel}`);
     acc.removedWords.push(keyLabel);
+    acc.repairedItemsCount += 1;
     return;
   }
   acc.errors.push(...errors);
+}
+
+function mapErrorToDiagnostics(error: string) {
+  return {
+    missingFields: /missing_(prompt|answer|explanation|questions|passage)/.test(error) ? 1 : 0,
+    malformedStructure: /invalid_structure|incomplete/.test(error) ? 1 : 0,
+    weakCommandWords: /weak_command_word/.test(error) ? 1 : 0,
+    answerMismatch: /answer_mismatch|mark_scheme/.test(error) ? 1 : 0,
+    difficultyMismatch: /difficulty_too_easy/.test(error) ? 1 : 0,
+    schemaMismatch: /invalid_structure|schema_mismatch/.test(error) ? 1 : 0,
+  };
 }
 
 function buildMeta(input: {
@@ -269,6 +394,37 @@ function buildMeta(input: {
     subjectMatch: input.acc.subjectMismatches === 0,
     skillTopicMatch: input.acc.skillTopicMismatches === 0,
     difficultyMatch: input.acc.difficultyMismatches === 0,
+    diagnostics: (() => {
+      const base = {
+        validationStepFailed: input.acc.errors.length > 0,
+        missingFields: 0,
+        malformedStructure: 0,
+        weakCommandWords: 0,
+        answerMismatch: 0,
+        difficultyMismatch: 0,
+        schemaMismatch: 0,
+      };
+      for (const error of input.acc.errors) {
+        const mapped = mapErrorToDiagnostics(error);
+        base.missingFields += mapped.missingFields;
+        base.malformedStructure += mapped.malformedStructure;
+        base.weakCommandWords += mapped.weakCommandWords;
+        base.answerMismatch += mapped.answerMismatch;
+        base.difficultyMismatch += mapped.difficultyMismatch;
+        base.schemaMismatch += mapped.schemaMismatch;
+      }
+      return {
+        ...base,
+        contaminationDetected: input.acc.rejectedKeywords.length > 0 || input.acc.detectedSubjectDrift.length > 0,
+        contaminationScore: Number(input.acc.contaminationScore.toFixed(3)),
+        contaminationThreshold: input.acc.contaminationThreshold,
+        rejectedKeywords: Array.from(new Set(input.acc.rejectedKeywords)),
+        detectedSubjectDrift: Array.from(new Set(input.acc.detectedSubjectDrift)),
+        repairedItemsCount: input.acc.repairedItemsCount,
+        rejectedItemsCount: input.acc.rejectedItemsCount,
+        rejectionReasons: Array.from(new Set(input.acc.errors)).slice(0, 24),
+      };
+    })(),
   };
 }
 
@@ -415,14 +571,16 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
     }
 
     if (input.type === "maths") {
-      if (!hasMathContent(`${prompt} ${String(answer ?? "")}`)) {
+      const mathsText = `${prompt} ${String(answer ?? "")} ${String(data.explanation ?? "")}`;
+      if (!hasMathContent(mathsText)) {
         issues.push("maths_subject_mismatch");
         pushMismatch(acc, "subject");
       }
       const operators = (prompt.match(/[+\-x÷*/]/g) ?? []).length;
-      const hasReasoningWords = /(difference|total|fraction|decimal|ratio|multi-step|two-step|explain|show your working)/i.test(prompt);
-      const minComplexity = difficultyThresholdByType("maths", safeDifficulty, yearNumber);
-      if (safeDifficulty >= 4 && operators + (hasReasoningWords ? 1 : 0) < minComplexity) {
+      const hasReasoningWords = /(difference|total|fraction|decimal|ratio|proportion|multi-step|two-step|explain|show your working|justify|prove|method|reasoning)/i.test(mathsText);
+      const hasGcseMathsSignal = /(equation|algebra|expression|inequality|graph|function|simultaneous|quadratic|surd|probability|statistics|percentage|ratio|proportion)/i.test(mathsText);
+      const hasComplexitySignal = operators >= 2 || hasReasoningWords || hasGcseMathsSignal;
+      if (safeDifficulty >= 4 && !hasComplexitySignal) {
         issues.push("difficulty_too_easy");
         pushMismatch(acc, "difficulty");
       }
@@ -430,6 +588,19 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
 
     if (input.type === "science") {
       const fullText = `${prompt} ${String(answer ?? "")} ${String(data.explanation ?? "")}`;
+      const explanation = String(data.explanation ?? "").trim();
+      const discipline = resolveScienceDiscipline(input.subject, input.skillFocus);
+
+      if (!String(data.question ?? data.prompt ?? "").trim()) {
+        issues.push("science_missing_prompt");
+      }
+      if (!String(answer ?? "").trim()) {
+        issues.push("science_missing_answer");
+      }
+      if (!explanation) {
+        issues.push("science_missing_explanation");
+      }
+
       if (!hasScienceSignal(fullText)) {
         issues.push("science_subject_mismatch");
         pushMismatch(acc, "subject");
@@ -442,6 +613,45 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
       if (prompt.length < minPrompt) {
         issues.push("difficulty_too_easy");
         pushMismatch(acc, "difficulty");
+      }
+
+      const isGcseContext = yearNumber >= 10 || String(input.keyStage ?? "").toUpperCase() === "KS4";
+      if (isGcseContext && !hasCommandWord(prompt)) {
+        issues.push("science_weak_command_word");
+      }
+      if (isGcseContext && !hasMarkSchemeStyleAnswer(String(answer ?? ""), explanation)) {
+        issues.push("science_answer_mismatch");
+      }
+
+      if (discipline) {
+        const profile = SCIENCE_DISCIPLINE_KEYWORDS[discipline];
+        const forbiddenHits = countMatches(fullText, profile.forbidden);
+        const allowedHits = countMatches(fullText, profile.allowed);
+        const totalSignals = forbiddenHits.length + allowedHits.length;
+        const contaminationScore = totalSignals > 0 ? forbiddenHits.length / totalSignals : 0;
+        acc.contaminationScore = Math.max(acc.contaminationScore, contaminationScore);
+
+        if (forbiddenHits.length > 0) {
+          for (const keyword of forbiddenHits) issues.push(`science_contamination:${keyword}`);
+          for (const drift of profile.drift) {
+            const driftSignals = SCIENCE_DISCIPLINE_KEYWORDS[drift].allowed;
+            if (countMatches(fullText, driftSignals).length > 0) {
+              issues.push(`science_subject_drift:${drift}`);
+            }
+          }
+        }
+
+        const hasFocusSignal = allowedHits.length > 0
+          || hasTokenOverlap(fullText, tokenize(input.skillFocus))
+          || hasTokenOverlap(fullText, tokenize(input.topic));
+        if (!hasFocusSignal && isGcseContext) {
+          issues.push("science_subject_containment_missing");
+        }
+
+        if (contaminationScore > acc.contaminationThreshold) {
+          issues.push("science_subject_contamination");
+          pushMismatch(acc, "subject");
+        }
       }
     }
 
@@ -519,7 +729,6 @@ export function validateAiContentQuality(input: QualityInput): QualityResult {
         return {
           ok: false,
           error: `No valid ${label} content remained after validation.`,
-          cleanedItems: validated.cleaned,
           meta: validated.meta,
         };
       }
@@ -559,6 +768,18 @@ export function validateAiContentQuality(input: QualityInput): QualityResult {
     if (errors.includes("reading_missing_questions")) return { ok: false, error: "Reading output must include questions.", cleanedItems: validated.cleaned, meta: validated.meta };
     if (errors.includes("science_maths_only")) {
       return { ok: false, error: "Generated content did not match GCSE Physics. Please regenerate.", cleanedItems: validated.cleaned, meta: validated.meta };
+    }
+    if (errors.some((entry) => entry.startsWith("science_contamination:") || entry.startsWith("science_subject_drift:"))) {
+      return { ok: false, error: "Generated content drifted into another science discipline. Please regenerate.", cleanedItems: validated.cleaned, meta: validated.meta };
+    }
+    if (errors.includes("science_subject_containment_missing")) {
+      return { ok: false, error: "Generated content did not stay within the selected science discipline.", cleanedItems: validated.cleaned, meta: validated.meta };
+    }
+    if (errors.includes("science_weak_command_word")) {
+      return { ok: false, error: "Generated science questions must use GCSE command words.", cleanedItems: validated.cleaned, meta: validated.meta };
+    }
+    if (errors.includes("science_answer_mismatch")) {
+      return { ok: false, error: "Generated science answers must use mark-scheme style scientific reasoning.", cleanedItems: validated.cleaned, meta: validated.meta };
     }
     if (errors.some((entry) => entry.includes("subject_mismatch") || entry.includes("maths_subject_mismatch") || entry.includes("language_subject_mismatch") || entry.includes("science_subject_mismatch"))) {
       return { ok: false, error: "Generated content did not match the selected subject.", cleanedItems: validated.cleaned, meta: validated.meta };

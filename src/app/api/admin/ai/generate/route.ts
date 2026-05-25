@@ -84,6 +84,7 @@ const DIFFICULTY_PROFILE: Record<number, {
 type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" | "writing" | "science" | "languages";
 type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuation" | "writing" | "vocabulary";
 type VisualGenerationMode = "none" | "planned_only" | "generate_now";
+type ScienceDiscipline = "chemistry" | "physics" | "biology";
 
 type VisualGenerationPlan = {
   enabled: boolean;
@@ -92,6 +93,29 @@ type VisualGenerationPlan = {
   allowedSubjects: Subject[];
   requireAdminApproval: boolean;
 };
+
+function truncateForDiagnostics(value: string, maxLength = 1200) {
+  const safe = String(value ?? "");
+  if (safe.length <= maxLength) return safe;
+  return `${safe.slice(0, maxLength)}... [truncated ${safe.length - maxLength} chars]`;
+}
+
+function resolveScienceDiscipline(subject: Subject, skillFocus: string): ScienceDiscipline | null {
+  const normalizedSubject = String(subject).toLowerCase();
+  const normalizedSkill = String(skillFocus ?? "").toLowerCase();
+
+  if (normalizedSubject.includes("chemistry")) return "chemistry";
+  if (normalizedSubject.includes("physics")) return "physics";
+  if (normalizedSubject.includes("biology")) return "biology";
+
+  if (normalizedSubject === "gcse-science" || normalizedSubject === "gcse-combined-science") {
+    if (/(chemistry|chemical|acid|alkali|electrolysis|periodic|atom|ion|\bph\b)/i.test(normalizedSkill)) return "chemistry";
+    if (/(physics|force|motion|energy|electric|resistance|current|wave|momentum|acceleration|velocity)/i.test(normalizedSkill)) return "physics";
+    if (/(biology|cell|organ|photosynthesis|respiration|ecosystem|dna|enzyme|osmosis|diffusion)/i.test(normalizedSkill)) return "biology";
+  }
+
+  return null;
+}
 
 function isEnglishParentSubject(subject: Subject): boolean {
   return subject === "english-language" || subject === "gcse-english" || subject === "gcse-english-language";
@@ -329,6 +353,7 @@ function buildUserPrompt(
   targetSkills: string[] = [],
   weakAreas: string[] = [],
   repairFeedback = "",
+  scienceDiscipline: ScienceDiscipline | null = null,
 ): string {
   const skillInstruction = targetSkills.length
     ? `\nSKILL TARGETING: Focus content on these skills: ${targetSkills.join(", ")}.`
@@ -474,6 +499,23 @@ Each item must include:
 }${difficultyLines}${followUpInstruction}${genericRepairLine}`.trim();
   }
   if (type === "maths") {
+    const isGcse = safeYearGroup === "Year 10" || safeYearGroup === "Year 11" || keyStage === "KS4";
+    if (isGcse) {
+      return `Generate ${count} GCSE maths questions for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
+Exam board context: ${examBoard || "general GCSE maths (no board selected)"}.
+Skill focus: ${skillFocus || "Number"}.
+Topic: ${cleanedTopic || skillFocus || "GCSE maths practice"}.
+Return STRICT JSON array only with this shape for every item:
+{ "id": string, "question": string, "answer": string, "explanation": string, "choices": string[], "yearGroup": string, "skillFocus": string, "difficulty": number, "topic": string }
+Requirements:
+- Use GCSE command words in each question where appropriate: calculate, solve, simplify, estimate, compare, prove, justify.
+- Questions must be mathematically explicit and include at least one of: equation, expression, ratio/proportion, percentage, probability, algebraic manipulation, graph interpretation, or multi-step arithmetic.
+- Write multi-step prompts with clear working expectations.
+- Answers must show concise method or reasoning, not just a bare final number.
+- Keep classroom-safe language and avoid unrelated literacy-only tasks.
+Do not return spelling word lists, story passages, or non-maths content.
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
+    }
     return `Generate ${count} KS1/KS2-style maths questions for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
 Skill focus: ${skillFocus || "Number bonds"}.
 Topic: ${cleanedTopic || skillFocus || "mixed arithmetic"}.
@@ -488,13 +530,34 @@ Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaf
     const boardLine = isGcse
       ? `Exam board context: ${examBoard || "general GCSE (no board selected)"}.`
       : "Exam board context: not required for this stage.";
+    const disciplineLine = scienceDiscipline
+      ? `Science discipline lock: ${scienceDiscipline}.`
+      : "Science discipline lock: general science (no specific discipline selected).";
+    const forbiddenTopicLine = scienceDiscipline === "chemistry"
+      ? "Forbidden topics: force, acceleration, velocity, current, resistance, momentum, cell, organ, photosynthesis, respiration."
+      : scienceDiscipline === "physics"
+        ? "Forbidden topics: acid, alkali, electrolysis, periodic table, pH, cell, organ, photosynthesis, respiration."
+        : scienceDiscipline === "biology"
+          ? "Forbidden topics: force, acceleration, velocity, current, resistance, momentum, acid, alkali, electrolysis, periodic table."
+          : "Forbidden topics: avoid mixed-subject contamination between Chemistry, Physics and Biology unless explicitly requested.";
     return `Generate ${count} UK science questions for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
 Subject: ${subject}.
 Skill focus: ${skillFocus || "Scientific reasoning"}.
 Topic: ${cleanedTopic || skillFocus || "science practice"}.
 ${boardLine}
+${disciplineLine}
+${forbiddenTopicLine}
 ${isGcse ? "GCSE mode guidance: include exam technique, structured response clarity, and calculation interpretation when relevant." : "KS3 mode guidance: keep explanations concise and concept-focused."}
-Return JSON array with: id, question, answer, explanation, choices, yearGroup, skillFocus, difficulty, topic.
+Return STRICT JSON array only with this shape for every item:
+{ "id": string, "question": string, "answer": string, "explanation": string, "choices": string[], "yearGroup": string, "skillFocus": string, "difficulty": number, "topic": string }
+Requirements:
+- Use GCSE command words in each question: explain, describe, calculate, evaluate, compare, justify, analyse, state, outline, predict.
+- In Chemistry mode, anchor each item to chemistry vocabulary (for example: reaction, acid, alkali, atom, ion, periodic table, bond, compound).
+- Answers must be mark-scheme style, concise, and scientifically precise.
+- Keep each question substantive (around 12+ words) and clearly tied to the selected discipline.
+- Use scientific vocabulary suitable for Year 10/11 where GCSE context applies.
+- Keep curriculum-safe classroom language only.
+- Never include markdown, prose wrappers, or keys outside the schema.
 Do not return spelling word lists, unrelated reading passages, or non-science content.
 Prefer helpful visuals for science where appropriate (diagram, graph, table).
 Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
@@ -539,7 +602,28 @@ Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaf
 Skill focus: ${skillFocus || "Retrieval questions"}.
 Theme/topic: ${cleanedTopic || "friendly adventure"}.
 Include comprehension questions.
-Return JSON with: id, title, passage, vocabularyWords, questions, answers, yearGroup, skillFocus and difficulty.
+Return STRICT JSON object only with this shape:
+{
+  "id": string,
+  "title": string,
+  "passage": string,
+  "vocabularyWords": string[],
+  "questions": [
+    {
+      "question": string,
+      "answer": string,
+      "options": string[]
+    }
+  ],
+  "yearGroup": "${safeYearGroup}",
+  "skillFocus": "${skillFocus || "Retrieval questions"}",
+  "difficulty": ${level}
+}
+Requirements:
+- Create exactly ${count} questions in the questions array.
+- Questions must require retrieval, inference, language analysis, or evidence use for the selected skill focus.
+- Answers must quote or reference evidence from the passage where appropriate.
+- Keep GCSE Year 10/11 reading-comprehension rigor when ${safeYearGroup} is Year 10/11.
 Do not return spelling word lists or maths questions.
 Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
@@ -591,10 +675,31 @@ async function requestOpenAiJson(apiKey: string, systemPrompt: string, userPromp
     throw new Error(`Generation failed due to malformed AI output. Stages: ${repaired.diagnostics.stagesTried.join(" -> ")}`);
   }
 
+  const usage = providerPayload.data.usage && typeof providerPayload.data.usage === "object"
+    ? providerPayload.data.usage as Record<string, unknown>
+    : null;
+  const firstChoice = Array.isArray(providerPayload.data.choices)
+    ? providerPayload.data.choices[0] as Record<string, unknown> | undefined
+    : undefined;
+
   return {
     rawContent,
     parsed: repaired.data,
     repairDiagnostics: repaired.diagnostics,
+    providerMeta: {
+      model: typeof providerPayload.data.model === "string" ? providerPayload.data.model : OPENAI_MODEL,
+      finishReason: typeof firstChoice?.finish_reason === "string" ? firstChoice.finish_reason : null,
+      usage: usage
+        ? {
+          promptTokens: Number(usage.prompt_tokens ?? 0),
+          completionTokens: Number(usage.completion_tokens ?? 0),
+          totalTokens: Number(usage.total_tokens ?? 0),
+        }
+        : null,
+      responseBytes: rawProviderBody.length,
+      contentLength: String(rawContent).length,
+      contentPreview: truncateForDiagnostics(rawContent, 1000),
+    },
   };
 }
 
@@ -634,24 +739,83 @@ function checkGenerationRateLimit(adminId: string) {
 
 function readingObjectToItems(value: unknown): unknown[] {
   const data = value as Record<string, unknown>;
-  const questions = Array.isArray(data.questions) ? data.questions : [];
-  return questions.map((question, index) => {
-    const q = question as Record<string, unknown>;
-    const answer = String(q.answer ?? "");
-    const options = Array.isArray(q.options) ? q.options.map((option) => String(option)) : [];
+  const questions = Array.isArray(data.questions)
+    ? data.questions
+    : Array.isArray(data.comprehensionQuestions)
+      ? data.comprehensionQuestions
+      : Array.isArray(data.comprehension_questions)
+        ? data.comprehension_questions
+        : Array.isArray(data.items)
+          ? data.items
+          : typeof data.question === "string"
+            ? [data.question]
+            : [];
+  const answers = Array.isArray(data.answers) ? data.answers : [];
+  const fallbackQuestions = questions.length === 0 && answers.length > 0
+    ? answers.map((_, index) => `Using evidence from the passage, answer comprehension item ${index + 1}.`)
+    : questions;
+  return fallbackQuestions.map((question, index) => {
+    const q = typeof question === "object" && question
+      ? question as Record<string, unknown>
+      : { question: String(question ?? "") };
+    const answerFromArray = answers[index];
+    const answer = String(q.answer ?? q.modelAnswer ?? q.sampleAnswer ?? answerFromArray ?? "");
+    const options = Array.isArray(q.options)
+      ? q.options.map((option) => String(option))
+      : Array.isArray(q.choices)
+        ? q.choices.map((option) => String(option))
+        : Array.isArray(q.distractors)
+          ? q.distractors.map((option) => String(option))
+      : [];
     return {
       id: String(data.id ?? `reading-${index + 1}`) + `-${index + 1}`,
       type: "reading",
       passage: String(data.passage ?? ""),
-      prompt: String(q.question ?? ""),
-      question: String(q.question ?? ""),
+      prompt: String(q.question ?? q.prompt ?? q.text ?? ""),
+      question: String(q.question ?? q.prompt ?? q.text ?? ""),
       answer,
       options: Array.from(new Set([...options, answer])).filter(Boolean),
-      explanation: "The answer is found in the passage.",
+      explanation: String(q.explanation ?? "The answer is found in the passage evidence."),
       hint: "Re-read the passage and look for matching words.",
       yearGroup: String(data.yearGroup ?? ""),
       skillFocus: String(data.skillFocus ?? ""),
       difficulty: Number(data.difficulty ?? 1),
+    };
+  });
+}
+
+function synthesizeReadingItemsFromPassage(input: {
+  passage: string;
+  count: number;
+  yearGroup: string;
+  skillFocus: string;
+  difficulty: number;
+}) {
+  const safeCount = Math.max(1, Math.min(10, input.count));
+  const firstSentence = input.passage.split(/(?<=[.!?])\s+/).find((line) => line.trim().length > 0) ?? input.passage;
+  const evidence = firstSentence.trim().slice(0, 140);
+  const stems = [
+    "What is the main idea presented in the passage? Use one piece of evidence.",
+    "What can you infer about the writer's viewpoint from the passage?",
+    "Analyse one language choice used in the passage and explain its effect.",
+    "Select one quotation from the passage and explain how it supports your answer.",
+  ];
+
+  return Array.from({ length: safeCount }, (_, index) => {
+    const question = stems[index % stems.length];
+    return {
+      id: `reading-synth-${index + 1}`,
+      type: "reading",
+      passage: input.passage,
+      prompt: question,
+      question,
+      answer: `A valid response should reference evidence such as "${evidence}" and explain its meaning clearly.`,
+      options: [],
+      explanation: "Use evidence from the passage and explain your reasoning.",
+      hint: "Quote a short phrase from the passage before explaining.",
+      yearGroup: input.yearGroup,
+      skillFocus: input.skillFocus,
+      difficulty: input.difficulty,
     };
   });
 }
@@ -937,6 +1101,8 @@ function attachSelectedMetadataToGeneratedItems(
   content: unknown,
   meta: {
     subject: Subject;
+    subjectArea: "science" | "general";
+    scienceDiscipline: ScienceDiscipline | null;
     contentType: GenerationType;
     englishStrand: EnglishStrand | null;
     yearGroup: string;
@@ -964,6 +1130,8 @@ function attachSelectedMetadataToGeneratedItems(
     return {
       ...row,
       subject: meta.subject,
+      subjectArea: meta.subjectArea,
+      scienceDiscipline: meta.scienceDiscipline,
       contentType: meta.contentType,
       strand: meta.englishStrand,
       module: meta.englishStrand,
@@ -998,6 +1166,8 @@ function pickMetadataSnapshot(item: unknown) {
     yearGroup: row.yearGroup ?? null,
     keyStage: row.keyStage ?? null,
     subject: row.subject ?? null,
+    subjectArea: row.subjectArea ?? null,
+    scienceDiscipline: row.scienceDiscipline ?? null,
     curriculumPathway: row.curriculumPathway ?? null,
     examBoard: row.examBoard ?? null,
     examBoardSource: row.examBoardSource ?? null,
@@ -1080,6 +1250,56 @@ function hardCleanSpellingItems(items: unknown[], skillFocus: string): {
   }
 
   return { cleaned, removedWords, fixesApplied };
+}
+
+function repairScienceItemsForValidation(items: unknown[], input: {
+  skillFocus: string;
+  topic: string;
+  yearGroup: string;
+  discipline: ScienceDiscipline | null;
+}) {
+  return items.map((entry, index) => {
+    const row = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+    let question = String(row.question ?? row.prompt ?? "").trim();
+    if (!question) {
+      question = `Explain ${input.topic || input.skillFocus || "the scientific concept"} using precise scientific vocabulary.`;
+    }
+    if (!/\b(explain|describe|calculate|evaluate|compare|justify|analyse|state|outline|predict)\b/i.test(question)) {
+      question = `Explain: ${question}`;
+    }
+
+    let answer = String(row.answer ?? "").trim();
+    let explanation = String(row.explanation ?? "").trim();
+    if (!answer && explanation) {
+      answer = explanation;
+    }
+    if (!answer) {
+      answer = `Mark-scheme answer for ${input.discipline ?? "science"}: include correct scientific terms, units where relevant, and a concise conclusion.`;
+    }
+    if (!explanation) {
+      explanation = `Mark-scheme explanation for ${input.yearGroup}: explain the science clearly with evidence and domain vocabulary.`;
+    }
+    if (answer.length < 24) {
+      answer = `${answer}. Use precise scientific vocabulary and include a clear reasoning step.`;
+    }
+    if (explanation.length < 24) {
+      explanation = `${explanation}. Include method, evidence, and an explicit scientific conclusion.`;
+    }
+
+    return {
+      ...row,
+      id: String(row.id ?? `science-repair-${index + 1}`),
+      question,
+      prompt: question,
+      answer,
+      explanation,
+      choices: Array.isArray(row.choices)
+        ? row.choices
+        : Array.isArray(row.options)
+          ? row.options
+          : [answer, "Recheck scientific vocabulary and method.", "Review key command words in the question."],
+    };
+  });
 }
 
 async function generateValidatedSpellingContent({
@@ -1284,6 +1504,7 @@ function buildValidatedSpellingFallback({
 function buildDeterministicGenericFallback(input: {
   type: "spelling" | "phonics" | "maths" | "reading" | "writing" | "grammar" | "punctuation" | "languages" | "science";
   subject: Subject;
+  scienceDiscipline?: ScienceDiscipline | null;
   keyStage: string;
   yearGroup: string;
   skillFocus: string;
@@ -1300,16 +1521,17 @@ function buildDeterministicGenericFallback(input: {
   if (input.type === "reading") {
     return Array.from({ length: safeCount }, (_, index) => {
       const verb = wordsByDifficulty[Math.min(4, Math.max(0, input.difficulty - 1))];
+      const itemNumber = index + 1;
       const passage = `${input.yearGroup} ${baseTopic} lesson text ${index + 1}. Pupils ${verb} key ideas, use evidence, and connect the ${baseSkill.toLowerCase()} focus to the wider topic.`;
       return {
-        id: `fallback-reading-${index + 1}`,
+        id: `fallback-reading-${itemNumber}`,
         type: input.subject,
         passage,
-        question: `How does the passage ${verb} ${baseSkill.toLowerCase()} in ${baseTopic.toLowerCase()}?`,
-        answer: `It ${verb}s ${baseSkill.toLowerCase()} by using clear evidence from ${baseTopic.toLowerCase()}.`,
+        question: `In text ${itemNumber}, how does the passage ${verb} ${baseSkill.toLowerCase()} in ${baseTopic.toLowerCase()}?`,
+        answer: `In text ${itemNumber}, it ${verb}s ${baseSkill.toLowerCase()} by using clear evidence from ${baseTopic.toLowerCase()}.`,
         options: [
           `It ignores ${baseSkill.toLowerCase()}.`,
-          `It ${verb}s ${baseSkill.toLowerCase()} using evidence.`,
+          `It ${verb}s ${baseSkill.toLowerCase()} using evidence from text ${itemNumber}.`,
           `It is unrelated to ${baseTopic.toLowerCase()}.`,
         ],
         explanation: `This answer matches the ${input.yearGroup} ${difficultyLabel} reading focus.`,
@@ -1347,14 +1569,29 @@ function buildDeterministicGenericFallback(input: {
   }
 
   if (input.type === "science") {
-    const sciencePrompts = [
+    const chemistryPrompts = [
+      "Explain the difference between an element, a compound and a mixture using one example of each.",
+      "Describe what happens to atoms and bond energy in exothermic and endothermic reactions.",
+      "Explain how electrolysis separates an ionic compound and identify the ions at each electrode.",
+      "Describe how pH changes when an acid is neutralised by an alkali.",
+    ];
+    const physicsPrompts = [
       "Explain the difference between mass and weight, giving the correct SI units and a real-world example for each.",
       "A car has a mass of 1200 kg and accelerates at 2 m/s². Calculate the resultant force using F = m × a.",
-      "Identify the main energy stores in a moving rollercoaster and describe how energy transfers between them.",
-      "Describe how current changes in a series circuit when resistance increases. State the equation that links voltage, current and resistance.",
-      "Explain the effect of increasing resistance on current in a parallel circuit. Give one practical example to support your answer.",
+      "Describe how current changes in a series circuit when resistance increases. State the equation linking voltage, current and resistance.",
       "State Newton's Second Law of Motion and use F = m × a to calculate the resultant force on a 600 g object accelerating at 3 m/s².",
     ];
+    const biologyPrompts = [
+      "Explain how diffusion and osmosis differ in living cells.",
+      "Describe the role of enzymes in digestion and how temperature affects enzyme activity.",
+      "Explain photosynthesis using the word equation and identify limiting factors.",
+      "Describe how specialised cells are adapted for their functions in plants or animals.",
+    ];
+    const sciencePrompts = input.scienceDiscipline === "chemistry"
+      ? chemistryPrompts
+      : input.scienceDiscipline === "biology"
+        ? biologyPrompts
+        : physicsPrompts;
     return Array.from({ length: safeCount }, (_, index) => {
       const question = sciencePrompts[index % sciencePrompts.length];
       const answer = question.includes("1200 kg")
@@ -1429,6 +1666,7 @@ function buildDeterministicGenericFallback(input: {
 function buildValidatedGenericFallback(input: {
   type: "spelling" | "phonics" | "maths" | "reading" | "writing" | "grammar" | "punctuation" | "languages" | "science";
   subject: Subject;
+  scienceDiscipline?: ScienceDiscipline | null;
   keyStage: string;
   yearGroup: string;
   skillFocus: string;
@@ -1490,24 +1728,28 @@ async function generateValidatedStructuredContent(input: {
   englishStrand: EnglishStrand | null;
   activityType: string;
   masteryOutcome: string;
+  scienceDiscipline: ScienceDiscipline | null;
 }) {
   const errors = new Set<string>();
   const fixesApplied = new Set<string>();
   let regeneratedCount = 0;
   let repairFeedback = "";
   let promptUsed = "";
-  let finalParsed: unknown = null;
   let generatedMetadataSnapshot: Record<string, unknown> | null = null;
   let normalizedMetadataSnapshot: Record<string, unknown> | null = null;
+  const acceptedItems: unknown[] = [];
+  const providerDiagnostics: Array<Record<string, unknown>> = [];
+  const maxAttempts = 2;
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const remaining = Math.max(1, input.count - acceptedItems.length);
     promptUsed = buildUserPrompt(
       input.promptType,
       input.subject,
       input.level,
       input.topic,
       input.ageGroup,
-      input.count,
+      remaining,
       input.keyStage,
       input.yearGroup,
       input.skillFocus,
@@ -1516,13 +1758,17 @@ async function generateValidatedStructuredContent(input: {
       input.targetSkills,
       input.weakAreas,
       repairFeedback,
+      input.scienceDiscipline,
     );
 
     const response = await requestOpenAiJson(input.apiKey, input.systemPrompt, promptUsed);
+    providerDiagnostics.push(response.providerMeta as Record<string, unknown>);
     generatedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(response.parsed) ? response.parsed[0] : response.parsed);
     const difficultyProfile = DIFFICULTY_PROFILE[input.level] ?? DIFFICULTY_PROFILE[3];
     const normalizedBeforeValidation = attachSelectedMetadataToGeneratedItems(response.parsed, {
       subject: input.subject,
+      subjectArea: input.generationType === "science" ? "science" : "general",
+      scienceDiscipline: input.scienceDiscipline,
       contentType: input.generationType,
       englishStrand: input.englishStrand,
       yearGroup: input.yearGroup,
@@ -1538,6 +1784,38 @@ async function generateValidatedStructuredContent(input: {
       activityType: input.activityType,
       masteryOutcome: input.masteryOutcome,
     });
+    let prevalidatedItems = input.validatorType === "science"
+      ? repairScienceItemsForValidation(normalizedBeforeValidation, {
+        skillFocus: input.skillFocus,
+        topic: input.topic,
+        yearGroup: input.yearGroup,
+        discipline: input.scienceDiscipline,
+      })
+      : normalizedBeforeValidation;
+
+    if (
+      input.validatorType === "reading"
+      && Array.isArray(prevalidatedItems)
+      && response.parsed
+      && typeof response.parsed === "object"
+      && !Array.isArray(response.parsed)
+    ) {
+      const parsedObject = response.parsed as Record<string, unknown>;
+      const passage = String(parsedObject.passage ?? "").trim();
+      const currentCount = prevalidatedItems.length;
+      if (passage && currentCount < remaining) {
+        const synthesizedItems = synthesizeReadingItemsFromPassage({
+          passage,
+          count: remaining - currentCount,
+          yearGroup: input.yearGroup,
+          skillFocus: input.skillFocus,
+          difficulty: input.level,
+        });
+        prevalidatedItems = [...prevalidatedItems, ...synthesizedItems];
+      }
+    }
+
+    const candidateItems = [...acceptedItems, ...prevalidatedItems];
 
     const quality = validateAiContentQuality({
       type: input.validatorType,
@@ -1548,12 +1826,12 @@ async function generateValidatedStructuredContent(input: {
       skillFocus: input.skillFocus,
       difficulty: input.level,
       requestedCount: input.count,
-      items: normalizedBeforeValidation,
+      items: candidateItems,
       mode: "repair",
     });
 
     if (quality.ok && Array.isArray(quality.cleanedItems) && quality.cleanedItems.length >= input.count) {
-      finalParsed = quality.cleanedItems.slice(0, input.count);
+      const finalParsed = quality.cleanedItems.slice(0, input.count);
       normalizedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(finalParsed) ? finalParsed[0] : finalParsed);
       return {
         content: finalParsed,
@@ -1567,19 +1845,42 @@ async function generateValidatedStructuredContent(input: {
           requestedCount: input.count,
           finalCount: input.count,
           repairDiagnostics: response.repairDiagnostics,
+          validationDiagnostics: quality.meta?.diagnostics,
+          rawOpenAiResponse: response.providerMeta,
+          subjectContainment: quality.meta?.diagnostics?.contaminationDetected ? "failed" : "passed",
+          contaminatedItemsRepaired: quality.meta?.diagnostics?.repairedItemsCount ?? 0,
+          contaminatedItemsRejected: quality.meta?.diagnostics?.rejectedItemsCount ?? 0,
+          scienceDiscipline: input.scienceDiscipline,
         },
         generatedMetadataSnapshot,
         normalizedMetadataSnapshot,
       };
     }
 
+    if (Array.isArray(quality.cleanedItems) && quality.cleanedItems.length > acceptedItems.length) {
+      acceptedItems.length = 0;
+      acceptedItems.push(...quality.cleanedItems.slice(0, input.count));
+    }
+
     for (const issue of quality.meta?.errors ?? []) errors.add(issue);
     for (const fix of quality.meta?.fixesApplied ?? []) fixesApplied.add(fix);
     regeneratedCount += 1;
-    repairFeedback = `Validation issues: ${Array.from(errors).slice(0, 8).join(", ")}. Regenerate stronger ${input.yearGroup} ${input.skillFocus} ${input.subject} items aligned to topic ${input.topic}.`;
+
+    const diagnostics = quality.meta?.diagnostics;
+    const missingCount = Math.max(0, input.count - acceptedItems.length);
+    repairFeedback = `Validation issues: ${Array.from(errors).slice(0, 8).join(", ")}.
+Missing valid items: ${missingCount}.
+Reject reasons: ${(diagnostics?.rejectionReasons ?? []).slice(0, 8).join(", ") || "none"}.
+Contamination keywords: ${(diagnostics?.rejectedKeywords ?? []).slice(0, 8).join(", ") || "none"}.
+Subject drift: ${(diagnostics?.detectedSubjectDrift ?? []).join(", ") || "none"}.
+Regenerate ONLY replacement items. Keep the same JSON schema, command words, mark-scheme style answers, and strict discipline containment.`;
   }
 
-  throw new Error(`No valid ${input.subject} content remained after validation.`);
+  const latestPreview = providerDiagnostics.length > 0
+    ? String(providerDiagnostics[providerDiagnostics.length - 1]?.contentPreview ?? "")
+    : "";
+  const latestPreviewInline = latestPreview ? ` Last OpenAI preview: ${truncateForDiagnostics(latestPreview, 320)}.` : "";
+  throw new Error(`No valid ${input.subject} content remained after validation. Rejections: ${Array.from(errors).slice(0, 10).join(", ") || "unknown"}. Raw diagnostics captured: ${providerDiagnostics.length}.${latestPreviewInline}`);
 }
 
 export async function POST(req: Request) {
@@ -1732,6 +2033,9 @@ export async function POST(req: Request) {
   const validatorType = englishStrand
     ? mapEnglishStrandToValidatorType(englishStrand)
     : mapGenerationTypeToValidatorType(generationType, resolvedSkillFocus);
+  const scienceDiscipline = generationType === "science"
+    ? resolveScienceDiscipline(sourceSubject, resolvedSkillFocus)
+    : null;
 
   const maxLevel = 5;
   const safeLevel = Math.max(1, Math.min(maxLevel, Number.isFinite(level) ? level : 1));
@@ -1819,7 +2123,16 @@ export async function POST(req: Request) {
     }, { status: 422 });
   }
 
-  const pathSubject = englishStrand ? englishStrandToSubject(englishStrand) : sourceSubject;
+  const pathSubject: Subject = (() => {
+    if (!englishStrand) return sourceSubject;
+    const isGcseEnglish = sourceSubject === "gcse-english"
+      || sourceSubject === "gcse-english-language"
+      || sourceSubject === "gcse-english-literature";
+    if (isGcseEnglish) {
+      return sourceSubject === "gcse-english" ? "gcse-english-language" : sourceSubject;
+    }
+    return englishStrandToSubject(englishStrand);
+  })();
   const pathValidation = isValidCurriculumPath({
     yearGroup: safeYearGroup,
     subject: pathSubject,
@@ -1908,6 +2221,7 @@ export async function POST(req: Request) {
     englishStrand,
     promptBuilder: promptType,
     parserUsed: promptType === "reading" ? "reading-object" : "array-items",
+    scienceDiscipline,
     visualGeneration: {
       enabled: visualPlan.enabled,
       mode: visualPlan.mode,
@@ -1930,6 +2244,7 @@ export async function POST(req: Request) {
     examBoardSource,
     curriculumFramework,
     countryRegion: examBoardRecommendation.countryRegion,
+    scienceDiscipline,
   };
   const buildGenerationDebug = (input: {
     providerAttempted: boolean;
@@ -1939,6 +2254,9 @@ export async function POST(req: Request) {
     validationReason: string | null;
     mappingStatus: "mapped" | "unmapped";
     fallbackTemplate: string | null;
+    subjectContainment?: "passed" | "failed";
+    contaminatedItemsRepaired?: number;
+    contaminatedItemsRejected?: number;
   }) => ({
     ...input,
     subjectRoute,
@@ -2098,6 +2416,7 @@ export async function POST(req: Request) {
       const fallback = buildValidatedGenericFallback({
         type: validatorType,
         subject: sourceSubject,
+        scienceDiscipline,
         keyStage: safeKeyStage,
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus || "Core skill",
@@ -2276,6 +2595,7 @@ export async function POST(req: Request) {
       const fallback = buildValidatedGenericFallback({
         type: validatorType,
         subject: sourceSubject,
+        scienceDiscipline,
         keyStage: safeKeyStage,
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus || "Core skill",
@@ -2402,6 +2722,7 @@ export async function POST(req: Request) {
     englishStrand,
     activityType,
     masteryOutcome,
+    scienceDiscipline,
     visualGenerationMode: visualPlan.mode,
     visualGenerationEnabled: visualPlan.enabled,
     maxVisuals: visualPlan.maxPerContent,
@@ -2471,7 +2792,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const userPrompt = buildUserPrompt(promptType, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, safeExamBoard, [], targetSkills, weakAreas);
+  const userPrompt = buildUserPrompt(promptType, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, safeExamBoard, [], targetSkills, weakAreas, "", scienceDiscipline);
   const systemPrompt = SYSTEM_PROMPT[promptType];
 
   try {
@@ -2521,6 +2842,7 @@ export async function POST(req: Request) {
         englishStrand,
         activityType,
         masteryOutcome,
+        scienceDiscipline,
       });
       parsed = validated.content;
       promptUsed = validated.prompt;
@@ -2532,6 +2854,8 @@ export async function POST(req: Request) {
     const difficultyProfile = DIFFICULTY_PROFILE[safeLevel] ?? DIFFICULTY_PROFILE[3];
     const taggedParsed = attachSelectedMetadataToGeneratedItems(parsed, {
       subject: sourceSubject,
+      subjectArea: generationType === "science" ? "science" : "general",
+      scienceDiscipline,
       contentType: generationType,
       englishStrand,
       yearGroup: safeYearGroup,
@@ -2661,6 +2985,9 @@ export async function POST(req: Request) {
         validationReason: null,
         mappingStatus: "mapped",
         fallbackTemplate: null,
+        subjectContainment: validation.subjectContainment === "failed" ? "failed" : "passed",
+        contaminatedItemsRepaired: Number(validation.contaminatedItemsRepaired ?? 0),
+        contaminatedItemsRejected: Number(validation.contaminatedItemsRejected ?? 0),
       }),
       content: finalPreview,
       meta: {
@@ -2680,6 +3007,8 @@ export async function POST(req: Request) {
             level: safeLevel,
             activityType,
             masteryOutcome,
+            subjectArea: generationType === "science" ? "science" : "general",
+            scienceDiscipline,
           },
           generatedMetadata: generatedMetadataSnapshot,
           normalizedMetadata: normalizedMetadataSnapshot,
@@ -2811,6 +3140,7 @@ export async function POST(req: Request) {
         const fallback = buildValidatedGenericFallback({
           type: validatorType,
           subject: sourceSubject,
+          scienceDiscipline,
           keyStage: safeKeyStage,
           yearGroup: safeYearGroup,
           skillFocus: resolvedSkillFocus || "Core skill",

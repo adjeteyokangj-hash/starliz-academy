@@ -123,6 +123,35 @@ type ValidationMeta = {
   requestedCount: number;
   finalCount: number;
   cached?: boolean;
+  validationDiagnostics?: {
+    validationStepFailed?: boolean;
+    missingFields?: number;
+    malformedStructure?: number;
+    weakCommandWords?: number;
+    answerMismatch?: number;
+    difficultyMismatch?: number;
+    schemaMismatch?: number;
+    contaminationDetected?: boolean;
+    contaminationScore?: number;
+    contaminationThreshold?: number;
+    rejectedKeywords?: string[];
+    detectedSubjectDrift?: string[];
+    repairedItemsCount?: number;
+    rejectedItemsCount?: number;
+    rejectionReasons?: string[];
+  };
+  rawOpenAiResponse?: {
+    model?: string;
+    finishReason?: string | null;
+    usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | null;
+    responseBytes?: number;
+    contentLength?: number;
+    contentPreview?: string;
+  };
+  subjectContainment?: "passed" | "failed";
+  contaminatedItemsRepaired?: number;
+  contaminatedItemsRejected?: number;
+  scienceDiscipline?: "chemistry" | "physics" | "biology" | null;
   metadataDebug?: {
     requestedMetadata?: Record<string, unknown>;
     generatedMetadata?: Record<string, unknown> | null;
@@ -166,6 +195,10 @@ type GenerationDebug = {
   topic: string;
   activityType: string;
   strand: string | null;
+  scienceDiscipline?: "chemistry" | "physics" | "biology" | null;
+  subjectContainment?: "passed" | "failed";
+  contaminatedItemsRepaired?: number;
+  contaminatedItemsRejected?: number;
 };
 
 type SpellingPreviewItem = {
@@ -232,6 +265,20 @@ function deriveSkillFocusFromEnglishStrand(strand: EnglishStrand | "", yearGroup
   if (!strand) return "";
   const strandSkills = getAvailableSkills(strand as Subject, yearGroup);
   return strandSkills[0] ?? strand;
+}
+
+function deriveScienceDiscipline(subject: Subject, skillFocus: string): "chemistry" | "physics" | "biology" | null {
+  const normalizedSubject = String(subject).toLowerCase();
+  const normalizedSkill = String(skillFocus ?? "").toLowerCase();
+  if (normalizedSubject.includes("chemistry")) return "chemistry";
+  if (normalizedSubject.includes("physics")) return "physics";
+  if (normalizedSubject.includes("biology")) return "biology";
+  if (normalizedSubject === "gcse-science" || normalizedSubject === "gcse-combined-science") {
+    if (/(chemistry|chemical|acid|alkali|electrolysis|periodic|atom|ion|\bph\b)/i.test(normalizedSkill)) return "chemistry";
+    if (/(physics|force|motion|energy|electric|resistance|current|wave|momentum|acceleration|velocity)/i.test(normalizedSkill)) return "physics";
+    if (/(biology|cell|organ|photosynthesis|respiration|ecosystem|dna|enzyme|osmosis|diffusion)/i.test(normalizedSkill)) return "biology";
+  }
+  return null;
 }
 
 const GCSE_SUBJECT_GROUPS: Array<{ label: string; subjects: Subject[] }> = [
@@ -920,6 +967,7 @@ export default function AiGeneratorPage() {
     try {
       console.info("[admin-ai-generator] preview request", {
         subject: context.subject,
+        scienceDiscipline: deriveScienceDiscipline(context.subject, context.skillFocus),
         keyStage: context.keyStage,
         yearGroup: context.yearGroup,
         skillFocus: context.skillFocus,
@@ -933,6 +981,8 @@ export default function AiGeneratorPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subject: context.subject,
+          subjectArea: GENERATION_CONTENT_TYPE_BY_SUBJECT[context.subject] === "science" ? "science" : "general",
+          scienceDiscipline: deriveScienceDiscipline(context.subject, context.skillFocus),
           keyStage: context.keyStage,
           yearGroup: context.yearGroup,
           curriculumPathway: context.curriculumPathway,
@@ -2235,6 +2285,10 @@ export default function AiGeneratorPage() {
                     <li><strong>Mapping Status:</strong> {generationMeta.debug.mappingStatus}</li>
                     <li><strong>Subject Route:</strong> {generationMeta.debug.subjectRoute}</li>
                     <li><strong>Fallback Template:</strong> {generationMeta.debug.fallbackTemplate ?? "(none)"}</li>
+                    {generationMeta.debug.scienceDiscipline ? <li><strong>Science Discipline:</strong> {generationMeta.debug.scienceDiscipline}</li> : null}
+                    {generationMeta.debug.subjectContainment ? <li><strong>Subject Containment:</strong> {generationMeta.debug.subjectContainment}</li> : null}
+                    {typeof generationMeta.debug.contaminatedItemsRepaired === "number" ? <li><strong>Contaminated Items Repaired:</strong> {generationMeta.debug.contaminatedItemsRepaired}</li> : null}
+                    {typeof generationMeta.debug.contaminatedItemsRejected === "number" ? <li><strong>Contaminated Items Rejected:</strong> {generationMeta.debug.contaminatedItemsRejected}</li> : null}
                   </>
                 ) : null}
                 {generationMeta?.validation ? (
@@ -2248,6 +2302,14 @@ export default function AiGeneratorPage() {
                     <li><strong>Subject match:</strong> {generationMeta.validation.subjectMatch === false ? "No" : "Yes"}</li>
                     <li><strong>Skill/topic match:</strong> {generationMeta.validation.skillTopicMatch === false ? "No" : "Yes"}</li>
                     <li><strong>Difficulty match:</strong> {generationMeta.validation.difficultyMatch === false ? "No" : "Yes"}</li>
+                    {generationMeta.validation.scienceDiscipline ? <li><strong>Science Discipline:</strong> {generationMeta.validation.scienceDiscipline}</li> : null}
+                    {generationMeta.validation.subjectContainment ? <li><strong>Subject Containment:</strong> {generationMeta.validation.subjectContainment}</li> : null}
+                    {typeof generationMeta.validation.contaminatedItemsRepaired === "number" ? <li><strong>Contaminated Items Repaired:</strong> {generationMeta.validation.contaminatedItemsRepaired}</li> : null}
+                    {typeof generationMeta.validation.contaminatedItemsRejected === "number" ? <li><strong>Contaminated Items Rejected:</strong> {generationMeta.validation.contaminatedItemsRejected}</li> : null}
+                    {generationMeta.validation.validationDiagnostics ? <li><strong>Validation Rejections:</strong> {(generationMeta.validation.validationDiagnostics.rejectionReasons ?? []).slice(0, 6).join(", ") || "none"}</li> : null}
+                    {generationMeta.validation.validationDiagnostics ? <li><strong>Rejected Keywords:</strong> {(generationMeta.validation.validationDiagnostics.rejectedKeywords ?? []).join(", ") || "none"}</li> : null}
+                    {generationMeta.validation.validationDiagnostics ? <li><strong>Subject Drift:</strong> {(generationMeta.validation.validationDiagnostics.detectedSubjectDrift ?? []).join(", ") || "none"}</li> : null}
+                    {generationMeta.validation.rawOpenAiResponse ? <li><strong>OpenAI Response Meta:</strong> {JSON.stringify({ model: generationMeta.validation.rawOpenAiResponse.model, finishReason: generationMeta.validation.rawOpenAiResponse.finishReason, usage: generationMeta.validation.rawOpenAiResponse.usage, contentLength: generationMeta.validation.rawOpenAiResponse.contentLength })}</li> : null}
                     {generationMeta.validation.metadataDebug ? (
                       <>
                         <li><strong>Requested Metadata:</strong> {JSON.stringify(generationMeta.validation.metadataDebug.requestedMetadata)}</li>
