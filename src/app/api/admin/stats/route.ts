@@ -121,7 +121,22 @@ export async function GET() {
           parentProfile: null,
         },
       }),
-      getFinancialDashboardSnapshot(),
+      safeQuery(
+        "financialDashboard",
+        () => getFinancialDashboardSnapshot(),
+        {
+          todayRevenue: 0,
+          monthlyRevenue: 0,
+          vatCollected: 0,
+          failedPayments: 0,
+          pendingSyncs: 0,
+          reconciliationStatus: "unavailable",
+          mrr: 0,
+          arr: 0,
+          churn: 0,
+          taxLiabilityEstimate: 0,
+        },
+      ),
     ]);
 
     const activeToday = new Set([...recentProgress.map((p) => p.childId), ...recentAttempts.map((attempt) => attempt.studentId)]).size;

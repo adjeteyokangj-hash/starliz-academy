@@ -13,7 +13,11 @@ function isMissingTableError(error: unknown): boolean {
   const maybeError = error as { code?: string; message?: string };
   if (maybeError.code === "P2021" || maybeError.code === "P2022") return true;
   const message = String(maybeError.message ?? "").toLowerCase();
-  return message.includes("does not exist") || message.includes("not found in the current database");
+  return (
+    message.includes("does not exist")
+    || message.includes("not found in the current database")
+    || (message.includes("cannot read properties of undefined") && message.includes("findmany"))
+  );
 }
 
 export async function getFinancialSyncQueueStats(): Promise<SyncQueueStats> {
