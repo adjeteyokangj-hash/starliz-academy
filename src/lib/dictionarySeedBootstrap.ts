@@ -4,7 +4,9 @@ import { dictionarySeedWords } from "@/lib/dictionarySeed";
 export type DictionaryBootstrapBuckets = {
   spellingWords: DictionaryWordInput[];
   readingVocabulary: DictionaryWordInput[];
+  englishVocabulary: DictionaryWordInput[];
   mathsKeywords: DictionaryWordInput[];
+  scienceKeywords: DictionaryWordInput[];
   gcseVocabulary: DictionaryWordInput[];
   phonicsCvcStarterWords: DictionaryWordInput[];
 };
@@ -38,7 +40,9 @@ export function getDictionarySeedBootstrapBuckets(): DictionaryBootstrapBuckets 
   return {
     spellingWords: dictionarySeedWords.filter((item) => item.subject === "spelling"),
     readingVocabulary: dictionarySeedWords.filter((item) => item.subject === "reading"),
+    englishVocabulary: dictionarySeedWords.filter((item) => item.subject === "english"),
     mathsKeywords: dictionarySeedWords.filter((item) => item.subject === "maths"),
+    scienceKeywords: dictionarySeedWords.filter((item) => item.subject === "science"),
     gcseVocabulary,
     phonicsCvcStarterWords,
   };
@@ -49,7 +53,9 @@ export function getAllDictionaryBootstrapWords(): DictionaryWordInput[] {
   return dedupeWords([
     ...buckets.spellingWords,
     ...buckets.readingVocabulary,
+    ...buckets.englishVocabulary,
     ...buckets.mathsKeywords,
+    ...buckets.scienceKeywords,
     ...buckets.gcseVocabulary,
     ...buckets.phonicsCvcStarterWords,
   ]);
