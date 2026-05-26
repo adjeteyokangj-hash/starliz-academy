@@ -6,6 +6,14 @@ import { useRouter } from "next/navigation";
 type QuickQuestion = {
   id: string;
   subject: string;
+  strand?: string | null;
+  topic?: string | null;
+  prompt?: string | null;
+  choices?: string[];
+  correctIndex?: number | null;
+  difficulty?: number | null;
+  yearGroup?: string | null;
+  keyStage?: string | null;
 };
 
 type QuickSession = {
@@ -14,6 +22,7 @@ type QuickSession = {
   answered: number;
   totalQuestions: number;
   currentQuestion: QuickQuestion | null;
+  questionPreview?: QuickQuestion[];
   progressPercent?: number;
 };
 
@@ -59,7 +68,6 @@ export default function StudentOnboardingPage() {
   const [starting, setStarting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<string | null>(null);
   const [quickSession, setQuickSession] = useState<QuickSession | null>(null);
   const [levels, setLevels] = useState<Record<string, QuickLevel> | null>(null);
 
@@ -76,7 +84,6 @@ export default function StudentOnboardingPage() {
   async function startLevelFinder(restart = false) {
     setStarting(true);
     setError(null);
-    setSummary(null);
     setLevels(null);
     try {
       const response = await fetch("/api/student/quick-level-finder/start", {
@@ -93,11 +100,6 @@ export default function StudentOnboardingPage() {
         throw new Error("Quick Level Finder session was not returned.");
       }
       setQuickSession(payload.session);
-      setSummary(
-        payload.resumed
-          ? "Resumed your Quick Level Finder session."
-          : `Quick Level Finder ready: ${payload.testDesign?.questionCountMin ?? 0}-${payload.testDesign?.questionCountMax ?? 0} questions.`,
-      );
       if (payload.session.status === "completed") {
         await hydrateLevels();
       }
@@ -108,10 +110,11 @@ export default function StudentOnboardingPage() {
     }
   }
 
-  async function submitAnswer(correct: boolean) {
+  async function submitAnswer(selectedIndex: number) {
     if (!quickSession?.currentQuestion) return;
     setSubmitting(true);
     setError(null);
+    const correct = selectedIndex === (quickSession.currentQuestion.correctIndex ?? 0);
     try {
       const response = await fetch("/api/student/quick-level-finder/answer", {
         method: "POST",
@@ -130,15 +133,11 @@ export default function StudentOnboardingPage() {
       }
       setQuickSession(payload.session);
       if (payload.completed) {
-        setSummary("Quick Level Finder completed. Your personalised learning path is now unlocking.");
         if (payload.levels) {
           setLevels(payload.levels);
         } else {
           await hydrateLevels();
         }
-        window.setTimeout(() => {
-          router.push("/student/dashboard");
-        }, 1200);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to submit answer.");
@@ -164,10 +163,6 @@ export default function StudentOnboardingPage() {
       }
       setQuickSession((prev) => prev ? { ...prev, status: "completed", currentQuestion: null } : prev);
       setLevels(payload.levels ?? null);
-      setSummary("Quick Level Finder completed. Your dashboard journey is now available.");
-      window.setTimeout(() => {
-        router.push("/student/dashboard");
-      }, 1200);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to complete Quick Level Finder.");
     } finally {
@@ -181,11 +176,11 @@ export default function StudentOnboardingPage() {
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-300">Student onboarding</p>
         <h1 className="mt-3 text-3xl font-black tracking-tight">Welcome to StarLiz Academy</h1>
         <p className="mt-3 text-slate-300">
-          We need to learn your level before we build your personalised learning journey.
+          We run a short Level Finder based on your year group to quickly place you at the right learning level.
         </p>
 
         <ol className="mt-5 space-y-2 text-sm text-slate-200">
-          <li>1. Choose your subjects</li>
+          <li>1. Year 1-6: Maths, Reading, Spelling • Year 7-11: Maths, English, Science</li>
           <li>2. Complete your Quick Level Finder</li>
           <li>3. AI builds your learning path</li>
           <li>4. Lessons unlock automatically</li>
@@ -248,24 +243,51 @@ export default function StudentOnboardingPage() {
               <div className="mt-4 rounded-xl border border-cyan-400/25 bg-cyan-500/5 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Current question</p>
                 <p className="mt-2 text-sm text-slate-200">Subject scope: {quickSession.currentQuestion.subject}</p>
+                {quickSession.currentQuestion.topic ? (
+                  <p className="mt-1 text-sm font-medium text-cyan-100">Topic: {quickSession.currentQuestion.topic}</p>
+                ) : null}
+                {quickSession.currentQuestion.prompt ? (
+                  <p className="mt-3 rounded-lg border border-white/10 bg-slate-950/40 px-4 py-3 text-sm leading-6 text-slate-100">
+                    {quickSession.currentQuestion.prompt}
+                  </p>
+                ) : null}
                 <p className="mt-1 text-xs text-slate-400">Question ID: {quickSession.currentQuestion.id}</p>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => void submitAnswer(true)}
-                    disabled={submitting}
-                    className="rounded-xl bg-emerald-400 px-4 py-2 text-sm font-bold text-emerald-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Mark Correct
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void submitAnswer(false)}
-                    disabled={submitting}
-                    className="rounded-xl bg-amber-300 px-4 py-2 text-sm font-bold text-amber-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Mark Incorrect
-                  </button>
+                {quickSession.questionPreview && quickSession.questionPreview.length > 1 ? (
+                  <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/40 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">Question set preview</p>
+                    <ul className="mt-3 space-y-2 text-sm text-slate-100">
+                      {quickSession.questionPreview.slice(0, 3).map((question, index) => (
+                        <li key={question.id} className="rounded-md border border-white/5 bg-white/5 px-3 py-2">
+                          <span className="font-semibold text-cyan-200">Q{index + 1}.</span>{" "}
+                          <span>{question.topic ?? question.subject}</span>
+                          {question.prompt ? <span className="block text-xs text-slate-400">{question.prompt}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <div className="mt-4 space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">Choose your answer</p>
+                  {(quickSession.currentQuestion.choices && quickSession.currentQuestion.choices.length > 0
+                    ? quickSession.currentQuestion.choices
+                    : [
+                      "This option best answers the question.",
+                      "This option is partly related but incomplete.",
+                      "This option is not supported by the question.",
+                      "This option is incorrect for this topic.",
+                    ]
+                  ).map((choice, index) => (
+                    <button
+                      key={`${quickSession.currentQuestion?.id ?? "q"}-choice-${index}`}
+                      type="button"
+                      onClick={() => void submitAnswer(index)}
+                      disabled={submitting}
+                      className="w-full rounded-xl border border-cyan-300/30 bg-slate-900/60 px-4 py-3 text-left text-sm text-slate-100 transition hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <span className="font-semibold text-cyan-200">{String.fromCharCode(65 + index)}.</span>{" "}
+                      <span>{choice}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -274,6 +296,10 @@ export default function StudentOnboardingPage() {
 
         {levels && Object.keys(levels).length > 0 ? (
           <div className="mt-6 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-50">
+            <p className="font-black">Quick Level Finder complete</p>
+            <p className="mt-1 text-emerald-100">
+              Review your placement results below, then continue to your dashboard when you are ready.
+            </p>
             <p className="font-bold">Placement Levels</p>
             <ul className="mt-2 space-y-1">
               {Object.entries(levels).map(([subject, level]) => (
@@ -282,14 +308,16 @@ export default function StudentOnboardingPage() {
                 </li>
               ))}
             </ul>
+            <button
+              type="button"
+              onClick={() => router.push("/student/dashboard")}
+              className="mt-4 rounded-xl bg-emerald-300 px-4 py-2 font-black text-slate-950 transition hover:bg-emerald-200"
+            >
+              Continue to dashboard
+            </button>
           </div>
         ) : null}
 
-        {summary ? (
-          <div className="mt-4 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-            {summary}
-          </div>
-        ) : null}
         {error ? (
           <div className="mt-4 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
             {error}

@@ -1,6 +1,7 @@
 "use client";
 
 import type { DashboardProps } from "./dashboardTypes";
+import { useRouter } from "next/navigation";
 import StudyPlanBadge from "@/components/learning/StudyPlanBadge";
 import { deriveStudyPlanProgress } from "@/lib/study-plan";
 
@@ -49,6 +50,7 @@ export default function PrimaryDashboard({
   ownedBadges,
   sessionSummary,
   learningState,
+  quickLevelFinderRetestEnabled,
   placementLevels,
   placementLessonGroups,
   placementContentGaps,
@@ -63,6 +65,7 @@ export default function PrimaryDashboard({
   pendingAssignmentId,
   openingStore,
 }: DashboardProps) {
+  const router = useRouter();
   const journeyAssignments = [focusAssignment, weakAssignment, reviewAssignment]
     .filter((assignment, index, array): assignment is NonNullable<typeof assignment> => {
       return Boolean(assignment) && array.findIndex((candidate) => candidate?.id === assignment?.id) === index;
@@ -70,8 +73,10 @@ export default function PrimaryDashboard({
     .slice(0, 3);
   const todayJourney = journeyAssignments;
   const isFirstTimeStudent = Boolean(learningState?.isFirstTimeStudent);
+  const needsPlacement = Boolean(learningState && !learningState.hasCompletedPlacement);
+  const showOnboardingCta = isFirstTimeStudent || needsPlacement || quickLevelFinderRetestEnabled === true;
   const coachAwaitingAssessment = !learningState?.coachUnlocked;
-  const showRegularJourney = !isFirstTimeStudent;
+  const showRegularJourney = !showOnboardingCta;
   const showEmptyAssignmentState = showRegularJourney && todayJourney.length === 0;
 
   return (
@@ -81,6 +86,41 @@ export default function PrimaryDashboard({
         <h1 className="text-3xl font-black tracking-tight text-slate-950">Hi {childName} 👋</h1>
         <p className="mt-2 text-slate-600">{"Ready for today's learning adventure?"}</p>
       </header>
+
+      {showOnboardingCta ? (
+        <section className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-sky-50 to-white p-6">
+          <p className="text-sm font-black uppercase tracking-[0.2em] text-indigo-600">🌟 Welcome</p>
+          <h2 className="mt-2 text-2xl font-black text-slate-900">
+            {isFirstTimeStudent
+              ? "Welcome to StarLiz Academy"
+              : quickLevelFinderRetestEnabled
+                ? "Level Finder retest is ready"
+                : "Complete onboarding to unlock your journey"}
+          </h2>
+          <p className="mt-2 text-sm text-slate-700">
+            {isFirstTimeStudent
+              ? "We need to learn your level before we build your personalised learning journey."
+              : quickLevelFinderRetestEnabled
+                ? "Your admin enabled a retest. Run Quick Level Finder again to refresh your placement level."
+                : "Your placement check is still pending. Complete Quick Level Finder to unlock the right learning level."}
+          </p>
+          <ol className="mt-4 space-y-2 text-sm font-semibold text-slate-700">
+            <li>1. Year 1-6: Maths, Reading, Spelling • Year 7-11: Maths, English, Science</li>
+            <li>2. Complete your Quick Level Finder</li>
+            <li>3. AI builds your learning path</li>
+            <li>4. Lessons unlock automatically</li>
+          </ol>
+          <button
+            type="button"
+            onClick={() => {
+              router.push("/student/onboarding");
+            }}
+            className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-5 py-4 text-lg font-black text-white shadow-lg shadow-indigo-200 hover:bg-indigo-500"
+          >
+            {quickLevelFinderRetestEnabled ? "Retest My Level Finder" : isFirstTimeStudent ? "Start My Level Finder" : "Continue Onboarding"}
+          </button>
+        </section>
+      ) : null}
 
       {/* Stats */}
       <div className="grid gap-3 sm:grid-cols-4">
@@ -195,30 +235,7 @@ export default function PrimaryDashboard({
 
       {/* Today's Journey */}
       <section className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-sky-50 to-white p-6">
-        {isFirstTimeStudent ? (
-          <>
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-indigo-600">🌟 Welcome</p>
-            <h2 className="mt-2 text-2xl font-black text-slate-900">Welcome to StarLiz Academy</h2>
-            <p className="mt-2 text-sm text-slate-700">
-              We need to learn your level before we build your personalised learning journey.
-            </p>
-            <ol className="mt-4 space-y-2 text-sm font-semibold text-slate-700">
-              <li>1. Choose your subjects</li>
-              <li>2. Complete your Quick Level Finder</li>
-              <li>3. AI builds your learning path</li>
-              <li>4. Lessons unlock automatically</li>
-            </ol>
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = "/student/onboarding";
-              }}
-              className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-5 py-4 text-lg font-black text-white shadow-lg shadow-indigo-200 hover:bg-indigo-500"
-            >
-              Start My Level Finder
-            </button>
-          </>
-        ) : (
+        {!showOnboardingCta ? (
           <>
             <p className="text-sm font-black uppercase tracking-[0.2em] text-indigo-600">🌈 Today&apos;s Learning Journey</p>
             {todayJourney.length > 0 ? (
@@ -256,7 +273,7 @@ export default function PrimaryDashboard({
               </>
             ) : null}
           </>
-        )}
+        ) : null}
       </section>
 
       {/* Assigned content */}

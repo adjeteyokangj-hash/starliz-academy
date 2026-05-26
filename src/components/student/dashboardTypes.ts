@@ -119,6 +119,7 @@ export type DashboardProps = {
   ownedBadges: ShopOwnedItem[];
   sessionSummary: SessionSummary | null;
   learningState?: StudentLearningState | null;
+  quickLevelFinderRetestEnabled?: boolean;
   placementLevels?: PlacementLevels | null;
   placementLessonGroups?: PlacementLessonGroup[];
   placementContentGaps?: PlacementLessonRecommendation[];

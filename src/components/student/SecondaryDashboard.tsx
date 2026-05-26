@@ -1,6 +1,7 @@
 "use client";
 
 import type { DashboardProps } from "./dashboardTypes";
+import { useRouter } from "next/navigation";
 import StudyPlanBadge from "@/components/learning/StudyPlanBadge";
 import { deriveStudyPlanProgress } from "@/lib/study-plan";
 
@@ -42,6 +43,7 @@ export default function SecondaryDashboard({
   bossPlayedToday,
   sessionSummary,
   learningState,
+  quickLevelFinderRetestEnabled,
   placementLevels,
   placementLessonGroups,
   placementContentGaps,
@@ -56,8 +58,11 @@ export default function SecondaryDashboard({
   bossLaunching,
   pendingAssignmentId,
 }: DashboardProps) {
+  const router = useRouter();
   const isGcse = pathway === "gcse";
   const isFirstTimeStudent = Boolean(learningState?.isFirstTimeStudent);
+  const needsPlacement = Boolean(learningState && !learningState.hasCompletedPlacement);
+  const showOnboardingCta = isFirstTimeStudent || needsPlacement || quickLevelFinderRetestEnabled === true;
   const coachAwaitingAssessment = !learningState?.coachUnlocked;
   const masteredCount = skills.filter((s) => s.status === "mastered").length;
   const weakCount = skills.filter((s) => s.status === "weak").length;
@@ -134,6 +139,35 @@ export default function SecondaryDashboard({
           </div>
         </div>
       </header>
+
+      {showOnboardingCta ? (
+        <section className="rounded-3xl border border-indigo-200 bg-indigo-950 p-6 text-indigo-50">
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-indigo-300">Welcome</p>
+          <h2 className="mt-2 text-xl font-black">
+            {isFirstTimeStudent
+              ? "Welcome to StarLiz Academy"
+              : quickLevelFinderRetestEnabled
+                ? "Level Finder retest is ready"
+                : "Complete onboarding to unlock your journey"}
+          </h2>
+          <p className="mt-2 text-sm text-indigo-100">
+            {isFirstTimeStudent
+              ? "We need to learn your level before we build your personalised learning journey."
+              : quickLevelFinderRetestEnabled
+                ? "Your admin enabled a retest. Run Quick Level Finder again to refresh your placement level."
+                : "Your placement check is still pending. Complete Quick Level Finder to unlock the right learning level."}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              router.push("/student/onboarding");
+            }}
+            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-indigo-400 px-5 py-3 font-black text-indigo-950 hover:bg-indigo-300"
+          >
+            {quickLevelFinderRetestEnabled ? "Retest My Level Finder" : isFirstTimeStudent ? "Start My Level Finder" : "Continue Onboarding"}
+          </button>
+        </section>
+      ) : null}
 
       {loading && (
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-slate-600">
@@ -219,24 +253,7 @@ export default function SecondaryDashboard({
 
       {/* Daily Study Session */}
       <section className="rounded-3xl border border-indigo-200 bg-indigo-950 p-6 text-indigo-50">
-        {isFirstTimeStudent ? (
-          <>
-            <p className="text-xs font-bold uppercase tracking-[0.3em] text-indigo-300">Welcome</p>
-            <h2 className="mt-2 text-xl font-black">Welcome to StarLiz Academy</h2>
-            <p className="mt-2 text-sm text-indigo-100">
-              We need to learn your level before we build your personalised learning journey.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = "/student/onboarding";
-              }}
-              className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-indigo-400 px-5 py-3 font-black text-indigo-950 hover:bg-indigo-300"
-            >
-              Start My Level Finder
-            </button>
-          </>
-        ) : (
+        {!showOnboardingCta ? (
           <>
             <p className="text-xs font-bold uppercase tracking-[0.3em] text-indigo-300">Today&apos;s Session</p>
             <h2 className="mt-2 text-xl font-black">{isGcse ? "Revision Session" : "Adaptive Study Session"}</h2>
@@ -278,7 +295,7 @@ export default function SecondaryDashboard({
               </>
             ) : null}
           </>
-        )}
+        ) : null}
       </section>
 
       {isGcse && (

@@ -38,6 +38,13 @@ type StudentDetail = {
   accuracy: number | null;
   totalSessions: number;
   recommendedNextActivity: string;
+  quickLevelFinder?: {
+    completed?: boolean;
+    status?: "in_progress" | "completed" | null;
+    responseCount?: number;
+    totalQuestions?: number;
+    levels?: Record<string, { accuracy: number; level: "below" | "secure" | "advanced" }>;
+  };
   adaptiveTutor?: {
     enoughHistory?: boolean;
     readinessLabel?: string;
@@ -144,6 +151,65 @@ type SchoolWeekSettingsPayload = {
   parentAdminNotes?: string | null;
 };
 
+type AdminProgressionPayload = {
+  ok?: boolean;
+  message?: string;
+  summary?: {
+    total: number;
+    needsSupport: number;
+    readyToAdvance: number;
+    reviewNeeded: number;
+    friendlyHeadline: string;
+  };
+  recommendations?: Array<{
+    scopedSubject: string;
+    subject: string;
+    strand: string | null;
+    currentLevel: number;
+    recommendedLevel: number;
+    status: string;
+    action: string;
+    confidence: number;
+    nextBestStep: string;
+    reasons: string[];
+    adminAppliedLevel?: number | null;
+    adminAppliedAt?: string | null;
+    adminAppliedBy?: string | null;
+  }>;
+  generationTargets?: Array<{
+    scopedSubject: string;
+    subject: string;
+    strand: string | null;
+    yearGroup: string | null;
+    keyStage: string | null;
+    skillFocus: string;
+    difficulty: number;
+    accuracy: number;
+    reason: string;
+  }>;
+  autoPromotion?: {
+    appliedCount?: number;
+    applied?: Array<{
+      scopedSubject: string;
+      previousLevel: number | null;
+      promotedToLevel: number;
+      confidence: number;
+      reason: string;
+    }>;
+    evaluations?: Array<{
+      scopedSubject: string;
+      status: "applied" | "blocked";
+      recommendedLevel: number;
+      currentLevel: number;
+      confidence: number;
+      candidateStreak: number;
+      gateFailures: string[];
+      latestMasteryCheckStatus: "missing" | "completed" | "not_completed";
+      cooldownActive: boolean;
+    }>;
+  };
+};
+
 const SCHOOL_WEEK_DAYS: SchoolWeekday[] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const defaultSchoolWeekSettings: SchoolWeekSettingsPayload = {
@@ -181,6 +247,16 @@ export default function StudentDetailPage() {
   const [schoolWeekSettings, setSchoolWeekSettings] = useState<SchoolWeekSettingsPayload>(defaultSchoolWeekSettings);
   const [schoolWeekSaving, setSchoolWeekSaving] = useState(false);
   const [schoolWeekMessage, setSchoolWeekMessage] = useState<string | null>(null);
+  const [quickLevelFinderRetestEnabled, setQuickLevelFinderRetestEnabled] = useState(false);
+  const [quickLevelFinderCompleted, setQuickLevelFinderCompleted] = useState(false);
+  const [quickLevelFinderResponses, setQuickLevelFinderResponses] = useState(0);
+  const [quickLevelFinderSaving, setQuickLevelFinderSaving] = useState(false);
+  const [quickLevelFinderMessage, setQuickLevelFinderMessage] = useState<string | null>(null);
+  const [progression, setProgression] = useState<AdminProgressionPayload | null>(null);
+  const [progressionLoading, setProgressionLoading] = useState(true);
+  const [progressionError, setProgressionError] = useState<string | null>(null);
+  const [progressionActionPendingId, setProgressionActionPendingId] = useState<string | null>(null);
+  const [progressionActionMessage, setProgressionActionMessage] = useState<string | null>(null);
 
   async function loadStudent() {
     fetch(`/api/admin/students/${params.id}`)
@@ -215,11 +291,102 @@ export default function StudentDetailPage() {
     setSchoolWeekSettings(payload.settings ?? defaultSchoolWeekSettings);
   }
 
+  async function loadQuickLevelFinderControl() {
+    const response = await fetch(`/api/admin/students/${params.id}/quick-level-finder/retest`);
+    if (!response.ok) {
+      setQuickLevelFinderRetestEnabled(false);
+      setQuickLevelFinderCompleted(false);
+      setQuickLevelFinderResponses(0);
+      return;
+    }
+    const payload = (await response.json()) as {
+      retestEnabled?: boolean;
+      completed?: boolean;
+      responseCount?: number;
+    };
+    setQuickLevelFinderRetestEnabled(payload.retestEnabled === true);
+    setQuickLevelFinderCompleted(payload.completed === true);
+    setQuickLevelFinderResponses(typeof payload.responseCount === "number" ? payload.responseCount : 0);
+  }
+
+  async function loadProgressionRecommendations() {
+    setProgressionLoading(true);
+    setProgressionError(null);
+    const response = await fetch(`/api/admin/students/${params.id}/progression-recommendations`);
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+      setProgression(null);
+      setProgressionError(payload?.error ?? payload?.message ?? "Unable to load progression recommendations.");
+      setProgressionLoading(false);
+      return;
+    }
+    const payload = (await response.json()) as AdminProgressionPayload;
+    setProgression(payload);
+    setProgressionLoading(false);
+  }
+
+  async function applySubjectLevelRecommendation(input: {
+    scopedSubject: string;
+    recommendedLevel: number;
+    confidence: number;
+    reasons: string[];
+    action: "apply" | "revert";
+  }) {
+    setProgressionActionPendingId(input.scopedSubject);
+    setProgressionActionMessage(null);
+    const response = await fetch(`/api/admin/students/${params.id}/progression-recommendations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (!response.ok) {
+      setProgressionActionMessage(payload?.error ?? "Unable to apply recommendation.");
+      setProgressionActionPendingId(null);
+      return;
+    }
+    setProgressionActionMessage(input.action === "apply"
+      ? "Suggested level applied."
+      : "Applied level override reverted.");
+    await loadProgressionRecommendations();
+    setProgressionActionPendingId(null);
+  }
+
+  async function toggleQuickLevelFinderRetest(enabled: boolean) {
+    setQuickLevelFinderSaving(true);
+    setQuickLevelFinderMessage(null);
+    const response = await fetch(`/api/admin/students/${params.id}/quick-level-finder/retest`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      retestEnabled?: boolean;
+      completed?: boolean;
+      responseCount?: number;
+    } | null;
+    if (!response.ok) {
+      setQuickLevelFinderMessage(payload?.error ?? "Unable to update Level Finder retest setting.");
+      setQuickLevelFinderSaving(false);
+      return;
+    }
+    setQuickLevelFinderRetestEnabled(payload?.retestEnabled === true);
+    setQuickLevelFinderCompleted(payload?.completed === true);
+    setQuickLevelFinderResponses(typeof payload?.responseCount === "number" ? payload.responseCount : 0);
+    setQuickLevelFinderMessage(enabled
+      ? "Level Finder retest is now enabled for this learner."
+      : "Level Finder retest is now disabled.");
+    setQuickLevelFinderSaving(false);
+  }
+
   useEffect(() => {
     void loadStudent();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAcademicIntelligence();
     void loadSchoolWeekSettings();
+    void loadQuickLevelFinderControl();
+    void loadProgressionRecommendations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
@@ -334,6 +501,59 @@ export default function StudentDetailPage() {
             <p>Weak Areas: {student.studentProfile?.weakAreasText ?? "Not set"}</p>
             <p>Guardian Permissions: {student.studentProfile?.guardianPermissions ?? "Not set"}</p>
             <p>School Information: {student.studentProfile?.schoolInformation ?? "Not set"}</p>
+          </div>
+          <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 p-3">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">Quick Level Finder Control</p>
+            <p className="mt-2 text-sm text-slate-300">
+              Status: {quickLevelFinderCompleted ? "Completed" : "Not completed"} · Responses: {quickLevelFinderResponses}
+            </p>
+            {student.quickLevelFinder?.totalQuestions ? (
+              <p className="text-sm text-slate-300">
+                Session progress: {student.quickLevelFinder.responseCount ?? 0}/{student.quickLevelFinder.totalQuestions}
+              </p>
+            ) : null}
+            <p className="text-sm text-slate-300">
+              Retest button: {quickLevelFinderRetestEnabled ? "Enabled for learner" : "Disabled"}
+            </p>
+
+            {student.quickLevelFinder?.levels && Object.keys(student.quickLevelFinder.levels).length > 0 ? (
+              <div className="mt-3 rounded-xl border border-cyan-400/20 bg-cyan-500/10 p-3">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200">Placement Results</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {Object.entries(student.quickLevelFinder.levels).map(([subject, level]) => (
+                    <div key={subject} className="rounded-lg border border-cyan-400/20 bg-slate-900/40 px-3 py-2 text-xs text-slate-100">
+                      <p className="font-bold uppercase tracking-wide text-cyan-100">{subject}</p>
+                      <p className="mt-1">Level: <span className="font-semibold capitalize">{level.level}</span></p>
+                      <p>Accuracy: <span className="font-semibold">{level.accuracy}%</span></p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-slate-400">No subject-level placement results yet.</p>
+            )}
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void toggleQuickLevelFinderRetest(true)}
+                disabled={quickLevelFinderSaving || quickLevelFinderRetestEnabled}
+                className="rounded-xl bg-cyan-500 px-3 py-2 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {quickLevelFinderSaving ? "Saving..." : "Enable Retest Button"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void toggleQuickLevelFinderRetest(false)}
+                disabled={quickLevelFinderSaving || !quickLevelFinderRetestEnabled}
+                className="rounded-xl border border-slate-600 px-3 py-2 text-xs font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Disable Retest Button
+              </button>
+            </div>
+            {quickLevelFinderMessage ? (
+              <p className="mt-2 text-xs text-cyan-100">{quickLevelFinderMessage}</p>
+            ) : null}
           </div>
         </AdminSectionCard>
 
@@ -710,6 +930,172 @@ export default function StudentDetailPage() {
             ))}
             {!student.recentLevelDecisions.length ? <p className="text-sm text-slate-500">No level decisions recorded yet.</p> : null}
           </div>
+        </AdminSectionCard>
+
+        <AdminSectionCard title="Recommended Subject Levels" eyebrow="Session progression guidance">
+          {progressionLoading ? (
+            <p className="text-sm text-slate-400">Loading progression recommendations...</p>
+          ) : progressionError ? (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-100">
+              <p>{progressionError}</p>
+              <button
+                type="button"
+                onClick={() => void loadProgressionRecommendations()}
+                className="mt-2 rounded-lg bg-rose-500 px-3 py-1 text-xs font-bold text-white"
+              >
+                Retry
+              </button>
+            </div>
+          ) : !progression?.recommendations?.length ? (
+            <p className="text-sm text-slate-400">No progression suggestions yet. More learning evidence is needed.</p>
+          ) : (
+            <div className="space-y-4">
+              {progressionActionMessage ? (
+                <p className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">{progressionActionMessage}</p>
+              ) : null}
+              {progression.autoPromotion?.evaluations?.length ? (
+                <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-200">Auto-Promotion Gates</p>
+                      <p className="mt-1 text-sm text-violet-100">Visibility into why each subject was promoted or blocked this cycle.</p>
+                    </div>
+                    <p className="text-xs text-violet-100/80">
+                      Applied {progression.autoPromotion.appliedCount ?? 0} · Evaluated {progression.autoPromotion.evaluations.length}
+                    </p>
+                  </div>
+                  <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                    {progression.autoPromotion.evaluations.map((row) => (
+                      <div key={row.scopedSubject} className="rounded-2xl border border-violet-400/20 bg-slate-950/40 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-bold text-white capitalize">{row.scopedSubject.replace(":", " - ")}</p>
+                          <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${row.status === "applied" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : "border-amber-400/30 bg-amber-500/10 text-amber-200"}`}>
+                            {row.status === "applied" ? "Applied" : "Blocked"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-300">Level {row.currentLevel} → {row.recommendedLevel} · Confidence {row.confidence}% · Streak {row.candidateStreak}/2</p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          Mastery check: {row.latestMasteryCheckStatus.replaceAll("_", " ")}{row.cooldownActive ? " · Cooldown active" : ""}
+                        </p>
+                        {row.gateFailures.length ? (
+                          <div className="mt-2 space-y-1">
+                            {row.gateFailures.slice(0, 3).map((failure, index) => (
+                              <p key={`${row.scopedSubject}-gate-${index}`} className="text-xs text-amber-200">• {failure}</p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-xs text-emerald-200">All gates passed in this cycle.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {progression.generationTargets?.length ? (
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">AI Generate</p>
+                      <p className="mt-1 text-sm text-emerald-100">Create draft content from the parent subject choices and placement results.</p>
+                    </div>
+                    <p className="text-xs text-emerald-100/80">{progression.generationTargets.length} target{progression.generationTargets.length === 1 ? "" : "s"} ready</p>
+                  </div>
+                  <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                    {progression.generationTargets.map((target) => {
+                      const params = new URLSearchParams({
+                        studentId: student.id,
+                        subject: target.subject,
+                        skill: target.skillFocus,
+                        difficulty: String(target.difficulty),
+                      });
+                      if (target.yearGroup) params.set("yearGroup", target.yearGroup);
+                      if (target.keyStage) params.set("keyStage", target.keyStage);
+
+                      return (
+                        <div key={target.scopedSubject} className="rounded-2xl border border-emerald-400/20 bg-slate-950/40 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-bold text-white capitalize">{target.scopedSubject.replace(":", " - ")}</p>
+                            <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-200">Level {target.difficulty}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-slate-300">{target.skillFocus}</p>
+                          <p className="mt-1 text-xs text-slate-400">Accuracy {target.accuracy}% · {target.reason}</p>
+                          <Link
+                            href={`/admin/ai-generator?${params.toString()}`}
+                            className="mt-3 inline-flex rounded-xl bg-emerald-400 px-3 py-2 text-xs font-black text-slate-950 transition hover:bg-emerald-300"
+                          >
+                            Open AI Generate
+                          </Link>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {progression.summary ? (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Headline: <span className="font-black text-white">{progression.summary.friendlyHeadline}</span></div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Needs support: <span className="font-black text-white">{progression.summary.needsSupport}</span></div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Ready to advance: <span className="font-black text-white">{progression.summary.readyToAdvance}</span></div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Review needed: <span className="font-black text-white">{progression.summary.reviewNeeded}</span></div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 xl:grid-cols-2">
+                {progression.recommendations.slice(0, 8).map((item) => (
+                  <div key={item.scopedSubject} className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-bold text-white capitalize">{item.subject}{item.strand ? ` - ${item.strand}` : ""}</p>
+                      <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-xs font-bold text-cyan-200">Confidence {item.confidence}%</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-300">Current Level {item.currentLevel} {"->"} Suggested Level {item.recommendedLevel}</p>
+                    <p className="mt-1 text-xs uppercase tracking-wide text-amber-300">{item.status.replaceAll("_", " ")} • {item.action.replaceAll("_", " ")}</p>
+                    <p className="mt-2 text-sm text-slate-300">{item.nextBestStep}</p>
+                    {item.reasons.length > 0 ? (
+                      <p className="mt-1 text-xs text-slate-400">Reason: {item.reasons[0]}</p>
+                    ) : null}
+                    {item.adminAppliedLevel ? (
+                      <p className="mt-2 text-xs text-emerald-300">
+                        Applied override: Level {item.adminAppliedLevel}
+                        {item.adminAppliedAt ? ` • ${new Date(item.adminAppliedAt).toLocaleString()}` : ""}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={progressionActionPendingId === item.scopedSubject}
+                        onClick={() => void applySubjectLevelRecommendation({
+                          scopedSubject: item.scopedSubject,
+                          recommendedLevel: item.recommendedLevel,
+                          confidence: item.confidence,
+                          reasons: item.reasons,
+                          action: "apply",
+                        })}
+                        className="rounded-lg bg-cyan-500 px-3 py-1.5 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {progressionActionPendingId === item.scopedSubject ? "Applying..." : "Apply Suggested Level"}
+                      </button>
+                      {item.adminAppliedLevel ? (
+                        <button
+                          type="button"
+                          disabled={progressionActionPendingId === item.scopedSubject}
+                          onClick={() => void applySubjectLevelRecommendation({
+                            scopedSubject: item.scopedSubject,
+                            recommendedLevel: item.recommendedLevel,
+                            confidence: item.confidence,
+                            reasons: item.reasons,
+                            action: "revert",
+                          })}
+                          className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Revert Override
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </AdminSectionCard>
 
         <AdminSectionCard title="Mode Struggles">

@@ -2,6 +2,9 @@ export default function StudentDashboardLoading() {
   return (
     <main className="min-h-screen bg-[#f6f8ff] px-6 py-8">
       <section className="mx-auto max-w-6xl space-y-6">
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">
+          Loading page, please wait...
+        </div>
         <div className="h-16 animate-pulse rounded-2xl bg-slate-200/80" />
         <div className="grid gap-3 sm:grid-cols-4">
           {[0, 1, 2, 3].map((idx) => (

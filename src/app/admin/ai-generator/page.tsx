@@ -668,10 +668,14 @@ export default function AiGeneratorPage() {
   const prefillSkill = searchParams.get("skill");
   const prefillWords = searchParams.get("words");
   const prefillStudentId = searchParams.get("studentId");
+  const prefillYearGroup = searchParams.get("yearGroup");
+  const prefillKeyStage = searchParams.get("keyStage");
   const prefillDifficulty = Number(searchParams.get("difficulty"));
 
   // Initialize with sensible defaults; validate against curriculum
-  const initialYearGroup: YearGroup = "Year 1";
+  const initialYearGroup: YearGroup = prefillYearGroup && YEAR_GROUPS.includes(prefillYearGroup as YearGroup)
+    ? (prefillYearGroup as YearGroup)
+    : "Year 1";
   const initialAgeGroup = ageGroupForYearGroup(initialYearGroup);
 
   const [yearGroup, setYearGroup] = useState<string>(initialYearGroup);
@@ -693,7 +697,10 @@ export default function AiGeneratorPage() {
       ? (prefillSubject as Subject)
       : availableSubjects[0]
   );
-  const [keyStage, setKeyStage] = useState(keyStageForYearGroup(yearGroup));
+  const initialKeyStage: (typeof KEY_STAGES)[number] = prefillKeyStage && KEY_STAGES.includes(prefillKeyStage as (typeof KEY_STAGES)[number])
+    ? (prefillKeyStage as (typeof KEY_STAGES)[number])
+    : keyStageForYearGroup(yearGroup);
+  const [keyStage, setKeyStage] = useState<(typeof KEY_STAGES)[number]>(initialKeyStage);
   const requiresEnglishStrand = isEnglishParentSubject(subject);
   const [englishStrand, setEnglishStrand] = useState<EnglishStrand | "">(
     isEnglishParentSubject(subject) ? "reading" : ""

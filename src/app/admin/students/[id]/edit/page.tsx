@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import {
   CURRICULUM_PATHWAYS,
@@ -44,6 +45,46 @@ type StudentDetail = {
   parent: ParentOption;
 };
 
+type SubjectLevelOverride = {
+  level: number;
+  appliedAt: string;
+  appliedBy: string;
+  confidence?: number;
+  reasons?: string[];
+};
+
+function parseSubjectLevelOverrides(raw: string): Record<string, SubjectLevelOverride> {
+  if (!raw.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const profile = parsed as Record<string, unknown>;
+    const value = profile.adminSubjectLevelOverrides;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+    const out: Record<string, SubjectLevelOverride> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (!key.trim()) continue;
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const row = entry as Record<string, unknown>;
+      const level = typeof row.level === "number" && Number.isFinite(row.level) ? Math.round(row.level) : null;
+      const appliedAt = typeof row.appliedAt === "string" && row.appliedAt.trim() ? row.appliedAt : null;
+      const appliedBy = typeof row.appliedBy === "string" && row.appliedBy.trim() ? row.appliedBy : null;
+      if (!level || !appliedAt || !appliedBy) continue;
+      out[key.trim().toLowerCase()] = {
+        level,
+        appliedAt,
+        appliedBy,
+        confidence: typeof row.confidence === "number" && Number.isFinite(row.confidence) ? Math.round(row.confidence) : undefined,
+        reasons: Array.isArray(row.reasons) ? row.reasons.filter((item): item is string => typeof item === "string") : undefined,
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 export default function EditStudentPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -73,6 +114,7 @@ export default function EditStudentPage() {
   const [targetGrades, setTargetGrades] = useState("{}");
   const [error, setError] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const subjectLevelOverrides = parseSubjectLevelOverrides(aiLearningProfileJson);
 
   useEffect(() => {
     fetch("/api/admin/parents")
@@ -308,6 +350,33 @@ export default function EditStudentPage() {
         {isGcseYearGroup(yearGroup) && !examBoard ? (
           <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{GCSE_EXAM_BOARD_WARNING}</p>
         ) : null}
+        <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200">Applied Subject Level Overrides</p>
+            <Link
+              href={`/admin/students/${params.id}`}
+              className="rounded-lg border border-cyan-300/40 bg-cyan-200/10 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-cyan-100 hover:bg-cyan-200/20"
+            >
+              Open recommendations
+            </Link>
+          </div>
+          <p className="mt-1 text-[11px] text-cyan-100/90">Apply or revert subject overrides from the student detail recommendations panel.</p>
+          {Object.keys(subjectLevelOverrides).length === 0 ? (
+            <p className="mt-2 text-xs text-slate-300">No overrides applied yet.</p>
+          ) : (
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              {Object.entries(subjectLevelOverrides).map(([scopedSubject, row]) => (
+                <div key={scopedSubject} className="rounded-lg border border-cyan-400/20 bg-slate-900/50 p-2 text-xs text-slate-100">
+                  <p className="font-bold uppercase tracking-wide text-cyan-100">{scopedSubject}</p>
+                  <p className="mt-1">Level: {row.level}</p>
+                  <p>Applied: {new Date(row.appliedAt).toLocaleString()}</p>
+                  <p className="truncate">By: {row.appliedBy}</p>
+                  {typeof row.confidence === "number" ? <p>Confidence: {row.confidence}%</p> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <label className="block text-sm font-bold text-slate-300">
           AI learning profile (JSON)
           <textarea value={aiLearningProfileJson} onChange={(event) => setAiLearningProfileJson(event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />

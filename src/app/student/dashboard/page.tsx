@@ -147,6 +147,7 @@ type StudentLearningStatePayload = {
   ok?: boolean;
   studentId?: string;
   learningState?: StudentLearningState;
+  quickLevelFinderRetestEnabled?: boolean;
   error?: string;
 };
 
@@ -399,6 +400,7 @@ export default function StudentDashboardPage() {
   const [ownedBadges, setOwnedBadges] = useState<ShopOwnedItem[]>([]);
   const [sessionSummary, setSessionSummary] = useState<SessionSummaryPayload["summary"] | null>(null);
   const [learningState, setLearningState] = useState<StudentLearningState | null>(null);
+  const [quickLevelFinderRetestEnabled, setQuickLevelFinderRetestEnabled] = useState(false);
   const [placementLevels, setPlacementLevels] = useState<PlacementLevels | null>(null);
   const [placementLessonGroups, setPlacementLessonGroups] = useState<PlacementLessonGroup[]>([]);
   const [placementContentGaps, setPlacementContentGaps] = useState<PlacementLessonRecommendation[]>([]);
@@ -445,6 +447,7 @@ export default function StudentDashboardPage() {
         setSkills([]);
         setSessionSummary(null);
         setLearningState(null);
+        setQuickLevelFinderRetestEnabled(false);
         setPlacementLevels(null);
         setPlacementLessonGroups([]);
         setPlacementContentGaps([]);
@@ -483,6 +486,7 @@ export default function StudentDashboardPage() {
           setSkills([]);
           setSessionSummary(null);
           setLearningState(null);
+          setQuickLevelFinderRetestEnabled(false);
           setPlacementLessonGroups([]);
           setPlacementContentGaps([]);
           setProgression(null);
@@ -583,6 +587,7 @@ export default function StudentDashboardPage() {
 
           setSessionSummary(sessionSummaryPayload.summary ?? null);
           setLearningState(learningStatePayload.learningState ?? null);
+          setQuickLevelFinderRetestEnabled(learningStatePayload.quickLevelFinderRetestEnabled === true);
           setPlacementLevels(placementLevelsPayload.levels ?? null);
           setPlacementLessonGroups(Array.isArray(placementLessonsPayload.grouped) ? placementLessonsPayload.grouped : []);
           setPlacementContentGaps(Array.isArray(placementLessonsPayload.contentGaps) ? placementLessonsPayload.contentGaps : []);
@@ -897,6 +902,79 @@ export default function StudentDashboardPage() {
   }, [certificateEligibility]);
   const weakAccuracy = Math.round(skillMap.get(weakSkill)?.accuracy ?? 45);
   const supportSkill = groupedSkills.improving[0]?.skill ?? focusSkill;
+  const dashboardExperience = dashboardTier === "primary"
+    ? (
+      <PrimaryDashboard
+        childName={childName}
+        stats={stats}
+        visibleAssignments={visibleAssignments}
+        skills={skills}
+        coachRows={coachRows}
+        focusSkill={focusSkill}
+        weakSkill={weakSkill}
+        strongSkill={strongSkill}
+        focusAssignment={focusAssignment}
+        weakAssignment={weakAssignment}
+        reviewAssignment={reviewAssignment}
+        bossUnlocked={bossUnlocked}
+        bossPlayedToday={bossPlayedToday}
+        ownedBadges={ownedBadges}
+        sessionSummary={sessionSummary ?? null}
+        learningState={learningState}
+        quickLevelFinderRetestEnabled={quickLevelFinderRetestEnabled}
+        placementLevels={placementLevels}
+        placementLessonGroups={placementLessonGroups}
+        placementContentGaps={placementContentGaps}
+        loading={loading}
+        error={error}
+        startingJourney={startingJourney}
+        onStartJourney={startTodayJourney}
+        onStartAssignment={startAssignment}
+        onStartBossBattle={startBossBattle}
+        bossLaunching={bossLaunching}
+        onOpenStore={openStore}
+        pendingAssignmentId={pendingAssignmentId}
+        openingStore={openingStore}
+      />
+    )
+    : (dashboardTier === "ks3" || dashboardTier === "gcse")
+      ? (
+        <SecondaryDashboard
+          childName={childName}
+          stats={stats}
+          visibleAssignments={visibleAssignments}
+          skills={skills}
+          coachRows={coachRows}
+          focusSkill={focusSkill}
+          weakSkill={weakSkill}
+          strongSkill={strongSkill}
+          focusAssignment={focusAssignment}
+          weakAssignment={weakAssignment}
+          reviewAssignment={reviewAssignment}
+          bossUnlocked={bossUnlocked}
+          bossPlayedToday={bossPlayedToday}
+          ownedBadges={ownedBadges}
+          sessionSummary={sessionSummary ?? null}
+          learningState={learningState}
+          quickLevelFinderRetestEnabled={quickLevelFinderRetestEnabled}
+          placementLevels={placementLevels}
+          placementLessonGroups={placementLessonGroups}
+          placementContentGaps={placementContentGaps}
+          loading={loading}
+          error={error}
+          startingJourney={startingJourney}
+          pathway={dashboardTier}
+          allAssignments={assignments}
+          onStartJourney={startTodayJourney}
+          onStartAssignment={startAssignment}
+          onStartBossBattle={startBossBattle}
+          bossLaunching={bossLaunching}
+          onOpenStore={openStore}
+          pendingAssignmentId={pendingAssignmentId}
+          openingStore={openingStore}
+        />
+      )
+      : null;
 
   useEffect(() => {
     if (loading || !weakAssignment || !weakSkill) return;
@@ -921,6 +999,9 @@ export default function StudentDashboardPage() {
       <section className="mx-auto max-w-6xl px-6 py-8">
         {loading ? (
           <div className="space-y-6">
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">
+              Loading page, please wait...
+            </div>
             <div className="h-16 animate-pulse rounded-2xl bg-slate-200/80" />
             <div className="grid gap-3 sm:grid-cols-4">
               {[0, 1, 2, 3].map((idx) => (
@@ -980,6 +1061,13 @@ export default function StudentDashboardPage() {
                 className="mb-6"
               />
             ) : null}
+
+            {dashboardExperience ? (
+              <div className="mb-6">
+                {dashboardExperience}
+              </div>
+            ) : null}
+
             {!loading && visibleAssignments.length === 0 ? (
               <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
                 <p className="text-sm font-black uppercase tracking-[0.18em] text-amber-700">Awaiting Admin Assignment</p>
@@ -999,6 +1087,7 @@ export default function StudentDashboardPage() {
               ) : null}
               {academicLoading ? (
                 <div className="mt-3 space-y-3">
+                  <p className="text-sm font-semibold text-cyan-800">Loading Smart Catch-Up...</p>
                   <div className="h-4 w-52 animate-pulse rounded bg-cyan-200" />
                   <div className="h-16 animate-pulse rounded-2xl bg-cyan-100" />
                   <div className="h-16 animate-pulse rounded-2xl bg-cyan-100" />
@@ -1409,74 +1498,6 @@ export default function StudentDashboardPage() {
               </section>
             ) : null}
 
-            {dashboardTier === "primary" && (
-              <PrimaryDashboard
-                childName={childName}
-                stats={stats}
-                visibleAssignments={visibleAssignments}
-                skills={skills}
-                coachRows={coachRows}
-                focusSkill={focusSkill}
-                weakSkill={weakSkill}
-                strongSkill={strongSkill}
-                focusAssignment={focusAssignment}
-                weakAssignment={weakAssignment}
-                reviewAssignment={reviewAssignment}
-                bossUnlocked={bossUnlocked}
-                bossPlayedToday={bossPlayedToday}
-                ownedBadges={ownedBadges}
-                sessionSummary={sessionSummary ?? null}
-                learningState={learningState}
-                placementLevels={placementLevels}
-                placementLessonGroups={placementLessonGroups}
-                placementContentGaps={placementContentGaps}
-                loading={loading}
-                error={error}
-                startingJourney={startingJourney}
-                onStartJourney={startTodayJourney}
-                onStartAssignment={startAssignment}
-                onStartBossBattle={startBossBattle}
-                bossLaunching={bossLaunching}
-                onOpenStore={openStore}
-                pendingAssignmentId={pendingAssignmentId}
-                openingStore={openingStore}
-              />
-            )}
-            {(dashboardTier === "ks3" || dashboardTier === "gcse") && (
-              <SecondaryDashboard
-                childName={childName}
-                stats={stats}
-                visibleAssignments={visibleAssignments}
-                skills={skills}
-                coachRows={coachRows}
-                focusSkill={focusSkill}
-                weakSkill={weakSkill}
-                strongSkill={strongSkill}
-                focusAssignment={focusAssignment}
-                weakAssignment={weakAssignment}
-                reviewAssignment={reviewAssignment}
-                bossUnlocked={bossUnlocked}
-                bossPlayedToday={bossPlayedToday}
-                ownedBadges={ownedBadges}
-                sessionSummary={sessionSummary ?? null}
-                learningState={learningState}
-                placementLevels={placementLevels}
-                placementLessonGroups={placementLessonGroups}
-                placementContentGaps={placementContentGaps}
-                loading={loading}
-                error={error}
-                startingJourney={startingJourney}
-                pathway={dashboardTier}
-                allAssignments={assignments}
-                onStartJourney={startTodayJourney}
-                onStartAssignment={startAssignment}
-                onStartBossBattle={startBossBattle}
-                bossLaunching={bossLaunching}
-                onOpenStore={openStore}
-                pendingAssignmentId={pendingAssignmentId}
-                openingStore={openingStore}
-              />
-            )}
           </div>
         )}
       </section>

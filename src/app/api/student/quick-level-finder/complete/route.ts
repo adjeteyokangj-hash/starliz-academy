@@ -6,7 +6,9 @@ import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import {
   deriveQuickLevelFinderLevels,
+  inferQuickLevelFinderPlacementProfile,
   parseQuickLevelFinderSession,
+  upsertQuickLevelFinderRetestEnabled,
   upsertQuickLevelFinderSession,
 } from "@/lib/quick-level-finder";
 
@@ -37,8 +39,10 @@ export async function POST(request: Request) {
     where: { id: studentId, parentId: parentScope.parentId, archived: false },
     select: {
       id: true,
+      yearGroup: true,
       studentProfile: {
         select: {
+          keyStageLevel: true,
           aiLearningProfileJson: true,
         },
       },
@@ -61,14 +65,34 @@ export async function POST(request: Request) {
   state.cursor = state.questions.length;
   state.levels = deriveQuickLevelFinderLevels(state);
 
-  const nextProfileJson = upsertQuickLevelFinderSession(student.studentProfile?.aiLearningProfileJson ?? null, state);
-  await prisma.studentProfile.upsert({
-    where: { childId: student.id },
-    update: { aiLearningProfileJson: nextProfileJson },
-    create: {
-      childId: student.id,
-      aiLearningProfileJson: nextProfileJson,
-    },
+  const placementProfile = inferQuickLevelFinderPlacementProfile({
+    levels: state.levels,
+    baselineYearGroup: student.yearGroup,
+    baselineKeyStage: student.studentProfile?.keyStageLevel ?? null,
+  });
+
+  const profileWithSession = upsertQuickLevelFinderSession(student.studentProfile?.aiLearningProfileJson ?? null, state);
+  const nextProfileJson = upsertQuickLevelFinderRetestEnabled(profileWithSession, false);
+  await prisma.$transaction(async (tx) => {
+    await tx.studentProfile.upsert({
+      where: { childId: student.id },
+      update: {
+        aiLearningProfileJson: nextProfileJson,
+        ...(placementProfile ? { keyStageLevel: placementProfile.keyStage } : {}),
+      },
+      create: {
+        childId: student.id,
+        aiLearningProfileJson: nextProfileJson,
+        keyStageLevel: placementProfile?.keyStage ?? student.studentProfile?.keyStageLevel ?? null,
+      },
+    });
+
+    if (placementProfile) {
+      await tx.childProfile.update({
+        where: { id: student.id },
+        data: { yearGroup: placementProfile.yearGroup },
+      });
+    }
   });
 
   return NextResponse.json({
@@ -81,6 +105,7 @@ export async function POST(request: Request) {
       totalQuestions: state.questions.length,
       completedAt: state.completedAt,
     },
+    placementProfile,
     levels: state.levels,
   });
 }

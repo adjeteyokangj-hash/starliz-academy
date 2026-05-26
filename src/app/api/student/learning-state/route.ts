@@ -10,6 +10,7 @@ import {
   parseSelectedSubjectsFromProfileJson,
   parseSubjectFocus,
 } from "@/lib/student-learning-state";
+import { parseQuickLevelFinderRetestEnabled } from "@/lib/quick-level-finder";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -100,5 +101,6 @@ export async function GET(request: Request) {
     ok: true,
     studentId,
     learningState,
+    quickLevelFinderRetestEnabled: parseQuickLevelFinderRetestEnabled(profile?.aiLearningProfileJson ?? null),
   });
 }

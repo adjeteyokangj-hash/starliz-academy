@@ -9,6 +9,7 @@ import { parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { keyStageForYearGroup } from "@/lib/curriculum";
 import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from "@/lib/learning_dna";
+import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 
 const updateStudentSchema = z.object({
   name: z.string().trim().min(1).optional(),
@@ -64,6 +65,7 @@ export async function GET(_request: Request, context: Context) {
   const correct = student.attempts.length ? student.attempts.filter((record) => record.correct === true).length : student.progressRecords.filter((record) => record.correct === true).length;
   const accuracy = total > 0 ? Math.round((correct / total) * 100) : null;
   const normalizedStudent = fromDbRecord(student);
+  const quickLevelFinderSession = parseQuickLevelFinderSession(student.studentProfile?.aiLearningProfileJson ?? null);
   const curriculumProfile = readStudentCurriculumProfile({
     yearGroup: student.yearGroup,
     keyStageLevel: student.studentProfile?.keyStageLevel ?? null,
@@ -112,6 +114,13 @@ export async function GET(_request: Request, context: Context) {
       updatedAt: student.updatedAt.toISOString(),
       recentLevelDecisions: [...(normalizedStudent.levelDecisions ?? [])].slice(-12).reverse(),
       recommendedNextActivity: normalizedStudent.adaptive.nextBestActivity,
+      quickLevelFinder: {
+        completed: quickLevelFinderSession?.status === "completed",
+        status: quickLevelFinderSession?.status ?? null,
+        responseCount: quickLevelFinderSession?.responses.length ?? 0,
+        totalQuestions: quickLevelFinderSession?.questions.length ?? 0,
+        levels: quickLevelFinderSession?.levels ?? {},
+      },
       adaptiveTutor,
       walletSummary,
       ownedItems: student.rewards.map((reward) => ({

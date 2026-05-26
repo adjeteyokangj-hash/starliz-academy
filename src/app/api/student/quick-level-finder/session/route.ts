@@ -54,6 +54,7 @@ export async function GET() {
       answered: sessionState.responses.length,
       totalQuestions: sessionState.questions.length,
       currentQuestion: sessionState.questions[sessionState.cursor] ?? null,
+      questionPreview: sessionState.questions.slice(sessionState.cursor, sessionState.cursor + 3),
       progressPercent: sessionState.questions.length > 0
         ? Math.round((sessionState.responses.length / sessionState.questions.length) * 100)
         : 0,

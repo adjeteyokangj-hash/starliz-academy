@@ -3,12 +3,11 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
-import { parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/student-learning-state";
-import { quickLevelFinderSubjects, sanitizeSelectedSubjects } from "@/lib/subject-selection";
 import {
+  autoQuickLevelFinderSubjectsForYearGroup,
   buildQuestionPlan,
   parseQuickLevelFinderSession,
-  questionRangeBySubjectCount,
+  quickLevelFinderQuestionRangeForYearGroup,
   upsertQuickLevelFinderSession,
 } from "@/lib/quick-level-finder";
 
@@ -57,22 +56,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const selectedSubjects = parseSelectedSubjectsFromProfileJson(student.studentProfile?.aiLearningProfileJson ?? null).length
-    ? parseSelectedSubjectsFromProfileJson(student.studentProfile?.aiLearningProfileJson ?? null)
-    : parseSubjectFocus(student.studentProfile?.subjectFocus ?? null);
-
-  if (!selectedSubjects.length) {
-    return NextResponse.json({ error: "Subject selection is required before Quick Level Finder." }, { status: 409 });
-  }
-
-  const scopedSubjects = quickLevelFinderSubjects(sanitizeSelectedSubjects(selectedSubjects));
-  const scopedSubjectKeys = scopedSubjects.map((entry) => (entry.strand ? `${entry.subject}:${entry.strand}` : entry.subject));
-  const questionRange = questionRangeBySubjectCount(selectedSubjects.length);
-  const questionCount = Math.round((questionRange.min + questionRange.max) / 2);
+  const coreSelectedSubjects = autoQuickLevelFinderSubjectsForYearGroup(student.yearGroup);
+  const questionRange = quickLevelFinderQuestionRangeForYearGroup(student.yearGroup);
+  const questionCount = questionRange.max;
   const existingProfileJson = student.studentProfile?.aiLearningProfileJson ?? null;
   const existingSession = parseQuickLevelFinderSession(existingProfileJson);
+  const existingCurrentQuestion = existingSession
+    ? existingSession.questions[existingSession.cursor] ?? null
+    : null;
 
-  if (existingSession && existingSession.status === "in_progress" && !restart) {
+  if (existingSession && existingSession.status === "in_progress" && !restart && existingCurrentQuestion) {
     return NextResponse.json({
       ok: true,
       resumed: true,
@@ -90,14 +83,15 @@ export async function POST(request: Request) {
         adaptive: true,
         questionCountMin: questionRange.min,
         questionCountMax: questionRange.max,
-        note: "Questions are generated only from selected subjects. English expands into internal strands.",
+        note: "Quick diagnostic subjects and question count are adapted by year group.",
       },
       session: {
         sessionId: existingSession.sessionId,
         status: existingSession.status,
         answered: existingSession.responses.length,
         totalQuestions: existingSession.questions.length,
-        currentQuestion: existingSession.questions[existingSession.cursor] ?? null,
+        currentQuestion: existingCurrentQuestion,
+        questionPreview: existingSession.questions.slice(existingSession.cursor, existingSession.cursor + 3),
       },
     });
   }
@@ -107,9 +101,15 @@ export async function POST(request: Request) {
     status: "in_progress" as const,
     startedAt: new Date().toISOString(),
     completedAt: null,
-    selectedSubjects,
-    scopedSubjects: scopedSubjectKeys,
-    questions: buildQuestionPlan(scopedSubjectKeys, questionCount),
+    selectedSubjects: coreSelectedSubjects,
+    scopedSubjects: coreSelectedSubjects,
+    questions: buildQuestionPlan({
+      scopedSubjects: coreSelectedSubjects,
+      count: questionCount,
+      yearGroup: student.yearGroup,
+      keyStage: student.studentProfile?.keyStageLevel ?? null,
+      sessionId: undefined,
+    }),
     cursor: 0,
     responses: [],
     levels: {},
@@ -137,15 +137,15 @@ export async function POST(request: Request) {
       keyStage: student.studentProfile?.keyStageLevel ?? null,
     },
     selection: {
-      parentSubjects: selectedSubjects,
-      scopedSubjects,
-      scopedSubjectKeys,
+      parentSubjects: coreSelectedSubjects,
+      scopedSubjects: coreSelectedSubjects,
+      scopedSubjectKeys: coreSelectedSubjects,
     },
     testDesign: {
       adaptive: true,
       questionCountMin: questionRange.min,
       questionCountMax: questionRange.max,
-      note: "Questions are generated only from selected subjects. English expands into internal strands.",
+      note: "Quick diagnostic subjects and question count are adapted by year group.",
     },
     session: {
       sessionId: nextSession.sessionId,
@@ -153,6 +153,7 @@ export async function POST(request: Request) {
       answered: 0,
       totalQuestions: nextSession.questions.length,
       currentQuestion: nextSession.questions[0] ?? null,
+      questionPreview: nextSession.questions.slice(0, 3),
     },
   });
 }
