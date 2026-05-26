@@ -1,3 +1,5 @@
+import type { LearningTwinProfile } from "@/lib/academic-intelligence/types";
+
 export type StudentAssignment = {
   id: string;
   status: "assigned" | "in_progress" | "completed" | string;
@@ -118,6 +120,7 @@ export type DashboardProps = {
   bossPlayedToday: boolean;
   ownedBadges: ShopOwnedItem[];
   sessionSummary: SessionSummary | null;
+  learningTwin?: LearningTwinProfile | null;
   learningState?: StudentLearningState | null;
   quickLevelFinderRetestEnabled?: boolean;
   placementLevels?: PlacementLevels | null;

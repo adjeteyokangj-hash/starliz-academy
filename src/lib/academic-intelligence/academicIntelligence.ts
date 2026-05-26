@@ -9,6 +9,7 @@ import {
   buildTaskStatusMap,
 } from "@/lib/academic-intelligence/catchUpTasks";
 import { buildMasteryMap } from "@/lib/academic-intelligence/masteryMap";
+import { buildLearningTwinProfile } from "@/lib/academic-intelligence/learningTwin";
 import {
   DEFAULT_SCHOOL_WEEK_SETTINGS,
   sanitizeSchoolWeekSettings,
@@ -423,6 +424,11 @@ export function buildAcademicIntelligence(
   const output: AcademicIntelligenceOutput = {
     studentId: data.studentId,
     summary: masteryBuilt.summary,
+    learningTwin: buildLearningTwinProfile({
+      source: data,
+      summary: masteryBuilt.summary,
+      catchUpTasks: existingTasks,
+    }),
     masteryMap: masteryBuilt.masteryMap,
     masteryExpansion: {
       needsCatchUpTopics: 0,
@@ -493,6 +499,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   AcademicIntelligenceOutput,
   | "studentId"
   | "summary"
+  | "learningTwin"
   | "masteryExpansion"
   | "curriculumCoverage"
   | "catchUpRecommendations"
@@ -507,6 +514,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   return {
     studentId: output.studentId,
     summary: output.summary,
+    learningTwin: output.learningTwin,
     masteryExpansion: output.masteryExpansion,
     curriculumCoverage: output.curriculumCoverage,
     catchUpRecommendations: output.catchUpRecommendations.map((item) => ({

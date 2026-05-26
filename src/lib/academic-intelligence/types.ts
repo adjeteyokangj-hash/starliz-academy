@@ -74,6 +74,50 @@ export type AssessmentReadinessStatus = "not_ready" | "developing" | "nearly_rea
 
 export type ExamReadinessBand = "not_ready" | "nearly_ready" | "ready";
 
+export type ExplanationStyleSignalType =
+  | "visual_examples"
+  | "diagrams"
+  | "step_by_step_explanation"
+  | "real_life_examples"
+  | "story_based_explanation"
+  | "voice_explanation"
+  | "worked_examples"
+  | "simpler_wording"
+  | "practice_first_learning"
+  | "repetition_recap"
+  | "challenge_game_style_explanation"
+  | "coach_guided_hints";
+
+export type ExplanationStyleSignal = {
+  style: ExplanationStyleSignalType;
+  score: number;
+  evidence: string;
+};
+
+export type ExplanationDNAProfile = {
+  bestExplanationStyle: ExplanationStyleSignalType;
+  coachSupportSignal: "emerging" | "helpful" | "active";
+  learningPacePattern: "guided_building" | "practice_first" | "balanced";
+  todayApproach: string;
+  confidenceBand: "growing" | "steady" | "strong";
+  topSignals: ExplanationStyleSignal[];
+};
+
+export type LearningTwinRecommendation = {
+  key: "best_help" | "coach_support" | "learning_pace" | "todays_approach";
+  label: string;
+  text: string;
+};
+
+export type LearningTwinProfile = {
+  title: string;
+  subtitle: string;
+  hasEnoughData: boolean;
+  explanationDNA: ExplanationDNAProfile;
+  insights: LearningTwinRecommendation[];
+  defaultsApplied: boolean;
+};
+
 export type CatchUpTaskType =
   | "recap_lesson"
   | "targeted_practice"
@@ -452,6 +496,7 @@ export type AcademicAuditHistoryDraft = {
 export type AcademicIntelligenceOutput = {
   studentId: string;
   summary: MasterySummary;
+  learningTwin: LearningTwinProfile;
   masteryMap: MasteryMapEntry[];
   masteryExpansion: MasteryExpansionSummary;
   curriculumCoverage: CoverageEntry[];

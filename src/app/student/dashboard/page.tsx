@@ -12,7 +12,7 @@ import SecondaryDashboard from "@/components/student/SecondaryDashboard";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
-import type { CoverageEntry } from "@/lib/academic-intelligence/types";
+import type { CoverageEntry, LearningTwinProfile } from "@/lib/academic-intelligence/types";
 
 type ProgressionRecommendation = {
   scopedSubject: string;
@@ -184,6 +184,7 @@ type StudentAcademicIntelligencePayload = {
     highConfidenceTopics: number;
     priorityTopics: string[];
   };
+  learningTwin?: LearningTwinProfile;
   catchUpRecommendations: Array<{
     id: string;
     title: string;
@@ -920,6 +921,7 @@ export default function StudentDashboardPage() {
         bossPlayedToday={bossPlayedToday}
         ownedBadges={ownedBadges}
         sessionSummary={sessionSummary ?? null}
+        learningTwin={academicIntelligence?.learningTwin ?? null}
         learningState={learningState}
         quickLevelFinderRetestEnabled={quickLevelFinderRetestEnabled}
         placementLevels={placementLevels}
@@ -955,6 +957,7 @@ export default function StudentDashboardPage() {
           bossPlayedToday={bossPlayedToday}
           ownedBadges={ownedBadges}
           sessionSummary={sessionSummary ?? null}
+          learningTwin={academicIntelligence?.learningTwin ?? null}
           learningState={learningState}
           quickLevelFinderRetestEnabled={quickLevelFinderRetestEnabled}
           placementLevels={placementLevels}

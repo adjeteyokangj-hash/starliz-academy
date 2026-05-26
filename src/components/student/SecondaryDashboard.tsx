@@ -3,6 +3,7 @@
 import type { DashboardProps } from "./dashboardTypes";
 import { useRouter } from "next/navigation";
 import StudyPlanBadge from "@/components/learning/StudyPlanBadge";
+import LearningTwinInsight from "@/components/academic-intelligence/LearningTwinInsight";
 import { deriveStudyPlanProgress } from "@/lib/study-plan";
 
 function accuracyBand(accuracy: number): { label: string; color: string } {
@@ -42,6 +43,7 @@ export default function SecondaryDashboard({
   bossUnlocked,
   bossPlayedToday,
   sessionSummary,
+  learningTwin,
   learningState,
   quickLevelFinderRetestEnabled,
   placementLevels,
@@ -431,25 +433,7 @@ export default function SecondaryDashboard({
       )}
 
       {coachAwaitingAssessment && (
-        <section className="rounded-3xl border border-slate-200 bg-white p-6">
-          <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Smart Coach</p>
-          <h2 className="mt-1 text-lg font-black text-slate-900">AI Profile Status</h2>
-          <p className="mt-2 text-sm text-slate-600">
-            Your AI Coach has not analysed enough learning activity yet.
-          </p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            {[
-              "Voice confidence - analysing",
-              "Reading fluency - analysing",
-              "Spelling patterns - analysing",
-              "Memory recall - analysing",
-            ].map((item) => (
-              <div key={item} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-700">
-                {item}
-              </div>
-            ))}
-          </div>
-        </section>
+        <LearningTwinInsight profile={learningTwin} />
       )}
 
       {/* Session insights */}
