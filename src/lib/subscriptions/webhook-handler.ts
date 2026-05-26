@@ -3,6 +3,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { resolveGraceEndsAt } from "./webhook-grace";
 import { resolveStripeWebhookStatus } from "./webhook-status";
 import { planKeyFromPricingPlan, resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import { handleFinancialSyncFromWebhook } from "@/lib/billing/truenumeris-pipeline";
 
 type PaymentEvent = {
   id?: string;
@@ -254,6 +255,17 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
       entityId: subscription.id,
       metadata: { eventType: event.type, status, planKey, pricingPlanId, parentId: parent.id },
     });
+
+    try {
+      await handleFinancialSyncFromWebhook({
+        eventType: event.type,
+        eventId: eventId ?? undefined,
+        parentId: parent.id,
+        object,
+      });
+    } catch {
+      // Financial sync should not block subscription updates.
+    }
 
     if (eventId) await markPaymentWebhookEventProcessed(eventId);
 

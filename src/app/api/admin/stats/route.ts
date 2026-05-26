@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
+import { getFinancialDashboardSnapshot } from "@/lib/billing/reconciliation";
 
 type PrismaWithComms = typeof prisma & {
   adminEmail?: { count: (args: { where: { direction: string; isRead: boolean } }) => Promise<number> };
@@ -62,6 +63,7 @@ export async function GET() {
       messageThreadsWithUnread,
       unreadMessagesAggregate,
       orphanedParentsCount,
+      financialDashboard,
     ] = await Promise.all([
       prisma.user.count({ where: { role: "parent" } }),
       prisma.childProfile.count({ where: { archived: false } }),
@@ -119,6 +121,7 @@ export async function GET() {
           parentProfile: null,
         },
       }),
+      getFinancialDashboardSnapshot(),
     ]);
 
     const activeToday = new Set([...recentProgress.map((p) => p.childId), ...recentAttempts.map((attempt) => attempt.studentId)]).size;
@@ -279,6 +282,7 @@ export async function GET() {
         orphanedParentsCount,
         orphanedParentsStatus: orphanedParentsCount === 0 ? "healthy" : "warning",
       },
+      financialDashboard,
     });
   } catch (error) {
     console.error("Admin stats error:", error);

@@ -684,6 +684,99 @@ model Subscription {
   @@index([pricingPlanId])
 }
 
+model TrueNumerisIntegration {
+  id                   String   @id @default(cuid())
+  companyId            String?
+  region               String   @default("UK")
+  enabled              Boolean  @default(false)
+
+  apiKeyEncrypted      String?
+  baseUrl              String?
+
+  autoInvoice          Boolean  @default(true)
+  autoVat              Boolean  @default(true)
+  autoReconciliation   Boolean  @default(true)
+
+  syncFrequencyMinutes Int      @default(15)
+
+  lastSyncAt           DateTime?
+  lastSyncStatus       String?
+  lastSyncMessage      String?
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model FinancialSyncEvent {
+  id               String   @id @default(cuid())
+
+  source           String
+  sourceId         String?
+
+  eventType        String
+
+  studentId        String?
+  parentId         String?
+
+  invoiceNumber    String?
+
+  currency         String   @default("GBP")
+
+  grossAmount      Decimal  @db.Decimal(12, 2)
+  vatAmount        Decimal  @db.Decimal(12, 2)
+  netAmount        Decimal  @db.Decimal(12, 2)
+
+  paymentProvider  String?
+  paymentReference String?
+
+  syncStatus       String   @default("pending")
+  syncAttempts     Int      @default(0)
+
+  syncedAt         DateTime?
+  errorMessage     String?
+
+  payloadJson      Json?
+
+  createdAt        DateTime @default(now())
+
+  @@index([syncStatus, createdAt])
+  @@index([paymentProvider, paymentReference])
+  @@unique([paymentProvider, paymentReference, eventType])
+}
+
+model FinancialInvoice {
+  id                String   @id @default(cuid())
+
+  invoiceNumber     String   @unique
+
+  parentId          String?
+  studentId         String?
+
+  status            String   @default("draft")
+
+  currency          String   @default("GBP")
+
+  grossAmount       Decimal  @db.Decimal(12, 2)
+  vatAmount         Decimal  @db.Decimal(12, 2)
+  netAmount         Decimal  @db.Decimal(12, 2)
+
+  issuedAt          DateTime?
+  paidAt            DateTime?
+
+  pdfUrl            String?
+
+  providerReference String?  @unique
+
+  metadataJson      Json?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([parentId])
+  @@index([studentId])
+}
+
 model School {
   id           String       @id @default(cuid())
   name         String

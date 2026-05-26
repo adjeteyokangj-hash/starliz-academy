@@ -21,6 +21,7 @@ export const adminNavItems = [
   { title: "Messages", href: "/admin/messages", icon: "MS" },
   { title: "Voice & Media", href: "/admin/voice-media", icon: "VM" },
   { title: "Inbox", href: "/admin/inbox", icon: "✉" },
+  { title: "TrueNumeris", href: "/admin/integrations/truenumeris", icon: "TN" },
   { title: "Branding", href: "/admin/branding", icon: "BR" },
   { title: "Audit Logs", href: "/admin/audit-logs", icon: "A" },
   { title: "Settings", href: "/admin/settings", icon: "G" },

@@ -38,6 +38,15 @@ const integrations = [
     badgeClass: "bg-slate-800 text-slate-400",
   },
   {
+    id: "truenumeris",
+    title: "TrueNumeris",
+    desc: "Financial integration for accounting, VAT, invoicing and reconciliation workflows.",
+    icon: "📊",
+    href: "/admin/integrations/truenumeris",
+    statusLabel: "Open Integration Console",
+    badgeClass: "bg-emerald-500/15 text-emerald-300",
+  },
+  {
     id: "storage",
     title: "Cloud Storage (S3 / R2)",
     desc: "Stores uploaded media assets, exports, and database backups. Supports AWS, Cloudflare R2, and Supabase.",

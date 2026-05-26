@@ -52,7 +52,23 @@ type Stats = {
     frustrationSignals: string;
     dominantMood: string;
   };
+  financialDashboard?: {
+    todayRevenue: number;
+    monthlyRevenue: number;
+    vatCollected: number;
+    failedPayments: number;
+    pendingSyncs: number;
+    reconciliationStatus: string;
+    mrr: number;
+    arr: number;
+    churn: number;
+    taxLiabilityEstimate: number;
+  };
 };
+
+function formatGbp(value: number): string {
+  return `GBP ${value.toFixed(2)}`;
+}
 
 const adminModules = [
   {
@@ -94,6 +110,11 @@ const adminModules = [
     title: "Subscriptions",
     description: "Track Stripe plans, failed payments and trial users.",
     href: "/admin/subscriptions",
+  },
+  {
+    title: "TrueNumeris",
+    description: "Financial sync queue, VAT automation, invoice sync and compliance export readiness.",
+    href: "/admin/integrations/truenumeris",
   },
   {
     title: "Trial Leads",
@@ -231,6 +252,52 @@ export default function AdminDashboardPage() {
           tone="green"
           detail={stats ? `${stats.messageThreadsWithUnread} chats waiting` : undefined}
           href="/admin/messages"
+        />
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <AdminStatCard
+          title="Today Revenue"
+          value={stats?.financialDashboard ? formatGbp(stats.financialDashboard.todayRevenue) : "..."}
+          icon="£"
+          tone="green"
+          href="/admin/integrations/truenumeris"
+        />
+        <AdminStatCard
+          title="Monthly Revenue"
+          value={stats?.financialDashboard ? formatGbp(stats.financialDashboard.monthlyRevenue) : "..."}
+          icon="MR"
+          tone="blue"
+          href="/admin/integrations/truenumeris"
+        />
+        <AdminStatCard
+          title="VAT Collected"
+          value={stats?.financialDashboard ? formatGbp(stats.financialDashboard.vatCollected) : "..."}
+          icon="VAT"
+          tone="amber"
+          href="/admin/integrations/truenumeris"
+        />
+        <AdminStatCard
+          title="Failed Payments"
+          value={stats?.financialDashboard?.failedPayments ?? "..."}
+          icon="FP"
+          tone="rose"
+          href="/admin/integrations/truenumeris"
+        />
+        <AdminStatCard
+          title="Pending Syncs"
+          value={stats?.financialDashboard?.pendingSyncs ?? "..."}
+          icon="SQ"
+          tone="purple"
+          detail={stats?.financialDashboard?.reconciliationStatus ?? "-"}
+          href="/admin/integrations/truenumeris"
+        />
+        <AdminStatCard
+          title="Tax Liability Est."
+          value={stats?.financialDashboard ? formatGbp(stats.financialDashboard.taxLiabilityEstimate) : "..."}
+          icon="TX"
+          tone="slate"
+          href="/admin/integrations/truenumeris"
         />
       </section>
 
