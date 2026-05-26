@@ -19,7 +19,7 @@ export default function LearningTwinInsight({ profile }: LearningTwinInsightProp
       {!profile || !profile.hasEnoughData ? (
         <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
           <p className="font-semibold">StarLiz is still learning how to support you best.</p>
-          <p>Complete more lessons so your Learning Twin can personalise your help.</p>
+          <p>Complete more lessons so your Learning Twin can personalise your learning support.</p>
         </div>
       ) : (
         <div className="mt-4 grid gap-2">
