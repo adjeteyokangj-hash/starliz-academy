@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "public"."FinancialSyncEvent_paymentProvider_paymentReference_eventType_k" RENAME TO "FinancialSyncEvent_paymentProvider_paymentReference_eventTy_key";
