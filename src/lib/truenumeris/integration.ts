@@ -5,6 +5,53 @@ import { decryptSecret, encryptSecret, maskSecret } from "@/lib/secrets";
 import { getTrueNumerisDefaultRegion } from "@/lib/truenumeris/config";
 import type { TrueNumerisSettingsInput } from "@/types/truenumeris";
 
+type TrueNumerisRow = {
+  id: string;
+  companyId: string | null;
+  region: string;
+  enabled: boolean;
+  apiKeyEncrypted: string | null;
+  baseUrl: string | null;
+  autoInvoice: boolean;
+  autoVat: boolean;
+  autoReconciliation: boolean;
+  syncFrequencyMinutes: number;
+  lastSyncAt: Date | null;
+  lastSyncStatus: string | null;
+  lastSyncMessage: string | null;
+  createdAt: Date;
+};
+
+type TrueNumerisDelegate = {
+  findFirst: (args?: unknown) => Promise<TrueNumerisRow | null>;
+  update: (args: unknown) => Promise<TrueNumerisRow>;
+  create: (args: unknown) => Promise<TrueNumerisRow>;
+};
+
+function trueNumerisModel(): TrueNumerisDelegate | null {
+  const model = (prisma as unknown as { trueNumerisIntegration?: TrueNumerisDelegate }).trueNumerisIntegration;
+  return model ?? null;
+}
+
+function defaultTrueNumerisSettings() {
+  return {
+    id: null,
+    companyId: null,
+    region: getTrueNumerisDefaultRegion(),
+    enabled: false,
+    baseUrl: null,
+    autoInvoice: true,
+    autoVat: true,
+    autoReconciliation: true,
+    syncFrequencyMinutes: 15,
+    lastSyncAt: null,
+    lastSyncStatus: null,
+    lastSyncMessage: null,
+    maskedApiKey: null,
+    hasApiKey: false,
+  };
+}
+
 function sanitizeBaseUrl(value: string | undefined): string | null {
   const cleaned = String(value ?? "").trim();
   if (!cleaned) return null;
@@ -16,24 +63,12 @@ function sanitizeBaseUrl(value: string | undefined): string | null {
 }
 
 export async function getTrueNumerisSettings() {
-  const row = await prisma.trueNumerisIntegration.findFirst({ orderBy: { createdAt: "asc" } });
+  const model = trueNumerisModel();
+  if (!model) return defaultTrueNumerisSettings();
+
+  const row = await model.findFirst({ orderBy: { createdAt: "asc" } });
   if (!row) {
-    return {
-      id: null,
-      companyId: null,
-      region: getTrueNumerisDefaultRegion(),
-      enabled: false,
-      baseUrl: null,
-      autoInvoice: true,
-      autoVat: true,
-      autoReconciliation: true,
-      syncFrequencyMinutes: 15,
-      lastSyncAt: null,
-      lastSyncStatus: null,
-      lastSyncMessage: null,
-      maskedApiKey: null,
-      hasApiKey: false,
-    };
+    return defaultTrueNumerisSettings();
   }
 
   return {
@@ -55,7 +90,10 @@ export async function getTrueNumerisSettings() {
 }
 
 export async function getTrueNumerisSecretSettings() {
-  const row = await prisma.trueNumerisIntegration.findFirst({ orderBy: { createdAt: "asc" } });
+  const model = trueNumerisModel();
+  if (!model) return null;
+
+  const row = await model.findFirst({ orderBy: { createdAt: "asc" } });
   if (!row) return null;
   return {
     ...row,
@@ -64,7 +102,12 @@ export async function getTrueNumerisSecretSettings() {
 }
 
 export async function saveTrueNumerisSettings(input: TrueNumerisSettingsInput, actorUserId?: string) {
-  const existing = await prisma.trueNumerisIntegration.findFirst({ orderBy: { createdAt: "asc" } });
+  const model = trueNumerisModel();
+  if (!model) {
+    throw new Error("TrueNumeris integration model is unavailable.");
+  }
+
+  const existing = await model.findFirst({ orderBy: { createdAt: "asc" } });
   const encrypted = input.apiKey?.trim() ? encryptSecret(input.apiKey.trim()) : undefined;
 
   const data: Prisma.TrueNumerisIntegrationUncheckedCreateInput = {
@@ -80,11 +123,11 @@ export async function saveTrueNumerisSettings(input: TrueNumerisSettingsInput, a
   };
 
   const row = existing
-    ? await prisma.trueNumerisIntegration.update({
+    ? await model.update({
         where: { id: existing.id },
         data,
       })
-    : await prisma.trueNumerisIntegration.create({ data });
+    : await model.create({ data });
 
   if (actorUserId) {
     await writeAuditLog({
@@ -109,10 +152,13 @@ export async function updateTrueNumerisSyncState(input: {
   status: string;
   message?: string;
 }) {
-  const existing = await prisma.trueNumerisIntegration.findFirst({ orderBy: { createdAt: "asc" } });
+  const model = trueNumerisModel();
+  if (!model) return null;
+
+  const existing = await model.findFirst({ orderBy: { createdAt: "asc" } });
   if (!existing) return null;
 
-  return prisma.trueNumerisIntegration.update({
+  return model.update({
     where: { id: existing.id },
     data: {
       lastSyncAt: new Date(),

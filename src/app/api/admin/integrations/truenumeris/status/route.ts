@@ -7,20 +7,25 @@ export async function GET() {
   const { session, response } = await requireAdmin();
   if (!session) return response;
 
-  const [settings, queue] = await Promise.all([
-    getTrueNumerisSettings(),
-    getFinancialSyncQueueStats(),
-  ]);
+  try {
+    const [settings, queue] = await Promise.all([
+      getTrueNumerisSettings(),
+      getFinancialSyncQueueStats(),
+    ]);
 
-  return NextResponse.json({
-    ok: true,
-    status: {
-      enabled: settings.enabled,
-      region: settings.region,
-      lastSyncAt: settings.lastSyncAt,
-      lastSyncStatus: settings.lastSyncStatus,
-      lastSyncMessage: settings.lastSyncMessage,
-      queue,
-    },
-  });
+    return NextResponse.json({
+      ok: true,
+      status: {
+        enabled: settings.enabled,
+        region: settings.region,
+        lastSyncAt: settings.lastSyncAt,
+        lastSyncStatus: settings.lastSyncStatus,
+        lastSyncMessage: settings.lastSyncMessage,
+        queue,
+      },
+    });
+  } catch (error) {
+    console.error("TrueNumeris status GET error:", error);
+    return NextResponse.json({ ok: false, error: "Unable to load TrueNumeris status." }, { status: 500 });
+  }
 }

@@ -68,8 +68,12 @@ export default function TrueNumerisIntegrationPage() {
       return;
     }
 
-    const settingsJson = await settingsRes.json();
-    const statusJson = await statusRes.json();
+    const settingsJson = await settingsRes.json().catch(() => ({} as { settings?: SettingsPayload; error?: string }));
+    const statusJson = await statusRes.json().catch(() => ({} as { status?: StatusPayload; error?: string }));
+
+    if (!settingsRes.ok || !statusRes.ok) {
+      setMessage(settingsJson.error ?? statusJson.error ?? "Unable to load TrueNumeris integration data right now.");
+    }
 
     if (settingsRes.ok) {
       const nextSettings = settingsJson.settings as SettingsPayload;

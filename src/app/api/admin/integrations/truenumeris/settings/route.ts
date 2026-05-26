@@ -12,8 +12,13 @@ export async function GET() {
   const { session, response } = await requireAdminPermission("settings:api_keys:test");
   if (!session) return response;
 
-  const settings = await getTrueNumerisSettings();
-  return NextResponse.json({ ok: true, settings });
+  try {
+    const settings = await getTrueNumerisSettings();
+    return NextResponse.json({ ok: true, settings });
+  } catch (error) {
+    console.error("TrueNumeris settings GET error:", error);
+    return NextResponse.json({ ok: false, error: "Unable to load TrueNumeris settings." }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
