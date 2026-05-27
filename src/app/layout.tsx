@@ -10,8 +10,8 @@ import StoreBootstrap from "@/components/layout/StoreBootstrap";
 import Logo from "@/components/Logo";
 
 export const metadata: Metadata = {
-  title: "StarLiz Academy",
-  description: "Learn • Grow • Shine",
+  title: "StarLiz Academy | AI-Supported Learning for Children",
+  description: "StarLiz Academy helps children learn with adaptive lessons, smart catch-up, guided practice, curriculum mastery tracking, parent visibility, and exam readiness support.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "StarLiz Academy",
+    title: "StarLiz Academy | AI-Supported Learning for Children",
     statusBarStyle: "default",
   },
 };

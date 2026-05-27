@@ -30,8 +30,8 @@ export default function About() {
 
         <p className="mb-10 text-slate-400 leading-8">
           Our mission is to support consistent, visible progress across the learner journey.
-          For GCSE stages, StarLiz is pathway aligned and exam-board aware with tagging
-          that supports AQA, Edexcel and OCR.
+          For GCSE stages, StarLiz is pathway aligned with exam-board aligned revision guidance
+          and clear progress support for families.
         </p>
 
         <div className="grid gap-6 sm:grid-cols-3 mb-12">
@@ -42,8 +42,8 @@ export default function About() {
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-center">
             <p className="text-3xl mb-2">🛡️</p>
-            <p className="font-bold">Exam-board Aware</p>
-            <p className="mt-2 text-sm text-slate-400">Supports AQA, Edexcel and OCR tagging</p>
+            <p className="font-bold">Exam-board Aligned</p>
+            <p className="mt-2 text-sm text-slate-400">Aligned GCSE revision guidance</p>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-center">
             <p className="text-3xl mb-2">📊</p>

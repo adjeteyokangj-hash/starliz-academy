@@ -15,7 +15,7 @@ export default function PricingPage() {
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-slate-300">
             Flexible options for families, tutors and schools that need child learning, parent controls,
-            billing, rewards, reports, support messaging, safeguarding and admin operations in one place.
+            billing, rewards, reports, support messaging, safeguarding and organisation support in one place.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link href="/signup" className="rounded-xl bg-blue-600 px-7 py-3 font-bold transition hover:bg-blue-500">

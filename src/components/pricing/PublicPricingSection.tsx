@@ -51,16 +51,16 @@ function canUseStripeCheckout(plan: PricingPlan): boolean {
 
 const familyPricingHighlights = [
   "Secure parent portal with child profiles and PIN protection",
-  "Daily lessons, assignments, spelling, maths, reading and voice interaction",
-  "Progress reports, tutor history, weak-area insights and rewards wallet",
-  "Consent controls, support messaging and PDF, CSV and Excel report exports",
+  "Daily lessons, assignments, spelling, maths and reading with voice-friendly practice",
+  "Parent progress insights, tutor and guided learning history, and rewards progress visibility",
+  "Consent controls, support messaging and downloadable progress reports",
 ]
 
 const organisationPricingHighlights = [
-  "School creation, classrooms, enrolments and licence management",
-  "Admin dashboard, AI content generator, content library, assignments and lessons",
-  "Safeguarding support, launch readiness scoring, compliance and audit exports",
-  "Stripe billing, Outlook inbox, API keys, system health and backup/export tools",
+  "School and group learner management",
+  "Learning progress insights and guided practice support",
+  "Safeguarding-focused access controls and clear reporting",
+  "Custom onboarding support and secure subscription management",
 ]
 
 export default function PublicPricingSection({ compact = false, initialPlans = [] }: PublicPricingSectionProps) {
@@ -110,6 +110,9 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
         <h2 className={`${headingSize} font-black`}>Simple pricing for a full learning platform.</h2>
         <p className="mx-auto mt-4 max-w-3xl text-slate-400">
           Start with a free trial. Plans support learning, parent oversight, reports, rewards, billing and secure access.
+        </p>
+        <p className="mx-auto mt-3 max-w-3xl text-sm text-slate-500">
+          Best experience: StarLiz Academy works best on the latest version of Google Chrome. Other modern browsers may work, but Chrome is recommended for the smoothest learning experience, voice-friendly activities and dashboard use.
         </p>
 
         <div className="mx-auto mt-8 grid max-w-5xl gap-3 text-left sm:grid-cols-2">
@@ -189,8 +192,8 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
       <div className="mx-auto mt-16 max-w-6xl rounded-3xl border border-slate-700 bg-slate-900/80 p-8 lg:p-10">
         <h3 className="text-3xl font-black text-white">Schools &amp; Organisations</h3>
         <p className="mt-3 max-w-3xl text-slate-300">
-          Bring StarLiz Academy to your school, tutoring centre or learning organisation with governance,
-          reporting, safeguarding, billing and operations support included.
+          Bring StarLiz Academy to your school, tutoring centre or learning organisation with learner management,
+          progress visibility, safeguarding-focused access and clear reporting support.
         </p>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-2">

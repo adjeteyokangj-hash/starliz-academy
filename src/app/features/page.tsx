@@ -2,44 +2,44 @@ import Link from "next/link"
 
 const featureList = [
   {
-    icon: "👨‍👩‍👧",
-    title: "Parent Portal",
-    desc: "Parent dashboard, child profiles, active child picker, billing, progress reports, tutor history, rewards wallet, consent, messages, support tickets and PIN protection.",
+    icon: "🧭",
+    title: "Quick Level Finder",
+    desc: "Start at the right level with a quick check of subject confidence, starting point and learning needs.",
   },
   {
-    icon: "🛠️",
-    title: "Admin Portal",
-    desc: "Platform dashboard, parent and student management, AI content generator, content library, assignments, lessons, rewards, subscriptions, reports, inbox, branding, audit logs and security settings.",
+    icon: "📘",
+    title: "Adaptive Lessons",
+    desc: "Lessons and practice are matched to your child’s level, progress and learning needs.",
   },
   {
     icon: "🧒",
-    title: "Child Learning",
-    desc: "Daily lesson journeys, assignment-based learning, spelling, maths and reading practice, adaptive tutor support, weak-area detection, voice interaction and motivation rewards.",
+    title: "Daily Learning Journey",
+    desc: "A personalised learning journey with guided practice across spelling, maths and reading each day.",
   },
   {
-    icon: "🏫",
-    title: "School and Governance Features",
-    desc: "School creation, classroom and enrolment management, licence management, bulk onboarding, safeguarding support, launch readiness scoring, compliance and audit exports.",
+    icon: "🗣️",
+    title: "Smart Coach Support",
+    desc: "Children receive smart learning support with hints and step-by-step guidance to keep confidence high.",
   },
   {
-    icon: "📊",
-    title: "Reporting and Analytics",
-    desc: "Weak topic reports, AI usage and cost estimates, learning activity reports, student progress exports, parent PDF, CSV and Excel reports, audit logs and security history.",
+    icon: "🎯",
+    title: "Smart Catch-Up",
+    desc: "Targeted catch-up sessions focus on weak areas and help children recover momentum quickly.",
   },
   {
-    icon: "🛡️",
-    title: "Safety, Privacy and Trust",
-    desc: "Secure parent and child access, consent controls, PIN protection, secure sessions, role-based admin access, audit history, password reset and GDPR-focused child safety messaging.",
+    icon: "🗺️",
+    title: "Curriculum Mastery Map",
+    desc: "Practice activities are organised around subject skills, learning levels, weak areas and progress evidence.",
   },
   {
-    icon: "🔌",
-    title: "Integrations and Operations",
-    desc: "Stripe billing, Outlook inbox support, API keys, admin integrations, system health checks, production checklist and backup/export tools.",
+    icon: "🎓",
+    title: "Assessment & Exam Readiness",
+    desc: "Assessment readiness support helps children prepare for classroom checks, tests and GCSE pathway expectations.",
   },
   {
     icon: "⭐",
-    title: "Rewards and Motivation",
-    desc: "Wallet balances, earned and spent totals, reward rules, store items, pending redemption approvals and a clear reward ledger.",
+    title: "Certificates & Achievements",
+    desc: "Celebrate progress with certificates, milestones and visible achievement tracking for children and parents.",
   },
 ]
 
@@ -61,8 +61,8 @@ export default function Features() {
         <div className="text-center mb-14">
           <h1 className="text-4xl font-black mb-4">Features</h1>
           <p className="mx-auto max-w-3xl text-lg text-slate-400">
-            StarLiz Academy is not just a learning game. It is a full parent, student, admin, school,
-            reporting, rewards, billing and safeguarding platform for families, tutors and organisations.
+            StarLiz Academy helps children learn with adaptive lessons, smart catch-up, guided practice,
+            parent visibility and curriculum-aware progress tracking from primary learning through KS3 and GCSE readiness.
           </p>
         </div>
 
@@ -85,6 +85,7 @@ export default function Features() {
 
       <footer className="border-t border-slate-800/80 px-6 py-8 text-center text-sm text-slate-500">
         <p>&#169; 2026 StarLiz Academy. All rights reserved.</p>
+        <p className="mt-2 text-xs">Best viewed on the latest version of Google Chrome.</p>
       </footer>
     </main>
   )

@@ -7,107 +7,101 @@ export const dynamic = "force-dynamic"
 
 const features = [
   {
-    icon: "👨‍👩‍👧",
-    title: "Parent Portal",
-    desc: "A secure parent dashboard for child profiles, active child switching, billing, progress reports, tutor history, rewards, consent, messages and support tickets.",
+    icon: "🧭",
+    title: "Quick Level Finder",
+    desc: "Start at the right level with a quick check of subject confidence, starting point and learning needs.",
   },
   {
-    icon: "🛠️",
-    title: "Admin Portal",
-    desc: "Platform operations for parents, students, schools, content, assignments, lessons, rewards, store items, subscriptions, reports, inbox, branding, audit logs and settings.",
+    icon: "📘",
+    title: "Adaptive Lessons",
+    desc: "Lessons and practice are matched to your child’s level, progress and learning needs.",
   },
   {
     icon: "🧒",
-    title: "Child Learning",
-    desc: "Daily lesson journeys, assignment-based learning, spelling, maths and reading practice, adaptive tutor support, voice interaction and confidence tracking.",
+    title: "Daily Learning Journey",
+    desc: "A personalised learning journey with guided practice across spelling, maths and reading each day.",
   },
   {
-    icon: "🏫",
-    title: "Schools and Governance",
-    desc: "School creation, classrooms, enrolments, licences, bulk onboarding, safeguarding support, launch readiness scoring, compliance and audit exports.",
+    icon: "🗣️",
+    title: "Smart Coach Support",
+    desc: "Children receive smart learning support with hints and step-by-step guidance to keep confidence high.",
   },
   {
-    icon: "📊",
-    title: "Reporting and Analytics",
-    desc: "Weak-topic reports, learning activity, AI usage and cost estimates, student progress exports, parent PDF, CSV and Excel reports, audit logs and security history.",
+    icon: "🎯",
+    title: "Smart Catch-Up",
+    desc: "Targeted catch-up sessions focus on weak areas and help children recover momentum quickly.",
   },
   {
-    icon: "🛡️",
-    title: "Safety, Privacy and Trust",
-    desc: "Secure parent and child access, PIN protection, consent controls, role-based admin access, audit history, password reset and GDPR-focused child safety messaging.",
+    icon: "🗺️",
+    title: "Curriculum Mastery Map",
+    desc: "Practice activities are organised around subject skills, learning levels, weak areas and progress evidence.",
   },
   {
-    icon: "🔌",
-    title: "Integrations and Operations",
-    desc: "Stripe billing, Outlook inbox support, API keys, admin integrations, system health checks, production checklist and backup/export tools.",
+    icon: "🎓",
+    title: "Assessment & Exam Readiness",
+    desc: "Assessment readiness support helps children prepare for classroom checks, tests and GCSE pathway expectations.",
   },
   {
     icon: "⭐",
-    title: "Rewards and Motivation",
-    desc: "Wallet balance, earned and spent totals, reward rules, store items, pending redemption approvals and a reward ledger for accountability.",
-  },
-  {
-    icon: "🔒",
-    title: "Reliable Access",
-    desc: "Protected parent, admin and student routes, session refresh handling, tested parent shell navigation and stable support routes.",
+    title: "Certificates & Achievements",
+    desc: "Celebrate progress with certificates, milestones and visible achievement tracking for children and parents.",
   },
 ]
 
 const parentPortalFeatures = [
-  "Parent dashboard and account snapshot",
+  "Parent dashboard and child progress snapshot",
   "Child profile management and active child picker",
   "Billing and plan management",
-  "Progress reports and PDF, CSV and Excel exports",
-  "Tutor history and adaptive learning decisions",
-  "Rewards wallet, purchase history and approvals",
-  "Consent management with audit history",
-  "Parent messages and support tickets",
-  "PIN gate and child profile protection",
+  "Tutor and guided learning history",
+  "Consent and safeguarding preferences",
+  "Child profile and account protection",
+  "Downloadable progress reports",
+  "Rewards progress and approval visibility",
+  "Parent messages and support",
 ]
 
 const adminPortalFeatures = [
-  "Platform dashboard and learning activity overview",
+  "School and group learner management",
+  "Class and learner progress visibility",
+  "Guided practice and assignment support",
   "Parent and student management",
-  "Schools, governance, licences and bulk onboarding",
-  "AI content generator and weak-area detection",
-  "Content library, assignments and lessons",
-  "Rewards engine and store/shop management",
-  "Subscriptions, pricing, reports and exports",
-  "Support tickets, notifications, inbox and voice/media manager",
-  "Branding, audit logs, security and settings",
+  "Safeguarding-focused access controls",
+  "Progress insights and reports",
+  "Support and communication workflows",
+  "Flexible learning organisation setup",
 ]
 
 const childLearningFeatures = [
   "Daily lesson journey",
   "Assignment-based learning",
   "Spelling, maths and reading practice",
-  "Adaptive tutor support",
+  "Guided learning support",
   "Weak-area detection",
-  "Voice interaction",
+  "Voice-friendly learning support",
   "Confidence and progress tracking",
   "Rewards and learning motivation",
 ]
 
 const trustFeatures = [
-  "Secure parent, child, admin and student access",
-  "Parent consent controls and audit history",
-  "PIN protection for parent and child profile flows",
-  "Secure cookies and session handling",
-  "Admin role-based access",
-  "Password reset and account security settings",
-  "GDPR-focused child safety messaging",
-  "Safeguarding support for school operations",
+  "Secure parent, child and student access",
+  "Parent consent and control settings",
+  "Child profile protection",
+  "Safe account access",
+  "Role-based access controls",
+  "Account recovery and security support",
+  "Privacy-aware child safety messaging",
+  "Safeguarding-focused school support",
 ]
 
 const operationsFeatures = [
-  "School creation and classroom/enrolment management",
-  "Licence management and launch readiness scoring",
-  "Weak topic reports and learning activity reports",
-  "AI usage and cost estimates",
-  "Stripe billing and subscription tooling",
-  "Outlook inbox support and admin integrations",
-  "API keys, system health checks and production checklist",
-  "Backup/export tools and compliance exports",
+  "School and group learning support",
+  "Simple setup and managed access",
+  "Progress insights and learning reports",
+  "Curriculum mastery and catch-up planning",
+  "Secure subscription management",
+  "Safe support and communication workflows",
+  "Reliable platform access",
+  "Downloadable progress and account records",
 ]
 
 const subjects = [
@@ -127,7 +121,7 @@ const subjects = [
   },
   {
     title: "GCSE (Years 10-11)",
-    text: "GCSE pathway aligned revision support with exam-board-aware tagging.",
+    text: "GCSE pathway support with exam-board aligned revision guidance.",
     icon: "🎓",
     color: "from-emerald-600/20 to-emerald-600/5",
     border: "border-emerald-700/40",
@@ -138,13 +132,13 @@ const steps = [
   {
     step: "1",
     title: "Create the right profile",
-    desc: "Parents create child profiles, choose the active learner and keep access protected with PIN controls.",
+    desc: "Parents create child profiles, choose the active learner and keep each profile protected with parent controls.",
     icon: "👤",
   },
   {
     step: "2",
     title: "Learn with guided support",
-    desc: "Children complete daily journeys, assigned tasks and spelling, maths and reading practice with adaptive tutor support.",
+    desc: "Children complete daily journeys, assigned tasks and spelling, maths and reading practice with guided learning support.",
     icon: "📝",
   },
   {
@@ -156,12 +150,12 @@ const steps = [
 ]
 
 const roadmapItems = [
-  "🎓 Deeper GCSE pathway tooling",
-  "🏷️ Expanded exam-board tagging and reporting",
+  "🎓 Deeper GCSE pathway support",
+  "🏷️ Expanded exam-board aligned reporting",
   "📧 Parent insights and scheduling improvements",
   "🏫 School and governance enhancements",
   "📱 Improved mobile parent experience",
-  "📊 Readiness, intervention and platform analytics",
+  "📊 Readiness, catch-up and progress insights",
 ]
 
 export default async function PublicHomePage() {
@@ -222,7 +216,7 @@ export default async function PublicHomePage() {
           <div>
             <Logo variant="full" size={32} className="mb-4 sm:mb-6 sm:size-48" />
             <p className="mb-4 sm:mb-5 inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-3 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm font-semibold text-blue-300">
-              Parent, student, admin and school platform
+              Parent, student and school-ready learning platform
             </p>
 
             <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black leading-[1.2] tracking-tight">
@@ -233,9 +227,7 @@ export default async function PublicHomePage() {
             </h1>
 
             <p className="mt-4 sm:mt-6 max-w-xl text-sm sm:text-base lg:text-lg leading-6 sm:leading-8 text-slate-300">
-              StarLiz Academy brings child learning, parent oversight, admin operations,
-              school governance, reporting, rewards, billing, safeguarding and secure
-              support workflows into one clear platform.
+              StarLiz Academy helps children learn with adaptive lessons, smart catch-up, guided practice, parent visibility, and curriculum-aware progress tracking from primary learning through KS3 and GCSE readiness.
             </p>
 
             <div className="mt-6 sm:mt-9 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
@@ -266,20 +258,20 @@ export default async function PublicHomePage() {
                   <span className="text-3xl">🧒</span>
                   <div>
                     <p className="font-semibold">Daily lesson journey ready</p>
-                    <p className="text-sm text-slate-400">Spelling, maths, reading and adaptive tutor support.</p>
+                    <p className="text-sm text-slate-400">Guided practice with clear explanations, examples, visuals, practice tasks and review activities.</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4 rounded-2xl bg-slate-900 p-4">
                   <span className="text-3xl">⭐</span>
                   <div>
-                    <p className="font-semibold">Rewards wallet updated</p>
-                    <p className="text-sm text-slate-400">Earned and spent totals stay visible to parents and admins.</p>
+                    <p className="font-semibold">Rewards progress updated</p>
+                    <p className="text-sm text-slate-400">Achievements and rewards progress stay visible to parents.</p>
                   </div>
                 </div>
                 <div className="rounded-2xl border border-emerald-700/40 bg-emerald-500/10 p-4">
-                  <p className="font-bold text-emerald-300">Secure access checked</p>
+                  <p className="font-bold text-emerald-300">Safe account access</p>
                   <p className="mt-1 text-sm text-slate-300">
-                    Parent PIN gate, protected routes and session refresh help keep each profile in the right hands.
+                    Parent controls help keep each child profile protected.
                   </p>
                 </div>
               </div>
@@ -295,11 +287,11 @@ export default async function PublicHomePage() {
           <span className="hidden sm:inline text-slate-700">|</span>
           <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Consent and safeguarding support</span>
           <span className="hidden sm:inline text-slate-700">|</span>
-          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Parent, admin and school portals</span>
+          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Parent, student and school-ready access</span>
           <span className="hidden sm:inline text-slate-700">|</span>
           <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Reports, rewards and billing</span>
           <span className="hidden sm:inline text-slate-700">|</span>
-          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; AI learning and voice interaction</span>
+          <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Smart learning support and Smart Coach guidance</span>
         </div>
       </section>
 
@@ -331,10 +323,9 @@ export default async function PublicHomePage() {
       <section id="features" className="bg-slate-900/40 px-4 sm:px-6 py-12 sm:py-20">
         <div className="mx-auto max-w-7xl">
           <div className="text-center">
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">One platform for learning, care and operations</h2>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Core learning features for families</h2>
             <p className="mx-auto mt-2 sm:mt-4 max-w-3xl text-sm sm:text-base text-slate-400">
-              StarLiz Academy is not just a learning game. It is a full parent, student, admin, school,
-              reporting, rewards, billing and safeguarding platform.
+              Designed for daily progress, guided practice and clear parent visibility.
             </p>
           </div>
 
@@ -355,7 +346,7 @@ export default async function PublicHomePage() {
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8">
             <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-300">Parent Portal</p>
-            <h2 className="mt-3 text-2xl sm:text-3xl font-black">Clear control for every family</h2>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-black">Clear visibility for every family</h2>
             <p className="mt-3 text-sm sm:text-base leading-7 text-slate-400">
               Parents can manage children, protect access, follow learning progress, handle billing,
               message support and keep consent decisions transparent.
@@ -371,11 +362,11 @@ export default async function PublicHomePage() {
           </div>
 
           <div className="rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8">
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-indigo-300">Admin Portal</p>
-            <h2 className="mt-3 text-2xl sm:text-3xl font-black">Operational tools behind the learning</h2>
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-indigo-300">ORGANISATION SUPPORT</p>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-black">Support for schools and learning organisations</h2>
             <p className="mt-3 text-sm sm:text-base leading-7 text-slate-400">
-              Admins can run content, schools, subscriptions, reporting, support, security and day-to-day
-              platform operations from one secure area.
+              StarLiz can support schools, tutors and learning organisations with learner management,
+              progress visibility, safeguarding-focused access and clear reporting.
             </p>
             <ul className="mt-6 grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
               {adminPortalFeatures.map((feature) => (
@@ -397,8 +388,8 @@ export default async function PublicHomePage() {
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-300">Child Learning</p>
               <h2 className="mt-3 text-2xl sm:text-3xl lg:text-4xl font-black">Structured practice that still feels motivating</h2>
               <p className="mt-4 text-sm sm:text-base leading-7 text-slate-400">
-                Children get a daily lesson journey, targeted assignments and subject practice with adaptive tutor
-                help. Voice interaction, confidence signals and rewards keep progress visible and encouraging.
+                Children follow a personalised learning journey with adaptive lessons, guided practice,
+                Smart Coach Support and Progress Insights that parents can clearly track.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -438,10 +429,10 @@ export default async function PublicHomePage() {
       {/* Platform operations */}
       <section className="bg-gradient-to-b from-slate-900/60 to-transparent px-4 sm:px-6 py-12 sm:py-20">
         <div className="mx-auto max-w-5xl text-center">
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Built for schools, reporting and operations too</h2>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Built for families, schools and learning organisations</h2>
           <p className="mx-auto mt-2 sm:mt-4 max-w-2xl text-xs sm:text-sm lg:text-base text-slate-400">
-            StarLiz supports the practical work around learning: school setup, classroom enrolments, licences,
-            safeguarding, exports, integrations, billing and system health.
+            StarLiz supports the practical learning journey with learner profiles, group support, progress visibility,
+            safeguarding-focused access, subscriptions and clear reporting.
           </p>
 
           <div className="mt-8 sm:mt-12 grid gap-3 sm:gap-4 rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-4 sm:p-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -464,10 +455,10 @@ export default async function PublicHomePage() {
           <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
             <div>
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-cyan-300">Safety, Privacy and Trust</p>
-              <h2 className="mt-3 text-2xl sm:text-3xl lg:text-4xl font-black">Designed for child safety and accountable access</h2>
+              <h2 className="mt-3 text-2xl sm:text-3xl lg:text-4xl font-black">Designed for child safety and parent control</h2>
               <p className="mt-4 text-sm sm:text-base leading-7 text-slate-400">
-                StarLiz keeps public wording simple for parents while backing the platform with protected routes,
-                secure sessions, role-based admin access, audit history and consent-first child data handling.
+                StarLiz is designed with parent consent, child profile protection, safeguarding awareness,
+                role-based access and privacy-aware learning records.
               </p>
             </div>
             <ul className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
@@ -490,11 +481,11 @@ export default async function PublicHomePage() {
               StarLiz Academy is built for households, tutors and organisations supporting learners across England pathways.
             </p>
             <ul className="mt-6 space-y-3 text-slate-300">
-              <li className="flex items-center gap-3"><span className="text-yellow-400">👨‍👩‍👧</span> Parents of Reception-Year 6 children</li>
+              <li className="flex items-center gap-3"><span className="text-yellow-400">👨‍👩‍👧</span> Parents of Reception–Year 6 children</li>
               <li className="flex items-center gap-3"><span className="text-orange-400">🧑‍🎓</span> Parents of KS3 students</li>
               <li className="flex items-center gap-3"><span className="text-purple-400">🎓</span> Parents of GCSE students</li>
               <li className="flex items-center gap-3"><span className="text-blue-400">🧑‍🏫</span> Tutors and intervention providers</li>
-              <li className="flex items-center gap-3"><span className="text-blue-400">🏫</span> Schools and organisations</li>
+              <li className="flex items-center gap-3"><span className="text-blue-400">🏫</span> Schools and learning organisations</li>
             </ul>
           </div>
           <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center">
@@ -533,7 +524,7 @@ export default async function PublicHomePage() {
         <div className="mx-auto max-w-4xl rounded-3xl bg-gradient-to-br from-blue-700 to-indigo-800 p-12 text-center shadow-2xl shadow-blue-900/40">
           <h2 className="text-4xl font-black">Start your child&apos;s learning journey today.</h2>
           <p className="mx-auto mt-4 max-w-xl text-lg text-blue-100">
-            Explore Reception to GCSE support with pathway aligned learning, exam-board-aware GCSE tagging and parent progress visibility.
+            Explore Reception to GCSE support with pathway aligned learning, exam-board aligned revision guidance and parent progress visibility.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link href="/trial" className="rounded-xl bg-white px-8 py-4 font-bold text-blue-700 shadow-lg transition hover:bg-blue-50">
@@ -554,6 +545,7 @@ export default async function PublicHomePage() {
             <div>
               <Logo variant="full" size={28} />
               <p className="mt-2 text-sm text-slate-400">Reception to GCSE pathway aligned learning for families, tutors and schools.</p>
+              <p className="mt-2 text-xs text-slate-500">Best viewed on the latest version of Google Chrome.</p>
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-300">Product</p>
@@ -581,6 +573,7 @@ export default async function PublicHomePage() {
           </div>
           <div className="mt-10 border-t border-slate-800/60 pt-6 text-center text-sm text-slate-500">
             <p>&#169; 2026 StarLiz Academy. All rights reserved.</p>
+            <p className="mt-2 text-xs">Best experience: StarLiz Academy works best on the latest version of Google Chrome. Other modern browsers may work, but Chrome is recommended for the smoothest learning experience, voice-friendly activities and dashboard use.</p>
           </div>
         </div>
       </footer>

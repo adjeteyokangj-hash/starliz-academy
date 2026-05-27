@@ -17,7 +17,7 @@ export default function UpgradePrompt({
       <p className="mb-4 text-slate-600">{messageMap[reason]}</p>
 
       <ul className="mb-6 space-y-1 text-sm text-slate-500">
-        <li>✔ Unlimited AI-generated learning</li>
+        <li>✔ Unlimited adaptive lessons and guided practice</li>
         <li>✔ Smart difficulty progression</li>
         <li>✔ Progress tracking for each child</li>
       </ul>
