@@ -19,11 +19,6 @@ function imageForVariant(branding: BrandingSettingsPayload, variant: "icon" | "w
   return branding.logoUrl
 }
 
-function resolveLogoSrc(src: string) {
-  if (src === "/brand/starliz-logo.png") return "/brand/starliz-logo.png?v=original-logo"
-  return src
-}
-
 export default function Logo({
   variant = "wordmark",
   size = 36,
@@ -51,7 +46,7 @@ export default function Logo({
     }
   }, [])
 
-  const imageSrc = useMemo(() => resolveLogoSrc(imageForVariant(branding, variant)), [branding, variant])
+  const imageSrc = useMemo(() => imageForVariant(branding, variant), [branding, variant])
   const showText = variant === "wordmark"
   const imageWidth = variant === "full" ? Math.max(size * 6, 260) : size
   const imageHeight = variant === "full" ? Math.round(imageWidth / 3.15) : size

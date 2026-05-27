@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { FormEvent, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import Logo from "@/components/Logo"
 import PublicShell from "@/components/layout/PublicShell"
 
 export default function LoginPage() {
@@ -47,6 +48,9 @@ export default function LoginPage() {
   return (
     <PublicShell>
       <section className="mx-auto max-w-lg px-6 py-10">
+        <div className="mb-6 flex justify-center">
+          <Logo variant="wordmark" size={30} animation={false} className="pointer-events-none" />
+        </div>
         <h1 className="text-4xl font-black">Welcome back</h1>
         <p className="mt-3 text-slate-400">
           Log in to continue your child’s learning journey.

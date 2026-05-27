@@ -53,6 +53,7 @@ export default function PublicShell({ children }: PublicShellProps) {
 
       <footer className="border-t border-slate-800/80 px-4 py-8 text-center text-sm text-slate-500 sm:px-6 lg:px-8">
         <Logo variant="full" size={28} className="justify-center" />
+        <p className="mt-3 text-sm font-semibold text-slate-300">StarLiz Academy — Learn • Grow • Shine</p>
         <p className="mt-4">© 2026 StarLiz Academy. All rights reserved.</p>
       </footer>
     </main>

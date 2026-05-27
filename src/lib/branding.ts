@@ -9,9 +9,9 @@ export type BrandingSettingsPayload = {
 export const defaultBranding: BrandingSettingsPayload = {
   siteName: "StarLiz Academy",
   tagline: "Learn • Grow • Shine",
-  logoUrl: "/brand/starliz-logo.png",
-  iconUrl: "/brand/starliz-logo.png",
-  faviconUrl: "/brand/starliz-logo.png",
+  logoUrl: "/logo-full.svg",
+  iconUrl: "/logo-icon.svg",
+  faviconUrl: "/favicon.svg",
 }
 
 export function isBrandAssetUrl(value: string): boolean {

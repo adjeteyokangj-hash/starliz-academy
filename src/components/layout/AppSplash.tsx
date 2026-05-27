@@ -57,7 +57,7 @@ export default function AppSplash() {
       </div>
 
       <p className="absolute bottom-8 text-xs font-semibold text-white/40 uppercase tracking-widest">
-        Loading your learning journey\u2026
+        Loading StarLiz Academy...
       </p>
     </div>
   );

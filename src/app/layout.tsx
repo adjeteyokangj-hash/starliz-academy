@@ -15,15 +15,21 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/brand/starliz-logo.png?v=2", type: "image/png" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.png", type: "image/png" },
     ],
-    shortcut: [{ url: "/brand/starliz-logo.png?v=2", type: "image/png" }],
-    apple: [{ url: "/brand/starliz-logo.png?v=2", sizes: "180x180", type: "image/png" }],
+    shortcut: [{ url: "/favicon.png", type: "image/png" }],
+    apple: [{ url: "/favicon.png", sizes: "180x180", type: "image/png" }],
   },
   appleWebApp: {
     capable: true,
     title: "StarLiz Academy | AI-Supported Learning for Children",
     statusBarStyle: "default",
+  },
+  openGraph: {
+    title: "StarLiz Academy | AI-Supported Learning for Children",
+    description: "StarLiz Academy helps children learn with adaptive lessons, smart catch-up, guided practice, curriculum mastery tracking, parent visibility, and exam readiness support.",
+    images: ["/logo-full.svg"],
   },
 };
 
@@ -41,7 +47,10 @@ export default function RootLayout({
         <AppSplash />
         <StoreBootstrap>{children}</StoreBootstrap>
         <footer className="mt-auto flex items-center justify-center border-t border-slate-200/70 bg-white/80 px-4 py-3 text-center text-xs font-semibold text-slate-600">
-          <Logo variant="wordmark" size={24} textClassName="text-slate-700" />
+          <div className="flex flex-col items-center gap-1">
+            <Logo variant="wordmark" size={24} textClassName="text-slate-700" />
+            <p className="text-[11px] font-semibold text-slate-500">StarLiz Academy — Learn • Grow • Shine</p>
+          </div>
         </footer>
         <OfflineBadge />
         <PwaInstaller />

@@ -1,4 +1,5 @@
 import Link from "next/link"
+import PublicShell from "@/components/layout/PublicShell"
 
 const featureList = [
   {
@@ -45,18 +46,7 @@ const featureList = [
 
 export default function Features() {
   return (
-    <main className="min-h-screen bg-[#020617] text-white">
-      <header className="border-b border-slate-800/80 px-6 py-4">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <Link href="/" className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-xl font-black text-transparent tracking-tight">
-            StarLiz Academy
-          </Link>
-          <Link href="/signup" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
-            Start your child&apos;s learning journey
-          </Link>
-        </div>
-      </header>
-
+    <PublicShell>
       <div className="mx-auto max-w-6xl px-6 py-20">
         <div className="text-center mb-14">
           <h1 className="text-4xl font-black mb-4">Features</h1>
@@ -83,10 +73,7 @@ export default function Features() {
         </div>
       </div>
 
-      <footer className="border-t border-slate-800/80 px-6 py-8 text-center text-sm text-slate-500">
-        <p>&#169; 2026 StarLiz Academy. All rights reserved.</p>
-        <p className="mt-2 text-xs">Best viewed on the latest version of Google Chrome.</p>
-      </footer>
-    </main>
+      <p className="pb-10 text-center text-xs text-slate-500">Best viewed on the latest version of Google Chrome.</p>
+    </PublicShell>
   )
 }

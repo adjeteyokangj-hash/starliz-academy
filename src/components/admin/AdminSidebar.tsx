@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Logo from "@/components/Logo";
 import { adminNavItems } from "@/lib/admin-nav";
 
 const ORDER_STORAGE_KEY = "starliz.admin.sidebar.order.v1";
@@ -180,9 +181,7 @@ export default function AdminSidebar() {
       >
         <div className="relative">
           <Link href="/admin" className="flex items-center gap-3 px-2">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 to-sky-400 text-sm font-black text-white shadow-lg shadow-indigo-950/40">
-              SL
-            </span>
+            <Logo variant="icon" size={44} animation={false} className="pointer-events-none" />
             <span>
               <span className="block text-base font-black text-white">StarLiz Admin</span>
               <span className="text-xs font-semibold text-slate-400">Admin Portal</span>

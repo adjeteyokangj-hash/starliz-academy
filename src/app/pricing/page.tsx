@@ -1,9 +1,10 @@
 import Link from "next/link"
 import PublicPricingSection from "@/components/pricing/PublicPricingSection"
+import PublicShell from "@/components/layout/PublicShell"
 
 export default function PricingPage() {
   return (
-    <main className="min-h-screen bg-[#020617] text-white">
+    <PublicShell>
       <section className="relative overflow-hidden px-6 pb-14 pt-24 text-center">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-25%,rgba(59,130,246,0.18),transparent)]" />
         <div className="relative mx-auto max-w-4xl">
@@ -29,6 +30,6 @@ export default function PricingPage() {
       </section>
 
       <PublicPricingSection />
-    </main>
+    </PublicShell>
   )
 }

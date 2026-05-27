@@ -11,6 +11,7 @@ import {
   validateParentEmailQuality,
   validateParentFullName,
 } from "@/lib/uk_contact"
+import Logo from "@/components/Logo"
 import PublicShell from "@/components/layout/PublicShell"
 
 type Toast = { type: "success" | "error"; message: string } | null
@@ -314,6 +315,9 @@ export default function SignupPage() {
 
         <div className="relative mx-auto grid w-full max-w-7xl gap-8 lg:grid-cols-[1.1fr_1fr] lg:items-start">
           <div className="rounded-3xl border border-slate-800/90 bg-slate-900/45 p-6 shadow-2xl backdrop-blur-sm sm:p-8">
+            <div className="mb-4 flex justify-start">
+              <Logo variant="wordmark" size={30} animation={false} className="pointer-events-none" />
+            </div>
             <p className="inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-4 py-1 text-xs font-bold uppercase tracking-[0.18em] text-blue-300">
               Parent onboarding
             </p>

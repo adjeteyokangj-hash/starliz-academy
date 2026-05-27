@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { generatePassword as generateSecurePassword } from "@/lib/password";
 import { normalizeUkPhone, normalizeUkPostcode } from "@/lib/uk_contact";
+import Logo from "@/components/Logo";
 import Button from "@/components/ui/Button";
 
 type FieldErrors = {
@@ -214,6 +215,9 @@ export default function SignupPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-4 sm:py-10">
       <section className="w-full max-w-md rounded-2xl sm:rounded-3xl bg-white/90 p-6 sm:p-8 shadow-xl ring-1 ring-slate-200">
+        <div className="mb-4 flex justify-center">
+          <Logo variant="wordmark" size={28} animation={false} className="pointer-events-none" textClassName="text-slate-900" />
+        </div>
         <p className="text-xs sm:text-sm font-bold uppercase tracking-[0.18em] text-primary">StarLiz Academy</p>
         <h1 className="mt-2 font-heading text-3xl sm:text-4xl font-black text-slate-900">Create Parent Account</h1>
         <p className="mt-2 text-sm sm:text-base text-slate-600">Create your secure account to manage multiple children and saved progress.</p>

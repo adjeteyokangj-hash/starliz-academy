@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import Logo from "@/components/Logo";
 import { adminNavItems } from "@/lib/admin-nav";
 
 export default function AdminHeader() {
@@ -17,9 +18,12 @@ export default function AdminHeader() {
   return (
     <header className="relative z-20 border-b border-slate-800 bg-slate-950/92 backdrop-blur-xl lg:sticky lg:top-0 lg:z-30">
       <div className="flex min-h-20 flex-col gap-4 px-4 py-4 md:px-6 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase text-blue-300">StarLiz Admin</p>
-          <h1 className="text-2xl font-black text-white">{current?.title ?? "Admin Portal"}</h1>
+        <div className="flex items-center gap-3">
+          <Logo variant="icon" size={36} animation={false} className="pointer-events-none" />
+          <div>
+            <p className="text-xs font-bold uppercase text-blue-300">StarLiz Admin</p>
+            <h1 className="text-2xl font-black text-white">{current?.title ?? "Admin Portal"}</h1>
+          </div>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

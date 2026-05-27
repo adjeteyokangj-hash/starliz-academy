@@ -4,30 +4,23 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "StarLiz Academy",
     short_name: "StarLiz",
-    description: "Learn. Play. Grow.",
+    description: "StarLiz Academy — Learn • Grow • Shine",
     start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
     background_color: "#0C132D",
-    theme_color: "#6366F1",
+    theme_color: "#0C132D",
     icons: [
       {
-        src: "/icons/icon-192.png",
-        sizes: "192x192",
-        type: "image/png",
+        src: "/logo-icon.svg",
+        sizes: "any",
+        type: "image/svg+xml",
       },
       {
-        src: "/icons/icon-512.png",
-        sizes: "512x512",
+        src: "/favicon.png",
         type: "image/png",
       },
-      {
-        src: "/icons/icon-512.png",
-        sizes: "512x512",
-        type: "image/png",
-        purpose: "maskable",
-      }
     ],
     screenshots: [
       {
