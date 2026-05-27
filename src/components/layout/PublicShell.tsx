@@ -10,7 +10,7 @@ export default function PublicShell({ children }: PublicShellProps) {
     <main className="min-h-screen bg-slate-950 text-white">
       <header className="border-b border-slate-800">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
-          <Logo variant="wordmark" size={32} />
+          <Logo variant="header" size={24} />
 
           <nav className="hidden items-center gap-6 text-sm text-slate-300 md:flex">
             <Link href="/about" className="hover:text-white">
@@ -21,6 +21,9 @@ export default function PublicShell({ children }: PublicShellProps) {
             </Link>
             <Link href="/contact" className="hover:text-white">
               Contact
+            </Link>
+            <Link href="/" className="hover:text-white">
+              Change country
             </Link>
             <Link href="/login" className="hover:text-white">
               Login
@@ -42,6 +45,7 @@ export default function PublicShell({ children }: PublicShellProps) {
               <Link href="/about" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">About</Link>
               <Link href="/pricing" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Pricing</Link>
               <Link href="/contact" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Contact</Link>
+              <Link href="/" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Change country</Link>
               <Link href="/login" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Login</Link>
               <Link href="/trial" className="mt-1 block rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500">Start your child&apos;s learning journey</Link>
             </div>

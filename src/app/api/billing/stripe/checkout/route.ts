@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db"
 import { getStripeClient } from "@/lib/stripe"
 import { getPublicPricingPlans, planKeyFromPricingPlan } from "@/lib/pricing/service"
 import { writeAuditLog } from "@/lib/audit"
+import { getPaymentAvailabilityMessage, resolveBillingRegion } from "@/lib/billing/payment-routing"
 
 const checkoutSchema = z.object({
   planId: z.string().min(1),
@@ -59,6 +60,18 @@ export async function POST(request: Request) {
   const planKey = planKeyFromPricingPlan(selectedPlan)
   const childLimit = selectedPlan.childLimit
   const planName = selectedPlan.name
+
+  const parentProfile = await prisma.parentProfile.findUnique({
+    where: { userId: user.id },
+    select: { country: true },
+  })
+  const billingRegion = resolveBillingRegion(parentProfile?.country ?? "UK")
+  if (billingRegion.status !== "live") {
+    return NextResponse.json({
+      error: getPaymentAvailabilityMessage(parentProfile?.country ?? null),
+      region: billingRegion,
+    }, { status: 403 })
+  }
 
   const appUrl = getAppUrl(request)
   const safeReturnUrl = resolveReturnUrl(requestedReturnUrl, appUrl)

@@ -87,6 +87,7 @@ type SubscriptionPayload = {
     planName: string;
     badge: string;
     status: string;
+    provider: string;
     currentPricePence: number;
     currentCurrency: string;
     currentInterval: "month" | "year" | "custom";
@@ -1826,6 +1827,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             <Panel title="Billing" description="Review your plan and upgrade path.">
               {subscription && account ? (
                 <BillingCard
+                  country={account.contact.country}
+                  subscriptionProvider={subscription.subscription.provider}
                   currentPlanId={subscription.subscription.pricingPlanId}
                   planName={subscription.subscription.planName}
                   currentPricePence={subscription.subscription.currentPricePence}

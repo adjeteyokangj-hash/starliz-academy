@@ -46,6 +46,7 @@ type SubscriptionPayload = {
     currentCurrency: string;
   };
   plans: PricingPlan[];
+  accountCountry?: string | null;
 };
 
 function statusPill(status: string): { label: string; className: string } {
@@ -104,11 +105,11 @@ export default function SubscriptionPage() {
     setError(null);
     setMessage("Redirecting to secure payment...");
     try {
-      const response = await fetch("/api/billing/stripe/checkout", {
+      const response = await fetch("/api/subscription/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, countryCode: data?.accountCountry ?? undefined }),
       });
 
       if (response.status === 401) {
@@ -116,14 +117,14 @@ export default function SubscriptionPage() {
         return;
       }
 
-      const payload = (await response.json()) as { url?: string; error?: string };
+      const payload = (await response.json()) as { checkoutUrl?: string; url?: string; error?: string };
       if (!response.ok) {
         setError(payload.error ?? "Unable to start checkout.");
         return;
       }
 
-      if (payload.url) {
-        window.location.assign(payload.url);
+      if (payload.checkoutUrl || payload.url) {
+        window.location.assign(payload.checkoutUrl ?? payload.url ?? "");
         return;
       }
 
@@ -155,13 +156,13 @@ export default function SubscriptionPage() {
             <span className="rounded-full bg-indigo-100 px-3 py-1 font-bold text-indigo-700">Current Plan: {data?.subscription.badge ?? "Free"}</span>
             <span className={`rounded-full px-3 py-1 font-bold ${status.className}`}>Status: {status.label}</span>
             <span className="rounded-full bg-teal-100 px-3 py-1 font-bold text-teal-700">Children: {data?.subscription.childrenUsed ?? 0}/{data?.subscription.childLimit ?? 1}</span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 font-bold text-slate-700">Provider: Stripe</span>
-            <span className="rounded-full bg-cyan-100 px-3 py-1 font-bold text-cyan-700">Region: UK launch</span>
+            <span className="rounded-full bg-slate-100 px-3 py-1 font-bold text-slate-700">Provider: {data?.subscription.provider ?? "manual"}</span>
+            <span className="rounded-full bg-cyan-100 px-3 py-1 font-bold text-cyan-700">Region: {data?.accountCountry ?? "United Kingdom"}</span>
             {data?.subscription.renewalDate ? <span className="rounded-full bg-amber-100 px-3 py-1 font-bold text-amber-700">Renews {new Date(data.subscription.renewalDate).toLocaleDateString()}</span> : null}
             {data?.subscription.paymentFailed ? <span className="rounded-full bg-rose-100 px-3 py-1 font-bold text-rose-700">Payment issue detected</span> : null}
           </div>
-          <p className="mt-3 text-sm text-slate-600">Paystack support planned for future regions.</p>
-          <p className="text-sm font-semibold text-slate-700">Secure payments powered by Stripe.</p>
+          <p className="mt-3 text-sm text-slate-600">Provider is resolved automatically by billing country.</p>
+          <p className="text-sm font-semibold text-slate-700">Secure payments are handled server-side only.</p>
           {trialEndsInDays !== null && data?.subscription.status.toLowerCase() === "trialing" ? (
             <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
               Trial ends in {trialEndsInDays} day{trialEndsInDays === 1 ? "" : "s"}.
@@ -188,7 +189,7 @@ export default function SubscriptionPage() {
 
         <div className="mt-6 grid gap-6 md:grid-cols-3">
           {pricingPlans.map((plan) => {
-            const usesStripe = (plan.interval === "month" || plan.interval === "year") && !!plan.stripePriceId;
+            const supportsOnlineCheckout = plan.interval === "month" || plan.interval === "year";
             const isCurrent = data?.subscription.pricingPlanId === plan.id;
 
             return (
@@ -215,7 +216,7 @@ export default function SubscriptionPage() {
                     <button disabled className="w-full cursor-not-allowed rounded-xl bg-emerald-100 px-4 py-2.5 text-sm font-black text-emerald-700">
                       Current Plan
                     </button>
-                  ) : usesStripe ? (
+                  ) : supportsOnlineCheckout ? (
                     <button onClick={() => void openCheckout(plan.id)} disabled={saving} className="w-full rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-black text-white hover:bg-teal-500 disabled:opacity-50">
                       {saving ? "Redirecting to secure payment..." : (plan.ctaLabel || "Upgrade")}
                     </button>

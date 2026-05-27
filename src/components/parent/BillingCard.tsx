@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import Button from '@/components/ui/Button';
 
 type BillingCardProps = {
+  country: string;
+  subscriptionProvider: string;
   currentPlanId: string | null;
   planName: string;
   currentPricePence: number;
@@ -31,6 +33,8 @@ type BillingCardProps = {
 };
 
 export default function BillingCard({ 
+  country,
+  subscriptionProvider,
   currentPlanId,
   planName, 
   currentPricePence,
@@ -74,36 +78,32 @@ export default function BillingCard({
   );
 
   async function startCheckout(plan: BillingCardProps['plans'][number]) {
-    if (!plan.stripePriceId) {
-      setCheckoutError('Stripe price ID missing in admin pricing settings.');
-      return;
-    }
-
     setCheckoutError(null);
     setLoadingPlanId(plan.id);
 
     try {
-      const response = await fetch('/api/billing/stripe/checkout', {
+      const response = await fetch('/api/subscription/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ 
           planId: plan.id,
-          planKey: plan.key,
-          returnUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/parent/billing`
+          returnUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/parent/billing`,
+          countryCode: country,
         }),
       });
 
-      const data = (await response.json().catch(() => null)) as { url?: string; error?: string } | null;
+      const data = (await response.json().catch(() => null)) as { checkoutUrl?: string; url?: string; error?: string } | null;
 
-      if (!response.ok || !data?.url) {
+      const checkoutUrl = data?.checkoutUrl ?? data?.url;
+      if (!response.ok || !checkoutUrl) {
         if (process.env.NODE_ENV !== 'production') {
           console.error('[parent.billing] checkout failed response', data);
         }
         throw new Error(data?.error ?? 'Failed to start checkout.');
       }
       
-      window.location.href = data.url;
+      window.location.href = checkoutUrl;
     } catch (error) {
       if (process.env.NODE_ENV !== 'production') {
         console.error('[parent.billing] checkout error:', error);
@@ -221,11 +221,11 @@ export default function BillingCard({
 
         {activeOrTrial ? (
           <Button 
-            onClick={stripeCustomerId ? handleManageSubscription : undefined}
-            disabled={openingPortal || !stripeCustomerId}
+            onClick={subscriptionProvider === 'stripe' && stripeCustomerId ? handleManageSubscription : undefined}
+            disabled={openingPortal || subscriptionProvider !== 'stripe' || !stripeCustomerId}
             className="bg-slate-700 hover:bg-slate-600"
           >
-            {openingPortal ? 'Opening...' : 'Manage billing in Stripe'}
+            {openingPortal ? 'Opening...' : subscriptionProvider === 'stripe' ? 'Manage billing in Stripe' : 'Billing managed by provider'}
           </Button>
         ) : null}
       </div>
@@ -266,26 +266,21 @@ export default function BillingCard({
               <button
                 key={plan.id}
                 type="button"
-                disabled={!plan.stripePriceId || loadingPlanId !== null}
-                onClick={() => { if (plan.stripePriceId) void startCheckout(plan); }}
+                disabled={loadingPlanId !== null}
+                onClick={() => { void startCheckout(plan); }}
                 className={`rounded-xl border p-3 text-left text-sm transition ${
-                  !plan.stripePriceId
-                    ? 'cursor-not-allowed border-white/5 bg-white/[0.02] opacity-50'
-                    : plan.id === currentPlanId
+                  plan.id === currentPlanId
                     ? 'border-cyan-400 bg-cyan-400/10'
                     : 'border-white/10 bg-white/5 hover:border-white/30'
                 }`}
               >
-                <p className={`font-semibold ${plan.stripePriceId ? 'text-white' : 'text-slate-500'}`}>{plan.name}</p>
+                <p className="font-semibold text-white">{plan.name}</p>
                 <p className="mt-1 text-slate-400">
                   {currencyFormat(plan.price, plan.currency)} / {plan.interval}
                 </p>
                 {plan.badge ? <p className="mt-1 text-xs text-cyan-300">{plan.badge}</p> : null}
                 {plan.changeType && plan.changeType !== 'current' ? (
                   <p className="mt-1 text-xs text-slate-300">{plan.changeType === 'upgrade' ? 'Upgrade option' : plan.changeType === 'downgrade' ? 'Downgrade option' : 'Switch plan'}</p>
-                ) : null}
-                {!plan.stripePriceId ? (
-                  <p className="mt-1 text-xs text-slate-500 italic">Unavailable online. Contact us for this plan.</p>
                 ) : null}
               </button>
             ))}

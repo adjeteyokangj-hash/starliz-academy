@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { getCountryFromPathname } from "@/lib/public-country-profiles"
 
 type PricingInterval = "month" | "year" | "custom"
 type PricingAudience = "individual" | "family" | "school" | "organisation"
@@ -62,7 +63,11 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
     let active = true
 
     void (async () => {
-      const response = await fetch("/api/pricing", { credentials: "same-origin" })
+      const country = typeof window !== "undefined"
+        ? getCountryFromPathname(window.location.pathname) ?? window.localStorage.getItem("starliz_country")
+        : null
+      const pricingUrl = country ? `/api/pricing?country=${country}` : "/api/pricing"
+      const response = await fetch(pricingUrl, { credentials: "same-origin" })
       if (!active) return
 
       if (!response.ok) {

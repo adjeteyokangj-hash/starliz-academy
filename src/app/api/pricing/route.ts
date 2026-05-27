@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server"
-import { getPublicPricingListing } from "@/lib/pricing/service"
+import { getPublicPricingListingForCountry } from "@/lib/pricing/service"
 
-export async function GET() {
-  const plans = await getPublicPricingListing()
+export async function GET(request: Request) {
+  const url = new URL(request.url)
+  const cookieHeader = request.headers.get("cookie") ?? ""
+  const cookieCountry = cookieHeader
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith("starliz_country="))
+    ?.split("=")[1] ?? null
+  const country = url.searchParams.get("country") ?? cookieCountry
+  const plans = await getPublicPricingListingForCountry(country)
   return NextResponse.json({ plans })
 }

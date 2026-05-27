@@ -7,11 +7,53 @@ import { handleFinancialSyncFromWebhook } from "@/lib/billing/truenumeris-pipeli
 
 type PaymentEvent = {
   id?: string;
-  type: string;
+  type?: string;
+  event?: string;
   data?: {
     object?: Record<string, unknown>;
-  };
+  } | Record<string, unknown>;
 };
+
+type ProviderKind = "stripe" | "paystack";
+
+function resolveProviderFromEvent(event: PaymentEvent): ProviderKind {
+  if (typeof event.event === "string" && event.event.trim()) return "paystack";
+  return "stripe";
+}
+
+function getEventType(event: PaymentEvent): string {
+  if (typeof event.type === "string" && event.type.trim()) return event.type.trim();
+  if (typeof event.event === "string" && event.event.trim()) return event.event.trim();
+  return "unknown";
+}
+
+function getEventObject(event: PaymentEvent, provider: ProviderKind): Record<string, unknown> | null {
+  if (provider === "paystack") {
+    const data = event.data;
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      if ("object" in data && typeof (data as { object?: unknown }).object === "object") {
+        return ((data as { object?: unknown }).object ?? null) as Record<string, unknown> | null;
+      }
+      return data as Record<string, unknown>;
+    }
+    return null;
+  }
+  const data = event.data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  if (!("object" in data)) return null;
+  const value = (data as { object?: unknown }).object;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function resolvePaystackStatus(eventType: string): string {
+  if (eventType === "charge.success") return "active";
+  if (eventType === "invoice.payment_failed" || eventType === "charge.failed") return "payment_failed";
+  if (eventType === "subscription.disable" || eventType === "subscription.not_renew") return "cancelled";
+  if (eventType === "subscription.create") return "trialing";
+  return "pending";
+}
 
 let paymentWebhookEventsTableReady = false;
 const WEBHOOK_EVENT_STALE_MINUTES = 15;
@@ -135,19 +177,22 @@ async function findParent(object: Record<string, unknown>) {
 }
 
 export async function handlePaymentWebhook(event: PaymentEvent) {
+  const provider = resolveProviderFromEvent(event);
+  const eventType = getEventType(event);
   const eventId = typeof event.id === "string" && event.id.trim() ? event.id.trim() : null;
+  const derivedEventId = eventId ?? `${provider}:${eventType}:${Date.now()}`;
   if (eventId) {
-    const claimed = await claimPaymentWebhookEvent(eventId, "stripe");
+    const claimed = await claimPaymentWebhookEvent(eventId, provider);
     if (!claimed) {
       try {
         await writeAuditLog({
           action: "payment.webhook.duplicate",
           entityType: "WebhookEvent",
-          entityId: eventId,
+          entityId: derivedEventId,
           metadata: {
-            provider: "stripe",
-            eventId,
-            eventType: event.type,
+            provider,
+            eventId: derivedEventId,
+            eventType,
           },
         });
       } catch {
@@ -157,7 +202,7 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
     }
   }
 
-  const object = event.data?.object;
+  const object = getEventObject(event, provider);
   if (!object || typeof object !== "object") {
     if (eventId) await markPaymentWebhookEventFailed(eventId);
     return { ok: false, ignored: true, reason: "INVALID_EVENT_PAYLOAD" };
@@ -172,14 +217,15 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
   const providerCustomerId = asString(object.customer);
   const providerSubId = asString(object.subscription) ?? asString(object.id);
   const metadata = object.metadata && typeof object.metadata === "object" ? (object.metadata as Record<string, unknown>) : {};
-  const provider = asString(metadata.provider) ?? "stripe";
+  const providerFromMetadata = asString(metadata.provider);
+  const resolvedProvider = providerFromMetadata === "paystack" ? "paystack" : provider;
   const pricingPlanId = asString(metadata.pricingPlanId);
-  if (provider !== "stripe") {
+  if (resolvedProvider !== "stripe" && resolvedProvider !== "paystack") {
     if (eventId) await markPaymentWebhookEventFailed(eventId);
     return { ok: false, ignored: true, reason: "UNSUPPORTED_PROVIDER" };
   }
 
-  const allowedEvents = new Set([
+  const stripeAllowedEvents = new Set([
     "checkout.session.completed",
     "customer.subscription.created",
     "customer.subscription.updated",
@@ -187,7 +233,15 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
     "invoice.payment_succeeded",
     "invoice.payment_failed",
   ]);
-  if (!allowedEvents.has(event.type)) {
+  const paystackAllowedEvents = new Set([
+    "charge.success",
+    "charge.failed",
+    "subscription.create",
+    "subscription.disable",
+    "subscription.not_renew",
+  ]);
+  const allowedEvents = resolvedProvider === "paystack" ? paystackAllowedEvents : stripeAllowedEvents;
+  if (!allowedEvents.has(eventType)) {
     if (eventId) await markPaymentWebhookEventProcessed(eventId);
     return { ok: true, ignored: true, reason: "IGNORED_EVENT_TYPE" };
   }
@@ -199,13 +253,15 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
 
     const objectCurrentPeriodEnd = asDateFromSeconds(object.current_period_end);
     const currentPeriodEnd = objectCurrentPeriodEnd ?? existing?.currentPeriodEnd ?? undefined;
-    const status = resolveStripeWebhookStatus({
-      eventType: event.type,
-      rawStatus: asString(object.status),
-      existingStatus: existing?.status,
-      cancelAtPeriodEnd: asBoolean(object.cancel_at_period_end),
-      currentPeriodEnd,
-    });
+    const status = resolvedProvider === "paystack"
+      ? resolvePaystackStatus(eventType)
+      : resolveStripeWebhookStatus({
+          eventType,
+          rawStatus: asString(object.status),
+          existingStatus: existing?.status,
+          cancelAtPeriodEnd: asBoolean(object.cancel_at_period_end),
+          currentPeriodEnd,
+        });
 
     const resolvedPlan = await resolveCurrentPricingPlan({
       pricingPlanId,
@@ -216,7 +272,7 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
     const graceEndsAt = resolveGraceEndsAt({ status, existingGraceEndsAt: existing?.graceEndsAt });
 
     const data = {
-      provider,
+      provider: resolvedProvider,
       providerCustomerId,
       providerSubId,
       pricingPlanId: resolvedPlan?.id ?? pricingPlanId,
@@ -239,13 +295,13 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
         status: status === "past_due" || status === "cancelled" ? "suspended" : "active",
         trialStatus: status === "trialing" ? "trial" : status,
         subscriptionPlan: planKey,
-        stripeCustomerId: providerCustomerId ?? null,
+        stripeCustomerId: resolvedProvider === "stripe" ? providerCustomerId ?? null : null,
       },
       update: {
         status: status === "past_due" || status === "cancelled" ? "suspended" : "active",
         trialStatus: status === "trialing" ? "trial" : status,
         subscriptionPlan: planKey,
-        stripeCustomerId: providerCustomerId ?? undefined,
+        stripeCustomerId: resolvedProvider === "stripe" ? providerCustomerId ?? undefined : undefined,
       },
     });
 
@@ -253,12 +309,12 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
       action: "payment.webhook",
       entityType: "Subscription",
       entityId: subscription.id,
-      metadata: { eventType: event.type, status, planKey, pricingPlanId, parentId: parent.id },
+      metadata: { eventType, status, planKey, pricingPlanId, parentId: parent.id, provider: resolvedProvider },
     });
 
     try {
       await handleFinancialSyncFromWebhook({
-        eventType: event.type,
+        eventType,
         eventId: eventId ?? undefined,
         parentId: parent.id,
         object,

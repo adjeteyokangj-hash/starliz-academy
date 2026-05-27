@@ -62,19 +62,37 @@ function verifyStripeSignature(rawBody: string, signature: string | null): { ok:
   return valid ? { ok: true } : { ok: false, reason: "Invalid Stripe signature." };
 }
 
+function verifyPaystackSignature(rawBody: string, signature: string | null): { ok: boolean; reason?: string } {
+  const secret = process.env.PAYSTACK_WEBHOOK_SECRET;
+  if (!secret) return { ok: true };
+  if (!signature) return { ok: false, reason: "Missing Paystack signature." };
+  const expected = createHmac("sha512", secret).update(rawBody).digest("hex");
+  return secureCompare(expected, signature)
+    ? { ok: true }
+    : { ok: false, reason: "Invalid Paystack signature." };
+}
+
 export async function processPaymentWebhookRequest(request: Request, options: { allowFallbackSignature: boolean }): Promise<Response> {
   const rawBody = await request.text();
   const stripeSignature = request.headers.get("stripe-signature");
+  const paystackSignature = request.headers.get("x-paystack-signature");
 
   if (options.allowFallbackSignature) {
-    const paystackSignature = request.headers.get("x-paystack-signature");
     const fallbackSignature = request.headers.get("x-signature");
 
     if (paystackSignature) {
-      return NextResponse.json(
-        { error: "Paystack webhooks are reserved for future Ghana support." },
-        { status: 501 },
-      );
+      const paystackCheck = verifyPaystackSignature(rawBody, paystackSignature);
+      if (!paystackCheck.ok) {
+        return NextResponse.json({ error: paystackCheck.reason ?? "Invalid webhook signature." }, { status: 401 });
+      }
+
+      try {
+        const event = JSON.parse(rawBody);
+        const result = await handlePaymentWebhook(event);
+        return NextResponse.json({ received: true, result });
+      } catch {
+        return NextResponse.json({ error: "Invalid webhook payload." }, { status: 400 });
+      }
     }
 
     const stripeCheck = verifyStripeSignature(rawBody, stripeSignature);

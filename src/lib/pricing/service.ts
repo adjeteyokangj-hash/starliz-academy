@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { FALLBACK_PRICING_PLANS, type PricingPlanView } from "@/lib/pricing/fallback"
+import { getPublicCountryProfile } from "@/lib/public-country-profiles"
 
 export type PublicPricingPlanView = Pick<
   PricingPlanView,
@@ -17,7 +18,13 @@ export type PublicPricingPlanView = Pick<
   | "ctaLabel"
   | "ctaHref"
   | "isPopular"
->
+> & {
+  countryCode: string
+  countryName: string
+  regionStatus: "live" | "coming_soon"
+  checkoutEnabled: boolean
+  paymentProvider: string
+}
 
 type StoredPricingFeatures = {
   bullets?: unknown
@@ -42,12 +49,19 @@ function sanitizePublicPricingPlan(plan: PricingPlanView): PricingPlanView {
   }
 }
 
-function toPublicPricingPlan(plan: PricingPlanView): PublicPricingPlanView {
+function toPublicPricingPlan(plan: PricingPlanView, options?: {
+  countryCode?: string
+  countryName?: string
+  regionStatus?: "live" | "coming_soon"
+  checkoutEnabled?: boolean
+  paymentProvider?: string
+  currency?: string
+}): PublicPricingPlanView {
   return {
     name: plan.name,
     description: plan.description,
     price: plan.price,
-    currency: plan.currency,
+    currency: options?.currency ?? plan.currency,
     interval: plan.interval,
     audience: plan.audience,
     features: plan.features,
@@ -57,6 +71,11 @@ function toPublicPricingPlan(plan: PricingPlanView): PublicPricingPlanView {
     ctaLabel: plan.ctaLabel,
     ctaHref: plan.ctaHref,
     isPopular: plan.isPopular,
+    countryCode: options?.countryCode ?? "uk",
+    countryName: options?.countryName ?? "United Kingdom",
+    regionStatus: options?.regionStatus ?? "live",
+    checkoutEnabled: options?.checkoutEnabled ?? true,
+    paymentProvider: options?.paymentProvider ?? "revolut",
   }
 }
 
@@ -223,8 +242,33 @@ export async function getPublicPricingPlans(): Promise<PricingPlanView[]> {
 }
 
 export async function getPublicPricingListing(): Promise<PublicPricingPlanView[]> {
+  return getPublicPricingListingForCountry("uk")
+}
+
+export async function getPublicPricingListingForCountry(countryCodeOrName: string | null | undefined): Promise<PublicPricingPlanView[]> {
+  const profile = getPublicCountryProfile(countryCodeOrName)
+  if (!profile.pricingEnabled) return []
+
   const plans = await getPublicPricingPlans()
-  return plans.map(toPublicPricingPlan)
+  return plans.map((plan) => {
+    const ctaHref = profile.checkoutEnabled ? plan.ctaHref : "/contact"
+    const ctaLabel = profile.checkoutEnabled ? plan.ctaLabel : "Contact Us"
+    return toPublicPricingPlan(
+      {
+        ...plan,
+        ctaHref,
+        ctaLabel,
+      },
+      {
+        countryCode: profile.countryCode,
+        countryName: profile.countryName,
+        regionStatus: profile.status,
+        checkoutEnabled: profile.checkoutEnabled,
+        paymentProvider: profile.paymentProvider,
+        currency: profile.currency,
+      },
+    )
+  })
 }
 
 export async function getAdminPricingPlans(): Promise<PricingPlanView[]> {

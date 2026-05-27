@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react"
 import { defaultBranding, normalizeBranding, type BrandingSettingsPayload } from "@/lib/branding"
 
 type Props = {
-  variant?: "icon" | "wordmark" | "full"
+  variant?: "icon" | "wordmark" | "full" | "header"
   size?: number
   animation?: boolean
   className?: string
@@ -14,7 +14,7 @@ type Props = {
   textClassName?: string
 }
 
-function imageForVariant(branding: BrandingSettingsPayload, variant: "icon" | "wordmark" | "full") {
+function imageForVariant(branding: BrandingSettingsPayload, variant: "icon" | "wordmark" | "full" | "header") {
   if (variant === "full") return branding.logoUrl
   if (variant === "icon") return branding.iconUrl
   return branding.logoUrl
@@ -51,10 +51,12 @@ export default function Logo({
   const showText = false
   const imageWidth = variant === "full"
     ? Math.max(size * 6, 260)
+    : variant === "header"
+      ? Math.max(size * 4, 150)
     : variant === "wordmark"
       ? Math.max(size * 4, 160)
       : size
-  const imageHeight = variant === "icon" ? size : Math.round(imageWidth / 3.15)
+  const imageHeight = variant === "icon" ? size : variant === "header" ? Math.max(size * 2, 130) : Math.round(imageWidth / 3.15)
 
   return (
     <Link
@@ -69,7 +71,7 @@ export default function Logo({
         height={imageHeight}
         priority
         unoptimized
-        className={`bg-white object-contain ${variant === "icon" ? "rounded-xl p-1.5" : "rounded-xl px-3 py-2"} ${animation ? "transition duration-200 group-hover:drop-shadow-[0_0_10px_rgba(99,102,241,0.6)]" : ""}`}
+        className={`bg-white object-contain ${variant === "icon" ? "rounded-xl p-1.5" : variant === "header" ? "h-11 w-12 rounded-lg px-2 py-1 sm:h-14 sm:w-16 sm:px-2.5 sm:py-1.5" : "rounded-xl px-3 py-2"} ${animation ? "transition duration-200 group-hover:drop-shadow-[0_0_10px_rgba(99,102,241,0.6)]" : ""}`}
       />
 
       {showText && (

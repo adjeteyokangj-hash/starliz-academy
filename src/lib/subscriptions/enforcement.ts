@@ -64,6 +64,9 @@ function statusDecision(subscription: Awaited<ReturnType<typeof getOrCreateSubsc
   if (status === "past_due") {
     return subscription.graceEndsAt && subscription.graceEndsAt >= now ? { allowed: true } : { allowed: false, reason: "PAST_DUE" };
   }
+  if (status === "payment_failed") return { allowed: false, reason: "PAST_DUE" };
+  if (status === "manual_review") return { allowed: false, reason: "BLOCKED" };
+  if (status === "inactive" || status === "expired") return { allowed: false, reason: "EXPIRED" };
   if (status === "cancelled") {
     return subscription.currentPeriodEnd && subscription.currentPeriodEnd >= now ? { allowed: true } : { allowed: false, reason: "CANCELLED" };
   }

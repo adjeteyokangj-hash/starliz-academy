@@ -5,10 +5,11 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { canAddChild } from "@/lib/subscriptions/enforcement";
 import { getPublicPricingPlans, planKeyFromPricingPlan, resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import { resolvePaymentProvider } from "@/lib/billing/payment-routing";
 
 const updateSchema = z.object({
   pricingPlanId: z.string().min(1).optional(),
-  status: z.enum(["active", "trialing", "cancelled", "past_due", "blocked"]).optional(),
+  status: z.enum(["active", "trialing", "cancelled", "past_due", "blocked", "expired", "payment_failed", "manual_review", "inactive"]).optional(),
 });
 
 export async function GET() {
@@ -28,6 +29,10 @@ export async function GET() {
     canAddChild(parentScope.parentId),
     prisma.childProfile.count({ where: { parentId: parentScope.parentId, archived: false } }),
   ]);
+  const parentProfile = await prisma.parentProfile.findUnique({
+    where: { userId: parentScope.parentId },
+    select: { country: true },
+  });
 
   const currentPricingPlan = await resolveCurrentPricingPlan({
     pricingPlanId: subscription?.pricingPlanId,
@@ -39,6 +44,7 @@ export async function GET() {
   const currentChildLimit = currentPricingPlan?.childLimit ?? 1;
 
   return NextResponse.json({
+    accountCountry: parentProfile?.country ?? "United Kingdom",
     subscription: {
       id: subscription?.id ?? null,
       pricingPlanId: currentPricingPlan?.id ?? subscription?.pricingPlanId ?? null,
@@ -46,7 +52,7 @@ export async function GET() {
       planName: currentPricingPlan?.name ?? "Free",
       status: subscription?.status ?? "active",
       badge: currentPricingPlan?.badge ?? currentPricingPlan?.name ?? "Free",
-      provider: subscription?.provider ?? "stripe",
+      provider: subscription?.provider ?? resolvePaymentProvider(parentProfile?.country ?? "UK"),
       childLimit: currentChildLimit,
       childrenUsed,
       upgradeRequired: !access.allowed,
