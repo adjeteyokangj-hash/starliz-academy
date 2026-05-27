@@ -7,6 +7,7 @@ import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data"
 import { buildAcademicIntelligence, toStudentSafeAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
 import { listCatchUpTasks, syncCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
 import { listHomeworkTasks, syncHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
+import { buildAcademicIntelligenceSnapshot, upsertAcademicIntelligenceSnapshotJson } from "@/lib/academic-intelligence/snapshot";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -75,6 +76,22 @@ export async function GET(request: Request) {
     });
     output = buildAcademicIntelligence(source, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
   }
+
+  const profile = await prisma.studentProfile.findUnique({
+    where: { childId: studentId },
+    select: { aiLearningProfileJson: true },
+  });
+  const snapshot = buildAcademicIntelligenceSnapshot(output, includeSync ? "manual_refresh" : "stale_snapshot");
+  await prisma.studentProfile.upsert({
+    where: { childId: studentId },
+    create: {
+      childId: studentId,
+      aiLearningProfileJson: upsertAcademicIntelligenceSnapshotJson(null, snapshot),
+    },
+    update: {
+      aiLearningProfileJson: upsertAcademicIntelligenceSnapshotJson(profile?.aiLearningProfileJson ?? null, snapshot),
+    },
+  });
 
   return NextResponse.json(toStudentSafeAcademicIntelligence(output));
 }

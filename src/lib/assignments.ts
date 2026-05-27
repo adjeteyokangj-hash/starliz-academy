@@ -16,6 +16,7 @@ import {
 } from "@/lib/curriculum";
 import { readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 import { extractLearningDnaFromProfileJson } from "@/lib/learning_dna";
+import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 
 export class SchoolLicenceAccessError extends Error {
   reason: SchoolLicenceBlockedReason;
@@ -453,6 +454,11 @@ export async function assignContentToStudent(input: {
       matchedWeakAreas: safety.recommendation.matchedWeakAreas,
     },
   });
+
+  await invalidateAcademicIntelligenceSnapshot({
+    studentId: input.studentId,
+    reason: "admin_assignment_update",
+  }).catch(() => undefined);
 
   return assignment;
 }

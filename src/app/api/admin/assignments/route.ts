@@ -10,6 +10,7 @@ import {
   SchoolLicenceAccessError,
 } from "@/lib/assignments";
 import { mergeWeakAreas, parseWeakAreaMetadata } from "@/lib/weakAreas";
+import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 
 const assignmentSchema = z.object({
   contentId: z.string().min(1),
@@ -288,6 +289,11 @@ export async function PATCH(request: Request) {
         content: { select: { id: true, contentType: true, topic: true, skillFocus: true } },
       },
     });
+
+    await invalidateAcademicIntelligenceSnapshot({
+      studentId: assignment.student.id,
+      reason: "admin_assignment_update",
+    }).catch(() => undefined);
 
     return NextResponse.json({ ok: true, assignment });
   } catch {

@@ -7,6 +7,7 @@ import { mergeWeakAreas, parseWeakAreaMetadata, stringifyWeakAreaMetadata } from
 import { sendEmail } from "@/lib/email-provider";
 import { applyRetentionRules, parseRetentionMetadata } from "@/lib/retentionScheduler";
 import { calculateConfidence, isBossUnlockEligibleV2, skillStatusFromConfidence, toLegacyStudentSkillStatus } from "@/lib/learningEngineV2";
+import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 
 const progressSchema = z.object({
   studentId: z.string().min(1),
@@ -307,6 +308,11 @@ export async function POST(request: Request) {
         data: { status: "completed", completedAt: new Date() },
       });
     }
+
+    await invalidateAcademicIntelligenceSnapshot({
+      studentId: body.studentId,
+      reason: /quiz|test|exam/i.test(body.type ?? body.subject) ? "quiz_or_test_completed" : "lesson_completed",
+    }).catch(() => undefined);
 
     const reinforceTomorrow = body.score < 60 || body.incorrect > 0 || body.weakSkills.length > 0;
     const weakSummary = body.weakSkills.length || body.weakWords.length

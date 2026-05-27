@@ -71,13 +71,6 @@ type StudentAssignment = {
   updatedAt: string;
 };
 
-type StudentAssignmentsPayload = {
-  assignments?: StudentAssignment[];
-  weakWords?: string[];
-  weakSkills?: string[];
-  error?: string;
-};
-
 type StudentSkill = {
   skill: string;
   status: "weak" | "improving" | "mastered" | string;
@@ -130,6 +123,18 @@ type ActiveChildPayload = {
     ageYears?: number | null;
     dateOfBirth?: string | null;
   } | null;
+};
+
+type DashboardSummaryPayload = {
+  ok?: boolean;
+  child?: (NonNullable<ActiveChildPayload["child"]> & {
+    level?: number;
+    dashboardTier?: "primary" | "ks3" | "gcse";
+    keyStage?: string | null;
+  }) | null;
+  assignments?: StudentAssignment[];
+  skills?: StudentSkill[];
+  error?: string;
 };
 
 type SessionSummaryPayload = {
@@ -429,18 +434,18 @@ export default function StudentDashboardPage() {
     setMissingChildContext(false);
     setAuthRequired(false);
     try {
-      const childRes = await fetch("/api/children/active", { credentials: "include" });
-      if (childRes.status === 401) {
+      const summaryRes = await fetch("/api/student/dashboard-summary", { credentials: "include" });
+      if (summaryRes.status === 401) {
         setAuthRequired(true);
         setError("Your session expired. Please sign in again.");
         return;
       }
-      if (!childRes.ok) {
+      if (!summaryRes.ok) {
         throw new Error("Unable to confirm active learner profile.");
       }
 
-      const childPayload = (await childRes.json()) as ActiveChildPayload;
-      if (!childPayload.child?.id) {
+      const summaryPayload = (await summaryRes.json()) as DashboardSummaryPayload;
+      if (!summaryPayload.child?.id) {
         setMissingChildContext(true);
         setActiveChildId(null);
         setAcademicLoading(false);
@@ -462,72 +467,33 @@ export default function StudentDashboardPage() {
         return;
       }
 
-      const [assignmentsRes, skillsRes, bossStatusRes] = await Promise.all([
-        fetch("/api/student/assignments", { credentials: "include" }),
-        fetch("/api/student/skills", { credentials: "include" }),
-        fetch("/api/student/boss-battle", { credentials: "include" }),
-      ]);
-
-      if ([assignmentsRes, skillsRes, bossStatusRes].some((res) => res.status === 401)) {
-        setAuthRequired(true);
-        setError("Your session expired. Please sign in again.");
-        return;
-      }
-
-      const assignmentsPayload = (await assignmentsRes.json()) as StudentAssignmentsPayload;
-      const skillsPayload = skillsRes.ok ? ((await skillsRes.json()) as StudentSkill[]) : [];
-      const bossStatusPayload = bossStatusRes.ok
-        ? ((await bossStatusRes.json()) as BossBattleStatusPayload)
-        : ({ unlocked: false, alreadyPlayedToday: false, lessonAssignmentId: null } as BossBattleStatusPayload);
-
-      if (!assignmentsRes.ok) {
-        if (assignmentsRes.status === 400 && /active student/i.test(assignmentsPayload.error ?? "")) {
-          setMissingChildContext(true);
-          setAssignments([]);
-          setSkills([]);
-          setSessionSummary(null);
-          setLearningState(null);
-          setQuickLevelFinderRetestEnabled(false);
-          setPlacementLessonGroups([]);
-          setPlacementContentGaps([]);
-          setProgression(null);
-          setCertificateEligibility(null);
-          setBossUnlocked(false);
-          setBossPlayedToday(false);
-          setBossAssignmentId(null);
-          setActiveChildId(null);
-          return;
-        }
-        throw new Error(assignmentsPayload.error ?? "Unable to load assignments.");
-      }
-
-      setAssignments(assignmentsPayload.assignments ?? []);
-      setSkills(Array.isArray(skillsPayload) ? skillsPayload : []);
-      setBossUnlocked(Boolean(bossStatusPayload.unlocked));
-      setBossPlayedToday(Boolean(bossStatusPayload.alreadyPlayedToday));
-      setBossAssignmentId(typeof bossStatusPayload.lessonAssignmentId === "string" ? bossStatusPayload.lessonAssignmentId : null);
-      setActiveChildId(childPayload.child.id);
+      setAssignments(summaryPayload.assignments ?? []);
+      setSkills(Array.isArray(summaryPayload.skills) ? summaryPayload.skills : []);
+      setBossUnlocked(false);
+      setBossPlayedToday(false);
+      setBossAssignmentId(null);
+      setActiveChildId(summaryPayload.child.id);
       setDeferredPanelsLoadedFor(null);
       setAcademicLoading(true);
 
-      if (childPayload.child) {
-        setChildName(childPayload.child.name || "Learner");
+      if (summaryPayload.child) {
+        setChildName(summaryPayload.child.name || "Learner");
         setStats({
-          stars: childPayload.child.stars ?? 0,
-          xp: childPayload.child.xp ?? 0,
-          coins: childPayload.child.coins ?? 0,
-          streak: childPayload.child.weekStreak ?? 0,
+          stars: summaryPayload.child.stars ?? 0,
+          xp: summaryPayload.child.xp ?? 0,
+          coins: summaryPayload.child.coins ?? 0,
+          streak: summaryPayload.child.weekStreak ?? 0,
         });
-        setDashboardTier(resolveDashboardTier({
-          yearGroup: childPayload.child.yearGroup,
-          ageYears: childPayload.child.ageYears,
-          dateOfBirth: childPayload.child.dateOfBirth,
+        setDashboardTier(summaryPayload.child.dashboardTier ?? resolveDashboardTier({
+          yearGroup: summaryPayload.child.yearGroup,
+          ageYears: summaryPayload.child.ageYears,
+          dateOfBirth: summaryPayload.child.dateOfBirth,
         }));
-        if (childPayload.child.yearGroup) {
+        if (summaryPayload.child.yearGroup) {
           setProfileContext({
-            yearGroup: childPayload.child.yearGroup,
-            ageGroup: ageGroupForYearGroup(childPayload.child.yearGroup),
-            keyStage: keyStageForYearGroup(childPayload.child.yearGroup),
+            yearGroup: summaryPayload.child.yearGroup,
+            ageGroup: ageGroupForYearGroup(summaryPayload.child.yearGroup),
+            keyStage: summaryPayload.child.keyStage ?? keyStageForYearGroup(summaryPayload.child.yearGroup),
           });
         }
       }
@@ -550,19 +516,23 @@ export default function StudentDashboardPage() {
         setAcademicError("");
 
         try {
-          const [sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes, ownedResponse] = await Promise.all([
+          const [sessionSummaryRes, academicIntelligenceRes, learningStateRes, bossStatusRes, ownedResponse] = await Promise.all([
             fetch("/api/student/session-summary", { credentials: "include" }),
             fetch("/api/student/academic-intelligence", { credentials: "include" }),
             fetch("/api/student/learning-state", { credentials: "include" }),
+            fetch("/api/student/boss-battle", { credentials: "include" }),
+            fetch(`/api/shop/owned?childId=${encodeURIComponent(activeChildId ?? "")}`, { credentials: "include" }),
+          ]);
+
+          const [placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes] = await Promise.all([
             fetch("/api/student/quick-level-finder/levels", { credentials: "include" }),
             fetch("/api/student/placement-lessons", { credentials: "include" }),
             fetch("/api/student/progression/recommendations", { credentials: "include" }),
             fetch("/api/student/certificates/eligibility", { credentials: "include" }),
-            fetch(`/api/shop/owned?childId=${encodeURIComponent(activeChildId ?? "")}`, { credentials: "include" }),
           ]);
 
           if (cancelled) return;
-          if ([sessionSummaryRes, academicIntelligenceRes, learningStateRes, placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes].some((res) => res.status === 401)) {
+          if ([sessionSummaryRes, academicIntelligenceRes, learningStateRes, bossStatusRes, placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes].some((res) => res.status === 401)) {
             setAuthRequired(true);
             setError("Your session expired. Please sign in again.");
             return;
@@ -580,11 +550,18 @@ export default function StudentDashboardPage() {
           const placementLessonsPayload = placementLessonsRes.ok
             ? ((await placementLessonsRes.json()) as PlacementLessonsPayload)
             : ({} as PlacementLessonsPayload);
-          const progressionPayload = ((await progressionRes.json()) as ProgressionPayload);
-          const certificateEligibilityPayload = ((await certificateEligibilityRes.json()) as CertificateEligibilityPayload);
+          const progressionPayload = progressionRes.ok
+            ? ((await progressionRes.json()) as ProgressionPayload)
+            : ({} as ProgressionPayload);
+          const certificateEligibilityPayload = certificateEligibilityRes.ok
+            ? ((await certificateEligibilityRes.json()) as CertificateEligibilityPayload)
+            : ({} as CertificateEligibilityPayload);
           const academicPayload = academicIntelligenceRes.ok
             ? ((await academicIntelligenceRes.json()) as StudentAcademicIntelligencePayload)
             : null;
+          const bossStatusPayload = bossStatusRes.ok
+            ? ((await bossStatusRes.json()) as BossBattleStatusPayload)
+            : ({ unlocked: false, alreadyPlayedToday: false, lessonAssignmentId: null } as BossBattleStatusPayload);
 
           setSessionSummary(sessionSummaryPayload.summary ?? null);
           setLearningState(learningStatePayload.learningState ?? null);
@@ -594,6 +571,9 @@ export default function StudentDashboardPage() {
           setPlacementContentGaps(Array.isArray(placementLessonsPayload.contentGaps) ? placementLessonsPayload.contentGaps : []);
           setProgression(progressionPayload ?? null);
           setCertificateEligibility(certificateEligibilityPayload ?? null);
+          setBossUnlocked(Boolean(bossStatusPayload.unlocked));
+          setBossPlayedToday(Boolean(bossStatusPayload.alreadyPlayedToday));
+          setBossAssignmentId(typeof bossStatusPayload.lessonAssignmentId === "string" ? bossStatusPayload.lessonAssignmentId : null);
 
           if (academicPayload) {
             const state = learningStatePayload.learningState;

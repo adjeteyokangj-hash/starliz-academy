@@ -5,6 +5,7 @@ import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import { applyCatchUpTaskAction, listCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
 import type { CatchUpTaskAction } from "@/lib/academic-intelligence/types";
+import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 
 function parseStudentAction(value: unknown): CatchUpTaskAction | null {
   if (value === "start_task" || value === "complete_task" || value === "skip_task") return value;
@@ -85,5 +86,11 @@ export async function POST(request: Request) {
   });
 
   if (!updated) return NextResponse.json({ error: "Task not found." }, { status: 404 });
+  if (action === "complete_task") {
+    await invalidateAcademicIntelligenceSnapshot({
+      studentId,
+      reason: "catch_up_task_completed",
+    }).catch(() => undefined);
+  }
   return NextResponse.json({ ok: true, task: updated });
 }

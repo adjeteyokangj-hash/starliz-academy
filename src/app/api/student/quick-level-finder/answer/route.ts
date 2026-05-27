@@ -11,6 +11,7 @@ import {
   upsertQuickLevelFinderRetestEnabled,
   upsertQuickLevelFinderSession,
 } from "@/lib/quick-level-finder";
+import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 
 const bodySchema = z.object({
   sessionId: z.string().min(1),
@@ -128,6 +129,13 @@ export async function POST(request: Request) {
       });
     }
   });
+
+  if (state.status === "completed") {
+    await invalidateAcademicIntelligenceSnapshot({
+      studentId: student.id,
+      reason: "level_finder_completed",
+    }).catch(() => undefined);
+  }
 
   return NextResponse.json({
     ok: true,
