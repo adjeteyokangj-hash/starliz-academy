@@ -10,6 +10,7 @@ const CHILD_SELECTION_COOKIE = "starliz_child_selection";
 const PUBLIC_PATHS = [
   "/",
   "/about",
+  "/api/pricing",
   "/auth/forgot-password",
   "/admin/login",
   "/auth/reset-password",

@@ -2,6 +2,23 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { FALLBACK_PRICING_PLANS, type PricingPlanView } from "@/lib/pricing/fallback"
 
+export type PublicPricingPlanView = Pick<
+  PricingPlanView,
+  | "name"
+  | "description"
+  | "price"
+  | "currency"
+  | "interval"
+  | "audience"
+  | "features"
+  | "childLimit"
+  | "priceNote"
+  | "badge"
+  | "ctaLabel"
+  | "ctaHref"
+  | "isPopular"
+>
+
 type StoredPricingFeatures = {
   bullets?: unknown
   childLimit?: unknown
@@ -22,6 +39,24 @@ function sanitizePublicPricingPlan(plan: PricingPlanView): PricingPlanView {
     features: plan.features.map((feature) => sanitizePublicPricingString(feature)),
     badge: plan.badge ? sanitizePublicPricingString(plan.badge) : plan.badge,
     ctaLabel: sanitizePublicPricingString(plan.ctaLabel),
+  }
+}
+
+function toPublicPricingPlan(plan: PricingPlanView): PublicPricingPlanView {
+  return {
+    name: plan.name,
+    description: plan.description,
+    price: plan.price,
+    currency: plan.currency,
+    interval: plan.interval,
+    audience: plan.audience,
+    features: plan.features,
+    childLimit: plan.childLimit,
+    priceNote: plan.priceNote,
+    badge: plan.badge,
+    ctaLabel: plan.ctaLabel,
+    ctaHref: plan.ctaHref,
+    isPopular: plan.isPopular,
   }
 }
 
@@ -185,6 +220,11 @@ export async function getPublicPricingPlans(): Promise<PricingPlanView[]> {
 
   if (!plans.length) return FALLBACK_PRICING_PLANS.map(sanitizePublicPricingPlan)
   return plans.map(mapPlan).map(sanitizePublicPricingPlan)
+}
+
+export async function getPublicPricingListing(): Promise<PublicPricingPlanView[]> {
+  const plans = await getPublicPricingPlans()
+  return plans.map(toPublicPricingPlan)
 }
 
 export async function getAdminPricingPlans(): Promise<PricingPlanView[]> {

@@ -2,13 +2,11 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { StripeCheckoutButton } from "@/components/billing/StripeCheckoutButton"
 
 type PricingInterval = "month" | "year" | "custom"
 type PricingAudience = "individual" | "family" | "school" | "organisation"
 
 type PricingPlan = {
-  id: string
   name: string
   description: string
   price: number
@@ -20,10 +18,7 @@ type PricingPlan = {
   badge: string | null
   ctaLabel: string
   ctaHref: string
-  stripePriceId: string | null
-  isActive: boolean
   isPopular: boolean
-  sortOrder: number
 }
 
 type PublicPricingSectionProps = {
@@ -43,10 +38,6 @@ function intervalLabel(interval: PricingInterval): string {
   if (interval === "year") return "/year"
   if (interval === "month") return "/month"
   return ""
-}
-
-function canUseStripeCheckout(plan: PricingPlan): boolean {
-  return (plan.interval === "month" || plan.interval === "year") && !!plan.stripePriceId
 }
 
 const familyPricingHighlights = [
@@ -131,7 +122,7 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
         <div className="mt-12 grid gap-6 md:grid-cols-3">
           {visibleIndividualPlans.map((plan) => (
             <article
-              key={plan.id}
+              key={`${plan.name}-${plan.audience}-${plan.interval}`}
               className={`relative flex flex-col rounded-3xl border p-8 text-left ${
                 plan.isPopular
                   ? "border-blue-500 bg-linear-to-b from-blue-600/20 to-slate-900 shadow-xl shadow-blue-900/30"
@@ -160,7 +151,7 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
 
               <ul className="mt-6 space-y-3 text-sm text-slate-300">
                 {plan.features.map((feature) => (
-                  <li key={`${plan.id}-${feature}`} className="flex items-start gap-2">
+                  <li key={`${plan.name}-${feature}`} className="flex items-start gap-2">
                     <span className="mt-0.5 text-blue-400">✓</span>
                     <span>{feature}</span>
                   </li>
@@ -168,21 +159,12 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
               </ul>
 
               <div className="mt-8">
-                {canUseStripeCheckout(plan) ? (
-                  <StripeCheckoutButton
-                    planId={plan.id}
-                    className="w-full rounded-xl bg-blue-600 px-6 py-3 text-center text-sm font-bold text-white transition hover:bg-blue-500"
-                  >
-                    {plan.ctaLabel || "Start Free Trial"}
-                  </StripeCheckoutButton>
-                ) : (
-                  <Link
-                    href={plan.ctaHref || "/trial"}
-                    className="block w-full rounded-xl bg-blue-600 px-6 py-3 text-center text-sm font-bold text-white transition hover:bg-blue-500"
-                  >
-                    {plan.ctaLabel || "Start Free Trial"}
-                  </Link>
-                )}
+                <Link
+                  href={plan.ctaHref || "/trial"}
+                  className="block w-full rounded-xl bg-blue-600 px-6 py-3 text-center text-sm font-bold text-white transition hover:bg-blue-500"
+                >
+                  {plan.ctaLabel || "Start Free Trial"}
+                </Link>
               </div>
             </article>
           ))}

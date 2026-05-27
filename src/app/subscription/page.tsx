@@ -45,6 +45,7 @@ type SubscriptionPayload = {
     currentInterval: PricingInterval;
     currentCurrency: string;
   };
+  plans: PricingPlan[];
 };
 
 function statusPill(status: string): { label: string; className: string } {
@@ -81,10 +82,7 @@ export default function SubscriptionPage() {
 
   useEffect(() => {
     const load = async () => {
-      const [subscriptionResponse, pricingResponse] = await Promise.all([
-        fetch("/api/subscription", { credentials: "include" }),
-        fetch("/api/pricing", { credentials: "same-origin" }),
-      ]);
+      const subscriptionResponse = await fetch("/api/subscription", { credentials: "include" });
 
       if (!subscriptionResponse.ok) {
         setError("Unable to load subscription details.");
@@ -92,17 +90,10 @@ export default function SubscriptionPage() {
         return;
       }
 
-      if (!pricingResponse.ok) {
-        setError("Unable to load pricing plans.");
-        setLoading(false);
-        return;
-      }
-
       const payload = (await subscriptionResponse.json()) as SubscriptionPayload;
-      const pricingPayload = (await pricingResponse.json()) as { plans: PricingPlan[] };
 
       setData(payload);
-      setPricingPlans(pricingPayload.plans ?? []);
+      setPricingPlans(payload.plans ?? []);
       setLoading(false);
     };
     void load();

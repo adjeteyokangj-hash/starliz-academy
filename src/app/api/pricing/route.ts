@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { getPublicPricingPlans } from "@/lib/pricing/service"
+import { getPublicPricingListing } from "@/lib/pricing/service"
 
 export async function GET() {
-  const plans = await getPublicPricingPlans()
+  const plans = await getPublicPricingListing()
   return NextResponse.json({ plans })
 }
