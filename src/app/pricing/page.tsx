@@ -8,7 +8,7 @@ export default function PricingPage() {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-25%,rgba(59,130,246,0.18),transparent)]" />
         <div className="relative mx-auto max-w-4xl">
           <p className="inline-flex rounded-full border border-blue-500/35 bg-blue-500/10 px-4 py-1.5 text-sm font-semibold text-blue-300">
-            Parent, student, admin and school platform plans
+            Family, learner and school-ready plans
           </p>
           <h1 className="mt-6 text-5xl font-black leading-tight tracking-tight md:text-6xl">
             Choose a plan for learning, reporting and secure oversight

@@ -7,6 +7,24 @@ type StoredPricingFeatures = {
   childLimit?: unknown
 }
 
+function sanitizePublicPricingString(value: string): string {
+  return value
+    .replaceAll("AI adapts to your child daily", "Adaptive support follows your child's progress")
+    .replaceAll("AI learning insights", "Progress insights")
+    .replaceAll("Parent, student, admin and school platform plans", "Family, learner and school-ready plans")
+}
+
+function sanitizePublicPricingPlan(plan: PricingPlanView): PricingPlanView {
+  return {
+    ...plan,
+    name: sanitizePublicPricingString(plan.name),
+    description: sanitizePublicPricingString(plan.description),
+    features: plan.features.map((feature) => sanitizePublicPricingString(feature)),
+    badge: plan.badge ? sanitizePublicPricingString(plan.badge) : plan.badge,
+    ctaLabel: sanitizePublicPricingString(plan.ctaLabel),
+  }
+}
+
 function defaultChildLimitForAudience(audience: PricingPlanView["audience"]): number {
   if (audience === "individual") return 1
   if (audience === "family") return 4
@@ -165,8 +183,8 @@ export async function getPublicPricingPlans(): Promise<PricingPlanView[]> {
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   })
 
-  if (!plans.length) return FALLBACK_PRICING_PLANS
-  return plans.map(mapPlan)
+  if (!plans.length) return FALLBACK_PRICING_PLANS.map(sanitizePublicPricingPlan)
+  return plans.map(mapPlan).map(sanitizePublicPricingPlan)
 }
 
 export async function getAdminPricingPlans(): Promise<PricingPlanView[]> {

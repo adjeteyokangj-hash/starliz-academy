@@ -16,6 +16,7 @@ const PUBLIC_PATHS = [
   "/billing/cancel",
   "/billing/success",
   "/contact",
+  "/features",
   "/forgot-password",
   "/login",
   "/pricing",

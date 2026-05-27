@@ -32,7 +32,7 @@ export const FALLBACK_PRICING_PLANS: PricingPlanView[] = [
     interval: "month",
     audience: "individual",
     features: [
-      "AI adapts to your child daily",
+      "Adaptive support follows your child’s progress",
       "Personalised learning path",
       "Voice-friendly spelling practice",
       "Parent progress insights",
@@ -56,7 +56,7 @@ export const FALLBACK_PRICING_PLANS: PricingPlanView[] = [
     interval: "month",
     audience: "family",
     features: [
-      "AI adapts to your child daily",
+      "Adaptive support follows your child’s progress",
       "Personalised learning path",
       "Unlimited sessions",
       "Parent progress insights",
@@ -107,7 +107,7 @@ export const FALLBACK_PRICING_PLANS: PricingPlanView[] = [
       "Multi-student management",
       "Teacher/admin dashboard",
       "Class progress tracking",
-      "AI learning insights",
+      "Progress insights",
       "Safeguarding-focused access controls",
       "Custom onboarding support",
     ],
