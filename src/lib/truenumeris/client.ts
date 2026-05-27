@@ -4,7 +4,11 @@ import { writeAuditLog } from "@/lib/audit";
 import { buildIdempotencyKey } from "@/lib/billing/invoice-number";
 import { buildFinancialAuditMetadata } from "@/lib/billing/financial-event-builder";
 import { getTrueNumerisRequestTimeoutMs, isTrueNumerisFeatureEnabled } from "@/lib/truenumeris/config";
-import { getTrueNumerisSecretSettings, updateTrueNumerisSyncState } from "@/lib/truenumeris/integration";
+import {
+  getTrueNumerisSecretSettings,
+  normalizeTrueNumerisApiBaseUrl,
+  updateTrueNumerisSyncState,
+} from "@/lib/truenumeris/integration";
 import type {
   SyncHistoricalInput,
   TrueNumerisApiResult,
@@ -27,6 +31,37 @@ async function sleep(ms: number): Promise<void> {
 function sanitizeError(error: unknown): string {
   if (error instanceof Error) return error.message.slice(0, 500);
   return "Unexpected error";
+}
+
+function maskApiKeyForLog(apiKey: string | null | undefined): string {
+  if (!apiKey) return "tn_********";
+  return `tn_********${apiKey.slice(-4)}`;
+}
+
+function safeRemoteText(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const compact = input.trim().slice(0, 180);
+  if (!compact) return null;
+  if (/bearer|api[\s_-]?key|token|secret/i.test(compact)) {
+    return "[redacted-sensitive-message]";
+  }
+  return compact;
+}
+
+function mapTestStatusMessage(statusCode: number): string {
+  if (statusCode === 401) {
+    return "TrueNumeris rejected the API key. Check or rotate the API key.";
+  }
+  if (statusCode === 403) {
+    return "API key is valid but does not have the required scope or company access.";
+  }
+  if (statusCode === 404) {
+    return "TrueNumeris endpoint was not found. Check the Base URL and API version.";
+  }
+  if (statusCode === 422) {
+    return "TrueNumeris rejected the request details. Check company ID and region.";
+  }
+  return `TrueNumeris endpoint returned ${statusCode}.`;
 }
 
 async function requestWithRetry(input: {
@@ -111,23 +146,162 @@ async function requestWithRetry(input: {
   };
 }
 
-export async function testTrueNumerisConnection(actorUserId?: string): Promise<TrueNumerisApiResult> {
-  const result = await requestWithRetry({
-    endpoint: "/health",
-    method: "GET",
-    actorUserId,
-  });
+export async function testTrueNumerisConnection(
+  actorUserId?: string,
+): Promise<TrueNumerisApiResult & { checkedAt?: string; endpointPath?: string }> {
+  const checkedAt = new Date().toISOString();
 
-  if (actorUserId) {
-    await writeAuditLog({
-      actorUserId,
-      action: "truenumeris.connection.test",
-      entityType: "TrueNumerisIntegration",
-      metadata: { ok: result.ok, statusCode: result.statusCode },
-    });
+  if (!isTrueNumerisFeatureEnabled()) {
+    return {
+      ok: false,
+      statusCode: 412,
+      message: "TrueNumeris integration is disabled in StarLiz.",
+      checkedAt,
+      endpointPath: "/integrations/ping",
+    };
   }
 
-  return result;
+  let settings: Awaited<ReturnType<typeof getTrueNumerisSecretSettings>>;
+  try {
+    settings = await getTrueNumerisSecretSettings();
+  } catch {
+    return {
+      ok: false,
+      statusCode: 500,
+      message: "Could not read TrueNumeris settings. The stored API key may be corrupt or the encryption key has changed.",
+      checkedAt,
+      endpointPath: "/integrations/ping",
+    };
+  }
+  if (!settings?.enabled) {
+    return {
+      ok: false,
+      statusCode: 412,
+      message: "Integration not enabled.",
+      checkedAt,
+      endpointPath: "/integrations/ping",
+    };
+  }
+
+  if (!settings.baseUrl || !settings.apiKey) {
+    return {
+      ok: false,
+      statusCode: 412,
+      message: "TrueNumeris configuration incomplete.",
+      checkedAt,
+      endpointPath: "/integrations/ping",
+    };
+  }
+
+  const normalizedBaseUrl = normalizeTrueNumerisApiBaseUrl(settings.baseUrl);
+  if (!normalizedBaseUrl) {
+    return {
+      ok: false,
+      statusCode: 422,
+      message: "Could not reach TrueNumeris from StarLiz. Check the Base URL.",
+      checkedAt,
+      endpointPath: "/integrations/ping",
+    };
+  }
+
+  const endpointPath = "/integrations/ping";
+  const target = `${normalizedBaseUrl}${endpointPath}`;
+  const timeoutMs = getTrueNumerisRequestTimeoutMs();
+  const maskedApiKey = maskApiKeyForLog(settings.apiKey);
+
+  try {
+    const response = await fetch(target, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${settings.apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(settings.companyId ? { "X-Company-Id": settings.companyId } : {}),
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    const payload = await response.json().catch(() => null);
+    const remoteErrorCode =
+      safeRemoteText((payload as { code?: unknown; errorCode?: unknown } | null)?.code) ??
+      safeRemoteText((payload as { code?: unknown; errorCode?: unknown } | null)?.errorCode);
+    const remoteErrorMessage =
+      safeRemoteText((payload as { message?: unknown; error?: unknown } | null)?.message) ??
+      safeRemoteText((payload as { message?: unknown; error?: unknown } | null)?.error);
+
+    const safeMessage = response.ok
+      ? "Connected to TrueNumeris successfully."
+      : mapTestStatusMessage(response.status);
+
+    await updateTrueNumerisSyncState({
+      status: response.ok ? "ok" : "failed",
+      message: safeMessage,
+    });
+
+    console.info("TrueNumeris test connection", {
+      normalizedBaseUrl,
+      endpointPath,
+      statusCode: response.status,
+      remoteErrorCode,
+      remoteErrorMessage,
+      maskedApiKey,
+      companyId: settings.companyId ?? null,
+    });
+
+    const result: TrueNumerisApiResult & { checkedAt?: string; endpointPath?: string } = {
+      ok: response.ok,
+      statusCode: response.status,
+      message: safeMessage,
+      checkedAt,
+      endpointPath,
+    };
+
+    if (response.ok) {
+      result.payload = payload;
+    }
+
+    if (actorUserId) {
+      await writeAuditLog({
+        actorUserId,
+        action: "truenumeris.connection.test",
+        entityType: "TrueNumerisIntegration",
+        metadata: { ok: result.ok, statusCode: result.statusCode },
+      });
+    }
+
+    return result;
+  } catch (error) {
+    const safeMessage = "Could not reach TrueNumeris from StarLiz. Check the Base URL.";
+    await updateTrueNumerisSyncState({ status: "failed", message: safeMessage });
+    console.warn("TrueNumeris test connection network failure", {
+      normalizedBaseUrl,
+      endpointPath,
+      statusCode: null,
+      remoteErrorCode: null,
+      remoteErrorMessage: safeRemoteText(error instanceof Error ? error.message : null),
+      maskedApiKey,
+      companyId: settings.companyId ?? null,
+    });
+
+    const result: TrueNumerisApiResult & { checkedAt?: string; endpointPath?: string } = {
+      ok: false,
+      statusCode: 503,
+      message: safeMessage,
+      checkedAt,
+      endpointPath,
+    };
+
+    if (actorUserId) {
+      await writeAuditLog({
+        actorUserId,
+        action: "truenumeris.connection.test",
+        entityType: "TrueNumerisIntegration",
+        metadata: { ok: result.ok, statusCode: result.statusCode },
+      });
+    }
+
+    return result;
+  }
 }
 
 export async function sendFinancialEventToTrueNumeris(input: {

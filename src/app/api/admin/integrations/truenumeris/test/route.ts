@@ -19,6 +19,16 @@ export async function POST() {
     );
   }
 
-  const result = await testTrueNumerisConnection(session.userId);
-  return NextResponse.json(result, { status: result.ok ? 200 : 502 });
+  let result: Awaited<ReturnType<typeof testTrueNumerisConnection>>;
+  try {
+    result = await testTrueNumerisConnection(session.userId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unexpected error during connection test.";
+    return NextResponse.json(
+      { ok: false, statusCode: 500, message: msg, checkedAt: new Date().toISOString() },
+      { status: 500 },
+    );
+  }
+  const responseStatus = result.ok ? 200 : Math.max(400, result.statusCode || 502);
+  return NextResponse.json(result, { status: responseStatus });
 }

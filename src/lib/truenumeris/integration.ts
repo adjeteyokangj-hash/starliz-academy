@@ -62,6 +62,23 @@ function sanitizeBaseUrl(value: string | undefined): string | null {
   }
 }
 
+export function normalizeTrueNumerisApiBaseUrl(input: string | null | undefined): string | null {
+  const cleaned = String(input ?? "").trim();
+  if (!cleaned) return null;
+
+  try {
+    const parsed = new URL(cleaned);
+    const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    const hasApiPath = /\/api\/v1$/i.test(pathname);
+    const normalizedPath = hasApiPath
+      ? pathname.replace(/\/+$/, "")
+      : `${pathname === "/" ? "" : pathname}/api/v1`;
+    return `${parsed.origin}${normalizedPath}`;
+  } catch {
+    return null;
+  }
+}
+
 export async function getTrueNumerisSettings() {
   const model = trueNumerisModel();
   if (!model) return defaultTrueNumerisSettings();

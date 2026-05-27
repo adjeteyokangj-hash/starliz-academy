@@ -38,6 +38,13 @@ type StatusPayload = {
   };
 };
 
+type TestConnectionResult = {
+  connected: boolean;
+  reason: string;
+  statusCode: number | null;
+  checkedAt: string;
+};
+
 const inputCls = "w-full rounded-xl border border-slate-700/80 bg-slate-950 px-3.5 py-3 text-sm text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/40 transition";
 
 export default function TrueNumerisIntegrationPage() {
@@ -54,6 +61,7 @@ export default function TrueNumerisIntegrationPage() {
   const [syncFrequencyMinutes, setSyncFrequencyMinutes] = useState(15);
   const [message, setMessage] = useState<string | null>(null);
   const [workingAction, setWorkingAction] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
 
   const healthStatus = status?.lastSyncStatus ?? settings?.lastSyncStatus ?? "unknown";
 
@@ -152,12 +160,37 @@ export default function TrueNumerisIntegrationPage() {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setMessage(payload.error ?? `${action} failed.`);
+      if (action === "test") {
+        const reason = payload.message ?? payload.error ?? "TrueNumeris test failed.";
+        const statusCode = typeof payload.statusCode === "number" ? payload.statusCode : response.status;
+        const checkedAt = typeof payload.checkedAt === "string" ? payload.checkedAt : new Date().toISOString();
+        setTestResult({
+          connected: false,
+          reason,
+          statusCode,
+          checkedAt,
+        });
+        setMessage(`Failed: ${reason}`);
+      } else {
+        setMessage(payload.error ?? payload.message ?? `${action} failed.`);
+      }
       setWorkingAction(null);
       return;
     }
 
-    if (action === "test") setMessage(payload.message ?? "Connection test completed.");
+    if (action === "test") {
+      const reason = payload.message ?? "Connected to TrueNumeris successfully.";
+      const statusCode = typeof payload.statusCode === "number" ? payload.statusCode : response.status;
+      const checkedAt = typeof payload.checkedAt === "string" ? payload.checkedAt : new Date().toISOString();
+      const connected = Boolean(payload.ok);
+      setTestResult({
+        connected,
+        reason,
+        statusCode,
+        checkedAt,
+      });
+      setMessage(connected ? "Connected to TrueNumeris successfully." : `Failed: ${reason}`);
+    }
     if (action === "sync") setMessage(`Sync finished. Synced ${payload.synced ?? 0}, failed ${payload.failed ?? 0}.`);
     if (action === "retry") setMessage(`Retry finished. Re-queued ${payload.retried ?? 0} failed sync events.`);
 
@@ -183,6 +216,15 @@ export default function TrueNumerisIntegrationPage() {
 
       {message ? (
         <p className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-100">{message}</p>
+      ) : null}
+
+      {testResult ? (
+        <section className={`rounded-xl border px-4 py-3 text-sm ${testResult.connected ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-rose-500/40 bg-rose-500/10 text-rose-100"}`}>
+          <p className="font-bold">Status: {testResult.connected ? "Connected" : "Failed"}</p>
+          <p className="mt-1">Reason: {testResult.reason}</p>
+          <p className="mt-1">HTTP Status: {testResult.statusCode ?? "n/a"}</p>
+          <p className="mt-1">Last Checked: {new Date(testResult.checkedAt).toLocaleString()}</p>
+        </section>
       ) : null}
 
       <section className="grid gap-4 md:grid-cols-3">
