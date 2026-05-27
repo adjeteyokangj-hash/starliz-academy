@@ -1,4 +1,3 @@
-import Link from "next/link"
 import PublicShell from "@/components/layout/PublicShell"
 
 export default function Contact() {

@@ -15,7 +15,6 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/favicon.svg", type: "image/svg+xml" },
       { url: "/favicon.png", type: "image/png" },
     ],
     shortcut: [{ url: "/favicon.png", type: "image/png" }],
@@ -29,7 +28,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "StarLiz Academy | AI-Supported Learning for Children",
     description: "StarLiz Academy helps children learn with adaptive lessons, smart catch-up, guided practice, curriculum mastery tracking, parent visibility, and exam readiness support.",
-    images: ["/logo-full.svg"],
+    images: ["/brand/starliz-logo.png"],
   },
 };
 

@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { defaultBranding, type BrandingSettingsPayload } from "@/lib/branding"
+import { defaultBranding, normalizeBranding, type BrandingSettingsPayload } from "@/lib/branding"
 
 type Props = {
   variant?: "icon" | "wordmark" | "full"
@@ -15,6 +15,7 @@ type Props = {
 }
 
 function imageForVariant(branding: BrandingSettingsPayload, variant: "icon" | "wordmark" | "full") {
+  if (variant === "full") return branding.logoUrl
   if (variant === "icon") return branding.iconUrl
   return branding.logoUrl
 }
@@ -27,7 +28,7 @@ export default function Logo({
   href = "/",
   textClassName = "text-white",
 }: Props) {
-  const [branding, setBranding] = useState<BrandingSettingsPayload>(defaultBranding)
+  const [branding, setBranding] = useState<BrandingSettingsPayload>(normalizeBranding(defaultBranding))
 
   useEffect(() => {
     let mounted = true
@@ -37,7 +38,7 @@ export default function Logo({
         return response.json() as Promise<{ branding?: BrandingSettingsPayload }>
       })
       .then((payload) => {
-        if (mounted && payload?.branding) setBranding(payload.branding)
+        if (mounted) setBranding(normalizeBranding(payload?.branding ?? defaultBranding))
       })
       .catch(() => undefined)
 
@@ -47,9 +48,13 @@ export default function Logo({
   }, [])
 
   const imageSrc = useMemo(() => imageForVariant(branding, variant), [branding, variant])
-  const showText = variant === "wordmark"
-  const imageWidth = variant === "full" ? Math.max(size * 6, 260) : size
-  const imageHeight = variant === "full" ? Math.round(imageWidth / 3.15) : size
+  const showText = false
+  const imageWidth = variant === "full"
+    ? Math.max(size * 6, 260)
+    : variant === "wordmark"
+      ? Math.max(size * 4, 160)
+      : size
+  const imageHeight = variant === "icon" ? size : Math.round(imageWidth / 3.15)
 
   return (
     <Link
@@ -59,12 +64,12 @@ export default function Logo({
     >
       <Image
         src={imageSrc}
-        alt={branding.siteName}
+        alt="StarLiz Academy"
         width={imageWidth}
         height={imageHeight}
         priority
         unoptimized
-        className={`bg-white object-contain ${variant === "full" ? "rounded-xl p-4" : "h-12 w-12 rounded p-1"} ${animation ? "transition duration-200 group-hover:drop-shadow-[0_0_10px_rgba(99,102,241,0.6)]" : ""}`}
+        className={`bg-white object-contain ${variant === "icon" ? "rounded-xl p-1.5" : "rounded-xl px-3 py-2"} ${animation ? "transition duration-200 group-hover:drop-shadow-[0_0_10px_rgba(99,102,241,0.6)]" : ""}`}
       />
 
       {showText && (

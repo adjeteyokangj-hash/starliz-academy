@@ -13,9 +13,8 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#0C132D",
     icons: [
       {
-        src: "/logo-icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/brand/starliz-logo.png",
+        type: "image/png",
       },
       {
         src: "/favicon.png",

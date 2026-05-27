@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { defaultBranding } from "@/lib/branding"
+import { defaultBranding, normalizeBranding } from "@/lib/branding"
 import { prisma } from "@/lib/db"
 
 type BrandingSettingsDelegate = {
@@ -24,7 +24,7 @@ type BrandingSettingsDelegate = {
 export async function GET() {
   const brandingSettings = (prisma as unknown as { brandingSettings?: BrandingSettingsDelegate }).brandingSettings
   if (!brandingSettings) {
-    return NextResponse.json({ branding: defaultBranding })
+    return NextResponse.json({ branding: normalizeBranding(defaultBranding) })
   }
 
   try {
@@ -39,8 +39,8 @@ export async function GET() {
       },
     })
 
-    return NextResponse.json({ branding: branding ?? defaultBranding })
+    return NextResponse.json({ branding: normalizeBranding(branding ?? defaultBranding) })
   } catch {
-    return NextResponse.json({ branding: defaultBranding })
+    return NextResponse.json({ branding: normalizeBranding(defaultBranding) })
   }
 }
