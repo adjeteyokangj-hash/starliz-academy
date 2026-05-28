@@ -26,6 +26,7 @@ type ApiResponse = {
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];
   metrics: KnowledgeGraphMetrics;
+  mode?: "dictionary" | "academic_intelligence" | "hybrid";
   recoveryPath: {
     targetWord: string | null;
     prerequisites: string[];
@@ -54,6 +55,14 @@ const EDGE_COLORS: Record<KnowledgeEdgeType, string> = {
   intervention: "#f97316",
   phonics: "#8b5cf6",
   curriculum: "#14b8a6",
+  has_mastery_state: "#6366f1",
+  has_weak_area: "#dc2626",
+  recommends: "#16a34a",
+  blocked_by: "#f43f5e",
+  requires: "#f59e0b",
+  informed_by: "#06b6d4",
+  targets: "#0ea5e9",
+  supports_readiness: "#10b981",
 };
 
 const NODE_COLORS: Record<string, string> = {
@@ -124,12 +133,22 @@ function relationBadge(type: KnowledgeEdgeType): string {
   if (type === "intervention") return "Recovery pathway";
   if (type === "curriculum") return "Curriculum mapping";
   if (type === "phonics") return "Phonics grouping";
+  if (type === "has_mastery_state") return "Mastery state link";
+  if (type === "has_weak_area") return "Weak-area link";
+  if (type === "recommends") return "Recommendation link";
+  if (type === "blocked_by") return "Weak-area blocker";
+  if (type === "requires") return "Prerequisite link";
+  if (type === "informed_by") return "Learning twin signal";
+  if (type === "targets") return "Recommendation target";
+  if (type === "supports_readiness") return "Readiness support";
   if (type === "harder") return "Progression step";
   if (type === "easier") return "Scaffold concept";
   return "Context link";
 }
 
 export default function KnowledgeGraphPage() {
+  const [mode, setMode] = useState<"dictionary" | "academic_intelligence" | "hybrid">("dictionary");
+  const [studentId, setStudentId] = useState("");
   const [query, setQuery] = useState("");
   const [subject, setSubject] = useState("");
   const [keyStage, setKeyStage] = useState("");
@@ -168,7 +187,15 @@ export default function KnowledgeGraphPage() {
       setLoading(true);
       setError(null);
       try {
+        if ((mode === "academic_intelligence" || mode === "hybrid") && !studentId.trim()) {
+          setError("Student ID is required for academic intelligence and hybrid graph modes.");
+          setLoading(false);
+          return;
+        }
+
         const params = new URLSearchParams();
+        params.set("mode", mode);
+        if (studentId.trim()) params.set("studentId", studentId.trim());
         if (query.trim()) params.set("q", query.trim());
         if (subject) params.set("subject", subject);
         if (keyStage) params.set("keyStage", keyStage);
@@ -224,7 +251,7 @@ export default function KnowledgeGraphPage() {
         setLoading(false);
       }
     },
-    [depth, interventionType, keyStage, limit, query, school, selectedEdgeType, subject, yearGroup],
+    [depth, interventionType, keyStage, limit, mode, query, school, selectedEdgeType, studentId, subject, yearGroup],
   );
 
   useEffect(() => {
@@ -237,7 +264,7 @@ export default function KnowledgeGraphPage() {
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
-  }, [query, subject, keyStage, yearGroup, school, interventionType, depth]);
+  }, [query, subject, keyStage, yearGroup, school, interventionType, depth, mode, studentId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -322,6 +349,12 @@ export default function KnowledgeGraphPage() {
 
       <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <select value={mode} onChange={(event) => setMode(event.target.value as "dictionary" | "academic_intelligence" | "hybrid")} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+            <option value="dictionary">Dictionary graph</option>
+            <option value="academic_intelligence">Academic intelligence graph</option>
+            <option value="hybrid">Hybrid graph</option>
+          </select>
+          <input value={studentId} onChange={(event) => setStudentId(event.target.value)} placeholder="Student ID (required for academic/hybrid)" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search concepts" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
           <select value={subject} onChange={(event) => setSubject(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
             <option value="">All subjects</option>

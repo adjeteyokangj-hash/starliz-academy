@@ -5,8 +5,15 @@ import { buildCoachWordHelpResponse } from "@/lib/coachDictionary";
 import type { CoachWordHelpResponse } from "@/lib/coachDictionary";
 import { buildKnowledgeGraph } from "@/lib/knowledge_graph";
 import { countDictionaryWordsForGraph, listDictionaryWords } from "@/lib/dictionary";
+import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data";
+import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
+import { listCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
+import { listHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
+import { mergeKnowledgeGraphViews, projectCurriculumGraphToKnowledgeGraph } from "@/lib/admin_graph";
 
 const querySchema = z.object({
+  mode: z.enum(["dictionary", "academic_intelligence", "hybrid"]).optional(),
+  studentId: z.string().optional(),
   q: z.string().optional(),
   subject: z.string().optional(),
   keyStage: z.string().optional(),
@@ -25,69 +32,136 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const parsed = querySchema.parse(Object.fromEntries(searchParams.entries()));
+  const mode = parsed.mode ?? "dictionary";
 
   const limit = parsed.limit ?? 250;
   const offset = parsed.offset ?? 0;
   const depth = parsed.depth ?? 2;
 
-  const [totalWords, listPayload] = await Promise.all([
-    countDictionaryWordsForGraph({
-      q: parsed.q,
-      subject: parsed.subject,
-      keyStage: parsed.keyStage,
-      yearGroup: parsed.yearGroup,
-      active: true,
-    }),
-    listDictionaryWords({
-      q: parsed.q,
-      subject: parsed.subject,
-      keyStage: parsed.keyStage,
-      yearGroup: parsed.yearGroup,
-      active: true,
-      skip: offset,
-      limit,
-    }),
-  ]);
+  if ((mode === "academic_intelligence" || mode === "hybrid") && !parsed.studentId?.trim()) {
+    return NextResponse.json({ error: "studentId is required for academic_intelligence and hybrid graph modes." }, { status: 400 });
+  }
 
-  const graph = buildKnowledgeGraph({
-    words: listPayload.items,
-    search: parsed.q,
-    depthLimit: depth,
-    offset: 0,
-    limit,
-  });
+  let dictionaryView: {
+    nodes: ReturnType<typeof buildKnowledgeGraph>["nodes"];
+    edges: ReturnType<typeof buildKnowledgeGraph>["edges"];
+    metrics: ReturnType<typeof buildKnowledgeGraph>["metrics"];
+    totalWords: number;
+    returned: number;
+    hasMore: boolean;
+  } | null = null;
 
   let recoveryPath: CoachWordHelpResponse["recoveryPlan"] | null = null;
 
-  if (parsed.recoveryWord) {
-    const coachResponse = await buildCoachWordHelpResponse({
-      word: parsed.recoveryWord,
-      subject: parsed.subject,
-      keyStage: parsed.keyStage,
-      yearGroup: parsed.yearGroup,
-      supportLevel: 2,
+  if (mode === "dictionary" || mode === "hybrid") {
+    const [totalWords, listPayload] = await Promise.all([
+      countDictionaryWordsForGraph({
+        q: parsed.q,
+        subject: parsed.subject,
+        keyStage: parsed.keyStage,
+        yearGroup: parsed.yearGroup,
+        active: true,
+      }),
+      listDictionaryWords({
+        q: parsed.q,
+        subject: parsed.subject,
+        keyStage: parsed.keyStage,
+        yearGroup: parsed.yearGroup,
+        active: true,
+        skip: offset,
+        limit,
+      }),
+    ]);
+
+    const graph = buildKnowledgeGraph({
+      words: listPayload.items,
+      search: parsed.q,
+      depthLimit: depth,
+      offset: 0,
+      limit,
     });
-    recoveryPath = coachResponse.recoveryPlan;
+
+    if (parsed.recoveryWord) {
+      const coachResponse = await buildCoachWordHelpResponse({
+        word: parsed.recoveryWord,
+        subject: parsed.subject,
+        keyStage: parsed.keyStage,
+        yearGroup: parsed.yearGroup,
+        supportLevel: 2,
+      });
+      recoveryPath = coachResponse.recoveryPlan;
+    }
+
+    const hasMore = offset + listPayload.items.length < totalWords;
+    dictionaryView = {
+      nodes: graph.nodes,
+      edges: graph.edges,
+      metrics: {
+        ...graph.metrics,
+        totalWords,
+      },
+      totalWords,
+      returned: listPayload.items.length,
+      hasMore,
+    };
   }
 
-  const hasMore = offset + listPayload.items.length < totalWords;
+  let academicView: {
+    nodes: ReturnType<typeof projectCurriculumGraphToKnowledgeGraph>["nodes"];
+    edges: ReturnType<typeof projectCurriculumGraphToKnowledgeGraph>["edges"];
+    metrics: ReturnType<typeof projectCurriculumGraphToKnowledgeGraph>["metrics"];
+  } | null = null;
+
+  if (mode === "academic_intelligence" || mode === "hybrid") {
+    const studentId = parsed.studentId!.trim();
+    const source = await buildAcademicSourceForStudent(studentId);
+    if (!source) return NextResponse.json({ error: "Student not found." }, { status: 404 });
+
+    const [existingCatchUpTasks, existingHomeworkTasks] = await Promise.all([
+      listCatchUpTasks(studentId),
+      listHomeworkTasks(studentId),
+    ]);
+    const output = buildAcademicIntelligence(source, {
+      existingCatchUpTasks,
+      existingHomeworkTasks,
+    });
+
+    academicView = projectCurriculumGraphToKnowledgeGraph({
+      graph: output.curriculumIntelligenceGraph,
+      prefix: "academic",
+    });
+  }
+  const merged = mergeKnowledgeGraphViews({
+    dictionary: dictionaryView
+      ? {
+        nodes: dictionaryView.nodes,
+        edges: dictionaryView.edges,
+        metrics: dictionaryView.metrics,
+      }
+      : null,
+    academic: academicView,
+    mode,
+  });
+
+  const hasMore = dictionaryView?.hasMore ?? false;
+  const returned = dictionaryView?.returned ?? merged.nodes.length;
+  const totalWords = dictionaryView?.totalWords ?? merged.metrics.totalWords;
 
   return NextResponse.json({
-    nodes: graph.nodes,
-    edges: graph.edges,
-    metrics: {
-      ...graph.metrics,
-      totalWords,
-    },
+    nodes: merged.nodes,
+    edges: merged.edges,
+    metrics: merged.metrics,
     recoveryPath,
     pagination: {
       offset,
       limit,
-      returned: listPayload.items.length,
+      returned,
       totalWords,
       hasMore,
     },
+    mode,
     filtersApplied: {
+      studentId: parsed.studentId ?? null,
       subject: parsed.subject ?? null,
       keyStage: parsed.keyStage ?? null,
       yearGroup: parsed.yearGroup ?? null,

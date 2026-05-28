@@ -1,10 +1,13 @@
 import { Buffer } from "buffer";
 import { generateR2ObjectKey, uploadFileToR2 } from "@/lib/r2-upload";
+import { buildGraphStorageMediaReferences } from "@/lib/academic-intelligence/graph-context";
+import type { CurriculumGraphMediaReference, CurriculumIntelligenceGraph } from "@/lib/academic-intelligence/types";
 
 export async function storeCertificateExportHtml(input: {
   certificateNumber: string;
   html: string;
-}): Promise<{ objectKey: string; publicUrl: string; mimeType: string; size: number }> {
+  graph?: CurriculumIntelligenceGraph | null;
+}): Promise<{ objectKey: string; publicUrl: string; mimeType: string; size: number; graphMediaReferences: CurriculumGraphMediaReference[] }> {
   const fileName = `${input.certificateNumber || "certificate-export"}.html`;
   const objectKey = generateR2ObjectKey({
     folder: "certificates",
@@ -25,5 +28,14 @@ export async function storeCertificateExportHtml(input: {
     publicUrl: uploaded.publicUrl,
     mimeType: "text/html; charset=utf-8",
     size: body.byteLength,
+    graphMediaReferences: input.graph
+      ? buildGraphStorageMediaReferences({
+        graph: input.graph,
+        certificateExport: {
+          objectKey: uploaded.objectKey,
+          publicUrl: uploaded.publicUrl,
+        },
+      })
+      : [],
   };
 }

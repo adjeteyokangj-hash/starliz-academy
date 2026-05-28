@@ -143,6 +143,14 @@ export async function buildAdminReports(filters: AdminReportFilters = {}) {
       unresolvedCatchUp,
       assessmentRecommended,
       weakTopic: weakTopics[0]?.topic ?? null,
+      graphSummary: {
+        adminSummary: `Aggregate graph summary: ${studentsNeedingCatchUp} catch-up hotspots, ${unresolvedCatchUp} unresolved routes, ${assessmentRecommended} assessment prompts.`,
+        reportSignals: [
+          `${avgAccuracy}% average accuracy`,
+          `${assignedCount} assignments in scope`,
+          `${weakTopics.length} weak-topic clusters tracked`,
+        ],
+      },
     },
     weakTopics,
     subscriptions: subscriptions.map((sub) => ({ parentId: sub.parentId, planKey: sub.planKey, status: sub.status, trialEndsAt: sub.trialEndsAt?.toISOString() ?? null })),
@@ -161,6 +169,10 @@ export function reportsToCsv(report: Awaited<ReturnType<typeof buildAdminReports
     unresolvedCatchUp: number;
     assessmentRecommended: number;
     weakTopic: string | null;
+    graphSummary?: {
+      adminSummary: string;
+      reportSignals: string[];
+    };
   };
   weakTopics: { topic: string; count: number }[];
   subscriptions: Array<{ parentId: string; planKey: string; status: string; trialEndsAt: string | null }>;
@@ -177,6 +189,8 @@ export function reportsToCsv(report: Awaited<ReturnType<typeof buildAdminReports
     ["unresolvedCatchUp", String(report.academicIntelligence?.unresolvedCatchUp ?? "")],
     ["assessmentRecommended", String(report.academicIntelligence?.assessmentRecommended ?? "")],
     ["weakTopic", String(report.academicIntelligence?.weakTopic ?? "")],
+    ["graphAdminSummary", String(report.academicIntelligence?.graphSummary?.adminSummary ?? "")],
+    ["graphSignals", String(report.academicIntelligence?.graphSummary?.reportSignals.join(" | ") ?? "")],
     [],
     ["weakTopic", "misses"],
     ...report.weakTopics.map((topic) => [topic.topic, String(topic.count)]),

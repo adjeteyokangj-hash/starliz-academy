@@ -423,6 +423,7 @@ export type SchoolWeekModeBlock = {
   routeTarget: string | null;
   recommendationId: string | null;
   friendlyLabel: string;
+  graphMetadata?: SchoolWeekModeBlockGraphMetadata | null;
 };
 
 export type SchoolWeekModeDayPlan = {
@@ -493,6 +494,200 @@ export type AcademicAuditHistoryDraft = {
   notes?: string | null;
 };
 
+export type CurriculumGraphNodeType =
+  | "topic"
+  | "mastery_state"
+  | "weak_area"
+  | "recommendation"
+  | "prerequisite"
+  | "learning_twin_signal"
+  | "assessment_readiness";
+
+export type CurriculumGraphEdgeType =
+  | "has_mastery_state"
+  | "has_weak_area"
+  | "recommends"
+  | "blocked_by"
+  | "requires"
+  | "informed_by"
+  | "targets"
+  | "supports_readiness";
+
+export type CurriculumGraphNode = {
+  id: string;
+  type: CurriculumGraphNodeType;
+  label: string;
+  subject?: string | null;
+  topicKey?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type CurriculumGraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type: CurriculumGraphEdgeType;
+  weight: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type CurriculumRecommendationLayer = {
+  recommendationId: string;
+  source: "catch_up" | "assessment";
+  priority: AcademicPriority;
+  status: string;
+  subject?: string | null;
+  topic?: string | null;
+  skill?: string | null;
+  reason: string;
+  action: string;
+  routeTarget?: string | null;
+};
+
+export type CurriculumMasteryOverlayEntry = {
+  topicKey: string;
+  subject: string;
+  topic?: string | null;
+  skill?: string | null;
+  masteryStatus: MasteryStatus;
+  coverageStatus: CurriculumCoverageStatus;
+  confidenceScore: number;
+  weakAreaActive: boolean;
+  revisionOverdue: boolean;
+};
+
+export type CurriculumWeakAreaTrace = {
+  weakAreaId: string;
+  subject: string;
+  topic?: string | null;
+  skill?: string | null;
+  linkedTopicKeys: string[];
+  linkedRecommendationIds: string[];
+  prerequisiteIds: string[];
+};
+
+export type CurriculumConnectedSystemKey =
+  | "curriculum_knowledge_graph"
+  | "student_mastery_data"
+  | "ai_generator"
+  | "smart_catch_up"
+  | "assessment_exam_readiness"
+  | "learning_twin"
+  | "school_day_week_mode"
+  | "parent_admin_reports"
+  | "content_quality_safeguarding"
+  | "storage_media";
+
+export type CurriculumGraphHeartbeatState = {
+  system: CurriculumConnectedSystemKey;
+  connected: boolean;
+  status: "ready" | "partial";
+  summary: string;
+  updatedAt: string;
+};
+
+export type CurriculumGraphHeartbeat = {
+  sourceOfTruth: "academic_intelligence";
+  generatedAt: string;
+  systemStates: CurriculumGraphHeartbeatState[];
+};
+
+export type CurriculumGraphAiGenerationContext = {
+  masteryGapTopics: string[];
+  prerequisiteConcepts: string[];
+  weakAreaTopics: string[];
+  recommendationFocus: string[];
+  catchUpRouteTargets: string[];
+  examReadinessBand: ExamReadinessBand;
+  examReadinessBlockers: string[];
+  learningTwinSignals: string[];
+  bestExplanationStyle: ExplanationStyleSignalType;
+  recommendedApproach: string;
+};
+
+export type SchoolWeekModeBlockGraphMetadata = {
+  blockId: string;
+  linkedNodeIds: string[];
+  recommendationIds: string[];
+  catchUpRouteTargets: string[];
+  homeworkTaskIds: string[];
+  revisionTopicKeys: string[];
+  rationale: string;
+};
+
+export type CurriculumSchoolPlanningContext = {
+  strategy: string;
+  activeDayCount: number;
+  blockMetadata: SchoolWeekModeBlockGraphMetadata[];
+  recommendationIds: string[];
+  homeworkTaskIds: string[];
+  revisionTopicKeys: string[];
+};
+
+export type CurriculumGraphReportSummary = {
+  recommendationReasons: string[];
+  parentSummary: string;
+  adminSummary: string;
+  reportSignals: string[];
+};
+
+export type CurriculumContentGovernanceProfile = {
+  ageSuitability: {
+    keyStage: string | null;
+    yearGroup: string | null;
+    status: "aligned" | "review";
+  };
+  curriculumAlignment: {
+    coveredTopicCount: number;
+    gapTopicCount: number;
+    status: "aligned" | "review";
+  };
+  sensitiveContent: {
+    status: "clear" | "needs_review";
+    flaggedTags: string[];
+  };
+  approvalStatus: {
+    requiredStatuses: Array<"reviewed" | "published">;
+    recommendedDefault: "reviewed" | "published";
+    status: "review_required" | "ready";
+  };
+  auditTrailTags: string[];
+};
+
+export type CurriculumGraphMediaReference = {
+  id: string;
+  assetType: "lesson_image" | "diagram" | "audio" | "certificate_pdf" | "generated_asset" | "homework_asset";
+  label: string;
+  nodeIds: string[];
+  routeTarget?: string | null;
+  mediaRole: "instructional" | "revision" | "evidence" | "certificate";
+  storageStatus: "planned" | "generated" | "stored";
+  publicUrl?: string | null;
+};
+
+export type CurriculumGraphMediaPlan = {
+  supportedAssetTypes: CurriculumGraphMediaReference["assetType"][];
+  references: CurriculumGraphMediaReference[];
+  summary: string;
+};
+
+export type CurriculumIntelligenceGraph = {
+  version: "v1";
+  generatedAt: string;
+  studentId: string;
+  nodes: CurriculumGraphNode[];
+  edges: CurriculumGraphEdge[];
+  recommendationLayer: CurriculumRecommendationLayer[];
+  masteryOverlay: CurriculumMasteryOverlayEntry[];
+  weakAreaTrace: CurriculumWeakAreaTrace[];
+  heartbeat: CurriculumGraphHeartbeat;
+  aiGenerationContext: CurriculumGraphAiGenerationContext;
+  schoolPlanningContext: CurriculumSchoolPlanningContext;
+  reportSummary: CurriculumGraphReportSummary;
+  contentGovernance: CurriculumContentGovernanceProfile;
+  mediaPlan: CurriculumGraphMediaPlan;
+};
+
 export type AcademicIntelligenceOutput = {
   studentId: string;
   summary: MasterySummary;
@@ -513,6 +708,7 @@ export type AcademicIntelligenceOutput = {
   reportNotes: AcademicReportNote[];
   unresolvedAcademicGaps: string[];
   nextRecommendedActions: string[];
+  curriculumIntelligenceGraph: CurriculumIntelligenceGraph;
   auditHistoryDraft: AcademicAuditHistoryDraft[];
   generatedAt: string;
 };

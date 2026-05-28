@@ -8,7 +8,14 @@ export type KnowledgeNodeType =
   | "curriculum_topic"
   | "intervention_concept"
   | "maths_concept"
-  | "spelling_family";
+  | "spelling_family"
+  | "topic"
+  | "mastery_state"
+  | "weak_area"
+  | "recommendation"
+  | "prerequisite"
+  | "learning_twin_signal"
+  | "assessment_readiness";
 
 export type KnowledgeEdgeType =
   | "prerequisite"
@@ -17,7 +24,15 @@ export type KnowledgeEdgeType =
   | "related"
   | "intervention"
   | "phonics"
-  | "curriculum";
+  | "curriculum"
+  | "has_mastery_state"
+  | "has_weak_area"
+  | "recommends"
+  | "blocked_by"
+  | "requires"
+  | "informed_by"
+  | "targets"
+  | "supports_readiness";
 
 export type KnowledgeGraphNode = {
   id: string;

@@ -8,6 +8,8 @@ import {
   buildTaskDueDateMap,
   buildTaskStatusMap,
 } from "@/lib/academic-intelligence/catchUpTasks";
+import { buildCurriculumIntelligenceGraph } from "@/lib/academic-intelligence/graph";
+import { attachGraphMetadataToSchoolWeekPlan } from "@/lib/academic-intelligence/graph-context";
 import { buildMasteryMap } from "@/lib/academic-intelligence/masteryMap";
 import { buildLearningTwinProfile } from "@/lib/academic-intelligence/learningTwin";
 import {
@@ -459,6 +461,74 @@ export function buildAcademicIntelligence(
     reportNotes: [],
     unresolvedAcademicGaps: [],
     nextRecommendedActions: [],
+    curriculumIntelligenceGraph: {
+      version: "v1",
+      generatedAt,
+      studentId: data.studentId,
+      nodes: [],
+      edges: [],
+      recommendationLayer: [],
+      masteryOverlay: [],
+      weakAreaTrace: [],
+      heartbeat: {
+        sourceOfTruth: "academic_intelligence",
+        generatedAt,
+        systemStates: [],
+      },
+      aiGenerationContext: {
+        masteryGapTopics: [],
+        prerequisiteConcepts: [],
+        weakAreaTopics: [],
+        recommendationFocus: [],
+        catchUpRouteTargets: [],
+        examReadinessBand: "not_ready",
+        examReadinessBlockers: [],
+        learningTwinSignals: [],
+        bestExplanationStyle: "step_by_step_explanation",
+        recommendedApproach: "",
+      },
+      schoolPlanningContext: {
+        strategy: "",
+        activeDayCount: 0,
+        blockMetadata: [],
+        recommendationIds: [],
+        homeworkTaskIds: [],
+        revisionTopicKeys: [],
+      },
+      reportSummary: {
+        recommendationReasons: [],
+        parentSummary: "",
+        adminSummary: "",
+        reportSignals: [],
+      },
+      contentGovernance: {
+        ageSuitability: {
+          keyStage: null,
+          yearGroup: null,
+          status: "review",
+        },
+        curriculumAlignment: {
+          coveredTopicCount: 0,
+          gapTopicCount: 0,
+          status: "review",
+        },
+        sensitiveContent: {
+          status: "clear",
+          flaggedTags: [],
+        },
+        approvalStatus: {
+          requiredStatuses: ["reviewed", "published"],
+          recommendedDefault: "reviewed",
+          status: "review_required",
+        },
+        auditTrailTags: [],
+      },
+      mediaPlan: {
+        supportedAssetTypes: [],
+        references: [],
+        summary: "",
+      },
+    },
     auditHistoryDraft: [],
     generatedAt,
   };
@@ -488,6 +558,14 @@ export function buildAcademicIntelligence(
       createdAt: output.generatedAt,
       updatedAt: output.generatedAt,
     }));
+  output.curriculumIntelligenceGraph = buildCurriculumIntelligenceGraph({
+    source: data,
+    output,
+  });
+  output.schoolWeekModePlan = attachGraphMetadataToSchoolWeekPlan(
+    output.schoolWeekModePlan,
+    output.curriculumIntelligenceGraph.schoolPlanningContext,
+  );
   output.unresolvedAcademicGaps = unresolvedAcademicGapsFromCatchUp(output);
   output.nextRecommendedActions = nextActions(output);
   output.auditHistoryDraft = buildAuditDrafts(output);
@@ -509,6 +587,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   | "examReadinessProfile"
   | "schoolWeekModePlan"
   | "nextRecommendedActions"
+  | "curriculumIntelligenceGraph"
   | "generatedAt"
 > {
   return {
@@ -530,6 +609,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
     examReadinessProfile: output.examReadinessProfile,
     schoolWeekModePlan: output.schoolWeekModePlan,
     nextRecommendedActions: output.nextRecommendedActions,
+    curriculumIntelligenceGraph: output.curriculumIntelligenceGraph,
     generatedAt: output.generatedAt,
   };
 }

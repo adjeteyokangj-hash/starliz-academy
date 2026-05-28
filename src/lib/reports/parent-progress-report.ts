@@ -74,6 +74,11 @@ export type ParentProgressReportData = {
     overdueRevision: number;
     gcseReadiness: string | null;
     parentAdminRecommendedAction: string;
+    graphSummary: {
+      recommendationReasons: string[];
+      parentSummary: string;
+      reportSignals: string[];
+    };
   };
 };
 
@@ -436,6 +441,11 @@ export async function buildParentProgressReportData(input: {
       overdueRevision: academicOutput.curriculumCoverage.filter((item) => item.coverageStatus === "overdue_revision").length,
       gcseReadiness: academicOutput.gcseReadiness ? academicOutput.gcseReadiness.readinessStatus : null,
       parentAdminRecommendedAction: academicOutput.nextRecommendedActions[0] ?? "Review weekly progress.",
+      graphSummary: {
+        recommendationReasons: academicOutput.curriculumIntelligenceGraph.reportSummary.recommendationReasons,
+        parentSummary: academicOutput.curriculumIntelligenceGraph.reportSummary.parentSummary,
+        reportSignals: academicOutput.curriculumIntelligenceGraph.reportSummary.reportSignals,
+      },
     },
   };
 }
@@ -530,6 +540,8 @@ export function buildParentProgressReportTables(report: ParentProgressReportData
         ["overdueRevision", report.academicIntelligence.overdueRevision],
         ["gcseReadiness", report.academicIntelligence.gcseReadiness ?? ""],
         ["parentAdminRecommendedAction", report.academicIntelligence.parentAdminRecommendedAction],
+        ["graphParentSummary", report.academicIntelligence.graphSummary.parentSummary],
+        ["graphSignals", report.academicIntelligence.graphSummary.reportSignals.join(" | ")],
       ],
     },
     {
@@ -570,6 +582,8 @@ export function buildParentProgressReportTables(report: ParentProgressReportData
         ["overdueRevision", report.academicIntelligence.overdueRevision],
         ["gcseReadiness", report.academicIntelligence.gcseReadiness ?? ""],
         ["parentAdminRecommendedAction", report.academicIntelligence.parentAdminRecommendedAction],
+        ["graphParentSummary", report.academicIntelligence.graphSummary.parentSummary],
+        ["graphRecommendationReasons", report.academicIntelligence.graphSummary.recommendationReasons.join(" | ")],
       ],
     },
     {

@@ -18,6 +18,14 @@ import {
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import { resolveExamBoardRecommendation, resolveExamBoardSelection } from "@/lib/ai/exam-board-resolver";
 import { buildPlannedVisualAssets, executeVisualGeneration, type PlannedVisualAsset } from "@/lib/ai/visual-generation";
+import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data";
+import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
+import {
+  buildGraphAwarePromptContext,
+  buildGraphContentQualityChecks,
+  buildGraphStorageMediaReferences,
+} from "@/lib/academic-intelligence/graph-context";
+import type { CurriculumGraphMediaReference, CurriculumIntelligenceGraph } from "@/lib/academic-intelligence/types";
 import { SKILL_MAP, serializeSkills } from "@/lib/skills";
 import { parseJsonWithRepair } from "@/lib/safe-json";
 import {
@@ -258,6 +266,14 @@ type GeneratedPreview = {
     examBoardReason: string;
     curriculumFramework: string;
     countryRegion: string;
+  };
+  graphContext?: {
+    studentId: string;
+    promptContext: string;
+    connectedSystems: string[];
+    aiGenerationContext: CurriculumIntelligenceGraph["aiGenerationContext"];
+    contentGovernance: CurriculumIntelligenceGraph["contentGovernance"];
+    mediaReferences: CurriculumGraphMediaReference[];
   };
 };
 
@@ -995,6 +1011,7 @@ function buildGeneratedPreview({
   topic,
   content,
   visualPlan,
+  graphContext,
 }: {
   subject: Subject;
   generationType: GenerationType;
@@ -1013,6 +1030,7 @@ function buildGeneratedPreview({
   topic: string;
   content: unknown;
   visualPlan?: VisualGenerationPlan;
+  graphContext?: GeneratedPreview["graphContext"];
 }): GeneratedPreview {
   const items = normalizePreviewItems(generationType, promptType, subject, content, { yearGroup, skillFocus, difficulty, topic });
   const safeTopic = topic || skillFocus || generationType;
@@ -1082,6 +1100,7 @@ function buildGeneratedPreview({
       curriculumFramework: safeCurriculumFramework,
       countryRegion: safeCountryRegion,
     },
+    graphContext,
   };
 }
 
@@ -1325,6 +1344,8 @@ async function generateValidatedSpellingContent({
   keyStage,
   yearGroup,
   skillFocus,
+  graphPromptContext,
+  graphChecks,
 }: {
   apiKey: string;
   systemPrompt: string;
@@ -1336,6 +1357,8 @@ async function generateValidatedSpellingContent({
   keyStage: string;
   yearGroup: string;
   skillFocus: string;
+  graphPromptContext?: string;
+  graphChecks?: Parameters<typeof validateAiContentQuality>[0]["graphChecks"];
 }) {
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
   const collected: unknown[] = [];
@@ -1350,7 +1373,7 @@ async function generateValidatedSpellingContent({
 
   for (let attempt = 0; attempt < 4 && collected.length < count; attempt += 1) {
     const needed = count - collected.length;
-    lastPrompt = buildUserPrompt(
+    const basePrompt = buildUserPrompt(
       "spelling",
       "spelling",
       level,
@@ -1366,6 +1389,7 @@ async function generateValidatedSpellingContent({
       [],
       repairFeedback,
     );
+    lastPrompt = graphPromptContext ? `${basePrompt}\n\nGRAPH CONTEXT:\n${graphPromptContext}` : basePrompt;
     const { parsed } = await requestOpenAiJson(apiKey, systemPrompt, lastPrompt);
     const incoming = Array.isArray(parsed) ? parsed : [];
     const combined = [...collected, ...incoming];
@@ -1378,6 +1402,7 @@ async function generateValidatedSpellingContent({
       skillFocus,
       difficulty: level,
       requestedCount: count,
+      graphChecks,
       items: combined,
       mode: "repair",
     });
@@ -1741,6 +1766,8 @@ async function generateValidatedStructuredContent(input: {
   activityType: string;
   masteryOutcome: string;
   scienceDiscipline: ScienceDiscipline | null;
+  graphPromptContext?: string;
+  graphChecks?: Parameters<typeof validateAiContentQuality>[0]["graphChecks"];
 }) {
   const errors = new Set<string>();
   const fixesApplied = new Set<string>();
@@ -1755,7 +1782,7 @@ async function generateValidatedStructuredContent(input: {
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const remaining = Math.max(1, input.count - acceptedItems.length);
-    promptUsed = buildUserPrompt(
+    const basePrompt = buildUserPrompt(
       input.promptType,
       input.subject,
       input.level,
@@ -1772,6 +1799,7 @@ async function generateValidatedStructuredContent(input: {
       repairFeedback,
       input.scienceDiscipline,
     );
+    promptUsed = input.graphPromptContext ? `${basePrompt}\n\nGRAPH CONTEXT:\n${input.graphPromptContext}` : basePrompt;
 
     const response = await requestOpenAiJson(input.apiKey, input.systemPrompt, promptUsed);
     providerDiagnostics.push(response.providerMeta as Record<string, unknown>);
@@ -1838,6 +1866,7 @@ async function generateValidatedStructuredContent(input: {
       skillFocus: input.skillFocus,
       difficulty: input.level,
       requestedCount: input.count,
+      graphChecks: input.graphChecks,
       items: candidateItems,
       mode: "repair",
     });
@@ -2053,6 +2082,22 @@ export async function POST(req: Request) {
   const safeLevel = Math.max(1, Math.min(maxLevel, Number.isFinite(level) ? level : 1));
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
   const safeKeyStage = keyStageForYearGroup(safeYearGroup);
+  const requestedStudentId = typeof body.studentId === "string" ? body.studentId.trim() : "";
+  const studentGraph = requestedStudentId
+    ? await buildAcademicSourceForStudent(requestedStudentId)
+      .then((source) => source ? buildAcademicIntelligence(source).curriculumIntelligenceGraph : null)
+      .catch(() => null)
+    : null;
+  const graphPromptContext = studentGraph ? buildGraphAwarePromptContext(studentGraph) : "";
+  const graphChecks = studentGraph
+    ? buildGraphContentQualityChecks({
+      graph: studentGraph,
+      subject: sourceSubject,
+      yearGroup: safeYearGroup,
+      keyStage: safeKeyStage,
+      topic,
+    })
+    : undefined;
 
   const allowedSubjectsForYear = subjectsForYearGroup(safeYearGroup);
   if (!allowedSubjectsForYear.includes(sourceSubject)) {
@@ -2844,7 +2889,8 @@ export async function POST(req: Request) {
     });
   }
 
-  const userPrompt = buildUserPrompt(promptType, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, safeExamBoard, [], targetSkills, weakAreas, "", scienceDiscipline);
+  const baseUserPrompt = buildUserPrompt(promptType, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, safeExamBoard, [], targetSkills, weakAreas, "", scienceDiscipline);
+  const userPrompt = graphPromptContext ? `${baseUserPrompt}\n\nGRAPH CONTEXT:\n${graphPromptContext}` : baseUserPrompt;
   const systemPrompt = SYSTEM_PROMPT[promptType];
 
   try {
@@ -2868,6 +2914,8 @@ export async function POST(req: Request) {
         keyStage: safeKeyStage,
         yearGroup: safeYearGroup,
         skillFocus: resolvedSkillFocus || "Silent e",
+        graphPromptContext,
+        graphChecks,
       });
       parsed = validated.content;
       promptUsed = validated.prompt;
@@ -2895,6 +2943,8 @@ export async function POST(req: Request) {
         activityType,
         masteryOutcome,
         scienceDiscipline,
+        graphPromptContext,
+        graphChecks,
       });
       parsed = validated.content;
       promptUsed = validated.prompt;
@@ -2973,13 +3023,42 @@ export async function POST(req: Request) {
       topic,
       content: parsed,
       visualPlan,
+      graphContext: studentGraph ? {
+        studentId: studentGraph.studentId,
+        promptContext: graphPromptContext,
+        connectedSystems: studentGraph.heartbeat.systemStates.filter((entry) => entry.connected).map((entry) => entry.system),
+        aiGenerationContext: studentGraph.aiGenerationContext,
+        contentGovernance: studentGraph.contentGovernance,
+        mediaReferences: buildGraphStorageMediaReferences({ graph: studentGraph }),
+      } : undefined,
     });
     const executedVisuals = await withExecutedVisualAssets({
       preview,
       visualPlan,
       apiKey,
     });
-    const finalPreview = executedVisuals.preview;
+    const finalPreview = studentGraph
+      ? {
+        ...executedVisuals.preview,
+        graphContext: {
+          studentId: studentGraph.studentId,
+          promptContext: graphPromptContext,
+          connectedSystems: studentGraph.heartbeat.systemStates.filter((entry) => entry.connected).map((entry) => entry.system),
+          aiGenerationContext: studentGraph.aiGenerationContext,
+          contentGovernance: studentGraph.contentGovernance,
+          mediaReferences: buildGraphStorageMediaReferences({
+            graph: studentGraph,
+            assets: executedVisuals.preview.visualAssets.map((asset) => ({
+              id: asset.id,
+              title: asset.title,
+              r2Key: asset.r2Key,
+              imageUrl: asset.imageUrl,
+              type: asset.type,
+            })),
+          }),
+        },
+      }
+      : executedVisuals.preview;
 
     if (shouldUseCache) {
       generationCache.set(requestKey, {

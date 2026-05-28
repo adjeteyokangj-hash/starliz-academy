@@ -61,6 +61,7 @@ export async function GET(request: Request) {
     schoolWeekModePlan: output.schoolWeekModePlan,
     masteryExpansion: output.masteryExpansion,
     gcseReadiness: output.gcseReadiness,
+    curriculumIntelligenceGraph: output.curriculumIntelligenceGraph,
     reviewActions: output.reviewActions,
     reportNotes: output.reportNotes,
     parentExplanation: "Use these recommendations to support confidence and steady progress at home.",

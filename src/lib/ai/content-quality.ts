@@ -11,6 +11,13 @@ type QualityInput = {
   difficulty?: number;
   requestedCount?: number;
   mode?: "strict" | "repair";
+  graphChecks?: {
+    ageSuitability: "aligned" | "review";
+    curriculumAlignment: "aligned" | "review";
+    approvalStatus: "review_required" | "ready";
+    flaggedTags: string[];
+    auditTrailTags: string[];
+  };
   items: unknown;
 };
 
@@ -27,6 +34,7 @@ type QualityMeta = {
   subjectMatch: boolean;
   skillTopicMatch: boolean;
   difficultyMatch: boolean;
+  graphChecks?: QualityInput["graphChecks"];
   diagnostics: {
     validationStepFailed: boolean;
     missingFields: number;
@@ -379,6 +387,7 @@ function buildMeta(input: {
   acc: ValidationAccumulator;
   requestedCount?: number;
   finalCount: number;
+  graphChecks?: QualityInput["graphChecks"];
 }): QualityMeta {
   const requested = input.requestedCount ?? input.finalCount;
   return {
@@ -394,6 +403,7 @@ function buildMeta(input: {
     subjectMatch: input.acc.subjectMismatches === 0,
     skillTopicMatch: input.acc.skillTopicMismatches === 0,
     difficultyMatch: input.acc.difficultyMismatches === 0,
+    graphChecks: input.graphChecks,
     diagnostics: (() => {
       const base = {
         validationStepFailed: input.acc.errors.length > 0,
@@ -522,6 +532,7 @@ function validateSpellingItems(
     acc,
     requestedCount: input.requestedCount,
     finalCount: acc.cleaned.length,
+    graphChecks: input.graphChecks,
   });
 
   return { cleaned: acc.cleaned, meta };
@@ -707,6 +718,7 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
     acc,
     requestedCount: input.requestedCount,
     finalCount: acc.cleaned.length,
+    graphChecks: input.graphChecks,
   });
 
   return { cleaned: acc.cleaned, meta };
