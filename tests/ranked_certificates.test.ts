@@ -145,6 +145,10 @@ test("ranked certificates display clearly in the library", () => {
   assert.equal(library[0]?.typeLabel, "Competition 1st Place");
   assert.equal(library[0]?.rankLabel, "1st Place");
   assert.equal(library[0]?.competitionName, "Year 5 Maths Challenge");
+  assert.equal(library[0]?.awardSourceType, "competition");
+  assert.equal(library[0]?.awardSourceId, "maths-challenge-2026");
+  assert.equal(library[0]?.score, 98);
+  assert.equal(library[0]?.level, "KS2");
 });
 
 test("ranked preview and export include rank event score and verification", () => {

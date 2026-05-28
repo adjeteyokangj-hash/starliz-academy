@@ -203,3 +203,33 @@ test("library remains compatible with award certificate issuing records", () => 
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.certificateType, "award_certificate");
 });
+
+test("library entry preserves ranked metadata fields", () => {
+  const raw = upsertIssuedCertificates(null, [
+    storedRecord({
+      certificateType: "COMPETITION_FINALIST",
+      title: "Year 5 Maths Challenge - Finalist",
+      awardType: "COMPETITION_FINALIST",
+      awardScope: "competition",
+      awardSourceType: "competition",
+      awardSourceId: "maths-challenge-2026",
+      competitionName: "Year 5 Maths Challenge",
+      testName: "Maths Challenge Round 1",
+      rank: null,
+      rankLabel: "Finalist",
+      tiedRank: false,
+      rankingMethod: "standard",
+      score: 94,
+      keyStage: "KS2",
+    }),
+  ]);
+  const row = listIssuedCertificatesForLibrary(raw)[0];
+  assert.ok(row);
+  assert.equal(row?.awardSourceType, "competition");
+  assert.equal(row?.awardSourceId, "maths-challenge-2026");
+  assert.equal(row?.competitionName, "Year 5 Maths Challenge");
+  assert.equal(row?.testName, "Maths Challenge Round 1");
+  assert.equal(row?.rankLabel, "Finalist");
+  assert.equal(row?.score, 94);
+  assert.equal(row?.level, "KS2");
+});

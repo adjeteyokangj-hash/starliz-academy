@@ -15,6 +15,7 @@ import CertificateShareControls from "@/components/certificates/CertificateShare
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import { resolveDashboardTier, dashboardTierLabel, isProfileComplete } from "@/lib/dashboardResolver";
 import type { CoverageEntry, SchoolWeekday } from "@/lib/academic-intelligence/types";
+import type { RankedCertificateType, RankingMethod } from "@/lib/ranked-certificates";
 
 type PortalSection =
   | "dashboard"
@@ -332,20 +333,37 @@ type ParentCertificateLibraryEntry = {
   certificateNumber: string;
   verificationCode: string;
   verificationUrl: string;
-  certificateType: "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate" | "award_certificate";
+  certificateType:
+    | "term_completion"
+    | "end_of_term_exam"
+    | "subject_achievement"
+    | "english_achievement"
+    | "mastery_certificate"
+    | "award_certificate"
+    | RankedCertificateType;
   typeLabel: string;
   typeGroupLabel: string;
   title: string;
   awardType: string | null;
   awardScope: string | null;
+  awardSourceType: string | null;
+  awardSourceId: string | null;
   subject: string | null;
   strand: string | null;
+  score: number | null;
   yearGroup: string | null;
   keyStage: string | null;
+  level: string | null;
   term: string;
   issuedAt: string;
   status: "issued" | "revoked";
   studentDisplayName: string;
+  competitionName: string | null;
+  testName: string | null;
+  rank: number | null;
+  rankLabel: string | null;
+  tiedRank: boolean | null;
+  rankingMethod: RankingMethod | null;
 };
 
 type ParentCertificatesPayload = {
@@ -1272,6 +1290,16 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <p>Certificate type: <span className="font-semibold text-white">{item.typeLabel}</span></p>
                             <p>Certificate number: <span className="font-mono font-semibold text-white">{item.certificateNumber}</span></p>
                             <p>Issued date: <span className="font-semibold text-white">{new Date(item.issuedAt).toLocaleDateString("en-GB")}</span></p>
+                            {item.subject ? <p>Subject: <span className="font-semibold text-white">{item.subject}</span></p> : null}
+                            {typeof item.score === "number" ? <p>Score: <span className="font-semibold text-white">{item.score}</span></p> : null}
+                            {item.rankLabel ? <p>Rank / place: <span className="font-semibold text-white">{item.rankLabel}</span></p> : null}
+                            {item.competitionName ? <p>Competition: <span className="font-semibold text-white">{item.competitionName}</span></p> : null}
+                            {item.testName ? <p>Test / quiz / challenge: <span className="font-semibold text-white">{item.testName}</span></p> : null}
+                            {item.awardSourceType ? <p>Award source type: <span className="font-semibold text-white">{item.awardSourceType.replaceAll("_", " ")}</span></p> : null}
+                            {item.awardSourceId ? <p>Award source id: <span className="font-semibold text-white">{item.awardSourceId}</span></p> : null}
+                            {typeof item.tiedRank === "boolean" ? <p>Tied rank: <span className="font-semibold text-white">{item.tiedRank ? "Yes" : "No"}</span></p> : null}
+                            {item.rankingMethod ? <p>Ranking method: <span className="font-semibold text-white">{item.rankingMethod.replaceAll("_", " ")}</span></p> : null}
+                            {item.level ? <p>Level: <span className="font-semibold text-white">{item.level}</span></p> : null}
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2 print:hidden">
                             <a href={item.verificationUrl} className="rounded-xl border border-white/20 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-white/10">
@@ -1316,7 +1344,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                                 certificateType={item.certificateType}
                                 typeLabel={item.typeLabel}
                                 yearGroup={item.yearGroup}
-                                keyStage={item.keyStage}
+                                keyStage={item.level ?? item.keyStage}
                                 term={item.term}
                                 subject={item.subject}
                                 strand={item.strand}
@@ -1326,6 +1354,13 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                                 certificateNumber={item.certificateNumber}
                                 verificationCode={item.verificationCode}
                                 verificationUrl={item.verificationUrl}
+                                score={item.score}
+                                competitionName={item.competitionName}
+                                testName={item.testName}
+                                rank={item.rank}
+                                rankLabel={item.rankLabel}
+                                tiedRank={item.tiedRank}
+                                rankingMethod={item.rankingMethod}
                                 status={item.status}
                                 showPrintAction={item.status === "issued"}
                               />

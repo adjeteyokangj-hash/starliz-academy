@@ -33,13 +33,17 @@ export type CertificateLibraryEntry = {
   strand: string | null;
   yearGroup: string | null;
   keyStage: string | null;
+  level: string | null;
   term: string;
   issuedAt: string;
   status: "issued" | "revoked";
   studentDisplayName: string;
   awardReason: string | null;
+  awardSourceType: string | null;
+  awardSourceId: string | null;
   competitionName: string | null;
   testName: string | null;
+  score: number | null;
   rank: number | null;
   rankLabel: string | null;
   tiedRank: boolean | null;
@@ -105,13 +109,17 @@ export function toCertificateLibraryEntry(record: IssuedCertificateRecord): Cert
     strand: record.strand ?? null,
     yearGroup: record.yearGroup ?? null,
     keyStage: record.keyStage ?? null,
+    level: record.keyStage ?? null,
     term: record.term,
     issuedAt: record.issuedAt,
     status: record.status,
     studentDisplayName: maskStudentName(record.studentName),
     awardReason: record.awardReason ?? null,
+    awardSourceType: record.awardSourceType ?? null,
+    awardSourceId: record.awardSourceId ?? null,
     competitionName: record.competitionName ?? null,
     testName: record.testName ?? null,
+    score: typeof record.score === "number" ? record.score : null,
     rank: record.rank ?? null,
     rankLabel: record.rankLabel ?? null,
     tiedRank: record.tiedRank ?? null,

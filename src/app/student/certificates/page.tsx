@@ -5,24 +5,42 @@ import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
+import type { RankedCertificateType, RankingMethod } from "@/lib/ranked-certificates";
 
 type CertificateLibraryEntry = {
   certificateNumber: string;
   verificationCode: string;
   verificationUrl: string;
-  certificateType: "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate" | "award_certificate";
+  certificateType:
+    | "term_completion"
+    | "end_of_term_exam"
+    | "subject_achievement"
+    | "english_achievement"
+    | "mastery_certificate"
+    | "award_certificate"
+    | RankedCertificateType;
   typeLabel: string;
   typeGroupLabel: string;
   title: string;
   awardType: string | null;
   awardScope: string | null;
+  awardSourceType: string | null;
+  awardSourceId: string | null;
   subject: string | null;
   strand: string | null;
+  score: number | null;
   yearGroup: string | null;
   keyStage: string | null;
+  level: string | null;
   term: string;
   issuedAt: string;
   status: "issued" | "revoked";
+  competitionName: string | null;
+  testName: string | null;
+  rank: number | null;
+  rankLabel: string | null;
+  tiedRank: boolean | null;
+  rankingMethod: RankingMethod | null;
 };
 
 type StudentCertificatesPayload = {
@@ -165,9 +183,18 @@ export default function StudentCertificatesPage() {
                       <p>Issued date: <span className="font-semibold text-slate-900">{formatDate(row.issuedAt)}</span></p>
                       <p>Term: <span className="font-semibold text-slate-900">{row.term}</span></p>
                       {row.subject ? <p>Subject: <span className="font-semibold text-slate-900">{row.subject}</span></p> : null}
+                      {typeof row.score === "number" ? <p>Score: <span className="font-semibold text-slate-900">{row.score}</span></p> : null}
                       {row.strand ? <p>Strand: <span className="font-semibold text-slate-900">{row.strand}</span></p> : null}
+                      {row.rankLabel ? <p>Rank / place: <span className="font-semibold text-slate-900">{row.rankLabel}</span></p> : null}
+                      {row.competitionName ? <p>Competition: <span className="font-semibold text-slate-900">{row.competitionName}</span></p> : null}
+                      {row.testName ? <p>Test / quiz / challenge: <span className="font-semibold text-slate-900">{row.testName}</span></p> : null}
                       {row.awardType ? <p>Award type: <span className="font-semibold text-slate-900">{row.awardType.replaceAll("_", " ")}</span></p> : null}
                       {row.awardScope ? <p>Award scope: <span className="font-semibold text-slate-900">{row.awardScope.replaceAll("_", " ")}</span></p> : null}
+                      {row.awardSourceType ? <p>Award source type: <span className="font-semibold text-slate-900">{row.awardSourceType.replaceAll("_", " ")}</span></p> : null}
+                      {row.awardSourceId ? <p>Award source id: <span className="font-semibold text-slate-900">{row.awardSourceId}</span></p> : null}
+                      {typeof row.tiedRank === "boolean" ? <p>Tied rank: <span className="font-semibold text-slate-900">{row.tiedRank ? "Yes" : "No"}</span></p> : null}
+                      {row.rankingMethod ? <p>Ranking method: <span className="font-semibold text-slate-900">{row.rankingMethod.replaceAll("_", " ")}</span></p> : null}
+                      {row.level ? <p>Level: <span className="font-semibold text-slate-900">{row.level}</span></p> : null}
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2 print:hidden">
@@ -217,7 +244,7 @@ export default function StudentCertificatesPage() {
                           certificateType={row.certificateType}
                           typeLabel={row.typeLabel}
                           yearGroup={row.yearGroup}
-                          keyStage={row.keyStage}
+                          keyStage={row.level ?? row.keyStage}
                           term={row.term}
                           subject={row.subject}
                           strand={row.strand}
@@ -227,6 +254,13 @@ export default function StudentCertificatesPage() {
                           certificateNumber={row.certificateNumber}
                           verificationCode={row.verificationCode}
                           verificationUrl={row.verificationUrl}
+                          score={row.score}
+                          competitionName={row.competitionName}
+                          testName={row.testName}
+                          rank={row.rank}
+                          rankLabel={row.rankLabel}
+                          tiedRank={row.tiedRank}
+                          rankingMethod={row.rankingMethod}
                           status={row.status}
                           showPrintAction={row.status === "issued"}
                         />
