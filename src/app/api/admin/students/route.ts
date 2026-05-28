@@ -6,6 +6,7 @@ import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { keyStageForYearGroup } from "@/lib/curriculum";
 import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
+import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 
 const createStudentSchema = z.object({
   parentId: z.string().min(1),
@@ -54,6 +55,7 @@ export async function GET(request: Request) {
             keyStageLevel: true,
             subjectFocus: true,
             aiLearningProfileJson: true,
+            learningLevel: true,
           },
         },
         schoolLinks: {
@@ -92,6 +94,7 @@ export async function GET(request: Request) {
       const classGroups = child.schoolLinks
         .map((link) => link.classroom?.name)
         .filter((name): name is string => Boolean(name));
+      const quickLevelFinder = parseQuickLevelFinderSession(child.studentProfile?.aiLearningProfileJson ?? null);
 
       return {
         id: child.id,
@@ -100,6 +103,8 @@ export async function GET(request: Request) {
         yearGroup: child.yearGroup,
         keyStageLevel: normalizedKeyStage,
         curriculumPathway: curriculumProfile.curriculumPathway,
+        learningLevel: child.studentProfile?.learningLevel ?? null,
+        placementLevels: quickLevelFinder?.levels ?? {},
         examBoard: curriculumProfile.examBoard,
         classGroup: classGroups[0] ?? null,
         classGroups,
