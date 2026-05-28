@@ -337,7 +337,7 @@ export default function StudentOnboardingPage() {
             </ul>
             <button
               type="button"
-              onClick={() => router.push("/student/dashboard")}
+              onClick={() => router.push("/student/dashboard?refresh=1")}
               className="mt-4 rounded-xl bg-emerald-300 px-4 py-2 font-black text-slate-950 transition hover:bg-emerald-200"
             >
               Continue to dashboard

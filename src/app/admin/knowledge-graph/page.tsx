@@ -873,6 +873,22 @@ export default function KnowledgeGraphPage() {
             <p className="text-xs text-slate-300">Latest audit decision: {graphAudit?.decisions[graphAudit.decisions.length - 1]?.decision ?? "-"}</p>
             <p className="text-xs text-slate-300">Overlay confidence: {studentOverlay?.confidenceScore ?? "-"}%</p>
             <p className="text-xs text-slate-300">Active interventions: {studentOverlay?.activeInterventions.length ?? 0}</p>
+            {mode === "dictionary" && heartbeat === null ? (
+              <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100">
+                Switch to <strong>Academic Intelligence</strong> or <strong>Hybrid</strong> mode and enter a Student ID to view HEART BEAT diagnostics. Dictionary mode shows curriculum graph only.
+              </p>
+            ) : null}
+            {heartbeat?.baselineSignals && heartbeat.baselineSignals.length > 0 ? (
+              <div className="mt-3">
+                <p className="text-[11px] font-black uppercase tracking-[0.1em] text-cyan-300">Initial Placement Pulse</p>
+                <p className="mt-1 text-[10px] text-slate-400">Diagnostic evidence from Quick Level Finder — not confirmed mastery.</p>
+                <div className="mt-2 space-y-1">
+                  {heartbeat.baselineSignals.map((signal, index) => (
+                    <p key={`baseline-signal-${index}`} className="text-xs text-slate-300">{signal}</p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
