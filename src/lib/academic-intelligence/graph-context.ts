@@ -9,6 +9,7 @@ import type {
   CurriculumGraphReportSummary,
   CurriculumIntelligenceGraph,
   CurriculumSchoolPlanningContext,
+  QuickLevelFinderBaselineDiagnostic,
   SchoolWeekModeBlock,
   SchoolWeekModePlan,
 } from "@/lib/academic-intelligence/types";
@@ -59,8 +60,30 @@ export function buildGraphHeartbeat(input: {
   generatedAt: string;
   nodeCount: number;
   edgeCount: number;
+  quickLevelFinderBaseline?: QuickLevelFinderBaselineDiagnostic | null;
 }): CurriculumGraphHeartbeat {
   const summary = `${input.nodeCount} nodes and ${input.edgeCount} edges available from the academic intelligence source of truth.`;
+  const baseline = input.quickLevelFinderBaseline ?? null;
+  const mathsBaseline = baseline?.parentSubjectScores.find((score) => score.subject === "maths") ?? null;
+  const englishBaseline = baseline?.parentSubjectScores.find((score) => score.subject === "english") ?? null;
+  const englishStrands = baseline?.englishStrandScores.map((score) => score.strand) ?? [];
+
+  const baselineSignals = baseline
+    ? [
+      "Quick Level Finder baseline available",
+      "Initial placement evidence captured",
+      mathsBaseline
+        ? `Maths baseline diagnostic: ${mathsBaseline.accuracy}% (${mathsBaseline.level})`
+        : "Maths baseline diagnostic pending",
+      englishBaseline
+        ? `English baseline diagnostic: ${englishBaseline.accuracy}% (${englishBaseline.level})`
+        : "English baseline diagnostic pending",
+      englishStrands.length
+        ? `English strand baselines detected: ${englishStrands.join(", ")}`
+        : "English strand baseline signals not yet detected",
+      "Use lesson attempts and progress records before confirming mastery or weak areas",
+    ]
+    : [];
 
   return {
     sourceOfTruth: "academic_intelligence",
@@ -77,7 +100,9 @@ export function buildGraphHeartbeat(input: {
         system: "student_mastery_data",
         connected: true,
         status: "ready",
-        summary: "Mastery overlay connects topics to mastery states and active weak areas.",
+        summary: baseline
+          ? "Mastery overlay includes an initial Quick Level Finder placement pulse; mastery and weak-area conclusions still depend on lesson and progress evidence."
+          : "Mastery overlay connects topics to mastery states and active weak areas.",
         updatedAt: input.generatedAt,
       },
       {
@@ -98,14 +123,18 @@ export function buildGraphHeartbeat(input: {
         system: "assessment_exam_readiness",
         connected: true,
         status: "ready",
-        summary: "Assessment recommendations connect directly to readiness blockers and readiness support edges.",
+        summary: baseline
+          ? "Assessment recommendations include baseline placement signals from Quick Level Finder while keeping readiness decisions evidence-driven."
+          : "Assessment recommendations connect directly to readiness blockers and readiness support edges.",
         updatedAt: input.generatedAt,
       },
       {
         system: "learning_twin",
         connected: true,
         status: "ready",
-        summary: "Learning twin explanation DNA signals are attached as graph signals that can guide delivery.",
+        summary: baseline
+          ? "Learning twin can read baseline placement context as an initial pulse before long-term personalization evidence accumulates."
+          : "Learning twin explanation DNA signals are attached as graph signals that can guide delivery.",
         updatedAt: input.generatedAt,
       },
       {
@@ -119,7 +148,9 @@ export function buildGraphHeartbeat(input: {
         system: "parent_admin_reports",
         connected: true,
         status: "ready",
-        summary: "Parent and admin reports can read recommendation reasons and report signals from the graph.",
+        summary: baseline
+          ? "Parent/admin reports can include baseline placement evidence from Quick Level Finder alongside ongoing recommendation signals."
+          : "Parent and admin reports can read recommendation reasons and report signals from the graph.",
         updatedAt: input.generatedAt,
       },
       {
@@ -137,6 +168,7 @@ export function buildGraphHeartbeat(input: {
         updatedAt: input.generatedAt,
       },
     ],
+    baselineSignals,
   };
 }
 
@@ -368,6 +400,7 @@ export function attachGraphMetadataToSchoolWeekPlan(
 export function buildGraphAwarePromptContext(graph: CurriculumIntelligenceGraph): string {
   const aiContext = graph.aiGenerationContext;
   const governance = graph.contentGovernance;
+  const heartbeatBaseline = graph.heartbeat.baselineSignals ?? [];
   const mastery = aiContext.masteryGapTopics.length
     ? `Priority gaps: ${aiContext.masteryGapTopics.join(", ")}.`
     : "No major mastery gaps are currently active.";
@@ -381,6 +414,7 @@ export function buildGraphAwarePromptContext(graph: CurriculumIntelligenceGraph)
     aiContext.prerequisiteConcepts.length ? `Prerequisites to reinforce: ${aiContext.prerequisiteConcepts.join(", ")}.` : "",
     aiContext.learningTwinSignals.length ? `Preferred explanation styles: ${aiContext.learningTwinSignals.join(", ")}.` : "",
     `Recommended approach: ${aiContext.recommendedApproach}.`,
+    heartbeatBaseline.length ? `Baseline pulse: ${heartbeatBaseline.slice(0, 2).join(". ")}.` : "",
     blockers,
     `Approval expectation: default to ${governance.approvalStatus.recommendedDefault} before assignment.`,
   ].filter(Boolean).join(" ");

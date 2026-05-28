@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { normalizeExamBoard } from "@/lib/curriculum";
 import { parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { readSchoolWeekSettingsFromProfileJson } from "@/lib/academic-intelligence/schoolWeekSettings";
+import { parseQuickLevelFinderBaselineDiagnostic } from "@/lib/academic-intelligence/quickLevelFinderBaseline";
 import type { AcademicSourceData, AssessmentType } from "@/lib/academic-intelligence/types";
 
 function parseMetadata(raw: string | null): {
@@ -162,10 +163,12 @@ export async function buildAcademicSourceForStudent(studentId: string): Promise<
 
   let examBoard: string | null = null;
   let keyStage = child.studentProfile?.keyStageLevel ?? null;
+  const profileJson = child.studentProfile?.aiLearningProfileJson ?? null;
   const schoolWeekSettings = readSchoolWeekSettingsFromProfileJson(child.studentProfile?.aiLearningProfileJson ?? null);
+  const quickLevelFinderBaseline = parseQuickLevelFinderBaselineDiagnostic(profileJson);
   try {
-    const parsed = child.studentProfile?.aiLearningProfileJson
-      ? (JSON.parse(child.studentProfile.aiLearningProfileJson) as Record<string, unknown>)
+    const parsed = profileJson
+      ? (JSON.parse(profileJson) as Record<string, unknown>)
       : null;
     examBoard = normalizeExamBoard(typeof parsed?.examBoard === "string" ? parsed.examBoard : null);
     keyStage = keyStage ?? (typeof parsed?.keyStage === "string" ? parsed.keyStage : null);
@@ -307,6 +310,7 @@ export async function buildAcademicSourceForStudent(studentId: string): Promise<
       createdAt: item.createdAt.toISOString(),
     })),
     assessmentHistory,
+    quickLevelFinderBaseline,
     schoolWeekSettings,
     generatedAt: new Date().toISOString(),
   };

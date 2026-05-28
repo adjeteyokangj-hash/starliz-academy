@@ -438,6 +438,7 @@ export function buildCurriculumIntelligenceGraph(input: {
       generatedAt: output.generatedAt,
       nodeCount: nodesArray.length,
       edgeCount: edgesArray.length,
+      quickLevelFinderBaseline: source.quickLevelFinderBaseline ?? null,
     }),
     aiGenerationContext,
     schoolPlanningContext,

@@ -260,6 +260,28 @@ export type AssessmentHistoryRecord = TopicSignal & {
   createdAt: string;
 };
 
+export type QuickLevelFinderLevel = {
+  accuracy: number;
+  level: "below" | "secure" | "advanced";
+};
+
+export type QuickLevelFinderBaselineDiagnostic = {
+  completedAt: string;
+  yearGroup: string | null;
+  keyStage: string | null;
+  confidenceLabel: "baseline_placement_signal";
+  parentSubjectScores: Array<{
+    subject: string;
+    accuracy: number;
+    level: QuickLevelFinderLevel["level"];
+  }>;
+  englishStrandScores: Array<{
+    strand: string;
+    accuracy: number;
+    level: QuickLevelFinderLevel["level"];
+  }>;
+};
+
 export type AcademicSourceData = {
   studentId: string;
   studentName?: string | null;
@@ -274,6 +296,7 @@ export type AcademicSourceData = {
   dictionarySignals: DictionarySignalRecord[];
   progressRecords: ProgressRecord[];
   assessmentHistory: AssessmentHistoryRecord[];
+  quickLevelFinderBaseline?: QuickLevelFinderBaselineDiagnostic | null;
   schoolWeekSettings?: SchoolWeekSettings;
   generatedAt?: string;
 };
@@ -590,6 +613,7 @@ export type CurriculumGraphHeartbeat = {
   sourceOfTruth: "academic_intelligence";
   generatedAt: string;
   systemStates: CurriculumGraphHeartbeatState[];
+  baselineSignals?: string[];
 };
 
 export type CurriculumGraphAiGenerationContext = {
