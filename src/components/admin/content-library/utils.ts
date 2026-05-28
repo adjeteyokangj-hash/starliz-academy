@@ -17,6 +17,65 @@ export function normalizeText(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function parseLearningLevel(value: string | null | undefined): number | null {
+  const normalized = normalizeText(value);
+  if (!normalized) return null;
+  const matched = normalized.match(/\d+/);
+  if (!matched) return null;
+  const parsed = Number(matched[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function placementEntryForSubject(
+  levels: Record<string, { accuracy: number; level: "below" | "secure" | "advanced" }> | undefined,
+  subject: string,
+): { accuracy: number; level: "below" | "secure" | "advanced" } | null {
+  if (!levels) return null;
+  const keys = [
+    normalizeText(subject),
+    normalizeText(subject).replace(/-/g, " "),
+    normalizeText(subject).replace(/\s+/g, "-"),
+  ];
+  for (const key of keys) {
+    if (key && levels[key]) return levels[key];
+  }
+  return null;
+}
+
+function placementSupportsAssignment(input: {
+  contentSubject: string;
+  contentPathway: string | null;
+  contentKeyStage: string | null;
+  contentLevel: number | null;
+  studentPathway: string | null | undefined;
+  studentKeyStage: string | null;
+  studentLearningLevel: string | null | undefined;
+  placementLevels: Record<string, { accuracy: number; level: "below" | "secure" | "advanced" }> | undefined;
+}): boolean {
+  const pathwayMatches = !input.contentPathway
+    || !input.studentPathway
+    || normalizeText(input.contentPathway) === normalizeText(input.studentPathway);
+  const keyStageMatches = !input.contentKeyStage
+    || !input.studentKeyStage
+    || normalizeText(input.contentKeyStage) === normalizeText(input.studentKeyStage);
+  if (!pathwayMatches || !keyStageMatches) return false;
+
+  const placementBySubject = placementEntryForSubject(input.placementLevels, input.contentSubject);
+  const learningLevel = parseLearningLevel(input.studentLearningLevel);
+
+  if (placementBySubject) {
+    if (placementBySubject.level === "below") return input.contentLevel === null || input.contentLevel <= 2;
+    if (placementBySubject.level === "secure") return input.contentLevel === null || input.contentLevel <= 4;
+    return true;
+  }
+
+  if (learningLevel !== null && input.contentLevel !== null) {
+    return learningLevel >= input.contentLevel - 1;
+  }
+
+  return false;
+}
+
 export function getContentJsonSummary(contentJson: string): ContentSummary {
   try {
     const parsed = JSON.parse(contentJson) as unknown;
@@ -95,7 +154,18 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
   const studentYear = normalizeYearGroup(student.yearGroup ?? null);
   const studentKeyStage = normalizeKeyStage(student.keyStageLevel) ?? (studentYear ? keyStageForYearGroup(studentYear) : null);
   const strictAgeRange = parseAgeGroupRange(meta.ageGroup) ?? deriveAgeRangeFromCurriculumTags(meta.ageGroup);
+  const placementSupported = placementSupportsAssignment({
+    contentSubject: meta.subject,
+    contentPathway: meta.curriculumPathway,
+    contentKeyStage: meta.keyStage,
+    contentLevel: Number.isFinite(item.level) ? item.level : null,
+    studentPathway: student.curriculumPathway,
+    studentKeyStage,
+    studentLearningLevel: student.learningLevel,
+    placementLevels: student.placementLevels,
+  });
   const studentSchoolIds = student.schoolIds ?? [];
+  const overrideWarning = "Placement pathway supports assignment; DOB/year mismatch flagged for review.";
   const shouldCheckExamBoard = shouldApplyExamBoardTag({
     yearGroup: meta.yearGroup,
     keyStage: meta.keyStage,
@@ -108,6 +178,7 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
       student,
       hardEligible: false,
       hardBlockReason: "Duplicate assignment",
+      warningReason: null,
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],
@@ -120,6 +191,7 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
       student,
       hardEligible: false,
       hardBlockReason: "Draft or unreviewed content",
+      warningReason: null,
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],
@@ -134,6 +206,7 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
         student,
         hardEligible: false,
         hardBlockReason: "Subject/type mismatch",
+        warningReason: null,
         recommendationLevel: "eligible_manual",
         recommendationReason: "Blocked by hard safety checks.",
         matchedWeakAreas: [],
@@ -146,6 +219,7 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
       student,
       hardEligible: false,
       hardBlockReason: "Invalid JSON",
+      warningReason: null,
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],
@@ -157,34 +231,46 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
     ?? parseYearGroupRange(meta.ageGroup)
     ?? parseYearGroupRange(meta.curriculumPathway);
   const studentYearOrdinal = yearGroupToOrdinal(studentYear);
+  let warningReason: string | null = null;
   if (contentYearRange && studentYearOrdinal !== null && (studentYearOrdinal < contentYearRange.minOrdinal || studentYearOrdinal > contentYearRange.maxOrdinal)) {
+    if (placementSupported) {
+      warningReason = overrideWarning;
+    } else {
     return {
       student,
       hardEligible: false,
       hardBlockReason: "Year mismatch",
+      warningReason: null,
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],
       recommendationScore: 0,
     };
+    }
   }
 
   if (!contentYearRange && meta.yearGroup && studentYear && meta.yearGroup !== studentYear) {
+    if (placementSupported) {
+      warningReason = overrideWarning;
+    } else {
     return {
       student,
       hardEligible: false,
       hardBlockReason: "Year mismatch",
+      warningReason: null,
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],
       recommendationScore: 0,
     };
+    }
   }
   if (meta.keyStage && studentKeyStage && meta.keyStage !== studentKeyStage) {
     return {
       student,
       hardEligible: false,
       hardBlockReason: "Key stage mismatch",
+      warningReason: null,
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],
@@ -192,21 +278,30 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
     };
   }
   if (strictAgeRange && typeof student.age === "number" && (student.age < strictAgeRange.min || student.age > strictAgeRange.max)) {
+    const distance = student.age < strictAgeRange.min
+      ? strictAgeRange.min - student.age
+      : student.age - strictAgeRange.max;
+    if (placementSupported && distance <= 2) {
+      warningReason = overrideWarning;
+    } else {
     return {
       student,
       hardEligible: false,
       hardBlockReason: "Age mismatch",
+      warningReason: null,
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],
       recommendationScore: 0,
     };
+    }
   }
   if (meta.schoolId && studentSchoolIds.length > 0 && !studentSchoolIds.includes(meta.schoolId)) {
     return {
       student,
       hardEligible: false,
       hardBlockReason: "School mismatch",
+      warningReason: null,
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],
@@ -218,6 +313,7 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
       student,
       hardEligible: false,
       hardBlockReason: "School mismatch",
+      warningReason: null,
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],
@@ -229,6 +325,7 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
       student,
       hardEligible: false,
       hardBlockReason: "Exam board mismatch",
+      warningReason: null,
       recommendationLevel: "eligible_manual",
       recommendationReason: "Blocked by hard safety checks.",
       matchedWeakAreas: [],
@@ -260,13 +357,17 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
   const recommendationReason = recommendationLevel === "recommended"
     ? "Recommended match: this content supports the student's weak area."
     : "Eligible manual assignment: no matching weak area detected.";
+  const combinedRecommendationReason = warningReason
+    ? `${recommendationReason} ${warningReason}`
+    : recommendationReason;
 
   return {
     student,
     hardEligible: true,
     hardBlockReason: null,
+    warningReason,
     recommendationLevel,
-    recommendationReason,
+    recommendationReason: combinedRecommendationReason,
     matchedWeakAreas,
     recommendationScore,
   };

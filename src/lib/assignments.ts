@@ -17,6 +17,7 @@ import {
 import { readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 import { extractLearningDnaFromProfileJson } from "@/lib/learning_dna";
 import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
+import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 
 export class SchoolLicenceAccessError extends Error {
   reason: SchoolLicenceBlockedReason;
@@ -67,6 +68,8 @@ type AssignmentSafetyMeta = {
   skillFocus: string | null;
   status: string;
   schoolId: string | null;
+  warningReason?: string | null;
+  warningFlags?: string[];
 };
 
 type AssignmentRecommendation = {
@@ -136,6 +139,65 @@ function deriveLearningDnaWeakSignals(aiLearningProfileJson: string | null | und
   return Array.from(new Set([...fromMistakes, ...fromSubjectState])).slice(0, 10);
 }
 
+function parseLearningLevel(value: string | null | undefined): number | null {
+  const normalized = normalizeText(value);
+  if (!normalized) return null;
+  const matched = normalized.match(/\d+/);
+  if (!matched) return null;
+  const parsed = Number(matched[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function placementEntryForSubject(
+  levels: Record<string, { accuracy: number; level: "below" | "secure" | "advanced" }> | undefined,
+  subject: string,
+): { accuracy: number; level: "below" | "secure" | "advanced" } | null {
+  if (!levels) return null;
+  const keys = [
+    normalizeText(subject),
+    normalizeText(subject).replace(/-/g, " "),
+    normalizeText(subject).replace(/\s+/g, "-"),
+  ];
+  for (const key of keys) {
+    if (key && levels[key]) return levels[key];
+  }
+  return null;
+}
+
+function placementSupportsAssignment(input: {
+  contentSubject: string;
+  contentPathway: string | null;
+  contentKeyStage: string | null;
+  contentLevel: number | null;
+  studentPathway: string | null;
+  studentKeyStage: string | null;
+  studentLearningLevel: string | null;
+  placementLevels: Record<string, { accuracy: number; level: "below" | "secure" | "advanced" }>;
+}): boolean {
+  const pathwayMatches = !input.contentPathway
+    || !input.studentPathway
+    || normalizeText(input.contentPathway) === normalizeText(input.studentPathway);
+  const keyStageMatches = !input.contentKeyStage
+    || !input.studentKeyStage
+    || normalizeText(input.contentKeyStage) === normalizeText(input.studentKeyStage);
+  if (!pathwayMatches || !keyStageMatches) return false;
+
+  const placementBySubject = placementEntryForSubject(input.placementLevels, input.contentSubject);
+  const learningLevel = parseLearningLevel(input.studentLearningLevel);
+
+  if (placementBySubject) {
+    if (placementBySubject.level === "below") return input.contentLevel === null || input.contentLevel <= 2;
+    if (placementBySubject.level === "secure") return input.contentLevel === null || input.contentLevel <= 4;
+    return true;
+  }
+
+  if (learningLevel !== null && input.contentLevel !== null) {
+    return learningLevel >= input.contentLevel - 1;
+  }
+
+  return false;
+}
+
 export async function getAssignmentSafetyAndRecommendation(input: {
   studentId: string;
   contentId: string;
@@ -167,7 +229,7 @@ export async function getAssignmentSafetyAndRecommendation(input: {
           where: { status: "active" },
           select: { schoolId: true },
         },
-        studentProfile: { select: { keyStageLevel: true, subjectFocus: true, aiLearningProfileJson: true } },
+        studentProfile: { select: { keyStageLevel: true, subjectFocus: true, aiLearningProfileJson: true, learningLevel: true } },
       },
     }),
     prisma.aIContentCache.findUnique({
@@ -178,6 +240,7 @@ export async function getAssignmentSafetyAndRecommendation(input: {
         contentJson: true,
         topic: true,
         skillFocus: true,
+        level: true,
         keyStage: true,
         yearGroup: true,
         contentType: true,
@@ -225,6 +288,8 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     keyStageLevel: studentKeyStage,
     aiLearningProfileJson: student.studentProfile?.aiLearningProfileJson ?? null,
   });
+  const quickLevelFinder = parseQuickLevelFinderSession(student.studentProfile?.aiLearningProfileJson ?? null);
+  const placementLevels = quickLevelFinder?.levels ?? {};
   const studentSchoolIds = student.schoolLinks.map((link) => link.schoolId);
   const meta: AssignmentSafetyMeta = {
     subject: contentSubject,
@@ -237,6 +302,8 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     skillFocus: parsedMeta.skillFocus ?? content.skillFocus ?? null,
     status: content.status,
     schoolId: parsedMeta.schoolId,
+    warningReason: null,
+    warningFlags: [],
   };
 
   if (contentSubject !== "unknown") {
@@ -266,21 +333,40 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     return { safe: false, reason: "Student has no active school context for this school-scoped content.", meta };
   }
 
+  const placementSupported = placementSupportsAssignment({
+    contentSubject,
+    contentPathway,
+    contentKeyStage: normalizedContentKeyStage,
+    contentLevel: Number.isFinite(content.level) ? content.level : null,
+    studentPathway: studentCurriculum.curriculumPathway,
+    studentKeyStage,
+    studentLearningLevel: student.studentProfile?.learningLevel ?? null,
+    placementLevels,
+  });
+  const placementWarning = "Placement pathway supports assignment; DOB/year mismatch flagged for review.";
   const studentYearOrdinal = yearGroupToOrdinal(studentYearGroup);
   if (contentYearRange && studentYearOrdinal !== null && (studentYearOrdinal < contentYearRange.minOrdinal || studentYearOrdinal > contentYearRange.maxOrdinal)) {
-    return {
-      safe: false,
-      reason: `This content is for ${contentYearRange.min}${contentYearRange.min !== contentYearRange.max ? `-${contentYearRange.max}` : ""} / ${normalizedContentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
-      meta,
-    };
+    if (!placementSupported) {
+      return {
+        safe: false,
+        reason: `This content is for ${contentYearRange.min}${contentYearRange.min !== contentYearRange.max ? `-${contentYearRange.max}` : ""} / ${normalizedContentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
+        meta,
+      };
+    }
+    meta.warningReason = placementWarning;
+    meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "year_mismatch"]));
   }
 
   if (!contentYearRange && normalizedContentYearGroup && studentYearGroup && normalizedContentYearGroup !== studentYearGroup) {
-    return {
-      safe: false,
-      reason: `This content is for ${normalizedContentYearGroup} / ${normalizedContentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
-      meta,
-    };
+    if (!placementSupported) {
+      return {
+        safe: false,
+        reason: `This content is for ${normalizedContentYearGroup} / ${normalizedContentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
+        meta,
+      };
+    }
+    meta.warningReason = placementWarning;
+    meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "year_mismatch"]));
   }
 
   if (normalizedContentKeyStage && studentKeyStage && normalizedContentKeyStage !== studentKeyStage) {
@@ -307,7 +393,14 @@ export async function getAssignmentSafetyAndRecommendation(input: {
 
   const strictAgeRange = parseAgeGroupRange(contentAgeGroup) ?? deriveAgeRangeFromCurriculumTags(contentAgeGroup);
   if (strictAgeRange && typeof student.age === "number" && (student.age < strictAgeRange.min || student.age > strictAgeRange.max)) {
-    return { safe: false, reason: `This content is designed for age group ${contentAgeGroup}.`, meta };
+    const distance = student.age < strictAgeRange.min
+      ? strictAgeRange.min - student.age
+      : student.age - strictAgeRange.max;
+    if (!placementSupported || distance > 2) {
+      return { safe: false, reason: `This content is designed for age group ${contentAgeGroup}.`, meta };
+    }
+    meta.warningReason = placementWarning;
+    meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "dob_age_mismatch"]));
   }
 
   const studentSubjectFocus = normalizeText(student.studentProfile?.subjectFocus);
@@ -331,7 +424,9 @@ export async function getAssignmentSafetyAndRecommendation(input: {
       meta,
       recommendation: {
         level: "recommended",
-        reason: "Recommended match: this content supports the student's weak area.",
+        reason: meta.warningReason
+          ? `Recommended match: this content supports the student's weak area. ${meta.warningReason}`
+          : "Recommended match: this content supports the student's weak area.",
         matchedWeakAreas,
       },
     };
@@ -343,7 +438,9 @@ export async function getAssignmentSafetyAndRecommendation(input: {
       meta,
       recommendation: {
         level: "recommended",
-        reason: "Recommended match: this content aligns with the student's subject focus.",
+        reason: meta.warningReason
+          ? `Recommended match: this content aligns with the student's subject focus. ${meta.warningReason}`
+          : "Recommended match: this content aligns with the student's subject focus.",
         matchedWeakAreas: [],
       },
     };
@@ -365,7 +462,9 @@ export async function getAssignmentSafetyAndRecommendation(input: {
       meta,
       recommendation: {
         level: "recommended",
-        reason: "Recommended by Learning DNA: this content targets predicted support needs.",
+        reason: meta.warningReason
+          ? `Recommended by Learning DNA: this content targets predicted support needs. ${meta.warningReason}`
+          : "Recommended by Learning DNA: this content targets predicted support needs.",
         matchedWeakAreas: dnaMatchedSignals,
       },
     };
@@ -376,7 +475,9 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     meta,
     recommendation: {
       level: "eligible_manual",
-      reason: "Eligible manual assignment: no matching weak area detected.",
+      reason: meta.warningReason
+        ? `Eligible manual assignment: no matching weak area detected. ${meta.warningReason}`
+        : "Eligible manual assignment: no matching weak area detected.",
       matchedWeakAreas: [],
     },
   };
@@ -452,6 +553,8 @@ export async function assignContentToStudent(input: {
       assignmentRecommendation: safety.recommendation.level,
       recommendationReason: safety.recommendation.reason,
       matchedWeakAreas: safety.recommendation.matchedWeakAreas,
+      assignmentWarning: safety.meta.warningReason ?? null,
+      assignmentWarningFlags: safety.meta.warningFlags ?? [],
     },
   });
 

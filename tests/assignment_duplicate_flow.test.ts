@@ -36,6 +36,10 @@ function makeContent(overrides: Partial<ContentItem> = {}): ContentItem {
     createdAt: new Date().toISOString(),
     createdBy: "admin",
     status: "reviewed",
+    metadataJson: JSON.stringify({
+      subject: "spelling",
+      curriculumPathway: "primary",
+    }),
     ...overrides,
   };
 }
@@ -44,8 +48,10 @@ function makeStudent(overrides: Partial<StudentOption> = {}): StudentOption {
   return {
     id: "student-1",
     name: "Alice",
+    age: 9,
     yearGroup: "Year 5",
     keyStageLevel: "KS2",
+    curriculumPathway: "primary",
     weakPatterns: [],
     ...overrides,
   };
@@ -174,4 +180,107 @@ test("student not in localDuplicates is not blocked as duplicate", () => {
   // Must not be blocked for duplicate reasons (may still be eligible)
   const isDuplicateBlock = Boolean(result.hardBlockReason?.toLowerCase().includes("duplicate"));
   assert.equal(isDuplicateBlock, false);
+});
+
+// ─── 11. DOB mismatch + placement match => allowed with warning ──────────────
+
+test("dob mismatch with placement support is allowed with warning", () => {
+  const item = makeContent({
+    contentType: "math",
+    level: 2,
+    metadataJson: JSON.stringify({ subject: "maths", curriculumPathway: "primary", keyStage: "KS2", ageGroup: "7-9" }),
+  });
+  const student = makeStudent({
+    age: 10,
+    placementLevels: { maths: { accuracy: 80, level: "secure" } },
+    learningLevel: "Level 3",
+  });
+  const result = evaluateAssignmentCandidate(item, student, new Set());
+
+  assert.equal(result.hardEligible, true);
+  assert.ok(result.warningReason?.includes("Placement pathway supports assignment"));
+});
+
+// ─── 12. Year mismatch + placement match => allowed with warning ─────────────
+
+test("year mismatch with placement support is allowed with warning", () => {
+  const item = makeContent({
+    contentType: "math",
+    yearGroup: "Year 7",
+    keyStage: "KS3",
+    level: 2,
+    metadataJson: JSON.stringify({ subject: "maths", curriculumPathway: "ks3", keyStage: "KS3" }),
+  });
+  const student = makeStudent({
+    yearGroup: "Year 5",
+    keyStageLevel: "KS3",
+    curriculumPathway: "ks3",
+    placementLevels: { maths: { accuracy: 74, level: "secure" } },
+  });
+  const result = evaluateAssignmentCandidate(item, student, new Set());
+
+  assert.equal(result.hardEligible, true);
+  assert.ok(result.warningReason?.includes("Placement pathway supports assignment"));
+});
+
+// ─── 13. No placement + mismatch => blocked ──────────────────────────────────
+
+test("year mismatch without placement support remains blocked", () => {
+  const item = makeContent({
+    contentType: "math",
+    yearGroup: "Year 7",
+    keyStage: "KS3",
+    metadataJson: JSON.stringify({ subject: "maths", curriculumPathway: "ks3", keyStage: "KS3" }),
+  });
+  const student = makeStudent({
+    yearGroup: "Year 5",
+    keyStageLevel: "KS3",
+    curriculumPathway: "ks3",
+    placementLevels: {},
+    learningLevel: null,
+  });
+  const result = evaluateAssignmentCandidate(item, student, new Set());
+
+  assert.equal(result.hardEligible, false);
+  assert.equal(result.hardBlockReason, "Year mismatch");
+});
+
+// ─── 14. Safeguarding age-restricted mismatch => blocked ─────────────────────
+
+test("large safeguarding-style age mismatch remains blocked", () => {
+  const item = makeContent({
+    contentType: "math",
+    level: 2,
+    metadataJson: JSON.stringify({ subject: "maths", curriculumPathway: "primary", keyStage: "KS2", ageGroup: "15-16" }),
+  });
+  const student = makeStudent({
+    age: 9,
+    placementLevels: { maths: { accuracy: 88, level: "advanced" } },
+    learningLevel: "Level 5",
+  });
+  const result = evaluateAssignmentCandidate(item, student, new Set());
+
+  assert.equal(result.hardEligible, false);
+  assert.equal(result.hardBlockReason, "Age mismatch");
+});
+
+// ─── 15. Fully matching profile => allowed with no warning ───────────────────
+
+test("fully matching student/content remains allowed without warning", () => {
+  const item = makeContent({
+    contentType: "math",
+    yearGroup: "Year 5",
+    keyStage: "KS2",
+    metadataJson: JSON.stringify({ subject: "maths", curriculumPathway: "primary", keyStage: "KS2", ageGroup: "9-10" }),
+  });
+  const student = makeStudent({
+    age: 9,
+    yearGroup: "Year 5",
+    keyStageLevel: "KS2",
+    curriculumPathway: "primary",
+  });
+  const result = evaluateAssignmentCandidate(item, student, new Set());
+
+  assert.equal(result.hardEligible, true);
+  assert.equal(result.warningReason, null);
 });

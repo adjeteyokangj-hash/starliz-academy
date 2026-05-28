@@ -23,6 +23,8 @@ export type StudentOption = {
   yearGroup?: string | null;
   keyStageLevel?: string | null;
   curriculumPathway?: string | null;
+  learningLevel?: string | null;
+  placementLevels?: Record<string, { accuracy: number; level: "below" | "secure" | "advanced" }>;
   examBoard?: string | null;
   classGroup?: string | null;
   classGroups?: string[];
@@ -55,6 +57,7 @@ export type StudentAssignmentCandidate = {
   student: StudentOption;
   hardEligible: boolean;
   hardBlockReason: string | null;
+  warningReason: string | null;
   recommendationLevel: "recommended" | "eligible_manual";
   recommendationReason: string;
   matchedWeakAreas: string[];

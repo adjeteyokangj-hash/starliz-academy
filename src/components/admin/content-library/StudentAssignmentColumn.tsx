@@ -38,12 +38,17 @@ export default function StudentAssignmentColumn({ title, tone, candidates, selec
               >
                 <p className="text-sm font-bold text-slate-100">{entry.student.name}</p>
                 <p className="text-xs text-slate-400">{entry.student.yearGroup || "No year"} | {entry.student.keyStageLevel || "No key stage"}</p>
+                {entry.warningReason ? (
+                  <p className="mt-1 inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-200">
+                    Warning: placement override
+                  </p>
+                ) : null}
                 {tone === "recommended" ? (
                   <p className="mt-1 text-xs text-emerald-200">{entry.recommendationReason}</p>
                 ) : null}
                 {tone === "eligible" ? (
                   <>
-                    <p className="mt-1 text-xs text-sky-200">No matching weak area detected, but eligible</p>
+                    <p className="mt-1 text-xs text-sky-200">{entry.recommendationReason}</p>
                     <p className="text-xs text-sky-300">Manual assignment allowed</p>
                   </>
                 ) : null}
