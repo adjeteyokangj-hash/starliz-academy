@@ -85,6 +85,10 @@ export async function POST(request: Request) {
   state.responses.push({
     questionId: parsed.data.questionId,
     subject: currentQuestion.subject,
+    strand: currentQuestion.strand,
+    scopedSubject: currentQuestion.strand
+      ? `${currentQuestion.subject}:${currentQuestion.strand}`
+      : currentQuestion.subject,
     correct: parsed.data.correct,
     timeSpentMs: parsed.data.timeSpentMs ?? 0,
     answeredAt: new Date().toISOString(),

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import {
   autoQuickLevelFinderSubjectsForYearGroup,
   buildQuestionPlan,
+  normaliseScopedSubjectKeyForQlf,
   parseQuickLevelFinderSession,
   quickLevelFinderQuestionRangeForYearGroup,
   sanitiseQuestion,
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
   }
 
   const coreSelectedSubjects = autoQuickLevelFinderSubjectsForYearGroup(student.yearGroup);
+  const scopedSubjects = coreSelectedSubjects.map((subject) => normaliseScopedSubjectKeyForQlf(subject));
   const questionRange = quickLevelFinderQuestionRangeForYearGroup(student.yearGroup);
   const questionCount = questionRange.max;
   const existingProfileJson = student.studentProfile?.aiLearningProfileJson ?? null;
@@ -101,19 +103,20 @@ export async function POST(request: Request) {
     });
   }
 
+  const nextSessionId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const nextSession = {
-    sessionId: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    sessionId: nextSessionId,
     status: "in_progress" as const,
     startedAt: new Date().toISOString(),
     completedAt: null,
     selectedSubjects: coreSelectedSubjects,
-    scopedSubjects: coreSelectedSubjects,
+    scopedSubjects,
     questions: buildQuestionPlan({
-      scopedSubjects: coreSelectedSubjects,
+      scopedSubjects,
       count: questionCount,
       yearGroup: student.yearGroup,
       keyStage: student.studentProfile?.keyStageLevel ?? null,
-      sessionId: undefined,
+      sessionId: nextSessionId,
     }),
     cursor: 0,
     responses: [],
@@ -143,8 +146,8 @@ export async function POST(request: Request) {
     },
     selection: {
       parentSubjects: coreSelectedSubjects,
-      scopedSubjects: coreSelectedSubjects,
-      scopedSubjectKeys: coreSelectedSubjects,
+      scopedSubjects,
+      scopedSubjectKeys: scopedSubjects,
     },
     testDesign: {
       adaptive: true,

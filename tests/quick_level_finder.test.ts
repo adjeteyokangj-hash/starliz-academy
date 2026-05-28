@@ -125,7 +125,16 @@ test("Year 4 spelling questions do not return blocked placeholder wording", () =
     assert.equal(q.subject, "english", "subject should be normalised to english");
     assert.equal(q.strand, "spelling", "strand should be spelling");
     assert.equal(questionContainsBlockedWording(q), false, `Year 4 spelling question has blocked wording: ${q.topic} | ${q.prompt}`);
-    assert.ok(q.topic.toLowerCase().includes("spelling") || q.topic.toLowerCase().includes("check") || q.topic.toLowerCase().includes("phonics"), `Year 4 spelling topic should be spelling-specific, got: ${q.topic}`);
+    assert.ok(
+      q.topic.toLowerCase().includes("spelling") ||
+      q.topic.toLowerCase().includes("check") ||
+      q.topic.toLowerCase().includes("phonics") ||
+      q.topic.toLowerCase().includes("suffix") ||
+      q.topic.toLowerCase().includes("homophone") ||
+      q.topic.toLowerCase().includes("prefix") ||
+      q.topic.toLowerCase().includes("exception"),
+      `Year 4 spelling topic should be spelling-specific, got: ${q.topic}`,
+    );
   }
 });
 
@@ -142,7 +151,11 @@ test("all supported year groups generate valid Quick Level Finder questions with
       sessionId: `test-all-${yearGroup}`,
     });
     assert.ok(plan.length > 0, `${yearGroup} should produce questions`);
+    const seenPrompts = new Set<string>();
     for (const q of plan) {
+      const promptKey = q.prompt.trim().toLowerCase();
+      assert.equal(seenPrompts.has(promptKey), false, `${yearGroup} has duplicate prompt text: "${q.prompt}"`);
+      seenPrompts.add(promptKey);
       assert.ok(q.prompt.length > 10, `${yearGroup} ${q.subject} prompt too short: "${q.prompt}"`);
       assert.ok(q.choices.length >= 2, `${yearGroup} ${q.subject} should have at least 2 choices`);
       assert.ok(q.correctIndex >= 0 && q.correctIndex < q.choices.length, `${yearGroup} ${q.subject} correctIndex out of range`);
@@ -244,6 +257,74 @@ test("buildQuestionPlan distributes subjects in round robin", () => {
   assert.equal(plan.every((q) => /^qlf-q-\d+$/.test(q.id)), true);
 });
 
+test("generated session has no duplicate prompt text", () => {
+  const plan = buildQuestionPlan({
+    scopedSubjects: ["maths", "reading", "spelling"],
+    count: 12,
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+    sessionId: "no-dup-prompts-session",
+  });
+  const prompts = plan.map((question) => question.prompt.trim().toLowerCase());
+  assert.equal(new Set(prompts).size, plan.length);
+});
+
+test("Year 4 does not repeat the Mia umbrella reading question in one session", () => {
+  const plan = buildQuestionPlan({
+    scopedSubjects: ["reading", "maths", "spelling"],
+    count: 12,
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+    sessionId: "year4-mia-umbrella-check",
+  });
+
+  const miaPrompts = plan.filter((question) =>
+    question.prompt.toLowerCase().includes("mia grabbed an umbrella before leaving because clouds were dark")
+  );
+
+  assert.ok(miaPrompts.length <= 1, `Mia umbrella prompt repeated ${miaPrompts.length} times`);
+});
+
+test("correct answer is not always option A across a generated plan", () => {
+  const plan = buildQuestionPlan({
+    scopedSubjects: ["maths", "reading", "spelling"],
+    count: 12,
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+    sessionId: "answer-order-bias-check",
+  });
+
+  const correctIndexSet = new Set(plan.map((question) => question.correctIndex));
+  assert.ok(correctIndexSet.size > 1, "Expected more than one correct answer position");
+  assert.ok(plan.some((question) => question.correctIndex !== 0), "Expected at least one non-A correct answer");
+});
+
+test("correct answer remains valid after deterministic shuffling", () => {
+  const firstPlan = buildQuestionPlan({
+    scopedSubjects: ["reading"],
+    count: 6,
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+    sessionId: "shuffle-correctness-check",
+  });
+  const secondPlan = buildQuestionPlan({
+    scopedSubjects: ["reading"],
+    count: 6,
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+    sessionId: "shuffle-correctness-check",
+  });
+
+  for (const question of firstPlan) {
+    const sameQuestion = secondPlan.find((candidate) => candidate.prompt === question.prompt);
+    assert.ok(sameQuestion, `Missing matching prompt in deterministic rebuild: ${question.prompt}`);
+    const correctChoice = question.choices[question.correctIndex] ?? "";
+    const sameCorrectChoice = sameQuestion?.choices[sameQuestion.correctIndex] ?? "";
+    assert.ok(correctChoice.length > 0, `Question ${question.id} has invalid correctIndex`);
+    assert.equal(correctChoice, sameCorrectChoice, `Correct answer changed across deterministic shuffle for: ${question.prompt}`);
+  }
+});
+
 test("buildQuestionPlan avoids repeated prompts within each default Year 10 subject", () => {
   const plan = buildQuestionPlan({
     scopedSubjects: ["maths", "english", "science"],
@@ -271,17 +352,39 @@ test("deriveQuickLevelFinderLevels computes below and advanced levels", () => {
   const levels = deriveQuickLevelFinderLevels({
     scopedSubjects: ["maths", "english:grammar"],
     responses: [
-      { questionId: "q1", subject: "maths", correct: true, timeSpentMs: 0, answeredAt: new Date().toISOString() },
-      { questionId: "q2", subject: "maths", correct: false, timeSpentMs: 0, answeredAt: new Date().toISOString() },
-      { questionId: "q3", subject: "english:grammar", correct: true, timeSpentMs: 0, answeredAt: new Date().toISOString() },
-      { questionId: "q4", subject: "english:grammar", correct: true, timeSpentMs: 0, answeredAt: new Date().toISOString() },
+      { questionId: "q1", subject: "maths", strand: null, scopedSubject: "maths", correct: true, timeSpentMs: 0, answeredAt: new Date().toISOString() },
+      { questionId: "q2", subject: "maths", strand: null, scopedSubject: "maths", correct: false, timeSpentMs: 0, answeredAt: new Date().toISOString() },
+      { questionId: "q3", subject: "english", strand: "grammar", scopedSubject: "english:grammar", correct: true, timeSpentMs: 0, answeredAt: new Date().toISOString() },
+      { questionId: "q4", subject: "english", strand: "grammar", scopedSubject: "english:grammar", correct: true, timeSpentMs: 0, answeredAt: new Date().toISOString() },
     ],
   });
 
   assert.equal(levels.maths.accuracy, 50);
   assert.equal(levels.maths.level, "below");
+  assert.equal(levels.english.accuracy, 100);
+  assert.equal(levels.english.level, "advanced");
   assert.equal(levels["english:grammar"].accuracy, 100);
   assert.equal(levels["english:grammar"].level, "advanced");
+});
+
+test("reading and spelling aggregate into english without contradictory buckets", () => {
+  const levels = deriveQuickLevelFinderLevels({
+    scopedSubjects: ["maths", "reading", "spelling"],
+    responses: [
+      { questionId: "q1", subject: "english", strand: "reading", scopedSubject: "english:reading", correct: true, timeSpentMs: 0, answeredAt: new Date().toISOString() },
+      { questionId: "q2", subject: "english", strand: "reading", scopedSubject: "english:reading", correct: true, timeSpentMs: 0, answeredAt: new Date().toISOString() },
+      { questionId: "q3", subject: "english", strand: "spelling", scopedSubject: "english:spelling", correct: false, timeSpentMs: 0, answeredAt: new Date().toISOString() },
+      { questionId: "q4", subject: "english", strand: "spelling", scopedSubject: "english:spelling", correct: true, timeSpentMs: 0, answeredAt: new Date().toISOString() },
+      { questionId: "q5", subject: "maths", strand: null, scopedSubject: "maths", correct: true, timeSpentMs: 0, answeredAt: new Date().toISOString() },
+    ],
+  });
+
+  assert.equal(typeof levels.reading, "undefined");
+  assert.equal(typeof levels.spelling, "undefined");
+  assert.equal(levels["english:reading"].accuracy, 100);
+  assert.equal(levels["english:spelling"].accuracy, 50);
+  assert.equal(levels.english.accuracy, 75);
+  assert.notEqual(levels.english.accuracy, 100);
 });
 
 test("upsert and parse roundtrip keeps session state", () => {
@@ -349,7 +452,7 @@ test("placement helpers read completion and response counts", () => {
         keyStage: "KS2",
       }],
       cursor: 1,
-      responses: [{ questionId: "qlf-q-1", subject: "maths", correct: true, timeSpentMs: 1200, answeredAt: new Date().toISOString() }],
+      responses: [{ questionId: "qlf-q-1", subject: "maths", strand: null, scopedSubject: "maths", correct: true, timeSpentMs: 1200, answeredAt: new Date().toISOString() }],
       levels: { maths: { accuracy: 100, level: "advanced" } },
     },
   });

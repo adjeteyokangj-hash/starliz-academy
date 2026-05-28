@@ -18,6 +18,8 @@ export type QuickLevelFinderQuestion = {
 export type QuickLevelFinderResponse = {
   questionId: string;
   subject: string;
+  strand: string | null;
+  scopedSubject: string;
   correct: boolean;
   timeSpentMs: number;
   answeredAt: string;
@@ -68,6 +70,20 @@ function asStringArray(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function scopedSubjectKeyFor(subject: string, strand: string | null): string {
+  return strand && strand.trim() ? `${subject}:${strand}` : subject;
+}
+
+function normalizeScopedSubjectKey(rawKey: string): string {
+  const { subject, strand } = normalizeSubjectKey(rawKey);
+  const normalized = normaliseSubjectStrandForQlf(subject, strand);
+  return scopedSubjectKeyFor(normalized.subject, normalized.strand);
+}
+
+export function normaliseScopedSubjectKeyForQlf(rawKey: string): string {
+  return normalizeScopedSubjectKey(rawKey);
+}
+
 function parseQuestion(value: unknown): QuickLevelFinderQuestion | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
@@ -116,8 +132,20 @@ function parseResponse(value: unknown): QuickLevelFinderResponse | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
   const questionId = typeof raw.questionId === "string" ? raw.questionId.trim() : "";
-  const subject = typeof raw.subject === "string" ? raw.subject.trim().toLowerCase() : "";
-  if (!questionId || !subject) return null;
+  const rawSubject = typeof raw.subject === "string" ? raw.subject.trim().toLowerCase() : "";
+  const rawStrand = typeof raw.strand === "string" && raw.strand.trim() ? raw.strand.trim().toLowerCase() : null;
+  const rawScopedSubject = typeof raw.scopedSubject === "string" && raw.scopedSubject.trim()
+    ? raw.scopedSubject.trim().toLowerCase()
+    : "";
+  if (!questionId || (!rawSubject && !rawScopedSubject)) return null;
+
+  const scopedFromRaw = rawScopedSubject
+    ? normalizeSubjectKey(rawScopedSubject)
+    : { subject: rawSubject, strand: rawStrand };
+  const normalized = normaliseSubjectStrandForQlf(scopedFromRaw.subject, scopedFromRaw.strand);
+  const subject = normalized.subject;
+  const strand = normalized.strand;
+  const scopedSubject = normalizeScopedSubjectKey(rawScopedSubject || scopedSubjectKeyFor(subject, strand));
 
   const correct = Boolean(raw.correct);
   const timeSpentMs = typeof raw.timeSpentMs === "number" && Number.isFinite(raw.timeSpentMs)
@@ -130,6 +158,8 @@ function parseResponse(value: unknown): QuickLevelFinderResponse | null {
   return {
     questionId,
     subject,
+    strand,
+    scopedSubject,
     correct,
     timeSpentMs,
     answeredAt,
@@ -369,6 +399,9 @@ function deterministicFallbackPrompt(
         { topic: "Reading check", prompt: `${yr} Reading: In the phrase "She was over the moon," what does "over the moon" mean?`, choices: ["Very happy", "Floating in space", "Very tired", "Looking at the sky"], correctIndex: 0 },
         { topic: "Reading check", prompt: `${yr} Reading: What is the main purpose of a glossary in a non-fiction book?`, choices: ["To explain key words and terms", "To list the author's awards", "To show the book's index", "To provide extra illustrations"], correctIndex: 0 },
         { topic: "Reading check", prompt: `${yr} Reading: If a character is described as "beaming," how do they most likely feel?`, choices: ["Very happy", "Very worried", "Very tired", "Very cold"], correctIndex: 0 },
+        { topic: "Reading check", prompt: `${yr} Reading: Why might a writer use dialogue in a story?`, choices: ["To reveal character thoughts and relationships", "To replace all description", "To avoid punctuation", "To shorten every sentence"], correctIndex: 0 },
+        { topic: "Reading check", prompt: `${yr} Reading: Which clue best helps you infer that a character is nervous?`, choices: ["They keep fidgeting and speaking quietly", "They laugh loudly at every line", "They run a marathon easily", "They fall asleep immediately"], correctIndex: 0 },
+        { topic: "Reading check", prompt: `${yr} Reading: What does the word "ancient" most nearly mean?`, choices: ["Very old", "Very noisy", "Very fast", "Very bright"], correctIndex: 0 },
       ];
       return opts[index % opts.length];
     }
@@ -377,6 +410,9 @@ function deterministicFallbackPrompt(
         { topic: "Spelling check", prompt: `${yr} Spelling: Which of these words is spelled correctly?`, choices: ["necessary", "necesary", "neccessary", "necassary"], correctIndex: 0 },
         { topic: "Spelling check", prompt: `${yr} Spelling: Which word is spelled correctly?`, choices: ["friend", "freind", "frend", "feiend"], correctIndex: 0 },
         { topic: "Spelling check", prompt: `${yr} Spelling: Choose the correctly spelled word.`, choices: ["because", "becaus", "becauze", "becouse"], correctIndex: 0 },
+        { topic: "Spelling check", prompt: `${yr} Spelling: Which word includes the "ough" pattern?`, choices: ["thought", "thot", "thaught", "thoat"], correctIndex: 0 },
+        { topic: "Spelling check", prompt: `${yr} Spelling: Which word has the correct suffix spelling?`, choices: ["happiness", "happynees", "happyness", "happines"], correctIndex: 0 },
+        { topic: "Spelling check", prompt: `${yr} Spelling: Which word is spelled correctly with a double consonant?`, choices: ["accommodation", "acommodation", "accomodation", "acomodation"], correctIndex: 0 },
       ];
       return opts[index % opts.length];
     }
@@ -432,6 +468,37 @@ function deterministicFallbackPrompt(
   };
 }
 
+function normalizePromptKey(prompt: string): string {
+  return prompt.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function withUniquePromptVariant(
+  promptData: { topic: string; prompt: string; choices: string[]; correctIndex: number },
+  variantIndex: number,
+): { topic: string; prompt: string; choices: string[]; correctIndex: number } {
+  const variantNumber = variantIndex + 1;
+  return {
+    ...promptData,
+    topic: `${promptData.topic} variant ${variantNumber}`,
+    prompt: `${promptData.prompt} [Variant ${variantNumber}]`,
+  };
+}
+
+function shuffleChoicesWithCorrectIndex(
+  choices: string[],
+  correctIndex: number,
+  seed: string,
+): { choices: string[]; correctIndex: number } {
+  const indexed = choices.map((choice, index) => ({ choice, index }));
+  const shuffled = shuffleWithSeed(indexed, seed);
+  const nextChoices = shuffled.map((entry) => entry.choice);
+  const nextCorrectIndex = shuffled.findIndex((entry) => entry.index === correctIndex);
+  return {
+    choices: nextChoices,
+    correctIndex: nextCorrectIndex >= 0 ? nextCorrectIndex : 0,
+  };
+}
+
 export function sanitiseQuestion(q: QuickLevelFinderQuestion, questionIndex: number): QuickLevelFinderQuestion {
   const { subject, strand } = normaliseSubjectStrandForQlf(q.subject, q.strand);
   const normalised: QuickLevelFinderQuestion = subject !== q.subject || strand !== q.strand
@@ -457,17 +524,20 @@ function questionPromptFor(input: {
   difficulty: number;
   index: number;
   subjectIndex: number;
+  sessionId?: string | null;
 }): { topic: string; prompt: string; choices: string[]; correctIndex: number } {
   const templateSeed = `${input.subject}:${input.strand ?? "general"}:${input.yearGroup}:${input.keyStage}`;
   const yearText = input.yearGroup.replace("Year ", "Year ");
   const strand = input.strand ?? null;
+  const questionSeed = `${input.sessionId ?? "session"}:${templateSeed}:${input.index}:${input.subjectIndex}:${input.difficulty}`;
 
   function withChoices(topic: string, prompt: string, choices: string[], correctIndex = 0) {
+    const shuffled = shuffleChoicesWithCorrectIndex(choices, correctIndex, `${questionSeed}:${topic}:${prompt}`);
     return {
       topic,
       prompt,
-      choices,
-      correctIndex,
+      choices: shuffled.choices,
+      correctIndex: shuffled.correctIndex,
     };
   }
 
@@ -512,6 +582,39 @@ function questionPromptFor(input: {
           ],
           correctIndex: 0,
         },
+        {
+          topic: "Retrieval",
+          prompt: `${yearText} English reading: Which detail is direct evidence that the playground was muddy after rain?`,
+          choices: [
+            "Footprints were filled with water.",
+            "Children wore blue uniforms.",
+            "The bell rang at noon.",
+            "The classroom door was open.",
+          ],
+          correctIndex: 0,
+        },
+        {
+          topic: "Vocabulary in context",
+          prompt: `${yearText} English reading: In "The engine gave a feeble cough before stopping," what does "feeble" mean?`,
+          choices: [
+            "Weak",
+            "Loud",
+            "Fast",
+            "Bright",
+          ],
+          correctIndex: 0,
+        },
+        {
+          topic: "Purpose and audience",
+          prompt: `${yearText} English reading: A leaflet lists opening times, ticket prices, and map symbols. What is its main purpose?`,
+          choices: [
+            "To inform visitors clearly.",
+            "To tell a suspense story.",
+            "To advertise a music album.",
+            "To describe a science experiment.",
+          ],
+          correctIndex: 0,
+        },
       ]);
       return withChoices(template.topic, template.prompt, template.choices, template.correctIndex);
     }
@@ -527,6 +630,30 @@ function questionPromptFor(input: {
           topic: "Phonics blend",
           prompt: `${yearText} English phonics: Which word contains the "igh" sound?`,
           choices: ["light", "lift", "lint", "list"],
+          correctIndex: 0,
+        },
+        {
+          topic: "Suffix choice",
+          prompt: `${yearText} English spelling: Which word correctly adds the suffix "-ed"?`,
+          choices: ["planned", "planed", "plannned", "planded"],
+          correctIndex: 0,
+        },
+        {
+          topic: "Homophone awareness",
+          prompt: `${yearText} English spelling: Choose the correct word to complete the sentence: "Please tie the gift with a ___ ."`,
+          choices: ["bow", "bough", "bo", "boe"],
+          correctIndex: 0,
+        },
+        {
+          topic: "Spelling common exception words",
+          prompt: `${yearText} English spelling: Which common exception word is correct?`,
+          choices: ["separate", "seperate", "separrate", "seprate"],
+          correctIndex: 0,
+        },
+        {
+          topic: "Prefix accuracy",
+          prompt: `${yearText} English spelling: Which word uses the prefix "dis-" correctly?`,
+          choices: ["disappear", "dissapear", "disapear", "dissappear"],
           correctIndex: 0,
         },
       ]);
@@ -771,7 +898,7 @@ function questionPromptFor(input: {
         topic: "Sentence building",
         prompt: `${yearText} ${input.subject}: What is the best translation of "I am going to school"?`,
         choices: [
-          "Je vais a l'ecole.",
+          "Je vais a l ecole.",
           "Je suis a l'ecole hier.",
           "Je va ecole.",
           "Je vais de l'ecole.",
@@ -828,6 +955,7 @@ export function buildQuestionPlan(input: {
     });
   const questions: QuickLevelFinderQuestion[] = [];
   const scopeCounts: Record<string, number> = {};
+  const usedPrompts = new Set<string>();
 
   for (let index = 0; index < input.count; index += 1) {
     const scope = subjectPool[index % subjectPool.length];
@@ -835,27 +963,85 @@ export function buildQuestionPlan(input: {
     const subjectIndex = scopeCounts[scopeKey] ?? 0;
     scopeCounts[scopeKey] = subjectIndex + 1;
     const difficulty = difficultyForIndex(baseDifficulty, index);
-    const promptData = questionPromptFor({
-      subject: scope.subject,
-      strand: scope.strand,
-      yearGroup: input.yearGroup ?? "Year 1",
-      keyStage: input.keyStage ?? keyStageForYearGroup(input.yearGroup ?? "Year 1"),
-      difficulty,
-      index,
-      subjectIndex,
-    });
-    questions.push(sanitiseQuestion({
+    const yearGroup = input.yearGroup ?? "Year 1";
+    const keyStage = input.keyStage ?? keyStageForYearGroup(yearGroup);
+    let selectedPromptData: { topic: string; prompt: string; choices: string[]; correctIndex: number } | null = null;
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const candidate = questionPromptFor({
+        subject: scope.subject,
+        strand: scope.strand,
+        yearGroup,
+        keyStage,
+        difficulty,
+        index,
+        subjectIndex: subjectIndex + attempt,
+        sessionId: input.sessionId,
+      });
+      const candidatePromptKey = normalizePromptKey(candidate.prompt);
+      if (!usedPrompts.has(candidatePromptKey)) {
+        selectedPromptData = candidate;
+        break;
+      }
+    }
+
+    if (!selectedPromptData) {
+      const fallback = deterministicFallbackPrompt(scope.subject, scope.strand, yearGroup, subjectIndex);
+      let variant = 0;
+      let uniqueVariant = withUniquePromptVariant(fallback, variant);
+      while (usedPrompts.has(normalizePromptKey(uniqueVariant.prompt))) {
+        variant += 1;
+        uniqueVariant = withUniquePromptVariant(fallback, variant);
+      }
+      selectedPromptData = uniqueVariant;
+    }
+
+    const question = sanitiseQuestion({
       id: `qlf-q-${index + 1}`,
       subject: scope.subject,
       strand: scope.strand,
-      topic: promptData.topic,
-      prompt: promptData.prompt,
-      choices: promptData.choices,
-      correctIndex: promptData.correctIndex,
+      topic: selectedPromptData.topic,
+      prompt: selectedPromptData.prompt,
+      choices: selectedPromptData.choices,
+      correctIndex: selectedPromptData.correctIndex,
       difficulty,
-      yearGroup: input.yearGroup ?? "Year 1",
-      keyStage: input.keyStage ?? keyStageForYearGroup(input.yearGroup ?? "Year 1"),
-    }, index));
+      yearGroup,
+      keyStage,
+    }, index);
+
+    const finalPromptKey = normalizePromptKey(question.prompt);
+    if (usedPrompts.has(finalPromptKey)) {
+      let variant = 0;
+      let uniqueQuestion = {
+        ...question,
+        ...withUniquePromptVariant({
+          topic: question.topic,
+          prompt: question.prompt,
+          choices: question.choices,
+          correctIndex: question.correctIndex,
+        },
+        variant),
+      };
+      while (usedPrompts.has(normalizePromptKey(uniqueQuestion.prompt))) {
+        variant += 1;
+        uniqueQuestion = {
+          ...question,
+          ...withUniquePromptVariant({
+            topic: question.topic,
+            prompt: question.prompt,
+            choices: question.choices,
+            correctIndex: question.correctIndex,
+          },
+          variant),
+        };
+      }
+      questions.push(uniqueQuestion);
+      usedPrompts.add(normalizePromptKey(uniqueQuestion.prompt));
+      continue;
+    }
+
+    questions.push(question);
+    usedPrompts.add(finalPromptKey);
   }
 
   return shuffleWithSeed(questions, `${input.sessionId ?? "session"}:questions:${input.count}`);
@@ -937,18 +1123,40 @@ export function inferQuickLevelFinderPlacementProfile(input: {
 export function deriveQuickLevelFinderLevels(session: Pick<QuickLevelFinderSession, "responses" | "scopedSubjects">): Record<string, QuickLevelFinderLevel> {
   const aggregate: Record<string, { total: number; correct: number }> = {};
 
-  for (const subject of session.scopedSubjects) {
-    aggregate[subject] = { total: 0, correct: 0 };
+  function ensureBucket(key: string) {
+    if (!aggregate[key]) {
+      aggregate[key] = { total: 0, correct: 0 };
+    }
+  }
+
+  for (const subjectKey of session.scopedSubjects) {
+    const normalizedScopeKey = normalizeScopedSubjectKey(subjectKey);
+    const { subject, strand } = normalizeSubjectKey(normalizedScopeKey);
+    ensureBucket(subject);
+    if (strand) {
+      ensureBucket(scopedSubjectKeyFor(subject, strand));
+    }
   }
 
   for (const response of session.responses) {
-    const subject = response.subject;
-    if (!aggregate[subject]) {
-      aggregate[subject] = { total: 0, correct: 0 };
-    }
-    aggregate[subject].total += 1;
+    const responseScopeKey = normalizeScopedSubjectKey(response.scopedSubject || scopedSubjectKeyFor(response.subject, response.strand));
+    const responseScope = normalizeSubjectKey(responseScopeKey);
+    const normalized = normaliseSubjectStrandForQlf(responseScope.subject, responseScope.strand);
+    const subjectKey = normalized.subject;
+    const strandKey = normalized.strand ? scopedSubjectKeyFor(normalized.subject, normalized.strand) : null;
+
+    ensureBucket(subjectKey);
+    aggregate[subjectKey].total += 1;
     if (response.correct) {
-      aggregate[subject].correct += 1;
+      aggregate[subjectKey].correct += 1;
+    }
+
+    if (strandKey) {
+      ensureBucket(strandKey);
+      aggregate[strandKey].total += 1;
+      if (response.correct) {
+        aggregate[strandKey].correct += 1;
+      }
     }
   }
 

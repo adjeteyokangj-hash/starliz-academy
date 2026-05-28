@@ -101,6 +101,8 @@ export async function POST(request: Request) {
     reason: "level_finder_completed",
   }).catch(() => undefined);
 
+  // TODO: QLF completion can be connected to Heartbeat once mastery/weak-area thresholds are defined.
+
   return NextResponse.json({
     ok: true,
     completed: true,
