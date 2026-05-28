@@ -45,7 +45,9 @@ export default function ParentDetailPage() {
   const params = useParams<{ id: string }>();
   const [parent, setParent] = useState<ParentDetail | null>(null);
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [resetPinLoading, setResetPinLoading] = useState(false);
   const [resetPasswordMessage, setResetPasswordMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [resetPinMessage, setResetPinMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     fetch(`/api/admin/parents/${params.id}`)
@@ -83,6 +85,41 @@ export default function ParentDetailPage() {
     }
   }
 
+  async function handleResetParentPin() {
+    if (!parent) return;
+    const confirmed = window.confirm(
+      "This will remove the parent's current PIN. The parent will need to create a new PIN before using PIN-protected parent areas again. No PIN will be generated or shown.",
+    );
+    if (!confirmed) return;
+
+    setResetPinLoading(true);
+    setResetPinMessage(null);
+    try {
+      const response = await fetch(`/api/admin/parents/${parent.id}/reset-pin`, {
+        method: "POST",
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setResetPinMessage({
+          type: "error",
+          text: payload.error ?? "Failed to reset parent PIN",
+        });
+      } else {
+        setResetPinMessage({
+          type: "success",
+          text: payload.message ?? "Parent PIN has been reset.",
+        });
+      }
+    } catch {
+      setResetPinMessage({
+        type: "error",
+        text: "An error occurred. Please try again.",
+      });
+    } finally {
+      setResetPinLoading(false);
+    }
+  }
+
   if (!parent) {
     return <AdminSectionCard title="Parent Profile"><p className="text-sm text-slate-400">Loading parent...</p></AdminSectionCard>;
   }
@@ -92,7 +129,13 @@ export default function ParentDetailPage() {
       <AdminSectionCard
         title={parent.name ?? "Parent"}
         eyebrow="Parent profile"
-        action={<div className="flex gap-2"><Link href={`/admin/parents/${parent.id}/edit`} className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-400">Edit Parent</Link><button onClick={handleResetPassword} disabled={resetPasswordLoading} className="rounded-xl bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-500 disabled:opacity-50">{resetPasswordLoading ? "Sending..." : "Reset Password"}</button></div>}
+        action={(
+          <div className="flex gap-2">
+            <Link href={`/admin/parents/${parent.id}/edit`} className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-400">Edit Parent</Link>
+            <button onClick={handleResetPassword} disabled={resetPasswordLoading} className="rounded-xl bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-500 disabled:opacity-50">{resetPasswordLoading ? "Sending..." : "Reset Password"}</button>
+            <button onClick={handleResetParentPin} disabled={resetPinLoading} className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-500 disabled:opacity-50">{resetPinLoading ? "Resetting..." : "Reset Parent PIN"}</button>
+          </div>
+        )}
       >
         {resetPasswordMessage && (
           <div className={`rounded-xl border px-4 py-3 mb-4 text-sm ${
@@ -101,6 +144,15 @@ export default function ParentDetailPage() {
               : "border-red-500/50 bg-red-500/10 text-red-300"
           }`}>
             {resetPasswordMessage.text}
+          </div>
+        )}
+        {resetPinMessage && (
+          <div className={`rounded-xl border px-4 py-3 mb-4 text-sm ${
+            resetPinMessage.type === "success"
+              ? "border-green-500/50 bg-green-500/10 text-green-300"
+              : "border-red-500/50 bg-red-500/10 text-red-300"
+          }`}>
+            {resetPinMessage.text}
           </div>
         )}
         <div className="grid gap-4 md:grid-cols-3">

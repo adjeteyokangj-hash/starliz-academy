@@ -19,6 +19,9 @@ export default function ParentPinPage() {
   const [hasPin, setHasPin] = useState<boolean | null>(null);
   const [setPinDraft, setSetPinDraft] = useState("");
   const [setPinConfirm, setSetPinConfirm] = useState("");
+  const [currentPinDraft, setCurrentPinDraft] = useState("");
+  const [newPinDraft, setNewPinDraft] = useState("");
+  const [newPinConfirm, setNewPinConfirm] = useState("");
   const [isLocked, setIsLocked] = useState(false);
   const [lockCountdown, setLockCountdown] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -146,9 +149,17 @@ export default function ParentPinPage() {
     return () => { window.removeEventListener("keydown", handleKeyDown); };
   }, [clearDigit, hasPin, loading, pushDigit, verifyPin]);
 
-  async function savePin() {
-    if (!/^\d{4}$/.test(setPinDraft)) { setError("PIN must be exactly 4 digits."); return; }
-    if (setPinDraft !== setPinConfirm) { setError("PIN values do not match."); return; }
+  async function savePin(mode: "create" | "change") {
+    if (mode === "create") {
+      if (!/^\d{4}$/.test(setPinDraft)) { setError("PIN must be exactly 4 digits."); return; }
+      if (setPinDraft !== setPinConfirm) { setError("PIN values do not match."); return; }
+    }
+
+    if (mode === "change") {
+      if (!/^\d{4}$/.test(currentPinDraft)) { setError("Current PIN must be exactly 4 digits."); return; }
+      if (!/^\d{4}$/.test(newPinDraft)) { setError("New PIN must be exactly 4 digits."); return; }
+      if (newPinDraft !== newPinConfirm) { setError("New PIN values do not match."); return; }
+    }
 
     setLoading(true);
     setError(null);
@@ -157,13 +168,20 @@ export default function ParentPinPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ pin: setPinDraft }),
+        body: JSON.stringify(
+          mode === "create"
+            ? { pin: setPinDraft }
+            : { currentPin: currentPinDraft, newPin: newPinDraft },
+        ),
       });
       const payload = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) { setError(payload?.error ?? "Could not set PIN."); return; }
       setHasPin(true);
       setSetPinDraft("");
       setSetPinConfirm("");
+      setCurrentPinDraft("");
+      setNewPinDraft("");
+      setNewPinConfirm("");
       setError(null);
     } catch {
       setError("Could not set PIN.");
@@ -196,7 +214,7 @@ export default function ParentPinPage() {
 
         {!hasPin ? (
           <div className="mt-5 space-y-3">
-            <p className="text-sm font-semibold text-slate-700">Create your parent PIN</p>
+            <p className="text-sm font-semibold text-slate-700">Create parent PIN</p>
             <input
               type="password"
               inputMode="numeric"
@@ -215,7 +233,7 @@ export default function ParentPinPage() {
               className="w-full rounded-xl border border-slate-300 px-3 py-2 text-center text-xl tracking-[0.3em]"
               placeholder="Confirm PIN"
             />
-            <Button className="w-full" onClick={() => void savePin()} disabled={loading}>Set PIN</Button>
+            <Button className="w-full" onClick={() => void savePin("create")} disabled={loading}>Create PIN</Button>
             <Button className="w-full" variant="secondary" onClick={() => router.replace("/profiles")}>Cancel</Button>
           </div>
         ) : (
@@ -274,6 +292,42 @@ export default function ParentPinPage() {
                   <Button onClick={() => void verifyPin()} disabled={loading || pin.length !== 4}>Unlock</Button>
                 </div>
                 <p className="mt-2 text-xs text-slate-500">Tip: use keyboard or numpad digits, Backspace to delete, Enter to unlock.</p>
+
+                <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-700">Change parent PIN</p>
+                  <div className="mt-3 space-y-2">
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={currentPinDraft}
+                      onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-center text-xl tracking-[0.3em]"
+                      placeholder="Current PIN"
+                    />
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={newPinDraft}
+                      onChange={(e) => setNewPinDraft(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-center text-xl tracking-[0.3em]"
+                      placeholder="New PIN"
+                    />
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={newPinConfirm}
+                      onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-center text-xl tracking-[0.3em]"
+                      placeholder="Confirm new PIN"
+                    />
+                  </div>
+                  <Button className="mt-3 w-full" variant="secondary" onClick={() => void savePin("change")} disabled={loading}>
+                    Change PIN
+                  </Button>
+                </div>
               </>
             )}
           </>
