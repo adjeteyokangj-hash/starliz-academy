@@ -10,6 +10,13 @@ import {
 } from "@/lib/academic-intelligence/catchUpTasks";
 import { buildCurriculumIntelligenceGraph } from "@/lib/academic-intelligence/graph";
 import { attachGraphMetadataToSchoolWeekPlan } from "@/lib/academic-intelligence/graph-context";
+import {
+  buildDefaultApprovalWorkflow,
+  buildDefaultGraphAuditMetadata,
+  buildDefaultGraphFallback,
+  buildGraphProtectionStatus,
+  buildStudentSafeGraph,
+} from "@/lib/academic-intelligence/graph-protection";
 import { buildMasteryMap } from "@/lib/academic-intelligence/masteryMap";
 import { buildLearningTwinProfile } from "@/lib/academic-intelligence/learningTwin";
 import {
@@ -397,6 +404,7 @@ export function buildAcademicIntelligence(
   options?: {
     existingCatchUpTasks?: CatchUpTaskRecord[];
     existingHomeworkTasks?: HomeworkTaskRecord[];
+    graphBuilder?: typeof buildCurriculumIntelligenceGraph;
   },
 ): AcademicIntelligenceOutput {
   const generatedAt = data.generatedAt ?? new Date().toISOString();
@@ -528,6 +536,13 @@ export function buildAcademicIntelligence(
         references: [],
         summary: "",
       },
+      protection: buildGraphProtectionStatus({
+        nodes: [],
+        edges: [],
+      }),
+      approvalWorkflow: buildDefaultApprovalWorkflow(),
+      fallback: buildDefaultGraphFallback(),
+      auditMetadata: buildDefaultGraphAuditMetadata(),
     },
     auditHistoryDraft: [],
     generatedAt,
@@ -558,10 +573,39 @@ export function buildAcademicIntelligence(
       createdAt: output.generatedAt,
       updatedAt: output.generatedAt,
     }));
-  output.curriculumIntelligenceGraph = buildCurriculumIntelligenceGraph({
-    source: data,
-    output,
-  });
+  const graphBuilder = options?.graphBuilder ?? buildCurriculumIntelligenceGraph;
+  try {
+    output.curriculumIntelligenceGraph = graphBuilder({
+      source: data,
+      output,
+    });
+  } catch (error) {
+    output.curriculumIntelligenceGraph = {
+      ...output.curriculumIntelligenceGraph,
+      generatedAt: output.generatedAt,
+      studentId: output.studentId,
+      heartbeat: {
+        sourceOfTruth: "academic_intelligence",
+        generatedAt: output.generatedAt,
+        systemStates: output.curriculumIntelligenceGraph.heartbeat.systemStates,
+      },
+      fallback: {
+        applied: true,
+        reason: error instanceof Error ? error.message : "Graph build failure",
+        fallbackGeneratedAt: output.generatedAt,
+      },
+      auditMetadata: {
+        decisions: [
+          {
+            at: output.generatedAt,
+            actor: "academic_intelligence_builder",
+            decision: "build_fallback",
+            reason: error instanceof Error ? error.message : "Graph build failure",
+          },
+        ],
+      },
+    };
+  }
   output.schoolWeekModePlan = attachGraphMetadataToSchoolWeekPlan(
     output.schoolWeekModePlan,
     output.curriculumIntelligenceGraph.schoolPlanningContext,
@@ -609,7 +653,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
     examReadinessProfile: output.examReadinessProfile,
     schoolWeekModePlan: output.schoolWeekModePlan,
     nextRecommendedActions: output.nextRecommendedActions,
-    curriculumIntelligenceGraph: output.curriculumIntelligenceGraph,
+    curriculumIntelligenceGraph: buildStudentSafeGraph(output.curriculumIntelligenceGraph),
     generatedAt: output.generatedAt,
   };
 }

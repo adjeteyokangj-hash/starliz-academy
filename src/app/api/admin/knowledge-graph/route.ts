@@ -10,6 +10,31 @@ import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicI
 import { listCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
 import { listHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
 import { mergeKnowledgeGraphViews, projectCurriculumGraphToKnowledgeGraph } from "@/lib/admin_graph";
+import { evaluateGraphChangeProposal } from "@/lib/academic-intelligence/graph-protection";
+
+const proposalSchema = z.object({
+  studentId: z.string().min(1),
+  approve: z.boolean().optional(),
+  reason: z.string().min(3),
+  action: z.enum(["add_node", "add_edge", "update_node", "update_edge", "remove_node", "remove_edge"]),
+  source: z.enum(["ai", "admin"]),
+  node: z.object({
+    id: z.string(),
+    type: z.enum(["topic", "mastery_state", "weak_area", "recommendation", "prerequisite", "learning_twin_signal", "assessment_readiness"]),
+    label: z.string(),
+    subject: z.string().nullable().optional(),
+    topicKey: z.string().nullable().optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  }).optional(),
+  edge: z.object({
+    id: z.string(),
+    source: z.string(),
+    target: z.string(),
+    type: z.enum(["has_mastery_state", "has_weak_area", "recommends", "blocked_by", "requires", "informed_by", "targets", "supports_readiness"]),
+    weight: z.number(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  }).optional(),
+});
 
 const querySchema = z.object({
   mode: z.enum(["dictionary", "academic_intelligence", "hybrid"]).optional(),
@@ -111,6 +136,18 @@ export async function GET(request: Request) {
     edges: ReturnType<typeof projectCurriculumGraphToKnowledgeGraph>["edges"];
     metrics: ReturnType<typeof projectCurriculumGraphToKnowledgeGraph>["metrics"];
   } | null = null;
+  let heartbeat: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["heartbeat"] | null = null;
+  let protection: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["protection"] | null = null;
+  let approvalWorkflow: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["approvalWorkflow"] | null = null;
+  let fallback: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["fallback"] | null = null;
+  let graphAudit: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["auditMetadata"] | null = null;
+  let studentOverlay: {
+    masteryGapTopics: string[];
+    weakAreaTopics: string[];
+    examReadinessBand: string;
+    recommendationFocus: string[];
+    reportSignals: string[];
+  } | null = null;
 
   if (mode === "academic_intelligence" || mode === "hybrid") {
     const studentId = parsed.studentId!.trim();
@@ -130,6 +167,18 @@ export async function GET(request: Request) {
       graph: output.curriculumIntelligenceGraph,
       prefix: "academic",
     });
+    heartbeat = output.curriculumIntelligenceGraph.heartbeat;
+    protection = output.curriculumIntelligenceGraph.protection;
+    approvalWorkflow = output.curriculumIntelligenceGraph.approvalWorkflow;
+    fallback = output.curriculumIntelligenceGraph.fallback;
+    graphAudit = output.curriculumIntelligenceGraph.auditMetadata;
+    studentOverlay = {
+      masteryGapTopics: output.curriculumIntelligenceGraph.aiGenerationContext.masteryGapTopics,
+      weakAreaTopics: output.curriculumIntelligenceGraph.aiGenerationContext.weakAreaTopics,
+      examReadinessBand: output.curriculumIntelligenceGraph.aiGenerationContext.examReadinessBand,
+      recommendationFocus: output.curriculumIntelligenceGraph.aiGenerationContext.recommendationFocus,
+      reportSignals: output.curriculumIntelligenceGraph.reportSummary.reportSignals,
+    };
   }
   const merged = mergeKnowledgeGraphViews({
     dictionary: dictionaryView
@@ -170,5 +219,56 @@ export async function GET(request: Request) {
       depth,
       q: parsed.q ?? null,
     },
+    heartbeat,
+    protection,
+    approvalWorkflow,
+    fallback,
+    graphAudit,
+    studentOverlay,
+  });
+}
+
+export async function POST(request: Request) {
+  const { session, response } = await requireAdmin();
+  if (!session) return response;
+
+  const parsed = proposalSchema.parse(await request.json());
+  const source = await buildAcademicSourceForStudent(parsed.studentId.trim());
+  if (!source) return NextResponse.json({ error: "Student not found." }, { status: 404 });
+
+  const [existingCatchUpTasks, existingHomeworkTasks] = await Promise.all([
+    listCatchUpTasks(parsed.studentId.trim()),
+    listHomeworkTasks(parsed.studentId.trim()),
+  ]);
+  const output = buildAcademicIntelligence(source, {
+    existingCatchUpTasks,
+    existingHomeworkTasks,
+  });
+
+  const proposal = {
+    proposalId: `${parsed.source}-${Date.now()}`,
+    submittedAt: new Date().toISOString(),
+    submittedBy: session.userId,
+    source: parsed.source,
+    action: parsed.action,
+    reason: parsed.reason,
+    node: parsed.node,
+    edge: parsed.edge,
+  } as const;
+
+  const evaluated = evaluateGraphChangeProposal({
+    graph: output.curriculumIntelligenceGraph,
+    proposal,
+    approvedBy: parsed.approve ? session.userId : null,
+  });
+
+  return NextResponse.json({
+    accepted: evaluated.accepted,
+    reason: evaluated.reason,
+    workflow: evaluated.graph.approvalWorkflow,
+    protection: evaluated.graph.protection,
+    fallback: evaluated.graph.fallback,
+    audit: evaluated.graph.auditMetadata,
+    aiSuggestionMode: evaluated.graph.protection.aiSuggestionMode,
   });
 }

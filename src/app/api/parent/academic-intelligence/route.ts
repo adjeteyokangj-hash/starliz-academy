@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data";
-import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
+import { buildAcademicIntelligence, toStudentSafeAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
 import { listCatchUpTasks, syncCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
 import { listHomeworkTasks, syncHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
 
@@ -49,22 +49,24 @@ export async function GET(request: Request) {
     output = buildAcademicIntelligence(child, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
   }
 
+  const safe = toStudentSafeAcademicIntelligence(output);
+
   return NextResponse.json({
-    studentId: output.studentId,
-    summary: output.summary,
-    curriculumCoverage: output.curriculumCoverage,
-    catchUpRecommendations: output.catchUpRecommendations,
-    catchUpTasks: output.catchUpTasks,
-    homeworkTasks: output.homeworkTasks,
+    studentId: safe.studentId,
+    summary: safe.summary,
+    curriculumCoverage: safe.curriculumCoverage,
+    catchUpRecommendations: safe.catchUpRecommendations,
+    catchUpTasks: safe.catchUpTasks,
+    homeworkTasks: safe.homeworkTasks,
     assessmentReadiness: output.assessmentReadiness,
-    examReadinessProfile: output.examReadinessProfile,
-    schoolWeekModePlan: output.schoolWeekModePlan,
-    masteryExpansion: output.masteryExpansion,
+    examReadinessProfile: safe.examReadinessProfile,
+    schoolWeekModePlan: safe.schoolWeekModePlan,
+    masteryExpansion: safe.masteryExpansion,
     gcseReadiness: output.gcseReadiness,
-    curriculumIntelligenceGraph: output.curriculumIntelligenceGraph,
+    curriculumIntelligenceGraph: safe.curriculumIntelligenceGraph,
     reviewActions: output.reviewActions,
     reportNotes: output.reportNotes,
     parentExplanation: "Use these recommendations to support confidence and steady progress at home.",
-    generatedAt: output.generatedAt,
+    generatedAt: safe.generatedAt,
   });
 }

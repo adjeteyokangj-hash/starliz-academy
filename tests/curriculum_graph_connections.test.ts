@@ -7,6 +7,13 @@ import {
   buildGraphContentQualityChecks,
   buildGraphStorageMediaReferences,
 } from "../src/lib/academic-intelligence/graph-context";
+import {
+  detectCircularDependencies,
+  detectDuplicateNodes,
+  detectOrphanNodes,
+  evaluateGraphChangeProposal,
+} from "../src/lib/academic-intelligence/graph-protection";
+import { toStudentSafeAcademicIntelligence } from "../src/lib/academic-intelligence/academicIntelligence";
 import type { AcademicSourceData } from "../src/lib/academic-intelligence/types";
 
 function source(overrides: Partial<AcademicSourceData> = {}): AcademicSourceData {
@@ -165,4 +172,113 @@ test("graph readers provide AI prompt context, governance checks, and stored med
   assert.equal(checks.approvalStatus, "review_required");
   assert.ok(mediaReferences.some((entry) => entry.assetType === "diagram" && entry.storageStatus === "stored"));
   assert.ok(mediaReferences.some((entry) => entry.assetType === "certificate_pdf" && entry.storageStatus === "stored"));
+});
+
+test("circular dependency detection identifies cycles", () => {
+  const output = buildAcademicIntelligence(source());
+  const topicNode = output.curriculumIntelligenceGraph.nodes.find((node) => node.type === "topic");
+  const prereqNode = output.curriculumIntelligenceGraph.nodes.find((node) => node.type === "prerequisite");
+  assert.ok(topicNode);
+  assert.ok(prereqNode);
+
+  const cycles = detectCircularDependencies({
+    nodes: [topicNode!, prereqNode!],
+    edges: [
+      { id: "c1", source: topicNode!.id, target: prereqNode!.id, type: "requires", weight: 1 },
+      { id: "c2", source: prereqNode!.id, target: topicNode!.id, type: "blocked_by", weight: 1 },
+    ],
+  });
+
+  assert.ok(cycles.length > 0);
+});
+
+test("orphan node detection identifies isolated nodes", () => {
+  const output = buildAcademicIntelligence(source());
+  const orphan = { id: "orphan:1", type: "topic", label: "Orphan concept" } as const;
+  const orphans = detectOrphanNodes({
+    nodes: [...output.curriculumIntelligenceGraph.nodes.slice(0, 2), orphan],
+    edges: output.curriculumIntelligenceGraph.edges.slice(0, 1),
+  });
+
+  assert.ok(orphans.includes("orphan:1"));
+});
+
+test("duplicate node detection flags duplicate ids and fingerprints", () => {
+  const base = { id: "dup:1", type: "topic", label: "Fractions", subject: "math", topicKey: "math|fractions" } as const;
+  const duplicates = detectDuplicateNodes([
+    base,
+    { ...base, id: "dup:1" },
+    { ...base, id: "dup:2" },
+  ]);
+
+  assert.ok(duplicates.duplicateNodeIds.includes("dup:1"));
+  assert.ok(duplicates.duplicateNodeIds.includes("dup:2"));
+  assert.ok(duplicates.duplicateFingerprints.length > 0);
+});
+
+test("protected node blocking rejects prohibited graph changes", () => {
+  const output = buildAcademicIntelligence(source());
+  const protectedId = output.curriculumIntelligenceGraph.protection.protectedNodeIds[0];
+  assert.ok(protectedId);
+
+  const evaluated = evaluateGraphChangeProposal({
+    graph: output.curriculumIntelligenceGraph,
+    proposal: {
+      proposalId: "proposal-protected",
+      submittedAt: new Date().toISOString(),
+      submittedBy: "admin-user",
+      source: "admin",
+      action: "remove_node",
+      reason: "Attempt removal",
+      node: output.curriculumIntelligenceGraph.nodes.find((node) => node.id === protectedId),
+    },
+    approvedBy: "admin-user",
+  });
+
+  assert.equal(evaluated.accepted, false);
+  assert.equal(evaluated.reason, "protected_node_violation");
+});
+
+test("AI suggestions stay pending without admin approval", () => {
+  const output = buildAcademicIntelligence(source());
+  const evaluated = evaluateGraphChangeProposal({
+    graph: output.curriculumIntelligenceGraph,
+    proposal: {
+      proposalId: "proposal-ai",
+      submittedAt: new Date().toISOString(),
+      submittedBy: "ai-agent",
+      source: "ai",
+      action: "add_node",
+      reason: "AI proposes a node",
+      node: {
+        id: "ai-node:1",
+        type: "topic",
+        label: "AI Suggested Topic",
+      },
+    },
+  });
+
+  assert.equal(evaluated.accepted, false);
+  assert.equal(evaluated.reason, "proposal_pending_admin_approval");
+  assert.equal(evaluated.graph.approvalWorkflow.latestDecision, "pending");
+});
+
+test("student-safe graph output strips internal metadata", () => {
+  const output = buildAcademicIntelligence(source());
+  const safe = toStudentSafeAcademicIntelligence(output);
+
+  assert.equal(safe.curriculumIntelligenceGraph.nodes.every((node) => !node.metadata), true);
+  assert.equal(safe.curriculumIntelligenceGraph.protection.aiSuggestionMode, "suggestion_only");
+});
+
+test("graph fallback behavior remains available when builder throws", () => {
+  const output = buildAcademicIntelligence(source(), {
+    graphBuilder: () => {
+      throw new Error("forced_graph_failure");
+    },
+  });
+
+  assert.equal(output.curriculumIntelligenceGraph.fallback.applied, true);
+  assert.match(output.curriculumIntelligenceGraph.fallback.reason ?? "", /forced_graph_failure/);
+  assert.equal(output.curriculumIntelligenceGraph.auditMetadata.decisions[0]?.decision, "build_fallback");
 });

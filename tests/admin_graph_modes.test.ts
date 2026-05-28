@@ -132,6 +132,37 @@ function curriculumGraph(): CurriculumIntelligenceGraph {
       references: [],
       summary: "No planned media refs in fixture.",
     },
+    protection: {
+      protectedNodeIds: ["signal:1", "readiness:1"],
+      protectedNodeTypes: ["assessment_readiness", "learning_twin_signal"],
+      aiSuggestionMode: "suggestion_only",
+      approvalRequiredForActivation: true,
+      validation: {
+        valid: true,
+        issues: [],
+        circularDependencies: [],
+        orphanNodeIds: [],
+        duplicateNodeIds: [],
+        duplicateFingerprints: [],
+      },
+      blockedChangesCount: 0,
+      status: "protected",
+    },
+    approvalWorkflow: {
+      pendingProposals: [],
+      latestDecision: "not_requested",
+      latestDecisionReason: null,
+      latestDecisionBy: null,
+      latestDecisionAt: null,
+    },
+    fallback: {
+      applied: false,
+      reason: null,
+      fallbackGeneratedAt: null,
+    },
+    auditMetadata: {
+      decisions: [],
+    },
   };
 }
 

@@ -19,6 +19,12 @@ import {
   buildGraphReportSummary,
   buildGraphSchoolPlanningContext,
 } from "@/lib/academic-intelligence/graph-context";
+import {
+  buildDefaultApprovalWorkflow,
+  buildDefaultGraphAuditMetadata,
+  buildDefaultGraphFallback,
+  buildGraphProtectionStatus,
+} from "@/lib/academic-intelligence/graph-protection";
 
 function normalize(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
@@ -407,6 +413,17 @@ export function buildCurriculumIntelligenceGraph(input: {
     output,
     graphNodes: nodesArray,
   });
+  const protection = buildGraphProtectionStatus({
+    nodes: nodesArray,
+    edges: edgesArray,
+  });
+  const auditMetadata = buildDefaultGraphAuditMetadata();
+  auditMetadata.decisions.push({
+    at: output.generatedAt,
+    actor: "academic_intelligence_builder",
+    decision: "build_success",
+    reason: "Curriculum graph built and validated from source-of-truth pipeline.",
+  });
 
   return {
     version: "v1",
@@ -432,5 +449,9 @@ export function buildCurriculumIntelligenceGraph(input: {
       schoolPlanningContext,
       readinessNodeId,
     }),
+    protection,
+    approvalWorkflow: buildDefaultApprovalWorkflow(),
+    fallback: buildDefaultGraphFallback(),
+    auditMetadata,
   };
 }

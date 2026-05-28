@@ -671,6 +671,80 @@ export type CurriculumGraphMediaPlan = {
   summary: string;
 };
 
+export type CurriculumGraphValidationIssue = {
+  code:
+    | "circular_dependency"
+    | "orphan_node"
+    | "duplicate_node"
+    | "invalid_edge"
+    | "protected_node_violation";
+  severity: "warning" | "error";
+  message: string;
+  nodeId?: string;
+  edgeId?: string;
+};
+
+export type CurriculumGraphValidationReport = {
+  valid: boolean;
+  issues: CurriculumGraphValidationIssue[];
+  circularDependencies: string[][];
+  orphanNodeIds: string[];
+  duplicateNodeIds: string[];
+  duplicateFingerprints: string[];
+};
+
+export type CurriculumGraphProtectionStatus = {
+  protectedNodeIds: string[];
+  protectedNodeTypes: CurriculumGraphNodeType[];
+  aiSuggestionMode: "suggestion_only";
+  approvalRequiredForActivation: boolean;
+  validation: CurriculumGraphValidationReport;
+  blockedChangesCount: number;
+  status: "protected" | "needs_attention";
+};
+
+export type CurriculumGraphChangeAction =
+  | "add_node"
+  | "add_edge"
+  | "update_node"
+  | "update_edge"
+  | "remove_node"
+  | "remove_edge";
+
+export type CurriculumGraphChangeProposal = {
+  proposalId: string;
+  submittedAt: string;
+  submittedBy: string;
+  source: "ai" | "admin";
+  action: CurriculumGraphChangeAction;
+  reason: string;
+  node?: CurriculumGraphNode;
+  edge?: CurriculumGraphEdge;
+};
+
+export type CurriculumGraphApprovalWorkflow = {
+  pendingProposals: CurriculumGraphChangeProposal[];
+  latestDecision: "approved" | "rejected" | "pending" | "not_requested";
+  latestDecisionReason: string | null;
+  latestDecisionBy: string | null;
+  latestDecisionAt: string | null;
+};
+
+export type CurriculumGraphFallback = {
+  applied: boolean;
+  reason: string | null;
+  fallbackGeneratedAt: string | null;
+};
+
+export type CurriculumGraphAuditMetadata = {
+  decisions: Array<{
+    at: string;
+    actor: string;
+    decision: "build_success" | "build_fallback" | "proposal_pending" | "proposal_rejected" | "proposal_approved";
+    reason: string;
+  }>;
+};
+
 export type CurriculumIntelligenceGraph = {
   version: "v1";
   generatedAt: string;
@@ -686,6 +760,10 @@ export type CurriculumIntelligenceGraph = {
   reportSummary: CurriculumGraphReportSummary;
   contentGovernance: CurriculumContentGovernanceProfile;
   mediaPlan: CurriculumGraphMediaPlan;
+  protection: CurriculumGraphProtectionStatus;
+  approvalWorkflow: CurriculumGraphApprovalWorkflow;
+  fallback: CurriculumGraphFallback;
+  auditMetadata: CurriculumGraphAuditMetadata;
 };
 
 export type AcademicIntelligenceOutput = {

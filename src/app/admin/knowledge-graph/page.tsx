@@ -6,7 +6,6 @@ import {
   Controls,
   MiniMap,
   ReactFlow,
-  type ReactFlowInstance,
   type Edge,
   type Node,
   type OnEdgesChange,
@@ -15,12 +14,14 @@ import {
   applyNodeChanges,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import type { KnowledgeEdgeType, KnowledgeGraphEdge, KnowledgeGraphMetrics, KnowledgeGraphNode } from "@/lib/knowledge_graph";
 import type {
-  KnowledgeEdgeType,
-  KnowledgeGraphEdge,
-  KnowledgeGraphMetrics,
-  KnowledgeGraphNode,
-} from "@/lib/knowledge_graph";
+  CurriculumGraphApprovalWorkflow,
+  CurriculumGraphAuditMetadata,
+  CurriculumGraphFallback,
+  CurriculumGraphHeartbeat,
+  CurriculumGraphProtectionStatus,
+} from "@/lib/academic-intelligence/types";
 
 type ApiResponse = {
   nodes: KnowledgeGraphNode[];
@@ -45,7 +46,23 @@ type ApiResponse = {
     totalWords: number;
     hasMore: boolean;
   };
+  heartbeat: CurriculumGraphHeartbeat | null;
+  protection: CurriculumGraphProtectionStatus | null;
+  approvalWorkflow: CurriculumGraphApprovalWorkflow | null;
+  fallback: CurriculumGraphFallback | null;
+  graphAudit: CurriculumGraphAuditMetadata | null;
+  studentOverlay: {
+    masteryGapTopics: string[];
+    weakAreaTopics: string[];
+    examReadinessBand: string;
+    recommendationFocus: string[];
+    reportSignals: string[];
+  } | null;
 };
+
+type HeartbeatTab = "overview" | "graph" | "systems" | "protection" | "recommendations";
+
+type HeartbeatBadge = "Protected" | "Graph-Aware" | "Student-Safe" | "AI-Suggestion Only";
 
 const EDGE_COLORS: Record<KnowledgeEdgeType, string> = {
   prerequisite: "#f59e0b",
@@ -76,14 +93,14 @@ const NODE_COLORS: Record<string, string> = {
 
 function toFlowNodes(nodes: KnowledgeGraphNode[], highlighted: Set<string>): Node[] {
   return nodes.map((node, index) => {
-    const col = index % 12;
-    const row = Math.floor(index / 12);
+    const col = index % 10;
+    const row = Math.floor(index / 10);
     const isHighlighted = highlighted.has(node.label.toLowerCase());
     const baseColor = NODE_COLORS[node.type] ?? "#0ea5e9";
-    const nodeRadius = node.type === "word" ? 12 : node.type === "intervention_concept" ? 22 : 16;
+
     return {
       id: node.id,
-      position: { x: col * 240, y: row * 130 },
+      position: { x: col * 220, y: row * 124 },
       data: {
         label: node.label,
         nodeType: node.type,
@@ -91,12 +108,11 @@ function toFlowNodes(nodes: KnowledgeGraphNode[], highlighted: Set<string>): Nod
       },
       style: {
         border: isHighlighted ? "2px solid #facc15" : "1px solid rgba(148,163,184,0.35)",
-        background: `linear-gradient(135deg, ${baseColor}22, #020617 72%)`,
+        background: `linear-gradient(135deg, ${baseColor}22, #020617 75%)`,
         color: "#e2e8f0",
-        borderRadius: nodeRadius,
-        minWidth: 170,
+        borderRadius: 16,
+        minWidth: 160,
         fontSize: 12,
-        boxShadow: isHighlighted ? "0 0 0 2px rgba(250, 204, 21, 0.25)" : "none",
       },
       className: "kg-node",
       draggable: true,
@@ -111,7 +127,10 @@ function toFlowEdges(
 ): Edge[] {
   return edges.map((edge) => {
     const activeByType = selectedType === "all" || edge.type === selectedType;
-    const edgeIsInPath = highlighted.size > 0 && highlighted.has(edge.source.toLowerCase()) && highlighted.has(edge.target.toLowerCase());
+    const edgeIsInPath = highlighted.size > 0
+      && highlighted.has(edge.source.toLowerCase())
+      && highlighted.has(edge.target.toLowerCase());
+
     return {
       id: edge.id,
       source: edge.source,
@@ -133,20 +152,41 @@ function relationBadge(type: KnowledgeEdgeType): string {
   if (type === "intervention") return "Recovery pathway";
   if (type === "curriculum") return "Curriculum mapping";
   if (type === "phonics") return "Phonics grouping";
-  if (type === "has_mastery_state") return "Mastery state link";
+  if (type === "has_mastery_state") return "Mastery link";
   if (type === "has_weak_area") return "Weak-area link";
   if (type === "recommends") return "Recommendation link";
-  if (type === "blocked_by") return "Weak-area blocker";
-  if (type === "requires") return "Prerequisite link";
-  if (type === "informed_by") return "Learning twin signal";
+  if (type === "blocked_by") return "Blocker edge";
+  if (type === "requires") return "Prerequisite edge";
+  if (type === "informed_by") return "Learning twin edge";
   if (type === "targets") return "Recommendation target";
   if (type === "supports_readiness") return "Readiness support";
-  if (type === "harder") return "Progression step";
-  if (type === "easier") return "Scaffold concept";
   return "Context link";
 }
 
+function statusTone(status: "ready" | "partial" | "missing"): string {
+  if (status === "ready") return "border-emerald-400/40 bg-emerald-500/12 text-emerald-100";
+  if (status === "partial") return "border-amber-400/40 bg-amber-500/12 text-amber-100";
+  return "border-rose-400/40 bg-rose-500/12 text-rose-100";
+}
+
+function prettySystemLabel(system: string): string {
+  const labels: Record<string, string> = {
+    curriculum_knowledge_graph: "Curriculum Knowledge Graph",
+    student_mastery_data: "Student Mastery Data",
+    ai_generator: "AI Generator",
+    smart_catch_up: "Smart Catch-Up",
+    assessment_exam_readiness: "Assessment / Exam Readiness",
+    learning_twin: "Learning Twin",
+    school_day_week_mode: "School Day / School Week",
+    parent_admin_reports: "Parent/Admin Reports",
+    content_quality_safeguarding: "Content Quality & Safeguarding",
+    storage_media: "Cloudflare R2 / Media",
+  };
+  return labels[system] ?? system;
+}
+
 export default function KnowledgeGraphPage() {
+  const [activeTab, setActiveTab] = useState<HeartbeatTab>("overview");
   const [mode, setMode] = useState<"dictionary" | "academic_intelligence" | "hybrid">("dictionary");
   const [studentId, setStudentId] = useState("");
   const [query, setQuery] = useState("");
@@ -160,7 +200,12 @@ export default function KnowledgeGraphPage() {
   const [limit] = useState(250);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [metrics, setMetrics] = useState<KnowledgeGraphMetrics | null>(null);
+  const [heartbeat, setHeartbeat] = useState<CurriculumGraphHeartbeat | null>(null);
+  const [protection, setProtection] = useState<CurriculumGraphProtectionStatus | null>(null);
+  const [approvalWorkflow, setApprovalWorkflow] = useState<CurriculumGraphApprovalWorkflow | null>(null);
+  const [fallback, setFallback] = useState<CurriculumGraphFallback | null>(null);
+  const [graphAudit, setGraphAudit] = useState<CurriculumGraphAuditMetadata | null>(null);
+  const [studentOverlay, setStudentOverlay] = useState<ApiResponse["studentOverlay"]>(null);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [selectedEdgeType, setSelectedEdgeType] = useState<KnowledgeEdgeType | "all">("all");
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -169,8 +214,51 @@ export default function KnowledgeGraphPage() {
   const [recoveryWord, setRecoveryWord] = useState("");
   const [recoveryPlan, setRecoveryPlan] = useState<ApiResponse["recoveryPath"]>(null);
   const [searchTick, setSearchTick] = useState(0);
-  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node, Edge> | null>(null);
   const debounceRef = useRef<number | null>(null);
+
+  const heartbeatBadges: HeartbeatBadge[] = [
+    "Protected",
+    "Graph-Aware",
+    "Student-Safe",
+    "AI-Suggestion Only",
+  ];
+
+  const systemStatus = useMemo(() => {
+    const expected = [
+      "curriculum_knowledge_graph",
+      "ai_generator",
+      "smart_catch_up",
+      "assessment_exam_readiness",
+      "learning_twin",
+      "school_day_week_mode",
+      "parent_admin_reports",
+      "content_quality_safeguarding",
+      "storage_media",
+    ];
+    const bySystem = new Map((heartbeat?.systemStates ?? []).map((entry) => [entry.system, entry]));
+
+    return expected.map((system) => {
+      const row = bySystem.get(system as never);
+      if (!row) {
+        return {
+          system,
+          label: prettySystemLabel(system),
+          status: "missing" as const,
+          summary: "No heartbeat state reported yet.",
+        };
+      }
+      return {
+        system,
+        label: prettySystemLabel(system),
+        status: row.status,
+        summary: row.summary,
+      };
+    });
+  }, [heartbeat]);
+
+  const connectedCount = systemStatus.filter((entry) => entry.status === "ready").length;
+  const partialCount = systemStatus.filter((entry) => entry.status === "partial").length;
+  const missingCount = systemStatus.filter((entry) => entry.status === "missing").length;
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setNodes((current) => applyNodeChanges(changes, current)),
@@ -217,7 +305,7 @@ export default function KnowledgeGraphPage() {
         }
 
         if (!response.ok) {
-          setError("Unable to load knowledge graph.");
+          setError("Unable to load heartbeat graph data.");
           return;
         }
 
@@ -243,10 +331,15 @@ export default function KnowledgeGraphPage() {
         }
 
         setHasMore(payload.pagination.hasMore);
-        setMetrics(payload.metrics);
         setRecoveryPlan(payload.recoveryPath);
+        setHeartbeat(payload.heartbeat);
+        setProtection(payload.protection);
+        setApprovalWorkflow(payload.approvalWorkflow);
+        setFallback(payload.fallback);
+        setGraphAudit(payload.graphAudit);
+        setStudentOverlay(payload.studentOverlay);
       } catch {
-        setError("Unable to load knowledge graph.");
+        setError("Unable to load heartbeat graph data.");
       } finally {
         setLoading(false);
       }
@@ -294,184 +387,305 @@ export default function KnowledgeGraphPage() {
       outgoingCount: outgoing.length,
       incomingCount: incoming.length,
       linkedConcepts,
-      outgoing,
-      incoming,
     };
   }, [edges, selectedNode]);
 
-  const focusOnSearch = useCallback(() => {
-    if (!flowInstance) return;
-    const target = nodes.find((node) => {
-      const label = String((node.data as { label?: string })?.label ?? "").toLowerCase();
-      return query.trim() && label.includes(query.trim().toLowerCase());
-    });
-    if (!target) return;
-
-    setSelectedNode(target);
-    flowInstance.setCenter(target.position.x + 90, target.position.y + 45, {
-      duration: 450,
-      zoom: 1.25,
-    });
-  }, [flowInstance, nodes, query]);
-
   const stats = useMemo(() => {
     return [
-      { label: "Total words", value: String(metrics?.totalWords ?? 0) },
-      { label: "Total graph links", value: String(metrics?.totalGraphLinks ?? 0) },
-      { label: "Orphan concepts", value: String(metrics?.orphanConcepts ?? 0) },
-      { label: "Intervention-linked concepts", value: String(metrics?.interventionLinkedConcepts ?? 0) },
-      { label: "Curriculum coverage", value: `${metrics?.curriculumCoveragePct ?? 0}%` },
-      {
-        label: "Highest connected concept",
-        value: metrics?.highestConnectedConcepts?.[0]
-          ? `${metrics.highestConnectedConcepts[0].label} (${metrics.highestConnectedConcepts[0].degree})`
-          : "-",
-      },
+      { label: "Connected", value: String(connectedCount), tone: "ready" as const },
+      { label: "Partial", value: String(partialCount), tone: "partial" as const },
+      { label: "Missing", value: String(missingCount), tone: "missing" as const },
+      { label: "Nodes", value: String(nodes.length), tone: "ready" as const },
+      { label: "Edges", value: String(edges.length), tone: "ready" as const },
+      { label: "Validation Issues", value: String(protection?.validation.issues.length ?? 0), tone: (protection?.validation.valid ?? true) ? "ready" as const : "partial" as const },
     ];
-  }, [metrics]);
+  }, [connectedCount, partialCount, missingCount, nodes.length, edges.length, protection]);
+
+  const tabs: Array<{ id: HeartbeatTab; label: string }> = [
+    { id: "overview", label: "Overview" },
+    { id: "graph", label: "Graph View" },
+    { id: "systems", label: "Connected Systems" },
+    { id: "protection", label: "Protection" },
+    { id: "recommendations", label: "Recommendations" },
+  ];
+
+  const graphControls = (
+    <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <select value={mode} onChange={(event) => setMode(event.target.value as "dictionary" | "academic_intelligence" | "hybrid")} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+          <option value="dictionary">Dictionary graph</option>
+          <option value="academic_intelligence">Academic intelligence graph</option>
+          <option value="hybrid">Hybrid graph</option>
+        </select>
+        <input value={studentId} onChange={(event) => setStudentId(event.target.value)} placeholder="Student ID (required for academic/hybrid)" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search concepts" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+        <select value={subject} onChange={(event) => setSubject(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+          <option value="">All subjects</option>
+          <option value="english">English</option>
+          <option value="spelling">Spelling</option>
+          <option value="reading">Reading</option>
+          <option value="maths">Maths</option>
+          <option value="science">Science</option>
+        </select>
+        <select value={keyStage} onChange={(event) => setKeyStage(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+          <option value="">All key stages</option>
+          <option value="early-years">Early Years</option>
+          <option value="ks1">KS1</option>
+          <option value="ks2">KS2</option>
+          <option value="ks3">KS3</option>
+          <option value="ks4">KS4</option>
+          <option value="ks5">KS5</option>
+        </select>
+        <input value={yearGroup} onChange={(event) => setYearGroup(event.target.value)} placeholder="Year group" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+        <input value={school} onChange={(event) => setSchool(event.target.value)} placeholder="School filter" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+        <input value={interventionType} onChange={(event) => setInterventionType(event.target.value)} placeholder="Intervention type" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+        <label className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200">
+          Depth limit: {depth}
+          <input type="range" min={1} max={6} value={depth} onChange={(event) => setDepth(Number(event.target.value))} className="mt-1 w-full" />
+        </label>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {(["all", "prerequisite", "easier", "harder", "related", "intervention", "phonics", "curriculum", "has_mastery_state", "has_weak_area", "targets", "supports_readiness"] as const).map((type) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => setSelectedEdgeType(type)}
+            className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.08em] ${
+              selectedEdgeType === type
+                ? "border-cyan-400/80 bg-cyan-500/20 text-cyan-100"
+                : "border-slate-700 bg-slate-900 text-slate-300"
+            }`}
+          >
+            {type}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <input value={recoveryWord} onChange={(event) => setRecoveryWord(event.target.value)} placeholder="Recovery path word" className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+        <button
+          type="button"
+          onClick={() => {
+            setOffset(0);
+            setSearchTick((tick) => tick + 1);
+          }}
+          className="rounded-xl border border-cyan-500/40 bg-cyan-500/15 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-cyan-100"
+        >
+          Show Recovery Path
+        </button>
+      </div>
+    </section>
+  );
 
   return (
     <div className="space-y-4 pb-12">
       <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-5">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">Knowledge Engine</p>
-        <h1 className="mt-2 text-3xl font-black text-white">Visual Knowledge Graph Explorer</h1>
-        <p className="mt-2 text-sm text-slate-300">Interactive graph canvas for concept dependencies, recovery paths, curriculum links, and intervention intelligence.</p>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">StarLiz Intelligence Infrastructure</p>
+        <h1 className="mt-2 text-3xl font-black text-white">StarLiz Heartbeat</h1>
+        <p className="mt-2 text-sm text-slate-300">Curriculum Intelligence Graph powering adaptive learning, AI generation, mastery, catch-up and reporting.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {heartbeatBadges.map((badge) => (
+            <span key={badge} className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.09em] text-cyan-100">
+              {badge}
+            </span>
+          ))}
+        </div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {stats.map((card) => (
-          <article key={card.label} className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">{card.label}</p>
-            <p className="mt-1 text-lg font-black text-white">{card.value}</p>
+          <article key={card.label} className={`rounded-xl border p-3 ${statusTone(card.tone)}`}>
+            <p className="text-[11px] uppercase tracking-[0.12em]">{card.label}</p>
+            <p className="mt-1 text-lg font-black">{card.value}</p>
           </article>
         ))}
       </section>
 
-      <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <select value={mode} onChange={(event) => setMode(event.target.value as "dictionary" | "academic_intelligence" | "hybrid")} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
-            <option value="dictionary">Dictionary graph</option>
-            <option value="academic_intelligence">Academic intelligence graph</option>
-            <option value="hybrid">Hybrid graph</option>
-          </select>
-          <input value={studentId} onChange={(event) => setStudentId(event.target.value)} placeholder="Student ID (required for academic/hybrid)" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search concepts" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
-          <select value={subject} onChange={(event) => setSubject(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
-            <option value="">All subjects</option>
-            <option value="english">English</option>
-            <option value="spelling">Spelling</option>
-            <option value="reading">Reading</option>
-            <option value="maths">Maths</option>
-            <option value="science">Science</option>
-          </select>
-          <select value={keyStage} onChange={(event) => setKeyStage(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
-            <option value="">All key stages</option>
-            <option value="early-years">Early Years</option>
-            <option value="ks1">KS1</option>
-            <option value="ks2">KS2</option>
-            <option value="ks3">KS3</option>
-            <option value="ks4">KS4</option>
-            <option value="ks5">KS5</option>
-          </select>
-          <input value={yearGroup} onChange={(event) => setYearGroup(event.target.value)} placeholder="Year group" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
-          <input value={school} onChange={(event) => setSchool(event.target.value)} placeholder="School filter (future)" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
-          <input value={interventionType} onChange={(event) => setInterventionType(event.target.value)} placeholder="Intervention type" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
-          <label className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200">
-            Depth limit: {depth}
-            <input type="range" min={1} max={6} value={depth} onChange={(event) => setDepth(Number(event.target.value))} className="mt-1 w-full" />
-          </label>
-          <div className="flex gap-2">
-            <input value={recoveryWord} onChange={(event) => setRecoveryWord(event.target.value)} placeholder="Recovery path word" className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+      <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3">
+        <div className="flex flex-wrap gap-2">
+          {tabs.map((tab) => (
             <button
+              key={tab.id}
               type="button"
-              onClick={() => {
-                setOffset(0);
-                setSearchTick((tick) => tick + 1);
-              }}
-              className="rounded-xl border border-cyan-500/40 bg-cyan-500/15 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-cyan-100"
-            >
-              Show Recovery Path
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(["all", "prerequisite", "easier", "harder", "related", "intervention", "phonics", "curriculum"] as const).map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => setSelectedEdgeType(type)}
-              className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.08em] ${
-                selectedEdgeType === type
-                  ? "border-cyan-400/80 bg-cyan-500/20 text-cyan-100"
+              onClick={() => setActiveTab(tab.id)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em] ${
+                activeTab === tab.id
+                  ? "border-cyan-400/70 bg-cyan-500/20 text-cyan-100"
                   : "border-slate-700 bg-slate-900 text-slate-300"
               }`}
             >
-              {type}
+              {tab.label}
             </button>
           ))}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" onClick={focusOnSearch} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-100">
-            Focus Search Result
-          </button>
         </div>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
-        <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3">
-          <div className="h-[68vh] rounded-xl border border-slate-800 bg-slate-950">
-            <ReactFlow
-              nodes={nodes}
-              edges={renderedEdges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onInit={setFlowInstance}
-              onEdgeClick={(_event, edge) => {
-                const edgeLabel = String(edge.label ?? "") as KnowledgeEdgeType;
-                if (edgeLabel) setSelectedEdgeType(edgeLabel);
-              }}
-              fitView
-              onNodeClick={(_event, node) => setSelectedNode(node)}
-            >
-              <MiniMap nodeColor={(node) => NODE_COLORS[(node.data as { nodeType?: string })?.nodeType ?? "word"] ?? "#334155"} />
-              <Controls />
-              <Background gap={18} color="#0f172a" />
-            </ReactFlow>
-          </div>
+        <div className="space-y-4">
+          {activeTab === "overview" ? (
+            <>
+              {graphControls}
+              <section className="grid gap-3 md:grid-cols-2">
+                <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
+                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Heartbeat Overview</h2>
+                  <p className="mt-2 text-xs text-slate-300">Source of truth: {heartbeat?.sourceOfTruth ?? "not available"}</p>
+                  <p className="text-xs text-slate-300">Validation: {protection?.validation.valid ? "valid" : "needs attention"}</p>
+                  <p className="text-xs text-slate-300">Pending proposals: {approvalWorkflow?.pendingProposals.length ?? 0}</p>
+                  <p className="text-xs text-slate-300">Fallback applied: {fallback?.applied ? "yes" : "no"}</p>
+                </article>
+                <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
+                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Student Intelligence Overlay</h2>
+                  <p className="mt-2 text-xs text-slate-300">Mastery gaps: {(studentOverlay?.masteryGapTopics ?? []).join(", ") || "-"}</p>
+                  <p className="text-xs text-slate-300">Weak areas: {(studentOverlay?.weakAreaTopics ?? []).join(", ") || "-"}</p>
+                  <p className="text-xs text-slate-300">Exam readiness: {studentOverlay?.examReadinessBand ?? "-"}</p>
+                  <p className="text-xs text-slate-300">Focus: {(studentOverlay?.recommendationFocus ?? []).join(" | ") || "-"}</p>
+                </article>
+              </section>
+            </>
+          ) : null}
 
-          <div className="mt-3 flex items-center justify-between">
-            <p className="text-xs text-slate-400">{loading ? "Loading graph..." : `${nodes.length} nodes · ${edges.length} edges`}</p>
-            <div className="flex gap-2">
-              {hasMore ? (
-                <button
-                  type="button"
-                  onClick={() => setOffset((current) => current + limit)}
-                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-100"
-                >
-                  Load More Nodes
-                </button>
-              ) : null}
-            </div>
-          </div>
-          {error ? <p className="mt-2 text-sm text-rose-300">{error}</p> : null}
+          {activeTab === "graph" ? (
+            <>
+              {graphControls}
+              <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3">
+                <div className="h-[68vh] rounded-xl border border-slate-800 bg-slate-950">
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={renderedEdges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeClick={(_event, node) => setSelectedNode(node)}
+                    onEdgeClick={(_event, edge) => {
+                      const edgeLabel = String(edge.label ?? "") as KnowledgeEdgeType;
+                      if (edgeLabel) setSelectedEdgeType(edgeLabel);
+                    }}
+                    fitView
+                  >
+                    <MiniMap nodeColor={(node) => NODE_COLORS[(node.data as { nodeType?: string })?.nodeType ?? "word"] ?? "#334155"} />
+                    <Controls />
+                    <Background gap={18} color="#0f172a" />
+                  </ReactFlow>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between">
+                  <p className="text-xs text-slate-400">{loading ? "Loading graph..." : `${nodes.length} nodes · ${edges.length} edges`}</p>
+                  <div className="flex gap-2">
+                    {hasMore ? (
+                      <button
+                        type="button"
+                        onClick={() => setOffset((current) => current + limit)}
+                        className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-100"
+                      >
+                        Load More Nodes
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {error ? <p className="mt-2 text-sm text-rose-300">{error}</p> : null}
+              </section>
+            </>
+          ) : null}
+
+          {activeTab === "systems" ? (
+            <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+              <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Connected Systems</h2>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {systemStatus.map((entry) => (
+                  <article key={entry.system} className={`rounded-xl border p-3 ${statusTone(entry.status)}`}>
+                    <p className="text-xs font-black uppercase tracking-[0.08em]">{entry.label}</p>
+                    <p className="mt-1 text-[11px] uppercase tracking-[0.08em]">{entry.status}</p>
+                    <p className="mt-1 text-xs">{entry.summary}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {activeTab === "protection" ? (
+            <section className="space-y-3">
+              <article className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Graph Protection Status</h2>
+                <p className="mt-2 text-xs text-slate-300">Status: {protection?.status ?? "unknown"}</p>
+                <p className="text-xs text-slate-300">AI mode: {protection?.aiSuggestionMode ?? "suggestion_only"}</p>
+                <p className="text-xs text-slate-300">Approval required: {protection?.approvalRequiredForActivation ? "yes" : "yes"}</p>
+                <p className="text-xs text-slate-300">Blocked changes: {protection?.blockedChangesCount ?? 0}</p>
+                <p className="text-xs text-slate-300">Protected node IDs: {(protection?.protectedNodeIds ?? []).join(", ") || "-"}</p>
+              </article>
+
+              <article className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-amber-100">Validation Issues</h2>
+                {(protection?.validation.issues.length ?? 0) === 0 ? (
+                  <p className="mt-2 text-xs text-amber-50">No validation issues reported.</p>
+                ) : (
+                  <div className="mt-2 space-y-1 text-xs text-amber-50">
+                    {(protection?.validation.issues ?? []).map((issue, index) => (
+                      <p key={`${issue.code}-${index}`}>{issue.code}: {issue.message}</p>
+                    ))}
+                  </div>
+                )}
+              </article>
+
+              <article className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Pending/Admin Approval Workflow</h2>
+                <p className="mt-2 text-xs text-slate-300">Latest decision: {approvalWorkflow?.latestDecision ?? "not_requested"}</p>
+                <p className="text-xs text-slate-300">Decision reason: {approvalWorkflow?.latestDecisionReason ?? "-"}</p>
+                <p className="text-xs text-slate-300">Pending proposals: {approvalWorkflow?.pendingProposals.length ?? 0}</p>
+              </article>
+            </section>
+          ) : null}
+
+          {activeTab === "recommendations" ? (
+            <section className="space-y-3">
+              <article className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-100">Recommendation Signals</h2>
+                <div className="mt-2 space-y-1 text-xs text-cyan-50">
+                  {(studentOverlay?.reportSignals ?? []).map((signal, index) => (
+                    <p key={`${signal}-${index}`}>{signal}</p>
+                  ))}
+                  {(studentOverlay?.reportSignals ?? []).length === 0 ? <p>-</p> : null}
+                </div>
+              </article>
+
+              <article className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Recovery Path</h2>
+                {recoveryPlan ? (
+                  <div className="mt-2 space-y-1 text-xs text-slate-200">
+                    <p>Target: {recoveryPlan.targetWord ?? "-"}</p>
+                    <p>Path: {recoveryPlan.shortestRecoveryPath.join(" -> ") || "-"}</p>
+                    <p>Complexity: {recoveryPlan.estimatedComplexity}</p>
+                    <p>Duration: {recoveryPlan.estimatedInterventionMinutes} mins</p>
+                    <p>Visual hint: {recoveryPlan.visualSupportHint}</p>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-400">Enter a concept and run recovery path.</p>
+                )}
+              </article>
+            </section>
+          ) : null}
         </div>
 
         <aside className="space-y-4">
           <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-            <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Node Detail</h2>
+            <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Heartbeat Inspector</h2>
+            <p className="mt-2 text-xs text-slate-300">Mode: {mode}</p>
+            <p className="text-xs text-slate-300">Connected: {connectedCount} | Partial: {partialCount} | Missing: {missingCount}</p>
+            <p className="text-xs text-slate-300">Fallback: {fallback?.applied ? "active" : "not active"}</p>
+            <p className="text-xs text-slate-300">Latest audit decision: {graphAudit?.decisions[graphAudit.decisions.length - 1]?.decision ?? "-"}</p>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+            <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Selected Node</h2>
             {selectedNode ? (
-              <div className="mt-2 space-y-2 text-xs text-slate-300">
-                <p className="text-base font-black text-white">{String((selectedNode.data as { label?: string })?.label ?? selectedNode.id)}</p>
+              <div className="mt-2 space-y-1 text-xs text-slate-300">
+                <p className="text-sm font-black text-white">{String((selectedNode.data as { label?: string })?.label ?? selectedNode.id)}</p>
                 <p>Type: {String((selectedNode.data as { nodeType?: string })?.nodeType ?? "-")}</p>
-                <p>Definition: {String((selectedNode.data as { details?: { definition?: string } })?.details?.definition ?? "-")}</p>
-                <p>KS / Year: {String((selectedNode.data as { details?: { keyStage?: string; yearGroup?: string | null } })?.details?.keyStage ?? "-")} / {String((selectedNode.data as { details?: { yearGroup?: string | null } })?.details?.yearGroup ?? "-")}</p>
-                <p>Difficulty: {String((selectedNode.data as { details?: { difficulty?: string } })?.details?.difficulty ?? "-")}</p>
-                <p>Relationship counts: out {selectedNodeDetails?.outgoingCount ?? 0}, in {selectedNodeDetails?.incomingCount ?? 0}</p>
+                <p>Outgoing links: {selectedNodeDetails?.outgoingCount ?? 0}</p>
+                <p>Incoming links: {selectedNodeDetails?.incomingCount ?? 0}</p>
                 <p>Linked concepts: {selectedNodeDetails?.linkedConcepts ?? 0}</p>
               </div>
             ) : (
-              <p className="mt-2 text-xs text-slate-400">Select a node to inspect concept detail, links, and relationship counts.</p>
+              <p className="mt-2 text-xs text-slate-400">Select any graph node to inspect it here.</p>
             )}
           </section>
 
@@ -488,42 +702,6 @@ export default function KnowledgeGraphPage() {
                 </div>
               ))}
             </div>
-          </section>
-
-          <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-            <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">AI Insight Panel</h2>
-            <div className="mt-2 space-y-2 text-xs text-slate-300">
-              <p>Most important concepts: {metrics?.aiInsights.mostImportantConcepts.map((item) => item.label).join(", ") || "-"}</p>
-              <p>Highest failure concepts: {metrics?.aiInsights.highestFailureConcepts.map((item) => item.label).join(", ") || "-"}</p>
-              <p>Most reused prerequisite chains: {metrics?.aiInsights.mostReusedPrerequisiteChains.map((item) => item.chain.join(" -> ")).join(" | ") || "-"}</p>
-              <p>Intervention-heavy concepts: {metrics?.aiInsights.interventionHeavyConcepts.map((item) => item.label).join(", ") || "-"}</p>
-              <p>Curriculum bottlenecks: {metrics?.aiInsights.curriculumBottlenecks.map((item) => item.label).join(", ") || "-"}</p>
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-            <h2 className="text-sm font-black uppercase tracking-[0.14em] text-amber-100">Orphan Detection</h2>
-            <div className="mt-2 space-y-2 text-xs text-amber-50">
-              <p>Isolated words: {metrics?.orphanWarnings.isolatedWords.length ?? 0}</p>
-              <p>Missing prerequisites: {metrics?.orphanWarnings.missingPrerequisites.length ?? 0}</p>
-              <p>Dead-end concepts: {metrics?.orphanWarnings.deadEndConcepts.length ?? 0}</p>
-              <p>Missing curriculum mappings: {metrics?.orphanWarnings.missingCurriculumMappings.length ?? 0}</p>
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
-            <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-100">Recovery Path</h2>
-            {recoveryPlan ? (
-              <div className="mt-2 space-y-1 text-xs text-cyan-50">
-                <p>Target: {recoveryPlan.targetWord ?? "-"}</p>
-                <p>Path: {recoveryPlan.shortestRecoveryPath.join(" -> ") || "-"}</p>
-                <p>Complexity: {recoveryPlan.estimatedComplexity}</p>
-                <p>Estimated duration: {recoveryPlan.estimatedInterventionMinutes} mins</p>
-                <p>Visual support: {recoveryPlan.visualSupportHint}</p>
-              </div>
-            ) : (
-              <p className="mt-2 text-xs text-cyan-100/80">Enter a concept and click Show Recovery Path.</p>
-            )}
           </section>
         </aside>
       </section>
