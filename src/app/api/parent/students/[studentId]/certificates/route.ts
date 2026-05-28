@@ -4,6 +4,7 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { maskStudentName } from "@/lib/certificate-issuing";
 import { listIssuedCertificatesForLibrary } from "@/lib/certificate-library";
+import { listPersistedCertificateRecordsForStudent } from "@/lib/certificate-records";
 
 export async function GET(_: Request, { params }: { params: Promise<{ studentId: string }> }) {
   const { session, response } = await requireSession();
@@ -34,7 +35,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ studentId:
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const certificates = listIssuedCertificatesForLibrary(child.studentProfile?.aiLearningProfileJson ?? null);
+  const persistedCertificates = await listPersistedCertificateRecordsForStudent(child.id);
+  const certificates = listIssuedCertificatesForLibrary(child.studentProfile?.aiLearningProfileJson ?? null, persistedCertificates);
 
   return NextResponse.json({
     ok: true,

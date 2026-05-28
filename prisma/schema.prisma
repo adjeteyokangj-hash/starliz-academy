@@ -176,6 +176,7 @@ model ChildProfile {
   safeguardingAlerts    SchoolSafeguardingAlert[]
   safeguardingIncidents SafeguardingIncident[]
   studentProfile        StudentProfile?
+  certificates          Certificate[]
   skillMasteries        SkillMastery[]
   masteryCheckResults   MasteryCheckResult[]
   coachInteractionLogs  CoachInteractionLog[]
@@ -266,6 +267,39 @@ model StudentProfile {
   subjectFocus          String?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
+}
+
+model Certificate {
+  id                String       @id @default(cuid())
+  studentId         String
+  student           ChildProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  certificateNumber String       @unique
+  verificationCode  String       @unique
+  idempotencyKey    String       @unique
+  certificateType   String
+  title             String
+  awardReason       String?
+  subject           String?
+  level             String?
+  yearGroup         String?
+  score             Float?
+  issuedAt          DateTime
+  status            String       @default("issued")
+  metadataJson      String?
+  awardSourceType   String?
+  awardSourceId     String?
+  rank              Int?
+  rankLabel         String?
+  competitionName   String?
+  testName          String?
+  tiedRank          Boolean?
+  rankingMethod     String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([studentId])
+  @@index([certificateType])
+  @@index([awardSourceType, awardSourceId])
 }
 
 model ProgressRecord {

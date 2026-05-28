@@ -5,7 +5,8 @@ import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 import { parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/student-learning-state";
 import { buildSubjectLevelProgression } from "@/lib/subject-level-progression";
 import { buildCertificateEligibility } from "@/lib/certificate-eligibility";
-import { parseIssuedCertificates } from "@/lib/certificate-issuing";
+import { mergeIssuedCertificateRecords, parseIssuedCertificates } from "@/lib/certificate-issuing";
+import { listPersistedCertificateRecordsForStudent } from "@/lib/certificate-records";
 import { parseAwardReviewDecisions } from "@/lib/award-review-state";
 import {
   buildStudentAwardNominations,
@@ -116,7 +117,7 @@ export async function GET(request: Request) {
 
   const studentIds = students.map((row) => row.id);
 
-  const [attempts, assignments, weakAreas, studentSkills, progressRecords] = await Promise.all([
+  const [attempts, assignments, weakAreas, studentSkills, progressRecords, persistedCertificateGroups] = await Promise.all([
     prisma.attempt.findMany({
       where: {
         studentId: { in: studentIds },
@@ -200,7 +201,13 @@ export async function GET(request: Request) {
         createdAt: true,
       },
     }),
+    Promise.all(studentIds.map((id) => listPersistedCertificateRecordsForStudent(id))),
   ]);
+
+  const persistedCertificatesByStudent = new Map<string, Awaited<ReturnType<typeof listPersistedCertificateRecordsForStudent>>>();
+  studentIds.forEach((id, index) => {
+    persistedCertificatesByStudent.set(id, persistedCertificateGroups[index] ?? []);
+  });
 
   const attemptsByStudent = new Map<string, typeof attempts>();
   for (const row of attempts) {
@@ -255,7 +262,11 @@ export async function GET(request: Request) {
   const nominations = students.flatMap((student) => {
     const profileJson = student.studentProfile?.aiLearningProfileJson ?? null;
     const reviewDecisions = parseAwardReviewDecisions(profileJson);
-    const issuedAwardCertificates = parseIssuedCertificates(profileJson)
+    const issuedCertificates = mergeIssuedCertificateRecords(
+      persistedCertificatesByStudent.get(student.id) ?? [],
+      parseIssuedCertificates(profileJson),
+    );
+    const issuedAwardCertificates = issuedCertificates
       .filter((row) => row.certificateType === "award_certificate");
     const selectedSubjects = parseSelectedSubjectsFromProfileJson(profileJson).length
       ? parseSelectedSubjectsFromProfileJson(profileJson)
@@ -320,7 +331,7 @@ export async function GET(request: Request) {
       progressRecords: studentProgress,
     });
 
-    const existingIssuedCertificates = parseIssuedCertificates(profileJson)
+    const existingIssuedCertificates = issuedCertificates
       .map((row) => row.certificateType)
       .filter((type): type is "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate" => type !== "award_certificate");
     const certificateEligibility = buildCertificateEligibility({

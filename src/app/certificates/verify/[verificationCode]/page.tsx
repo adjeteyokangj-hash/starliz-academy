@@ -1,5 +1,4 @@
-import { prisma } from "@/lib/db";
-import { parseIssuedCertificates, verifyIssuedCertificate } from "@/lib/certificate-issuing";
+import { verifyCertificateByVerificationCode } from "@/lib/certificate-records";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 
@@ -21,17 +20,7 @@ function formatDate(value: string): string {
 
 export default async function VerifyCertificatePage({ params }: VerifyPageProps) {
   const { verificationCode } = await params;
-  const rows = await prisma.studentProfile.findMany({
-    where: {
-      aiLearningProfileJson: { not: null },
-    },
-    select: {
-      aiLearningProfileJson: true,
-    },
-  });
-
-  const issued = rows.flatMap((row) => parseIssuedCertificates(row.aiLearningProfileJson));
-  const verification = verifyIssuedCertificate({ verificationCode, candidates: issued });
+  const verification = await verifyCertificateByVerificationCode(verificationCode);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">

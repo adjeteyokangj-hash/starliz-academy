@@ -7,7 +7,8 @@ import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 import { parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/student-learning-state";
 import { buildSubjectLevelProgression } from "@/lib/subject-level-progression";
 import { buildCertificateEligibility } from "@/lib/certificate-eligibility";
-import { parseIssuedCertificates } from "@/lib/certificate-issuing";
+import { mergeIssuedCertificateRecords, parseIssuedCertificates } from "@/lib/certificate-issuing";
+import { listPersistedCertificateRecordsForStudent } from "@/lib/certificate-records";
 
 function resolveAcademicTerm(raw: string | null): string {
   const normalized = String(raw ?? "").trim();
@@ -57,7 +58,10 @@ export async function GET(request: Request) {
   const term = resolveAcademicTerm(params.get("term"));
 
   const profileJson = student.studentProfile?.aiLearningProfileJson ?? null;
-  const issuedCertificates = parseIssuedCertificates(profileJson);
+  const issuedCertificates = mergeIssuedCertificateRecords(
+    await listPersistedCertificateRecordsForStudent(student.id),
+    parseIssuedCertificates(profileJson),
+  );
   const selectedSubjects = parseSelectedSubjectsFromProfileJson(profileJson).length
     ? parseSelectedSubjectsFromProfileJson(profileJson)
     : parseSubjectFocus(student.studentProfile?.subjectFocus ?? null);

@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { listIssuedCertificatesForLibrary } from "@/lib/certificate-library";
+import { listPersistedCertificateRecordsForStudent } from "@/lib/certificate-records";
 import { buildCertificateExportHtml, buildCertificateExportPayload } from "@/lib/certificate-pdf-export";
 import { storeCertificateExportHtml } from "@/lib/certificate-export-storage";
 
@@ -35,7 +36,8 @@ export async function GET(
     return NextResponse.json({ ok: false, error: "Certificate export is only available for your own child profiles." }, { status: 403 });
   }
 
-  const certificates = listIssuedCertificatesForLibrary(child.studentProfile?.aiLearningProfileJson ?? null);
+  const persistedCertificates = await listPersistedCertificateRecordsForStudent(studentId);
+  const certificates = listIssuedCertificatesForLibrary(child.studentProfile?.aiLearningProfileJson ?? null, persistedCertificates);
   const certificate = certificates.find((row) => row.verificationCode === verificationCode);
 
   if (!certificate) {

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { parseIssuedCertificates, verifyIssuedCertificate } from "@/lib/certificate-issuing";
+import { verifyCertificateByVerificationCode } from "@/lib/certificate-records";
 import { writeAuditLog } from "@/lib/audit";
 
 export async function GET(
@@ -18,17 +17,7 @@ export async function GET(
     }, { status: 404 });
   }
 
-  const rows = await prisma.studentProfile.findMany({
-    where: {
-      aiLearningProfileJson: { not: null },
-    },
-    select: {
-      aiLearningProfileJson: true,
-    },
-  });
-
-  const issued = rows.flatMap((row) => parseIssuedCertificates(row.aiLearningProfileJson));
-  const verification = verifyIssuedCertificate({ verificationCode, candidates: issued });
+  const verification = await verifyCertificateByVerificationCode(verificationCode);
 
   await writeAuditLog({
     action: "certificate_verification_checked",

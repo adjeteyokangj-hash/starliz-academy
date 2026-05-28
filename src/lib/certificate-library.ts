@@ -1,4 +1,10 @@
-import { maskStudentName, parseIssuedCertificates, type IssuedCertificateRecord, type IssuedCertificateType } from "@/lib/certificate-issuing";
+import {
+  maskStudentName,
+  mergeIssuedCertificateRecords,
+  parseIssuedCertificates,
+  type IssuedCertificateRecord,
+  type IssuedCertificateType,
+} from "@/lib/certificate-issuing";
 
 export type CertificateLibraryTypeGroup = "term_certificates" | "subject_certificates" | "english_certificates" | "mastery_certificates" | "award_certificates";
 
@@ -78,8 +84,11 @@ export function toCertificateLibraryEntry(record: IssuedCertificateRecord): Cert
   };
 }
 
-export function listIssuedCertificatesForLibrary(profileJson: string | null | undefined): CertificateLibraryEntry[] {
-  return parseIssuedCertificates(profileJson)
+export function listIssuedCertificatesForLibrary(
+  profileJson: string | null | undefined,
+  persistedRecords: IssuedCertificateRecord[] = [],
+): CertificateLibraryEntry[] {
+  return mergeIssuedCertificateRecords(persistedRecords, parseIssuedCertificates(profileJson))
     .map((record) => toCertificateLibraryEntry(record))
     .sort((a, b) => issuedTimestamp(b.issuedAt) - issuedTimestamp(a.issuedAt));
 }

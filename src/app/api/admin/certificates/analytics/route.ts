@@ -8,6 +8,8 @@ import {
 } from "@/lib/certificate-template-persistence";
 import { buildCertificateAnalytics, listAllIssuedCertificates, type CertificateVerificationActivity } from "@/lib/certificate-analytics";
 import { parseAwardReviewDecisions } from "@/lib/award-review-state";
+import { mergeIssuedCertificateRecords } from "@/lib/certificate-issuing";
+import { listAllPersistedCertificateRecords } from "@/lib/certificate-records";
 
 function parseVerificationMetadata(metadataJson: string | null | undefined): { verificationCode: string; status: "valid" | "revoked" | "not_found" } | null {
   if (!metadataJson) return null;
@@ -35,16 +37,22 @@ export async function GET() {
   const studentProfiles = await prisma.studentProfile.findMany({
     where: { aiLearningProfileJson: { not: null } },
     select: {
+      childId: true,
       aiLearningProfileJson: true,
     },
   });
 
-  const certificates = listAllIssuedCertificates(studentProfiles.map((row) => row.aiLearningProfileJson));
+  const legacyCertificates = listAllIssuedCertificates(studentProfiles.map((row) => row.aiLearningProfileJson));
+  const persistedCertificates = await listAllPersistedCertificateRecords();
+  const certificates = mergeIssuedCertificateRecords(persistedCertificates, legacyCertificates);
 
   const pendingCertificates = studentProfiles.reduce((count, profile) => {
     const decisions = parseAwardReviewDecisions(profile.aiLearningProfileJson);
     const approved = decisions.filter((row) => row.status === "approved").length;
-    const issuedAwardCount = listAllIssuedCertificates([profile.aiLearningProfileJson])
+    const issuedAwardCount = mergeIssuedCertificateRecords(
+      persistedCertificates.filter((row) => row.studentId === profile.childId),
+      listAllIssuedCertificates([profile.aiLearningProfileJson]),
+    )
       .filter((row) => row.certificateType === "award_certificate").length;
     return count + Math.max(0, approved - issuedAwardCount);
   }, 0);

@@ -152,6 +152,10 @@ function parseIssuedRecord(value: unknown): IssuedCertificateRecord | null {
   };
 }
 
+export function parseIssuedCertificateRecord(value: unknown): IssuedCertificateRecord | null {
+  return parseIssuedRecord(value);
+}
+
 export function parseIssuedCertificates(profileJson: string | null | undefined): IssuedCertificateRecord[] {
   const parsed = parseJsonObject(profileJson);
   const certificates = parsed.certificates;
@@ -178,6 +182,63 @@ export function upsertIssuedCertificates(profileJson: string | null | undefined,
   };
 
   return JSON.stringify(next);
+}
+
+export function buildCertificateIdempotencyKey(record: Pick<IssuedCertificateRecord, "studentId" | "certificateType" | "term" | "nominationId" | "subject" | "strand">): string {
+  const sourceType = record.certificateType === "award_certificate" ? "award_nomination" : "term";
+  const sourceId = record.certificateType === "award_certificate"
+    ? String(record.nominationId ?? "").trim()
+    : [
+        record.term,
+        record.subject ?? "",
+        record.strand ?? "",
+      ].map((part) => normalize(part)).join(":");
+
+  return [
+    record.studentId,
+    record.certificateType,
+    sourceType,
+    sourceId || "default",
+  ].map((part) => normalize(part).replace(/\s+/g, "_")).join("|");
+}
+
+export function findMatchingIssuedCertificate(input: {
+  records: IssuedCertificateRecord[];
+  studentId: string;
+  certificateType: IssuedCertificateType;
+  term: string;
+  nominationId?: string | null;
+}): IssuedCertificateRecord | null {
+  const targetKey = buildCertificateIdempotencyKey({
+    studentId: input.studentId,
+    certificateType: input.certificateType,
+    term: input.term,
+    nominationId: input.nominationId ?? undefined,
+  });
+
+  return input.records.find((record) => buildCertificateIdempotencyKey(record) === targetKey) ?? null;
+}
+
+export function mergeIssuedCertificateRecords(...groups: IssuedCertificateRecord[][]): IssuedCertificateRecord[] {
+  const out: IssuedCertificateRecord[] = [];
+  const seen = new Set<string>();
+
+  for (const record of groups.flat()) {
+    const keys = [
+      normalize(record.verificationCode),
+      normalize(record.certificateNumber),
+    ].filter(Boolean);
+
+    if (keys.some((key) => seen.has(key))) continue;
+    for (const key of keys) seen.add(key);
+    out.push(record);
+  }
+
+  return out.sort((a, b) => {
+    const left = Date.parse(a.issuedAt);
+    const right = Date.parse(b.issuedAt);
+    return (Number.isNaN(right) ? 0 : right) - (Number.isNaN(left) ? 0 : left);
+  });
 }
 
 export function canIssueCertificate(eligibility: CertificateEligibilityResult): CertificateIssueAllowed | CertificateIssueBlocked {

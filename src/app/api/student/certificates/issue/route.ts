@@ -9,10 +9,15 @@ import { buildSubjectLevelProgression } from "@/lib/subject-level-progression";
 import { buildCertificateEligibility, type CertificateType } from "@/lib/certificate-eligibility";
 import {
   canIssueCertificate,
-  issueCertificateRecord,
+  findMatchingIssuedCertificate,
+  mergeIssuedCertificateRecords,
   parseIssuedCertificates,
   upsertIssuedCertificates,
 } from "@/lib/certificate-issuing";
+import {
+  issueAndPersistCertificateRecord,
+  listPersistedCertificateRecordsForStudent,
+} from "@/lib/certificate-records";
 
 function resolveAcademicTerm(raw: string | null | undefined): string {
   const normalized = String(raw ?? "").trim();
@@ -186,7 +191,9 @@ export async function POST(request: Request) {
     progressRecords,
   });
 
-  const existingIssued = parseIssuedCertificates(profileJson);
+  const persistedIssued = await listPersistedCertificateRecordsForStudent(student.id);
+  const legacyIssued = parseIssuedCertificates(profileJson);
+  const existingIssued = mergeIssuedCertificateRecords(persistedIssued, legacyIssued);
 
   const eligibility = buildCertificateEligibility({
     studentId: student.id,
@@ -217,6 +224,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Certificate type was not found for this student profile." }, { status: 404 });
   }
 
+  const existingTarget = findMatchingIssuedCertificate({
+    records: existingIssued,
+    studentId: student.id,
+    certificateType,
+    term,
+  });
+
+  if (existingTarget) {
+    return NextResponse.json({
+      ok: true,
+      message: "Certificate already issued.",
+      student: {
+        id: student.id,
+        name: student.name,
+        yearGroup: student.yearGroup,
+        keyStage: student.studentProfile?.keyStageLevel ?? null,
+      },
+      issuedCertificate: existingTarget,
+    });
+  }
+
   const gate = canIssueCertificate(target);
   if (!gate.ok) {
     return NextResponse.json({
@@ -232,7 +260,7 @@ export async function POST(request: Request) {
   }
 
   const baseUrl = resolveBaseUrl(request);
-  const issued = issueCertificateRecord({
+  const issued = await issueAndPersistCertificateRecord({
     eligibility: target,
     studentId: student.id,
     studentName: student.name,
@@ -241,7 +269,7 @@ export async function POST(request: Request) {
     verificationBaseUrl: baseUrl,
   });
 
-  const updatedIssued = [...existingIssued, issued];
+  const updatedIssued = mergeIssuedCertificateRecords([issued], existingIssued);
 
   await prisma.studentProfile.upsert({
     where: { childId: student.id },

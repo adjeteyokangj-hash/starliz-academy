@@ -6,10 +6,15 @@ import { parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/s
 import { buildSubjectLevelProgression } from "@/lib/subject-level-progression";
 import { buildCertificateEligibility } from "@/lib/certificate-eligibility";
 import {
-  issueAwardCertificateRecord,
+  findMatchingIssuedCertificate,
+  mergeIssuedCertificateRecords,
   parseIssuedCertificates,
   upsertIssuedCertificates,
 } from "@/lib/certificate-issuing";
+import {
+  issueAndPersistAwardCertificateRecord,
+  listPersistedCertificateRecordsForStudent,
+} from "@/lib/certificate-records";
 import {
   buildStudentAwardNominations,
   canApproveAwardNomination,
@@ -214,7 +219,12 @@ async function recomputeNomination(input: {
     progressRecords,
   });
 
-  const existingIssuedCertificates = parseIssuedCertificates(profileJson)
+  const issuedCertificates = mergeIssuedCertificateRecords(
+    await listPersistedCertificateRecordsForStudent(student.id),
+    parseIssuedCertificates(profileJson),
+  );
+
+  const existingIssuedCertificates = issuedCertificates
     .map((row) => row.certificateType)
     .filter((type): type is "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate" => type !== "award_certificate");
 
@@ -408,8 +418,17 @@ export async function POST(
     }, { status: 409 });
   }
 
-  const existingIssued = parseIssuedCertificates(resolved.profileJson);
-  const existingAward = existingIssued.find((row) => row.certificateType === "award_certificate" && row.nominationId === nominationId);
+  const existingIssued = mergeIssuedCertificateRecords(
+    await listPersistedCertificateRecordsForStudent(studentId),
+    parseIssuedCertificates(resolved.profileJson),
+  );
+  const existingAward = findMatchingIssuedCertificate({
+    records: existingIssued,
+    studentId,
+    certificateType: "award_certificate",
+    term,
+    nominationId,
+  });
 
   if (existingAward) {
     return NextResponse.json({
@@ -424,7 +443,7 @@ export async function POST(
     });
   }
 
-  const issued = issueAwardCertificateRecord({
+  const issued = await issueAndPersistAwardCertificateRecord({
     nomination: resolved.nomination,
     studentId,
     studentName: resolved.studentName,
@@ -433,7 +452,7 @@ export async function POST(
     verificationBaseUrl: resolveBaseUrl(request),
   });
 
-  const nextProfileJson = upsertIssuedCertificates(resolved.profileJson, [...existingIssued, issued]);
+  const nextProfileJson = upsertIssuedCertificates(resolved.profileJson, mergeIssuedCertificateRecords([issued], existingIssued));
 
   await prisma.studentProfile.upsert({
     where: { childId: studentId },

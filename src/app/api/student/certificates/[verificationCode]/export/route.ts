@@ -4,6 +4,7 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import { listIssuedCertificatesForLibrary } from "@/lib/certificate-library";
+import { listPersistedCertificateRecordsForStudent } from "@/lib/certificate-records";
 import { buildCertificateExportHtml, buildCertificateExportPayload } from "@/lib/certificate-pdf-export";
 import { storeCertificateExportHtml } from "@/lib/certificate-export-storage";
 
@@ -38,7 +39,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ veri
     return NextResponse.json({ ok: false, error: "Student not found." }, { status: 404 });
   }
 
-  const certificates = listIssuedCertificatesForLibrary(child.studentProfile?.aiLearningProfileJson ?? null);
+  const persistedCertificates = await listPersistedCertificateRecordsForStudent(studentId);
+  const certificates = listIssuedCertificatesForLibrary(child.studentProfile?.aiLearningProfileJson ?? null, persistedCertificates);
   const certificate = certificates.find((row) => row.verificationCode === verificationCode);
 
   if (!certificate) {

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdminPermission } from "@/lib/api_guard";
-import { prisma } from "@/lib/db";
-import { parseIssuedCertificates } from "@/lib/certificate-issuing";
+import { findIssuedCertificateByVerificationCode } from "@/lib/certificate-records";
 import { buildCertificateExportHtml, buildCertificateExportPayload, certificateTypeLabel } from "@/lib/certificate-pdf-export";
 import { storeCertificateExportHtml } from "@/lib/certificate-export-storage";
 
@@ -11,19 +10,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ veri
 
   const { verificationCode } = await params;
 
-  const rows = await prisma.studentProfile.findMany({
-    where: {
-      aiLearningProfileJson: { not: null },
-    },
-    select: {
-      aiLearningProfileJson: true,
-    },
-  });
+  const certificate = await findIssuedCertificateByVerificationCode(verificationCode);
 
-  const issued = rows.flatMap((row) => parseIssuedCertificates(row.aiLearningProfileJson));
-  const certificate = issued.find((row) => row.verificationCode === verificationCode && row.certificateType === "award_certificate");
-
-  if (!certificate) {
+  if (!certificate || certificate.certificateType !== "award_certificate") {
     return NextResponse.json({ ok: false, error: "Certificate not found." }, { status: 404 });
   }
 
