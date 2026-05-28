@@ -8,7 +8,7 @@ export default function Privacy() {
           <Link href="/" className="bg-linear-to-r from-blue-400 to-indigo-400 bg-clip-text text-xl font-black text-transparent tracking-tight">
             StarLiz Academy
           </Link>
-          <Link href="/trial" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
+          <Link href="/signup" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
             Start Free Trial
           </Link>
         </div>
@@ -41,13 +41,27 @@ export default function Privacy() {
           <div>
             <h2 className="text-xl font-bold mb-3">What child data is collected</h2>
             <ul className="space-y-2 text-slate-400 list-disc list-inside">
-              <li>Child name or nickname</li>
-              <li>Age and year group</li>
-              <li>Learning level</li>
-              <li>Selected subjects</li>
+              <li>Child first name or nickname</li>
+              <li>Date of birth</li>
+              <li>Calculated age</li>
+              <li>Suggested or selected UK year group</li>
+              <li>Detected learning stage or key stage, including EYFS, KS1, KS2, KS3, and KS4 / GCSE</li>
+              <li>Selected subject bundles</li>
+              <li>Learning focus</li>
+              <li>Learning confidence</li>
               <li>Learning progress</li>
               <li>Attempts, scores, rewards, and weak areas</li>
-              <li>Voice and speech responses where microphone learning is enabled</li>
+              <li>Voice and speech responses where microphone learning features are enabled</li>
+            </ul>
+          </div>
+
+          <div>
+            <h2 className="text-xl font-bold mb-3">Parent consent confirmations</h2>
+            <ul className="space-y-2 text-slate-400 list-disc list-inside">
+              <li>Parent or legal guardian confirmation</li>
+              <li>Agreement to create a child learning profile</li>
+              <li>Agreement to Terms and Privacy Policy</li>
+              <li>Optional marketing preferences, where selected by the parent</li>
             </ul>
           </div>
 

@@ -49,6 +49,12 @@ type SignupErrors = Partial<Record<
   string
 >>;
 
+type ConsentTouched = {
+  guardianConsent: boolean;
+  learningProfileConsent: boolean;
+  termsConsent: boolean;
+};
+
 const inputCls =
   "mt-2 w-full rounded-2xl border border-slate-700/80 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30";
 
@@ -109,11 +115,11 @@ export default function SignupPage() {
 
   const [childName, setChildName] = useState("");
   const [childDateOfBirth, setChildDateOfBirth] = useState("");
-  const [yearGroup, setYearGroup] = useState<string>("Reception");
+  const [manualYearGroup, setManualYearGroup] = useState<string>("Reception");
   const [yearGroupLockedByParent, setYearGroupLockedByParent] = useState(false);
   const [avatar, setAvatar] = useState<string>(AVATAR_OPTIONS[0]);
 
-  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [rawSelectedSubjects, setRawSelectedSubjects] = useState<string[]>([]);
   const [learningFocus, setLearningFocus] = useState<string>(LEARNING_FOCUS_OPTIONS[0].label);
   const [learningConfidence, setLearningConfidence] = useState<string>(LEARNING_CONFIDENCE_OPTIONS[1]);
 
@@ -121,6 +127,12 @@ export default function SignupPage() {
   const [learningProfileConsent, setLearningProfileConsent] = useState(false);
   const [termsConsent, setTermsConsent] = useState(false);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [consentTouched, setConsentTouched] = useState<ConsentTouched>({
+    guardianConsent: false,
+    learningProfileConsent: false,
+    termsConsent: false,
+  });
+  const [consentSubmitAttempted, setConsentSubmitAttempted] = useState(false);
 
   const [errors, setErrors] = useState<SignupErrors>({});
   const [loading, setLoading] = useState(false);
@@ -134,10 +146,7 @@ export default function SignupPage() {
     return childDateOfBirth ? suggestUkYearGroupFromDateOfBirth(childDateOfBirth) : null;
   }, [childDateOfBirth]);
 
-  useEffect(() => {
-    if (!suggestedYearGroup || yearGroupLockedByParent) return;
-    setYearGroup(suggestedYearGroup);
-  }, [suggestedYearGroup, yearGroupLockedByParent]);
+  const yearGroup = (!yearGroupLockedByParent && suggestedYearGroup) ? suggestedYearGroup : manualYearGroup;
 
   const stage = useMemo(() => getStageForYearGroup(yearGroup), [yearGroup]);
 
@@ -145,13 +154,10 @@ export default function SignupPage() {
     return [...getSubjectOptionsForYearGroup(yearGroup)];
   }, [yearGroup]);
 
-  useEffect(() => {
-    setSelectedSubjects((current) => {
-      const retained = current.filter((subject) => stageSubjects.includes(subject));
-      if (retained.length > 0) return retained;
-      return [...stageSubjects];
-    });
-  }, [stageSubjects]);
+  const selectedSubjects = useMemo(() => {
+    const retained = rawSelectedSubjects.filter((s) => stageSubjects.includes(s));
+    return retained.length > 0 ? retained : [...stageSubjects];
+  }, [rawSelectedSubjects, stageSubjects]);
 
   const visibleFocusOptions = useMemo(() => {
     return LEARNING_FOCUS_OPTIONS.map((option) => {
@@ -209,6 +215,10 @@ export default function SignupPage() {
     learningProfileConsent,
     termsConsent,
   ]);
+
+  const showGuardianConsentError = !guardianConsent && (consentSubmitAttempted || consentTouched.guardianConsent);
+  const showLearningProfileConsentError = !learningProfileConsent && (consentSubmitAttempted || consentTouched.learningProfileConsent);
+  const showTermsConsentError = !termsConsent && (consentSubmitAttempted || consentTouched.termsConsent);
 
   function validateStepOne(): SignupErrors {
     const next: SignupErrors = {};
@@ -292,6 +302,9 @@ export default function SignupPage() {
     }
 
     setErrors({});
+    if (step === 3) {
+      setConsentSubmitAttempted(false);
+    }
     setStep((current) => (current === 1 ? 2 : current === 2 ? 3 : 4));
   }
 
@@ -301,7 +314,7 @@ export default function SignupPage() {
   }
 
   function toggleSubject(subject: string) {
-    setSelectedSubjects((current) => {
+    setRawSelectedSubjects((current) => {
       if (current.includes(subject)) {
         return current.filter((item) => item !== subject);
       }
@@ -321,6 +334,7 @@ export default function SignupPage() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     const nextErrors = {
       ...validateStepOne(),
       ...validateStepTwo(),
@@ -474,7 +488,7 @@ export default function SignupPage() {
                     <p className="text-sm font-semibold text-slate-300">Year group</p>
                     <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {UK_YEAR_GROUP_OPTIONS.map((option) => (
-                        <button key={option} type="button" onClick={() => { setYearGroup(option); setYearGroupLockedByParent(true); }} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${yearGroup === option ? "border-blue-500 bg-blue-500/15 text-blue-100" : "border-slate-700 bg-slate-950 text-slate-300"}`}>
+                        <button key={option} type="button" onClick={() => { setManualYearGroup(option); setYearGroupLockedByParent(true); }} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${yearGroup === option ? "border-blue-500 bg-blue-500/15 text-blue-100" : "border-slate-700 bg-slate-950 text-slate-300"}`}>
                           {option}
                         </button>
                       ))}
@@ -545,20 +559,55 @@ export default function SignupPage() {
                     <p>Confidence: {learningConfidence}</p>
                   </div>
 
+                  <p className="text-sm text-slate-300">Please review the details below and confirm you have permission to create this child learning profile.</p>
+
                   <label className="flex items-start gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-3 text-sm text-slate-300">
-                    <input type="checkbox" checked={guardianConsent} onChange={(e) => setGuardianConsent(e.target.checked)} className="mt-1" />
+                    <input
+                      type="checkbox"
+                      checked={guardianConsent}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setGuardianConsent(checked);
+                        setConsentTouched((current) => ({ ...current, guardianConsent: true }));
+                        setErrors((current) => ({ ...current, guardianConsent: undefined }));
+                      }}
+                      className="mt-1"
+                    />
                     <span>I confirm I am the parent or legal guardian.</span>
                   </label>
+                  {showGuardianConsentError ? <p className="text-xs font-semibold text-rose-300">Guardian confirmation is required.</p> : null}
 
                   <label className="flex items-start gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-3 text-sm text-slate-300">
-                    <input type="checkbox" checked={learningProfileConsent} onChange={(e) => setLearningProfileConsent(e.target.checked)} className="mt-1" />
+                    <input
+                      type="checkbox"
+                      checked={learningProfileConsent}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setLearningProfileConsent(checked);
+                        setConsentTouched((current) => ({ ...current, learningProfileConsent: true }));
+                        setErrors((current) => ({ ...current, learningProfileConsent: undefined }));
+                      }}
+                      className="mt-1"
+                    />
                     <span>I agree to StarLiz Academy creating a learning profile for my child.</span>
                   </label>
+                  {showLearningProfileConsentError ? <p className="text-xs font-semibold text-rose-300">Learning profile consent is required.</p> : null}
 
                   <label className="flex items-start gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-3 text-sm text-slate-300">
-                    <input type="checkbox" checked={termsConsent} onChange={(e) => setTermsConsent(e.target.checked)} className="mt-1" />
+                    <input
+                      type="checkbox"
+                      checked={termsConsent}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setTermsConsent(checked);
+                        setConsentTouched((current) => ({ ...current, termsConsent: true }));
+                        setErrors((current) => ({ ...current, termsConsent: undefined }));
+                      }}
+                      className="mt-1"
+                    />
                     <span>I agree to the <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:text-blue-200">Terms</Link> and <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:text-blue-200">Privacy Policy</Link>.</span>
                   </label>
+                  {showTermsConsentError ? <p className="text-xs font-semibold text-rose-300">Terms and Privacy agreement is required.</p> : null}
 
                   <label className="flex items-start gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-3 text-sm text-slate-300">
                     <input type="checkbox" checked={marketingOptIn} onChange={(e) => setMarketingOptIn(e.target.checked)} className="mt-1" />
@@ -568,7 +617,10 @@ export default function SignupPage() {
               )}
 
               <div className="space-y-1 text-xs font-semibold text-rose-300">
-                {Object.values(errors).filter(Boolean).map((error) => <p key={error}>{error}</p>)}
+                {Object.entries(errors)
+                  .filter(([field]) => !["guardianConsent", "learningProfileConsent", "termsConsent"].includes(field))
+                  .filter((entry): entry is [string, string] => Boolean(entry[1]))
+                  .map(([field, error], index) => <p key={`${field}-${index}`}>{error}</p>)}
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
@@ -581,7 +633,14 @@ export default function SignupPage() {
                 {step < 4 ? (
                   <button type="button" onClick={goNextStep} className="flex-1 rounded-2xl bg-blue-600 px-5 py-3 font-bold transition hover:bg-blue-500">Continue</button>
                 ) : (
-                  <button type="submit" disabled={loading} className="flex-1 rounded-2xl bg-blue-600 px-5 py-3 font-bold transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Creating account..." : "Create Account"}</button>
+                  <button
+                    type="submit"
+                    onClick={() => setConsentSubmitAttempted(true)}
+                    disabled={loading}
+                    className="flex-1 rounded-2xl bg-blue-600 px-5 py-3 font-bold transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading ? "Creating account..." : "Create Account"}
+                  </button>
                 )}
               </div>
 

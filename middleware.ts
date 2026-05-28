@@ -31,6 +31,10 @@ const PUBLIC_PATHS = [
   "/manifest.webmanifest",
   "/sw.js",
   "/invite/accept",
+  // Country-specific public landing pages
+  "/uk",
+  "/ghana",
+  "/nigeria",
 ];
 
 type DecodedSession = { userId: string; email: string; role: string };

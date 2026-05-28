@@ -8,7 +8,7 @@ export default function Terms() {
           <Link href="/" className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-xl font-black text-transparent tracking-tight">
             StarLiz Academy
           </Link>
-          <Link href="/trial" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
+          <Link href="/signup" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
             Start Free Trial
           </Link>
         </div>
@@ -31,7 +31,11 @@ export default function Terms() {
 
           <div>
             <h2 className="text-xl font-bold text-white mb-3">Acceptable Use</h2>
-            <p>StarLiz Academy is intended for educational use by children aged 5&ndash;10 under parental supervision. You must not misuse, copy or redistribute any content from the platform.</p>
+            <p>
+              StarLiz Academy is intended for educational use by children from EYFS / Reception through to KS4 / GCSE Year 11, under parent or guardian supervision.
+              This includes learning pathways across EYFS / Reception, KS1, KS2, KS3, and KS4 / GCSE.
+              You must not misuse, copy, or redistribute any content from the platform.
+            </p>
           </div>
 
           <div>

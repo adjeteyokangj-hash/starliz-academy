@@ -20,7 +20,7 @@ const features = [
   {
     icon: "🧒",
     title: "Daily Learning Journey",
-    desc: "A personalised learning journey with guided practice across spelling, maths and reading each day.",
+    desc: "A personalised learning journey with English, maths and guided practice each day.",
   },
   {
     icon: "🗣️",
@@ -75,7 +75,7 @@ const adminPortalFeatures = [
 const childLearningFeatures = [
   "Daily lesson journey",
   "Assignment-based learning",
-  "Spelling, maths and reading practice",
+  "English, maths and guided practice",
   "Guided learning support",
   "Weak-area detection",
   "Voice-friendly learning support",
@@ -163,7 +163,7 @@ const steps = [
   {
     step: "2",
     title: "Learn with guided support",
-    desc: "Children complete daily journeys, assigned tasks and spelling, maths and reading practice with guided learning support.",
+    desc: "Children complete daily journeys, assigned tasks and English, maths, reading and writing support with guided learning.",
     icon: "📝",
   },
   {
@@ -208,7 +208,7 @@ export default async function PublicHomePage() {
             <Link href="#pricing" className="transition hover:text-white">Pricing</Link>
             <Link href="/" className="transition hover:text-white">Change country</Link>
             <Link href="/roadmap" className="transition hover:text-white">Roadmap</Link>
-            <Link href="/login" className="transition hover:text-white">Login</Link>
+            <Link href="/auth/login" className="transition hover:text-white">Login</Link>
             <Link href="/signup" className="rounded-lg border border-blue-500/50 bg-blue-500/10 px-3 py-1.5 font-semibold text-blue-200 transition hover:bg-blue-500/20 hover:text-blue-100">Create Account</Link>
           </nav>
 
@@ -233,7 +233,7 @@ export default async function PublicHomePage() {
             <Link href="#pricing" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Pricing</Link>
             <Link href="/" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Change country</Link>
             <Link href="/roadmap" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Roadmap</Link>
-            <Link href="/login" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Login</Link>
+            <Link href="/auth/login" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Login</Link>
             <Link href="/signup" className="rounded-lg border border-blue-500/50 bg-blue-500/10 px-3 py-2 text-center font-semibold text-blue-200 transition hover:bg-blue-500/20">Create Account</Link>
             <Link href="/signup" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Free Trial</Link>
           </nav>
@@ -258,7 +258,7 @@ export default async function PublicHomePage() {
             </h1>
 
             <p className="mt-4 sm:mt-6 max-w-xl text-sm sm:text-base lg:text-lg leading-6 sm:leading-8 text-slate-300">
-              StarLiz Academy helps children learn with adaptive lessons, smart catch-up, guided practice, parent visibility, and curriculum-aware progress tracking from primary learning through KS3 and GCSE readiness.
+              StarLiz Academy helps children learn with adaptive lessons, smart catch-up, guided practice, parent visibility, and curriculum-aware progress tracking from EYFS and primary stages through KS3 and GCSE pathways.
             </p>
 
             <div className="mt-6 sm:mt-9 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
@@ -512,7 +512,7 @@ export default async function PublicHomePage() {
               StarLiz Academy is built for households, tutors and organisations supporting learners across England pathways.
             </p>
             <ul className="mt-6 space-y-3 text-slate-300">
-              <li className="flex items-center gap-3"><span className="text-yellow-400">👨‍👩‍👧</span> Parents of Reception–Year 6 children</li>
+              <li className="flex items-center gap-3"><span className="text-yellow-400">👨‍👩‍👧</span> Parents of EYFS, KS1 and KS2 children</li>
               <li className="flex items-center gap-3"><span className="text-orange-400">🧑‍🎓</span> Parents of KS3 students</li>
               <li className="flex items-center gap-3"><span className="text-purple-400">🎓</span> Parents of GCSE students</li>
               <li className="flex items-center gap-3"><span className="text-blue-400">🧑‍🏫</span> Tutors and intervention providers</li>
