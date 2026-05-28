@@ -180,13 +180,13 @@ export default function AdminSidebar() {
         } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-slate-800 bg-slate-950/92 transition-all duration-300`}
       >
         <div className="relative">
-          <Link href="/admin" className="flex items-center gap-3 px-2">
-            <Logo variant="icon" size={44} animation={false} className="pointer-events-none" />
+          <div className="flex items-center gap-3 px-2">
+            <Logo href="/admin" variant="icon" size={44} animation={false} className="pointer-events-none" />
             <span>
               <span className="block text-base font-black text-white">StarLiz Admin</span>
               <span className="text-xs font-semibold text-slate-400">Admin Portal</span>
             </span>
-          </Link>
+          </div>
 
           <button
             onClick={toggleVisibility}
