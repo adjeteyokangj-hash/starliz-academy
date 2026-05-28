@@ -71,6 +71,21 @@ export default function StudentOnboardingPage() {
   const [quickSession, setQuickSession] = useState<QuickSession | null>(null);
   const [levels, setLevels] = useState<Record<string, QuickLevel> | null>(null);
 
+  const BLOCKED_PHRASES = [
+    "Subject check",
+    "Which answer is most accurate for this topic",
+    "The evidence-based answer",
+    "The answer with the longest sentence",
+    "The answer with unusual punctuation",
+    "The first answer shown",
+  ];
+
+  function questionLooksInvalid(q: QuickQuestion | null | undefined): boolean {
+    if (!q) return false;
+    const texts = [q.topic ?? "", q.prompt ?? "", ...(q.choices ?? [])];
+    return texts.some((t) => BLOCKED_PHRASES.some((phrase) => t.toLowerCase().includes(phrase.toLowerCase())));
+  }
+
   async function hydrateLevels() {
     const response = await fetch("/api/student/quick-level-finder/levels", {
       credentials: "include",
@@ -240,6 +255,18 @@ export default function StudentOnboardingPage() {
             </div>
 
             {quickSession.status === "in_progress" && quickSession.currentQuestion ? (
+              questionLooksInvalid(quickSession.currentQuestion) ? (
+                <div className="mt-4 rounded-xl border border-cyan-400/25 bg-cyan-500/5 p-4">
+                  <p className="text-sm text-slate-200">We&apos;re getting your next question ready.</p>
+                  <button
+                    type="button"
+                    onClick={() => void startLevelFinder(false)}
+                    className="mt-2 rounded-lg border border-cyan-300/30 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-400/10"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              ) : (
               <div className="mt-4 rounded-xl border border-cyan-400/25 bg-cyan-500/5 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Current question</p>
                 <p className="mt-2 text-sm text-slate-200">Subject scope: {quickSession.currentQuestion.subject}</p>
@@ -251,7 +278,6 @@ export default function StudentOnboardingPage() {
                     {quickSession.currentQuestion.prompt}
                   </p>
                 ) : null}
-                <p className="mt-1 text-xs text-slate-400">Question ID: {quickSession.currentQuestion.id}</p>
                 {quickSession.questionPreview && quickSession.questionPreview.length > 1 ? (
                   <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/40 p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">Question set preview</p>
@@ -290,6 +316,7 @@ export default function StudentOnboardingPage() {
                   ))}
                 </div>
               </div>
+              )
             ) : null}
           </div>
         ) : null}

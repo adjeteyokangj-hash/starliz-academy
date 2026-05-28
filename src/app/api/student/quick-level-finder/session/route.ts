@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
-import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
+import { parseQuickLevelFinderSession, sanitiseQuestion } from "@/lib/quick-level-finder";
 
 export async function GET() {
   const { session, response } = await requireSession();
@@ -40,6 +40,12 @@ export async function GET() {
     return NextResponse.json({ error: "Quick Level Finder has not started." }, { status: 404 });
   }
 
+  const rawCurrentQuestion = sessionState.questions[sessionState.cursor] ?? null;
+  const safeCurrentQuestion = rawCurrentQuestion ? sanitiseQuestion(rawCurrentQuestion, sessionState.cursor) : null;
+  if (safeCurrentQuestion !== rawCurrentQuestion && safeCurrentQuestion !== null) {
+    console.warn(`[qlf-session] Repaired current question for student ${student.id}`);
+  }
+
   return NextResponse.json({
     ok: true,
     student: {
@@ -53,7 +59,7 @@ export async function GET() {
       completedAt: sessionState.completedAt,
       answered: sessionState.responses.length,
       totalQuestions: sessionState.questions.length,
-      currentQuestion: sessionState.questions[sessionState.cursor] ?? null,
+      currentQuestion: safeCurrentQuestion,
       questionPreview: sessionState.questions.slice(sessionState.cursor, sessionState.cursor + 3),
       progressPercent: sessionState.questions.length > 0
         ? Math.round((sessionState.responses.length / sessionState.questions.length) * 100)

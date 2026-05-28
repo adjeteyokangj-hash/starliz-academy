@@ -8,6 +8,7 @@ import {
   deriveQuickLevelFinderLevels,
   inferQuickLevelFinderPlacementProfile,
   parseQuickLevelFinderSession,
+  sanitiseQuestion,
   upsertQuickLevelFinderRetestEnabled,
   upsertQuickLevelFinderSession,
 } from "@/lib/quick-level-finder";
@@ -137,6 +138,12 @@ export async function POST(request: Request) {
     }).catch(() => undefined);
   }
 
+  const nextCurrentQuestion = state.questions[state.cursor] ?? null;
+  const safeNextQuestion = nextCurrentQuestion ? sanitiseQuestion(nextCurrentQuestion, state.cursor) : null;
+  if (safeNextQuestion !== nextCurrentQuestion && safeNextQuestion !== null) {
+    console.warn(`[qlf-answer] Repaired next question for student ${student.id} (${student.yearGroup})`);
+  }
+
   return NextResponse.json({
     ok: true,
     completed: state.status === "completed",
@@ -145,7 +152,7 @@ export async function POST(request: Request) {
       status: state.status,
       answered: state.responses.length,
       totalQuestions: state.questions.length,
-      currentQuestion: state.questions[state.cursor] ?? null,
+      currentQuestion: safeNextQuestion,
       questionPreview: state.questions.slice(state.cursor, state.cursor + 3),
       progressPercent: state.questions.length > 0
         ? Math.round((state.responses.length / state.questions.length) * 100)

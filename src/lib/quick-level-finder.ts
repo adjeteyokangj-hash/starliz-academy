@@ -292,6 +292,22 @@ function normalizeSubjectKey(rawKey: string): { subject: string; strand: string 
   return { subject, strand: strandRaw || null };
 }
 
+// Maps literal subject names (reading, spelling, grammar, vocabulary) to english + strand.
+export function normaliseSubjectStrandForQlf(subject: string, strand: string | null): { subject: string; strand: string | null } {
+  switch (subject.trim().toLowerCase()) {
+    case "reading":
+      return { subject: "english", strand: "reading" };
+    case "spelling":
+      return { subject: "english", strand: "spelling" };
+    case "grammar":
+      return { subject: "english", strand: "grammar" };
+    case "vocabulary":
+      return { subject: "english", strand: "vocabulary" };
+    default:
+      return { subject: subject.trim().toLowerCase(), strand };
+  }
+}
+
 function yearGroupNumber(value: string | null | undefined): number {
   const normalized = normalizeYearGroup(value);
   if (!normalized) return 1;
@@ -314,6 +330,123 @@ function difficultyBandForYearGroup(yearGroup: string | null | undefined): numbe
 function difficultyForIndex(baseDifficulty: number, index: number): number {
   const offsets = [0, 1, -1, 0, 1, -1];
   return Math.max(1, Math.min(5, baseDifficulty + offsets[index % offsets.length]));
+}
+
+const BLOCKED_PLACEHOLDER_PHRASES = [
+  "Subject check",
+  "Which answer is most accurate for this topic",
+  "The evidence-based answer",
+  "The answer with the longest sentence",
+  "The answer with unusual punctuation",
+  "The first answer shown",
+] as const;
+
+export function containsBlockedPhrase(text: string): boolean {
+  const lower = text.toLowerCase();
+  return BLOCKED_PLACEHOLDER_PHRASES.some((phrase) => lower.includes(phrase.toLowerCase()));
+}
+
+export function questionHasBlockedContent(q: QuickLevelFinderQuestion): boolean {
+  return (
+    containsBlockedPhrase(q.topic) ||
+    containsBlockedPhrase(q.prompt) ||
+    q.choices.some((c) => containsBlockedPhrase(c))
+  );
+}
+
+function deterministicFallbackPrompt(
+  subject: string,
+  strand: string | null,
+  yearGroup: string,
+  index: number,
+): { topic: string; prompt: string; choices: string[]; correctIndex: number } {
+  const yr = yearGroup;
+  const normStrand = strand ?? subject;
+
+  if (subject === "english") {
+    if (normStrand === "reading" || normStrand === "comprehension") {
+      const opts = [
+        { topic: "Reading check", prompt: `${yr} Reading: In the phrase "She was over the moon," what does "over the moon" mean?`, choices: ["Very happy", "Floating in space", "Very tired", "Looking at the sky"], correctIndex: 0 },
+        { topic: "Reading check", prompt: `${yr} Reading: What is the main purpose of a glossary in a non-fiction book?`, choices: ["To explain key words and terms", "To list the author's awards", "To show the book's index", "To provide extra illustrations"], correctIndex: 0 },
+        { topic: "Reading check", prompt: `${yr} Reading: If a character is described as "beaming," how do they most likely feel?`, choices: ["Very happy", "Very worried", "Very tired", "Very cold"], correctIndex: 0 },
+      ];
+      return opts[index % opts.length];
+    }
+    if (normStrand === "spelling" || normStrand === "phonics") {
+      const opts = [
+        { topic: "Spelling check", prompt: `${yr} Spelling: Which of these words is spelled correctly?`, choices: ["necessary", "necesary", "neccessary", "necassary"], correctIndex: 0 },
+        { topic: "Spelling check", prompt: `${yr} Spelling: Which word is spelled correctly?`, choices: ["friend", "freind", "frend", "feiend"], correctIndex: 0 },
+        { topic: "Spelling check", prompt: `${yr} Spelling: Choose the correctly spelled word.`, choices: ["because", "becaus", "becauze", "becouse"], correctIndex: 0 },
+      ];
+      return opts[index % opts.length];
+    }
+    if (normStrand === "grammar") {
+      const opts = [
+        { topic: "Grammar check", prompt: `${yr} Grammar: Which sentence uses capital letters correctly?`, choices: ["On Monday, we visited London.", "on monday, we visited london.", "On monday, we visited London.", "on Monday, we visited london."], correctIndex: 0 },
+        { topic: "Grammar check", prompt: `${yr} Grammar: Which word is an adjective in "The tiny bird sang sweetly"?`, choices: ["tiny", "bird", "sang", "sweetly"], correctIndex: 0 },
+      ];
+      return opts[index % opts.length];
+    }
+    if (normStrand === "vocabulary") {
+      const opts = [
+        { topic: "Vocabulary check", prompt: `${yr} Vocabulary: What does the word "enormous" mean?`, choices: ["Very large", "Very small", "Very loud", "Very fast"], correctIndex: 0 },
+        { topic: "Vocabulary check", prompt: `${yr} Vocabulary: Which word is an antonym of "brave"?`, choices: ["cowardly", "strong", "bold", "fearless"], correctIndex: 0 },
+      ];
+      return opts[index % opts.length];
+    }
+    const opts = [
+      { topic: "English check", prompt: `${yr} English: Which sentence is punctuated correctly?`, choices: ["Let's go to the park.", "Lets go to the park.", "Let's go to the Park.", "lets go to the park."], correctIndex: 0 },
+      { topic: "English check", prompt: `${yr} English: Which word is a noun in "The dog barked loudly"?`, choices: ["dog", "barked", "loudly", "The"], correctIndex: 0 },
+    ];
+    return opts[index % opts.length];
+  }
+
+  if (subject === "maths") {
+    const opts = [
+      { topic: "Maths check", prompt: `${yr} Maths: What is 8 × 7?`, choices: ["56", "54", "63", "48"], correctIndex: 0 },
+      { topic: "Maths check", prompt: `${yr} Maths: What is 144 ÷ 12?`, choices: ["12", "11", "13", "10"], correctIndex: 0 },
+      { topic: "Maths check", prompt: `${yr} Maths: Which of these is a prime number?`, choices: ["13", "15", "16", "18"], correctIndex: 0 },
+    ];
+    return opts[index % opts.length];
+  }
+
+  if (subject === "science") {
+    const opts = [
+      { topic: "Science check", prompt: `${yr} Science: Which organ pumps blood around the body?`, choices: ["Heart", "Lungs", "Brain", "Liver"], correctIndex: 0 },
+      { topic: "Science check", prompt: `${yr} Science: What is the chemical symbol for water?`, choices: ["H2O", "CO2", "O2", "NaCl"], correctIndex: 0 },
+    ];
+    return opts[index % opts.length];
+  }
+
+  const label = subject.charAt(0).toUpperCase() + subject.slice(1).replace(/-/g, " ");
+  return {
+    topic: `${label} check`,
+    prompt: `${yr} ${label}: Choose the most accurate answer for this topic.`,
+    choices: [
+      "This answer is supported by the topic.",
+      "This answer is not related to the topic.",
+      "This answer contradicts the topic.",
+      "This answer is about a different subject.",
+    ],
+    correctIndex: 0,
+  };
+}
+
+export function sanitiseQuestion(q: QuickLevelFinderQuestion, questionIndex: number): QuickLevelFinderQuestion {
+  const { subject, strand } = normaliseSubjectStrandForQlf(q.subject, q.strand);
+  const normalised: QuickLevelFinderQuestion = subject !== q.subject || strand !== q.strand
+    ? { ...q, subject, strand }
+    : q;
+  if (!questionHasBlockedContent(normalised)) return normalised;
+  const fallback = deterministicFallbackPrompt(subject, strand, normalised.yearGroup, questionIndex);
+  console.warn(`[qlf-sanitise] Repaired blocked question ${q.id} (${q.yearGroup} ${subject}:${strand ?? "general"})`);
+  return {
+    ...normalised,
+    topic: fallback.topic,
+    prompt: fallback.prompt,
+    choices: fallback.choices,
+    correctIndex: fallback.correctIndex,
+  };
 }
 
 function questionPromptFor(input: {
@@ -674,17 +807,8 @@ function questionPromptFor(input: {
     );
   }
 
-  return withChoices(
-    "Subject check",
-    `${yearText} ${input.subject}: Which answer is most accurate for this topic?`,
-    [
-      "The evidence-based answer.",
-      "The answer with the longest sentence.",
-      "The answer with unusual punctuation.",
-      "The first answer shown.",
-    ],
-    0,
-  );
+  const safe = deterministicFallbackPrompt(input.subject, input.strand, input.yearGroup, input.subjectIndex);
+  return withChoices(safe.topic, safe.prompt, safe.choices, safe.correctIndex);
 }
 
 export function buildQuestionPlan(input: {
@@ -698,7 +822,10 @@ export function buildQuestionPlan(input: {
 
   const baseDifficulty = difficultyBandForYearGroup(input.yearGroup);
   const subjectPool = shuffleWithSeed(input.scopedSubjects, `${input.sessionId ?? "session"}:subjects:${input.yearGroup ?? "Year 1"}`)
-    .map((rawKey) => normalizeSubjectKey(rawKey));
+    .map((rawKey) => {
+      const { subject, strand } = normalizeSubjectKey(rawKey);
+      return normaliseSubjectStrandForQlf(subject, strand);
+    });
   const questions: QuickLevelFinderQuestion[] = [];
   const scopeCounts: Record<string, number> = {};
 
@@ -717,7 +844,7 @@ export function buildQuestionPlan(input: {
       index,
       subjectIndex,
     });
-    questions.push({
+    questions.push(sanitiseQuestion({
       id: `qlf-q-${index + 1}`,
       subject: scope.subject,
       strand: scope.strand,
@@ -728,7 +855,7 @@ export function buildQuestionPlan(input: {
       difficulty,
       yearGroup: input.yearGroup ?? "Year 1",
       keyStage: input.keyStage ?? keyStageForYearGroup(input.yearGroup ?? "Year 1"),
-    });
+    }, index));
   }
 
   return shuffleWithSeed(questions, `${input.sessionId ?? "session"}:questions:${input.count}`);

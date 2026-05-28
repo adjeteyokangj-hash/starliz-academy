@@ -8,6 +8,7 @@ import {
   buildQuestionPlan,
   parseQuickLevelFinderSession,
   quickLevelFinderQuestionRangeForYearGroup,
+  sanitiseQuestion,
   upsertQuickLevelFinderSession,
 } from "@/lib/quick-level-finder";
 
@@ -66,6 +67,10 @@ export async function POST(request: Request) {
     : null;
 
   if (existingSession && existingSession.status === "in_progress" && !restart && existingCurrentQuestion) {
+    const safeCurrentQuestion = sanitiseQuestion(existingCurrentQuestion, existingSession.cursor);
+    if (safeCurrentQuestion !== existingCurrentQuestion) {
+      console.warn(`[qlf-start] Repaired resumed question for student ${student.id} (${student.yearGroup})`);
+    }
     return NextResponse.json({
       ok: true,
       resumed: true,
@@ -90,7 +95,7 @@ export async function POST(request: Request) {
         status: existingSession.status,
         answered: existingSession.responses.length,
         totalQuestions: existingSession.questions.length,
-        currentQuestion: existingCurrentQuestion,
+        currentQuestion: safeCurrentQuestion,
         questionPreview: existingSession.questions.slice(existingSession.cursor, existingSession.cursor + 3),
       },
     });
