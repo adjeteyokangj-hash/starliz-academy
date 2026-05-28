@@ -5,6 +5,8 @@ import {
   handleAdminResetParentPin,
   handleAdminResetParentPinPost,
 } from "../src/app/api/admin/parents/[id]/reset-pin/route";
+import { handlePinStatusForSession } from "../src/app/api/pin/status/route";
+import { handlePinVerifyForSession } from "../src/app/api/pin/verify/route";
 
 test("non-admin cannot reset parent PIN", async () => {
   const response = await handleAdminResetParentPinPost({
@@ -100,4 +102,43 @@ test("parent can create a new PIN after admin reset", async () => {
   assert.equal(payload.ok, true);
   assert.equal(payload.mode, "create");
   assert.equal(updatedHash, "hashed-2580");
+});
+
+test("after admin reset, status reports hasPin false", async () => {
+  const response = await handlePinStatusForSession({
+    sessionUserId: "parent-after-reset",
+    deps: {
+      findUser: async () => ({ pinHash: null }),
+      readUnlock: async () => true,
+    },
+  });
+
+  const payload = (await response.json()) as { hasPin?: boolean; unlocked?: boolean };
+  assert.equal(response.status, 200);
+  assert.equal(payload.hasPin, false);
+  assert.equal(payload.unlocked, false);
+});
+
+test("after admin reset, old PIN verification no longer works", async () => {
+  const response = await handlePinVerifyForSession({
+    sessionUserId: "parent-after-reset-verify",
+    pin: "2468",
+    deps: {
+      findUser: async () => ({
+        id: "parent-after-reset-verify",
+        pinHash: null,
+        parentPinFailedAttempts: 0,
+        parentPinLockedUntil: null,
+      }),
+      verifyPin: async () => true,
+      updateUser: async () => undefined,
+      writeAudit: async () => undefined,
+      createUnlockToken: async () => "unused",
+    },
+  });
+
+  const payload = (await response.json()) as { code?: string; valid?: boolean };
+  assert.equal(response.status, 409);
+  assert.equal(payload.valid, false);
+  assert.equal(payload.code, "pin_setup_required");
 });

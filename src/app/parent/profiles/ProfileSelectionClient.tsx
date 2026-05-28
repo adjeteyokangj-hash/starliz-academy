@@ -4,6 +4,7 @@ import Image from "next/image";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
+import { resolveParentPinGateState } from "@/lib/parent-pin-gate";
 
 type ParentProfilePayload = {
   parent: {
@@ -149,6 +150,8 @@ export default function ProfileSelectionClient() {
   const [payload, setPayload] = useState<ParentProfilePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [parentPinStatus, setParentPinStatus] = useState<{ hasPin: boolean; unlocked: boolean } | null>(null);
+  const [parentPinSetupRequired, setParentPinSetupRequired] = useState(false);
 
   const [showParentPinModal, setShowParentPinModal] = useState(false);
   const [parentPin, setParentPin] = useState("");
@@ -165,7 +168,17 @@ export default function ProfileSelectionClient() {
   useEffect(() => {
     void (async () => {
       try {
-        const response = await fetchWithRefreshRetry("/api/parent/profiles", { credentials: "include", cache: "no-store" });
+        const [response, pinStatusResponse] = await Promise.all([
+          fetchWithRefreshRetry("/api/parent/profiles", { credentials: "include", cache: "no-store" }),
+          fetchWithRefreshRetry("/api/pin/status", { credentials: "include", cache: "no-store" }),
+        ]);
+        if (pinStatusResponse.ok) {
+          const statusPayload = (await pinStatusResponse.json()) as { hasPin: boolean; unlocked: boolean };
+          setParentPinStatus(statusPayload);
+          if (!statusPayload.hasPin) {
+            setParentPinSetupRequired(true);
+          }
+        }
         if (!response.ok) {
           setError("Could not load profiles.");
           setLoading(false);
@@ -184,7 +197,13 @@ export default function ProfileSelectionClient() {
   useEffect(() => {
     router.prefetch("/parent/dashboard");
     router.prefetch("/student/dashboard");
+    router.prefetch("/parent-pin");
   }, [router]);
+
+  function goToParentPinSetup() {
+    const next = safeParentNext(searchParams.get("next"));
+    router.replace(`/parent-pin?reset=1&next=${encodeURIComponent(next)}`);
+  }
 
   const intent = searchParams.get("intent");
   const bannerMessage = useMemo(() => {
@@ -196,6 +215,11 @@ export default function ProfileSelectionClient() {
     }
     return null;
   }, [intent]);
+
+  const parentGateState = resolveParentPinGateState({
+    hasPin: parentPinStatus?.hasPin ?? null,
+    setupRequiredHint: parentPinSetupRequired,
+  });
 
   async function logout() {
     if (loggingOut) return;
@@ -228,7 +252,16 @@ export default function ProfileSelectionClient() {
       });
 
       if (!response.ok) {
-        setParentPinError("Incorrect PIN.");
+        const payload = (await response.json().catch(() => null)) as { error?: string; code?: string } | null;
+        if (payload?.code === "pin_setup_required" || response.status === 409) {
+          setShowParentPinModal(false);
+          setParentPin("");
+          setParentPinStatus({ hasPin: false, unlocked: false });
+          setParentPinSetupRequired(true);
+          setParentPinError("Parent PIN has been reset. Please create a new PIN.");
+          return;
+        }
+        setParentPinError(payload?.error ?? "Incorrect PIN.");
         return;
       }
 
@@ -400,6 +433,10 @@ export default function ProfileSelectionClient() {
             type="button"
             onClick={() => {
               if (submitting) return;
+              if (parentGateState === "setup_required") {
+                setParentPinSetupRequired(true);
+                return;
+              }
               setPendingProfileId("parent");
               setParentPin("");
               setParentPinError(null);
@@ -424,7 +461,13 @@ export default function ProfileSelectionClient() {
                   </div>
                   <p className="mt-3 text-3xl font-black text-white">{payload.parent.name}</p>
                   <p className="mt-2 text-base text-slate-200">Parent dashboard is PIN protected.</p>
-                  <p className="mt-3 text-sm font-semibold text-fuchsia-200">{pendingProfileId === "parent" ? "Opening..." : "PIN required to access"}</p>
+                  <p className="mt-3 text-sm font-semibold text-fuchsia-200">
+                    {parentGateState === "setup_required"
+                      ? "Parent PIN has been reset. Create a new PIN to continue."
+                      : pendingProfileId === "parent"
+                        ? "Opening..."
+                        : "PIN required to access"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -469,6 +512,19 @@ export default function ProfileSelectionClient() {
           ))}
         </div>
 
+        {parentGateState === "setup_required" ? (
+          <div className="mt-6 rounded-2xl border border-amber-300/35 bg-amber-400/10 px-4 py-4 text-sm text-amber-100">
+            <p className="font-semibold">Parent PIN has been reset. Please create a new PIN.</p>
+            <button
+              type="button"
+              onClick={goToParentPinSetup}
+              className="mt-3 rounded-xl bg-amber-300 px-4 py-2 text-sm font-black text-slate-900 hover:bg-amber-200"
+            >
+              Create parent PIN
+            </button>
+          </div>
+        ) : null}
+
         <div className="mt-6 rounded-[1.8rem] border border-white/10 bg-[linear-gradient(135deg,rgba(76,29,149,0.3),rgba(15,23,42,0.72))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:p-6">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-4">
@@ -495,7 +551,7 @@ export default function ProfileSelectionClient() {
         </p>
       </section>
 
-      {showParentPinModal ? (
+      {showParentPinModal && parentGateState === "pin_required" ? (
         <ModalShell
           title="Parent PIN"
           description="Enter your 4-digit parent PIN to open the parent dashboard."

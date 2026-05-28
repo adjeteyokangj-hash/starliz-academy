@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { handlePinSetForSession } from "../src/app/api/pin/set/route";
+import { handlePinStatusForSession } from "../src/app/api/pin/status/route";
+import { handlePinVerifyForSession } from "../src/app/api/pin/verify/route";
+import { resolveParentPinGateState } from "../src/lib/parent-pin-gate";
 import { decideParentPinSetRequest, isWeakParentPin } from "../src/lib/parent-pin";
 
 test("first-time parent PIN setup succeeds", async () => {
@@ -127,4 +130,53 @@ test("legacy pin payload remains setup-only", () => {
   if (!overwriteDecision.ok) {
     assert.equal(overwriteDecision.status, 403);
   }
+});
+
+test("/api/pin/status returns hasPin false and ignores stale unlock cookie", async () => {
+  const response = await handlePinStatusForSession({
+    sessionUserId: "parent-status-1",
+    deps: {
+      findUser: async () => ({ pinHash: null }),
+      readUnlock: async () => true,
+    },
+  });
+
+  const payload = (await response.json()) as { hasPin?: boolean; unlocked?: boolean };
+  assert.equal(response.status, 200);
+  assert.equal(payload.hasPin, false);
+  assert.equal(payload.unlocked, false);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/i);
+});
+
+test("/api/pin/verify returns setup-required when no PIN exists", async () => {
+  const response = await handlePinVerifyForSession({
+    sessionUserId: "parent-verify-1",
+    pin: "2580",
+    deps: {
+      findUser: async () => ({
+        id: "parent-verify-1",
+        pinHash: null,
+        parentPinFailedAttempts: 0,
+        parentPinLockedUntil: null,
+      }),
+      verifyPin: async () => false,
+      updateUser: async () => undefined,
+      writeAudit: async () => undefined,
+      createUnlockToken: async () => "unused",
+    },
+  });
+
+  const payload = (await response.json()) as { code?: string; error?: string; valid?: boolean };
+  assert.equal(response.status, 409);
+  assert.equal(payload.valid, false);
+  assert.equal(payload.code, "pin_setup_required");
+  assert.match(payload.error ?? "", /create a new PIN/i);
+});
+
+test("parent profile gate resolves to create-PIN state when hasPin is false", () => {
+  const state = resolveParentPinGateState({ hasPin: false });
+  assert.equal(state, "setup_required");
+
+  const staleCookieState = resolveParentPinGateState({ hasPin: false, setupRequiredHint: true });
+  assert.equal(staleCookieState, "setup_required");
 });

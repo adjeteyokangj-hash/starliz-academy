@@ -110,7 +110,15 @@ export default function ParentPinPage() {
         locked?: boolean;
         retryAfterSeconds?: number;
         error?: string;
+        code?: string;
       } | null;
+
+      if (payload?.code === "pin_setup_required" || response.status === 409) {
+        setHasPin(false);
+        setPin("");
+        setError("Parent PIN has been reset. Please create a new PIN.");
+        return;
+      }
 
       if (payload?.locked) {
         const seconds = payload.retryAfterSeconds ?? 900;

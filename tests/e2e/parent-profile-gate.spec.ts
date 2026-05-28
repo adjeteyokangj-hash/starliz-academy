@@ -159,8 +159,22 @@ async function lockParentSession(page: Page) {
     timeout: SETUP_REQUEST_TIMEOUT_MS,
     failOnStatusCode: false,
   });
-  if (!setPinResponse.ok() && setPinResponse.status() !== 409) {
+  if (!setPinResponse.ok() && setPinResponse.status() !== 409 && setPinResponse.status() !== 403) {
     throw new Error(`Unable to ensure parent PIN before lock test. status=${setPinResponse.status()}`);
+  }
+
+  if (setPinResponse.status() === 403) {
+    const pinStatusResponse = await page.request.get("/api/pin/status", {
+      timeout: SETUP_REQUEST_TIMEOUT_MS,
+      failOnStatusCode: false,
+    });
+    if (!pinStatusResponse.ok()) {
+      throw new Error(`Unable to confirm parent PIN status. status=${pinStatusResponse.status()}`);
+    }
+    const pinStatus = (await pinStatusResponse.json()) as { hasPin?: boolean };
+    if (!pinStatus.hasPin) {
+      throw new Error("Parent PIN is not configured; lock test requires an existing PIN.");
+    }
   }
 
   // Ensure unlock state is removed by rebuilding cookie jar without unlock/selection cookies.
@@ -258,6 +272,14 @@ test.describe("Parent Profile Gate", () => {
 
   test("parent profile asks for PIN", async ({ page }) => {
     await loginViaApi(page);
+    const ensurePinResponse = await page.request.post("/api/pin/set", {
+      data: { pin: PARENT_PIN },
+      timeout: SETUP_REQUEST_TIMEOUT_MS,
+      failOnStatusCode: false,
+    });
+    expect(ensurePinResponse.ok() || ensurePinResponse.status() === 403).toBeTruthy();
+    await page.reload();
+    await expect(page.getByTestId("profile-card-parent")).toBeVisible();
     await page.getByTestId("profile-card-parent").click();
     await expect(page.getByTestId("parent-pin-input")).toBeVisible();
   });

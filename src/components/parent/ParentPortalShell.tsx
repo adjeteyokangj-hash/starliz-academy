@@ -524,14 +524,19 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     let cancelled = false;
 
     async function load() {
-      const pinStatusResponse = await fetch("/api/pin/status", { credentials: "include" });
+      const pinStatusResponse = await fetch("/api/pin/status", { credentials: "include", cache: "no-store" });
       if (cancelled) return;
       if (pinStatusResponse.status === 401) {
         router.replace("/auth/login");
         return;
       }
       if (pinStatusResponse.ok) {
-        const pinStatus = (await pinStatusResponse.json()) as { unlocked?: boolean };
+        const pinStatus = (await pinStatusResponse.json()) as { hasPin?: boolean; unlocked?: boolean };
+        if (!pinStatus.hasPin) {
+          const next = pathname ?? `/parent/${section}`;
+          router.replace(`/parent-pin?reset=1&next=${encodeURIComponent(next)}`);
+          return;
+        }
         if (!pinStatus.unlocked) {
           const next = pathname ?? `/parent/${section}`;
           router.replace(`/parent/profiles?intent=parent&next=${encodeURIComponent(next)}`);
