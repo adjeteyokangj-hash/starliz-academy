@@ -452,3 +452,11 @@ export function buildGraphStorageMediaReferences(input: {
 
   return [...assetReferences, ...certificateReference];
 }
+
+// Backward-compatible re-exports for older import sites during rollout.
+export {
+  buildDefaultApprovalWorkflow,
+  buildDefaultGraphAuditMetadata,
+  buildDefaultGraphFallback,
+  buildGraphProtectionStatus,
+} from "@/lib/academic-intelligence/graph-protection";
