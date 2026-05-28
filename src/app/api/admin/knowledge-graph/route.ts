@@ -11,6 +11,7 @@ import { listCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
 import { listHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
 import { mergeKnowledgeGraphViews, projectCurriculumGraphToKnowledgeGraph } from "@/lib/admin_graph";
 import { evaluateGraphChangeProposal } from "@/lib/academic-intelligence/graph-protection";
+import { buildStudentGraphOverlay } from "@/lib/academic-intelligence/graph-overlay";
 
 const proposalSchema = z.object({
   studentId: z.string().min(1),
@@ -144,6 +145,58 @@ export async function GET(request: Request) {
   let studentOverlay: {
     masteryGapTopics: string[];
     weakAreaTopics: string[];
+    confidenceScore: number;
+    activeInterventions: Array<{
+      topicKey: string;
+      label: string;
+      status: string;
+      reason: string;
+      dueDate: string | null;
+    }>;
+    temporal: {
+      recentlyImproved: string[];
+      decayingMastery: string[];
+      overdueRevision: string[];
+      forgottenConcepts: string[];
+    };
+    heatmap: {
+      weakClusters: string[];
+      highRiskConcepts: string[];
+      interventionHeavyAreas: string[];
+      curriculumBottlenecks: string[];
+    };
+    reasoning: {
+      why: string[];
+      prerequisiteBlockers: string[];
+      chain: string[];
+    };
+    learningTwin: {
+      preferredExplanationStyle: string;
+      paceProfile: string;
+      confidenceProfile: string;
+      memoryProfile: string;
+      retryDependency: string;
+    };
+    nodeSignals: Array<{
+      topicKey: string;
+      subject: string;
+      topic: string;
+      skill: string | null;
+      masteryStatus: string;
+      confidenceScore: number;
+      weakAreaActive: boolean;
+      revisionOverdue: boolean;
+      lastPractisedAt: string | null;
+      recommendationCount: number;
+      activeInterventionCount: number;
+      failureImpact: number;
+      importanceScore: number;
+      nodeState: "mastered" | "practising" | "weak" | "intervention_active" | "forgotten";
+      recentlyImproved: boolean;
+      decayingMastery: boolean;
+      overdueRevision: boolean;
+      forgottenConcept: boolean;
+    }>;
     examReadinessBand: string;
     recommendationFocus: string[];
     reportSignals: string[];
@@ -172,12 +225,23 @@ export async function GET(request: Request) {
     approvalWorkflow = output.curriculumIntelligenceGraph.approvalWorkflow;
     fallback = output.curriculumIntelligenceGraph.fallback;
     graphAudit = output.curriculumIntelligenceGraph.auditMetadata;
+    const liveOverlay = buildStudentGraphOverlay({
+      output,
+      graph: output.curriculumIntelligenceGraph,
+    });
     studentOverlay = {
-      masteryGapTopics: output.curriculumIntelligenceGraph.aiGenerationContext.masteryGapTopics,
-      weakAreaTopics: output.curriculumIntelligenceGraph.aiGenerationContext.weakAreaTopics,
-      examReadinessBand: output.curriculumIntelligenceGraph.aiGenerationContext.examReadinessBand,
-      recommendationFocus: output.curriculumIntelligenceGraph.aiGenerationContext.recommendationFocus,
-      reportSignals: output.curriculumIntelligenceGraph.reportSummary.reportSignals,
+      masteryGapTopics: liveOverlay.masteryGapTopics,
+      weakAreaTopics: liveOverlay.weakAreaTopics,
+      confidenceScore: liveOverlay.confidenceScore,
+      activeInterventions: liveOverlay.activeInterventions,
+      temporal: liveOverlay.temporal,
+      heatmap: liveOverlay.heatmap,
+      reasoning: liveOverlay.reasoning,
+      learningTwin: liveOverlay.learningTwin,
+      nodeSignals: liveOverlay.nodeSignals,
+      examReadinessBand: liveOverlay.examReadinessBand,
+      recommendationFocus: liveOverlay.recommendationFocus,
+      reportSignals: liveOverlay.reportSignals,
     };
   }
   const merged = mergeKnowledgeGraphViews({

@@ -22,6 +22,7 @@ import type {
   CurriculumGraphHeartbeat,
   CurriculumGraphProtectionStatus,
 } from "@/lib/academic-intelligence/types";
+import { edgeFocusClass, topicKeyFromLabel } from "@/lib/academic-intelligence/graph-overlay";
 
 type ApiResponse = {
   nodes: KnowledgeGraphNode[];
@@ -54,6 +55,58 @@ type ApiResponse = {
   studentOverlay: {
     masteryGapTopics: string[];
     weakAreaTopics: string[];
+    confidenceScore: number;
+    activeInterventions: Array<{
+      topicKey: string;
+      label: string;
+      status: string;
+      reason: string;
+      dueDate: string | null;
+    }>;
+    temporal: {
+      recentlyImproved: string[];
+      decayingMastery: string[];
+      overdueRevision: string[];
+      forgottenConcepts: string[];
+    };
+    heatmap: {
+      weakClusters: string[];
+      highRiskConcepts: string[];
+      interventionHeavyAreas: string[];
+      curriculumBottlenecks: string[];
+    };
+    reasoning: {
+      why: string[];
+      prerequisiteBlockers: string[];
+      chain: string[];
+    };
+    learningTwin: {
+      preferredExplanationStyle: string;
+      paceProfile: string;
+      confidenceProfile: string;
+      memoryProfile: string;
+      retryDependency: string;
+    };
+    nodeSignals: Array<{
+      topicKey: string;
+      subject: string;
+      topic: string;
+      skill: string | null;
+      masteryStatus: string;
+      confidenceScore: number;
+      weakAreaActive: boolean;
+      revisionOverdue: boolean;
+      lastPractisedAt: string | null;
+      recommendationCount: number;
+      activeInterventionCount: number;
+      failureImpact: number;
+      importanceScore: number;
+      nodeState: "mastered" | "practising" | "weak" | "intervention_active" | "forgotten";
+      recentlyImproved: boolean;
+      decayingMastery: boolean;
+      overdueRevision: boolean;
+      forgottenConcept: boolean;
+    }>;
     examReadinessBand: string;
     recommendationFocus: string[];
     reportSignals: string[];
@@ -91,12 +144,91 @@ const NODE_COLORS: Record<string, string> = {
   spelling_family: "#ec4899",
 };
 
-function toFlowNodes(nodes: KnowledgeGraphNode[], highlighted: Set<string>): Node[] {
+const MASTERY_STATE_STYLES: Record<
+  "mastered" | "practising" | "weak" | "intervention_active" | "forgotten",
+  {
+    color: string;
+    border: string;
+    ring: string;
+    className: string;
+  }
+> = {
+  mastered: {
+    color: "#16a34a",
+    border: "#22c55e",
+    ring: "0 0 0 1px rgba(34,197,94,0.35), 0 0 20px rgba(22,163,74,0.4)",
+    className: "heartbeat-node heartbeat-node--mastered",
+  },
+  practising: {
+    color: "#eab308",
+    border: "#facc15",
+    ring: "0 0 0 1px rgba(250,204,21,0.35), 0 0 18px rgba(234,179,8,0.33)",
+    className: "heartbeat-node heartbeat-node--practising",
+  },
+  weak: {
+    color: "#ef4444",
+    border: "#f43f5e",
+    ring: "0 0 0 1px rgba(244,63,94,0.4), 0 0 24px rgba(239,68,68,0.42)",
+    className: "heartbeat-node heartbeat-node--weak",
+  },
+  intervention_active: {
+    color: "#38bdf8",
+    border: "#0ea5e9",
+    ring: "0 0 0 1px rgba(14,165,233,0.45), 0 0 24px rgba(56,189,248,0.45)",
+    className: "heartbeat-node heartbeat-node--intervention",
+  },
+  forgotten: {
+    color: "#f97316",
+    border: "#fb923c",
+    ring: "0 0 0 1px rgba(251,146,60,0.4), 0 0 16px rgba(249,115,22,0.35)",
+    className: "heartbeat-node heartbeat-node--forgotten",
+  },
+};
+
+function buildNodeSignalMap(overlay: ApiResponse["studentOverlay"]): Map<string, NonNullable<ApiResponse["studentOverlay"]>["nodeSignals"][number]> {
+  const map = new Map<string, NonNullable<ApiResponse["studentOverlay"]>["nodeSignals"][number]>();
+  for (const signal of overlay?.nodeSignals ?? []) {
+    map.set(topicKeyFromLabel(signal.topic), signal);
+    map.set(topicKeyFromLabel(signal.topicKey), signal);
+  }
+  return map;
+}
+
+function nodeSize(signal?: NonNullable<ApiResponse["studentOverlay"]>["nodeSignals"][number]): number {
+  if (!signal) return 176;
+  const scaled = 150 + Math.round(signal.importanceScore * 0.95 + signal.failureImpact * 0.65 + signal.recommendationCount * 8);
+  return Math.max(160, Math.min(360, scaled));
+}
+
+function nodeState(signal?: NonNullable<ApiResponse["studentOverlay"]>["nodeSignals"][number]) {
+  if (!signal) return null;
+  return MASTERY_STATE_STYLES[signal.nodeState];
+}
+
+function edgeAnimationType(edgeType: KnowledgeEdgeType): "recommendation" | "catchup" | "prerequisite" | "readiness" | "default" {
+  if (edgeType === "recommends" || edgeType === "targets" || edgeType === "informed_by") return "recommendation";
+  if (edgeType === "intervention" || edgeType === "has_weak_area" || edgeType === "blocked_by") return "catchup";
+  if (edgeType === "prerequisite" || edgeType === "requires") return "prerequisite";
+  if (edgeType === "supports_readiness" || edgeType === "has_mastery_state") return "readiness";
+  return "default";
+}
+
+function toFlowNodes(
+  nodes: KnowledgeGraphNode[],
+  highlighted: Set<string>,
+  overlay: ApiResponse["studentOverlay"],
+): Node[] {
+  const signalMap = buildNodeSignalMap(overlay);
   return nodes.map((node, index) => {
     const col = index % 10;
     const row = Math.floor(index / 10);
     const isHighlighted = highlighted.has(node.label.toLowerCase());
+    const signal = signalMap.get(topicKeyFromLabel(node.label));
+    const stateStyle = nodeState(signal);
     const baseColor = NODE_COLORS[node.type] ?? "#0ea5e9";
+    const width = nodeSize(signal);
+    const height = Math.max(68, Math.round(width * 0.42));
+    const glowColor = stateStyle?.color ?? baseColor;
 
     return {
       id: node.id,
@@ -105,16 +237,22 @@ function toFlowNodes(nodes: KnowledgeGraphNode[], highlighted: Set<string>): Nod
         label: node.label,
         nodeType: node.type,
         details: node.data,
+        signal,
       },
       style: {
-        border: isHighlighted ? "2px solid #facc15" : "1px solid rgba(148,163,184,0.35)",
-        background: `linear-gradient(135deg, ${baseColor}22, #020617 75%)`,
+        border: isHighlighted
+          ? "2px solid #facc15"
+          : `1px solid ${stateStyle?.border ?? "rgba(148,163,184,0.35)"}`,
+        background: `radial-gradient(circle at 12% 12%, ${glowColor}26 0%, ${baseColor}1e 36%, #020617 78%)`,
         color: "#e2e8f0",
         borderRadius: 16,
-        minWidth: 160,
+        minWidth: width,
+        minHeight: height,
+        boxShadow: stateStyle?.ring ?? `0 0 0 1px rgba(148,163,184,0.22), 0 0 10px ${baseColor}20`,
         fontSize: 12,
+        fontWeight: 700,
       },
-      className: "kg-node",
+      className: stateStyle?.className ?? "heartbeat-node",
       draggable: true,
     } satisfies Node;
   });
@@ -124,12 +262,17 @@ function toFlowEdges(
   edges: KnowledgeGraphEdge[],
   selectedType: KnowledgeEdgeType | "all",
   highlighted: Set<string>,
+  overlay: ApiResponse["studentOverlay"],
 ): Edge[] {
+  const overlayHotTopics = new Set((overlay?.weakAreaTopics ?? []).map((entry) => topicKeyFromLabel(entry)));
   return edges.map((edge) => {
     const activeByType = selectedType === "all" || edge.type === selectedType;
     const edgeIsInPath = highlighted.size > 0
       && highlighted.has(edge.source.toLowerCase())
       && highlighted.has(edge.target.toLowerCase());
+    const edgeMode = edgeAnimationType(edge.type);
+    const edgeHot = overlayHotTopics.has(topicKeyFromLabel(edge.source)) || overlayHotTopics.has(topicKeyFromLabel(edge.target));
+    const shouldAnimate = edgeIsInPath || edgeHot || edgeMode !== "default";
 
     return {
       id: edge.id,
@@ -137,10 +280,11 @@ function toFlowEdges(
       target: edge.target,
       label: edge.type,
       type: "smoothstep",
-      animated: edge.type === "prerequisite" || edge.type === "intervention",
+      animated: shouldAnimate,
+      className: edgeFocusClass(edgeMode, shouldAnimate),
       style: {
         stroke: EDGE_COLORS[edge.type],
-        strokeWidth: edgeIsInPath ? 3 : activeByType ? 2 : 1,
+        strokeWidth: edgeIsInPath ? 3.2 : edgeHot ? 2.6 : activeByType ? 2 : 1,
         opacity: activeByType ? 1 : 0.15,
       },
     } satisfies Edge;
@@ -311,8 +455,8 @@ export default function KnowledgeGraphPage() {
 
         const payload = (await response.json()) as ApiResponse;
         const highlighted = new Set<string>((payload.recoveryPath?.shortestRecoveryPath ?? []).map((entry) => entry.toLowerCase()));
-        const flowNodes = toFlowNodes(payload.nodes, highlighted);
-        const flowEdges = toFlowEdges(payload.edges, selectedEdgeType, highlighted);
+        const flowNodes = toFlowNodes(payload.nodes, highlighted, payload.studentOverlay);
+        const flowEdges = toFlowEdges(payload.edges, selectedEdgeType, highlighted, payload.studentOverlay);
 
         if (nextOffset === 0) {
           setNodes(flowNodes);
@@ -376,6 +520,27 @@ export default function KnowledgeGraphPage() {
       },
     }));
   }, [edges, selectedEdgeType]);
+
+  const overlaySummary = useMemo(() => {
+    const temporal = studentOverlay?.temporal ?? {
+      recentlyImproved: [],
+      decayingMastery: [],
+      overdueRevision: [],
+      forgottenConcepts: [],
+    };
+    const heatmap = studentOverlay?.heatmap ?? {
+      weakClusters: [],
+      highRiskConcepts: [],
+      interventionHeavyAreas: [],
+      curriculumBottlenecks: [],
+    };
+    const reasoning = studentOverlay?.reasoning ?? {
+      why: [],
+      prerequisiteBlockers: [],
+      chain: [],
+    };
+    return { temporal, heatmap, reasoning };
+  }, [studentOverlay]);
 
   const selectedNodeDetails = useMemo(() => {
     if (!selectedNode) return null;
@@ -538,8 +703,27 @@ export default function KnowledgeGraphPage() {
                   <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Student Intelligence Overlay</h2>
                   <p className="mt-2 text-xs text-slate-300">Mastery gaps: {(studentOverlay?.masteryGapTopics ?? []).join(", ") || "-"}</p>
                   <p className="text-xs text-slate-300">Weak areas: {(studentOverlay?.weakAreaTopics ?? []).join(", ") || "-"}</p>
+                  <p className="text-xs text-slate-300">Confidence: {studentOverlay?.confidenceScore ?? "-"}%</p>
                   <p className="text-xs text-slate-300">Exam readiness: {studentOverlay?.examReadinessBand ?? "-"}</p>
                   <p className="text-xs text-slate-300">Focus: {(studentOverlay?.recommendationFocus ?? []).join(" | ") || "-"}</p>
+                </article>
+              </section>
+
+              <section className="grid gap-3 md:grid-cols-2">
+                <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
+                  <h3 className="text-sm font-black uppercase tracking-[0.12em] text-cyan-200">Temporal Intelligence</h3>
+                  <p className="mt-2 text-xs text-slate-300">Recently improved: {overlaySummary.temporal.recentlyImproved.join(", ") || "-"}</p>
+                  <p className="text-xs text-slate-300">Decaying mastery: {overlaySummary.temporal.decayingMastery.join(", ") || "-"}</p>
+                  <p className="text-xs text-slate-300">Overdue revision: {overlaySummary.temporal.overdueRevision.join(", ") || "-"}</p>
+                  <p className="text-xs text-slate-300">Forgotten concepts: {overlaySummary.temporal.forgottenConcepts.join(", ") || "-"}</p>
+                </article>
+                <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
+                  <h3 className="text-sm font-black uppercase tracking-[0.12em] text-cyan-200">Learning Twin Visualization</h3>
+                  <p className="mt-2 text-xs text-slate-300">Preferred style: {studentOverlay?.learningTwin.preferredExplanationStyle ?? "-"}</p>
+                  <p className="text-xs text-slate-300">Pace profile: {studentOverlay?.learningTwin.paceProfile ?? "-"}</p>
+                  <p className="text-xs text-slate-300">Confidence profile: {studentOverlay?.learningTwin.confidenceProfile ?? "-"}</p>
+                  <p className="text-xs text-slate-300">Memory profile: {studentOverlay?.learningTwin.memoryProfile ?? "-"}</p>
+                  <p className="text-xs text-slate-300">Retry dependency: {studentOverlay?.learningTwin.retryDependency ?? "-"}</p>
                 </article>
               </section>
             </>
@@ -632,6 +816,13 @@ export default function KnowledgeGraphPage() {
                 <p className="text-xs text-slate-300">Decision reason: {approvalWorkflow?.latestDecisionReason ?? "-"}</p>
                 <p className="text-xs text-slate-300">Pending proposals: {approvalWorkflow?.pendingProposals.length ?? 0}</p>
               </article>
+
+              <article className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-100">AI Reasoning Visualization</h2>
+                <p className="mt-2 text-xs text-cyan-50">Why: {(overlaySummary.reasoning.why ?? []).join(" | ") || "-"}</p>
+                <p className="text-xs text-cyan-50">Prerequisite blockers: {(overlaySummary.reasoning.prerequisiteBlockers ?? []).join(" | ") || "-"}</p>
+                <p className="text-xs text-cyan-50">Reasoning chain: {(overlaySummary.reasoning.chain ?? []).join(" -> ") || "-"}</p>
+              </article>
             </section>
           ) : null}
 
@@ -661,6 +852,14 @@ export default function KnowledgeGraphPage() {
                   <p className="mt-2 text-xs text-slate-400">Enter a concept and run recovery path.</p>
                 )}
               </article>
+
+              <article className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-rose-100">Graph Heatmaps</h2>
+                <p className="mt-2 text-xs text-rose-50">Weak clusters: {overlaySummary.heatmap.weakClusters.join(" | ") || "-"}</p>
+                <p className="text-xs text-rose-50">High-risk concepts: {overlaySummary.heatmap.highRiskConcepts.join(" | ") || "-"}</p>
+                <p className="text-xs text-rose-50">Intervention-heavy areas: {overlaySummary.heatmap.interventionHeavyAreas.join(" | ") || "-"}</p>
+                <p className="text-xs text-rose-50">Curriculum bottlenecks: {overlaySummary.heatmap.curriculumBottlenecks.join(" | ") || "-"}</p>
+              </article>
             </section>
           ) : null}
         </div>
@@ -672,6 +871,8 @@ export default function KnowledgeGraphPage() {
             <p className="text-xs text-slate-300">Connected: {connectedCount} | Partial: {partialCount} | Missing: {missingCount}</p>
             <p className="text-xs text-slate-300">Fallback: {fallback?.applied ? "active" : "not active"}</p>
             <p className="text-xs text-slate-300">Latest audit decision: {graphAudit?.decisions[graphAudit.decisions.length - 1]?.decision ?? "-"}</p>
+            <p className="text-xs text-slate-300">Overlay confidence: {studentOverlay?.confidenceScore ?? "-"}%</p>
+            <p className="text-xs text-slate-300">Active interventions: {studentOverlay?.activeInterventions.length ?? 0}</p>
           </section>
 
           <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
