@@ -23,6 +23,7 @@ const PUBLIC_PATHS = [
   "/pricing",
   "/reset-password",
   "/signup",
+  "/policies",
   "/terms",
   "/auth/login",
   "/auth/signup",

@@ -1,30 +1,29 @@
 import Link from "next/link"
 
-const policies = [
+const policyCards = [
+  {
+    icon: "🔐",
+    title: "Privacy Policy",
+    href: "/privacy",
+    desc: "How we collect, use and protect family and learning data.",
+  },
+  {
+    icon: "📘",
+    title: "Terms of Use",
+    href: "/terms",
+    desc: "The main rules for using StarLiz Academy and managing an account.",
+  },
   {
     icon: "🛡️",
-    title: "Child Safety Policy",
-    desc: "StarLiz Academy is designed as a safe learning environment. All features are built with child safety as the first priority. No user-generated content, no chat, no contact with strangers.",
+    title: "Child safety and safeguarding",
+    href: "/privacy",
+    desc: "A short summary of parent-led access, supervision and child-safe usage.",
   },
   {
-    icon: "📋",
-    title: "Content Review Policy",
-    desc: "All educational content is reviewed before being published. We use age-appropriate language and activities suitable for children aged 5 to 10.",
-  },
-  {
-    icon: "🔒",
-    title: "Data Protection Summary",
-    desc: "We collect only the minimum data needed. Parent email, child first name, age range and progress data. No sensitive personal data is collected from children. See our Privacy Policy for full details.",
-  },
-  {
-    icon: "🤝",
-    title: "Safeguarding Approach",
-    desc: "We follow a parent-first approach. Parents control all account settings, child profiles and data. Children cannot make purchases or change account settings.",
-  },
-  {
-    icon: "🤖",
-    title: "AI Usage Policy",
-    desc: "AI is used to personalise learning and generate age-appropriate content. All AI-generated content is filtered, reviewed and controlled. We do not use AI to collect or analyse children&apos;s personal data beyond what is needed for learning.",
+    icon: "🗂️",
+    title: "Learning records and data use",
+    href: "/privacy",
+    desc: "A summary of the learning records we keep to support progress and reporting.",
   },
 ]
 
@@ -36,7 +35,7 @@ export default function Policies() {
           <Link href="/" className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-xl font-black text-transparent tracking-tight">
             StarLiz Academy
           </Link>
-          <Link href="/trial" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
+          <Link href="/signup" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
             Start Free Trial
           </Link>
         </div>
@@ -44,17 +43,17 @@ export default function Policies() {
 
       <div className="mx-auto max-w-4xl px-6 py-20">
         <h1 className="text-4xl font-black mb-4">Policies</h1>
-        <p className="text-slate-400 mb-12">Our commitment to keeping children safe and parents informed.</p>
+        <p className="text-slate-400 mb-12">Quick links for parents and carers.</p>
 
-        <div className="space-y-6">
-          {policies.map((policy) => (
-            <div key={policy.title} className="rounded-2xl border border-slate-800 bg-slate-900 p-7">
+        <div className="grid gap-6 sm:grid-cols-2">
+          {policyCards.map((policy) => (
+            <Link key={policy.title} href={policy.href} className="rounded-2xl border border-slate-800 bg-slate-900 p-7 transition hover:border-blue-500/60 hover:bg-slate-900/80">
               <div className="flex items-center gap-3 mb-3">
                 <span className="text-2xl">{policy.icon}</span>
                 <h2 className="text-xl font-bold">{policy.title}</h2>
               </div>
               <p className="text-slate-400 leading-7">{policy.desc}</p>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

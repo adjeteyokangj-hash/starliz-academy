@@ -31,7 +31,9 @@ export default function StoreBootstrap({ children }: Props) {
       const isPublicPage = pathname === "/" || pathname.startsWith("/about") || pathname.startsWith("/pricing")
         || pathname.startsWith("/contact") || pathname.startsWith("/features") || pathname.startsWith("/roadmap")
         || pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname.startsWith("/forgot-password")
-        || pathname.startsWith("/reset-password") || pathname.startsWith("/terms") || pathname.startsWith("/privacy");
+        || pathname.startsWith("/reset-password") || pathname.startsWith("/terms") || pathname.startsWith("/privacy")
+        || pathname.startsWith("/policies") || pathname.startsWith("/uk") || pathname.startsWith("/ghana")
+        || pathname.startsWith("/nigeria");
 
       const needsProtectedBootstrap = !isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage && !isParentPage;
       const needsActiveProfile = needsProtectedBootstrap && !isProfilesPage && !isParentPage;
