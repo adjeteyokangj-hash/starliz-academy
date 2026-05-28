@@ -107,25 +107,49 @@ const operationsFeatures = [
 
 const subjects = [
   {
-    title: "Reception-Year 6",
-    text: "National Curriculum aligned foundations with guided, age-appropriate practice.",
+    title: "EYFS / Reception",
+    text: "Early-years foundations in communication, early reading, phonics, early writing, early maths, wellbeing, creativity, and confidence.",
     icon: "🧒",
     color: "from-blue-600/20 to-blue-600/5",
     border: "border-blue-700/40",
+    cta: "Explore EYFS support ->",
+    href: "/signup",
+  },
+  {
+    title: "KS1 (Years 1-2)",
+    text: "Lower primary support for English, maths, science, phonics, reading confidence, writing, and foundation subjects.",
+    icon: "📘",
+    color: "from-cyan-600/20 to-cyan-600/5",
+    border: "border-cyan-700/40",
+    cta: "Explore KS1 support ->",
+    href: "/signup",
+  },
+  {
+    title: "KS2 (Years 3-6)",
+    text: "Upper primary progression across English, maths, science, computing, humanities, creative subjects, languages, and wider development.",
+    icon: "🧭",
+    color: "from-indigo-600/20 to-indigo-600/5",
+    border: "border-indigo-700/40",
+    cta: "Explore KS2 support ->",
+    href: "/signup",
   },
   {
     title: "KS3 (Years 7-9)",
-    text: "KS3 pathway aligned learning with clearer progression and targeted support.",
+    text: "Secondary pathway support across core subjects, science, computing, humanities, languages, creative subjects, and personal development.",
     icon: "🎯",
     color: "from-purple-600/20 to-purple-600/5",
     border: "border-purple-700/40",
+    cta: "Explore KS3 support ->",
+    href: "/signup",
   },
   {
-    title: "GCSE (Years 10-11)",
-    text: "GCSE pathway support with exam-board aligned revision guidance.",
+    title: "KS4 / GCSE (Years 10-11)",
+    text: "GCSE pathway support for English, maths, science, exam readiness, revision planning, confidence, and subject-specific practice.",
     icon: "🎓",
     color: "from-emerald-600/20 to-emerald-600/5",
     border: "border-emerald-700/40",
+    cta: "View GCSE pathway ->",
+    href: "/pricing",
   },
 ]
 
@@ -185,10 +209,11 @@ export default async function PublicHomePage() {
             <Link href="/" className="transition hover:text-white">Change country</Link>
             <Link href="/roadmap" className="transition hover:text-white">Roadmap</Link>
             <Link href="/login" className="transition hover:text-white">Login</Link>
+            <Link href="/signup" className="rounded-lg border border-blue-500/50 bg-blue-500/10 px-3 py-1.5 font-semibold text-blue-200 transition hover:bg-blue-500/20 hover:text-blue-100">Create Account</Link>
           </nav>
 
           <Link
-            href="/trial"
+            href="/signup"
             className="rounded-lg sm:rounded-xl bg-blue-600 px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-bold transition hover:bg-blue-500 whitespace-nowrap"
           >
             Free Trial
@@ -209,6 +234,8 @@ export default async function PublicHomePage() {
             <Link href="/" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Change country</Link>
             <Link href="/roadmap" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Roadmap</Link>
             <Link href="/login" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Login</Link>
+            <Link href="/signup" className="rounded-lg border border-blue-500/50 bg-blue-500/10 px-3 py-2 text-center font-semibold text-blue-200 transition hover:bg-blue-500/20">Create Account</Link>
+            <Link href="/signup" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Free Trial</Link>
           </nav>
         </details>
       </header>
@@ -303,10 +330,10 @@ export default async function PublicHomePage() {
       <section id="subjects" className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
         <div className="text-center">
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Learning Pathways</h2>
-          <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">Age-aware progression from early years to GCSE pathway aligned support.</p>
+          <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">Age-aware support from EYFS and Key Stage 1 through to GCSE.</p>
         </div>
 
-        <div className="mt-8 sm:mt-12 grid gap-4 sm:gap-6 md:grid-cols-3">
+        <div className="mt-8 sm:mt-12 grid gap-4 sm:gap-6 md:grid-cols-2 xl:grid-cols-3">
           {subjects.map((subject) => (
             <div
               key={subject.title}
@@ -315,8 +342,8 @@ export default async function PublicHomePage() {
               <p className="text-4xl sm:text-5xl">{subject.icon}</p>
               <h3 className="mt-4 sm:mt-5 text-lg sm:text-xl font-bold">{subject.title}</h3>
               <p className="mt-2 sm:mt-3 text-sm sm:text-base leading-6 sm:leading-7 text-slate-400">{subject.text}</p>
-              <Link href={subject.title.includes("GCSE") ? "/pricing" : "/trial"} className="mt-4 sm:mt-6 inline-block text-xs sm:text-sm font-semibold text-blue-400 hover:text-blue-300">
-                {subject.title.includes("GCSE") ? "View GCSE pathway \u2192" : "Explore pathway support \u2192"}
+              <Link href={subject.href} className="mt-4 sm:mt-6 inline-block text-xs sm:text-sm font-semibold text-blue-400 hover:text-blue-300">
+                {subject.cta}
               </Link>
             </div>
           ))}

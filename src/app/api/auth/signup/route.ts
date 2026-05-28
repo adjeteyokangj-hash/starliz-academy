@@ -11,10 +11,14 @@ import {
   getRefreshCookieName,
   hashPassword,
 } from "@/lib/auth";
-import { writeAuditLog } from "@/lib/audit";
 import { canAddSchoolStudent } from "@/lib/schools/licensing";
 import { buildDeviceFingerprint, getRefreshTokenMaxAgeSeconds, issueRefreshToken } from "@/lib/auth_sessions";
 import { getRequestIp } from "@/lib/api_guard";
+import {
+  calculateAgeFromDateOfBirth,
+  getStageForYearGroup,
+  mapLearningFocusToLegacyMainFocus,
+} from "@/lib/registration/child-profile-options";
 import {
   isPhoneLinkedToAnotherParent,
   normalizeUkPhone,
@@ -40,12 +44,16 @@ const bodySchema = z.object({
   marketingOptIn: z.boolean().optional(),
   child: z.object({
     name: z.string().trim().min(1).max(64),
-    age: z.number().int().min(5).max(10),
+    age: z.number().int().min(3).max(20).optional(),
+    dateOfBirth: z.string().trim().optional(),
     yearGroup: z.string().trim().min(1).max(32),
-    mainFocus: z.enum(["Spelling", "Maths", "Reading", "All subjects"]),
+    stage: z.string().trim().optional(),
+    selectedSubjects: z.array(z.string().trim().min(1).max(80)).optional(),
+    learningFocus: z.string().trim().optional(),
+    mainFocus: z.enum(["Spelling", "Maths", "Reading", "All subjects"]).optional(),
     avatar: z.string().trim().min(1).max(8).optional(),
     favouriteSubject: z.enum(["Spelling", "Maths", "Reading", "All subjects"]).optional(),
-    learningConfidence: z.enum(["Needs support", "Growing", "Confident"]).optional(),
+    learningConfidence: z.enum(["Needs support", "Growing", "Confident", "Advanced / ready for challenge"]).optional(),
   }).optional(),
   schoolEnrollment: z.object({
     schoolId: z.string().min(1),
@@ -106,86 +114,124 @@ export async function POST(request: Request) {
       }
     }
 
-    const user = await prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        passwordHash: await hashPassword(body.password),
-        name: validatedName,
-        parentProfile: {
-          create: {
-            phone: normalizedPhone.e164,
-            address: toStoredAddress(normalizedAddress),
-            country: normalizedAddress.country,
-            status: "active",
+    const passwordHash = await hashPassword(body.password);
+    const created = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: normalizedEmail,
+          passwordHash,
+          name: validatedName,
+          parentProfile: {
+            create: {
+              phone: normalizedPhone.e164,
+              address: toStoredAddress(normalizedAddress),
+              country: normalizedAddress.country,
+              status: "active",
+              emailConsent: body.marketingOptIn ?? false,
+              smsConsent: body.marketingOptIn ?? false,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (body.child) {
-      const childId = randomUUID();
-      await prisma.childProfile.create({
-        data: {
-          id: childId,
-          parentId: user.id,
-          name: body.child.name,
-          age: body.child.age,
-          yearGroup: body.child.yearGroup,
-          avatar: body.child.avatar ?? "🦊",
-          snapshotJson: JSON.stringify({
-            onboarding: {
-              mainFocus: body.child.mainFocus,
-              favouriteSubject: body.child.favouriteSubject ?? null,
-              learningConfidence: body.child.learningConfidence ?? null,
+      let childId: string | null = null;
+      if (body.child) {
+        childId = randomUUID();
+        const parsedDob = body.child.dateOfBirth ? new Date(body.child.dateOfBirth) : null;
+        const validDob = parsedDob && !Number.isNaN(parsedDob.getTime()) ? parsedDob : null;
+        const derivedAge = body.child.age ?? (body.child.dateOfBirth ? calculateAgeFromDateOfBirth(body.child.dateOfBirth) ?? undefined : undefined);
+        const keyStage = body.child.stage ?? getStageForYearGroup(body.child.yearGroup);
+        const learningFocus = body.child.learningFocus ?? "All recommended subjects";
+
+        await tx.childProfile.create({
+          data: {
+            id: childId,
+            parentId: user.id,
+            name: body.child.name,
+            age: derivedAge,
+            yearGroup: body.child.yearGroup,
+            avatar: body.child.avatar ?? "🦊",
+            snapshotJson: JSON.stringify({
+              onboarding: {
+                dateOfBirth: body.child.dateOfBirth ?? null,
+                keyStage,
+                selectedSubjects: body.child.selectedSubjects ?? [],
+                learningFocus,
+                mainFocus: body.child.mainFocus ?? mapLearningFocusToLegacyMainFocus(learningFocus),
+                favouriteSubject: body.child.favouriteSubject ?? null,
+                learningConfidence: body.child.learningConfidence ?? null,
+              },
+            }),
+          },
+        });
+
+        await tx.studentProfile.upsert({
+          where: { childId },
+          create: {
+            childId,
+            dateOfBirth: validDob ?? undefined,
+            keyStageLevel: keyStage,
+            learningLevel: body.child.learningConfidence,
+            subjectFocus: body.child.selectedSubjects?.join(", ") ?? undefined,
+          },
+          update: {
+            dateOfBirth: validDob ?? undefined,
+            keyStageLevel: keyStage,
+            learningLevel: body.child.learningConfidence,
+            subjectFocus: body.child.selectedSubjects?.join(", ") ?? undefined,
+          },
+        });
+
+        await tx.user.update({
+          where: { id: user.id },
+          data: { activeChildId: childId },
+        });
+
+        if (body.schoolEnrollment) {
+          await tx.schoolStudent.create({
+            data: {
+              schoolId: body.schoolEnrollment.schoolId,
+              childId,
+              classroomId: body.schoolEnrollment.classroomId,
+              externalRef: body.schoolEnrollment.externalRef,
+              status: "active",
             },
+          });
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorUserId: user.id,
+          action: "signup_completed",
+          entityType: "parent",
+          entityId: user.id,
+          metadataJson: JSON.stringify({
+            phoneProvided: Boolean(body.phone),
+            postcode: normalizedAddress.postcode,
+            marketingOptIn: body.marketingOptIn ?? false,
+            childProvided: Boolean(body.child),
+            childId,
+            schoolEnrollment: body.schoolEnrollment?.schoolId ?? null,
           }),
         },
       });
 
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { activeChildId: childId },
-      });
-
-      if (body.schoolEnrollment) {
-        await prisma.schoolStudent.create({
-          data: {
-            schoolId: body.schoolEnrollment.schoolId,
-            childId,
-            classroomId: body.schoolEnrollment.classroomId,
-            externalRef: body.schoolEnrollment.externalRef,
-            status: "active",
-          },
-        });
-      }
-    }
-
-    await writeAuditLog({
-      actorUserId: user.id,
-      action: "signup_completed",
-      entityType: "parent",
-      entityId: user.id,
-      metadata: {
-        phoneProvided: Boolean(body.phone),
-        postcode: normalizedAddress.postcode,
-        marketingOptIn: body.marketingOptIn ?? false,
-        childProvided: Boolean(body.child),
-        schoolEnrollment: body.schoolEnrollment?.schoolId ?? null,
-      },
+      return user;
     });
 
     const fingerprint = buildDeviceFingerprint({ ip, userAgent });
     const token = await createSessionToken(
-      { userId: user.id, email: user.email, role: user.role },
+      { userId: created.id, email: created.email, role: created.role },
       getAccessTokenMaxAgeSeconds(),
     );
     const refresh = await issueRefreshToken({
-      userId: user.id,
+      userId: created.id,
       fingerprint,
       ipAddress: ip,
       userAgent,
     });
-    const response = NextResponse.json({ ok: true, user: { id: user.id, email: user.email, name: user.name } }, { status: 201 });
+    const response = NextResponse.json({ ok: true, user: { id: created.id, email: created.email, name: created.name } }, { status: 201 });
     response.cookies.set(getAuthCookieName(), token, {
       httpOnly: true,
       sameSite: "lax",
