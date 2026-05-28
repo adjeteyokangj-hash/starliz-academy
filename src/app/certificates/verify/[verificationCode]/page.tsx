@@ -78,6 +78,13 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
                 score={verification.certificate.score}
                 status={verification.status}
                 showPrintAction={verification.status === "valid"}
+                awardReason={verification.certificate.awardReason}
+                competitionName={verification.certificate.competitionName}
+                testName={verification.certificate.testName}
+                rank={verification.certificate.rank}
+                rankLabel={verification.certificate.rankLabel}
+                tiedRank={verification.certificate.tiedRank}
+                rankingMethod={verification.certificate.rankingMethod}
               />
             ) : null}
 
@@ -110,6 +117,30 @@ export default async function VerifyCertificatePage({ params }: VerifyPageProps)
                 <dt className="text-neutral-500">Issued</dt>
                 <dd className="font-medium text-neutral-900">{formatDate(verification.certificate.issuedAt)}</dd>
               </div>
+              {verification.certificate.rankLabel ? (
+                <div>
+                  <dt className="text-neutral-500">Rank / Place</dt>
+                  <dd className="font-medium text-neutral-900">{verification.certificate.rankLabel}</dd>
+                </div>
+              ) : null}
+              {verification.certificate.competitionName ? (
+                <div>
+                  <dt className="text-neutral-500">Competition</dt>
+                  <dd className="font-medium text-neutral-900">{verification.certificate.competitionName}</dd>
+                </div>
+              ) : null}
+              {verification.certificate.testName ? (
+                <div>
+                  <dt className="text-neutral-500">Test / Quiz / Challenge</dt>
+                  <dd className="font-medium text-neutral-900">{verification.certificate.testName}</dd>
+                </div>
+              ) : null}
+              {verification.certificate.score !== null ? (
+                <div>
+                  <dt className="text-neutral-500">Score</dt>
+                  <dd className="font-medium text-neutral-900">{verification.certificate.score}</dd>
+                </div>
+              ) : null}
               {verification.certificate.certificateType === "award_certificate" ? (
                 <>
                   <div>

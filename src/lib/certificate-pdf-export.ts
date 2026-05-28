@@ -1,5 +1,6 @@
 import type { IssuedCertificateType } from "@/lib/certificate-issuing";
 import { buildVerificationQrSvg } from "@/lib/certificate-qr";
+import { isRankedCertificateType, rankedCertificateTypeLabel } from "@/lib/ranked-certificates";
 
 export type CertificateExportStatus = string;
 
@@ -22,6 +23,13 @@ export type CertificateExportInput = {
   status: CertificateExportStatus;
   score?: number | null;
   evidenceSummaryText?: string | null;
+  awardReason?: string | null;
+  competitionName?: string | null;
+  testName?: string | null;
+  rank?: number | null;
+  rankLabel?: string | null;
+  tiedRank?: boolean | null;
+  rankingMethod?: string | null;
 };
 
 export type CertificateExportPayload = {
@@ -50,6 +58,13 @@ export type CertificateExportPayload = {
   verificationNote: string;
   score: number | null;
   evidenceSummaryText: string | null;
+  awardReason: string | null;
+  competitionName: string | null;
+  testName: string | null;
+  rank: number | null;
+  rankLabel: string | null;
+  tiedRank: boolean | null;
+  rankingMethod: string | null;
 };
 
 export type CertificateExportResult =
@@ -87,6 +102,7 @@ function normalizeSubjectAndStrand(input: CertificateExportInput): { subject: st
 }
 
 export function certificateTypeLabel(type: IssuedCertificateType): string {
+  if (isRankedCertificateType(type)) return rankedCertificateTypeLabel(type);
   if (type === "term_completion") return "Term Certificate";
   if (type === "end_of_term_exam") return "Term Exam Certificate";
   if (type === "subject_achievement") return "Subject Certificate";
@@ -154,6 +170,13 @@ export function buildCertificateExportPayload(input: CertificateExportInput | nu
       verificationNote: "Verify this certificate using the code and link shown below.",
       score: typeof input.score === "number" ? input.score : null,
       evidenceSummaryText: input.evidenceSummaryText ?? null,
+      awardReason: input.awardReason ?? null,
+      competitionName: input.competitionName ?? null,
+      testName: input.testName ?? null,
+      rank: typeof input.rank === "number" ? input.rank : null,
+      rankLabel: input.rankLabel ?? null,
+      tiedRank: input.tiedRank ?? null,
+      rankingMethod: input.rankingMethod ?? null,
     },
   };
 }
@@ -239,7 +262,13 @@ export function buildCertificateExportHtml(payload: CertificateExportPayload): s
       ${optionalRow(payload.certificateType === "english_achievement" ? "English strand" : "Strand", payload.strand)}
       ${optionalRow("Award type", payload.awardType)}
       ${optionalRow("Award scope", payload.awardScope)}
+      ${optionalRow("Rank / place", payload.rankLabel)}
+      ${optionalRow("Competition", payload.competitionName)}
+      ${optionalRow("Test / quiz / challenge", payload.testName)}
       ${optionalRow("Score", typeof payload.score === "number" ? String(payload.score) : null)}
+      ${optionalRow("Tied rank", typeof payload.tiedRank === "boolean" ? (payload.tiedRank ? "Yes" : "No") : null)}
+      ${optionalRow("Ranking method", payload.rankingMethod ? payload.rankingMethod.replaceAll("_", " ") : null)}
+      ${optionalRow("Award reason", payload.awardReason)}
       ${optionalRow("Evidence", payload.evidenceSummaryText)}
       <div class=\"meta-row\"><strong>Issued date:</strong> ${escapeHtml(payload.issuedDateLabel)}</div>
     </section>

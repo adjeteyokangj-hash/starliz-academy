@@ -1,8 +1,18 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { CertificateEligibilityResult, CertificateType } from "@/lib/certificate-eligibility";
+import {
+  isRankedCertificateType,
+  rankLabelForCertificate,
+  rankNumberForCertificate,
+  rankedAwardSourceType,
+  rankedCertificateTitle,
+  rankedCertificateTypeCode,
+  type RankedCertificateType,
+  type RankingMethod,
+} from "@/lib/ranked-certificates";
 import type { StudentAwardNomination, StudentAwardScope, StudentAwardType } from "@/lib/student-awards";
 
-export type IssuedCertificateType = CertificateType | "award_certificate";
+export type IssuedCertificateType = CertificateType | "award_certificate" | RankedCertificateType;
 
 export type IssuedCertificateRecord = {
   id: string;
@@ -20,12 +30,21 @@ export type IssuedCertificateRecord = {
   evidenceSummary: CertificateEligibilityResult["evidenceSummary"];
   subjectBreakdown: CertificateEligibilityResult["subjectBreakdown"];
   verificationUrl: string;
-  awardType?: StudentAwardType;
-  awardScope?: StudentAwardScope;
+  awardType?: StudentAwardType | RankedCertificateType;
+  awardScope?: StudentAwardScope | string;
   subject?: string | null;
   strand?: string | null;
   score?: number | null;
   nominationId?: string;
+  awardReason?: string | null;
+  awardSourceType?: string | null;
+  awardSourceId?: string | null;
+  competitionName?: string | null;
+  testName?: string | null;
+  rank?: number | null;
+  rankLabel?: string | null;
+  tiedRank?: boolean | null;
+  rankingMethod?: RankingMethod | null;
 };
 
 export type CertificateIssueBlocked = {
@@ -50,11 +69,20 @@ export type CertificateVerificationResult = {
     term: string;
     issuedAt: string;
     verificationMessage: string;
-    awardType: StudentAwardType | null;
-    awardScope: StudentAwardScope | null;
+    awardType: StudentAwardType | RankedCertificateType | null;
+    awardScope: StudentAwardScope | string | null;
     subject: string | null;
     strand: string | null;
     score: number | null;
+    awardReason: string | null;
+    awardSourceType: string | null;
+    awardSourceId: string | null;
+    competitionName: string | null;
+    testName: string | null;
+    rank: number | null;
+    rankLabel: string | null;
+    tiedRank: boolean | null;
+    rankingMethod: RankingMethod | null;
   } | null;
 };
 
@@ -87,6 +115,7 @@ function parseIssuedRecord(value: unknown): IssuedCertificateRecord | null {
     && certificateType !== "english_achievement"
     && certificateType !== "mastery_certificate"
     && certificateType !== "award_certificate"
+    && !(typeof certificateType === "string" && isRankedCertificateType(certificateType))
   ) {
     return null;
   }
@@ -149,6 +178,15 @@ function parseIssuedRecord(value: unknown): IssuedCertificateRecord | null {
     strand: typeof row.strand === "string" ? row.strand : null,
     score: typeof row.score === "number" ? row.score : null,
     nominationId: typeof row.nominationId === "string" ? row.nominationId : undefined,
+    awardReason: typeof row.awardReason === "string" ? row.awardReason : null,
+    awardSourceType: typeof row.awardSourceType === "string" ? row.awardSourceType : null,
+    awardSourceId: typeof row.awardSourceId === "string" ? row.awardSourceId : null,
+    competitionName: typeof row.competitionName === "string" ? row.competitionName : null,
+    testName: typeof row.testName === "string" ? row.testName : null,
+    rank: typeof row.rank === "number" ? row.rank : null,
+    rankLabel: typeof row.rankLabel === "string" ? row.rankLabel : null,
+    tiedRank: typeof row.tiedRank === "boolean" ? row.tiedRank : null,
+    rankingMethod: typeof row.rankingMethod === "string" ? (row.rankingMethod as RankingMethod) : null,
   };
 }
 
@@ -184,21 +222,28 @@ export function upsertIssuedCertificates(profileJson: string | null | undefined,
   return JSON.stringify(next);
 }
 
-export function buildCertificateIdempotencyKey(record: Pick<IssuedCertificateRecord, "studentId" | "certificateType" | "term" | "nominationId" | "subject" | "strand">): string {
-  const sourceType = record.certificateType === "award_certificate" ? "award_nomination" : "term";
-  const sourceId = record.certificateType === "award_certificate"
-    ? String(record.nominationId ?? "").trim()
-    : [
-        record.term,
-        record.subject ?? "",
-        record.strand ?? "",
-      ].map((part) => normalize(part)).join(":");
+export function buildCertificateIdempotencyKey(record: Pick<IssuedCertificateRecord, "studentId" | "certificateType" | "term" | "nominationId" | "subject" | "strand" | "awardSourceType" | "awardSourceId" | "rank" | "rankLabel">): string {
+  const rankedType = isRankedCertificateType(record.certificateType) ? record.certificateType : null;
+  const sourceType = rankedType
+    ? (record.awardSourceType || rankedAwardSourceType(rankedType))
+    : record.certificateType === "award_certificate" ? "award_nomination" : "term";
+  const sourceId = rankedType
+    ? String(record.awardSourceId || record.term || "manual").trim()
+    : record.certificateType === "award_certificate"
+      ? String(record.nominationId ?? "").trim()
+      : [
+          record.term,
+          record.subject ?? "",
+          record.strand ?? "",
+        ].map((part) => normalize(part)).join(":");
+  const rankKey = rankedType ? normalize(record.rankLabel) || String(record.rank ?? "unranked") : "";
 
   return [
     record.studentId,
     record.certificateType,
     sourceType,
     sourceId || "default",
+    rankKey,
   ].map((part) => normalize(part).replace(/\s+/g, "_")).join("|");
 }
 
@@ -208,12 +253,20 @@ export function findMatchingIssuedCertificate(input: {
   certificateType: IssuedCertificateType;
   term: string;
   nominationId?: string | null;
+  awardSourceType?: string | null;
+  awardSourceId?: string | null;
+  rank?: number | null;
+  rankLabel?: string | null;
 }): IssuedCertificateRecord | null {
   const targetKey = buildCertificateIdempotencyKey({
     studentId: input.studentId,
     certificateType: input.certificateType,
     term: input.term,
     nominationId: input.nominationId ?? undefined,
+    awardSourceType: input.awardSourceType ?? undefined,
+    awardSourceId: input.awardSourceId ?? undefined,
+    rank: input.rank ?? undefined,
+    rankLabel: input.rankLabel ?? undefined,
   });
 
   return input.records.find((record) => buildCertificateIdempotencyKey(record) === targetKey) ?? null;
@@ -268,6 +321,7 @@ function certificateTypeCode(type: CertificateType): string {
 
 function issuedCertificateTypeCode(type: IssuedCertificateType): string {
   if (type === "award_certificate") return "AW";
+  if (isRankedCertificateType(type)) return rankedCertificateTypeCode(type);
   return certificateTypeCode(type);
 }
 
@@ -384,6 +438,95 @@ export function issueAwardCertificateRecord(input: {
   };
 }
 
+export function issueRankedCertificateRecord(input: {
+  certificateType: RankedCertificateType;
+  studentId: string;
+  studentName: string;
+  yearGroup?: string | null;
+  keyStage?: string | null;
+  level?: string | null;
+  term?: string | null;
+  title?: string | null;
+  awardReason?: string | null;
+  awardSourceType?: string | null;
+  awardSourceId: string;
+  competitionName?: string | null;
+  testName?: string | null;
+  subject?: string | null;
+  strand?: string | null;
+  score?: number | null;
+  rank?: number | null;
+  rankLabel?: string | null;
+  tiedRank?: boolean | null;
+  rankingMethod?: RankingMethod | null;
+  verificationBaseUrl?: string;
+}): IssuedCertificateRecord {
+  const term = input.term?.trim() || "Ranked Award";
+  const rank = rankNumberForCertificate({ certificateType: input.certificateType, rank: input.rank });
+  const rankLabel = rankLabelForCertificate({ certificateType: input.certificateType, rank, rankLabel: input.rankLabel });
+  const certificateNumber = generateCertificateNumber({
+    certificateType: input.certificateType,
+    yearGroup: input.yearGroup,
+    term,
+  });
+  const verificationCode = generateVerificationCode();
+  const baseUrl = input.verificationBaseUrl ?? "";
+  const normalizedBase = baseUrl.replace(/\/$/, "");
+  const verificationUrl = normalizedBase
+    ? `${normalizedBase}/certificates/verify/${verificationCode}`
+    : `/certificates/verify/${verificationCode}`;
+  const title = input.title?.trim() || rankedCertificateTitle({
+    certificateType: input.certificateType,
+    rankLabel,
+    competitionName: input.competitionName,
+    testName: input.testName,
+  });
+
+  return {
+    id: randomUUID(),
+    certificateNumber,
+    verificationCode,
+    certificateType: input.certificateType,
+    title,
+    studentId: input.studentId,
+    studentName: input.studentName,
+    yearGroup: input.yearGroup ?? null,
+    keyStage: input.level ?? input.keyStage ?? null,
+    term,
+    status: "issued",
+    issuedAt: new Date().toISOString(),
+    evidenceSummary: {
+      placementCompleted: true,
+      selectedSubjects: input.subject ? 1 : 0,
+      requiredScopeCount: input.subject ? 1 : 0,
+      scopesWithAssignments: 0,
+      completedAssignments: 0,
+      totalAssignments: 0,
+      quizAttemptCount: 0,
+      activeWeakAreas: 0,
+      secureProgressionCount: 0,
+      examAttempts: 0,
+      passedExamAttempts: 0,
+    },
+    subjectBreakdown: [],
+    verificationUrl,
+    awardType: input.certificateType,
+    awardScope: input.awardSourceType ?? rankedAwardSourceType(input.certificateType),
+    subject: input.subject ?? null,
+    strand: input.strand ?? null,
+    score: typeof input.score === "number" ? input.score : null,
+    awardReason: input.awardReason?.trim() || title,
+    awardSourceType: input.awardSourceType ?? rankedAwardSourceType(input.certificateType),
+    awardSourceId: input.awardSourceId,
+    competitionName: input.competitionName ?? null,
+    testName: input.testName ?? null,
+    rank,
+    rankLabel,
+    tiedRank: input.tiedRank ?? false,
+    rankingMethod: input.rankingMethod ?? "admin_adjusted",
+  };
+}
+
 export function maskStudentName(name: string): string {
   const clean = String(name || "").trim();
   if (!clean) return "Learner";
@@ -426,6 +569,15 @@ export function verifyIssuedCertificate(input: {
       subject: found.subject ?? null,
       strand: found.strand ?? null,
       score: typeof found.score === "number" ? found.score : null,
+      awardReason: found.awardReason ?? null,
+      awardSourceType: found.awardSourceType ?? null,
+      awardSourceId: found.awardSourceId ?? null,
+      competitionName: found.competitionName ?? null,
+      testName: found.testName ?? null,
+      rank: found.rank ?? null,
+      rankLabel: found.rankLabel ?? null,
+      tiedRank: found.tiedRank ?? null,
+      rankingMethod: found.rankingMethod ?? null,
     },
   };
 }

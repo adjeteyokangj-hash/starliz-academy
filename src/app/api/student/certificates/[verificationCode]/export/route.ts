@@ -64,6 +64,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ veri
     verificationCode: certificate.verificationCode,
     verificationUrl: certificate.verificationUrl,
     status: certificate.status,
+    awardReason: certificate.awardReason,
+    competitionName: certificate.competitionName,
+    testName: certificate.testName,
+    rank: certificate.rank,
+    rankLabel: certificate.rankLabel,
+    tiedRank: certificate.tiedRank,
+    rankingMethod: certificate.rankingMethod,
   });
 
   if (!exportResult.ok) {

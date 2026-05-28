@@ -1,4 +1,5 @@
 import type { CertificateThemeName } from "@/components/certificates/certificate-theme";
+import { isRankedCertificateType, rankLabelForCertificate, rankedCertificateTypeLabel, type RankedCertificateType, type RankingMethod } from "@/lib/ranked-certificates";
 
 export type CertificateTemplateType =
   | "term_completion"
@@ -8,12 +9,14 @@ export type CertificateTemplateType =
   | "mastery_certificate"
   | "award_certificate";
 
+export type CertificateDesignCertificateType = CertificateTemplateType | RankedCertificateType;
+
 export type CertificatePreviewStatus = "valid" | "issued" | "revoked";
 
 export type CertificateDesignInput = {
   title: string;
   studentDisplayName: string;
-  certificateType: CertificateTemplateType;
+  certificateType: CertificateDesignCertificateType;
   typeLabel: string;
   yearGroup: string | null;
   keyStage: string | null;
@@ -30,10 +33,17 @@ export type CertificateDesignInput = {
   score?: number | null;
   awardMessage?: string | null;
   evidenceSummaryText?: string | null;
+  awardReason?: string | null;
+  competitionName?: string | null;
+  testName?: string | null;
+  rank?: number | null;
+  rankLabel?: string | null;
+  tiedRank?: boolean | null;
+  rankingMethod?: RankingMethod | null;
 };
 
 export type CertificateDesignModel = {
-  templateType: CertificateTemplateType;
+  templateType: CertificateDesignCertificateType;
   theme: CertificateThemeName;
   title: string;
   subtitle: string;
@@ -102,9 +112,23 @@ function templateTheme(type: CertificateTemplateType): CertificateThemeName {
   return "award_prestige";
 }
 
+function rankedTheme(input: CertificateDesignInput): CertificateThemeName {
+  const label = rankLabelForCertificate({
+    certificateType: input.certificateType as RankedCertificateType,
+    rank: input.rank,
+    rankLabel: input.rankLabel,
+  }).toLowerCase();
+
+  if (input.rank === 1 || label.includes("1st") || label.includes("winner")) return "ranked_gold";
+  if (input.rank === 2 || label.includes("2nd")) return "ranked_silver";
+  if (input.rank === 3 || label.includes("3rd")) return "ranked_bronze";
+  if (label.includes("finalist")) return "ranked_finalist";
+  return "ranked_participant";
+}
+
 export function resolveCertificateDesign(input: CertificateDesignInput): CertificateDesignModel {
   const templateType = input.certificateType;
-  const theme = templateTheme(templateType);
+  const theme = isRankedCertificateType(templateType) ? rankedTheme(input) : templateTheme(templateType);
 
   const normalizedSubject = templateType === "english_achievement"
     ? "English"
@@ -116,6 +140,37 @@ export function resolveCertificateDesign(input: CertificateDesignInput): Certifi
 
   const badgeText = statusBadgeText(input.status);
   const printClassName = "print:w-[297mm] print:min-h-[210mm] print:max-w-none print:rounded-none print:shadow-none";
+
+  if (isRankedCertificateType(templateType)) {
+    const rankLabel = rankLabelForCertificate({
+      certificateType: templateType,
+      rank: input.rank,
+      rankLabel: input.rankLabel,
+    });
+    const eventName = input.competitionName || input.testName || rankedCertificateTypeLabel(templateType);
+    const tiedText = input.tiedRank ? " Shared rank recognised." : "";
+
+    return {
+      templateType,
+      theme,
+      title: input.title || rankedCertificateTypeLabel(templateType),
+      subtitle: `${rankLabel} Certificate`,
+      recipientLine: rankLabel === "Participant" ? "This certificate recognises the participation of" : "This ranked award is proudly presented to",
+      bodyText: input.awardReason?.trim()
+        || `for achieving ${rankLabel} in ${eventName}.${tiedText}`,
+      badgeText,
+      accentLabel: rankLabel,
+      sealLabel: rankLabel,
+      footerNote: "Ranked certificates are verified StarLiz Academy award records.",
+      showAwardDetails: true,
+      showSubjectDetails: true,
+      showEnglishStrands: Boolean(normalizedStrand),
+      showVerificationBlock: true,
+      printClassName,
+      normalizedSubject,
+      normalizedStrand,
+    };
+  }
 
   if (templateType === "term_completion") {
     return {

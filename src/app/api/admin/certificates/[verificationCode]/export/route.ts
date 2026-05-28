@@ -3,6 +3,7 @@ import { requireAdminPermission } from "@/lib/api_guard";
 import { findIssuedCertificateByVerificationCode } from "@/lib/certificate-records";
 import { buildCertificateExportHtml, buildCertificateExportPayload, certificateTypeLabel } from "@/lib/certificate-pdf-export";
 import { storeCertificateExportHtml } from "@/lib/certificate-export-storage";
+import { isRankedCertificateType } from "@/lib/ranked-certificates";
 
 export async function GET(request: Request, { params }: { params: Promise<{ verificationCode: string }> }) {
   const { session, response } = await requireAdminPermission("reports:view");
@@ -12,7 +13,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ veri
 
   const certificate = await findIssuedCertificateByVerificationCode(verificationCode);
 
-  if (!certificate || certificate.certificateType !== "award_certificate") {
+  if (!certificate || (certificate.certificateType !== "award_certificate" && !isRankedCertificateType(certificate.certificateType))) {
     return NextResponse.json({ ok: false, error: "Certificate not found." }, { status: 404 });
   }
 
@@ -35,6 +36,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ veri
     status: certificate.status,
     score: typeof certificate.score === "number" ? certificate.score : null,
     evidenceSummaryText: typeof certificate.score === "number" ? `Award score ${certificate.score}` : null,
+    awardReason: certificate.awardReason ?? null,
+    competitionName: certificate.competitionName ?? null,
+    testName: certificate.testName ?? null,
+    rank: certificate.rank ?? null,
+    rankLabel: certificate.rankLabel ?? null,
+    tiedRank: certificate.tiedRank ?? null,
+    rankingMethod: certificate.rankingMethod ?? null,
   });
 
   if (!exportResult.ok) {

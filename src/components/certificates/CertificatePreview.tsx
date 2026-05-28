@@ -98,6 +98,12 @@ export default function CertificatePreview(props: CertificatePreviewProps) {
             awardScope={titleCaseToken(props.awardScope)}
             score={typeof props.score === "number" ? props.score : null}
             evidenceSummaryText={props.evidenceSummaryText ?? null}
+            awardReason={props.awardReason ?? null}
+            competitionName={props.competitionName ?? null}
+            testName={props.testName ?? null}
+            rankLabel={props.rankLabel ?? null}
+            tiedRank={props.tiedRank ?? null}
+            rankingMethod={props.rankingMethod ?? null}
           />
         ) : null}
 

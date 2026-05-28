@@ -6,12 +6,14 @@ import {
   generateVerificationCode,
   issueAwardCertificateRecord,
   issueCertificateRecord,
+  issueRankedCertificateRecord,
   mergeIssuedCertificateRecords,
   parseIssuedCertificateRecord,
   parseIssuedCertificates,
   verifyIssuedCertificate,
   type IssuedCertificateRecord,
 } from "@/lib/certificate-issuing";
+import type { RankedCertificateType, RankingMethod } from "@/lib/ranked-certificates";
 import type { StudentAwardNomination } from "@/lib/student-awards";
 
 type PersistedCertificateRow = {
@@ -137,6 +139,10 @@ function certificateDelegate(): CertificateDelegate {
 }
 
 function certificateAwardSource(record: IssuedCertificateRecord): { awardSourceType: string | null; awardSourceId: string | null } {
+  if (record.awardSourceType || record.awardSourceId) {
+    return { awardSourceType: record.awardSourceType ?? null, awardSourceId: record.awardSourceId ?? null };
+  }
+
   if (record.certificateType === "award_certificate" && record.nominationId) {
     return { awardSourceType: "award_nomination", awardSourceId: record.nominationId };
   }
@@ -158,7 +164,7 @@ export function buildCertificateRecordCreateData(record: IssuedCertificateRecord
     idempotencyKey: buildCertificateIdempotencyKey(record),
     certificateType: record.certificateType,
     title: record.title,
-    awardReason: record.awardType ?? record.title,
+    awardReason: record.awardReason ?? record.awardType ?? record.title,
     subject: record.subject ?? null,
     level: record.keyStage ?? null,
     yearGroup: record.yearGroup ?? null,
@@ -174,15 +180,24 @@ export function buildCertificateRecordCreateData(record: IssuedCertificateRecord
       subjectBreakdown: record.subjectBreakdown,
       evidenceSummary: record.evidenceSummary,
       nominationId: record.nominationId ?? null,
+      awardReason: record.awardReason ?? null,
+      awardSourceType: record.awardSourceType ?? null,
+      awardSourceId: record.awardSourceId ?? null,
+      competitionName: record.competitionName ?? null,
+      testName: record.testName ?? null,
+      rank: record.rank ?? null,
+      rankLabel: record.rankLabel ?? null,
+      tiedRank: record.tiedRank ?? null,
+      rankingMethod: record.rankingMethod ?? null,
     }),
     awardSourceType: source.awardSourceType,
     awardSourceId: source.awardSourceId,
-    rank: null,
-    rankLabel: null,
-    competitionName: null,
-    testName: null,
-    tiedRank: null,
-    rankingMethod: null,
+    rank: typeof record.rank === "number" ? record.rank : null,
+    rankLabel: record.rankLabel ?? null,
+    competitionName: record.competitionName ?? null,
+    testName: record.testName ?? null,
+    tiedRank: typeof record.tiedRank === "boolean" ? record.tiedRank : null,
+    rankingMethod: record.rankingMethod ?? null,
   };
 }
 
@@ -213,6 +228,15 @@ export function persistedCertificateRowToIssuedRecord(row: PersistedCertificateR
     strand: stored?.strand ?? null,
     score: typeof row.score === "number" ? row.score : stored?.score ?? null,
     nominationId: stored?.nominationId ?? (typeof metadata.nominationId === "string" ? metadata.nominationId : undefined),
+    awardReason: row.awardReason ?? stored?.awardReason ?? (typeof metadata.awardReason === "string" ? metadata.awardReason : null),
+    awardSourceType: row.awardSourceType ?? stored?.awardSourceType ?? (typeof metadata.awardSourceType === "string" ? metadata.awardSourceType : null),
+    awardSourceId: row.awardSourceId ?? stored?.awardSourceId ?? (typeof metadata.awardSourceId === "string" ? metadata.awardSourceId : null),
+    competitionName: row.competitionName ?? stored?.competitionName ?? (typeof metadata.competitionName === "string" ? metadata.competitionName : null),
+    testName: row.testName ?? stored?.testName ?? (typeof metadata.testName === "string" ? metadata.testName : null),
+    rank: typeof row.rank === "number" ? row.rank : stored?.rank ?? null,
+    rankLabel: row.rankLabel ?? stored?.rankLabel ?? (typeof metadata.rankLabel === "string" ? metadata.rankLabel : null),
+    tiedRank: typeof row.tiedRank === "boolean" ? row.tiedRank : stored?.tiedRank ?? null,
+    rankingMethod: (row.rankingMethod as RankingMethod | null) ?? stored?.rankingMethod ?? null,
   };
 }
 
@@ -332,6 +356,32 @@ export async function issueAndPersistAwardCertificateRecord(input: {
   verificationBaseUrl?: string;
 }): Promise<IssuedCertificateRecord> {
   return persistWithReusableIdentity(() => issueAwardCertificateRecord(input));
+}
+
+export async function issueAndPersistRankedCertificateRecord(input: {
+  certificateType: RankedCertificateType;
+  studentId: string;
+  studentName: string;
+  yearGroup?: string | null;
+  keyStage?: string | null;
+  level?: string | null;
+  term?: string | null;
+  title?: string | null;
+  awardReason?: string | null;
+  awardSourceType?: string | null;
+  awardSourceId: string;
+  competitionName?: string | null;
+  testName?: string | null;
+  subject?: string | null;
+  strand?: string | null;
+  score?: number | null;
+  rank?: number | null;
+  rankLabel?: string | null;
+  tiedRank?: boolean | null;
+  rankingMethod?: RankingMethod | null;
+  verificationBaseUrl?: string;
+}): Promise<IssuedCertificateRecord> {
+  return persistWithReusableIdentity(() => issueRankedCertificateRecord(input));
 }
 
 export async function findIssuedCertificateByVerificationCode(verificationCode: string): Promise<IssuedCertificateRecord | null> {

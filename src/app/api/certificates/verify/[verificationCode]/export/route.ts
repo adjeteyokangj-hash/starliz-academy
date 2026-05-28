@@ -34,6 +34,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ veri
     verificationUrl: `/certificates/verify/${encodeURIComponent(verification.certificate.verificationCode)}`,
     status: verification.status,
     score: verification.certificate.score,
+    awardReason: verification.certificate.awardReason,
+    competitionName: verification.certificate.competitionName,
+    testName: verification.certificate.testName,
+    rank: verification.certificate.rank,
+    rankLabel: verification.certificate.rankLabel,
+    tiedRank: verification.certificate.tiedRank,
+    rankingMethod: verification.certificate.rankingMethod,
   });
 
   if (!exportResult.ok) {
