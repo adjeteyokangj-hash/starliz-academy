@@ -165,6 +165,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!authenticated && !isPublic) {
+    if (pathname.startsWith("/api/")) {
+      return finalize(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
+    }
     if (shouldAttemptRefresh) {
       const next = `${pathname}${request.nextUrl.search}`;
       const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
