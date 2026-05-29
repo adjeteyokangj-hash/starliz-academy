@@ -656,7 +656,7 @@ export default function StudentDetailPage() {
                 Disable Retest Button
               </button>
               <Link
-                href={`/admin/knowledge-graph?mode=hybrid&studentId=${params.id}&tab=overview`}
+                href={`/admin/knowledge-graph?mode=academic_intelligence&studentId=${encodeURIComponent(params.id)}&tab=overview`}
                 className="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-100"
               >
                 Open HEART BEAT Engine

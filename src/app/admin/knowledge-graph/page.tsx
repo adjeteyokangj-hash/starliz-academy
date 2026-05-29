@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Background,
@@ -112,6 +113,23 @@ type ApiResponse = {
     recommendationFocus: string[];
     reportSignals: string[];
   } | null;
+};
+
+type StudentHeartbeatProfile = {
+  id: string;
+  name: string;
+  yearGroup: string | null;
+  level: number;
+  quickLevelFinder: {
+    completed: boolean;
+    status: string | null;
+    responseCount: number;
+    totalQuestions: number;
+  };
+};
+
+type StudentHeartbeatProfileResponse = {
+  student: StudentHeartbeatProfile;
 };
 
 type HeartbeatTab = "overview" | "graph" | "systems" | "protection" | "recommendations";
@@ -334,8 +352,8 @@ export default function KnowledgeGraphPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const initialMode = searchParams.get("mode");
   const initialStudentId = searchParams.get("studentId") ?? "";
+  const initialMode = searchParams.get("mode") ?? (initialStudentId.trim() ? "academic_intelligence" : null);
   const initialTab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<HeartbeatTab>(
     initialTab === "overview" || initialTab === "graph" || initialTab === "systems" || initialTab === "protection" || initialTab === "recommendations"
@@ -343,7 +361,7 @@ export default function KnowledgeGraphPage() {
       : "overview",
   );
   const [mode, setMode] = useState<"dictionary" | "academic_intelligence" | "hybrid">(
-    initialMode === "academic_intelligence" || initialMode === "hybrid" ? initialMode : "dictionary",
+    initialMode === "dictionary" || initialMode === "academic_intelligence" || initialMode === "hybrid" ? initialMode : "dictionary",
   );
   const [studentId, setStudentId] = useState(initialStudentId);
   const [query, setQuery] = useState("");
@@ -363,6 +381,8 @@ export default function KnowledgeGraphPage() {
   const [fallback, setFallback] = useState<CurriculumGraphFallback | null>(null);
   const [graphAudit, setGraphAudit] = useState<CurriculumGraphAuditMetadata | null>(null);
   const [studentOverlay, setStudentOverlay] = useState<ApiResponse["studentOverlay"]>(null);
+  const [studentHeartbeatProfile, setStudentHeartbeatProfile] = useState<StudentHeartbeatProfile | null>(null);
+  const [studentHeartbeatLoading, setStudentHeartbeatLoading] = useState(false);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [selectedEdgeType, setSelectedEdgeType] = useState<KnowledgeEdgeType | "all">("all");
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -372,6 +392,8 @@ export default function KnowledgeGraphPage() {
   const [recoveryPlan, setRecoveryPlan] = useState<ApiResponse["recoveryPath"]>(null);
   const [searchTick, setSearchTick] = useState(0);
   const debounceRef = useRef<number | null>(null);
+  const trimmedStudentId = studentId.trim();
+  const hasStudentHeartbeatContext = trimmedStudentId.length > 0;
 
   const heartbeatBadges: HeartbeatBadge[] = [
     "Protected",
@@ -523,6 +545,46 @@ export default function KnowledgeGraphPage() {
     return () => window.clearTimeout(timer);
   }, [offset, recoveryWord, runFetch, searchTick]);
 
+  useEffect(() => {
+    if (!trimmedStudentId) {
+      setStudentHeartbeatProfile(null);
+      setStudentHeartbeatLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setStudentHeartbeatLoading(true);
+
+    void (async () => {
+      try {
+        const response = await fetch(`/api/admin/students/${encodeURIComponent(trimmedStudentId)}`, {
+          cache: "no-store",
+        });
+
+        if (response.status === 401) {
+          window.location.replace("/admin/login?next=/admin/knowledge-graph");
+          return;
+        }
+
+        if (!response.ok) {
+          if (!cancelled) setStudentHeartbeatProfile(null);
+          return;
+        }
+
+        const payload = (await response.json()) as StudentHeartbeatProfileResponse;
+        if (!cancelled) {
+          setStudentHeartbeatProfile(payload.student);
+        }
+      } finally {
+        if (!cancelled) setStudentHeartbeatLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trimmedStudentId]);
+
   const renderedEdges = useMemo(() => {
     return edges.map((edge) => ({
       ...edge,
@@ -569,7 +631,7 @@ export default function KnowledgeGraphPage() {
   }, [edges, selectedNode]);
 
   const stats = useMemo(() => {
-    return [
+    const baseStats = [
       { label: "Connected", value: String(connectedCount), tone: "ready" as const, tab: "systems" as HeartbeatTab },
       { label: "Partial", value: String(partialCount), tone: "partial" as const, tab: "systems" as HeartbeatTab },
       { label: "Missing", value: String(missingCount), tone: "missing" as const, tab: "systems" as HeartbeatTab },
@@ -577,32 +639,52 @@ export default function KnowledgeGraphPage() {
       { label: "Edges", value: String(edges.length), tone: "ready" as const, tab: "graph" as HeartbeatTab },
       { label: "Validation Issues", value: String(protection?.validation.issues.length ?? 0), tone: (protection?.validation.valid ?? true) ? "ready" as const : "partial" as const, tab: "protection" as HeartbeatTab },
     ];
-  }, [connectedCount, partialCount, missingCount, nodes.length, edges.length, protection]);
+
+    if (!hasStudentHeartbeatContext) {
+      return baseStats;
+    }
+
+    const confidence = studentOverlay?.confidenceScore ?? 0;
+    return [
+      {
+        label: "Confidence",
+        value: studentOverlay ? `${confidence}%` : "-",
+        tone: confidence >= 70 ? "ready" as const : confidence >= 50 ? "partial" as const : "missing" as const,
+        tab: "overview" as HeartbeatTab,
+      },
+      { label: "Mastery Gaps", value: String(studentOverlay?.masteryGapTopics.length ?? 0), tone: "partial" as const, tab: "overview" as HeartbeatTab },
+      { label: "Interventions", value: String(studentOverlay?.activeInterventions.length ?? 0), tone: "ready" as const, tab: "overview" as HeartbeatTab },
+      { label: "Decision Signals", value: String(studentOverlay?.reportSignals.length ?? 0), tone: "ready" as const, tab: "recommendations" as HeartbeatTab },
+      ...baseStats,
+    ];
+  }, [connectedCount, partialCount, missingCount, nodes.length, edges.length, hasStudentHeartbeatContext, protection, studentOverlay]);
 
   const engineSummary = useMemo(() => {
     const totalSystems = connectedCount + partialCount + missingCount;
-    const hasStudentContext = studentId.trim().length > 0 && (mode === "academic_intelligence" || mode === "hybrid");
     const latestDecision = graphAudit?.decisions[graphAudit.decisions.length - 1]?.decision ?? "awaiting input";
     const baselineSignalCount = heartbeat?.baselineSignals?.length ?? 0;
+    const studentLabel = studentHeartbeatLoading
+      ? "Loading student..."
+      : (studentHeartbeatProfile?.name ?? (hasStudentHeartbeatContext ? `Student ${trimmedStudentId}` : "Select a student"));
 
     return [
       {
         title: "System Heartbeat",
         value: `${connectedCount}/${totalSystems || 9} connected`,
-        detail: mode === "dictionary"
+        detail: hasStudentHeartbeatContext
+          ? "System diagnostics are available in Connected Systems."
+          : mode === "dictionary"
           ? "Dictionary graph mode is a separate system view."
           : `${partialCount} partial, ${missingCount} missing modules`,
         tab: "systems" as HeartbeatTab,
       },
       {
         title: "Student Heartbeat",
-        value: hasStudentContext
-          ? (baselineSignalCount > 0 ? "Placement pulse captured" : "Student linked")
-          : "Select a student",
-        detail: hasStudentContext
+        value: studentLabel,
+        detail: hasStudentHeartbeatContext
           ? (baselineSignalCount > 0
             ? `${baselineSignalCount} placement diagnostics from Quick Level Finder`
-            : "Waiting for academic/student signals")
+            : "Waiting for baseline and mastery signals")
           : "Open a student in Academic Intelligence or Hybrid mode.",
         tab: "overview" as HeartbeatTab,
       },
@@ -615,7 +697,7 @@ export default function KnowledgeGraphPage() {
         tab: "recommendations" as HeartbeatTab,
       },
     ];
-  }, [connectedCount, partialCount, missingCount, graphAudit, heartbeat, mode, studentId, studentOverlay]);
+  }, [connectedCount, partialCount, missingCount, graphAudit, hasStudentHeartbeatContext, heartbeat, mode, studentHeartbeatLoading, studentHeartbeatProfile, studentOverlay, trimmedStudentId]);
 
   const navigateToTab = useCallback((tab: HeartbeatTab) => {
     setActiveTab(tab);
@@ -633,11 +715,14 @@ export default function KnowledgeGraphPage() {
 
   useEffect(() => {
     const paramMode = searchParams.get("mode");
+    const paramStudentId = searchParams.get("studentId") ?? "";
+
     if (paramMode === "dictionary" || paramMode === "academic_intelligence" || paramMode === "hybrid") {
       setMode(paramMode);
+    } else if (paramStudentId.trim()) {
+      setMode("academic_intelligence");
     }
 
-    const paramStudentId = searchParams.get("studentId") ?? "";
     if (paramStudentId !== studentId) {
       setStudentId(paramStudentId);
     }
@@ -724,8 +809,12 @@ export default function KnowledgeGraphPage() {
     <div className="space-y-4 pb-12">
       <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-5">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">StarLiz Intelligence Infrastructure</p>
-        <h1 className="mt-2 text-3xl font-black text-white">StarLiz Heartbeat Engine</h1>
-        <p className="mt-2 text-sm text-slate-300">Central learning brain for student placement, system health, catch-up, mastery, and reporting.</p>
+        <h1 className="mt-2 text-3xl font-black text-white">{hasStudentHeartbeatContext ? "Student HEART BEAT Engine" : "StarLiz Heartbeat Engine"}</h1>
+        <p className="mt-2 text-sm text-slate-300">
+          {hasStudentHeartbeatContext
+            ? "Student-specific heartbeat view for placement, mastery, catch-up, learning twin, and decision signals."
+            : "Central learning brain for student placement, system health, catch-up, mastery, and reporting."}
+        </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {heartbeatBadges.map((badge) => (
             <span key={badge} className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.09em] text-cyan-100">
@@ -770,7 +859,7 @@ export default function KnowledgeGraphPage() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => navigateToTab(tab.id)}
               className={`rounded-lg border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em] ${
                 activeTab === tab.id
                   ? "border-cyan-400/70 bg-cyan-500/20 text-cyan-100"
@@ -788,9 +877,45 @@ export default function KnowledgeGraphPage() {
           {activeTab === "overview" ? (
             <>
               {graphControls}
+              {!hasStudentHeartbeatContext ? (
+                <section className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 text-amber-100">
+                  <h2 className="text-sm font-black uppercase tracking-[0.14em]">Select a student for accurate HEART BEAT</h2>
+                  <p className="mt-2 text-xs">
+                    Select a student to view an accurate Student HEART BEAT with QLF baseline, mastery, catch-up, learning twin, and decision signals.
+                  </p>
+                </section>
+              ) : null}
+
+              {hasStudentHeartbeatContext ? (
+                <section className="grid gap-3 md:grid-cols-2">
+                  <article className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+                    <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-100">Student Identity</h2>
+                    <p className="mt-2 text-xs text-cyan-50">Student: {studentHeartbeatProfile?.name ?? trimmedStudentId}</p>
+                    <p className="text-xs text-cyan-50">Year group: {studentHeartbeatProfile?.yearGroup ?? "-"}</p>
+                    <p className="text-xs text-cyan-50">Level: {studentHeartbeatProfile?.level ?? "-"}</p>
+                    <p className="text-xs text-cyan-50">Student ID: {trimmedStudentId}</p>
+                    <div className="mt-2">
+                      <Link
+                        href={`/admin/students/${encodeURIComponent(trimmedStudentId)}`}
+                        className="inline-flex rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.08em] text-cyan-50"
+                      >
+                        Open Student Profile
+                      </Link>
+                    </div>
+                  </article>
+                  <article className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+                    <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-100">QLF and Baseline Pulse</h2>
+                    <p className="mt-2 text-xs text-cyan-50">QLF status: {studentHeartbeatProfile?.quickLevelFinder.status ?? "-"}</p>
+                    <p className="text-xs text-cyan-50">QLF completed: {studentHeartbeatProfile?.quickLevelFinder.completed ? "yes" : "no"}</p>
+                    <p className="text-xs text-cyan-50">QLF responses: {studentHeartbeatProfile?.quickLevelFinder.responseCount ?? 0}/{studentHeartbeatProfile?.quickLevelFinder.totalQuestions ?? 0}</p>
+                    <p className="text-xs text-cyan-50">Baseline signals: {(heartbeat?.baselineSignals ?? []).join(" | ") || "-"}</p>
+                  </article>
+                </section>
+              ) : null}
+
               <section className="grid gap-3 md:grid-cols-2">
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
-                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Heartbeat Overview</h2>
+                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">System Heartbeat Diagnostics</h2>
                   <p className="mt-2 text-xs text-slate-300">Source of truth: {heartbeat?.sourceOfTruth ?? "not available"}</p>
                   <p className="text-xs text-slate-300">Validation: {protection?.validation.valid ? "valid" : "needs attention"}</p>
                   <p className="text-xs text-slate-300">Pending proposals: {approvalWorkflow?.pendingProposals.length ?? 0}</p>
@@ -802,6 +927,7 @@ export default function KnowledgeGraphPage() {
                   <p className="text-xs text-slate-300">Weak areas: {(studentOverlay?.weakAreaTopics ?? []).join(", ") || "-"}</p>
                   <p className="text-xs text-slate-300">Confidence: {studentOverlay?.confidenceScore ?? "-"}%</p>
                   <p className="text-xs text-slate-300">Exam readiness: {studentOverlay?.examReadinessBand ?? "-"}</p>
+                  <p className="text-xs text-slate-300">Active interventions: {studentOverlay?.activeInterventions.length ?? 0}</p>
                   <p className="text-xs text-slate-300">Focus: {(studentOverlay?.recommendationFocus ?? []).join(" | ") || "-"}</p>
                 </article>
               </section>
@@ -872,7 +998,7 @@ export default function KnowledgeGraphPage() {
             <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Connected Systems</h2>
-                <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">System layer only</p>
+                <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">System diagnostics (secondary when student selected)</p>
               </div>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {systemStatus.map((entry) => (
