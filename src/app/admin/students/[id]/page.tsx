@@ -393,8 +393,8 @@ export default function StudentDetailPage() {
   }
 
   useEffect(() => {
-    void loadStudent();
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadStudent();
     void loadAcademicIntelligence();
     void loadSchoolWeekSettings();
     void loadQuickLevelFinderControl();

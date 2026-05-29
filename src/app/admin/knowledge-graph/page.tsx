@@ -23,6 +23,7 @@ import type {
   CurriculumGraphFallback,
   CurriculumGraphHeartbeat,
   CurriculumGraphProtectionStatus,
+  HeartbeatDecision,
 } from "@/lib/academic-intelligence/types";
 import { edgeFocusClass, topicKeyFromLabel } from "@/lib/academic-intelligence/graph-overlay";
 
@@ -50,6 +51,7 @@ type ApiResponse = {
     hasMore: boolean;
   };
   heartbeat: CurriculumGraphHeartbeat | null;
+  heartbeatDecision: HeartbeatDecision | null;
   protection: CurriculumGraphProtectionStatus | null;
   approvalWorkflow: CurriculumGraphApprovalWorkflow | null;
   fallback: CurriculumGraphFallback | null;
@@ -376,6 +378,7 @@ export default function KnowledgeGraphPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [heartbeat, setHeartbeat] = useState<CurriculumGraphHeartbeat | null>(null);
+  const [heartbeatDecision, setHeartbeatDecision] = useState<HeartbeatDecision | null>(null);
   const [protection, setProtection] = useState<CurriculumGraphProtectionStatus | null>(null);
   const [approvalWorkflow, setApprovalWorkflow] = useState<CurriculumGraphApprovalWorkflow | null>(null);
   const [fallback, setFallback] = useState<CurriculumGraphFallback | null>(null);
@@ -512,6 +515,7 @@ export default function KnowledgeGraphPage() {
         setHasMore(payload.pagination.hasMore);
         setRecoveryPlan(payload.recoveryPath);
         setHeartbeat(payload.heartbeat);
+        setHeartbeatDecision(payload.heartbeatDecision);
         setProtection(payload.protection);
         setApprovalWorkflow(payload.approvalWorkflow);
         setFallback(payload.fallback);
@@ -547,7 +551,9 @@ export default function KnowledgeGraphPage() {
 
   useEffect(() => {
     if (!trimmedStudentId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStudentHeartbeatProfile(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStudentHeartbeatLoading(false);
       return;
     }
@@ -661,7 +667,7 @@ export default function KnowledgeGraphPage() {
 
   const engineSummary = useMemo(() => {
     const totalSystems = connectedCount + partialCount + missingCount;
-    const latestDecision = graphAudit?.decisions[graphAudit.decisions.length - 1]?.decision ?? "awaiting input";
+    const latestDecision = heartbeatDecision?.primaryAction ?? graphAudit?.decisions[graphAudit.decisions.length - 1]?.decision ?? "awaiting input";
     const baselineSignalCount = heartbeat?.baselineSignals?.length ?? 0;
     const studentLabel = studentHeartbeatLoading
       ? "Loading student..."
@@ -697,7 +703,7 @@ export default function KnowledgeGraphPage() {
         tab: "recommendations" as HeartbeatTab,
       },
     ];
-  }, [connectedCount, partialCount, missingCount, graphAudit, hasStudentHeartbeatContext, heartbeat, mode, studentHeartbeatLoading, studentHeartbeatProfile, studentOverlay, trimmedStudentId]);
+  }, [connectedCount, partialCount, missingCount, graphAudit, hasStudentHeartbeatContext, heartbeat, heartbeatDecision, mode, studentHeartbeatLoading, studentHeartbeatProfile, studentOverlay, trimmedStudentId]);
 
   const navigateToTab = useCallback((tab: HeartbeatTab) => {
     setActiveTab(tab);
@@ -709,6 +715,7 @@ export default function KnowledgeGraphPage() {
   useEffect(() => {
     const tab = searchParams.get("tab");
     if (tab === "overview" || tab === "graph" || tab === "systems" || tab === "protection" || tab === "recommendations") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveTab(tab);
     }
   }, [searchParams]);
@@ -718,12 +725,15 @@ export default function KnowledgeGraphPage() {
     const paramStudentId = searchParams.get("studentId") ?? "";
 
     if (paramMode === "dictionary" || paramMode === "academic_intelligence" || paramMode === "hybrid") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode(paramMode);
     } else if (paramStudentId.trim()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode("academic_intelligence");
     }
 
     if (paramStudentId !== studentId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStudentId(paramStudentId);
     }
   }, [searchParams, studentId]);
@@ -910,6 +920,57 @@ export default function KnowledgeGraphPage() {
                     <p className="text-xs text-cyan-50">QLF responses: {studentHeartbeatProfile?.quickLevelFinder.responseCount ?? 0}/{studentHeartbeatProfile?.quickLevelFinder.totalQuestions ?? 0}</p>
                     <p className="text-xs text-cyan-50">Baseline signals: {(heartbeat?.baselineSignals ?? []).join(" | ") || "-"}</p>
                   </article>
+                </section>
+              ) : null}
+
+              {hasStudentHeartbeatContext ? (
+                <section className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-sm font-black uppercase tracking-[0.14em] text-emerald-100">Next Best Action</h2>
+                    <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.08em]">
+                      <span className="rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-emerald-50">Action: {heartbeatDecision?.primaryAction ?? "-"}</span>
+                      <span className="rounded-full border border-amber-300/40 bg-amber-500/20 px-2 py-1 text-amber-50">Urgency: {heartbeatDecision?.urgency ?? "-"}</span>
+                      <span className="rounded-full border border-rose-300/40 bg-rose-500/20 px-2 py-1 text-rose-50">Risk: {heartbeatDecision?.riskLevel ?? "-"}</span>
+                      <span className="rounded-full border border-cyan-300/40 bg-cyan-500/20 px-2 py-1 text-cyan-50">Confidence: {heartbeatDecision ? `${heartbeatDecision.confidenceScore}%` : "-"}</span>
+                    </div>
+                  </div>
+
+                  <p className="mt-2 text-xs text-emerald-50">
+                    Actor required: <span className="font-bold uppercase">{heartbeatDecision?.actorRequired ?? "-"}</span>
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-50">
+                    Suggested next step: {heartbeatDecision?.suggestedNextStep ?? "Awaiting decision signals."}
+                  </p>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <div>
+                      <p className="text-[11px] font-black uppercase tracking-[0.1em] text-emerald-100">Reasons</p>
+                      <div className="mt-1 space-y-1 text-xs text-emerald-50">
+                        {(heartbeatDecision?.reasons ?? []).slice(0, 4).map((reason, index) => (
+                          <p key={`reason-${index}`}>- {reason}</p>
+                        ))}
+                        {(heartbeatDecision?.reasons.length ?? 0) === 0 ? <p>- -</p> : null}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-black uppercase tracking-[0.1em] text-emerald-100">Blockers</p>
+                      <div className="mt-1 space-y-1 text-xs text-emerald-50">
+                        {(heartbeatDecision?.blockers ?? []).slice(0, 4).map((blocker, index) => (
+                          <p key={`blocker-${index}`}>- {blocker}</p>
+                        ))}
+                        {(heartbeatDecision?.blockers.length ?? 0) === 0 ? <p>- None</p> : null}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-black uppercase tracking-[0.1em] text-emerald-100">Evidence Summary</p>
+                      <div className="mt-1 space-y-1 text-xs text-emerald-50">
+                        {(heartbeatDecision?.evidence ?? []).slice(0, 5).map((entry, index) => (
+                          <p key={`evidence-${index}`}>- {entry}</p>
+                        ))}
+                        {(heartbeatDecision?.evidence.length ?? 0) === 0 ? <p>- -</p> : null}
+                      </div>
+                    </div>
+                  </div>
                 </section>
               ) : null}
 

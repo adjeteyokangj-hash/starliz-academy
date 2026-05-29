@@ -19,6 +19,7 @@ import {
 } from "@/lib/academic-intelligence/graph-protection";
 import { buildMasteryMap } from "@/lib/academic-intelligence/masteryMap";
 import { buildLearningTwinProfile } from "@/lib/academic-intelligence/learningTwin";
+import { buildHeartbeatDecisionEngine } from "@/lib/academic-intelligence/heartbeatDecisionEngine";
 import {
   DEFAULT_SCHOOL_WEEK_SETTINGS,
   sanitizeSchoolWeekSettings,
@@ -434,6 +435,17 @@ export function buildAcademicIntelligence(
   const output: AcademicIntelligenceOutput = {
     studentId: data.studentId,
     summary: masteryBuilt.summary,
+    heartbeatDecision: {
+      primaryAction: "review_placement",
+      confidenceScore: 0,
+      urgency: "high",
+      reasons: ["Awaiting decision engine computation."],
+      blockers: [],
+      evidence: [],
+      actorRequired: "tutor",
+      suggestedNextStep: "Compute heartbeat decision.",
+      riskLevel: "high",
+    },
     learningTwin: buildLearningTwinProfile({
       source: data,
       summary: masteryBuilt.summary,
@@ -612,6 +624,10 @@ export function buildAcademicIntelligence(
   );
   output.unresolvedAcademicGaps = unresolvedAcademicGapsFromCatchUp(output);
   output.nextRecommendedActions = nextActions(output);
+  output.heartbeatDecision = buildHeartbeatDecisionEngine({
+    source: { quickLevelFinderBaseline: data.quickLevelFinderBaseline ?? null },
+    output,
+  });
   output.auditHistoryDraft = buildAuditDrafts(output);
 
   return output;
@@ -621,6 +637,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   AcademicIntelligenceOutput,
   | "studentId"
   | "summary"
+  | "heartbeatDecision"
   | "learningTwin"
   | "masteryExpansion"
   | "curriculumCoverage"
@@ -637,6 +654,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   return {
     studentId: output.studentId,
     summary: output.summary,
+    heartbeatDecision: output.heartbeatDecision,
     learningTwin: output.learningTwin,
     masteryExpansion: output.masteryExpansion,
     curriculumCoverage: output.curriculumCoverage,

@@ -142,6 +142,7 @@ export async function GET(request: Request) {
   let approvalWorkflow: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["approvalWorkflow"] | null = null;
   let fallback: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["fallback"] | null = null;
   let graphAudit: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["auditMetadata"] | null = null;
+  let heartbeatDecision: ReturnType<typeof buildAcademicIntelligence>["heartbeatDecision"] | null = null;
   let studentOverlay: {
     masteryGapTopics: string[];
     weakAreaTopics: string[];
@@ -225,6 +226,7 @@ export async function GET(request: Request) {
     approvalWorkflow = output.curriculumIntelligenceGraph.approvalWorkflow;
     fallback = output.curriculumIntelligenceGraph.fallback;
     graphAudit = output.curriculumIntelligenceGraph.auditMetadata;
+    heartbeatDecision = output.heartbeatDecision;
     const liveOverlay = buildStudentGraphOverlay({
       output,
       graph: output.curriculumIntelligenceGraph,
@@ -288,6 +290,7 @@ export async function GET(request: Request) {
     approvalWorkflow,
     fallback,
     graphAudit,
+    heartbeatDecision,
     studentOverlay,
   });
 }

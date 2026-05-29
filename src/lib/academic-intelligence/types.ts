@@ -402,6 +402,36 @@ export type ExamReadinessProfile = {
   };
 };
 
+export type HeartbeatPrimaryAction =
+  | "advance_student"
+  | "maintain_level"
+  | "assign_catch_up"
+  | "generate_revision"
+  | "schedule_homework"
+  | "trigger_parent_alert"
+  | "trigger_tutor_intervention"
+  | "generate_assessment"
+  | "recommend_exam_preparation"
+  | "review_placement";
+
+export type HeartbeatDecisionActor = "student" | "parent" | "tutor" | "admin" | "system";
+
+export type HeartbeatDecisionUrgency = "low" | "medium" | "high" | "critical";
+
+export type HeartbeatDecisionRisk = "low" | "medium" | "high" | "critical";
+
+export type HeartbeatDecision = {
+  primaryAction: HeartbeatPrimaryAction;
+  confidenceScore: number;
+  urgency: HeartbeatDecisionUrgency;
+  reasons: string[];
+  blockers: string[];
+  evidence: string[];
+  actorRequired: HeartbeatDecisionActor;
+  suggestedNextStep: string;
+  riskLevel: HeartbeatDecisionRisk;
+};
+
 export type SchoolWeekday = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
 
 export type SchoolWeekSettings = {
@@ -793,6 +823,7 @@ export type CurriculumIntelligenceGraph = {
 export type AcademicIntelligenceOutput = {
   studentId: string;
   summary: MasterySummary;
+  heartbeatDecision: HeartbeatDecision;
   learningTwin: LearningTwinProfile;
   masteryMap: MasteryMapEntry[];
   masteryExpansion: MasteryExpansionSummary;
