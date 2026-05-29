@@ -11,9 +11,8 @@ import {
   upsertQuickLevelFinderRetestEnabled,
   upsertQuickLevelFinderSession,
 } from "@/lib/quick-level-finder";
-import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 import type { PlacementLevelInput } from "@/lib/placement-lesson-selector";
-import { seedPostQlfAssignments } from "@/lib/quick-level-finder-seeding";
+import { applyQuickLevelFinderPostCompletionPipeline } from "@/lib/quick-level-finder-post-completion";
 
 const bodySchema = z.object({
   sessionId: z.string().min(1),
@@ -98,14 +97,7 @@ export async function POST(request: Request) {
     }
   });
 
-  await invalidateAcademicIntelligenceSnapshot({
-    studentId: student.id,
-    reason: "level_finder_completed",
-  }).catch(() => undefined);
-
-  // Seed first assignments from reviewed content. Runs after placement is persisted.
-  // Never fails QLF completion. Does not create WeakArea or mastery records.
-  const seededAssignmentsCount = await seedPostQlfAssignments({
+  const seededAssignmentsCount = await applyQuickLevelFinderPostCompletionPipeline({
     studentId: student.id,
     levels: state.levels as Record<string, PlacementLevelInput>,
     yearGroup: placementProfile?.yearGroup ?? student.yearGroup ?? null,

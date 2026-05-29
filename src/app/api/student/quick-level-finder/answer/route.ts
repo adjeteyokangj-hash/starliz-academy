@@ -12,9 +12,12 @@ import {
   upsertQuickLevelFinderRetestEnabled,
   upsertQuickLevelFinderSession,
 } from "@/lib/quick-level-finder";
-import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 import type { PlacementLevelInput } from "@/lib/placement-lesson-selector";
-import { seedPostQlfAssignments } from "@/lib/quick-level-finder-seeding";
+import {
+  applyQuickLevelFinderPostCompletionPipeline,
+  type QlfPostCompletionDeps,
+  type QlfPostCompletionInput,
+} from "@/lib/quick-level-finder-post-completion";
 
 const bodySchema = z.object({
   sessionId: z.string().min(1),
@@ -22,6 +25,13 @@ const bodySchema = z.object({
   correct: z.boolean(),
   timeSpentMs: z.number().int().nonnegative().max(300_000).optional(),
 });
+
+export async function applyAnswerRouteCompletionPipeline(
+  input: QlfPostCompletionInput,
+  deps?: QlfPostCompletionDeps,
+): Promise<number> {
+  return applyQuickLevelFinderPostCompletionPipeline(input, deps);
+}
 
 export async function POST(request: Request) {
   const { session, response } = await requireSession();
@@ -139,12 +149,7 @@ export async function POST(request: Request) {
 
   let seededAssignmentsCount = 0;
   if (state.status === "completed") {
-    await invalidateAcademicIntelligenceSnapshot({
-      studentId: student.id,
-      reason: "level_finder_completed",
-    }).catch(() => undefined);
-
-    seededAssignmentsCount = await seedPostQlfAssignments({
+    seededAssignmentsCount = await applyAnswerRouteCompletionPipeline({
       studentId: student.id,
       levels: state.levels as Record<string, PlacementLevelInput>,
       yearGroup: placementProfile?.yearGroup ?? student.yearGroup ?? null,

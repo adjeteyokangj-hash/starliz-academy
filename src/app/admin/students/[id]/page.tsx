@@ -268,9 +268,19 @@ export default function StudentDetailPage() {
   const [progressionActionMessage, setProgressionActionMessage] = useState<string | null>(null);
 
   async function loadStudent() {
-    fetch(`/api/admin/students/${params.id}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((payload) => { if (payload) setStudent(payload.student ?? null); });
+    const response = await fetch(`/api/admin/students/${params.id}`);
+    if (!response.ok) {
+      setStudent(null);
+      setQuickLevelFinderCompleted(false);
+      setQuickLevelFinderResponses(0);
+      return;
+    }
+
+    const payload = (await response.json()) as { student?: StudentDetail | null };
+    const nextStudent = payload.student ?? null;
+    setStudent(nextStudent);
+    setQuickLevelFinderCompleted(nextStudent?.quickLevelFinder?.completed === true);
+    setQuickLevelFinderResponses(nextStudent?.quickLevelFinder?.responseCount ?? 0);
   }
 
   async function loadAcademicIntelligence() {
@@ -304,18 +314,12 @@ export default function StudentDetailPage() {
     const response = await fetch(`/api/admin/students/${params.id}/quick-level-finder/retest`);
     if (!response.ok) {
       setQuickLevelFinderRetestEnabled(false);
-      setQuickLevelFinderCompleted(false);
-      setQuickLevelFinderResponses(0);
       return;
     }
     const payload = (await response.json()) as {
       retestEnabled?: boolean;
-      completed?: boolean;
-      responseCount?: number;
     };
     setQuickLevelFinderRetestEnabled(payload.retestEnabled === true);
-    setQuickLevelFinderCompleted(payload.completed === true);
-    setQuickLevelFinderResponses(typeof payload.responseCount === "number" ? payload.responseCount : 0);
   }
 
   async function loadProgressionRecommendations() {
@@ -381,8 +385,7 @@ export default function StudentDetailPage() {
       return;
     }
     setQuickLevelFinderRetestEnabled(payload?.retestEnabled === true);
-    setQuickLevelFinderCompleted(payload?.completed === true);
-    setQuickLevelFinderResponses(typeof payload?.responseCount === "number" ? payload.responseCount : 0);
+    await loadStudent();
     setQuickLevelFinderMessage(enabled
       ? "Level Finder retest is now enabled for this learner."
       : "Level Finder retest is now disabled.");

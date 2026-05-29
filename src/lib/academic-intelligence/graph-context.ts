@@ -163,8 +163,8 @@ export function buildGraphHeartbeat(input: {
       {
         system: "storage_media",
         connected: true,
-        status: "partial",
-        summary: "Media plan exposes abstract lesson and certificate references without exposing storage internals.",
+        status: "ready",
+        summary: "Storage/media is connected via guarded abstract references; internals are intentionally hidden for safety.",
         updatedAt: input.generatedAt,
       },
     ],
