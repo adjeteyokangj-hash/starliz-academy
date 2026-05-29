@@ -9,6 +9,7 @@ import { getTrueNumerisSettings } from "@/lib/truenumeris/integration";
 import type { TrueNumerisEventRequest, TrueNumerisInvoiceRequest } from "@/types/truenumeris";
 
 type WebhookObject = Record<string, unknown>;
+type FinancialProvider = "stripe" | "revolut" | "paystack";
 
 function moneyFromMinorUnits(minorUnits: number): number {
   return Math.max(0, minorUnits) / 100;
@@ -18,7 +19,18 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function resolveEventType(eventType: string): "subscription_payment_success" | "subscription_payment_failed" | null {
+function resolveEventType(
+  eventType: string,
+  provider: FinancialProvider,
+): "subscription_payment_success" | "subscription_payment_failed" | null {
+  if (provider === "revolut") {
+    if (eventType === "ORDER_COMPLETED") return "subscription_payment_success";
+    if (eventType === "ORDER_PAYMENT_FAILED" || eventType === "ORDER_PAYMENT_DECLINED") {
+      return "subscription_payment_failed";
+    }
+    return null;
+  }
+
   if (eventType === "invoice.payment_succeeded" || eventType === "checkout.session.completed") {
     return "subscription_payment_success";
   }
@@ -32,6 +44,8 @@ function resolvePaymentReference(object: WebhookObject): string | null {
   return (
     asString(object.payment_intent)
     ?? asString(object.charge)
+    ?? asString(object.order_id)
+    ?? asString(object.merchant_order_ext_ref)
     ?? asString(object.id)
     ?? asString(object.invoice)
     ?? null
@@ -53,9 +67,11 @@ export async function handleFinancialSyncFromWebhook(input: {
   eventId?: string;
   parentId: string;
   object: WebhookObject;
+  provider?: FinancialProvider;
   actorUserId?: string;
 }) {
-  const mappedType = resolveEventType(input.eventType);
+  const provider = input.provider ?? "stripe";
+  const mappedType = resolveEventType(input.eventType, provider);
   if (!mappedType) {
     return { ok: true, ignored: true, reason: "EVENT_NOT_TRACKED" };
   }
@@ -80,7 +96,7 @@ export async function handleFinancialSyncFromWebhook(input: {
     sourceId: input.eventId,
     eventType: mappedType,
     parentId: input.parentId,
-    paymentProvider: "stripe",
+    paymentProvider: provider,
     paymentReference,
     region,
     currency,
@@ -89,6 +105,7 @@ export async function handleFinancialSyncFromWebhook(input: {
     metadata: {
       providerEventType: input.eventType,
       objectId: asString(input.object.id),
+        provider,
     },
   });
 
@@ -108,7 +125,7 @@ export async function handleFinancialSyncFromWebhook(input: {
       netAmount: payload.money.netAmount,
       providerReference: paymentReference,
       metadata: {
-        provider: "stripe",
+        provider,
         providerEventType: input.eventType,
       },
     });
@@ -123,7 +140,7 @@ export async function handleFinancialSyncFromWebhook(input: {
       netAmount: payload.money.netAmount,
       providerReference: paymentReference,
       metadata: {
-        provider: "stripe",
+        provider,
       },
     };
 
@@ -133,7 +150,7 @@ export async function handleFinancialSyncFromWebhook(input: {
 
   const duplicate = await prisma.financialSyncEvent.findFirst({
     where: {
-      paymentProvider: "stripe",
+      paymentProvider: provider,
       paymentReference,
       eventType: mappedType,
     },
@@ -156,7 +173,7 @@ export async function handleFinancialSyncFromWebhook(input: {
       grossAmount: new Prisma.Decimal(payload.money.grossAmount.toFixed(2)),
       vatAmount: new Prisma.Decimal(payload.money.vatAmount.toFixed(2)),
       netAmount: new Prisma.Decimal(payload.money.netAmount.toFixed(2)),
-      paymentProvider: payload.paymentProvider ?? "stripe",
+      paymentProvider: payload.paymentProvider ?? provider,
       paymentReference,
       syncStatus: "pending",
       payloadJson: { event: JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue },

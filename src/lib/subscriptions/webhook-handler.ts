@@ -339,6 +339,7 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
         eventId: eventId ?? undefined,
         parentId: parent.id,
         object,
+        provider: resolvedProvider,
       });
     } catch {
       // Financial sync should not block subscription updates.
