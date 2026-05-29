@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 type QuickQuestion = {
   id: string;
@@ -87,7 +88,7 @@ export default function StudentOnboardingPage() {
   }
 
   async function hydrateLevels() {
-    const response = await fetch("/api/student/quick-level-finder/levels", {
+    const response = await fetchWithRefreshRetry("/api/student/quick-level-finder/levels", {
       credentials: "include",
     });
     const payload = (await response.json()) as LevelsPayload;
@@ -101,7 +102,7 @@ export default function StudentOnboardingPage() {
     setError(null);
     setLevels(null);
     try {
-      const response = await fetch("/api/student/quick-level-finder/start", {
+      const response = await fetchWithRefreshRetry("/api/student/quick-level-finder/start", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
@@ -131,7 +132,7 @@ export default function StudentOnboardingPage() {
     setError(null);
     const correct = selectedIndex === (quickSession.currentQuestion.correctIndex ?? 0);
     try {
-      const response = await fetch("/api/student/quick-level-finder/answer", {
+      const response = await fetchWithRefreshRetry("/api/student/quick-level-finder/answer", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
@@ -166,7 +167,7 @@ export default function StudentOnboardingPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const response = await fetch("/api/student/quick-level-finder/complete", {
+      const response = await fetchWithRefreshRetry("/api/student/quick-level-finder/complete", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },

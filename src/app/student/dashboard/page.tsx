@@ -11,6 +11,7 @@ import PrimaryDashboard from "@/components/student/PrimaryDashboard";
 import SecondaryDashboard from "@/components/student/SecondaryDashboard";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 import type { CoverageEntry, LearningTwinProfile } from "@/lib/academic-intelligence/types";
 
@@ -728,7 +729,7 @@ export default function StudentDashboardPage() {
     setAcademicTaskPendingId(taskId);
     setAcademicError("");
     try {
-      const response = await fetch("/api/student/academic-intelligence/catch-up-tasks", {
+      const response = await fetchWithRefreshRetry("/api/student/academic-intelligence/catch-up-tasks", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -752,7 +753,7 @@ export default function StudentDashboardPage() {
     setHomeworkPendingId(taskId);
     setAcademicError("");
     try {
-      const response = await fetch("/api/student/academic-intelligence/homework-tasks", {
+      const response = await fetchWithRefreshRetry("/api/student/academic-intelligence/homework-tasks", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -844,7 +845,7 @@ export default function StudentDashboardPage() {
     setIssuingCertificate(true);
     setError("");
     try {
-      const response = await fetch("/api/student/certificates/issue", {
+      const response = await fetchWithRefreshRetry("/api/student/certificates/issue", {
         method: "POST",
         credentials: "include",
         headers: {
