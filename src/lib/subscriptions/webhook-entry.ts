@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { handlePaymentWebhook } from "@/lib/subscriptions/webhook-handler";
 
 const DEFAULT_STRIPE_TIMESTAMP_TOLERANCE_SECONDS = 300;
+const DEFAULT_REVOLUT_TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000;
 
 function getStripeTimestampToleranceSeconds(): number {
   const raw = Number.parseInt(process.env.STRIPE_WEBHOOK_TOLERANCE_SECONDS ?? "", 10);
@@ -72,13 +73,90 @@ function verifyPaystackSignature(rawBody: string, signature: string | null): { o
     : { ok: false, reason: "Invalid Paystack signature." };
 }
 
+export function verifyRevolutSignature(
+  rawBody: string,
+  signature: string | null,
+  requestTimestamp: string | null,
+): { ok: boolean; reason?: string } {
+  const secret = process.env.REVOLUT_WEBHOOK_SECRET;
+  if (!secret) return { ok: true };
+  if (!signature) return { ok: false, reason: "Missing Revolut signature." };
+  if (!requestTimestamp) return { ok: false, reason: "Missing Revolut request timestamp." };
+
+  const timestampMs = Number.parseInt(requestTimestamp, 10);
+  if (!Number.isFinite(timestampMs)) {
+    return { ok: false, reason: "Invalid Revolut request timestamp." };
+  }
+
+  if (Math.abs(Date.now() - timestampMs) > DEFAULT_REVOLUT_TIMESTAMP_TOLERANCE_MS) {
+    return { ok: false, reason: "Revolut signature timestamp outside tolerance." };
+  }
+
+  const payloadToSign = `v1.${requestTimestamp}.${rawBody}`;
+  const expected = createHmac("sha256", secret).update(payloadToSign).digest("hex");
+  const candidates = signature.split(",").map((piece) => piece.trim()).filter(Boolean);
+  const valid = candidates.some((candidate) => {
+    const provided = candidate.includes("=") ? candidate.split("=").pop() ?? "" : candidate;
+    return secureCompare(expected, provided);
+  });
+
+  return valid ? { ok: true } : { ok: false, reason: "Invalid Revolut signature." };
+}
+
+async function parseWebhookPayload(rawBody: string) {
+  try {
+    const event = JSON.parse(rawBody);
+    return await handlePaymentWebhook(event);
+  } catch {
+    return null;
+  }
+}
+
+function formatWebhookResponse(result: unknown, wrapReceived: boolean): Response {
+  return NextResponse.json(wrapReceived ? { received: true, result } : result);
+}
+
+export async function processRevolutWebhookRequest(request: Request): Promise<Response> {
+  const rawBody = await request.text();
+  const signature = request.headers.get("revolut-signature");
+  const timestamp = request.headers.get("revolut-request-timestamp");
+  const verification = verifyRevolutSignature(rawBody, signature, timestamp);
+
+  if (!verification.ok) {
+    return NextResponse.json({ error: verification.reason ?? "Invalid webhook signature." }, { status: 401 });
+  }
+
+  const result = await parseWebhookPayload(rawBody);
+  if (!result) {
+    return NextResponse.json({ error: "Invalid webhook payload." }, { status: 400 });
+  }
+
+  return formatWebhookResponse(result, true);
+}
+
 export async function processPaymentWebhookRequest(request: Request, options: { allowFallbackSignature: boolean }): Promise<Response> {
   const rawBody = await request.text();
   const stripeSignature = request.headers.get("stripe-signature");
   const paystackSignature = request.headers.get("x-paystack-signature");
+  const revolutSignature = request.headers.get("revolut-signature");
+  const revolutTimestamp = request.headers.get("revolut-request-timestamp");
 
   if (options.allowFallbackSignature) {
     const fallbackSignature = request.headers.get("x-signature");
+
+    if (revolutSignature || revolutTimestamp) {
+      const revolutCheck = verifyRevolutSignature(rawBody, revolutSignature, revolutTimestamp);
+      if (!revolutCheck.ok) {
+        return NextResponse.json({ error: revolutCheck.reason ?? "Invalid webhook signature." }, { status: 401 });
+      }
+
+      const result = await parseWebhookPayload(rawBody);
+      if (!result) {
+        return NextResponse.json({ error: "Invalid webhook payload." }, { status: 400 });
+      }
+
+      return formatWebhookResponse(result, true);
+    }
 
     if (paystackSignature) {
       const paystackCheck = verifyPaystackSignature(rawBody, paystackSignature);
@@ -86,13 +164,12 @@ export async function processPaymentWebhookRequest(request: Request, options: { 
         return NextResponse.json({ error: paystackCheck.reason ?? "Invalid webhook signature." }, { status: 401 });
       }
 
-      try {
-        const event = JSON.parse(rawBody);
-        const result = await handlePaymentWebhook(event);
-        return NextResponse.json({ received: true, result });
-      } catch {
+      const result = await parseWebhookPayload(rawBody);
+      if (!result) {
         return NextResponse.json({ error: "Invalid webhook payload." }, { status: 400 });
       }
+
+      return formatWebhookResponse(result, true);
     }
 
     const stripeCheck = verifyStripeSignature(rawBody, stripeSignature);
@@ -111,11 +188,10 @@ export async function processPaymentWebhookRequest(request: Request, options: { 
     }
   }
 
-  try {
-    const event = JSON.parse(rawBody);
-    const result = await handlePaymentWebhook(event);
-    return NextResponse.json(options.allowFallbackSignature ? result : { received: true, result });
-  } catch {
+  const result = await parseWebhookPayload(rawBody);
+  if (!result) {
     return NextResponse.json({ error: "Invalid webhook payload." }, { status: 400 });
   }
+
+  return formatWebhookResponse(result, false);
 }

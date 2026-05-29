@@ -7,6 +7,11 @@ type StripeWebhookStatusInput = {
   now?: Date;
 };
 
+type RevolutWebhookStatusInput = {
+  eventType: string;
+  existingStatus?: string;
+};
+
 function normalizeStatus(status: string | undefined): string | null {
   if (!status) return null;
   const raw = status.toLowerCase();
@@ -54,4 +59,22 @@ export function resolveStripeWebhookStatus(input: StripeWebhookStatusInput): str
   }
 
   return normalizedRaw ?? normalizedExisting;
+}
+
+export function resolveRevolutWebhookStatus(input: RevolutWebhookStatusInput): string {
+  const existingStatus = normalizeStatus(input.existingStatus) ?? "pending";
+
+  if (input.eventType === "ORDER_COMPLETED") {
+    return "active";
+  }
+
+  if (input.eventType === "ORDER_AUTHORISED") {
+    return existingStatus === "active" ? "active" : "pending";
+  }
+
+  if (input.eventType === "ORDER_PAYMENT_FAILED" || input.eventType === "ORDER_PAYMENT_DECLINED") {
+    return existingStatus === "cancelled" ? "cancelled" : "past_due";
+  }
+
+  return existingStatus;
 }

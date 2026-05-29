@@ -13,6 +13,7 @@ import {
   resolveBillingRegion,
   type BillingProvider,
 } from "@/lib/billing/payment-routing"
+import { resolveRevolutApiBaseUrl } from "@/lib/billing/revolut-config"
 
 const checkoutSchema = z.object({
   planId: z.string().min(1).optional(),
@@ -215,7 +216,7 @@ async function startRevolutCheckout(input: {
     return NextResponse.json({ error: "Revolut is not configured for this environment." }, { status: 503 })
   }
 
-  const apiBaseUrl = process.env.REVOLUT_API_BASE_URL ?? "https://merchant.revolut.com/api"
+  const apiBaseUrl = resolveRevolutApiBaseUrl()
   const amountMinor = Math.max(1, Math.round(input.plan.price * 100))
   const currency = resolveCurrencyForCountry(input.countryCode)
   const checkoutReturn = normalizeReturnUrl(input.request, input.returnUrl)

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
 import { resolveGraceEndsAt } from "./webhook-grace";
-import { resolveStripeWebhookStatus } from "./webhook-status";
+import { resolveRevolutWebhookStatus, resolveStripeWebhookStatus } from "./webhook-status";
 import { planKeyFromPricingPlan, resolveCurrentPricingPlan } from "@/lib/pricing/service";
 import { handleFinancialSyncFromWebhook } from "@/lib/billing/truenumeris-pipeline";
 
@@ -12,11 +12,15 @@ type PaymentEvent = {
   data?: {
     object?: Record<string, unknown>;
   } | Record<string, unknown>;
+  order_id?: string;
+  merchant_order_ext_ref?: string;
 };
 
-type ProviderKind = "stripe" | "paystack";
+type ProviderKind = "stripe" | "paystack" | "revolut";
 
 function resolveProviderFromEvent(event: PaymentEvent): ProviderKind {
+  if (typeof event.order_id === "string" && event.order_id.trim()) return "revolut";
+  if (typeof event.merchant_order_ext_ref === "string" && event.merchant_order_ext_ref.trim() && !event.data) return "revolut";
   if (typeof event.event === "string" && event.event.trim()) return "paystack";
   return "stripe";
 }
@@ -28,6 +32,10 @@ function getEventType(event: PaymentEvent): string {
 }
 
 function getEventObject(event: PaymentEvent, provider: ProviderKind): Record<string, unknown> | null {
+  if (provider === "revolut") {
+    return event as Record<string, unknown>;
+  }
+
   if (provider === "paystack") {
     const data = event.data;
     if (data && typeof data === "object" && !Array.isArray(data)) {
@@ -152,6 +160,7 @@ async function findParent(object: Record<string, unknown>) {
   const parentId = asString(metadata.parentId);
   const email = asString(object.customer_email) ?? asString(object.email) ?? asString(metadata.email);
   const customerId = asString(object.customer);
+  const orderId = asString(object.order_id);
 
   if (userId) {
     const parent = await prisma.user.findFirst({ where: { id: userId, role: "parent" } });
@@ -168,6 +177,10 @@ async function findParent(object: Record<string, unknown>) {
   }
   if (customerId) {
     const subscription = await prisma.subscription.findFirst({ where: { providerCustomerId: customerId }, include: { parent: true } });
+    if (subscription?.parent) return subscription.parent;
+  }
+  if (orderId) {
+    const subscription = await prisma.subscription.findFirst({ where: { providerSubId: orderId }, include: { parent: true } });
     if (subscription?.parent) return subscription.parent;
   }
   if (email) {
@@ -215,12 +228,11 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
   }
 
   const providerCustomerId = asString(object.customer);
-  const providerSubId = asString(object.subscription) ?? asString(object.id);
+  const providerSubId = asString(object.subscription) ?? asString(object.order_id) ?? asString(object.id);
   const metadata = object.metadata && typeof object.metadata === "object" ? (object.metadata as Record<string, unknown>) : {};
   const providerFromMetadata = asString(metadata.provider);
   const resolvedProvider = providerFromMetadata === "paystack" ? "paystack" : provider;
-  const pricingPlanId = asString(metadata.pricingPlanId);
-  if (resolvedProvider !== "stripe" && resolvedProvider !== "paystack") {
+  if (resolvedProvider !== "stripe" && resolvedProvider !== "paystack" && resolvedProvider !== "revolut") {
     if (eventId) await markPaymentWebhookEventFailed(eventId);
     return { ok: false, ignored: true, reason: "UNSUPPORTED_PROVIDER" };
   }
@@ -240,7 +252,13 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
     "subscription.disable",
     "subscription.not_renew",
   ]);
-  const allowedEvents = resolvedProvider === "paystack" ? paystackAllowedEvents : stripeAllowedEvents;
+  const revolutAllowedEvents = new Set([
+    "ORDER_AUTHORISED",
+    "ORDER_COMPLETED",
+    "ORDER_PAYMENT_DECLINED",
+    "ORDER_PAYMENT_FAILED",
+  ]);
+  const allowedEvents = resolvedProvider === "paystack" ? paystackAllowedEvents : resolvedProvider === "revolut" ? revolutAllowedEvents : stripeAllowedEvents;
   if (!allowedEvents.has(eventType)) {
     if (eventId) await markPaymentWebhookEventProcessed(eventId);
     return { ok: true, ignored: true, reason: "IGNORED_EVENT_TYPE" };
@@ -250,11 +268,14 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
     const existing = await prisma.subscription.findFirst({
       where: providerSubId ? { parentId: parent.id, providerSubId } : { parentId: parent.id },
     });
+    const pricingPlanId = asString(metadata.pricingPlanId) ?? existing?.pricingPlanId ?? undefined;
 
     const objectCurrentPeriodEnd = asDateFromSeconds(object.current_period_end);
     const currentPeriodEnd = objectCurrentPeriodEnd ?? existing?.currentPeriodEnd ?? undefined;
     const status = resolvedProvider === "paystack"
       ? resolvePaystackStatus(eventType)
+      : resolvedProvider === "revolut"
+        ? resolveRevolutWebhookStatus({ eventType, existingStatus: existing?.status })
       : resolveStripeWebhookStatus({
           eventType,
           rawStatus: asString(object.status),
@@ -267,7 +288,7 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
       pricingPlanId,
       legacyPlanKey: asString(metadata.planKey) ?? undefined,
     });
-    const planKey = resolvedPlan ? planKeyFromPricingPlan(resolvedPlan) : (asString(metadata.planKey) ?? "free");
+    const planKey = resolvedPlan ? planKeyFromPricingPlan(resolvedPlan) : (asString(metadata.planKey) ?? existing?.planKey ?? "free");
     const trialEndsAt = asDateFromSeconds(object.trial_end) ?? existing?.trialEndsAt ?? undefined;
     const graceEndsAt = resolveGraceEndsAt({ status, existingGraceEndsAt: existing?.graceEndsAt });
 

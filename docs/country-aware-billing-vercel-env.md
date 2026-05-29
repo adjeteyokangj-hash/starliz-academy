@@ -21,7 +21,7 @@ BILLING_ENABLE_MANUAL=true
 
 REVOLUT_MERCHANT_API_KEY=
 REVOLUT_WEBHOOK_SECRET=
-REVOLUT_API_BASE_URL=https://merchant.revolut.com/api
+REVOLUT_API_BASE_URL=
 REVOLUT_ENVIRONMENT=sandbox
 
 PAYSTACK_SECRET_KEY=
@@ -33,6 +33,14 @@ STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_PUBLISHABLE_KEY=
 ```
+
+Revolut webhook notifications should be pointed at `POST /api/webhooks/revolut`. The handler verifies `Revolut-Signature` and `Revolut-Request-Timestamp` using the webhook signing secret returned when the webhook is created.
+
+Revolut API base URL selection now follows this order:
+
+- `REVOLUT_API_BASE_URL` if explicitly set.
+- `REVOLUT_ENVIRONMENT=production` => `https://merchant.revolut.com/api`
+- `REVOLUT_ENVIRONMENT=sandbox` (or missing/invalid) => `https://sandbox-merchant.revolut.com/api`
 
 ## Deployment Notes
 
