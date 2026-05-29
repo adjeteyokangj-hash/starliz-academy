@@ -151,6 +151,15 @@ type SchoolWeekSettingsPayload = {
   parentAdminNotes?: string | null;
 };
 
+type ChecklistStatus = "pass" | "warning" | "fail";
+
+type ChecklistItem = {
+  key: string;
+  label: string;
+  status: ChecklistStatus;
+  detail: string;
+};
+
 type AdminProgressionPayload = {
   ok?: boolean;
   message?: string;
@@ -457,6 +466,67 @@ export default function StudentDetailPage() {
   }
 
   const filteredWalletTransactions = student.walletTransactions.filter((entry) => auditFilter === "all" ? true : entry.type === auditFilter);
+  const hasPlacementLevels = Object.keys(student.quickLevelFinder?.levels ?? {}).length > 0;
+  const hasLessonSignals = student.totalSessions > 0 || student.progressRecords.length > 0;
+  const hasRecommendationSignals = (academicIntelligence?.catchUpRecommendations.length ?? 0) > 0
+    || (academicIntelligence?.assessmentRecommendations.length ?? 0) > 0
+    || (progression?.recommendations?.length ?? 0) > 0;
+
+  const adminHealthChecklist: ChecklistItem[] = [
+    {
+      key: "qlf",
+      label: "Quick Level Finder completion",
+      status: quickLevelFinderCompleted ? "pass" : "fail",
+      detail: quickLevelFinderCompleted
+        ? `Completed with ${quickLevelFinderResponses} response${quickLevelFinderResponses === 1 ? "" : "s"}.`
+        : "Not completed yet.",
+    },
+    {
+      key: "placement",
+      label: "Placement levels captured",
+      status: hasPlacementLevels ? "pass" : quickLevelFinderCompleted ? "warning" : "fail",
+      detail: hasPlacementLevels
+        ? `${Object.keys(student.quickLevelFinder?.levels ?? {}).length} subject/strand placement signal(s) available.`
+        : "No subject-level placements available yet.",
+    },
+    {
+      key: "first-path",
+      label: "First learning path available",
+      status: hasLessonSignals || hasRecommendationSignals ? "pass" : quickLevelFinderCompleted ? "warning" : "fail",
+      detail: hasLessonSignals
+        ? "Lesson activity/progress evidence detected."
+        : hasRecommendationSignals
+          ? "Recommendation signals are ready; assignment execution may still be pending."
+          : "No first-lesson signal yet. Review approved content and assignment feed.",
+    },
+    {
+      key: "adaptive",
+      label: "Adaptive / catch-up signal readiness",
+      status: student.adaptiveTutor?.enoughHistory
+        ? "pass"
+        : quickLevelFinderCompleted
+          ? "warning"
+          : "fail",
+      detail: student.adaptiveTutor?.enoughHistory
+        ? "Adaptive tutor has enough history for stable learning DNA."
+        : "Baseline exists, but more activity is needed for stronger adaptive confidence.",
+    },
+    {
+      key: "heartbeat",
+      label: "HEART BEAT engine link",
+      status: "pass",
+      detail: "Use Open HEART BEAT Engine to inspect system, student, and decision layers.",
+    },
+  ];
+
+  const failCount = adminHealthChecklist.filter((item) => item.status === "fail").length;
+  const warningCount = adminHealthChecklist.filter((item) => item.status === "warning").length;
+  const overallChecklistStatus: ChecklistStatus = failCount > 0 ? "fail" : warningCount > 0 ? "warning" : "pass";
+  const checklistTone = overallChecklistStatus === "pass"
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+    : overallChecklistStatus === "warning"
+      ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
+      : "border-rose-500/30 bg-rose-500/10 text-rose-100";
 
   return (
     <div className="space-y-6">
@@ -471,6 +541,38 @@ export default function StudentDetailPage() {
           <AdminStatCard title="AI Difficulty" value={student.weakAreas[0]?.currentDifficulty ?? student.level} icon="D" tone="rose" />
           <AdminStatCard title="Stars" value={student.stars} icon="S" tone="purple" />
           <AdminStatCard title="Sessions" value={student.totalSessions} icon="A" tone="green" />
+        </div>
+      </AdminSectionCard>
+
+      <AdminSectionCard title="Admin Health Checklist" eyebrow="Pass / Warning / Fail">
+        <div className={`rounded-2xl border p-3 ${checklistTone}`}>
+          <p className="text-xs font-black uppercase tracking-[0.14em]">Overall Status</p>
+          <p className="mt-1 text-base font-black uppercase">{overallChecklistStatus}</p>
+          <p className="mt-1 text-xs">
+            {adminHealthChecklist.filter((item) => item.status === "pass").length} pass · {warningCount} warning · {failCount} fail
+          </p>
+        </div>
+
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {adminHealthChecklist.map((item) => {
+            const tone = item.status === "pass"
+              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-100"
+              : item.status === "warning"
+                ? "border-amber-500/25 bg-amber-500/10 text-amber-100"
+                : "border-rose-500/25 bg-rose-500/10 text-rose-100";
+
+            return (
+              <div key={item.key} className={`rounded-xl border p-3 ${tone}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-[0.08em]">{item.label}</p>
+                  <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em]">
+                    {item.status}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs">{item.detail}</p>
+              </div>
+            );
+          })}
         </div>
       </AdminSectionCard>
 
@@ -550,6 +652,12 @@ export default function StudentDetailPage() {
               >
                 Disable Retest Button
               </button>
+              <Link
+                href={`/admin/knowledge-graph?mode=hybrid&studentId=${params.id}&tab=overview`}
+                className="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-100"
+              >
+                Open HEART BEAT Engine
+              </Link>
             </div>
             {quickLevelFinderMessage ? (
               <p className="mt-2 text-xs text-cyan-100">{quickLevelFinderMessage}</p>

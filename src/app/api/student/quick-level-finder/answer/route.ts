@@ -13,6 +13,8 @@ import {
   upsertQuickLevelFinderSession,
 } from "@/lib/quick-level-finder";
 import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
+import type { PlacementLevelInput } from "@/lib/placement-lesson-selector";
+import { seedPostQlfAssignments } from "@/lib/quick-level-finder-seeding";
 
 const bodySchema = z.object({
   sessionId: z.string().min(1),
@@ -135,11 +137,19 @@ export async function POST(request: Request) {
     }
   });
 
+  let seededAssignmentsCount = 0;
   if (state.status === "completed") {
     await invalidateAcademicIntelligenceSnapshot({
       studentId: student.id,
       reason: "level_finder_completed",
     }).catch(() => undefined);
+
+    seededAssignmentsCount = await seedPostQlfAssignments({
+      studentId: student.id,
+      levels: state.levels as Record<string, PlacementLevelInput>,
+      yearGroup: placementProfile?.yearGroup ?? student.yearGroup ?? null,
+      keyStage: placementProfile?.keyStage ?? student.studentProfile?.keyStageLevel ?? null,
+    });
   }
 
   const nextCurrentQuestion = state.questions[state.cursor] ?? null;
@@ -164,5 +174,6 @@ export async function POST(request: Request) {
     },
     placementProfile,
     levels: state.status === "completed" ? state.levels : null,
+    seededAssignmentsCount,
   });
 }
