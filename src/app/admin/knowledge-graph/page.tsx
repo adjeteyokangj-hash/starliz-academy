@@ -553,7 +553,6 @@ export default function KnowledgeGraphPage() {
     if (!trimmedStudentId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStudentHeartbeatProfile(null);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStudentHeartbeatLoading(false);
       return;
     }
@@ -728,12 +727,10 @@ export default function KnowledgeGraphPage() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode(paramMode);
     } else if (paramStudentId.trim()) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode("academic_intelligence");
     }
 
     if (paramStudentId !== studentId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStudentId(paramStudentId);
     }
   }, [searchParams, studentId]);
