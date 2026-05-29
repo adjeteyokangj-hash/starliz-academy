@@ -6,7 +6,8 @@ import { useParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import AdminStatCard from "@/components/admin/AdminStatCard";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
-import type { CoverageEntry, SchoolWeekday } from "@/lib/academic-intelligence/types";
+import { mapHeartbeatActionButton, toHeartbeatDecisionViewModel } from "@/lib/academic-intelligence/heartbeatActionMap";
+import type { CoverageEntry, HeartbeatDecision, SchoolWeekday } from "@/lib/academic-intelligence/types";
 
 type StudentDetail = {
   id: string;
@@ -118,6 +119,7 @@ type AdminAcademicIntelligencePayload = {
       }>;
     }>;
   };
+  heartbeatDecision?: HeartbeatDecision | null;
   homeworkTasks?: Array<{
     taskId: string;
     blockId: string;
@@ -693,6 +695,7 @@ export default function StudentDetailPage() {
         ) : null}
 
         <AdminSectionCard title="Weak Areas & Adaptive Difficulty">
+          <div id="weak-areas" />
           {student.weakAreas.length === 0 ? (
             <p className="text-sm text-slate-400">No weak areas detected yet.</p>
           ) : (
@@ -748,6 +751,61 @@ export default function StudentDetailPage() {
             <p className="text-sm text-slate-400">No mastery data yet. Complete a lesson to build the mastery map.</p>
           ) : (
             <div className="space-y-4">
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-emerald-100">HEART BEAT Next Best Action</p>
+                  <Link
+                    href={`/admin/knowledge-graph?mode=academic_intelligence&studentId=${encodeURIComponent(params.id)}&tab=overview`}
+                    className="rounded-lg border border-emerald-400/40 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-100"
+                  >
+                    Open HEART BEAT Engine
+                  </Link>
+                </div>
+
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-5 text-xs">
+                  <p className="rounded-lg border border-emerald-400/20 bg-slate-900/40 px-2 py-1 text-emerald-100">Action: <span className="font-black uppercase">{toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).action}</span></p>
+                  <p className="rounded-lg border border-emerald-400/20 bg-slate-900/40 px-2 py-1 text-emerald-100">Urgency: <span className="font-black uppercase">{toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).urgency}</span></p>
+                  <p className="rounded-lg border border-emerald-400/20 bg-slate-900/40 px-2 py-1 text-emerald-100">Risk: <span className="font-black uppercase">{toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).riskLevel}</span></p>
+                  <p className="rounded-lg border border-emerald-400/20 bg-slate-900/40 px-2 py-1 text-emerald-100">Confidence: <span className="font-black uppercase">{toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).confidence}</span></p>
+                  <p className="rounded-lg border border-emerald-400/20 bg-slate-900/40 px-2 py-1 text-emerald-100">Actor: <span className="font-black uppercase">{toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).actorRequired}</span></p>
+                </div>
+
+                <p className="mt-2 text-xs text-emerald-50">Suggested next step: {toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).suggestedNextStep}</p>
+                <p className="mt-1 text-xs text-emerald-50">Reasons: {toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).reasonsSummary}</p>
+                <p className="mt-1 text-xs text-emerald-50">Blockers: {toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).blockersSummary}</p>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(() => {
+                    const actionButton = mapHeartbeatActionButton({
+                      action: academicIntelligence.heartbeatDecision?.primaryAction ?? "review_placement",
+                      studentId: params.id,
+                      parentId: student.parent.id,
+                    });
+
+                    const fallbackButtons = [
+                      mapHeartbeatActionButton({ action: "review_placement", studentId: params.id, parentId: student.parent.id }),
+                      mapHeartbeatActionButton({ action: "assign_catch_up", studentId: params.id, parentId: student.parent.id }),
+                      mapHeartbeatActionButton({ action: "generate_assessment", studentId: params.id, parentId: student.parent.id }),
+                      mapHeartbeatActionButton({ action: "advance_student", studentId: params.id, parentId: student.parent.id }),
+                    ];
+
+                    const buttons = academicIntelligence.heartbeatDecision
+                      ? [actionButton]
+                      : fallbackButtons;
+
+                    return buttons.map((button) => (
+                      <Link
+                        key={`${button.action}-${button.href}`}
+                        href={button.href}
+                        className="rounded-lg border border-emerald-400/40 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-100"
+                      >
+                        {button.label}
+                      </Link>
+                    ));
+                  })()}
+                </div>
+              </div>
+
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Covered: <span className="font-black text-white">{academicIntelligence.summary.coveredCount}/{academicIntelligence.summary.totalTopics}</span></div>
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Catch-up required: <span className="font-black text-white">{academicIntelligence.summary.needsCatchUpCount}</span></div>
@@ -1044,6 +1102,7 @@ export default function StudentDetailPage() {
         </AdminSectionCard>
 
         <AdminSectionCard title="Recommended Subject Levels" eyebrow="Session progression guidance">
+          <div id="subject-progression" />
           {progressionLoading ? (
             <p className="text-sm text-slate-400">Loading progression recommendations...</p>
           ) : progressionError ? (

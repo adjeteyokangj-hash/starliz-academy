@@ -5,6 +5,7 @@ import { buildMasteryMap } from "../src/lib/academic-intelligence/masteryMap";
 import { detectCatchUpTriggers, buildCatchUpRecommendations } from "../src/lib/academic-intelligence/catchUpPlanner";
 import { buildAssessmentRecommendations } from "../src/lib/academic-intelligence/assessmentEngine";
 import { buildAcademicIntelligence, toStudentSafeAcademicIntelligence } from "../src/lib/academic-intelligence/academicIntelligence";
+import { mapHeartbeatActionButton, toHeartbeatDecisionViewModel } from "../src/lib/academic-intelligence/heartbeatActionMap";
 import type { AcademicSourceData, CatchUpTaskRecord } from "../src/lib/academic-intelligence/types";
 
 function baseSource(overrides: Partial<AcademicSourceData> = {}): AcademicSourceData {
@@ -596,4 +597,46 @@ test("heartbeat decision resolves conflicting signals using the safest action", 
   const output = buildAcademicIntelligence(source, { existingCatchUpTasks });
   assert.equal(output.heartbeatDecision.primaryAction, "assign_catch_up");
   assert.ok(output.heartbeatDecision.reasons.some((reason) => reason.toLowerCase().includes("safest")));
+});
+
+test("heartbeat action mapping returns expected routes for required actions", () => {
+  const studentId = "student-123";
+  const parentId = "parent-987";
+
+  assert.equal(
+    mapHeartbeatActionButton({ action: "review_placement", studentId, parentId }).href,
+    "/admin/students/student-123",
+  );
+  assert.equal(
+    mapHeartbeatActionButton({ action: "assign_catch_up", studentId, parentId }).href,
+    "/admin/assignments?studentId=student-123&context=catch_up",
+  );
+  assert.equal(
+    mapHeartbeatActionButton({ action: "generate_revision", studentId, parentId }).href,
+    "/admin/knowledge-graph?mode=academic_intelligence&studentId=student-123&tab=recommendations",
+  );
+  assert.equal(
+    mapHeartbeatActionButton({ action: "generate_assessment", studentId, parentId }).label,
+    "Open assessment readiness",
+  );
+  assert.equal(
+    mapHeartbeatActionButton({ action: "trigger_tutor_intervention", studentId, parentId }).href,
+    "/admin/students/student-123#weak-areas",
+  );
+  assert.equal(
+    mapHeartbeatActionButton({ action: "trigger_parent_alert", studentId, parentId }).href,
+    "/admin/parents/parent-987",
+  );
+  assert.equal(
+    mapHeartbeatActionButton({ action: "advance_student", studentId, parentId }).href,
+    "/admin/students/student-123#subject-progression",
+  );
+});
+
+test("heartbeat decision view model safely renders when decision is missing", () => {
+  const view = toHeartbeatDecisionViewModel(null);
+  assert.equal(view.action, "not available");
+  assert.equal(view.confidence, "-");
+  assert.ok(view.suggestedNextStep.toLowerCase().includes("compute") || view.suggestedNextStep.toLowerCase().includes("run"));
+  assert.ok(view.reasonsSummary.toLowerCase().includes("no decision"));
 });
