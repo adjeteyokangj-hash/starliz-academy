@@ -5,14 +5,31 @@ import AdminSectionCard from "@/components/admin/AdminSectionCard";
 
 type AuditLog = {
   id: string;
-  actorUserId: string | null;
-  actorName: string | null;
-  actorEmail: string | null;
+  actorUserId?: string | null;
+  actorName?: string | null;
+  actorEmail?: string | null;
+  actor?: {
+    email?: string | null;
+    name?: string | null;
+  } | null;
   action: string;
   entityType: string;
   entityId: string | null;
-  createdAt: string;
+  createdAt?: string;
+  timestamp?: string;
 };
+
+function formatAuditDate(log: AuditLog) {
+  const value = log.createdAt ?? log.timestamp;
+
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleString();
+}
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -77,8 +94,8 @@ export default function AuditLogsPage() {
             <tbody className="divide-y divide-white/10 text-slate-300">
               {logs.map((log) => (
                 <tr key={log.id}>
-                  <td className="px-3 py-3">{new Date(log.createdAt).toLocaleString()}</td>
-                  <td className="px-3 py-3">{log.actorEmail ?? log.actorUserId ?? "System"}</td>
+                  <td className="px-3 py-3">{formatAuditDate(log)}</td>
+                  <td className="px-3 py-3">{log.actorEmail ?? log.actor?.email ?? log.actorUserId ?? "System"}</td>
                   <td className="px-3 py-3 font-semibold text-white">{log.action}</td>
                   <td className="px-3 py-3">{log.entityType}</td>
                   <td className="px-3 py-3 text-slate-400">{log.entityId ?? "-"}</td>

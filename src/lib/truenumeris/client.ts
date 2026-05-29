@@ -38,6 +38,21 @@ function maskApiKeyForLog(apiKey: string | null | undefined): string {
   return `tn_********${apiKey.slice(-4)}`;
 }
 
+function buildTrueNumerisAuthHeaders(input: {
+  apiKey: string;
+  companyId?: string | null;
+  includeJsonAccept?: boolean;
+}): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    ...(input.includeJsonAccept ? { Accept: "application/json" } : {}),
+    Authorization: `Bearer ${input.apiKey}`,
+    "X-API-Key": input.apiKey,
+    "x-api-key": input.apiKey,
+    ...(input.companyId ? { "X-Company-Id": input.companyId } : {}),
+  };
+}
+
 function safeRemoteText(input: unknown): string | null {
   if (typeof input !== "string") return null;
   const compact = input.trim().slice(0, 180);
@@ -97,9 +112,7 @@ async function requestWithRetry(input: {
       const response = await fetch(target, {
         method: input.method ?? "POST",
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${settings.apiKey}`,
-          "X-Company-Id": settings.companyId ?? "",
+          ...buildTrueNumerisAuthHeaders({ apiKey: settings.apiKey, companyId: settings.companyId }),
           "X-Region": settings.region,
           ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}),
         },
@@ -212,12 +225,11 @@ export async function testTrueNumerisConnection(
   try {
     const response = await fetch(target, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${settings.apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...(settings.companyId ? { "X-Company-Id": settings.companyId } : {}),
-      },
+      headers: buildTrueNumerisAuthHeaders({
+        apiKey: settings.apiKey,
+        companyId: settings.companyId,
+        includeJsonAccept: true,
+      }),
       signal: AbortSignal.timeout(timeoutMs),
     });
 
