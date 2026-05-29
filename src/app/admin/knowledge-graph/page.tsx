@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Background,
   Controls,
@@ -330,9 +331,21 @@ function prettySystemLabel(system: string): string {
 }
 
 export default function KnowledgeGraphPage() {
-  const [activeTab, setActiveTab] = useState<HeartbeatTab>("overview");
-  const [mode, setMode] = useState<"dictionary" | "academic_intelligence" | "hybrid">("dictionary");
-  const [studentId, setStudentId] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const initialMode = searchParams.get("mode");
+  const initialStudentId = searchParams.get("studentId") ?? "";
+  const initialTab = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<HeartbeatTab>(
+    initialTab === "overview" || initialTab === "graph" || initialTab === "systems" || initialTab === "protection" || initialTab === "recommendations"
+      ? initialTab
+      : "overview",
+  );
+  const [mode, setMode] = useState<"dictionary" | "academic_intelligence" | "hybrid">(
+    initialMode === "academic_intelligence" || initialMode === "hybrid" ? initialMode : "dictionary",
+  );
+  const [studentId, setStudentId] = useState(initialStudentId);
   const [query, setQuery] = useState("");
   const [subject, setSubject] = useState("");
   const [keyStage, setKeyStage] = useState("");
@@ -557,14 +570,78 @@ export default function KnowledgeGraphPage() {
 
   const stats = useMemo(() => {
     return [
-      { label: "Connected", value: String(connectedCount), tone: "ready" as const },
-      { label: "Partial", value: String(partialCount), tone: "partial" as const },
-      { label: "Missing", value: String(missingCount), tone: "missing" as const },
-      { label: "Nodes", value: String(nodes.length), tone: "ready" as const },
-      { label: "Edges", value: String(edges.length), tone: "ready" as const },
-      { label: "Validation Issues", value: String(protection?.validation.issues.length ?? 0), tone: (protection?.validation.valid ?? true) ? "ready" as const : "partial" as const },
+      { label: "Connected", value: String(connectedCount), tone: "ready" as const, tab: "systems" as HeartbeatTab },
+      { label: "Partial", value: String(partialCount), tone: "partial" as const, tab: "systems" as HeartbeatTab },
+      { label: "Missing", value: String(missingCount), tone: "missing" as const, tab: "systems" as HeartbeatTab },
+      { label: "Nodes", value: String(nodes.length), tone: "ready" as const, tab: "graph" as HeartbeatTab },
+      { label: "Edges", value: String(edges.length), tone: "ready" as const, tab: "graph" as HeartbeatTab },
+      { label: "Validation Issues", value: String(protection?.validation.issues.length ?? 0), tone: (protection?.validation.valid ?? true) ? "ready" as const : "partial" as const, tab: "protection" as HeartbeatTab },
     ];
   }, [connectedCount, partialCount, missingCount, nodes.length, edges.length, protection]);
+
+  const engineSummary = useMemo(() => {
+    const totalSystems = connectedCount + partialCount + missingCount;
+    const hasStudentContext = studentId.trim().length > 0 && (mode === "academic_intelligence" || mode === "hybrid");
+    const latestDecision = graphAudit?.decisions[graphAudit.decisions.length - 1]?.decision ?? "awaiting input";
+    const baselineSignalCount = heartbeat?.baselineSignals?.length ?? 0;
+
+    return [
+      {
+        title: "System Heartbeat",
+        value: `${connectedCount}/${totalSystems || 9} connected`,
+        detail: mode === "dictionary"
+          ? "Dictionary graph mode is a separate system view."
+          : `${partialCount} partial, ${missingCount} missing modules`,
+        tab: "systems" as HeartbeatTab,
+      },
+      {
+        title: "Student Heartbeat",
+        value: hasStudentContext
+          ? (baselineSignalCount > 0 ? "Placement pulse captured" : "Student linked")
+          : "Select a student",
+        detail: hasStudentContext
+          ? (baselineSignalCount > 0
+            ? `${baselineSignalCount} placement diagnostics from Quick Level Finder`
+            : "Waiting for academic/student signals")
+          : "Open a student in Academic Intelligence or Hybrid mode.",
+        tab: "overview" as HeartbeatTab,
+      },
+      {
+        title: "Decision Heartbeat",
+        value: latestDecision,
+        detail: studentOverlay?.recommendationFocus?.length
+          ? `Next actions: ${studentOverlay.recommendationFocus.slice(0, 3).join(" | ")}`
+          : "No decision signals yet.",
+        tab: "recommendations" as HeartbeatTab,
+      },
+    ];
+  }, [connectedCount, partialCount, missingCount, graphAudit, heartbeat, mode, studentId, studentOverlay]);
+
+  const navigateToTab = useCallback((tab: HeartbeatTab) => {
+    setActiveTab(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tab);
+    router.push(`${pathname}?${params.toString()}`);
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "overview" || tab === "graph" || tab === "systems" || tab === "protection" || tab === "recommendations") {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const paramMode = searchParams.get("mode");
+    if (paramMode === "dictionary" || paramMode === "academic_intelligence" || paramMode === "hybrid") {
+      setMode(paramMode);
+    }
+
+    const paramStudentId = searchParams.get("studentId") ?? "";
+    if (paramStudentId !== studentId) {
+      setStudentId(paramStudentId);
+    }
+  }, [searchParams, studentId]);
 
   const tabs: Array<{ id: HeartbeatTab; label: string }> = [
     { id: "overview", label: "Overview" },
@@ -647,8 +724,8 @@ export default function KnowledgeGraphPage() {
     <div className="space-y-4 pb-12">
       <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-5">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">StarLiz Intelligence Infrastructure</p>
-        <h1 className="mt-2 text-3xl font-black text-white">StarLiz Heartbeat</h1>
-        <p className="mt-2 text-sm text-slate-300">Curriculum Intelligence Graph powering adaptive learning, AI generation, mastery, catch-up and reporting.</p>
+        <h1 className="mt-2 text-3xl font-black text-white">StarLiz Heartbeat Engine</h1>
+        <p className="mt-2 text-sm text-slate-300">Central learning brain for student placement, system health, catch-up, mastery, and reporting.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {heartbeatBadges.map((badge) => (
             <span key={badge} className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.09em] text-cyan-100">
@@ -658,12 +735,32 @@ export default function KnowledgeGraphPage() {
         </div>
       </section>
 
+      <section className="grid gap-3 lg:grid-cols-3">
+        {engineSummary.map((card) => (
+          <button
+            key={card.title}
+            type="button"
+            onClick={() => navigateToTab(card.tab)}
+            className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4 text-left transition hover:border-cyan-400/40 hover:bg-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          >
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-cyan-200">{card.title}</p>
+            <p className="mt-2 text-lg font-black text-white">{card.value}</p>
+            <p className="mt-1 text-xs text-slate-300">{card.detail}</p>
+          </button>
+        ))}
+      </section>
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {stats.map((card) => (
-          <article key={card.label} className={`rounded-xl border p-3 ${statusTone(card.tone)}`}>
+          <button
+            key={card.label}
+            type="button"
+            onClick={() => navigateToTab(card.tab)}
+            className={`cursor-pointer rounded-xl border p-3 text-left transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${statusTone(card.tone)}`}
+          >
             <p className="text-[11px] uppercase tracking-[0.12em]">{card.label}</p>
             <p className="mt-1 text-lg font-black">{card.value}</p>
-          </article>
+          </button>
         ))}
       </section>
 
@@ -773,7 +870,10 @@ export default function KnowledgeGraphPage() {
 
           {activeTab === "systems" ? (
             <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-              <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Connected Systems</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Connected Systems</h2>
+                <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">System layer only</p>
+              </div>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {systemStatus.map((entry) => (
                   <article key={entry.system} className={`rounded-xl border p-3 ${statusTone(entry.status)}`}>
