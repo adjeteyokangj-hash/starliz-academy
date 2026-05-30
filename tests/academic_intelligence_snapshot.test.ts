@@ -123,3 +123,17 @@ test("academic intelligence snapshot stale check uses last calculated timestamp"
   assert.equal(isAcademicIntelligenceSnapshotStale(fresh, new Date("2026-05-28T10:30:00.000Z")), false);
   assert.equal(isAcademicIntelligenceSnapshotStale(stale, new Date("2026-05-28T10:30:00.000Z")), true);
 });
+
+test("catchUpRecommendations composite keys are unique even when task IDs duplicate", () => {
+  const output = buildAcademicIntelligence(source());
+  // Simulate duplicated task IDs (the scenario that triggered the React key bug)
+  const duplicated = [
+    ...output.catchUpRecommendations,
+    ...output.catchUpRecommendations,
+  ];
+  const compositeKeys = duplicated.map(
+    (task, index) => `${task.id}-${task.taskType}-${index}`,
+  );
+  const uniqueKeys = new Set(compositeKeys);
+  assert.equal(uniqueKeys.size, compositeKeys.length, "Composite keys must be unique even with duplicate task IDs");
+});

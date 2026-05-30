@@ -940,8 +940,8 @@ export default function StudentDetailPage() {
                     <p className="mt-2 text-sm text-slate-400">No catch-up needed right now.</p>
                   ) : (
                     <div className="mt-2 space-y-2">
-                      {academicIntelligence.catchUpRecommendations.slice(0, 4).map((task) => (
-                        <div key={task.id} className="rounded-xl border border-slate-800 bg-slate-900/40 p-2 text-xs">
+                      {academicIntelligence.catchUpRecommendations.slice(0, 4).map((task, index) => (
+                        <div key={`${task.id}-${task.subject}-${task.topic ?? ""}-${index}`} className="rounded-xl border border-slate-800 bg-slate-900/40 p-2 text-xs">
                           <p className="font-semibold text-white">{task.title}</p>
                           <p className="mt-0.5 text-slate-400">{task.subject}{task.topic ? ` • ${task.topic}` : ""}</p>
                           <p className="mt-1 text-slate-300">{task.reason}</p>
