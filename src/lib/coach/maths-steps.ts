@@ -289,19 +289,17 @@ function reinforcementNote(pattern: MathPattern, ageBand: AgeBand): string {
   return "Say the problem out loud while you work — it helps you keep track.";
 }
 
-function isSimpleMultiplicationQuestion(pattern: MathPattern): pattern is Arithmetic {
-  return pattern.type === "arith"
-    && pattern.op === "×"
+function isSimpleMultiplicationQuestion(pattern: Arithmetic): boolean {
+  return pattern.op === "×"
     && Number.isInteger(pattern.left)
     && Number.isInteger(pattern.right)
     && Math.abs(pattern.left) <= 12
     && Math.abs(pattern.right) <= 12;
 }
 
-function isPlaceValueOrMultiDigitContext(question: string, pattern: MathPattern): boolean {
+function isPlaceValueOrMultiDigitContext(question: string, pattern: Arithmetic): boolean {
   const q = question.toLowerCase();
   if (/(place\s*value|tens|ones|hundreds|thousands|digit|digits)/.test(q)) return true;
-  if (pattern.type !== "arith") return false;
   return Math.abs(pattern.left) >= 10 || Math.abs(pattern.right) >= 10;
 }
 
