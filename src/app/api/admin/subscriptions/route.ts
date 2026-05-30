@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { addDays, getPlan, normalizePlanKey } from "@/lib/subscriptions/plans";
 import { planKeyFromPricingPlan, resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import { adminPlanKeyFromPricingPlan, normalizeAdminPlanKey, toStoredPlanKey } from "@/lib/subscriptions/adminPlanKeys";
 import { writeAuditLog } from "@/lib/audit";
 
 const actionSchema = z.enum([
@@ -51,24 +52,6 @@ function currency(valuePence: number) {
 function accountStatusFromSubscription(status: string) {
   if (status === "past_due" || status === "cancelled" || status === "blocked") return "suspended";
   return "active";
-}
-
-function normalizeAdminPlanKey(planKey: string | null | undefined): string {
-  const raw = String(planKey ?? "free").trim().toLowerCase();
-  if (!raw) return "free";
-  if (raw === "free") return "free";
-  if (raw === "starter") return "starter";
-  if (raw === "standard" || raw === "monthly") return "standard";
-  if (raw === "pro" || raw === "yearly" || raw === "family" || raw === "premium") return "pro";
-  if (raw.includes("enterprise") || raw.includes("custom") || raw.includes("school")) return "enterprise";
-  return raw;
-}
-
-function toStoredPlanKey(adminPlanKey: string): string {
-  if (adminPlanKey === "standard") return "monthly";
-  if (adminPlanKey === "pro") return "yearly";
-  if (adminPlanKey === "enterprise") return "enterprise_custom";
-  return adminPlanKey;
 }
 
 async function canAdminManageSubscriptions(userId: string): Promise<boolean> {
@@ -144,13 +127,15 @@ export async function GET() {
     const paymentProvider = subscription?.provider === "paystack" ? "paystack" : "stripe";
     const billingCycle: "monthly" | "yearly" = currentPricingPlan?.interval === "year" || normalizedPlan === "yearly" ? "yearly" : "monthly";
     const amountPence = currentPricingPlan ? Math.round(currentPricingPlan.price * 100) : amountForPlan(normalizedPlan, billingCycle);
-    const adminPlanKey = normalizeAdminPlanKey(rawPlan);
+    const adminPlanKey = currentPricingPlan
+      ? adminPlanKeyFromPricingPlan(currentPricingPlan)
+      : normalizeAdminPlanKey(rawPlan);
 
     return {
       parentId: parent.id,
       parentName: parent.name,
       parentEmail: parent.email,
-      planKey: currentPricingPlan ? planKeyFromPricingPlan(currentPricingPlan) : adminPlanKey,
+      planKey: adminPlanKey,
       planName: currentPricingPlan?.name ?? getPlan(normalizedPlan).name,
       status: uiStatus,
       trialStatus: parent.parentProfile?.trialStatus ?? null,
