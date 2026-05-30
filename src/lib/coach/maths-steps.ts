@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { AgeBand, CoachContext, CoachFollowUp, CoachResponse, CoachStep } from "./types";
-import { injectRealLifeContext, formatContextAsCoachingLine } from "./context-injectors";
+import { injectRealLifeContext, formatContextAsCoachingLine, isMoneyOrWordProblemMathContext } from "./context-injectors";
 
 // ── Equation parsers ──────────────────────────────────────────────────────────
 // ── Emotional field builder ───────────────────────────────────────────────────
@@ -68,6 +68,12 @@ function normalizeMathQuestionText(question: string): string {
     .replace(/[−–—]/g, "-")
     .replace(/\s+/g, " ")
     .trim();
+
+  const verbalMultiplication = compact.match(/(?:what is\s+|calculate\s+)?(-?\d+(?:\.\d+)?)\s*(?:multiplied by|times)\s*(-?\d+(?:\.\d+)?)\??/i);
+  if (verbalMultiplication) {
+    return `${verbalMultiplication[1]} x ${verbalMultiplication[2]}`;
+  }
+
   const linearExpression = compact.match(/(\d*\s*x\s*[+\-]\s*\d+\s*=\s*-?\d+)/i)?.[1];
   if (linearExpression) {
     return linearExpression.replace(/\s+/g, " ").trim();
@@ -161,6 +167,26 @@ function bracketSteps(b: Bracket): CoachStep[] {
 
 function arithSteps(a: Arithmetic, ageBand: AgeBand): CoachStep[] {
   const { left, right, op } = a;
+  const isSimpleMultiplication = op === "×"
+    && Number.isInteger(left)
+    && Number.isInteger(right)
+    && Math.abs(left) > 0
+    && Math.abs(right) > 0
+    && Math.abs(left) <= 12
+    && Math.abs(right) <= 12;
+
+  if (isSimpleMultiplication) {
+    const repeatedAddition = Array.from({ length: Math.abs(left) }, () => String(Math.abs(right))).join(" + ");
+    const skipCounting = Array.from({ length: Math.abs(left) }, (_, i) => String(Math.abs(right) * (i + 1))).join(", ");
+    const total = left * right;
+    return [
+      { expression: `${left} × ${right}`, explanation: `Think of ${left} equal groups of ${right}.` },
+      { expression: `${repeatedAddition} = ${total}`, explanation: "Multiplication is repeated addition." },
+      { expression: `${right}, ${skipCounting}`, explanation: `Skip count in ${right}s until you have ${left} groups.` },
+      { expression: `${left} rows × ${right} columns = ${total}`, explanation: "Picture it as an array of rows and columns." },
+    ];
+  }
+
   if (ageBand === "foundation") {
     if (op === "+") return [{ expression: `${left} + ${right}`, explanation: `Start at ${left}, count on ${right} more` }];
     if (op === "-") return [{ expression: `${left} − ${right}`, explanation: `Start at ${left}, count back ${right}` }];
@@ -258,9 +284,25 @@ function reinforcementNote(pattern: MathPattern, ageBand: AgeBand): string {
     return "Check your answer by substituting it back into the original equation.";
   }
   if (ageBand === "primary") {
-    return "Checking by working backwards is a great habit — it builds confidence in your method.";
+    return "Use groups, repeated addition, or a quick array sketch to check your multiplication method.";
   }
   return "Say the problem out loud while you work — it helps you keep track.";
+}
+
+function isSimpleMultiplicationQuestion(pattern: MathPattern): pattern is Arithmetic {
+  return pattern.type === "arith"
+    && pattern.op === "×"
+    && Number.isInteger(pattern.left)
+    && Number.isInteger(pattern.right)
+    && Math.abs(pattern.left) <= 12
+    && Math.abs(pattern.right) <= 12;
+}
+
+function isPlaceValueOrMultiDigitContext(question: string, pattern: MathPattern): boolean {
+  const q = question.toLowerCase();
+  if (/(place\s*value|tens|ones|hundreds|thousands|digit|digits)/.test(q)) return true;
+  if (pattern.type !== "arith") return false;
+  return Math.abs(pattern.left) >= 10 || Math.abs(pattern.right) >= 10;
 }
 
 // ── Visual aid (foundation only) ─────────────────────────────────────────────
@@ -283,12 +325,19 @@ function foundationVisual(a: Arithmetic): string | null {
  * Apply real-life context to a coaching message if appropriate.
  * Prepends a context line for hint levels 1–2.
  */
-function applyContextToMessage(msg: string, ctx: CoachContext, hintLevel: number): string {
+function applyContextToMessage(msg: string, ctx: CoachContext, hintLevel: number, pattern?: MathPattern): string {
   if (hintLevel > 2) return msg; // Only at early hints
-  
-  const context = injectRealLifeContext("maths", ctx.ageBand, hintLevel);
+
+  const isDirectArithmetic = pattern?.type === "arith";
+  const allowMathsContext = isMoneyOrWordProblemMathContext(ctx.question, ctx.skillFocus);
+  if (isDirectArithmetic && !allowMathsContext) return msg;
+
+  const context = injectRealLifeContext("maths", ctx.ageBand, hintLevel, {
+    questionText: ctx.question,
+    skillFocus: ctx.skillFocus,
+  });
   if (!context) return msg;
-  
+
   const contextLine = formatContextAsCoachingLine(context);
   return `${contextLine}\n\n${msg}`;
 }
@@ -329,7 +378,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
     return {
       mode: "mistake_recovery",
       ageBand,
-      message: applyContextToMessage(recoveryMsg, ctx, hintLevel),
+      message: applyContextToMessage(recoveryMsg, ctx, hintLevel, pattern),
       steps: shouldReveal ? steps : steps.slice(0, Math.max(1, steps.length - 1)),
       followUp: pattern.type === "linear" ? linearFollowUp1(pattern) : null,
       hintLevel,
@@ -368,7 +417,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
     return {
       mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
       ageBand,
-      message: applyContextToMessage(messages[hintLevel] ?? messages[4]!, ctx, hintLevel),
+      message: applyContextToMessage(messages[hintLevel] ?? messages[4]!, ctx, hintLevel, eq),
       steps: gatedSteps,
       followUp,
       hintLevel,
@@ -396,7 +445,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
     return {
       mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
       ageBand,
-      message: applyContextToMessage(message, ctx, hintLevel),
+      message: applyContextToMessage(message, ctx, hintLevel, pattern),
       steps: shouldReveal ? steps : steps.slice(0, hintLevel),
       followUp: hintLevel === 2 ? {
         question: `What is ${pattern.outer} × ${pattern.inner}?`,
@@ -417,17 +466,35 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
   if (pattern.type === "arith") {
     const steps = arithSteps(pattern, ageBand);
     const visualAid = ageBand === "foundation" ? foundationVisual(pattern) : null;
+    const simpleMultiplication = isSimpleMultiplicationQuestion(pattern);
+    const placeValueOrMultiDigit = isPlaceValueOrMultiDigitContext(ctx.question, pattern);
     const messages: Record<AgeBand, Record<number, string>> = {
       foundation: {
-        1: `Let's count together. ${visualAid ?? `Start at ${pattern.left} and count on ${pattern.right}.`}`,
-        2: `Good try! Watch the steps — each one brings us closer.`,
-        3: "Here is each step. Follow along and try the last one.",
+        1: simpleMultiplication
+          ? `Use equal groups: ${pattern.left} groups of ${pattern.right}.`
+          : `Let's count together. ${visualAid ?? `Start at ${pattern.left} and count on ${pattern.right}.`}`,
+        2: simpleMultiplication
+          ? `Now show it as repeated addition, then total it.`
+          : `Good try! Watch the steps — each one brings us closer.`,
+        3: simpleMultiplication
+          ? "Try skip counting and an array to confirm your answer."
+          : "Here is each step. Follow along and try the last one.",
         4: "Here is the complete working. Say it out loud.",
       },
       primary: {
-        1: `Break the numbers into parts you know. Can you split ${pattern.left} into tens and ones?`,
-        2: "Let's do it together. First part is ${Math.floor(pattern.left / 10) * 10} × ${pattern.right}.".replace("${Math.floor(pattern.left / 10) * 10}", String(Math.floor(pattern.left / 10) * 10)).replace("${pattern.right}", String(pattern.right)),
-        3: "Here is the full method. Can you see the pattern?",
+        1: simpleMultiplication
+          ? `Think in equal groups: ${pattern.left} groups of ${pattern.right}.`
+          : placeValueOrMultiDigit
+            ? `Break the numbers into place-value parts you know.`
+            : "Break the calculation into smaller steps you can track clearly.",
+        2: simpleMultiplication
+          ? `Write ${pattern.right} + ${pattern.right} until you have ${pattern.left} groups.`
+          : placeValueOrMultiDigit
+            ? "Use tens and ones only where the numbers are multi-digit."
+            : "Do one operation at a time and keep the layout tidy.",
+        3: simpleMultiplication
+          ? `Skip count by ${pattern.right}s and compare with your repeated-addition total.`
+          : "Here is the full method. Can you see the pattern?",
         4: "Full worked example below. Try the next one using the same method.",
       },
       secondary: {
@@ -447,7 +514,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
     return {
       mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
       ageBand,
-      message: applyContextToMessage(messages[ageBand]?.[hintLevel] ?? "Work through each step carefully.", ctx, hintLevel),
+      message: applyContextToMessage(messages[ageBand]?.[hintLevel] ?? "Work through each step carefully.", ctx, hintLevel, pattern),
       steps: shouldReveal ? steps : steps.slice(0, hintLevel),
       followUp: hintLevel >= 2 ? arithFollowUp(pattern, ageBand) : null,
       hintLevel,
@@ -469,7 +536,7 @@ export function buildMathsCoachResponse(ctx: CoachContext): CoachResponse {
   return {
     mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
     ageBand,
-    message: applyContextToMessage(genericMessages[hintLevel] ?? genericMessages[4]!, ctx, hintLevel),
+    message: applyContextToMessage(genericMessages[hintLevel] ?? genericMessages[4]!, ctx, hintLevel, { type: "unknown" }),
     steps: shouldReveal ? [{ expression: ctx.question, explanation: `Answer: ${ctx.correctAnswer}` }] : [],
     followUp: hintLevel === 2 ? {
       question: "What is the most important number or keyword in this question?",
@@ -497,9 +564,14 @@ export function buildSlowBreakdown(question: string, ageBand: AgeBand): string {
   if (pattern.type === "arith") {
     const { left, right, op } = pattern;
     const opWord = { "+": "plus", "-": "minus", "×": "times", "÷": "divided by" }[op] ?? op;
+    const simpleMultiplication = isSimpleMultiplicationQuestion(pattern);
     return ageBand === "foundation"
-      ? `We have ${left}, and we are adding ${right}. Start at ${left} and count on ${right}.`
-      : `The question is: what is ${left} ${opWord} ${right}? Break ${left} into tens and ones first.`;
+      ? (simpleMultiplication
+          ? `We have ${left} groups of ${right}. Count in ${right}s: ${Array.from({ length: Math.min(Math.abs(left), 6) }, (_, i) => right * (i + 1)).join(", ")}.`
+          : `We have ${left}, and we are adding ${right}. Start at ${left} and count on ${right}.`)
+      : (simpleMultiplication
+          ? `The question is: what is ${left} ${opWord} ${right}? Use groups, repeated addition, skip counting, or an array.`
+          : `The question is: what is ${left} ${opWord} ${right}? Break it into smaller clear steps.`);
   }
   return `Read the question carefully. Identify the numbers and the operation, then work one step at a time.`;
 }

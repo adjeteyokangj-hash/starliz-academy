@@ -57,6 +57,27 @@ function splitSyllables(word: string): string[] {
   return syllables.filter(Boolean);
 }
 
+function truncateForCoach(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trim()}...`;
+}
+
+function classifySpellingTarget(rawTarget: string): {
+  singleWord: string;
+  normalizedText: string;
+  isSentenceLike: boolean;
+} {
+  const normalizedText = rawTarget.replace(/\s+/g, " ").trim();
+  const tokens = normalizedText.match(/[A-Za-z]+(?:['-][A-Za-z]+)*/g) ?? [];
+  const singleWord = (tokens[0] ?? normalizedText).toLowerCase();
+  const isSentenceLike = tokens.length > 1 || /[.!?]/.test(normalizedText) || normalizedText.length > 40;
+  return {
+    singleWord,
+    normalizedText,
+    isSentenceLike,
+  };
+}
+
 // ── Spelling patterns ─────────────────────────────────────────────────────────
 
 type SpellingPattern =
@@ -263,10 +284,73 @@ function getMnemonic(word: string): string | null {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function buildSpellingCoachResponse(ctx: CoachContext): CoachResponse {
-  const word = ctx.correctAnswer.toLowerCase().trim();
+  const target = classifySpellingTarget(ctx.correctAnswer);
+  const word = target.singleWord;
   const hintLevel = Math.min(ctx.hintCount + 1, 4);
   const shouldReveal = hintLevel >= 4;
   const { ageBand } = ctx;
+
+  if (target.isSentenceLike) {
+    const sentencePreview = truncateForCoach(target.normalizedText, 120);
+    const sentenceSteps: CoachStep[] = [
+      {
+        expression: "Read -> Cover -> Write one word at a time",
+        explanation: "Spell each word cleanly, then move to the next word.",
+      },
+      {
+        expression: "Check capitals, spaces, and punctuation",
+        explanation: "Make sure the sentence starts correctly and ends with the right mark.",
+      },
+      {
+        expression: "Re-read the full sentence once",
+        explanation: "Confirm it sounds right and nothing is missing.",
+      },
+    ];
+
+    const sentenceMessages: Record<number, string> = {
+      1: "This is a full sentence. Focus on spelling one word at a time.",
+      2: "Say each word clearly, write it, then check spacing before the next word.",
+      3: "Check for tricky words, then verify capitals and punctuation at the end.",
+      4: `Correct sentence: ${sentencePreview}`,
+    };
+
+    const sentenceFollowUp: CoachFollowUp | null = hintLevel >= 2
+      ? {
+          question: "After spelling a full sentence, what should you check last?",
+          options: [
+            "Capital letter, spaces, and punctuation",
+            "Only the final word",
+            "Only whether it looks long enough",
+            "Nothing else",
+          ],
+          correctIndex: 0,
+          onCorrect: "Exactly. Sentence-level checks stop avoidable spelling and punctuation slips.",
+          onWrong: "Always finish by checking capitals, spaces, and punctuation as well as word spellings.",
+        }
+      : null;
+
+    return {
+      mode: hintLevel === 1 ? "hint" : hintLevel <= 3 ? "guided_steps" : "reveal",
+      ageBand,
+      message: sentenceMessages[hintLevel] ?? sentenceMessages[4]!,
+      steps: sentenceSteps.slice(0, Math.min(sentenceSteps.length, Math.max(1, hintLevel))),
+      followUp: sentenceFollowUp,
+      hintLevel,
+      shouldReveal,
+      reinforcementNote: "For sentence spelling, accuracy means correct words plus correct punctuation and spacing.",
+      tryAgainPrompt: shouldReveal
+        ? "Cover the sentence and rewrite it once. Then compare word by word."
+        : null,
+      masterySignal: null,
+      emotionalTone: ctx.attemptCount > 2
+        ? "You are staying with it. Let's handle the sentence one word at a time."
+        : "Let's break this sentence into manageable chunks.",
+      waitPrompt: "Before opening the hint, read the sentence once slowly.",
+      similarQuestion: shouldReveal
+        ? { prompt: "Write the sentence again from memory, then check capitals, spacing, and punctuation." }
+        : undefined,
+    };
+  }
 
   const phonemes = splitPhonemes(word);
   const syllables = splitSyllables(word);

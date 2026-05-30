@@ -11,6 +11,32 @@ export type RealLifeContext = {
   example?: string;      // concrete example the student recognizes
 };
 
+const MONEY_CONTEXT_KEYWORDS = [
+  "money",
+  "price",
+  "cost",
+  "change",
+  "budget",
+  "pound",
+  "pounds",
+  "pence",
+  "coin",
+  "coins",
+  "cash",
+  "buy",
+  "bought",
+  "shop",
+  "shopping",
+  "pay",
+  "paid",
+  "spent",
+  "sale",
+  "receipt",
+  "discount",
+  "word problem",
+  "word-problem",
+];
+
 // ─ Maths contexts ─────────────────────────────────────────────────────────
 
 const MATHS_CONTEXTS: RealLifeContext[] = [
@@ -152,6 +178,11 @@ function getContextsForSubject(subject: CoachSubject): RealLifeContext[] {
   return [];
 }
 
+export function isMoneyOrWordProblemMathContext(questionText?: string, skillFocus?: string): boolean {
+  const normalized = `${String(questionText ?? "")} ${String(skillFocus ?? "")}`.toLowerCase();
+  return MONEY_CONTEXT_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
+
 /**
  * Inject a real-life context into a coaching message.
  * Picks a relevant scenario based on subject and hint level.
@@ -161,9 +192,14 @@ export function injectRealLifeContext(
   subject: CoachSubject,
   ageBand: AgeBand,
   hintLevel: number,
+  options?: { questionText?: string; skillFocus?: string },
 ): RealLifeContext | null {
   // Only inject at hint levels 1–2 (too early = overwhelming; too late = too late)
   if (hintLevel > 2) return null;
+
+  if (subject === "maths" && !isMoneyOrWordProblemMathContext(options?.questionText, options?.skillFocus)) {
+    return null;
+  }
 
   // Foundation students respond better to concrete examples
   if (ageBand === "foundation" && hintLevel === 1) {

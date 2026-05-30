@@ -15,6 +15,12 @@ export type SmartCoachPanelProps = {
   studentId?: string;
   subject: CoachSubject;
   question: string;
+  questionId?: string;
+  lessonItemId?: string;
+  strand?: string;
+  questionIndex?: number;
+  source?: string;
+  questionTextHash?: string;
   correctAnswer: string;
   studentAnswer?: string;
   passageText?: string;
@@ -51,6 +57,87 @@ export type SmartCoachPanelProps = {
   onClose: () => void;
 };
 
+type CoachRequestInput = {
+  studentId?: string;
+  subject: CoachSubject;
+  question: string;
+  questionId?: string;
+  lessonItemId?: string;
+  strand?: string;
+  questionIndex?: number;
+  source?: string;
+  questionTextHash?: string;
+  correctAnswer: string;
+  studentAnswer?: string;
+  passageText?: string;
+  hintCount: number;
+  attemptCount: number;
+  mathDifficulty?: number;
+  ageRange?: string;
+  yearGroup?: number;
+  keyStageLevel?: string;
+  skillFocus?: string;
+  assignmentId?: string;
+  contentId?: string;
+  confidenceScore: number;
+  responseTimeMs?: number;
+};
+
+export function buildCoachRequestBody(input: CoachRequestInput): Record<string, unknown> {
+  return {
+    studentId: input.studentId,
+    subject: input.subject,
+    question: input.question,
+    prompt: input.question,
+    correctAnswer: input.correctAnswer,
+    answer: input.correctAnswer,
+    studentAnswer: input.studentAnswer,
+    currentInput: input.studentAnswer,
+    passageText: input.passageText,
+    hintCount: input.hintCount,
+    attemptCount: input.attemptCount,
+    mathDifficulty: input.mathDifficulty,
+    ageRange: input.ageRange,
+    yearGroup: input.yearGroup,
+    keyStageLevel: input.keyStageLevel,
+    skillFocus: input.skillFocus,
+    assignmentId: input.assignmentId,
+    contentId: input.contentId,
+    questionId: input.questionId,
+    lessonItemId: input.lessonItemId,
+    strand: input.strand,
+    questionIndex: input.questionIndex,
+    source: input.source,
+    questionTextHash: input.questionTextHash,
+    confidenceScore: input.confidenceScore,
+    responseTimeMs: input.responseTimeMs,
+  };
+}
+
+export function buildCoachRequestKey(input: CoachRequestInput): string {
+  return JSON.stringify({
+    subject: input.subject,
+    question: input.question,
+    questionId: input.questionId ?? null,
+    lessonItemId: input.lessonItemId ?? null,
+    strand: input.strand ?? null,
+    questionIndex: input.questionIndex ?? null,
+    source: input.source ?? null,
+    questionTextHash: input.questionTextHash ?? null,
+    correctAnswer: input.correctAnswer,
+    studentAnswer: input.studentAnswer ?? null,
+    hintCount: input.hintCount,
+    attemptCount: input.attemptCount,
+    assignmentId: input.assignmentId ?? null,
+    contentId: input.contentId ?? null,
+    skillFocus: input.skillFocus ?? null,
+  });
+}
+
+export function shouldApplyCoachResponse(activeRequestKey: string | null, responseRequestKey: string): boolean {
+  return activeRequestKey === responseRequestKey;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,6 +146,12 @@ export default function SmartCoachPanel({
   studentId,
   subject,
   question,
+  questionId,
+  lessonItemId,
+  strand,
+  questionIndex,
+  source,
+  questionTextHash,
   correctAnswer,
   studentAnswer,
   passageText,
@@ -73,7 +166,7 @@ export default function SmartCoachPanel({
   coachContext,
   attemptCount = 0,
   confidenceScore = 0.5,
-    responseTimeMs,
+  responseTimeMs,
   onHintUsed,
   onClose,
 }: SmartCoachPanelProps) {
@@ -90,7 +183,8 @@ export default function SmartCoachPanel({
 
   // Internal hint level (starts at hintCount, advances on "Next hint" clicks)
   const [localHintCount, setLocalHintCount] = useState(hintCount);
-  const fetchedForRef = useRef<number | null>(null);
+  const fetchedForRef = useRef<string | null>(null);
+  const activeCoachRequestKeyRef = useRef<string | null>(null);
 
   // Wait-phase: 3 seconds on first hint, skipped if student spent > 30s
   const skipWait = (responseTimeMs ?? 0) > 30_000;
@@ -154,24 +248,18 @@ export default function SmartCoachPanel({
 
   useEffect(() => {
     if (waitPhase) return; // hold during wait
-    if (fetchedForRef.current === localHintCount) return;
-    fetchedForRef.current = localHintCount;
-
-    setLoading(true);
-    setError(null);
-    setFollowUpSelectedIndex(null);
-    setFollowUpMessage(null);
-    setFollowUpAnswered(false);
-
-    const body = {
+    const requestInput: CoachRequestInput = {
       studentId,
       subject,
       question,
-      prompt: question,
+      questionId,
+      lessonItemId,
+      strand,
+      questionIndex,
+      source,
+      questionTextHash,
       correctAnswer,
-      answer: correctAnswer,
       studentAnswer,
-      currentInput: studentAnswer,
       passageText,
       hintCount: localHintCount,
       attemptCount,
@@ -185,11 +273,26 @@ export default function SmartCoachPanel({
       confidenceScore,
       responseTimeMs,
     };
+    const requestKey = buildCoachRequestKey(requestInput);
+
+    if (fetchedForRef.current === requestKey) return;
+    fetchedForRef.current = requestKey;
+    activeCoachRequestKeyRef.current = requestKey;
+
+    setLoading(true);
+    setError(null);
+    setFollowUpSelectedIndex(null);
+    setFollowUpMessage(null);
+    setFollowUpAnswered(false);
+
+    const controller = new AbortController();
+    const body = buildCoachRequestBody(requestInput);
 
     fetch("/api/coach", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: controller.signal,
     })
       .then(async (res) => {
         if (!res.ok) {
@@ -199,19 +302,35 @@ export default function SmartCoachPanel({
         return res.json() as Promise<CoachResponse>;
       })
       .then((data) => {
+        if (!shouldApplyCoachResponse(activeCoachRequestKeyRef.current, requestKey) || controller.signal.aborted) {
+          return;
+        }
         setResponse(data);
         setLoading(false);
       })
       .catch((err: unknown) => {
+        if (controller.signal.aborted || !shouldApplyCoachResponse(activeCoachRequestKeyRef.current, requestKey)) {
+          return;
+        }
         setError(err instanceof Error && err.message.trim() ? err.message : "Coach is temporarily unavailable. Try again.");
         setLoading(false);
       });
+
+    return () => {
+      controller.abort();
+    };
   }, [
     waitPhase,
     localHintCount,
     subject,
     studentId,
     question,
+    questionId,
+    lessonItemId,
+    strand,
+    questionIndex,
+    source,
+    questionTextHash,
     correctAnswer,
     studentAnswer,
     passageText,

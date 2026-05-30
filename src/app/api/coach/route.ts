@@ -14,6 +14,7 @@ import type { CoachContext, CoachResponse, AgeBand } from "@/lib/coach/types";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { extractLearningDnaFromProfileJson, buildCoachDirectiveFromLearningDna } from "@/lib/learning_dna";
+import { writeAuditLog } from "@/lib/audit";
 
 const VALID_SUBJECTS = ["maths", "reading", "spelling", "science", "english"] as const;
 const VALID_AGE_BANDS = ["foundation", "primary", "secondary", "gcse"] as const;
@@ -48,6 +49,89 @@ function normalizeYearGroup(value: unknown): number | undefined {
   return undefined;
 }
 
+function normalizeOptionalNumber(value: unknown, min: number, max: number): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.min(max, Math.max(min, value));
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.min(max, Math.max(min, parsed));
+    }
+  }
+  return undefined;
+}
+
+function normalizeOptionalBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const lowered = value.trim().toLowerCase();
+    if (lowered === "true") return true;
+    if (lowered === "false") return false;
+  }
+  return undefined;
+}
+
+type CoachTelemetry = {
+  studentId?: string;
+  subject: CoachContext["subject"];
+  strand?: string;
+  skillTopic?: string;
+  yearGroup?: number;
+  questionId?: string;
+  lessonItemId?: string;
+  questionText: string;
+  studentAttempt?: string;
+  hintCount: number;
+  responseTimeMs?: number;
+  confidence: number;
+  improvedAfterCoach?: boolean;
+};
+
+type HeartbeatSignal = {
+  understoodAfterHelp: boolean;
+  stillStruggling: boolean;
+  repeatedWeakArea: boolean;
+  needsCatchUp: boolean;
+  needsDifferentExplanationStyle: boolean;
+  needsLiveTutorSupport: boolean;
+};
+
+function deriveHeartbeatSignal(input: {
+  attemptCount: number;
+  hintCount: number;
+  responseTimeMs?: number;
+  confidence: number;
+  improvedAfterCoach?: boolean;
+  weakSkills?: string[];
+  skillTopic?: string;
+}): HeartbeatSignal {
+  const improved = input.improvedAfterCoach === true;
+  const highHintUsage = input.hintCount >= 3;
+  const repeatedAttempts = input.attemptCount >= 3;
+  const slowResponse = typeof input.responseTimeMs === "number" && input.responseTimeMs >= 90_000;
+  const lowConfidence = input.confidence <= 0.4;
+  const normalizedSkill = String(input.skillTopic ?? "").trim().toLowerCase();
+  const repeatedWeakArea = Boolean(
+    normalizedSkill
+      && (input.weakSkills ?? []).some((skill) => String(skill).trim().toLowerCase() === normalizedSkill),
+  ) || repeatedAttempts;
+
+  const stillStruggling = !improved && (highHintUsage || repeatedAttempts || lowConfidence);
+  const needsCatchUp = stillStruggling && (repeatedWeakArea || slowResponse);
+  const needsDifferentExplanationStyle = stillStruggling && (highHintUsage || lowConfidence);
+  const needsLiveTutorSupport = stillStruggling && (needsCatchUp || repeatedAttempts) && (slowResponse || input.hintCount >= 4);
+
+  return {
+    understoodAfterHelp: improved || (!stillStruggling && input.confidence >= 0.65),
+    stillStruggling,
+    repeatedWeakArea,
+    needsCatchUp,
+    needsDifferentExplanationStyle,
+    needsLiveTutorSupport,
+  };
+}
+
 function logValidationFailure(raw: unknown, issues: string[]): void {
   if (!issues.length) return;
   const keys = raw && typeof raw === "object"
@@ -59,7 +143,7 @@ function logValidationFailure(raw: unknown, issues: string[]): void {
   });
 }
 
-function parseBody(raw: unknown): { ctx: CoachContext; issues: string[]; studentId?: string } {
+function parseBody(raw: unknown): { ctx: CoachContext; issues: string[]; telemetry: CoachTelemetry } {
   const issues: string[] = [];
   const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
@@ -99,6 +183,10 @@ function parseBody(raw: unknown): { ctx: CoachContext; issues: string[]; student
       ? Math.min(1, Math.max(0, b["confidenceScore"]))
       : 0.5;
   const studentId = firstNonEmptyString(b["studentId"], b["childId"]);
+  const questionId = firstNonEmptyString(b["questionId"], b["activeQuestionId"]);
+  const lessonItemId = firstNonEmptyString(b["lessonItemId"], b["activeLessonItemId"]);
+  const strand = firstNonEmptyString(b["strand"], b["curriculumStrand"]);
+  const improvedAfterCoach = normalizeOptionalBoolean(b["improvedAfterCoach"]);
 
   return {
     ctx: {
@@ -122,7 +210,21 @@ function parseBody(raw: unknown): { ctx: CoachContext; issues: string[]; student
           : undefined,
     },
     issues,
-    studentId,
+    telemetry: {
+      studentId,
+      subject,
+      strand,
+      skillTopic: firstNonEmptyString(b["skillFocus"], b["topic"]),
+      yearGroup,
+      questionId,
+      lessonItemId,
+      questionText: question ?? "Let's solve this step by step.",
+      studentAttempt: studentAnswer,
+      hintCount,
+      responseTimeMs: normalizeOptionalNumber(b["responseTimeMs"], 0, 300_000),
+      confidence: confidenceScore,
+      improvedAfterCoach,
+    },
   };
 }
 
@@ -149,7 +251,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     logValidationFailure(null, ["invalid_json"]);
   }
 
-  const { ctx: parsedCtx, issues, studentId } = parseBody(rawBody);
+  const { ctx: parsedCtx, issues, telemetry } = parseBody(rawBody);
+  const studentId = telemetry.studentId;
   let ctx = parsedCtx;
   logValidationFailure(rawBody, issues);
 
@@ -216,8 +319,60 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // ─ Record interaction to database (async, non-blocking) ──────────────────
+  const heartbeatSignal = deriveHeartbeatSignal({
+    attemptCount: ctx.attemptCount,
+    hintCount: ctx.hintCount,
+    responseTimeMs: ctx.responseTimeMs,
+    confidence: ctx.confidenceScore,
+    improvedAfterCoach: telemetry.improvedAfterCoach,
+    weakSkills: ctx.weakSkills,
+    skillTopic: telemetry.skillTopic,
+  });
+
+  writeAuditLog({
+    actorUserId: session.userId,
+    action: "coach.context.captured",
+    entityType: "CoachQuestionContext",
+    entityId: telemetry.studentId,
+    metadata: {
+      subject: telemetry.subject,
+      strand: telemetry.strand ?? null,
+      skillTopic: telemetry.skillTopic ?? null,
+      yearGroup: telemetry.yearGroup ?? null,
+      questionId: telemetry.questionId ?? null,
+      lessonItemId: telemetry.lessonItemId ?? null,
+      questionText: telemetry.questionText,
+      studentAttempt: telemetry.studentAttempt ?? null,
+      hintCount: telemetry.hintCount,
+      responseTimeMs: telemetry.responseTimeMs ?? null,
+      confidence: telemetry.confidence,
+      improvedAfterCoach: telemetry.improvedAfterCoach ?? null,
+    },
+  }).catch((err) => console.error("[coach telemetry] context capture failed", err));
+
+  writeAuditLog({
+    actorUserId: session.userId,
+    action: "heartbeat.signal.updated",
+    entityType: "StudentSignal",
+    entityId: telemetry.studentId,
+    metadata: {
+      subject: telemetry.subject,
+      strand: telemetry.strand ?? null,
+      skillTopic: telemetry.skillTopic ?? null,
+      yearGroup: telemetry.yearGroup ?? null,
+      questionId: telemetry.questionId ?? null,
+      lessonItemId: telemetry.lessonItemId ?? null,
+      understoodAfterHelp: heartbeatSignal.understoodAfterHelp,
+      stillStruggling: heartbeatSignal.stillStruggling,
+      repeatedWeakArea: heartbeatSignal.repeatedWeakArea,
+      needsCatchUp: heartbeatSignal.needsCatchUp,
+      needsDifferentExplanationStyle: heartbeatSignal.needsDifferentExplanationStyle,
+      needsLiveTutorSupport: heartbeatSignal.needsLiveTutorSupport,
+    },
+  }).catch((err) => console.error("[coach telemetry] heartbeat update failed", err));
+
   recordCoachInteraction(
-    session.userId,
+    studentId ?? session.userId,
     ctx.subject,
     ctx.skillFocus,
     ctx.question,
