@@ -4,6 +4,7 @@ import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data"
 import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
 import { listCatchUpTasks, syncCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
 import { listHomeworkTasks, syncHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
+import { getCoachHeartbeatSignals } from "@/lib/academic-intelligence/coachHeartbeatSignals";
 
 export async function GET(request: Request) {
   const { session, response } = await requireAdminPermission("reports:view");
@@ -16,9 +17,16 @@ export async function GET(request: Request) {
   const source = await buildAcademicSourceForStudent(studentId);
   if (!source) return NextResponse.json({ error: "Student not found." }, { status: 404 });
 
-  const existingTasks = await listCatchUpTasks(studentId);
-  const existingHomework = await listHomeworkTasks(studentId);
-  let output = buildAcademicIntelligence(source, { existingCatchUpTasks: existingTasks, existingHomeworkTasks: existingHomework });
+  const [existingTasks, existingHomework, coachHeartbeatSignals] = await Promise.all([
+    listCatchUpTasks(studentId),
+    listHomeworkTasks(studentId),
+    getCoachHeartbeatSignals(studentId),
+  ]);
+  let output = buildAcademicIntelligence(source, {
+    existingCatchUpTasks: existingTasks,
+    existingHomeworkTasks: existingHomework,
+    coachHeartbeatSignals,
+  });
   const syncedTasks = await syncCatchUpTasks({
     studentId,
     recommendations: output.catchUpRecommendations,
@@ -30,7 +38,11 @@ export async function GET(request: Request) {
     schoolWeekModePlan: output.schoolWeekModePlan,
     actorUserId: session.userId,
   });
-  output = buildAcademicIntelligence(source, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
+  output = buildAcademicIntelligence(source, {
+    existingCatchUpTasks: syncedTasks,
+    existingHomeworkTasks: syncedHomework,
+    coachHeartbeatSignals,
+  });
 
   return NextResponse.json(output);
 }

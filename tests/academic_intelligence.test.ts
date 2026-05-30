@@ -6,7 +6,7 @@ import { detectCatchUpTriggers, buildCatchUpRecommendations } from "../src/lib/a
 import { buildAssessmentRecommendations } from "../src/lib/academic-intelligence/assessmentEngine";
 import { buildAcademicIntelligence, toStudentSafeAcademicIntelligence } from "../src/lib/academic-intelligence/academicIntelligence";
 import { mapHeartbeatActionButton, toHeartbeatDecisionViewModel } from "../src/lib/academic-intelligence/heartbeatActionMap";
-import type { AcademicSourceData, CatchUpTaskRecord } from "../src/lib/academic-intelligence/types";
+import type { AcademicSourceData, CatchUpTaskRecord, CoachHeartbeatSignalSummary } from "../src/lib/academic-intelligence/types";
 
 function baseSource(overrides: Partial<AcademicSourceData> = {}): AcademicSourceData {
   return {
@@ -639,4 +639,115 @@ test("heartbeat decision view model safely renders when decision is missing", ()
   assert.equal(view.confidence, "-");
   assert.ok(view.suggestedNextStep.toLowerCase().includes("compute") || view.suggestedNextStep.toLowerCase().includes("run"));
   assert.ok(view.reasonsSummary.toLowerCase().includes("no decision"));
+});
+
+test("academic intelligence output remains stable with empty coach signal summary", () => {
+  const source = withCompletedQlf(baseSource({
+    attempts: Array.from({ length: 8 }).map((_, index) => ({
+      id: `at-stable-${index}`,
+      subject: "math",
+      topic: "Fractions",
+      skill: "fractions",
+      correct: true,
+      hintsUsed: 0,
+      createdAt: new Date().toISOString(),
+      score: 94,
+    })),
+  }));
+
+  const withoutSignals = buildAcademicIntelligence(source);
+  const emptySignals: CoachHeartbeatSignalSummary = {
+    windowDays: 14,
+    totalCoachSignals: 0,
+    understoodAfterHelpCount: 0,
+    stillStrugglingCount: 0,
+    repeatedWeakAreaCount: 0,
+    needsCatchUpCount: 0,
+    needsDifferentExplanationStyleCount: 0,
+    needsLiveTutorSupportCount: 0,
+    topSubjects: [],
+    topStrands: [],
+    topSkillTopics: [],
+    latestSignalAt: null,
+    hasCoachConcern: false,
+    hasTutorEscalationSignal: false,
+    hasCatchUpSignal: false,
+  };
+
+  const withEmptySignals = buildAcademicIntelligence(source, {
+    coachHeartbeatSignals: emptySignals,
+  });
+
+  assert.equal(withoutSignals.heartbeatDecision.primaryAction, withEmptySignals.heartbeatDecision.primaryAction);
+  assert.equal(withoutSignals.heartbeatDecision.urgency, withEmptySignals.heartbeatDecision.urgency);
+  assert.equal(withoutSignals.heartbeatDecision.riskLevel, withEmptySignals.heartbeatDecision.riskLevel);
+  assert.deepEqual(withEmptySignals.coachHeartbeatSignals, emptySignals);
+});
+
+test("academic intelligence includes coach signal summary and heartbeat coach evidence", () => {
+  const source = withCompletedQlf(baseSource({
+    attempts: Array.from({ length: 8 }).map((_, index) => ({
+      id: `at-coach-${index}`,
+      subject: "math",
+      topic: "Multiplication",
+      skill: "times_tables",
+      correct: true,
+      hintsUsed: 0,
+      createdAt: new Date().toISOString(),
+      score: 90,
+    })),
+  }));
+
+  const coachSignals: CoachHeartbeatSignalSummary = {
+    windowDays: 14,
+    totalCoachSignals: 5,
+    understoodAfterHelpCount: 2,
+    stillStrugglingCount: 3,
+    repeatedWeakAreaCount: 2,
+    needsCatchUpCount: 2,
+    needsDifferentExplanationStyleCount: 1,
+    needsLiveTutorSupportCount: 2,
+    topSubjects: [{ value: "Maths", count: 5 }],
+    topStrands: [{ value: "Number", count: 5 }],
+    topSkillTopics: [{ value: "Multiplication", count: 5 }],
+    latestSignalAt: new Date().toISOString(),
+    hasCoachConcern: true,
+    hasTutorEscalationSignal: true,
+    hasCatchUpSignal: true,
+  };
+
+  const output = buildAcademicIntelligence(source, {
+    coachHeartbeatSignals: coachSignals,
+  });
+
+  assert.equal(output.coachHeartbeatSignals?.totalCoachSignals, 5);
+  assert.ok(output.heartbeatDecision.reasons.some((reason) => reason.includes("Coach support used recently")));
+  assert.ok(output.heartbeatDecision.reasons.some((reason) => reason.includes("different explanation style")));
+  assert.ok(output.heartbeatDecision.evidence.some((row) => row.includes("Coach signals")));
+});
+
+test("student-safe academic intelligence response does not expose coach heartbeat summary", () => {
+  const source = withCompletedQlf(baseSource());
+  const output = buildAcademicIntelligence(source, {
+    coachHeartbeatSignals: {
+      windowDays: 14,
+      totalCoachSignals: 1,
+      understoodAfterHelpCount: 1,
+      stillStrugglingCount: 0,
+      repeatedWeakAreaCount: 0,
+      needsCatchUpCount: 0,
+      needsDifferentExplanationStyleCount: 0,
+      needsLiveTutorSupportCount: 0,
+      topSubjects: [{ value: "Maths", count: 1 }],
+      topStrands: [{ value: "Number", count: 1 }],
+      topSkillTopics: [{ value: "Multiplication", count: 1 }],
+      latestSignalAt: new Date().toISOString(),
+      hasCoachConcern: false,
+      hasTutorEscalationSignal: false,
+      hasCatchUpSignal: false,
+    },
+  });
+
+  const safe = toStudentSafeAcademicIntelligence(output) as Record<string, unknown>;
+  assert.equal("coachHeartbeatSignals" in safe, false);
 });

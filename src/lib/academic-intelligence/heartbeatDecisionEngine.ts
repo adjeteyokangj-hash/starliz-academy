@@ -1,6 +1,7 @@
 import type {
   AcademicIntelligenceOutput,
   AcademicSourceData,
+  CoachHeartbeatSignalSummary,
   HeartbeatDecision,
   HeartbeatDecisionActor,
   HeartbeatDecisionRisk,
@@ -10,6 +11,7 @@ import type {
 
 type DecisionInput = {
   source: Pick<AcademicSourceData, "quickLevelFinderBaseline">;
+  coachHeartbeatSignals?: CoachHeartbeatSignalSummary | null;
   output: Pick<
     AcademicIntelligenceOutput,
     | "summary"
@@ -78,7 +80,7 @@ function suggestedStep(action: HeartbeatPrimaryAction, fallback: string): string
 }
 
 export function buildHeartbeatDecisionEngine(input: DecisionInput): HeartbeatDecision {
-  const { source, output } = input;
+  const { source, output, coachHeartbeatSignals } = input;
   const qlfComplete = Boolean(source.quickLevelFinderBaseline?.completedAt);
 
   const unresolvedWeakAreaCount = output.masteryMap.filter((entry) => entry.weakAreaActive).length;
@@ -100,6 +102,7 @@ export function buildHeartbeatDecisionEngine(input: DecisionInput): HeartbeatDec
   const reasons: string[] = [];
   const blockers: string[] = [];
   const evidence: string[] = [];
+  const coachEvidence: string[] = [];
   const conflictSignals = qlfComplete && masteryStrong && (catchUpBlocked || assessmentLow || unresolvedBlockers);
 
   let primaryAction: HeartbeatPrimaryAction = "maintain_level";
@@ -181,9 +184,42 @@ export function buildHeartbeatDecisionEngine(input: DecisionInput): HeartbeatDec
     blockers.push(...output.unresolvedAcademicGaps.slice(0, 2));
   }
 
+  if (coachHeartbeatSignals && coachHeartbeatSignals.totalCoachSignals > 0) {
+    const topSubject = coachHeartbeatSignals.topSubjects[0]?.value;
+    const topSkill = coachHeartbeatSignals.topSkillTopics[0]?.value;
+    if (topSubject || topSkill) {
+      reasons.push(
+        `Coach support used recently in ${topSubject ?? "core topics"}${topSkill ? ` ${topSkill}` : ""}.`,
+      );
+    } else {
+      reasons.push("Coach support used recently on active learning topics.");
+    }
+
+    if (coachHeartbeatSignals.stillStrugglingCount > 0) {
+      reasons.push("Student still struggled after Coach support.");
+    }
+
+    if (coachHeartbeatSignals.needsCatchUpCount > 0 || coachHeartbeatSignals.repeatedWeakAreaCount > 0) {
+      reasons.push("Repeated Coach signals suggest catch-up may help.");
+    }
+
+    if (coachHeartbeatSignals.needsDifferentExplanationStyleCount > 0) {
+      reasons.push("Coach signals suggest a different explanation style may help.");
+    }
+
+    if (coachHeartbeatSignals.hasTutorEscalationSignal) {
+      blockers.push("Coach signals indicate repeated need for tutor support.");
+    }
+
+    coachEvidence.push(`Coach signals (${coachHeartbeatSignals.windowDays}d): ${coachHeartbeatSignals.totalCoachSignals} total`);
+    coachEvidence.push(`Coach still-struggling signals: ${coachHeartbeatSignals.stillStrugglingCount}`);
+    coachEvidence.push(`Coach catch-up signals: ${coachHeartbeatSignals.needsCatchUpCount}`);
+    coachEvidence.push(`Coach tutor-support signals: ${coachHeartbeatSignals.needsLiveTutorSupportCount}`);
+  }
+
   const uniqueReasons = [...new Set(reasons)].slice(0, 5);
   const uniqueBlockers = [...new Set(blockers)].slice(0, 5);
-  const uniqueEvidence = [...new Set(evidence)].slice(0, 8);
+  const uniqueEvidence = [...new Set([...coachEvidence, ...evidence])].slice(0, 8);
 
   let confidenceScore = 72;
   if (!qlfComplete) confidenceScore -= 24;

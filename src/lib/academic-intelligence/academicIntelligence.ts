@@ -27,6 +27,7 @@ import {
 } from "@/lib/academic-intelligence/schoolWeekSettings";
 import type {
   AcademicAuditHistoryDraft,
+  CoachHeartbeatSignalSummary,
   AcademicIntelligenceOutput,
   AcademicReportNote,
   AcademicSourceData,
@@ -405,6 +406,7 @@ export function buildAcademicIntelligence(
   options?: {
     existingCatchUpTasks?: CatchUpTaskRecord[];
     existingHomeworkTasks?: HomeworkTaskRecord[];
+    coachHeartbeatSignals?: CoachHeartbeatSignalSummary | null;
     graphBuilder?: typeof buildCurriculumIntelligenceGraph;
   },
 ): AcademicIntelligenceOutput {
@@ -446,6 +448,7 @@ export function buildAcademicIntelligence(
       suggestedNextStep: "Compute heartbeat decision.",
       riskLevel: "high",
     },
+    coachHeartbeatSignals: options?.coachHeartbeatSignals ?? null,
     learningTwin: buildLearningTwinProfile({
       source: data,
       summary: masteryBuilt.summary,
@@ -627,6 +630,7 @@ export function buildAcademicIntelligence(
   output.heartbeatDecision = buildHeartbeatDecisionEngine({
     source: { quickLevelFinderBaseline: data.quickLevelFinderBaseline ?? null },
     output,
+    coachHeartbeatSignals: output.coachHeartbeatSignals,
   });
   output.auditHistoryDraft = buildAuditDrafts(output);
 

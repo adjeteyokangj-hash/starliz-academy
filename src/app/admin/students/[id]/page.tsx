@@ -7,7 +7,7 @@ import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import AdminStatCard from "@/components/admin/AdminStatCard";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import { mapHeartbeatActionButton, toHeartbeatDecisionViewModel } from "@/lib/academic-intelligence/heartbeatActionMap";
-import type { CoverageEntry, HeartbeatDecision, SchoolWeekday } from "@/lib/academic-intelligence/types";
+import type { CoachHeartbeatSignalSummary, CoverageEntry, HeartbeatDecision, SchoolWeekday } from "@/lib/academic-intelligence/types";
 
 type StudentDetail = {
   id: string;
@@ -120,6 +120,7 @@ type AdminAcademicIntelligencePayload = {
     }>;
   };
   heartbeatDecision?: HeartbeatDecision | null;
+  coachHeartbeatSignals?: CoachHeartbeatSignalSummary | null;
   homeworkTasks?: Array<{
     taskId: string;
     blockId: string;
@@ -773,6 +774,29 @@ export default function StudentDetailPage() {
                 <p className="mt-2 text-xs text-emerald-50">Suggested next step: {toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).suggestedNextStep}</p>
                 <p className="mt-1 text-xs text-emerald-50">Reasons: {toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).reasonsSummary}</p>
                 <p className="mt-1 text-xs text-emerald-50">Blockers: {toHeartbeatDecisionViewModel(academicIntelligence.heartbeatDecision).blockersSummary}</p>
+
+                <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100">Coach Signals</p>
+                  {!academicIntelligence.coachHeartbeatSignals || academicIntelligence.coachHeartbeatSignals.totalCoachSignals === 0 ? (
+                    <p className="mt-1 text-xs text-cyan-100/80">No recent Coach heartbeat signals in the last {academicIntelligence.coachHeartbeatSignals?.windowDays ?? 14} days.</p>
+                  ) : (
+                    <>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3 text-xs">
+                        <p className="rounded-lg border border-cyan-400/30 bg-slate-900/40 px-2 py-1 text-cyan-100">Recent signals: <span className="font-black">{academicIntelligence.coachHeartbeatSignals.totalCoachSignals}</span></p>
+                        <p className="rounded-lg border border-cyan-400/30 bg-slate-900/40 px-2 py-1 text-cyan-100">Understood after help: <span className="font-black">{academicIntelligence.coachHeartbeatSignals.understoodAfterHelpCount}</span></p>
+                        <p className="rounded-lg border border-cyan-400/30 bg-slate-900/40 px-2 py-1 text-cyan-100">Still struggling: <span className="font-black">{academicIntelligence.coachHeartbeatSignals.stillStrugglingCount}</span></p>
+                        <p className="rounded-lg border border-cyan-400/30 bg-slate-900/40 px-2 py-1 text-cyan-100">Catch-up signals: <span className="font-black">{academicIntelligence.coachHeartbeatSignals.needsCatchUpCount}</span></p>
+                        <p className="rounded-lg border border-cyan-400/30 bg-slate-900/40 px-2 py-1 text-cyan-100">Different style signals: <span className="font-black">{academicIntelligence.coachHeartbeatSignals.needsDifferentExplanationStyleCount}</span></p>
+                        <p className="rounded-lg border border-cyan-400/30 bg-slate-900/40 px-2 py-1 text-cyan-100">Tutor support signals: <span className="font-black">{academicIntelligence.coachHeartbeatSignals.needsLiveTutorSupportCount}</span></p>
+                      </div>
+                      <p className="mt-2 text-xs text-cyan-100/90">
+                        Top subject: <span className="font-bold">{academicIntelligence.coachHeartbeatSignals.topSubjects[0]?.value ?? "N/A"}</span>
+                        {" · "}
+                        Top skill: <span className="font-bold">{academicIntelligence.coachHeartbeatSignals.topSkillTopics[0]?.value ?? "N/A"}</span>
+                      </p>
+                    </>
+                  )}
+                </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   {(() => {

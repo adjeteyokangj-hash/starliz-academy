@@ -432,6 +432,29 @@ export type HeartbeatDecision = {
   riskLevel: HeartbeatDecisionRisk;
 };
 
+export type CoachSignalBreakdownEntry = {
+  value: string;
+  count: number;
+};
+
+export type CoachHeartbeatSignalSummary = {
+  windowDays: number;
+  totalCoachSignals: number;
+  understoodAfterHelpCount: number;
+  stillStrugglingCount: number;
+  repeatedWeakAreaCount: number;
+  needsCatchUpCount: number;
+  needsDifferentExplanationStyleCount: number;
+  needsLiveTutorSupportCount: number;
+  topSubjects: CoachSignalBreakdownEntry[];
+  topStrands: CoachSignalBreakdownEntry[];
+  topSkillTopics: CoachSignalBreakdownEntry[];
+  latestSignalAt: string | null;
+  hasCoachConcern: boolean;
+  hasTutorEscalationSignal: boolean;
+  hasCatchUpSignal: boolean;
+};
+
 export type SchoolWeekday = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
 
 export type SchoolWeekSettings = {
@@ -824,6 +847,7 @@ export type AcademicIntelligenceOutput = {
   studentId: string;
   summary: MasterySummary;
   heartbeatDecision: HeartbeatDecision;
+  coachHeartbeatSignals: CoachHeartbeatSignalSummary | null;
   learningTwin: LearningTwinProfile;
   masteryMap: MasteryMapEntry[];
   masteryExpansion: MasteryExpansionSummary;
