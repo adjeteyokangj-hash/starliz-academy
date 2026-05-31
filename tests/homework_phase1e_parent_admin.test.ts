@@ -89,6 +89,10 @@ test("parent sees child homework", () => {
   assert.equal(summary.scorePercent, 44);
   assert.deepEqual(summary.weakAreas, ["Fractions"]);
   assert.equal(summary.parentActionNeeded, true);
+  assert.equal(summary.homeworkHelpedLearningProgress, null);
+  assert.equal(summary.repeatedLowScoreOrMissedPattern, true);
+  assert.equal(summary.actionNeededReasons.includes("overdue_homework"), true);
+  assert.equal(summary.actionNeededReasons.includes("low_homework_score"), true);
 });
 
 test("admin sees student homework", () => {
@@ -97,6 +101,34 @@ test("admin sees student homework", () => {
   assert.equal(summary.status, "SUBMITTED");
   assert.equal(summary.statusCategory, "submitted");
   assert.equal(summary.outcome, "NEEDS_SUPPORT");
+  assert.equal(summary.repeatedLowScoreOrMissedPattern, false);
+});
+
+test("completed high-score homework shows progress helped", () => {
+  const summary = summarizeHomeworkBatchForParentAdmin(makeBatch({
+    status: "COMPLETED",
+    scorePercent: 88,
+    recapOnly: false,
+    sourceCompletedSessionCount: 3,
+    sourceStartedSessionCount: 3,
+    markingSummary: {
+      scorePercent: 88,
+      outcomeBand: "MASTERED",
+      correctCount: 2,
+      incorrectCount: 0,
+      reviewNeededCount: 0,
+      incompleteCount: 0,
+      answeredCount: 2,
+      totalQuestions: 2,
+      feedback: "Strong mastery shown.",
+      weakAreas: [],
+      requiresRecap: false,
+    },
+  }));
+
+  assert.equal(summary.parentActionNeeded, false);
+  assert.equal(summary.homeworkHelpedLearningProgress, true);
+  assert.deepEqual(summary.actionNeededReasons, []);
 });
 
 test("excuse unlocks next session", () => {

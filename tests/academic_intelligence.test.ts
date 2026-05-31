@@ -751,3 +751,32 @@ test("student-safe academic intelligence response does not expose coach heartbea
   const safe = toStudentSafeAcademicIntelligence(output) as Record<string, unknown>;
   assert.equal("coachHeartbeatSignals" in safe, false);
 });
+
+test("report notes surface homework action-needed patterns", () => {
+  const output = buildAcademicIntelligence(baseSource(), {
+    existingHomeworkTasks: [
+      {
+        taskId: "homework-1",
+        studentId: "student-1",
+        blockId: "Friday-0",
+        title: "Fractions recap",
+        subject: "math",
+        topic: "Fractions",
+        status: "overdue",
+        estimatedMinutes: 15,
+        dueDate: new Date().toISOString(),
+        scheduledDay: "Friday",
+        routeTarget: "/student/dashboard",
+        note: null,
+        metadata: undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ],
+  });
+
+  const parentActionNote = output.reportNotes.find((note) => note.category === "parent_admin_action")?.value ?? "";
+  assert.match(parentActionNote.toLowerCase(), /overdue/);
+  assert.match(parentActionNote.toLowerCase(), /action needed/);
+  assert.equal(output.nextRecommendedActions[0]?.toLowerCase().includes("homework overdue"), true);
+});

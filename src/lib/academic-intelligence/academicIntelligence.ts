@@ -59,11 +59,20 @@ function reportNotes(output: Pick<AcademicIntelligenceOutput,
   | "curriculumCoverage"
   | "catchUpRecommendations"
   | "assessmentRecommendations"
+  | "homeworkTasks"
   | "gcseReadiness"
 >): AcademicReportNote[] {
   const completedCatchUps = output.catchUpRecommendations.filter((task) => task.status === "completed").length;
   const unresolvedCatchUps = output.catchUpRecommendations.filter((task) => task.status !== "completed" && task.status !== "waived").length;
   const weakTopic = output.catchUpRecommendations[0]?.topic ?? output.curriculumCoverage.find((row) => row.coverageStatus === "gap_detected")?.topic ?? "None";
+  const homeworkCompleted = output.homeworkTasks.filter((task) => task.status === "completed").length;
+  const homeworkPending = output.homeworkTasks.filter((task) => task.status === "assigned" || task.status === "in_progress").length;
+  const homeworkOverdue = output.homeworkTasks.filter((task) => task.status === "overdue").length;
+  const homeworkTrend = homeworkCompleted > 0 && homeworkOverdue === 0
+    ? `Homework helped learning progress in ${homeworkCompleted} task${homeworkCompleted === 1 ? "" : "s"}.`
+    : homeworkOverdue > 0
+      ? `${homeworkOverdue} homework task${homeworkOverdue === 1 ? "" : "s"} overdue; parent/admin action needed.`
+      : `${homeworkPending} homework task${homeworkPending === 1 ? "" : "s"} pending this week.`;
 
   return [
     { category: "mastery_status", value: `${output.summary.needsCatchUpCount} topics need catch-up support.` },
@@ -83,7 +92,7 @@ function reportNotes(output: Pick<AcademicIntelligenceOutput,
         ? `${output.gcseReadiness.readinessStatus} (${output.gcseReadiness.coverageGapCount} GCSE coverage gaps).`
         : "Not applicable",
     },
-    { category: "parent_admin_action", value: "Review, schedule, and support catch-up tasks weekly." },
+    { category: "parent_admin_action", value: `${homeworkTrend} Review, schedule, and support catch-up tasks weekly.` },
   ];
 }
 
@@ -102,8 +111,12 @@ function buildAuditDrafts(output: Pick<AcademicIntelligenceOutput, "studentId" |
   }));
 }
 
-function nextActions(output: Pick<AcademicIntelligenceOutput, "catchUpRecommendations" | "assessmentRecommendations">): string[] {
+function nextActions(output: Pick<AcademicIntelligenceOutput, "catchUpRecommendations" | "assessmentRecommendations" | "homeworkTasks">): string[] {
   const actions: string[] = [];
+  const overdueHomework = output.homeworkTasks.find((task) => task.status === "overdue");
+  if (overdueHomework) {
+    actions.push(`Homework overdue: ${overdueHomework.title}`);
+  }
   const topCatchUp = output.catchUpRecommendations[0];
   if (topCatchUp) actions.push(`Start catch-up: ${topCatchUp.title}`);
   const topAssessment = output.assessmentRecommendations[0];

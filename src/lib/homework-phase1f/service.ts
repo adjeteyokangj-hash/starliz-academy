@@ -1,9 +1,13 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { writeAuditLog } from "@/lib/audit";
+import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 import { generateWeeklyHomeworkBatch } from "@/lib/homework-phase1a/generation";
 import { weekWindowInTimezone } from "@/lib/homework-phase1a/eligibility";
 import type { WeeklyWeaknessCandidate } from "@/lib/homework-phase1a/types";
 import { readSchoolWeekSettingsFromProfileJson } from "@/lib/academic-intelligence/schoolWeekSettings";
+import { isWeeklyHomeworkPhase1GEnabled } from "@/lib/homework-phase1g/config";
+import { toHeartbeatSignalRecords } from "@/lib/homework-phase1g/intelligence";
 import {
   hasPausedOrHolidayNote,
   isStudentInAllowedHomeworkCohort,
@@ -296,6 +300,9 @@ async function persistGeneratedBatch(payload: PersistPayload): Promise<"created"
   const { batch, auditEvents } = payload.generation;
   const weekStart = new Date(`${batch.weekStartIso}T00:00:00.000Z`);
   const weekEnd = new Date(`${batch.weekEndIso}T23:59:59.999Z`);
+  const now = new Date();
+  const phase1gEnabled = isWeeklyHomeworkPhase1GEnabled();
+  const leadQuestion = batch.questions[0];
   try {
     await phase1fPrisma.$transaction(async (tx) => {
       const created = await tx.homeworkBatch.create({
@@ -312,7 +319,7 @@ async function persistGeneratedBatch(payload: PersistPayload): Promise<"created"
           plannedMinutes: batch.plannedMinutes,
           metadataJson: JSON.stringify({
             generatedBy: "weekly-homework-phase1f",
-            generatedAtIso: new Date().toISOString(),
+            generatedAtIso: now.toISOString(),
           }),
           questions: {
             create: batch.questions.map((question, index) => ({
@@ -345,6 +352,35 @@ async function persistGeneratedBatch(payload: PersistPayload): Promise<"created"
         })),
       });
     });
+
+    if (phase1gEnabled) {
+      const signals = toHeartbeatSignalRecords({
+        featureEnabled: true,
+        studentId: payload.studentId,
+        now,
+        status: batch.status,
+        scorePercent: null,
+        reviewNeededCount: 0,
+        requiresRecap: false,
+        context: {
+          subject: leadQuestion?.subject ?? null,
+          topic: leadQuestion?.topic ?? null,
+          skill: leadQuestion?.skill ?? null,
+        },
+      });
+
+      await Promise.all(signals.map((signal) => writeAuditLog({
+        action: signal.action,
+        entityType: signal.entityType,
+        entityId: signal.entityId,
+        metadata: signal.metadata,
+      })));
+
+      await invalidateAcademicIntelligenceSnapshot({
+        studentId: payload.studentId,
+        reason: "manual_refresh",
+      });
+    }
 
     return "created";
   } catch (error) {

@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { writeAuditLog } from "@/lib/audit";
+import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 import { evaluateHomeworkSessionGate } from "@/lib/homework-phase1a/gate";
 import {
   applyAdminHomeworkAction,
@@ -15,6 +17,12 @@ import {
   unavailableHomeworkOpenAnswerAiBoundary,
   type HomeworkMarkingSummary,
 } from "@/lib/homework-phase1d/marking";
+import { isWeeklyHomeworkPhase1GEnabled } from "@/lib/homework-phase1g/config";
+import {
+  buildHomeworkMasteryPlan,
+  buildHomeworkVisibilitySummary,
+  toHeartbeatSignalRecords,
+} from "@/lib/homework-phase1g/intelligence";
 
 type HomeworkQuestionRecord = {
   id: string;
@@ -106,6 +114,10 @@ type HomeworkPhase1BPrisma = {
   };
   homeworkAuditLog: {
     createMany(args: { data: HomeworkAuditLogCreateManyInput[] }): Promise<unknown>;
+  };
+  weakArea: {
+    upsert(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
   };
 };
 
@@ -201,6 +213,9 @@ export type HomeworkStatusSummaryView = {
   outcome: string;
   weakAreas: string[];
   parentActionNeeded: boolean;
+  homeworkHelpedLearningProgress: boolean | null;
+  repeatedLowScoreOrMissedPattern: boolean;
+  actionNeededReasons: string[];
   dueAtIso: string;
   weekStartIso: string;
   weekEndIso: string;
@@ -245,6 +260,74 @@ function parseWeakArea(value: string | null | undefined): string | null {
   return null;
 }
 
+function normalizeWeakArea(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
+
+function toMasteryTargets(input: {
+  questions: HomeworkQuestionRecord[];
+  answers: Array<{ questionId: string; weakArea: string | null }>;
+}): Array<{ subject: string; skillFocus: string }> {
+  const questionById = new Map(input.questions.map((question) => [question.id, question]));
+  const seen = new Set<string>();
+  const targets: Array<{ subject: string; skillFocus: string }> = [];
+
+  for (const answer of input.answers) {
+    const question = questionById.get(answer.questionId);
+    if (!question) continue;
+    const skillFocus = normalizeWeakArea(answer.weakArea)
+      || normalizeWeakArea(question.skill)
+      || normalizeWeakArea(question.topic);
+    if (!skillFocus) continue;
+    const key = `${question.subject.toLowerCase()}::${skillFocus.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push({
+      subject: question.subject,
+      skillFocus,
+    });
+  }
+
+  return targets;
+}
+
+async function emitHomeworkHeartbeatSignals(input: {
+  studentId: string;
+  actorUserId?: string;
+  now: Date;
+  featureEnabled: boolean;
+  status: string;
+  scorePercent: number | null;
+  reviewNeededCount: number;
+  requiresRecap: boolean;
+  context: { subject: string | null; topic: string | null; skill: string | null; yearGroup?: string | null };
+  includeParentAdminOverride?: boolean;
+  includeExcused?: boolean;
+}): Promise<void> {
+  const records = toHeartbeatSignalRecords({
+    featureEnabled: input.featureEnabled,
+    studentId: input.studentId,
+    now: input.now,
+    status: input.status,
+    scorePercent: input.scorePercent,
+    reviewNeededCount: input.reviewNeededCount,
+    requiresRecap: input.requiresRecap,
+    context: input.context,
+    includeParentAdminOverride: input.includeParentAdminOverride,
+    includeExcused: input.includeExcused,
+  });
+
+  if (!records.length) return;
+
+  await Promise.all(records.map((record) => writeAuditLog({
+    actorUserId: input.actorUserId,
+    action: record.action,
+    entityType: record.entityType,
+    entityId: record.entityId,
+    metadata: record.metadata,
+  })));
+}
+
 function toStatusCategory(status: HomeworkLifecycleStatus): HomeworkStatusCategory {
   if (status === "EXCUSED") return "excused";
   if (status === "OVERDUE") return "overdue";
@@ -271,6 +354,15 @@ export function summarizeHomeworkBatchForParentAdmin(batch: HomeworkBatchView): 
     || batch.status === "REVIEW_NEEDED"
     || (typeof batch.scorePercent === "number" && batch.scorePercent < 50);
 
+  const visibility = buildHomeworkVisibilitySummary({
+    status: batch.status,
+    scorePercent: batch.scorePercent,
+    reviewNeededCount: batch.markingSummary?.reviewNeededCount ?? 0,
+    recapOnly: batch.recapOnly,
+    sourceCompletedSessionCount: batch.sourceCompletedSessionCount,
+    sourceStartedSessionCount: batch.sourceStartedSessionCount,
+  });
+
   return {
     studentId: batch.studentId,
     batchId: batch.id,
@@ -280,6 +372,9 @@ export function summarizeHomeworkBatchForParentAdmin(batch: HomeworkBatchView): 
     outcome,
     weakAreas,
     parentActionNeeded,
+    homeworkHelpedLearningProgress: visibility.homeworkHelpedLearningProgress,
+    repeatedLowScoreOrMissedPattern: visibility.repeatedLowScoreOrMissedPattern,
+    actionNeededReasons: visibility.actionNeededReasons,
     dueAtIso: batch.extendedDueAt ?? batch.weekEnd,
     weekStartIso: batch.weekStart,
     weekEndIso: batch.weekEnd,
@@ -470,6 +565,7 @@ export async function saveStudentHomeworkDraft(input: {
   actorUserId?: string;
 }): Promise<HomeworkBatchView> {
   assertWeeklyHomeworkPhase1BEnabled();
+  const phase1gEnabled = isWeeklyHomeworkPhase1GEnabled();
 
   const batch = await fetchHomeworkBatchRecord(input.studentId, input.batchId);
   if (!batch) throw new HomeworkPhase1BError("Homework batch not found.", 404);
@@ -525,6 +621,31 @@ export async function saveStudentHomeworkDraft(input: {
 
   const updated = await fetchHomeworkBatchRecord(input.studentId, batch.id);
   if (!updated) throw new HomeworkPhase1BError("Homework batch not found after update.", 404);
+
+  if (phase1gEnabled) {
+    const startedQuestion = updated.questions.find((question: HomeworkQuestionRecord) => question.id === input.questionId) ?? null;
+    await emitHomeworkHeartbeatSignals({
+      studentId: input.studentId,
+      actorUserId: input.actorUserId,
+      now,
+      featureEnabled: true,
+      status: updated.status,
+      scorePercent: updated.scorePercent,
+      reviewNeededCount: updated.answers.filter((answer: HomeworkAnswerRecord) => answer.reviewNeeded).length,
+      requiresRecap: updated.recapOnly,
+      context: {
+        subject: startedQuestion?.subject ?? null,
+        topic: startedQuestion?.topic ?? null,
+        skill: startedQuestion?.skill ?? null,
+      },
+    });
+
+    await invalidateAcademicIntelligenceSnapshot({
+      studentId: input.studentId,
+      reason: "manual_refresh",
+    });
+  }
+
   return toBatchView(updated);
 }
 
@@ -534,6 +655,7 @@ export async function submitStudentHomework(input: {
   actorUserId?: string;
 }): Promise<HomeworkBatchView> {
   assertWeeklyHomeworkPhase1BEnabled();
+  const phase1gEnabled = isWeeklyHomeworkPhase1GEnabled();
 
   const batch = await fetchHomeworkBatchRecord(input.studentId, input.batchId);
   if (!batch) throw new HomeworkPhase1BError("Homework batch not found.", 404);
@@ -567,6 +689,20 @@ export async function submitStudentHomework(input: {
     marking.summary.reviewNeededCount > 0,
   );
   const batchMetadata = parseBatchMetadata(batch.metadataJson);
+  const masteryPlan = buildHomeworkMasteryPlan({
+    featureEnabled: phase1gEnabled,
+    status: markTransition.state.status,
+    scorePercent: marking.summary.scorePercent,
+    reviewNeededCount: marking.summary.reviewNeededCount,
+    requiresRecap: marking.summary.requiresRecap,
+    targets: toMasteryTargets({
+      questions: batch.questions,
+      answers: marking.answers.map((answer) => ({
+        questionId: answer.questionId,
+        weakArea: answer.weakArea,
+      })),
+    }),
+  });
 
   await prisma.$transaction(async (tx) => {
     const homeworkTx = tx as unknown as HomeworkPhase1BTransaction;
@@ -620,10 +756,114 @@ export async function submitStudentHomework(input: {
         },
       }))],
     });
+
+    if (phase1gEnabled) {
+      await Promise.all(masteryPlan.resolveTargets.map((target) => homeworkTx.weakArea.updateMany({
+        where: {
+          studentId: input.studentId,
+          subject: target.subject,
+          skillFocus: target.skillFocus,
+          status: "active",
+        },
+        data: {
+          status: "resolved",
+          weaknessType: "homework_resolved",
+          accuracy: Math.max(75, marking.summary.scorePercent ?? 75),
+          attemptsCount: {
+            increment: 1,
+          },
+          metadataJson: serializeJsonValue({
+            source: "weekly_homework_phase1g",
+            resolution: "strong_homework_result",
+            scorePercent: marking.summary.scorePercent,
+            reviewedAtIso: now.toISOString(),
+          }),
+          lastDetectedAt: now,
+        },
+      })));
+
+      await Promise.all(masteryPlan.activateTargets.map((target) => homeworkTx.weakArea.upsert({
+        where: {
+          studentId_subject_skillFocus: {
+            studentId: input.studentId,
+            subject: target.subject,
+            skillFocus: target.skillFocus,
+          },
+        },
+        create: {
+          studentId: input.studentId,
+          subject: target.subject,
+          keyStage: null,
+          yearGroup: null,
+          skillFocus: target.skillFocus,
+          weaknessType: target.reason,
+          accuracy: target.accuracy,
+          attemptsCount: 1,
+          status: "active",
+          metadataJson: serializeJsonValue({
+            source: "weekly_homework_phase1g",
+            reason: target.reason,
+            scorePercent: marking.summary.scorePercent,
+            reviewNeededCount: marking.summary.reviewNeededCount,
+            recapOnlyPath: masteryPlan.recapOnlyPath,
+            detectedAtIso: now.toISOString(),
+          }),
+          lastDetectedAt: now,
+        },
+        update: {
+          status: "active",
+          weaknessType: target.reason,
+          accuracy: target.accuracy,
+          attemptsCount: {
+            increment: 1,
+          },
+          metadataJson: serializeJsonValue({
+            source: "weekly_homework_phase1g",
+            reason: target.reason,
+            scorePercent: marking.summary.scorePercent,
+            reviewNeededCount: marking.summary.reviewNeededCount,
+            recapOnlyPath: masteryPlan.recapOnlyPath,
+            detectedAtIso: now.toISOString(),
+          }),
+          lastDetectedAt: now,
+        },
+      })));
+    }
   });
 
   const updated = await fetchHomeworkBatchRecord(input.studentId, batch.id);
   if (!updated) throw new HomeworkPhase1BError("Homework batch not found after submit.", 404);
+
+  if (phase1gEnabled) {
+    const leadWeakArea = marking.summary.weakAreas[0] ?? null;
+    const leadQuestion = batch.questions.find((question: HomeworkQuestionRecord) => {
+      if (!leadWeakArea) return true;
+      return normalizeWeakArea(question.skill) === normalizeWeakArea(leadWeakArea)
+        || normalizeWeakArea(question.topic) === normalizeWeakArea(leadWeakArea);
+    }) ?? null;
+
+    await emitHomeworkHeartbeatSignals({
+      studentId: input.studentId,
+      actorUserId: input.actorUserId,
+      now,
+      featureEnabled: true,
+      status: markTransition.state.status,
+      scorePercent: marking.summary.scorePercent,
+      reviewNeededCount: marking.summary.reviewNeededCount,
+      requiresRecap: masteryPlan.recapOnlyPath,
+      context: {
+        subject: leadQuestion?.subject ?? null,
+        topic: leadQuestion?.topic ?? leadWeakArea,
+        skill: leadQuestion?.skill ?? leadWeakArea,
+      },
+    });
+
+    await invalidateAcademicIntelligenceSnapshot({
+      studentId: input.studentId,
+      reason: "manual_refresh",
+    });
+  }
+
   return toBatchView(updated);
 }
 
@@ -637,6 +877,7 @@ export async function applyHomeworkOverrideAction(input: {
   actorUserId?: string;
 }): Promise<HomeworkBatchView> {
   assertWeeklyHomeworkPhase1BEnabled();
+  const phase1gEnabled = isWeeklyHomeworkPhase1GEnabled();
 
   const batch = await fetchHomeworkBatchRecord(input.studentId, input.batchId);
   if (!batch) throw new HomeworkPhase1BError("Homework batch not found.", 404);
@@ -714,6 +955,32 @@ export async function applyHomeworkOverrideAction(input: {
 
   const updated = await fetchHomeworkBatchRecord(input.studentId, batch.id);
   if (!updated) throw new HomeworkPhase1BError("Homework batch not found after override.", 404);
+
+  if (phase1gEnabled) {
+    await emitHomeworkHeartbeatSignals({
+      studentId: input.studentId,
+      actorUserId: input.actorUserId,
+      now,
+      featureEnabled: true,
+      status: updated.status,
+      scorePercent: updated.scorePercent,
+      reviewNeededCount: updated.answers.filter((answer: HomeworkAnswerRecord) => answer.reviewNeeded).length,
+      requiresRecap: updated.recapOnly,
+      includeParentAdminOverride: input.action === "override" || input.action === "unlock",
+      includeExcused: input.action === "excuse",
+      context: {
+        subject: updated.questions[0]?.subject ?? null,
+        topic: updated.questions[0]?.topic ?? null,
+        skill: updated.questions[0]?.skill ?? null,
+      },
+    });
+
+    await invalidateAcademicIntelligenceSnapshot({
+      studentId: input.studentId,
+      reason: "manual_refresh",
+    });
+  }
+
   return toBatchView(updated);
 }
 
