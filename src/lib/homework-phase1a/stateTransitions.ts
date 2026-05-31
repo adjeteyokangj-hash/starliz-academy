@@ -1,6 +1,11 @@
 import type { HomeworkAuditEvent, HomeworkBatchState } from "@/lib/homework-phase1a/types";
 
-export type AdminHomeworkAction = "excuse" | "override" | "extend" | "cancel";
+export type AdminHomeworkAction = "excuse" | "override" | "unlock" | "extend" | "reduce" | "regenerate" | "cancel";
+
+type AdminHomeworkActionOptions = {
+  reduceBy?: number;
+  regenerateQuestionIds?: string[];
+};
 
 function iso(now: Date): string {
   return now.toISOString();
@@ -148,8 +153,9 @@ export function applyAdminHomeworkAction(
   now: Date,
   action: AdminHomeworkAction,
   reason?: string,
+  options?: AdminHomeworkActionOptions,
 ): { ok: true; state: HomeworkBatchState; audit: HomeworkAuditEvent[] } | { ok: false; error: string; state: HomeworkBatchState } {
-  if ((action === "override" || action === "excuse" || action === "extend" || action === "cancel") && !reason?.trim()) {
+  if ((action === "override" || action === "excuse" || action === "unlock" || action === "regenerate") && !reason?.trim()) {
     return {
       ok: false,
       error: "Reason is required for parent/admin homework actions.",
@@ -162,6 +168,14 @@ export function applyAdminHomeworkAction(
       ok: true,
       state: { ...state, status: "OVERRIDDEN", recapOnly: false },
       audit: [createEvent("override", now, reason)],
+    };
+  }
+
+  if (action === "unlock") {
+    return {
+      ok: true,
+      state: { ...state, status: "OVERRIDDEN", recapOnly: false },
+      audit: [createEvent("unlock", now, reason)],
     };
   }
 
@@ -178,6 +192,70 @@ export function applyAdminHomeworkAction(
       ok: true,
       state: { ...state, status: "CANCELLED", recapOnly: false },
       audit: [createEvent("cancel", now, reason)],
+    };
+  }
+
+  if (action === "reduce") {
+    if (state.status !== "GENERATED") {
+      return {
+        ok: false,
+        error: "Homework can only be reduced before it has started.",
+        state,
+      };
+    }
+
+    const reduceBy = Math.max(1, Math.floor(options?.reduceBy ?? 1));
+    const nextRequiredCount = Math.max(1, state.requiredQuestionIds.length - reduceBy);
+    const nextRequiredIds = state.requiredQuestionIds.slice(0, nextRequiredCount);
+
+    return {
+      ok: true,
+      state: {
+        ...state,
+        requiredQuestionIds: nextRequiredIds,
+      },
+      audit: [
+        createEvent("reduce", now, reason, {
+          reducedBy: reduceBy,
+          previousRequiredCount: state.requiredQuestionIds.length,
+          nextRequiredCount,
+        }),
+      ],
+    };
+  }
+
+  if (action === "regenerate") {
+    if (state.status !== "GENERATED") {
+      return {
+        ok: false,
+        error: "Homework cannot be regenerated once it has started.",
+        state,
+      };
+    }
+
+    const nextRequiredQuestionIds = options?.regenerateQuestionIds?.length
+      ? [...options.regenerateQuestionIds]
+      : [...state.requiredQuestionIds];
+
+    return {
+      ok: true,
+      state: {
+        ...state,
+        status: "GENERATED",
+        requiredQuestionIds: nextRequiredQuestionIds,
+        answeredQuestionIds: [],
+        frozenAtIso: null,
+        submittedAtIso: null,
+        markedAtIso: null,
+        scorePercent: null,
+        reviewNeeded: false,
+        recapOnly: false,
+      },
+      audit: [
+        createEvent("regenerate", now, reason, {
+          requiredCount: nextRequiredQuestionIds.length,
+        }),
+      ],
     };
   }
 

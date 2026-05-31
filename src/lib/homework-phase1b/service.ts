@@ -93,11 +93,16 @@ type HomeworkAuditLogCreateManyInput = {
 type HomeworkPhase1BPrisma = {
   homeworkBatch: {
     findFirst(args: unknown): Promise<HomeworkBatchRecordResolved | null>;
+    findMany(args: unknown): Promise<Array<{ id: string; studentId: string }>>;
     update(args: unknown): Promise<unknown>;
   };
   homeworkAnswer: {
     upsert(args: unknown): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
+  };
+  homeworkQuestion: {
+    updateMany(args: unknown): Promise<unknown>;
   };
   homeworkAuditLog: {
     createMany(args: { data: HomeworkAuditLogCreateManyInput[] }): Promise<unknown>;
@@ -132,6 +137,7 @@ type HomeworkAnswerView = {
   isCorrect: boolean | null;
   score: number | null;
   feedback?: string | null;
+  weakArea?: string | null;
   aiConfidence?: number | null;
   reviewNeeded: boolean;
 };
@@ -184,6 +190,22 @@ export type HomeworkBatchView = {
   questions: HomeworkQuestionView[];
 };
 
+export type HomeworkStatusCategory = "pending" | "in_progress" | "submitted" | "completed" | "excused" | "overdue";
+
+export type HomeworkStatusSummaryView = {
+  studentId: string;
+  batchId: string;
+  status: HomeworkLifecycleStatus;
+  statusCategory: HomeworkStatusCategory;
+  scorePercent: number | null;
+  outcome: string;
+  weakAreas: string[];
+  parentActionNeeded: boolean;
+  dueAtIso: string;
+  weekStartIso: string;
+  weekEndIso: string;
+};
+
 function parseJsonValue(value: string | null | undefined): unknown {
   if (!value) return null;
   try {
@@ -212,6 +234,56 @@ function parseFeedbackText(value: string | null | undefined): string | null {
     return (parsed as { text: string }).text;
   }
   return null;
+}
+
+function parseWeakArea(value: string | null | undefined): string | null {
+  const parsed = parseJsonValue(value);
+  if (typeof parsed === "object" && parsed !== null && "weakArea" in parsed) {
+    const weakArea = (parsed as { weakArea?: unknown }).weakArea;
+    return typeof weakArea === "string" && weakArea.trim() ? weakArea.trim() : null;
+  }
+  return null;
+}
+
+function toStatusCategory(status: HomeworkLifecycleStatus): HomeworkStatusCategory {
+  if (status === "EXCUSED") return "excused";
+  if (status === "OVERDUE") return "overdue";
+  if (status === "SUBMITTED" || status === "MARKED" || status === "REVIEW_NEEDED") return "submitted";
+  if (status === "COMPLETED" || status === "OVERRIDDEN") return "completed";
+  if (status === "STARTED" || status === "IN_PROGRESS") return "in_progress";
+  return "pending";
+}
+
+export function summarizeHomeworkBatchForParentAdmin(batch: HomeworkBatchView): HomeworkStatusSummaryView {
+  const weakAreas = Array.from(
+    new Set(
+      batch.questions
+        .map((question) => question.answer.weakArea)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+
+  const outcome = batch.markingSummary?.outcomeBand
+    ?? (batch.status === "COMPLETED" ? "completed" : batch.status === "EXCUSED" ? "excused" : batch.status.toLowerCase());
+
+  const parentActionNeeded =
+    batch.status === "OVERDUE"
+    || batch.status === "REVIEW_NEEDED"
+    || (typeof batch.scorePercent === "number" && batch.scorePercent < 50);
+
+  return {
+    studentId: batch.studentId,
+    batchId: batch.id,
+    status: batch.status,
+    statusCategory: toStatusCategory(batch.status),
+    scorePercent: batch.scorePercent,
+    outcome,
+    weakAreas,
+    parentActionNeeded,
+    dueAtIso: batch.extendedDueAt ?? batch.weekEnd,
+    weekStartIso: batch.weekStart,
+    weekEndIso: batch.weekEnd,
+  };
 }
 
 function normalizeStatus(value: string): HomeworkLifecycleStatus {
@@ -336,6 +408,7 @@ function toBatchView(batch: NonNullable<HomeworkBatchRecord>): HomeworkBatchView
           isCorrect: answer?.isCorrect ?? null,
           score: answer?.score ?? null,
           feedback: parseFeedbackText(answer?.feedbackJson),
+          weakArea: parseWeakArea(answer?.metadataJson),
           aiConfidence: answer?.aiConfidence ?? null,
           reviewNeeded: answer?.reviewNeeded ?? false,
         },
@@ -557,8 +630,10 @@ export async function submitStudentHomework(input: {
 export async function applyHomeworkOverrideAction(input: {
   studentId: string;
   batchId: string;
-  action: Extract<AdminHomeworkAction, "override" | "excuse">;
-  reason: string;
+  action: Extract<AdminHomeworkAction, "override" | "excuse" | "unlock" | "extend" | "reduce" | "regenerate">;
+  reason?: string;
+  reduceBy?: number;
+  extendToIso?: string;
   actorUserId?: string;
 }): Promise<HomeworkBatchView> {
   assertWeeklyHomeworkPhase1BEnabled();
@@ -567,10 +642,25 @@ export async function applyHomeworkOverrideAction(input: {
   if (!batch) throw new HomeworkPhase1BError("Homework batch not found.", 404);
 
   const now = new Date();
-  const transition = applyAdminHomeworkAction(toBatchState(batch), now, input.action, input.reason);
+  const transition = applyAdminHomeworkAction(toBatchState(batch), now, input.action, input.reason, {
+    reduceBy: input.reduceBy,
+  });
   if (!transition.ok) {
     throw new HomeworkPhase1BError(transition.error, 400);
   }
+
+  const nextExtendedDueAt = input.action === "extend"
+    ? (input.extendToIso ? new Date(input.extendToIso) : new Date(batch.weekEnd.getTime() + 24 * 60 * 60 * 1000))
+    : batch.extendedDueAt;
+
+  const requiredQuestionIds = new Set(transition.state.requiredQuestionIds);
+  const previousRequiredIds = new Set(
+    batch.questions
+      .filter((question: HomeworkQuestionRecord) => question.required)
+      .map((question: HomeworkQuestionRecord) => question.id),
+  );
+  const requiredIdsChanged = previousRequiredIds.size !== requiredQuestionIds.size
+    || Array.from(requiredQuestionIds).some((id) => !previousRequiredIds.has(id));
 
   await prisma.$transaction(async (tx) => {
     const homeworkTx = tx as unknown as HomeworkPhase1BTransaction;
@@ -578,12 +668,42 @@ export async function applyHomeworkOverrideAction(input: {
       where: { id: batch.id },
       data: {
         status: transition.state.status,
-        completedAt: now,
-        overrideReason: input.action === "override" ? input.reason : batch.overrideReason,
-        excusedReason: input.action === "excuse" ? input.reason : batch.excusedReason,
+        completedAt: ["override", "unlock", "excuse"].includes(input.action) ? now : batch.completedAt,
+        overrideReason: (input.action === "override" || input.action === "unlock") ? (input.reason ?? null) : batch.overrideReason,
+        excusedReason: input.action === "excuse" ? (input.reason ?? null) : batch.excusedReason,
+        extendedDueAt: input.action === "extend" ? nextExtendedDueAt : batch.extendedDueAt,
         recapOnly: false,
       },
     });
+
+    if (requiredIdsChanged) {
+      await Promise.all(
+        batch.questions.map((question: HomeworkQuestionRecord) => homeworkTx.homeworkQuestion.updateMany({
+          where: { id: question.id },
+          data: { required: requiredQuestionIds.has(question.id) },
+        })),
+      );
+    }
+
+    if (input.action === "regenerate") {
+      await homeworkTx.homeworkAnswer.updateMany({
+        where: { batchId: batch.id, studentId: input.studentId },
+        data: {
+          draftAnswerJson: null,
+          submittedAnswerJson: null,
+          isAnswered: false,
+          answeredAt: null,
+          submittedAt: null,
+          markingStatus: "not_marked",
+          isCorrect: null,
+          score: null,
+          feedbackJson: null,
+          aiConfidence: null,
+          reviewNeeded: false,
+          metadataJson: null,
+        },
+      });
+    }
 
     await appendAuditLogs(homeworkTx, {
       batchId: batch.id,
@@ -602,4 +722,10 @@ export function toHomeworkPhase1BResponseError(error: unknown): { statusCode: nu
     return { statusCode: error.statusCode, message: error.message };
   }
   return { statusCode: 500, message: error instanceof Error ? error.message : "Unexpected weekly homework error." };
+}
+
+export async function getHomeworkStatusSummaryForStudent(studentId: string): Promise<HomeworkStatusSummaryView | null> {
+  assertWeeklyHomeworkPhase1BEnabled();
+  const batch = await getCurrentHomeworkBatchView(studentId);
+  return batch ? summarizeHomeworkBatchForParentAdmin(batch) : null;
 }

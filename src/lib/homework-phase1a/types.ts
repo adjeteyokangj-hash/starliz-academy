@@ -22,7 +22,10 @@ export type HomeworkAuditAction =
   | "mark"
   | "excuse"
   | "override"
+  | "unlock"
   | "extend"
+  | "reduce"
+  | "regenerate"
   | "cancel";
 
 export type HomeworkAuditEvent = {
