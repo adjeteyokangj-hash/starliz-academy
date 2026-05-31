@@ -74,6 +74,7 @@ export default function ContentLibraryPage() {
   const [pendingResendIds, setPendingResendIds] = useState<string[] | null>(null);
   const [localDuplicateByContent, setLocalDuplicateByContent] = useState<Record<string, Set<string>>>({});
   const [viewModalContent, setViewModalContent] = useState<ContentItem | null>(null);
+  const [overrideAssigning, setOverrideAssigning] = useState(false);
 
   const fetchData = useCallback(async () => {
     const [contentRes, studentsRes] = await Promise.all([
@@ -215,7 +216,7 @@ export default function ContentLibraryPage() {
     if (!selectedContent) return [] as StudentAssignmentCandidate[];
     const localDuplicates = localDuplicateByContent[selectedContent.id] ?? new Set<string>();
     return filteredStudents
-      .map((student) => evaluateAssignmentCandidate(selectedContent, student, localDuplicates))
+      .map((student) => evaluateAssignmentCandidate(selectedContent, student, localDuplicates, false))
       .sort((a, b) => b.recommendationScore - a.recommendationScore || a.student.name.localeCompare(b.student.name));
   }, [selectedContent, filteredStudents, localDuplicateByContent]);
 
@@ -265,6 +266,12 @@ export default function ContentLibraryPage() {
 
   async function applyAssignment(ids: string[], modeLabel: string, resend = false) {
     if (!selectedContent || ids.length === 0) return;
+    return applyAssignmentWithOptions(ids, modeLabel, { resend });
+  }
+
+  async function applyAssignmentWithOptions(ids: string[], modeLabel: string, options: { resend?: boolean; adminOverride?: boolean; overrideReason?: string } = {}) {
+    if (!selectedContent || ids.length === 0) return;
+    const { resend = false, adminOverride = false, overrideReason } = options;
 
     setAssigning(true);
     setMessage(null);
@@ -272,7 +279,12 @@ export default function ContentLibraryPage() {
       const response = await fetch("/api/admin/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contentId: selectedContent.id, studentIds: ids, resend }),
+        body: JSON.stringify({
+          contentId: selectedContent.id,
+          studentIds: ids,
+          resend,
+          ...(adminOverride ? { adminOverride: true, overrideReason: overrideReason ?? "Admin manual assignment after Level Finder review" } : {}),
+        }),
       });
       const payload = await response.json() as AssignmentPayload;
 
@@ -342,6 +354,17 @@ export default function ContentLibraryPage() {
     if (!pendingAction) return;
     await applyAssignment([pendingAction.candidate.student.id], "single");
     setPendingAction(null);
+  }
+
+  async function handleOverrideAssign(studentId: string, overrideReason: string) {
+    if (!selectedContent) return;
+    setOverrideAssigning(true);
+    setMessage(null);
+    try {
+      await applyAssignmentWithOptions([studentId], "override", { adminOverride: true, overrideReason });
+    } finally {
+      setOverrideAssigning(false);
+    }
   }
 
   async function handleReview(item: ContentItem) {
@@ -534,6 +557,8 @@ export default function ContentLibraryPage() {
         onSelectStudent={setSelectedStudentId}
         onAssignSelected={openSingleAssignment}
         onAssignByMode={openModeAssignment}
+        onOverrideAssign={(studentId, overrideReason) => void handleOverrideAssign(studentId, overrideReason)}
+        overrideAssigning={overrideAssigning}
       />
 
       <AssignmentConfirmModal

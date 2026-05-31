@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { AssignMode, ContentItem, StudentAssignmentCandidate } from "./types";
 import { getContentJsonSummary, getContentMeta } from "./utils";
 import StudentAssignmentColumn from "./StudentAssignmentColumn";
@@ -17,9 +18,13 @@ type Props = {
   onSelectStudent: (studentId: string) => void;
   onAssignSelected: () => void;
   onAssignByMode: (mode: AssignMode) => void;
+  onOverrideAssign?: (studentId: string, overrideReason: string) => void;
+  overrideAssigning?: boolean;
 };
 
 export default function AssignmentPanel(props: Props) {
+    const [overrideReason, setOverrideReason] = useState("Admin manual assignment after Level Finder review");
+    const overrideEligibleBlocked = props.blocked.filter((b) => b.overrideEligible);
   if (!props.selectedContent) {
     return (
       <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-sm text-slate-400">
@@ -124,7 +129,32 @@ export default function AssignmentPanel(props: Props) {
         onToggleExpanded={props.onToggleBlocked}
         onExport={() => {}}
         contentTitle={meta.title}
+        onOverrideAssign={props.onOverrideAssign
+          ? (studentId) => props.onOverrideAssign!(studentId, overrideReason)
+          : undefined}
+        overrideAssigning={props.overrideAssigning}
       />
+
+      {overrideEligibleBlocked.length > 0 && props.onOverrideAssign ? (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2">
+          <p className="text-xs font-black text-amber-200">
+            Admin Override — {overrideEligibleBlocked.length} student{overrideEligibleBlocked.length === 1 ? "" : "s"} blocked by year/key-stage/age mismatch
+          </p>
+          <p className="text-xs text-amber-300/70">
+            Reviewed/published content can be manually assigned despite curriculum mismatch. Provide a reason — it will be stored in the audit log.
+          </p>
+          <label className="block">
+            <span className="text-xs font-bold text-amber-200">Override reason</span>
+            <input
+              type="text"
+              value={overrideReason}
+              onChange={(e) => setOverrideReason(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-amber-500/40 bg-slate-900 px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              placeholder="Admin manual assignment after Level Finder review"
+            />
+          </label>
+        </div>
+      ) : null}
 
       <div className="grid gap-2 text-xs text-slate-400 md:grid-cols-3">
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3">

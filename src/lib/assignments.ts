@@ -201,6 +201,8 @@ function placementSupportsAssignment(input: {
 export async function getAssignmentSafetyAndRecommendation(input: {
   studentId: string;
   contentId: string;
+  adminOverride?: boolean;
+  overrideReason?: string;
 }): Promise<
   | {
     safe: true;
@@ -308,7 +310,8 @@ export async function getAssignmentSafetyAndRecommendation(input: {
 
   if (contentSubject !== "unknown") {
     const inferredLegacyType = mapSubjectToLegacyContentType(contentSubject);
-    if (inferredLegacyType && inferredLegacyType !== content.contentType) {
+    const contentLegacyType = mapSubjectToLegacyContentType(content.contentType);
+    if (inferredLegacyType && contentLegacyType && inferredLegacyType !== contentLegacyType) {
       return {
         safe: false,
         reason: `Content subject/type mismatch detected (${contentSubject} vs ${content.contentType}).`,
@@ -318,7 +321,11 @@ export async function getAssignmentSafetyAndRecommendation(input: {
   }
 
   if (!["reviewed", "published"].includes(content.status)) {
-    return { safe: false, reason: "Only Reviewed or Published content can be assigned.", meta };
+    return {
+      safe: false,
+      reason: "Only Reviewed or Published content can be assigned. Use the Review action first.",
+      meta,
+    };
   }
 
   if (!isValidContentJson(content.contentJson)) {
@@ -326,11 +333,19 @@ export async function getAssignmentSafetyAndRecommendation(input: {
   }
 
   if (meta.schoolId && studentSchoolIds.length > 0 && !studentSchoolIds.includes(meta.schoolId)) {
-    return { safe: false, reason: "Student and content belong to different schools and cannot be assigned.", meta };
+    return {
+      safe: false,
+      reason: "Student and content belong to different schools and cannot be assigned.",
+      meta,
+    };
   }
 
   if (meta.schoolId && studentSchoolIds.length === 0) {
-    return { safe: false, reason: "Student has no active school context for this school-scoped content.", meta };
+    return {
+      safe: false,
+      reason: "Student has no active school context for this school-scoped content.",
+      meta,
+    };
   }
 
   const placementSupported = placementSupportsAssignment({
@@ -347,11 +362,15 @@ export async function getAssignmentSafetyAndRecommendation(input: {
   const studentYearOrdinal = yearGroupToOrdinal(studentYearGroup);
   if (contentYearRange && studentYearOrdinal !== null && (studentYearOrdinal < contentYearRange.minOrdinal || studentYearOrdinal > contentYearRange.maxOrdinal)) {
     if (!placementSupported) {
-      return {
-        safe: false,
-        reason: `This content is for ${contentYearRange.min}${contentYearRange.min !== contentYearRange.max ? `-${contentYearRange.max}` : ""} / ${normalizedContentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
-        meta,
-      };
+        if (!input.adminOverride) {
+          return {
+            safe: false,
+            reason: `This content is for ${contentYearRange.min}${contentYearRange.min !== contentYearRange.max ? `-${contentYearRange.max}` : ""} / ${normalizedContentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
+            meta,
+          };
+        }
+        meta.warningReason = input.overrideReason ?? "Admin manual assignment after Level Finder review";
+        meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "admin_year_override"]));
     }
     meta.warningReason = placementWarning;
     meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "year_mismatch"]));
@@ -359,22 +378,30 @@ export async function getAssignmentSafetyAndRecommendation(input: {
 
   if (!contentYearRange && normalizedContentYearGroup && studentYearGroup && normalizedContentYearGroup !== studentYearGroup) {
     if (!placementSupported) {
-      return {
-        safe: false,
-        reason: `This content is for ${normalizedContentYearGroup} / ${normalizedContentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
-        meta,
-      };
+        if (!input.adminOverride) {
+          return {
+            safe: false,
+            reason: `This content is for ${normalizedContentYearGroup} / ${normalizedContentKeyStage ?? "unknown key stage"} and cannot be assigned to this student.`,
+            meta,
+          };
+        }
+        meta.warningReason = input.overrideReason ?? "Admin manual assignment after Level Finder review";
+        meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "admin_year_override"]));
     }
     meta.warningReason = placementWarning;
     meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "year_mismatch"]));
   }
 
   if (normalizedContentKeyStage && studentKeyStage && normalizedContentKeyStage !== studentKeyStage) {
-    return {
-      safe: false,
-      reason: `This content is for ${normalizedContentYearGroup ?? "specific year"} / ${normalizedContentKeyStage} and cannot be assigned to this student.`,
-      meta,
-    };
+    if (!input.adminOverride) {
+      return {
+        safe: false,
+        reason: `This content is for ${normalizedContentYearGroup ?? "specific year"} / ${normalizedContentKeyStage} and cannot be assigned to this student.`,
+        meta,
+      };
+    }
+    meta.warningReason = input.overrideReason ?? "Admin manual assignment after Level Finder review";
+    meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "admin_ks_override"]));
   }
 
   const shouldCheckExamBoard = shouldApplyExamBoardTag({
@@ -397,7 +424,11 @@ export async function getAssignmentSafetyAndRecommendation(input: {
       ? strictAgeRange.min - student.age
       : student.age - strictAgeRange.max;
     if (!placementSupported || distance > 2) {
-      return { safe: false, reason: `This content is designed for age group ${contentAgeGroup}.`, meta };
+        if (!input.adminOverride) {
+          return { safe: false, reason: `This content is designed for age group ${contentAgeGroup}.`, meta };
+        }
+        meta.warningReason = input.overrideReason ?? "Admin manual assignment after Level Finder review";
+        meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "admin_age_override"]));
     }
     meta.warningReason = placementWarning;
     meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "dob_age_mismatch"]));
@@ -489,8 +520,15 @@ export async function assignContentToStudent(input: {
   actorUserId?: string;
   reason?: string;
   forceResend?: boolean;
+  adminOverride?: boolean;
+  overrideReason?: string;
 }) {
-  const safety = await getAssignmentSafetyAndRecommendation({ studentId: input.studentId, contentId: input.contentId });
+  const safety = await getAssignmentSafetyAndRecommendation({
+    studentId: input.studentId,
+    contentId: input.contentId,
+    adminOverride: input.adminOverride,
+    overrideReason: input.overrideReason,
+  });
   if (!safety.safe) {
     throw new AssignmentSafetyError(safety.reason, { safety: safety.meta });
   }
@@ -543,6 +581,8 @@ export async function assignContentToStudent(input: {
       studentId: input.studentId,
       contentId: input.contentId,
       reason: input.reason,
+      overrideReason: input.adminOverride ? (input.overrideReason ?? "Admin manual assignment after Level Finder review") : null,
+      adminOverride: input.adminOverride ?? false,
       matchedYearGroup: safety.meta.yearGroup,
       matchedKeyStage: safety.meta.keyStage,
       contentStatus: safety.meta.status,

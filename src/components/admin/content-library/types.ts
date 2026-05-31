@@ -62,6 +62,10 @@ export type StudentAssignmentCandidate = {
   recommendationReason: string;
   matchedWeakAreas: string[];
   recommendationScore: number;
+  /** True when the candidate is normally hard-blocked but can be assigned via admin override */
+  overrideEligible?: boolean;
+  /** The override-able block reason (year/ks/age mismatch) — present when overrideEligible=true */
+  overrideBlockReason?: string | null;
 };
 
 export type AssignmentPayload = {
@@ -75,6 +79,8 @@ export type AssignmentPayload = {
     code?: string;
     assignmentId?: string;
   }>;
+  adminOverride?: boolean;
+  overrideReason?: string;
 };
 
 export type AssignMode = "recommended" | "eligible_manual";

@@ -20,6 +20,8 @@ const assignmentSchema = z.object({
   dueDate: z.string().optional(),
   repeatMode: z.string().optional(),
   resend: z.boolean().optional(),
+  adminOverride: z.boolean().optional(),
+  overrideReason: z.string().trim().optional(),
 });
 
 const assignmentStatusSchema = z.object({
@@ -215,6 +217,15 @@ export async function POST(request: Request) {
 
     const assignments = [];
     const blocked: Array<{ studentId: string; reason: string; schoolId?: string; schoolName?: string; code?: string; details?: Record<string, unknown>; assignmentId?: string }> = [];
+
+      // If adminOverride=true, require a non-empty overrideReason
+      if (body.adminOverride && !body.overrideReason) {
+        return NextResponse.json(
+          { error: "overrideReason is required when adminOverride is true." },
+          { status: 400 },
+        );
+      }
+
     for (const student of targetStudents) {
       try {
         const assignment = await assignContentToStudent({
@@ -223,6 +234,8 @@ export async function POST(request: Request) {
           actorUserId: session.userId,
           reason: body.yearGroup ? `manual_year_group_assignment:${body.yearGroup}` : "manual_admin_assignment",
           forceResend: body.resend ?? false,
+            adminOverride: body.adminOverride ?? false,
+            overrideReason: body.overrideReason,
         });
         assignments.push(assignment);
       } catch (error) {

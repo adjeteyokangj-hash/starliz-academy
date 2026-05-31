@@ -148,7 +148,7 @@ export function getContentMeta(item: ContentItem): ContentMeta {
   };
 }
 
-export function evaluateAssignmentCandidate(item: ContentItem, student: StudentOption, localDuplicates: Set<string>): StudentAssignmentCandidate {
+export function evaluateAssignmentCandidate(item: ContentItem, student: StudentOption, localDuplicates: Set<string>, adminOverride = false): StudentAssignmentCandidate {
   const summary = getContentJsonSummary(item.contentJson);
   const meta = getContentMeta(item);
   const studentYear = normalizeYearGroup(student.yearGroup ?? null);
@@ -201,7 +201,8 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
 
   if (meta.subject !== "unknown") {
     const inferredLegacyType = mapSubjectToLegacyContentType(meta.subject);
-    if (inferredLegacyType && inferredLegacyType !== item.contentType) {
+    const contentLegacyType = mapSubjectToLegacyContentType(item.contentType);
+    if (inferredLegacyType && contentLegacyType && inferredLegacyType !== contentLegacyType) {
       return {
         student,
         hardEligible: false,
@@ -236,16 +237,21 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
     if (placementSupported) {
       warningReason = overrideWarning;
     } else {
-    return {
-      student,
-      hardEligible: false,
-      hardBlockReason: "Year mismatch",
-      warningReason: null,
-      recommendationLevel: "eligible_manual",
-      recommendationReason: "Blocked by hard safety checks.",
-      matchedWeakAreas: [],
-      recommendationScore: 0,
-    };
+      if (!adminOverride) {
+        return {
+          student,
+          hardEligible: false,
+          hardBlockReason: "Year mismatch",
+          warningReason: null,
+          recommendationLevel: "eligible_manual",
+          recommendationReason: "Blocked by hard safety checks.",
+          matchedWeakAreas: [],
+          recommendationScore: 0,
+          overrideEligible: true,
+          overrideBlockReason: "Year mismatch",
+        };
+      }
+      warningReason = "Admin override: year mismatch accepted by admin.";
     }
   }
 
@@ -253,29 +259,39 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
     if (placementSupported) {
       warningReason = overrideWarning;
     } else {
-    return {
-      student,
-      hardEligible: false,
-      hardBlockReason: "Year mismatch",
-      warningReason: null,
-      recommendationLevel: "eligible_manual",
-      recommendationReason: "Blocked by hard safety checks.",
-      matchedWeakAreas: [],
-      recommendationScore: 0,
-    };
+      if (!adminOverride) {
+        return {
+          student,
+          hardEligible: false,
+          hardBlockReason: "Year mismatch",
+          warningReason: null,
+          recommendationLevel: "eligible_manual",
+          recommendationReason: "Blocked by hard safety checks.",
+          matchedWeakAreas: [],
+          recommendationScore: 0,
+          overrideEligible: true,
+          overrideBlockReason: "Year mismatch",
+        };
+      }
+      warningReason = "Admin override: year mismatch accepted by admin.";
     }
   }
   if (meta.keyStage && studentKeyStage && meta.keyStage !== studentKeyStage) {
-    return {
-      student,
-      hardEligible: false,
-      hardBlockReason: "Key stage mismatch",
-      warningReason: null,
-      recommendationLevel: "eligible_manual",
-      recommendationReason: "Blocked by hard safety checks.",
-      matchedWeakAreas: [],
-      recommendationScore: 0,
-    };
+    if (!adminOverride) {
+      return {
+        student,
+        hardEligible: false,
+        hardBlockReason: "Key stage mismatch",
+        warningReason: null,
+        recommendationLevel: "eligible_manual",
+        recommendationReason: "Blocked by hard safety checks.",
+        matchedWeakAreas: [],
+        recommendationScore: 0,
+        overrideEligible: true,
+        overrideBlockReason: "Key stage mismatch",
+      };
+    }
+    warningReason = "Admin override: key stage mismatch accepted by admin.";
   }
   if (strictAgeRange && typeof student.age === "number" && (student.age < strictAgeRange.min || student.age > strictAgeRange.max)) {
     const distance = student.age < strictAgeRange.min
@@ -284,16 +300,21 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
     if (placementSupported && distance <= 2) {
       warningReason = overrideWarning;
     } else {
-    return {
-      student,
-      hardEligible: false,
-      hardBlockReason: "Age mismatch",
-      warningReason: null,
-      recommendationLevel: "eligible_manual",
-      recommendationReason: "Blocked by hard safety checks.",
-      matchedWeakAreas: [],
-      recommendationScore: 0,
-    };
+      if (!adminOverride) {
+        return {
+          student,
+          hardEligible: false,
+          hardBlockReason: "Age mismatch",
+          warningReason: null,
+          recommendationLevel: "eligible_manual",
+          recommendationReason: "Blocked by hard safety checks.",
+          matchedWeakAreas: [],
+          recommendationScore: 0,
+          overrideEligible: true,
+          overrideBlockReason: "Age mismatch",
+        };
+      }
+      warningReason = "Admin override: age mismatch accepted by admin.";
     }
   }
   if (meta.schoolId && studentSchoolIds.length > 0 && !studentSchoolIds.includes(meta.schoolId)) {
