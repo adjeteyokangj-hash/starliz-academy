@@ -7,6 +7,7 @@ import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 import { selectPlacementLessons } from "@/lib/placement-lesson-selector";
 import { taskHrefForContentType } from "@/lib/assignments";
+import { getStudentHomeworkGateSnapshot } from "@/lib/homework-phase1b/service";
 import {
   deriveStudentLearningState,
   parseQuickLevelFinderSummary,
@@ -81,6 +82,20 @@ export async function GET(request: Request) {
         learningState,
       },
       { status: 409 },
+    );
+  }
+
+  const homeworkGate = await getStudentHomeworkGateSnapshot(student.id, "new_learning_session");
+  if (!homeworkGate.access.allowed) {
+    return NextResponse.json(
+      {
+        error: homeworkGate.access.reason,
+        code: homeworkGate.access.code,
+        featureEnabled: homeworkGate.featureEnabled,
+        homeworkGate: homeworkGate.access.gate,
+        homework: homeworkGate.batch,
+      },
+      { status: homeworkGate.access.statusCode },
     );
   }
 
