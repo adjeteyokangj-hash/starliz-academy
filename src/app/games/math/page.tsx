@@ -28,6 +28,7 @@ import { getTutorFeedbackPlan, speakTutorFeedback, hydrateCoachingMemoryFromServ
 import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
 import { awardChildRewards } from "@/lib/child_wallet";
 import { getTutorLine } from "@/lib/tutorVoice";
+import { resolveAssignmentSessionDecision } from "@/lib/math-assignment-session";
 import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -101,6 +102,7 @@ export default function MathMissionPage() {
   const searchParams = useSearchParams();
   const assignedContentId = searchParams.get("contentId");
   const assignedAssignmentId = searchParams.get("assignmentId") ?? undefined;
+  const assignmentLockedSession = Boolean(assignedAssignmentId || assignedContentId);
   const [profile, setProfile] = useState<ChildProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const profileId = profile?.id ?? null;
@@ -292,6 +294,24 @@ export default function MathMissionPage() {
 
     let nextQuestion: MathQuestion | null = null;
     let nextSource: "assigned" | "ai-cache" | "static" = "static";
+
+    if (assignmentLockedSession) {
+      const assignedQuestion = await fetchAssignedMathQuestion(assignedContentId ?? "", assignedAssignmentId);
+      const assignmentDecision = resolveAssignmentSessionDecision({
+        assignmentLocked: true,
+        assignedQuestionAvailable: Boolean(assignedQuestion),
+      });
+
+      if (assignedQuestion && !assignmentDecision.assignmentExhausted) {
+        nextQuestion = assignedQuestion;
+        nextSource = "assigned";
+      } else if (assignmentDecision.assignmentExhausted) {
+        setSessionMode("completed_base");
+        setFeedback("Assigned session complete. Ask your teacher/admin to assign more maths content.");
+        setReaction({ mood: "celebrate", message: "Assigned session complete. Great work!" });
+        return;
+      }
+    }
 
     if (activeRetryMode && activeRetryQueue.length) {
       const retryId = activeRetryQueue[0];
@@ -958,7 +978,41 @@ export default function MathMissionPage() {
     );
   }
 
-  if (!question) return <main className="min-h-screen bg-background" />;
+  if (!question) {
+    return (
+      <PremiumAccessGate>
+        <>
+          <Navbar />
+          <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+            <section className="mx-auto flex min-h-[50vh] max-w-4xl items-center justify-center px-4 py-10">
+              <div className="w-full max-w-xl rounded-3xl border border-emerald-200 bg-white p-6 text-center shadow-sm">
+                <p className="text-sm font-black uppercase tracking-wide text-emerald-700">Math Mission</p>
+                <h2 className="mt-2 text-2xl font-black text-slate-900">Session complete</h2>
+                <p className="mt-2 text-sm font-semibold text-slate-600">
+                  {feedback || "No more assigned maths questions are available right now."}
+                </p>
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                  <Button
+                    variant="accent"
+                    className="w-full"
+                    onClick={() => {
+                      setSessionMode("standard");
+                      void moveToNextQuestion(profile, true, true);
+                    }}
+                  >
+                    Refresh session
+                  </Button>
+                  <Link href="/dashboard" className="block">
+                    <Button variant="secondary" className="w-full">Go to Dashboard</Button>
+                  </Link>
+                </div>
+              </div>
+            </section>
+          </main>
+        </>
+      </PremiumAccessGate>
+    );
+  }
 
   // Validate content subject matches route
   const contentValidation = validateContentItem(question as Record<string, unknown>, "math");
@@ -1191,7 +1245,7 @@ export default function MathMissionPage() {
                       if (!retryIds.length) return;
                       void moveToNextQuestion(profile, true, true, retryIds);
                     }}
-                    disabled={sessionMode === "completed_retry" || !weakMathRetryIds.length}
+                    disabled={assignmentLockedSession || sessionMode === "completed_retry" || !weakMathRetryIds.length}
                   >
                     Retry Weak Pack ({weakMathRetryIds.length})
                   </Button>

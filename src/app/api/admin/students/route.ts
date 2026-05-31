@@ -7,6 +7,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { keyStageForYearGroup } from "@/lib/curriculum";
 import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
+import { deriveAdminStudentSnapshotLevels } from "@/lib/admin-student-levels";
 
 const createStudentSchema = z.object({
   parentId: z.string().min(1),
@@ -193,28 +194,7 @@ export async function GET(request: Request) {
     const correct = correctMap[child.id] ?? 0;
     const accuracy = total > 0 ? Math.round((correct / total) * 100) : null;
 
-    let weakPatterns: string[] = [];
-    let spellingLevel = child.level;
-    let mathLevel = child.level;
-
-    if (child.snapshotJson) {
-      try {
-        const snap = JSON.parse(child.snapshotJson);
-        const patterns = snap.spellingPatterns as Record<string, number> | undefined;
-        if (patterns) {
-          weakPatterns = Object.entries(patterns)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map(([k]) => k);
-        }
-        if (snap.adaptive) {
-          spellingLevel = snap.adaptive.spellingDifficulty ?? child.level;
-          mathLevel = snap.adaptive.mathDifficulty ?? child.level;
-        }
-      } catch {
-        // skip
-      }
-    }
+    const snapshotLevels = deriveAdminStudentSnapshotLevels(child.snapshotJson, child.level);
 
     const normalizedKeyStage = child.studentProfile?.keyStageLevel ?? (child.yearGroup ? keyStageForYearGroup(child.yearGroup) : null);
     const curriculumProfile = readStudentCurriculumProfile({
@@ -245,13 +225,14 @@ export async function GET(request: Request) {
       classGroup: classGroups[0] ?? null,
       classGroups,
       schoolIds,
-      spellingLevel,
-      mathLevel,
+      spellingLevel: snapshotLevels.spellingLevel,
+      mathLevel: snapshotLevels.mathLevel,
+      readingSubjectLevel: snapshotLevels.readingLevel,
       stars: child.stars,
       xp: child.xp,
       streak: child.streak,
       accuracy,
-      weakPatterns,
+      weakPatterns: snapshotLevels.weakPatterns,
       totalSessions: child._count.progressRecords,
       activeToday: activeToday.has(child.id),
       lastActive: child.updatedAt.toISOString(),

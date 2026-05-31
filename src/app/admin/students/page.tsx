@@ -16,6 +16,7 @@ type Student = {
   subjectFocus: string | null;
   spellingLevel: number;
   mathLevel: number;
+  readingSubjectLevel: number;
   level: number;
   accuracy: number | null;
   lastActive: string;
@@ -179,11 +180,12 @@ export default function StudentsPage() {
                 <th className="px-3 py-3">Parent</th>
                 <th className="px-3 py-3">Age / Year</th>
                 <th className="px-3 py-3">KS</th>
-                <th className="px-3 py-3">Reading</th>
+                <th className="px-3 py-3">Reading Profile</th>
                 <th className="px-3 py-3">Focus</th>
-                <th className="px-3 py-3">Spelling</th>
-                <th className="px-3 py-3">Maths</th>
-                <th className="px-3 py-3">Reading</th>
+                <th className="px-3 py-3">Spelling Lv</th>
+                <th className="px-3 py-3">Maths Lv</th>
+                <th className="px-3 py-3">Reading Lv</th>
+                <th className="px-3 py-3">Overall Lv</th>
                 <th className="px-3 py-3">Accuracy</th>
                 <th className="px-3 py-3">Last Active</th>
                 <th className="px-3 py-3">Actions</th>
@@ -209,6 +211,7 @@ export default function StudentsPage() {
                   <td className="px-3 py-3">{student.subjectFocus ?? "-"}</td>
                   <td className="px-3 py-3">Lv {student.spellingLevel}</td>
                   <td className="px-3 py-3">Lv {student.mathLevel}</td>
+                  <td className="px-3 py-3">Lv {student.readingSubjectLevel}</td>
                   <td className="px-3 py-3">Lv {student.level}</td>
                   <td className="px-3 py-3">{student.accuracy !== null ? `${student.accuracy}%` : "No data"}</td>
                   <td className="px-3 py-3">{timeAgo(student.lastActive)}</td>

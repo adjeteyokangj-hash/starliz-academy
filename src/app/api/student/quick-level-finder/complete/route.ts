@@ -8,6 +8,8 @@ import {
   deriveQuickLevelFinderLevels,
   inferQuickLevelFinderPlacementProfile,
   parseQuickLevelFinderSession,
+  resolveQuickLevelFinderCanonicalPlacement,
+  upsertQuickLevelFinderPlacementDiagnostic,
   upsertQuickLevelFinderRetestEnabled,
   upsertQuickLevelFinderSession,
 } from "@/lib/quick-level-finder";
@@ -16,6 +18,7 @@ import { applyQuickLevelFinderPostCompletionPipeline } from "@/lib/quick-level-f
 
 const bodySchema = z.object({
   sessionId: z.string().min(1),
+  applyCanonicalPlacementOverride: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
@@ -72,27 +75,47 @@ export async function POST(request: Request) {
     baselineYearGroup: student.yearGroup,
     baselineKeyStage: student.studentProfile?.keyStageLevel ?? null,
   });
+  const canonicalDecision = resolveQuickLevelFinderCanonicalPlacement({
+    inferredPlacement: placementProfile,
+    existingYearGroup: student.yearGroup,
+    existingKeyStage: student.studentProfile?.keyStageLevel ?? null,
+    explicitOverride: parsed.data.applyCanonicalPlacementOverride === true,
+  });
 
   const profileWithSession = upsertQuickLevelFinderSession(student.studentProfile?.aiLearningProfileJson ?? null, state);
-  const nextProfileJson = upsertQuickLevelFinderRetestEnabled(profileWithSession, false);
+  const profileWithPlacementDiagnostic = placementProfile
+    ? upsertQuickLevelFinderPlacementDiagnostic(profileWithSession, {
+      recommendedYearGroup: placementProfile.yearGroup,
+      recommendedKeyStage: placementProfile.keyStage,
+      confidence: placementProfile.confidence,
+      computedAt: state.completedAt ?? new Date().toISOString(),
+      appliedToCanonicalProfile: canonicalDecision.shouldUpdateCanonical,
+      reason: canonicalDecision.reason,
+    })
+    : profileWithSession;
+  const nextProfileJson = upsertQuickLevelFinderRetestEnabled(profileWithPlacementDiagnostic, false);
   await prisma.$transaction(async (tx) => {
     await tx.studentProfile.upsert({
       where: { childId: student.id },
       update: {
         aiLearningProfileJson: nextProfileJson,
-        ...(placementProfile ? { keyStageLevel: placementProfile.keyStage } : {}),
+        ...(canonicalDecision.shouldUpdateCanonical && canonicalDecision.nextKeyStage
+          ? { keyStageLevel: canonicalDecision.nextKeyStage }
+          : {}),
       },
       create: {
         childId: student.id,
         aiLearningProfileJson: nextProfileJson,
-        keyStageLevel: placementProfile?.keyStage ?? student.studentProfile?.keyStageLevel ?? null,
+        keyStageLevel: canonicalDecision.shouldUpdateCanonical
+          ? (canonicalDecision.nextKeyStage ?? null)
+          : (student.studentProfile?.keyStageLevel ?? null),
       },
     });
 
-    if (placementProfile) {
+    if (canonicalDecision.shouldUpdateCanonical && canonicalDecision.nextYearGroup) {
       await tx.childProfile.update({
         where: { id: student.id },
-        data: { yearGroup: placementProfile.yearGroup },
+        data: { yearGroup: canonicalDecision.nextYearGroup },
       });
     }
   });
@@ -100,8 +123,8 @@ export async function POST(request: Request) {
   const seededAssignmentsCount = await applyQuickLevelFinderPostCompletionPipeline({
     studentId: student.id,
     levels: state.levels as Record<string, PlacementLevelInput>,
-    yearGroup: placementProfile?.yearGroup ?? student.yearGroup ?? null,
-    keyStage: placementProfile?.keyStage ?? student.studentProfile?.keyStageLevel ?? null,
+    yearGroup: canonicalDecision.nextYearGroup ?? student.yearGroup ?? null,
+    keyStage: canonicalDecision.nextKeyStage ?? student.studentProfile?.keyStageLevel ?? null,
   });
 
   return NextResponse.json({
@@ -115,6 +138,8 @@ export async function POST(request: Request) {
       completedAt: state.completedAt,
     },
     placementProfile,
+    canonicalPlacementUpdated: canonicalDecision.shouldUpdateCanonical,
+    canonicalPlacementReason: canonicalDecision.reason,
     levels: state.levels,
     seededAssignmentsCount,
   });

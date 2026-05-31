@@ -49,6 +49,29 @@ export type QuickLevelFinderPlacementProfile = {
   confidence: number;
 };
 
+export type QuickLevelFinderPlacementDiagnostic = {
+  recommendedYearGroup: string;
+  recommendedKeyStage: string;
+  confidence: number;
+  computedAt: string;
+  appliedToCanonicalProfile: boolean;
+  reason: "missing_canonical_year_group" | "explicit_override" | "preserved_existing_canonical_year_group";
+};
+
+export type ResolveQuickLevelFinderCanonicalPlacementInput = {
+  inferredPlacement: QuickLevelFinderPlacementProfile | null;
+  existingYearGroup: string | null | undefined;
+  existingKeyStage: string | null | undefined;
+  explicitOverride: boolean;
+};
+
+export type ResolveQuickLevelFinderCanonicalPlacementDecision = {
+  shouldUpdateCanonical: boolean;
+  nextYearGroup: string | null;
+  nextKeyStage: string | null;
+  reason: QuickLevelFinderPlacementDiagnostic["reason"];
+};
+
 function parseObject(raw: string | null | undefined): Record<string, unknown> {
   if (!raw) return {};
   try {
@@ -251,6 +274,95 @@ export function upsertQuickLevelFinderRetestEnabled(
     quickLevelFinderRetestEnabled: enabled,
   };
   return JSON.stringify(next);
+}
+
+export function parseQuickLevelFinderPlacementDiagnostic(
+  raw: string | null | undefined,
+): QuickLevelFinderPlacementDiagnostic | null {
+  const profile = parseObject(raw);
+  const value = profile.quickLevelFinderPlacementRecommendation;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const row = value as Record<string, unknown>;
+  const recommendedYearGroup = typeof row.recommendedYearGroup === "string" ? row.recommendedYearGroup.trim() : "";
+  const recommendedKeyStage = typeof row.recommendedKeyStage === "string" ? row.recommendedKeyStage.trim() : "";
+  const confidenceRaw = row.confidence;
+  const computedAt = typeof row.computedAt === "string" && row.computedAt.trim() ? row.computedAt : "";
+  const appliedToCanonicalProfile = row.appliedToCanonicalProfile === true;
+  const reason = row.reason;
+
+  if (!recommendedYearGroup || !recommendedKeyStage || !computedAt) return null;
+  if (typeof confidenceRaw !== "number" || !Number.isFinite(confidenceRaw)) return null;
+  if (
+    reason !== "missing_canonical_year_group"
+    && reason !== "explicit_override"
+    && reason !== "preserved_existing_canonical_year_group"
+  ) {
+    return null;
+  }
+
+  return {
+    recommendedYearGroup,
+    recommendedKeyStage,
+    confidence: Math.max(0, Math.min(100, Math.round(confidenceRaw))),
+    computedAt,
+    appliedToCanonicalProfile,
+    reason,
+  };
+}
+
+export function upsertQuickLevelFinderPlacementDiagnostic(
+  existingJson: string | null | undefined,
+  diagnostic: QuickLevelFinderPlacementDiagnostic,
+): string {
+  const profile = parseObject(existingJson);
+  const next = {
+    ...profile,
+    quickLevelFinderPlacementRecommendation: diagnostic,
+  };
+  return JSON.stringify(next);
+}
+
+export function resolveQuickLevelFinderCanonicalPlacement(
+  input: ResolveQuickLevelFinderCanonicalPlacementInput,
+): ResolveQuickLevelFinderCanonicalPlacementDecision {
+  const existingYearGroup = normalizeYearGroup(input.existingYearGroup);
+  const existingKeyStage = normalizeKeyStage(input.existingKeyStage);
+  const inferred = input.inferredPlacement;
+
+  if (!inferred) {
+    return {
+      shouldUpdateCanonical: false,
+      nextYearGroup: existingYearGroup,
+      nextKeyStage: existingKeyStage,
+      reason: "preserved_existing_canonical_year_group",
+    };
+  }
+
+  if (input.explicitOverride) {
+    return {
+      shouldUpdateCanonical: true,
+      nextYearGroup: inferred.yearGroup,
+      nextKeyStage: inferred.keyStage,
+      reason: "explicit_override",
+    };
+  }
+
+  if (!existingYearGroup) {
+    return {
+      shouldUpdateCanonical: true,
+      nextYearGroup: inferred.yearGroup,
+      nextKeyStage: inferred.keyStage,
+      reason: "missing_canonical_year_group",
+    };
+  }
+
+  return {
+    shouldUpdateCanonical: false,
+    nextYearGroup: existingYearGroup,
+    nextKeyStage: existingKeyStage,
+    reason: "preserved_existing_canonical_year_group",
+  };
 }
 
 export function questionRangeBySubjectCount(count: number): { min: number; max: number } {

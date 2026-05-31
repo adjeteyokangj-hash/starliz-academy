@@ -4,8 +4,11 @@ import assert from "node:assert/strict";
 import {
   autoQuickLevelFinderSubjectsForYearGroup,
   inferQuickLevelFinderPlacementProfile,
+  parseQuickLevelFinderPlacementDiagnostic,
   parseQuickLevelFinderRetestEnabled,
   quickLevelFinderQuestionRangeForYearGroup,
+  resolveQuickLevelFinderCanonicalPlacement,
+  upsertQuickLevelFinderPlacementDiagnostic,
   upsertQuickLevelFinderRetestEnabled,
 } from "../src/lib/quick-level-finder";
 
@@ -97,4 +100,59 @@ test("year group maps to expected question count range", () => {
   assert.deepEqual(quickLevelFinderQuestionRangeForYearGroup("Year 4"), { min: 12, max: 12 });
   assert.deepEqual(quickLevelFinderQuestionRangeForYearGroup("Year 8"), { min: 12, max: 12 });
   assert.deepEqual(quickLevelFinderQuestionRangeForYearGroup("Year 10"), { min: 15, max: 15 });
+});
+
+test("preserves canonical year group when inferred placement is lower and no explicit override", () => {
+  const decision = resolveQuickLevelFinderCanonicalPlacement({
+    inferredPlacement: {
+      yearGroup: "Year 1",
+      keyStage: "KS1",
+      confidence: 84,
+    },
+    existingYearGroup: "Year 4",
+    existingKeyStage: "KS2",
+    explicitOverride: false,
+  });
+
+  assert.equal(decision.shouldUpdateCanonical, false);
+  assert.equal(decision.nextYearGroup, "Year 4");
+  assert.equal(decision.nextKeyStage, "KS2");
+  assert.equal(decision.reason, "preserved_existing_canonical_year_group");
+});
+
+test("allows canonical placement update when canonical year group is missing", () => {
+  const decision = resolveQuickLevelFinderCanonicalPlacement({
+    inferredPlacement: {
+      yearGroup: "Year 3",
+      keyStage: "KS2",
+      confidence: 76,
+    },
+    existingYearGroup: null,
+    existingKeyStage: null,
+    explicitOverride: false,
+  });
+
+  assert.equal(decision.shouldUpdateCanonical, true);
+  assert.equal(decision.nextYearGroup, "Year 3");
+  assert.equal(decision.nextKeyStage, "KS2");
+  assert.equal(decision.reason, "missing_canonical_year_group");
+});
+
+test("stores inferred placement as diagnostic metadata without changing canonical year", () => {
+  const nextJson = upsertQuickLevelFinderPlacementDiagnostic("{}", {
+    recommendedYearGroup: "Year 1",
+    recommendedKeyStage: "KS1",
+    confidence: 88,
+    computedAt: "2026-05-31T00:00:00.000Z",
+    appliedToCanonicalProfile: false,
+    reason: "preserved_existing_canonical_year_group",
+  });
+
+  const parsed = parseQuickLevelFinderPlacementDiagnostic(nextJson);
+  assert.ok(parsed);
+  assert.equal(parsed?.recommendedYearGroup, "Year 1");
+  assert.equal(parsed?.recommendedKeyStage, "KS1");
+  assert.equal(parsed?.confidence, 88);
+  assert.equal(parsed?.appliedToCanonicalProfile, false);
+  assert.equal(parsed?.reason, "preserved_existing_canonical_year_group");
 });

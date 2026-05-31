@@ -8,7 +8,9 @@ import {
   deriveQuickLevelFinderLevels,
   inferQuickLevelFinderPlacementProfile,
   parseQuickLevelFinderSession,
+  resolveQuickLevelFinderCanonicalPlacement,
   sanitiseQuestion,
+  upsertQuickLevelFinderPlacementDiagnostic,
   upsertQuickLevelFinderRetestEnabled,
   upsertQuickLevelFinderSession,
 } from "@/lib/quick-level-finder";
@@ -24,6 +26,7 @@ const bodySchema = z.object({
   questionId: z.string().min(1),
   correct: z.boolean(),
   timeSpentMs: z.number().int().nonnegative().max(300_000).optional(),
+  applyCanonicalPlacementOverride: z.boolean().optional(),
 });
 
 export async function applyAnswerRouteCompletionPipeline(
@@ -120,29 +123,51 @@ export async function POST(request: Request) {
       baselineKeyStage: student.studentProfile?.keyStageLevel ?? null,
     })
     : null;
+  const canonicalDecision = state.status === "completed"
+    ? resolveQuickLevelFinderCanonicalPlacement({
+      inferredPlacement: placementProfile,
+      existingYearGroup: student.yearGroup,
+      existingKeyStage: student.studentProfile?.keyStageLevel ?? null,
+      explicitOverride: parsed.data.applyCanonicalPlacementOverride === true,
+    })
+    : null;
 
   const profileWithSession = upsertQuickLevelFinderSession(student.studentProfile?.aiLearningProfileJson ?? null, state);
-  const nextProfileJson = state.status === "completed"
-    ? upsertQuickLevelFinderRetestEnabled(profileWithSession, false)
+  const profileWithPlacementDiagnostic = state.status === "completed" && placementProfile && canonicalDecision
+    ? upsertQuickLevelFinderPlacementDiagnostic(profileWithSession, {
+      recommendedYearGroup: placementProfile.yearGroup,
+      recommendedKeyStage: placementProfile.keyStage,
+      confidence: placementProfile.confidence,
+      computedAt: state.completedAt ?? new Date().toISOString(),
+      appliedToCanonicalProfile: canonicalDecision.shouldUpdateCanonical,
+      reason: canonicalDecision.reason,
+    })
     : profileWithSession;
+  const nextProfileJson = state.status === "completed"
+    ? upsertQuickLevelFinderRetestEnabled(profileWithPlacementDiagnostic, false)
+    : profileWithPlacementDiagnostic;
   await prisma.$transaction(async (tx) => {
     await tx.studentProfile.upsert({
       where: { childId: student.id },
       update: {
         aiLearningProfileJson: nextProfileJson,
-        ...(placementProfile ? { keyStageLevel: placementProfile.keyStage } : {}),
+        ...(canonicalDecision?.shouldUpdateCanonical && canonicalDecision.nextKeyStage
+          ? { keyStageLevel: canonicalDecision.nextKeyStage }
+          : {}),
       },
       create: {
         childId: student.id,
         aiLearningProfileJson: nextProfileJson,
-        keyStageLevel: placementProfile?.keyStage ?? student.studentProfile?.keyStageLevel ?? null,
+        keyStageLevel: canonicalDecision?.shouldUpdateCanonical
+          ? (canonicalDecision.nextKeyStage ?? null)
+          : (student.studentProfile?.keyStageLevel ?? null),
       },
     });
 
-    if (placementProfile) {
+    if (canonicalDecision?.shouldUpdateCanonical && canonicalDecision.nextYearGroup) {
       await tx.childProfile.update({
         where: { id: student.id },
-        data: { yearGroup: placementProfile.yearGroup },
+        data: { yearGroup: canonicalDecision.nextYearGroup },
       });
     }
   });
@@ -152,8 +177,8 @@ export async function POST(request: Request) {
     seededAssignmentsCount = await applyAnswerRouteCompletionPipeline({
       studentId: student.id,
       levels: state.levels as Record<string, PlacementLevelInput>,
-      yearGroup: placementProfile?.yearGroup ?? student.yearGroup ?? null,
-      keyStage: placementProfile?.keyStage ?? student.studentProfile?.keyStageLevel ?? null,
+      yearGroup: canonicalDecision?.nextYearGroup ?? student.yearGroup ?? null,
+      keyStage: canonicalDecision?.nextKeyStage ?? student.studentProfile?.keyStageLevel ?? null,
     });
   }
 
@@ -178,6 +203,8 @@ export async function POST(request: Request) {
         : 0,
     },
     placementProfile,
+    canonicalPlacementUpdated: canonicalDecision?.shouldUpdateCanonical ?? false,
+    canonicalPlacementReason: canonicalDecision?.reason ?? null,
     levels: state.status === "completed" ? state.levels : null,
     seededAssignmentsCount,
   });
