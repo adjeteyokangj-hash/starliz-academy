@@ -8,6 +8,7 @@ import { runSubscriptionChecks } from "./subscription-checks";
 import { runSchoolProvisioningJobs } from "./school-provisioning";
 import { runSchoolNotificationDispatch } from "./school-notification-dispatch";
 import { runTrialFollowupEmails } from "./trial-followup-emails";
+import { runWeeklyHomeworkGenerationJob } from "./weekly-homework-generation";
 
 const jobs = [
   { name: "subscription-checks", run: runSubscriptionChecks },
@@ -18,6 +19,7 @@ const jobs = [
   { name: "school-provisioning", run: runSchoolProvisioningJobs },
   { name: "school-notification-dispatch", run: runSchoolNotificationDispatch },
   { name: "trial-followup-emails", run: runTrialFollowupEmails },
+  { name: "weekly-homework-generation", run: runWeeklyHomeworkGenerationJob },
 ];
 
 export async function runDailyJobs() {
