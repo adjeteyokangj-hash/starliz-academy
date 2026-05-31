@@ -107,6 +107,7 @@ model User {
   safeguardingEvidenceUploads     SafeguardingEvidenceAttachment[] @relation("SafeguardingEvidenceUploadedBy")
   parentProfile                   ParentProfile?
   parentPinResetTokens            ParentPinResetToken[]
+  homeworkAuditLogs               HomeworkAuditLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -171,6 +172,8 @@ model ChildProfile {
   weakAreas             WeakArea[]
   assignments           Assignment[]
   attempts              Attempt[]
+  homeworkBatches       HomeworkBatch[]
+  homeworkAnswers       HomeworkAnswer[]
   studentSkills         StudentSkill[]
   schoolLinks           SchoolStudent[]
   safeguardingAlerts    SchoolSafeguardingAlert[]
@@ -1147,6 +1150,115 @@ model Assignment {
 
   @@unique([studentId, contentId])
   @@index([studentId, status])
+}
+
+model HomeworkBatch {
+  id                         String           @id @default(cuid())
+  studentId                  String
+  student                    ChildProfile     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  weekStart                  DateTime
+  weekEnd                    DateTime
+  timezone                   String
+  status                     String           @default("GENERATED")
+  dueBeforeNextSession       Boolean          @default(true)
+  generatedAt                DateTime         @default(now())
+  startedAt                  DateTime?
+  submittedAt                DateTime?
+  markedAt                   DateTime?
+  completedAt                DateTime?
+  frozenAt                   DateTime?
+  sourceCompletedSessionCount Int            @default(0)
+  sourceStartedSessionCount  Int              @default(0)
+  weaknessSummaryJson        String?
+  workloadCapMinutes         Int              @default(0)
+  plannedMinutes             Int              @default(0)
+  scorePercent               Int?
+  recapOnly                  Boolean          @default(false)
+  overrideReason             String?
+  excusedReason              String?
+  extendedDueAt              DateTime?
+  cancelledReason            String?
+  metadataJson               String?
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+
+  questions HomeworkQuestion[]
+  answers   HomeworkAnswer[]
+  auditLogs HomeworkAuditLog[]
+
+  @@unique([studentId, weekStart])
+  @@index([studentId, status])
+  @@index([weekStart, weekEnd])
+}
+
+model HomeworkQuestion {
+  id                 String        @id @default(cuid())
+  batchId            String
+  batch              HomeworkBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  order              Int
+  subject            String
+  topic              String?
+  skill              String?
+  questionType       String
+  promptJson         String
+  optionsJson        String?
+  expectedAnswerJson String?
+  markingType        String        @default("auto")
+  required           Boolean       @default(true)
+  estimatedMinutes   Int           @default(1)
+  difficulty         Int           @default(1)
+  frozenAt           DateTime?
+  metadataJson       String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  answers HomeworkAnswer[]
+
+  @@unique([batchId, order])
+  @@index([batchId])
+}
+
+model HomeworkAnswer {
+  id                String           @id @default(cuid())
+  batchId           String
+  batch             HomeworkBatch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  questionId        String
+  question          HomeworkQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           ChildProfile     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  draftAnswerJson   String?
+  submittedAnswerJson String?
+  isAnswered        Boolean          @default(false)
+  answeredAt        DateTime?
+  submittedAt       DateTime?
+  markingStatus     String           @default("not_marked")
+  isCorrect         Boolean?
+  score             Int?
+  feedbackJson      String?
+  aiConfidence      Int?
+  reviewNeeded      Boolean          @default(false)
+  metadataJson      String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@unique([batchId, questionId, studentId])
+  @@index([studentId, batchId])
+  @@index([questionId])
+}
+
+model HomeworkAuditLog {
+  id          String        @id @default(cuid())
+  batchId     String
+  batch       HomeworkBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actor       User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      String
+  reason      String?
+  metadataJson String?
+  createdAt   DateTime      @default(now())
+
+  @@index([batchId, createdAt])
+  @@index([actorUserId])
 }
 
 model Attempt {
