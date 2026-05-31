@@ -33,6 +33,7 @@ export type QuickLevelFinderLevel = {
 export type QuickLevelFinderSession = {
   sessionId: string;
   status: QuickLevelFinderStatus;
+  attemptVersion?: number;
   startedAt: string;
   completedAt: string | null;
   selectedSubjects: string[];
@@ -214,6 +215,10 @@ export function parseQuickLevelFinderSession(raw: string | null | undefined): Qu
 
   const value = quick as Record<string, unknown>;
   const sessionId = typeof value.sessionId === "string" ? value.sessionId.trim() : "";
+  const attemptVersionRaw = typeof value.attemptVersion === "number" && Number.isFinite(value.attemptVersion)
+    ? Math.floor(value.attemptVersion)
+    : undefined;
+  const attemptVersion = attemptVersionRaw && attemptVersionRaw > 0 ? attemptVersionRaw : undefined;
   const status = value.status === "completed" ? "completed" : value.status === "in_progress" ? "in_progress" : null;
   const startedAt = typeof value.startedAt === "string" && value.startedAt.trim()
     ? value.startedAt
@@ -236,6 +241,7 @@ export function parseQuickLevelFinderSession(raw: string | null | undefined): Qu
   return {
     sessionId,
     status,
+    attemptVersion,
     startedAt,
     completedAt,
     selectedSubjects,
@@ -1056,11 +1062,19 @@ export function buildQuestionPlan(input: {
   yearGroup?: string | null;
   keyStage?: string | null;
   sessionId?: string | null;
+  stableSeed?: string | null;
+  attemptVersion?: number | null;
 }): QuickLevelFinderQuestion[] {
   if (!input.scopedSubjects.length || input.count <= 0) return [];
 
   const baseDifficulty = difficultyBandForYearGroup(input.yearGroup);
-  const subjectPool = shuffleWithSeed(input.scopedSubjects, `${input.sessionId ?? "session"}:subjects:${input.yearGroup ?? "Year 1"}`)
+  const attemptVersion = typeof input.attemptVersion === "number" && Number.isFinite(input.attemptVersion)
+    ? Math.max(1, Math.floor(input.attemptVersion))
+    : 1;
+  const seedBase = input.stableSeed?.trim()
+    ? `${input.stableSeed.trim()}:attempt:${attemptVersion}`
+    : `${input.sessionId ?? "session"}:attempt:${attemptVersion}`;
+  const subjectPool = shuffleWithSeed(input.scopedSubjects, `${seedBase}:subjects:${input.yearGroup ?? "Year 1"}`)
     .map((rawKey) => {
       const { subject, strand } = normalizeSubjectKey(rawKey);
       return normaliseSubjectStrandForQlf(subject, strand);
@@ -1088,7 +1102,7 @@ export function buildQuestionPlan(input: {
         difficulty,
         index,
         subjectIndex: subjectIndex + attempt,
-        sessionId: input.sessionId,
+        sessionId: `${seedBase}:${scopeKey}`,
       });
       const candidatePromptKey = normalizePromptKey(candidate.prompt);
       if (!usedPrompts.has(candidatePromptKey)) {
@@ -1156,7 +1170,7 @@ export function buildQuestionPlan(input: {
     usedPrompts.add(finalPromptKey);
   }
 
-  return shuffleWithSeed(questions, `${input.sessionId ?? "session"}:questions:${input.count}`);
+  return shuffleWithSeed(questions, `${seedBase}:questions:${input.count}`);
 }
 
 function levelFromAccuracy(accuracy: number): "below" | "secure" | "advanced" {

@@ -257,6 +257,37 @@ test("buildQuestionPlan distributes subjects in round robin", () => {
   assert.equal(plan.every((q) => /^qlf-q-\d+$/.test(q.id)), true);
 });
 
+test("same Year 7 cohort gets deterministic student and attempt question rotation", () => {
+  const base = {
+    scopedSubjects: ["maths", "english", "science"],
+    count: 12,
+    yearGroup: "Year 7",
+    keyStage: "KS3",
+    attemptVersion: 1,
+  };
+  const studentAFirst = buildQuestionPlan({
+    ...base,
+    stableSeed: "child-a:quick-level-finder:Year 7",
+  }).map((q) => q.prompt);
+  const studentARepeat = buildQuestionPlan({
+    ...base,
+    stableSeed: "child-a:quick-level-finder:Year 7",
+  }).map((q) => q.prompt);
+  const studentB = buildQuestionPlan({
+    ...base,
+    stableSeed: "child-b:quick-level-finder:Year 7",
+  }).map((q) => q.prompt);
+  const studentAAttemptTwo = buildQuestionPlan({
+    ...base,
+    stableSeed: "child-a:quick-level-finder:Year 7",
+    attemptVersion: 2,
+  }).map((q) => q.prompt);
+
+  assert.deepEqual(studentAFirst, studentARepeat);
+  assert.notDeepEqual(studentAFirst, studentB);
+  assert.notDeepEqual(studentAFirst, studentAAttemptTwo);
+});
+
 test("generated session has no duplicate prompt text", () => {
   const plan = buildQuestionPlan({
     scopedSubjects: ["maths", "reading", "spelling"],

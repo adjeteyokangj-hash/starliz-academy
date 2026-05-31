@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildAssignedWorkSummary, buildSmartCoachSummary } from "../src/lib/student-dashboard-summary";
+import { deriveStudentLearningState } from "../src/lib/student-learning-state";
 
 test("dashboard summary chooses active assigned work as the next first-render activity", () => {
   const summary = buildAssignedWorkSummary([
@@ -38,4 +39,24 @@ test("smart coach dashboard summary stays compact for the first render", () => {
   assert.match(pending.headline, /still learning/);
   assert.equal(ready.status, "ready");
   assert.equal(ready.masteredCount, 1);
+});
+
+test("dashboard state treats completed Level Finder as placed without manual refresh", () => {
+  const state = deriveStudentLearningState({
+    assignmentCount: 2,
+    selectedSubjects: ["maths", "english", "science"],
+    skillAttempts: 0,
+    progressEvents: 0,
+    weakAreaCount: 0,
+    masteredSkills: 0,
+    spellingAttempts: 0,
+    readingAttempts: 0,
+    speechSamples: 0,
+    placementResponses: 12,
+    placementCompleted: true,
+  });
+
+  assert.equal(state.isFirstTimeStudent, false);
+  assert.equal(state.hasCompletedPlacement, true);
+  assert.equal(state.onboardingStage, "LEARNING");
 });

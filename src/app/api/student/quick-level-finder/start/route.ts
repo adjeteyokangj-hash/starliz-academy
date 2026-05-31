@@ -67,6 +67,9 @@ export async function POST(request: Request) {
   const existingCurrentQuestion = existingSession
     ? existingSession.questions[existingSession.cursor] ?? null
     : null;
+  const attemptVersion = existingSession && (restart || existingSession.status === "completed")
+    ? (existingSession.attemptVersion ?? 1) + 1
+    : (existingSession?.attemptVersion ?? 1);
 
   if (existingSession && existingSession.status === "in_progress" && !restart && existingCurrentQuestion) {
     const safeCurrentQuestion = sanitiseQuestion(existingCurrentQuestion, existingSession.cursor);
@@ -107,6 +110,7 @@ export async function POST(request: Request) {
   const nextSession = {
     sessionId: nextSessionId,
     status: "in_progress" as const,
+    attemptVersion,
     startedAt: new Date().toISOString(),
     completedAt: null,
     selectedSubjects: coreSelectedSubjects,
@@ -117,6 +121,8 @@ export async function POST(request: Request) {
       yearGroup: student.yearGroup,
       keyStage: student.studentProfile?.keyStageLevel ?? null,
       sessionId: nextSessionId,
+      stableSeed: `${student.id}:quick-level-finder:${student.yearGroup ?? "unknown-year"}`,
+      attemptVersion,
     }),
     cursor: 0,
     responses: [],

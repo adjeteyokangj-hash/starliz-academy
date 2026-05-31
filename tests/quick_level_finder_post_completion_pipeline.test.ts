@@ -20,15 +20,21 @@ function baseInput(overrides: Partial<QlfPostCompletionInput> = {}): QlfPostComp
   };
 }
 
-test("answer-route completion pipeline invalidates snapshot then seeds assignments", async () => {
+test("answer-route completion pipeline seeds first lessons then refreshes academic intelligence", async () => {
   const callOrder: string[] = [];
   const invalidateCalls: Array<{ studentId: string; reason: "level_finder_completed" }> = [];
+  const refreshCalls: Array<{ studentId: string; reason: "level_finder_completed" }> = [];
   const seedCalls: QlfPostCompletionInput[] = [];
 
   const deps: QlfPostCompletionDeps = {
     invalidateSnapshot: async (input) => {
       callOrder.push("invalidate");
       invalidateCalls.push(input);
+    },
+    refreshSnapshot: async (input) => {
+      callOrder.push("refresh");
+      refreshCalls.push(input);
+      return null;
     },
     seedAssignments: async (input) => {
       callOrder.push("seed");
@@ -40,10 +46,13 @@ test("answer-route completion pipeline invalidates snapshot then seeds assignmen
   const seededAssignmentsCount = await applyAnswerRouteCompletionPipeline(baseInput(), deps);
 
   assert.equal(seededAssignmentsCount, 3);
-  assert.deepEqual(callOrder, ["invalidate", "seed"]);
+  assert.deepEqual(callOrder, ["seed", "invalidate", "refresh"]);
   assert.equal(invalidateCalls.length, 1);
   assert.equal(invalidateCalls[0]?.studentId, "student-pipeline-1");
   assert.equal(invalidateCalls[0]?.reason, "level_finder_completed");
+  assert.equal(refreshCalls.length, 1);
+  assert.equal(refreshCalls[0]?.studentId, "student-pipeline-1");
+  assert.equal(refreshCalls[0]?.reason, "level_finder_completed");
 
   assert.equal(seedCalls.length, 1);
   assert.equal(seedCalls[0]?.studentId, "student-pipeline-1");

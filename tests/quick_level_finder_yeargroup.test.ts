@@ -11,6 +11,11 @@ import {
   upsertQuickLevelFinderPlacementDiagnostic,
   upsertQuickLevelFinderRetestEnabled,
 } from "../src/lib/quick-level-finder";
+import {
+  calculateAgeFromDateOfBirth,
+  getStageForYearGroup,
+  suggestUkYearGroupFromDateOfBirth,
+} from "../src/lib/registration/child-profile-options";
 
 test("returns null when no placement levels exist", () => {
   const result = inferQuickLevelFinderPlacementProfile({ levels: {} });
@@ -91,8 +96,32 @@ test("retest flag can be enabled and disabled", () => {
 test("year group auto-generates subject mix", () => {
   assert.deepEqual(autoQuickLevelFinderSubjectsForYearGroup("Year 2"), ["maths", "reading", "spelling"]);
   assert.deepEqual(autoQuickLevelFinderSubjectsForYearGroup("Year 5"), ["maths", "reading", "spelling"]);
+  assert.deepEqual(autoQuickLevelFinderSubjectsForYearGroup("Year 7"), ["maths", "english", "science"]);
   assert.deepEqual(autoQuickLevelFinderSubjectsForYearGroup("Year 8"), ["maths", "english", "science"]);
   assert.deepEqual(autoQuickLevelFinderSubjectsForYearGroup("Year 10"), ["maths", "english", "science"]);
+});
+
+test("Year 7 student born in 2014 keeps selected Year 7 canonical placement", () => {
+  const referenceDate = new Date("2026-05-31T12:00:00.000Z");
+
+  assert.equal(calculateAgeFromDateOfBirth("2014-05-10", referenceDate), 12);
+  assert.equal(suggestUkYearGroupFromDateOfBirth("2014-05-10", referenceDate), "Year 7");
+  assert.equal(getStageForYearGroup("Year 7"), "KS3");
+
+  const decision = resolveQuickLevelFinderCanonicalPlacement({
+    inferredPlacement: {
+      yearGroup: "Year 6",
+      keyStage: "KS2",
+      confidence: 82,
+    },
+    existingYearGroup: "Year 7",
+    existingKeyStage: "KS3",
+    explicitOverride: false,
+  });
+
+  assert.equal(decision.shouldUpdateCanonical, false);
+  assert.equal(decision.nextYearGroup, "Year 7");
+  assert.equal(decision.nextKeyStage, "KS3");
 });
 
 test("year group maps to expected question count range", () => {

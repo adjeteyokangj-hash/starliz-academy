@@ -459,7 +459,9 @@ export default function StudentDashboardPage() {
     setMissingChildContext(false);
     setAuthRequired(false);
     try {
-      const summaryRes = await fetch("/api/student/dashboard-summary", { credentials: "include" });
+      const forceDashboardRefresh = typeof window !== "undefined"
+        && new URLSearchParams(window.location.search).get("refresh") === "1";
+      const summaryRes = await fetch(`/api/student/dashboard-summary${forceDashboardRefresh ? "?refresh=1" : ""}`, { credentials: "include" });
       if (summaryRes.status === 401) {
         setAuthRequired(true);
         setError("Your session expired. Please sign in again.");
