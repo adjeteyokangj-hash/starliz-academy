@@ -256,7 +256,11 @@ export default function WeeklyHomeworkPanel() {
       {justSubmitted && isFinished ? (
         <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           <p className="font-semibold">Homework submitted!</p>
-          <p className="mt-1">Your teacher will mark it soon.</p>
+          <p className="mt-1">
+            {batch.markingSummary?.feedback ?? (batch.status === "REVIEW_NEEDED"
+              ? "Some answers need review before your full result is ready."
+              : "Your result is ready below.")}
+          </p>
         </div>
       ) : isExcused ? (
         <div className="mt-3 rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-700">
@@ -268,9 +272,32 @@ export default function WeeklyHomeworkPanel() {
         </div>
       ) : isFinished ? (
         <div className="mt-3 rounded-2xl border border-emerald-200 bg-white p-4 text-sm text-slate-700">
-          <p className="font-semibold text-emerald-800">Submitted — awaiting marking</p>
+          <p className="font-semibold text-emerald-800">
+            {batch.status === "SUBMITTED" ? "Submitted — awaiting marking" : "Homework result"}
+          </p>
           {batch.scorePercent !== null ? (
             <p className="mt-1 text-lg font-black text-slate-900">{batch.scorePercent}% score</p>
+          ) : null}
+          {batch.markingSummary ? (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">
+                Outcome: {batch.markingSummary.outcomeBand.replaceAll("_", " ")}
+              </p>
+              <p>{batch.markingSummary.feedback}</p>
+              <p className="text-xs text-slate-600">
+                Correct: {batch.markingSummary.correctCount} • Incorrect: {batch.markingSummary.incorrectCount} • Review needed: {batch.markingSummary.reviewNeededCount}
+              </p>
+              {batch.markingSummary.weakAreas.length > 0 ? (
+                <p className="text-xs text-slate-600">
+                  Focus next on: {batch.markingSummary.weakAreas.slice(0, 3).join(", ")}
+                </p>
+              ) : null}
+              {batch.recapOnly ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  Recap and catch-up are unlocked before your next normal progression step.
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : (

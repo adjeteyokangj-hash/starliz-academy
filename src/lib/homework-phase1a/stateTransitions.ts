@@ -115,15 +115,17 @@ export function submitHomework(
 export function markHomework(
   state: HomeworkBatchState,
   now: Date,
-  scorePercent: number,
+  scorePercent: number | null,
   reviewNeeded = false,
 ): { state: HomeworkBatchState; audit: HomeworkAuditEvent[] } {
   if (state.status !== "SUBMITTED") {
     return { state, audit: [] };
   }
 
-  const normalizedScore = Math.max(0, Math.min(100, Math.round(scorePercent)));
-  const recapOnly = normalizedScore < 50;
+  const normalizedScore = typeof scorePercent === "number"
+    ? Math.max(0, Math.min(100, Math.round(scorePercent)))
+    : null;
+  const recapOnly = normalizedScore !== null && normalizedScore < 50;
   const postMarkStatus = reviewNeeded ? "REVIEW_NEEDED" : "COMPLETED";
 
   const next: HomeworkBatchState = {

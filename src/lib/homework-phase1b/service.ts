@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { evaluateHomeworkSessionGate } from "@/lib/homework-phase1a/gate";
 import {
   applyAdminHomeworkAction,
+  markHomework,
   saveDraftAnswer,
   submitHomework,
   type AdminHomeworkAction,
@@ -9,6 +10,11 @@ import {
 import type { HomeworkBatchState, HomeworkLifecycleStatus } from "@/lib/homework-phase1a/types";
 import { buildOpenHomeworkGate, resolveHomeworkSurfaceAccess, type HomeworkSurface } from "@/lib/homework-phase1b/contracts";
 import { isWeeklyHomeworkPhase1BEnabled } from "@/lib/homework-phase1b/config";
+import {
+  markHomeworkSubmission,
+  unavailableHomeworkOpenAnswerAiBoundary,
+  type HomeworkMarkingSummary,
+} from "@/lib/homework-phase1d/marking";
 
 type HomeworkQuestionRecord = {
   id: string;
@@ -41,7 +47,10 @@ type HomeworkAnswerRecord = {
   markingStatus: string;
   isCorrect: boolean | null;
   score: number | null;
+  feedbackJson: string | null;
+  aiConfidence: number | null;
   reviewNeeded: boolean;
+  metadataJson: string | null;
 };
 
 type HomeworkBatchRecordResolved = {
@@ -68,6 +77,7 @@ type HomeworkBatchRecordResolved = {
   excusedReason: string | null;
   extendedDueAt: Date | null;
   cancelledReason: string | null;
+  metadataJson: string | null;
   questions: HomeworkQuestionRecord[];
   answers: HomeworkAnswerRecord[];
 };
@@ -121,8 +131,12 @@ type HomeworkAnswerView = {
   markingStatus: string;
   isCorrect: boolean | null;
   score: number | null;
+  feedback?: string | null;
+  aiConfidence?: number | null;
   reviewNeeded: boolean;
 };
+
+export type HomeworkMarkingSummaryView = HomeworkMarkingSummary;
 
 export type HomeworkQuestionView = {
   id: string;
@@ -166,6 +180,7 @@ export type HomeworkBatchView = {
   excusedReason: string | null;
   extendedDueAt: string | null;
   cancelledReason: string | null;
+  markingSummary?: HomeworkMarkingSummaryView | null;
   questions: HomeworkQuestionView[];
 };
 
@@ -181,6 +196,22 @@ function parseJsonValue(value: string | null | undefined): unknown {
 function serializeJsonValue(value: unknown): string | null {
   if (value === undefined) return null;
   return JSON.stringify(value ?? null);
+}
+
+function parseBatchMetadata(metadataJson: string | null | undefined): Record<string, unknown> {
+  const parsed = parseJsonValue(metadataJson);
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : {};
+}
+
+function parseFeedbackText(value: string | null | undefined): string | null {
+  const parsed = parseJsonValue(value);
+  if (typeof parsed === "string") return parsed;
+  if (typeof parsed === "object" && parsed !== null && "text" in parsed && typeof (parsed as { text?: unknown }).text === "string") {
+    return (parsed as { text: string }).text;
+  }
+  return null;
 }
 
 function normalizeStatus(value: string): HomeworkLifecycleStatus {
@@ -246,6 +277,11 @@ function toBatchView(batch: NonNullable<HomeworkBatchRecord>): HomeworkBatchView
   const answersByQuestionId = new Map<string, HomeworkAnswerRecord>(
     batch.answers.map((answer: HomeworkAnswerRecord) => [answer.questionId, answer]),
   );
+  const metadata = parseBatchMetadata(batch.metadataJson);
+  const markingSummary = typeof metadata.markingSummary === "object" && metadata.markingSummary !== null
+    ? metadata.markingSummary as HomeworkMarkingSummaryView
+    : null;
+
   return {
     id: batch.id,
     studentId: batch.studentId,
@@ -270,6 +306,7 @@ function toBatchView(batch: NonNullable<HomeworkBatchRecord>): HomeworkBatchView
     excusedReason: batch.excusedReason,
     extendedDueAt: batch.extendedDueAt?.toISOString() ?? null,
     cancelledReason: batch.cancelledReason,
+    markingSummary,
     questions: batch.questions.map((question: HomeworkQuestionRecord) => {
       const answer = answersByQuestionId.get(question.id);
       return {
@@ -298,6 +335,8 @@ function toBatchView(batch: NonNullable<HomeworkBatchRecord>): HomeworkBatchView
           markingStatus: answer?.markingStatus ?? "not_marked",
           isCorrect: answer?.isCorrect ?? null,
           score: answer?.score ?? null,
+          feedback: parseFeedbackText(answer?.feedbackJson),
+          aiConfidence: answer?.aiConfidence ?? null,
           reviewNeeded: answer?.reviewNeeded ?? false,
         },
       };
@@ -432,30 +471,81 @@ export async function submitStudentHomework(input: {
     throw new HomeworkPhase1BError(transition.error, 400);
   }
 
+  const marking = await markHomeworkSubmission({
+    questions: batch.questions.map((question: HomeworkQuestionRecord) => {
+      const existingAnswer = batch.answers.find((answer: HomeworkAnswerRecord) => answer.questionId === question.id) ?? null;
+      return {
+        id: question.id,
+        subject: question.subject,
+        topic: question.topic,
+        skill: question.skill,
+        questionType: question.questionType,
+        prompt: parseJsonValue(question.promptJson),
+        expectedAnswer: parseJsonValue(question.expectedAnswerJson),
+        submittedAnswer: parseJsonValue(existingAnswer?.submittedAnswerJson ?? existingAnswer?.draftAnswerJson),
+      };
+    }),
+    aiBoundary: unavailableHomeworkOpenAnswerAiBoundary,
+  });
+  const markTransition = markHomework(
+    transition.state,
+    now,
+    marking.summary.scorePercent,
+    marking.summary.reviewNeededCount > 0,
+  );
+  const batchMetadata = parseBatchMetadata(batch.metadataJson);
+
   await prisma.$transaction(async (tx) => {
     const homeworkTx = tx as unknown as HomeworkPhase1BTransaction;
     await homeworkTx.homeworkBatch.update({
       where: { id: batch.id },
       data: {
-        status: transition.state.status,
+        status: markTransition.state.status,
         submittedAt: transition.state.submittedAtIso ? new Date(transition.state.submittedAtIso) : now,
+        markedAt: markTransition.state.markedAtIso ? new Date(markTransition.state.markedAtIso) : null,
+        completedAt: markTransition.state.status === "COMPLETED" ? now : null,
+        scorePercent: markTransition.state.scorePercent,
+        recapOnly: markTransition.state.recapOnly,
+        metadataJson: serializeJsonValue({
+          ...batchMetadata,
+          markingSummary: marking.summary,
+        }),
       },
     });
 
     await Promise.all(
-      batch.answers.map((answer: HomeworkAnswerRecord) => homeworkTx.homeworkAnswer.update({
-        where: { id: answer.id },
-        data: {
-          submittedAnswerJson: answer.submittedAnswerJson ?? answer.draftAnswerJson,
-          submittedAt: answer.submittedAt ?? now,
-        },
-      })),
+      batch.answers.map((answer: HomeworkAnswerRecord) => {
+        const result = marking.answers.find((item) => item.questionId === answer.questionId) ?? null;
+        return homeworkTx.homeworkAnswer.update({
+          where: { id: answer.id },
+          data: {
+            submittedAnswerJson: answer.submittedAnswerJson ?? answer.draftAnswerJson,
+            submittedAt: answer.submittedAt ?? now,
+            markingStatus: result?.markingStatus ?? answer.markingStatus,
+            isCorrect: result?.isCorrect ?? null,
+            score: result?.score ?? null,
+            feedbackJson: result ? serializeJsonValue({ text: result.feedback }) : answer.feedbackJson,
+            aiConfidence: result?.aiConfidence ?? null,
+            reviewNeeded: result?.reviewNeeded ?? false,
+            metadataJson: result ? serializeJsonValue({ weakArea: result.weakArea }) : answer.metadataJson,
+          },
+        });
+      }),
     );
 
     await appendAuditLogs(homeworkTx, {
       batchId: batch.id,
       actorUserId: input.actorUserId,
-      events: transition.audit,
+      events: [...transition.audit, ...markTransition.audit.map((event) => ({
+        ...event,
+        metadata: {
+          ...(event.metadata ?? {}),
+          outcomeBand: marking.summary.outcomeBand,
+          correctCount: marking.summary.correctCount,
+          incorrectCount: marking.summary.incorrectCount,
+          reviewNeededCount: marking.summary.reviewNeededCount,
+        },
+      }))],
     });
   });
 
