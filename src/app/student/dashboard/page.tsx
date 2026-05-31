@@ -11,6 +11,14 @@ import PrimaryDashboard from "@/components/student/PrimaryDashboard";
 import SecondaryDashboard from "@/components/student/SecondaryDashboard";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
+import WeeklyHomeworkPanel from "@/components/student/WeeklyHomeworkPanel";
+import type { HomeworkBatchView } from "@/lib/homework-phase1b/service";
+import {
+  resolveHomeworkGateMessage,
+  shouldShowHomeworkDashboardCard,
+  WEEKLY_HOMEWORK_PENDING_MESSAGE,
+  WEEKLY_HOMEWORK_SUPPORT_MESSAGE,
+} from "@/lib/homework-phase1c/helpers";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 import type { CoverageEntry, LearningTwinProfile } from "@/lib/academic-intelligence/types";
@@ -276,6 +284,21 @@ type StudentAcademicIntelligencePayload = {
   generatedAt: string;
 };
 
+type WeeklyHomeworkGatePayload = {
+  ok?: boolean;
+  featureEnabled?: boolean;
+  code?: string;
+  reason?: string;
+  homework?: HomeworkBatchView | null;
+  homeworkGate?: {
+    blockNewLearningSession?: boolean;
+    allowRecapCatchUpOnly?: boolean;
+    allowedSurfaces?: string[];
+    reason?: string;
+  };
+  error?: string;
+};
+
 type CertificateEligibilityPayload = {
   ok?: boolean;
   code?: "placement_required" | "not_enough_evidence";
@@ -418,6 +441,7 @@ export default function StudentDashboardPage() {
   const [academicError, setAcademicError] = useState("");
   const [academicTaskPendingId, setAcademicTaskPendingId] = useState<string | null>(null);
   const [homeworkPendingId, setHomeworkPendingId] = useState<string | null>(null);
+  const [weeklyHomeworkGate, setWeeklyHomeworkGate] = useState<WeeklyHomeworkGatePayload | null>(null);
   const [liveNow, setLiveNow] = useState(() => new Date());
   const [error, setError] = useState("");
   const [missingChildContext, setMissingChildContext] = useState(false);
@@ -462,6 +486,7 @@ export default function StudentDashboardPage() {
         setCertificateEligibility(null);
         setAcademicIntelligence(null);
         setAcademicError("");
+        setWeeklyHomeworkGate(null);
         setBossUnlocked(false);
         setBossPlayedToday(false);
         setBossAssignmentId(null);
@@ -609,6 +634,35 @@ export default function StudentDashboardPage() {
       window.clearTimeout(timer);
     };
   }, [activeChildId, deferredPanelsLoadedFor, loading]);
+
+  useEffect(() => {
+    if (loading || !activeChildId) return;
+
+    let cancelled = false;
+
+    async function loadWeeklyHomeworkGate() {
+      try {
+        const response = await fetchWithRefreshRetry(
+          "/api/student/weekly-homework/gate?surface=new_learning_session",
+          { credentials: "include" },
+        );
+        const payload = (await response.json()) as WeeklyHomeworkGatePayload;
+        if (!cancelled) {
+          setWeeklyHomeworkGate(payload);
+        }
+      } catch {
+        if (!cancelled) {
+          setWeeklyHomeworkGate(null);
+        }
+      }
+    }
+
+    void loadWeeklyHomeworkGate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChildId, loading]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -780,9 +834,15 @@ export default function StudentDashboardPage() {
       const response = await fetch("/api/student/daily-journey?quick=1", { credentials: "include" });
       const payload = (await response.json()) as DailyJourneyPayload;
       if (!response.ok) {
-        if (response.status === 409 && payload && typeof payload === "object" && "code" in payload && (payload as { code?: string }).code === "ONBOARDING_REQUIRED") {
-          router.push("/student/onboarding");
-          return;
+        if (response.status === 409 && payload && typeof payload === "object" && "code" in payload) {
+          const code = (payload as { code?: string }).code;
+          if (code === "ONBOARDING_REQUIRED") {
+            router.push("/student/onboarding");
+            return;
+          }
+          if (code === "HOMEWORK_GATE_BLOCKED") {
+            throw new Error(WEEKLY_HOMEWORK_PENDING_MESSAGE);
+          }
         }
         throw new Error(payload.error ?? "Unable to start today's journey.");
       }
@@ -884,6 +944,15 @@ export default function StudentDashboardPage() {
   }, [certificateEligibility]);
   const weakAccuracy = Math.round(skillMap.get(weakSkill)?.accuracy ?? 45);
   const supportSkill = groupedSkills.improving[0]?.skill ?? focusSkill;
+  const showWeeklyHomeworkCard = shouldShowHomeworkDashboardCard({
+    featureEnabled: !loading && activeChildId ? (weeklyHomeworkGate?.featureEnabled ?? null) : null,
+    blockNewLearningSession: weeklyHomeworkGate?.homeworkGate?.blockNewLearningSession === true,
+    hasHomework: Boolean(weeklyHomeworkGate?.homework),
+  });
+  const weeklyHomeworkMessage = resolveHomeworkGateMessage({
+    blockNewLearningSession: weeklyHomeworkGate?.homeworkGate?.blockNewLearningSession === true,
+    reason: weeklyHomeworkGate?.reason,
+  });
   const dashboardExperience = dashboardTier === "primary"
     ? (
       <PrimaryDashboard
@@ -1052,6 +1121,47 @@ export default function StudentDashboardPage() {
               </div>
             ) : null}
 
+            {showWeeklyHomeworkCard ? (
+              <section className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Weekly Homework</p>
+                    <h2 className="mt-1 text-lg font-black text-slate-900">Homework ready for this week</h2>
+                    <p className="mt-1 text-sm font-semibold text-violet-900">{weeklyHomeworkMessage}</p>
+                    <p className="mt-2 text-xs text-violet-700">{WEEKLY_HOMEWORK_SUPPORT_MESSAGE}</p>
+                    {weeklyHomeworkGate?.homework ? (
+                      <p className="mt-2 text-xs text-slate-600">
+                        {weeklyHomeworkGate.homework.questions.length} question{weeklyHomeworkGate.homework.questions.length === 1 ? "" : "s"} for the week of {new Date(weeklyHomeworkGate.homework.weekStart).toLocaleDateString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        document.getElementById("weekly-homework-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white hover:bg-violet-500"
+                    >
+                      Open homework
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        document.getElementById("smart-catch-up-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      className="rounded-xl border border-violet-200 bg-white px-4 py-2 text-sm font-bold text-violet-700 hover:bg-violet-100"
+                    >
+                      Support tools
+                    </button>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
             {!loading && visibleAssignments.length === 0 ? (
               <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
                 <p className="text-sm font-black uppercase tracking-[0.18em] text-amber-700">Awaiting Admin Assignment</p>
@@ -1062,7 +1172,7 @@ export default function StudentDashboardPage() {
               </div>
             ) : null}
 
-            <section className="mb-6 rounded-3xl border border-cyan-200 bg-cyan-50/70 p-5">
+            <section id="smart-catch-up-panel" className="mb-6 rounded-3xl border border-cyan-200 bg-cyan-50/70 p-5">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-700">Smart Catch-Up</p>
               {learningState?.isFirstTimeStudent ? (
                 <div className="mt-3 rounded-2xl border border-cyan-200 bg-white/70 p-4 text-sm text-cyan-900">
@@ -1353,6 +1463,8 @@ export default function StudentDashboardPage() {
                 </div>
               )}
             </section>
+
+            <WeeklyHomeworkPanel />
 
             {progression && (Array.isArray(progression.recommendations) ? progression.recommendations.length > 0 : Boolean(progression.message)) ? (
               <section className="mb-6 rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5">
