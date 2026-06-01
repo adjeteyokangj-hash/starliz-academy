@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { hasPermission, countActiveSuperAdmins } from "@/lib/rbac";
 import { z } from "zod";
+import { logSensitiveAdminAction } from "@/lib/audit/sensitive-admin-actions";
 
 const createDeleteApprovalSchema = z.object({
   targetUserId: z.string(),
@@ -174,17 +175,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Log to audit
-    await prisma.auditLog.create({
-      data: {
-        actorUserId: session.userId,
-        action: "REQUEST_DELETION",
-        entityType: body.entityType,
-        entityId: body.entityId,
-        metadataJson: JSON.stringify({
-          approvalId: approval.id,
-          reason: body.reason,
-        }),
+    await logSensitiveAdminAction({
+      actorUserId: session.userId,
+      action: "REQUEST_DELETION",
+      entityType: body.entityType,
+      entityId: body.entityId,
+      metadata: {
+        approvalId: approval.id,
+        reason: body.reason,
       },
     });
 

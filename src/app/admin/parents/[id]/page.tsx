@@ -36,6 +36,11 @@ type ParentDetail = {
   consentVersion: string | null;
   consentAcceptedAt: string | null;
   consentWithdrawnAt: string | null;
+  aiDisclosure?: {
+    summary: string;
+    reviewStatus: string;
+    reviewedAt: string;
+  };
   notificationPreferences: Array<{ eventType: string | null; emailEnabled: boolean; updatedAt: string }>;
   auditTrail: Array<{ id: string; action: string; entityType: string; metadataJson: string | null; createdAt: string }>;
   children: { id: string; name: string; age: number | null; yearGroup: string | null; level: number; stars: number; xp: number; streak: number; updatedAt: string }[];
@@ -202,6 +207,15 @@ export default function ParentDetailPage() {
             <p className="mt-2 text-sm text-white">{parent.consentVersion ?? "Not set"}</p>
           </div>
         </div>
+        {parent.aiDisclosure ? (
+          <div className="mt-4 rounded-2xl border border-cyan-500/25 bg-cyan-500/10 p-4">
+            <p className="text-xs uppercase text-cyan-200">AI use disclosure</p>
+            <p className="mt-2 text-sm text-cyan-100">{parent.aiDisclosure.summary}</p>
+            <p className="mt-2 text-xs text-cyan-200/80">
+              Status: {parent.aiDisclosure.reviewStatus} • Reviewed: {parent.aiDisclosure.reviewedAt}
+            </p>
+          </div>
+        ) : null}
       </AdminSectionCard>
 
       <AdminSectionCard title="Notification Preferences">

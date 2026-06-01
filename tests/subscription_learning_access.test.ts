@@ -5,6 +5,7 @@ import { buildLearningAccessDeniedResponse, ensureLearningAccess } from "../src/
 
 test("paid user access is allowed", async () => {
   const result = await ensureLearningAccess("parent-1", {
+    getConsentState: async () => ({ acceptedAt: new Date("2026-01-01T00:00:00.000Z"), withdrawnAt: null }),
     canUseFeature: async () => ({
       allowed: true,
       upgradeRequired: false,
@@ -21,6 +22,7 @@ test("paid user access is allowed", async () => {
 
 test("expired user is blocked", async () => {
   const result = await ensureLearningAccess("parent-2", {
+    getConsentState: async () => ({ acceptedAt: new Date("2026-01-01T00:00:00.000Z"), withdrawnAt: null }),
     canUseFeature: async () => ({
       allowed: false,
       reason: "EXPIRED",
@@ -50,6 +52,7 @@ test("cancelled subscription behaviour blocks when period ends", async () => {
 
 test("failed payment grace period can remain allowed", async () => {
   const result = await ensureLearningAccess("parent-3", {
+    getConsentState: async () => ({ acceptedAt: new Date("2026-01-01T00:00:00.000Z"), withdrawnAt: null }),
     canUseFeature: async () => ({
       allowed: true,
       upgradeRequired: false,
@@ -62,4 +65,19 @@ test("failed payment grace period can remain allowed", async () => {
   assert.equal(result.response, null);
   assert.equal(result.decision.status, "past_due");
   assert.equal(result.decision.allowed, true);
+});
+
+test("parent consent is required before learning access", async () => {
+  const result = await ensureLearningAccess("parent-4", {
+    getConsentState: async () => ({ acceptedAt: null, withdrawnAt: null }),
+    canUseFeature: async () => ({
+      allowed: true,
+      upgradeRequired: false,
+      status: "active",
+    }),
+  });
+
+  assert.ok(result.response);
+  assert.equal(result.response?.status, 403);
+  assert.equal(result.decision.reason, "CONSENT_REQUIRED");
 });

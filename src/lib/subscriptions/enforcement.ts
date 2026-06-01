@@ -12,7 +12,8 @@ export type AccessBlockedReason =
   | "BLOCKED"
   | "CHILD_LIMIT_REACHED"
   | "FEATURE_LOCKED"
-  | "TRIAL_LIMIT_REACHED";
+  | "TRIAL_LIMIT_REACHED"
+  | "CONSENT_REQUIRED";
 
 export type SubscriptionAccessDecision = {
   allowed: boolean;

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
+import { getAiUseDisclosureSummary } from "@/lib/privacy/ai-disclosure";
 
 const updateParentSchema = z.object({
   name: z.string().trim().min(1).optional(),
@@ -204,6 +205,7 @@ export async function GET(_request: Request, context: Context) {
         updatedAt: pref.updatedAt.toISOString(),
       })),
       children: parent.children.map((child) => ({ ...child, updatedAt: child.updatedAt.toISOString() })),
+      aiDisclosure: getAiUseDisclosureSummary(),
       auditTrail: auditTrail.map((entry) => ({
         id: entry.id,
         action: entry.action,

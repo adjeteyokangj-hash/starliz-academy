@@ -16,6 +16,14 @@ type ConsentAuditViewProps = {
   version: string | null;
   acceptedAt: string | null;
   withdrawnAt: string | null;
+  aiDisclosure?: {
+    summary: string;
+    appliesTo: string[];
+    safeguards: string[];
+    parentControls: string[];
+    reviewStatus: string;
+    reviewedAt: string;
+  } | null;
   auditHistory?: ConsentAuditEntry[];
   onAccept: () => void;
   onWithdraw: () => void;
@@ -26,6 +34,7 @@ export default function ConsentAuditView({
   version,
   acceptedAt,
   withdrawnAt,
+  aiDisclosure,
   auditHistory = [],
   onAccept,
   onWithdraw,
@@ -150,6 +159,36 @@ export default function ConsentAuditView({
           </p>
         </div>
       </div>
+
+      {aiDisclosure ? (
+        <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-6">
+          <h3 className="text-lg font-bold text-cyan-100">AI Use Disclosure</h3>
+          <p className="mt-2 text-sm text-cyan-100/90">{aiDisclosure.summary}</p>
+          <p className="mt-2 text-xs text-cyan-100/80">
+            Review status: {aiDisclosure.reviewStatus} • Reviewed at: {aiDisclosure.reviewedAt}
+          </p>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div>
+              <p className="text-xs font-semibold uppercase text-cyan-100/80">Applies to</p>
+              <ul className="mt-2 space-y-1 text-xs text-cyan-50/90">
+                {aiDisclosure.appliesTo.map((item) => <li key={item}>• {item}</li>)}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-cyan-100/80">Safeguards</p>
+              <ul className="mt-2 space-y-1 text-xs text-cyan-50/90">
+                {aiDisclosure.safeguards.map((item) => <li key={item}>• {item}</li>)}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-cyan-100/80">Parent controls</p>
+              <ul className="mt-2 space-y-1 text-xs text-cyan-50/90">
+                {aiDisclosure.parentControls.map((item) => <li key={item}>• {item}</li>)}
+              </ul>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Audit History */}
       {auditHistory.length > 0 && (

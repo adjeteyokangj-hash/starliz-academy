@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
+import { getAiUseDisclosureSummary } from "@/lib/privacy/ai-disclosure";
 
 const schema = z.object({
   accepted: z.boolean(),
@@ -10,22 +11,42 @@ const schema = z.object({
 });
 
 export async function GET() {
-  const { session, response } = await requireSession();
+  return handleConsentGet();
+}
+
+type ConsentGetDeps = {
+  requireSession: typeof requireSession;
+  getUserConsent: (userId: string) => Promise<{ consentVersion: string | null; consentAcceptedAt: Date | null; consentWithdrawnAt: Date | null } | null>;
+  getConsentHistory: (userId: string) => Promise<Array<{ id: string; action: string; metadataJson: string | null; createdAt: Date }>>;
+};
+
+export async function handleConsentGet(
+  deps: ConsentGetDeps = {
+    requireSession,
+    getUserConsent: async (userId) => {
+      return await prisma.user.findUnique({
+        where: { id: userId },
+        select: { consentVersion: true, consentAcceptedAt: true, consentWithdrawnAt: true },
+      });
+    },
+    getConsentHistory: async (userId) => {
+      return await prisma.auditLog.findMany({
+        where: {
+          entityType: "consent",
+          actorUserId: userId,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      });
+    },
+  },
+) {
+  const { session, response } = await deps.requireSession();
   if (!session) return response;
 
   const [user, history] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: session.userId },
-      select: { consentVersion: true, consentAcceptedAt: true, consentWithdrawnAt: true },
-    }),
-    prisma.auditLog.findMany({
-      where: {
-        entityType: "consent",
-        actorUserId: session.userId,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    }),
+    deps.getUserConsent(session.userId),
+    deps.getConsentHistory(session.userId),
   ]);
 
   return NextResponse.json({
@@ -33,6 +54,7 @@ export async function GET() {
     version: user?.consentVersion ?? null,
     acceptedAt: user?.consentAcceptedAt ?? null,
     withdrawnAt: user?.consentWithdrawnAt ?? null,
+    aiDisclosure: getAiUseDisclosureSummary(),
     auditHistory: history.map((entry) => ({
       id: entry.id,
       status: entry.action.includes("withdraw") ? "withdrawn" : "accepted",

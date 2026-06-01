@@ -122,6 +122,14 @@ type ConsentPayload = {
   version: string | null;
   acceptedAt: string | null;
   withdrawnAt: string | null;
+  aiDisclosure?: {
+    summary: string;
+    appliesTo: string[];
+    safeguards: string[];
+    parentControls: string[];
+    reviewStatus: string;
+    reviewedAt: string;
+  };
   auditHistory?: Array<{ id: string; status: "accepted" | "withdrawn"; version: string; timestamp: string }>;
 };
 
@@ -2016,6 +2024,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
               version={consent?.version ?? null}
               acceptedAt={consent?.acceptedAt ?? null}
               withdrawnAt={consent?.withdrawnAt ?? null}
+              aiDisclosure={consent?.aiDisclosure ?? null}
               auditHistory={consent?.auditHistory ?? []}
               onAccept={() => {
                 fetch("/api/consent", { credentials: "include" })
