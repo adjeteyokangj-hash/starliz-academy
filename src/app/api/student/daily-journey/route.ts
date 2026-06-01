@@ -14,6 +14,7 @@ import {
   parseSelectedSubjectsFromProfileJson,
   parseSubjectFocus,
 } from "@/lib/student-learning-state";
+import { ensureLearningAccess } from "@/lib/subscriptions/learning-access";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -23,6 +24,9 @@ export async function GET(request: Request) {
   if (!parentScope) {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
+
+  const access = await ensureLearningAccess(parentScope.parentId);
+  if (access.response) return access.response;
 
   const params = new URL(request.url).searchParams;
   const quickMode = params.get("quick") === "1";

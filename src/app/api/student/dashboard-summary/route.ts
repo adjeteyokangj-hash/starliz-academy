@@ -7,6 +7,7 @@ import { taskHrefForContentType } from "@/lib/assignments";
 import { resolveDashboardTier } from "@/lib/dashboardResolver";
 import { getOrRefreshAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 import { buildAssignedWorkSummary, buildSmartCoachSummary } from "@/lib/student-dashboard-summary";
+import { ensureLearningAccess } from "@/lib/subscriptions/learning-access";
 
 function parseProfileJson(raw: string | null | undefined): Record<string, unknown> {
   if (!raw) return {};
@@ -35,6 +36,9 @@ export async function GET(request: Request) {
   if (!parentScope) {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
+
+  const access = await ensureLearningAccess(parentScope.parentId);
+  if (access.response) return access.response;
 
   const params = new URL(request.url).searchParams;
   const manualRefresh = params.get("refresh") === "1";

@@ -18,6 +18,34 @@ type PaymentEvent = {
 
 type ProviderKind = "stripe" | "paystack" | "revolut";
 
+export async function handleDuplicateWebhookClaim(input: {
+  claimed: boolean;
+  provider: ProviderKind;
+  eventId: string;
+  eventType: string;
+  writeAuditLogFn?: typeof writeAuditLog;
+}) {
+  if (input.claimed) return null;
+
+  const writeAudit = input.writeAuditLogFn ?? writeAuditLog;
+  try {
+    await writeAudit({
+      action: "payment.webhook.duplicate",
+      entityType: "WebhookEvent",
+      entityId: input.eventId,
+      metadata: {
+        provider: input.provider,
+        eventId: input.eventId,
+        eventType: input.eventType,
+      },
+    });
+  } catch {
+    // Avoid breaking webhook handling if audit logging fails.
+  }
+
+  return { ok: true as const, ignored: true as const, reason: "DUPLICATE_EVENT" as const };
+}
+
 function resolveProviderFromEvent(event: PaymentEvent): ProviderKind {
   if (typeof event.order_id === "string" && event.order_id.trim()) return "revolut";
   if (typeof event.merchant_order_ext_ref === "string" && event.merchant_order_ext_ref.trim() && !event.data) return "revolut";
@@ -196,23 +224,13 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
   const derivedEventId = eventId ?? `${provider}:${eventType}:${Date.now()}`;
   if (eventId) {
     const claimed = await claimPaymentWebhookEvent(eventId, provider);
-    if (!claimed) {
-      try {
-        await writeAuditLog({
-          action: "payment.webhook.duplicate",
-          entityType: "WebhookEvent",
-          entityId: derivedEventId,
-          metadata: {
-            provider,
-            eventId: derivedEventId,
-            eventType,
-          },
-        });
-      } catch {
-        // Avoid breaking webhook handling if audit logging fails.
-      }
-      return { ok: true, ignored: true, reason: "DUPLICATE_EVENT" };
-    }
+    const duplicateResult = await handleDuplicateWebhookClaim({
+      claimed,
+      provider,
+      eventId: derivedEventId,
+      eventType,
+    });
+    if (duplicateResult) return duplicateResult;
   }
 
   const object = getEventObject(event, provider);

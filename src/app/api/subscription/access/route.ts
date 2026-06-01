@@ -6,10 +6,23 @@ import { resolveParentScope } from "@/lib/parent_scope";
 
 const features = new Set(["learning", "ai-content", "reports", "store"]);
 
+type AccessRouteDeps = {
+  requireSession: typeof requireSession;
+  resolveParentScope: typeof resolveParentScope;
+  canUseFeature: typeof canUseFeature;
+};
+
 export async function GET(request: Request) {
-  const { session, response } = await requireSession();
+  return handleSubscriptionAccessGet(request);
+}
+
+export async function handleSubscriptionAccessGet(
+  request: Request,
+  deps: AccessRouteDeps = { requireSession, resolveParentScope, canUseFeature },
+) {
+  const { session, response } = await deps.requireSession();
   if (!session) return response;
-  const parentScope = await resolveParentScope(session);
+  const parentScope = await deps.resolveParentScope(session);
   if (!parentScope) {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
@@ -19,6 +32,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unknown feature." }, { status: 400 });
   }
 
-  const decision = await canUseFeature(parentScope.parentId, feature as PremiumFeature);
+  const decision = await deps.canUseFeature(parentScope.parentId, feature as PremiumFeature);
   return NextResponse.json(decision, { status: decision.allowed ? 200 : 402 });
 }

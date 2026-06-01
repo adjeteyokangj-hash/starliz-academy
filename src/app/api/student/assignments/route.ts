@@ -7,6 +7,7 @@ import { mergeWeakAreas, parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { normalizeExamBoard } from "@/lib/curriculum";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { normalizeLessonContentJson } from "@/lib/lesson-runtime-normalizer";
+import { ensureLearningAccess } from "@/lib/subscriptions/learning-access";
 
 function parseContentMetadata(raw: string | null): {
   examBoard: string | null;
@@ -65,6 +66,9 @@ export async function GET(request: Request) {
     if (!parentScope) {
       return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
     }
+
+    const access = await ensureLearningAccess(parentScope.parentId);
+    if (access.response) return access.response;
 
     const params = new URL(request.url).searchParams;
     const assignmentId = params.get("id");

@@ -27,7 +27,7 @@ const updateSchema = z.object({
   trialDays: z.number().int().min(1).max(60).optional(),
 });
 
-function toUiStatus(status: string | null | undefined) {
+export function toUiStatus(status: string | null | undefined) {
   const normalized = (status ?? "active").toLowerCase();
   if (normalized === "failed_payment") return "failed_payment";
   if (normalized === "blocked" || normalized === "suspended") return "suspended";
@@ -49,7 +49,7 @@ function currency(valuePence: number) {
   return `GBP ${((valuePence || 0) / 100).toFixed(2)}`;
 }
 
-function accountStatusFromSubscription(status: string) {
+export function accountStatusFromSubscription(status: string) {
   if (status === "past_due" || status === "cancelled" || status === "blocked") return "suspended";
   return "active";
 }
