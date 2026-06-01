@@ -1,19 +1,16 @@
 import { NextResponse } from "next/server"
-import { requireSession } from "@/lib/api_guard"
-import { resolveParentScope } from "@/lib/parent_scope"
+import { requireAdmin } from "@/lib/api_guard"
 
 export async function POST(request: Request) {
-  const { session, response } = await requireSession()
+  const { session, response } = await requireAdmin()
   if (!session) return response
 
   const body = await request.json().catch(() => null)
-  const parentScope = await resolveParentScope(session)
 
   console.log("[StarLiz usage event]", {
     ...body,
     userId: session.userId,
     email: session.email,
-    parentId: parentScope?.parentId ?? null,
     createdAt: new Date().toISOString(),
   })
 

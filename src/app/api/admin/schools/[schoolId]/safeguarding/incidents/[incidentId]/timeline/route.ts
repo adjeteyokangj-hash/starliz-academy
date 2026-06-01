@@ -3,14 +3,17 @@ import { buildResponse, actorFromHeaders } from "../../../_lib/response";
 import { canAccessDetail, makeAuditEvent, normalizeRole } from "../../../_lib/governance";
 import { appendAuditEvent, appendTimelineEvent, getIncident, listTimelineEvents, updateIncident } from "../../../_lib/store";
 import { timelineSchema, toValidationErrors } from "../../../_lib/validation";
+import { requireAdmin } from "@/lib/api_guard";
 
 type Context = { params: Promise<{ schoolId: string; incidentId: string }> };
 
 export async function POST(request: Request, context: Context) {
   const requestedAt = new Date().toISOString();
   const { schoolId, incidentId } = await context.params;
-  const { actor, roleRaw } = actorFromHeaders(request);
-  const role = normalizeRole(roleRaw);
+  const { session, response } = await requireAdmin();
+  if (!session) return response!;
+  const actor = session.email || session.userId;
+  const role = normalizeRole("dsl");
 
   if (!canAccessDetail(role)) {
     return buildResponse({

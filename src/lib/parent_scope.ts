@@ -18,19 +18,10 @@ function normalizeEmail(email: string): string {
 
 export async function resolveParentScope(session: SessionLike): Promise<ParentScope | null> {
   const sessionEmail = normalizeEmail(session.email);
-
-  const [sessionUser, emailMatchedUser] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: session.userId },
-      select: { id: true, email: true, role: true },
-    }),
-    sessionEmail
-      ? prisma.user.findUnique({
-          where: { email: sessionEmail },
-          select: { id: true, email: true, role: true },
-        })
-      : Promise.resolve(null),
-  ]);
+  const sessionUser = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { id: true, email: true, role: true },
+  });
 
   if (sessionUser?.role === "parent") {
     return {
@@ -40,12 +31,23 @@ export async function resolveParentScope(session: SessionLike): Promise<ParentSc
     };
   }
 
-  if (emailMatchedUser?.role === "parent") {
-    return {
-      parentId: emailMatchedUser.id,
-      parentEmail: normalizeEmail(emailMatchedUser.email),
-      source: "email-match",
-    };
+  const allowEmailFallback =
+    process.env.NODE_ENV === "development" &&
+    String(process.env.STARLIZ_ALLOW_PARENT_EMAIL_FALLBACK ?? "").trim().toLowerCase() === "true";
+
+  if (allowEmailFallback && sessionEmail) {
+    const emailMatchedUser = await prisma.user.findUnique({
+      where: { email: sessionEmail },
+      select: { id: true, email: true, role: true },
+    });
+
+    if (emailMatchedUser?.role === "parent") {
+      return {
+        parentId: emailMatchedUser.id,
+        parentEmail: normalizeEmail(emailMatchedUser.email),
+        source: "email-match",
+      };
+    }
   }
 
   return null;

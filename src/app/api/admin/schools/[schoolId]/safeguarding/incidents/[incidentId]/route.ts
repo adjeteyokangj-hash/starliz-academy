@@ -2,14 +2,16 @@ import { buildResponse, actorFromHeaders } from "../../_lib/response";
 import { canAccessDetail, canManageSafeguarding, computeSlaState, isValidTransition, makeAuditEvent, normalizeRole } from "../../_lib/governance";
 import { appendAuditEvent, getIncident, updateIncident } from "../../_lib/store";
 import { patchIncidentSchema, toValidationErrors } from "../../_lib/validation";
+import { requireAdmin } from "@/lib/api_guard";
 
 type Context = { params: Promise<{ schoolId: string; incidentId: string }> };
 
 export async function GET(request: Request, context: Context) {
   const requestedAt = new Date().toISOString();
   const { schoolId, incidentId } = await context.params;
-  const { roleRaw } = actorFromHeaders(request);
-  const role = normalizeRole(roleRaw);
+  const { session, response } = await requireAdmin();
+  if (!session) return response!;
+  const role = normalizeRole("dsl");
 
   if (!canAccessDetail(role)) {
     return buildResponse({
@@ -48,8 +50,10 @@ export async function GET(request: Request, context: Context) {
 export async function PATCH(request: Request, context: Context) {
   const requestedAt = new Date().toISOString();
   const { schoolId, incidentId } = await context.params;
-  const { actor, roleRaw } = actorFromHeaders(request);
-  const role = normalizeRole(roleRaw);
+  const { session, response } = await requireAdmin();
+  if (!session) return response!;
+  const actor = session.email || session.userId;
+  const role = normalizeRole("dsl");
 
   if (!canManageSafeguarding(role)) {
     return buildResponse({

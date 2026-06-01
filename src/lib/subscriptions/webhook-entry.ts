@@ -5,6 +5,10 @@ import { handlePaymentWebhook } from "@/lib/subscriptions/webhook-handler";
 const DEFAULT_STRIPE_TIMESTAMP_TOLERANCE_SECONDS = 300;
 const DEFAULT_REVOLUT_TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000;
 
+function isProductionEnvironment(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
 function getStripeTimestampToleranceSeconds(): number {
   const raw = Number.parseInt(process.env.STRIPE_WEBHOOK_TOLERANCE_SECONDS ?? "", 10);
   if (!Number.isFinite(raw) || raw < 0) {
@@ -21,7 +25,11 @@ function secureCompare(expected: string, provided: string): boolean {
 
 function verifyFallbackSignature(rawBody: string, signature: string | null): { ok: boolean; reason?: string } {
   const secret = process.env.PAYMENT_WEBHOOK_SECRET;
-  if (!secret) return { ok: true };
+  if (!secret) {
+    return isProductionEnvironment()
+      ? { ok: false, reason: "Payment webhook fallback secret is not configured." }
+      : { ok: true };
+  }
   if (!signature) return { ok: false, reason: "Missing webhook signature." };
 
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
@@ -33,7 +41,11 @@ function verifyFallbackSignature(rawBody: string, signature: string | null): { o
 
 function verifyStripeSignature(rawBody: string, signature: string | null): { ok: boolean; reason?: string } {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) return { ok: true };
+  if (!secret) {
+    return isProductionEnvironment()
+      ? { ok: false, reason: "Stripe webhook secret is not configured." }
+      : { ok: true };
+  }
   if (!signature) return { ok: false, reason: "Missing Stripe signature." };
 
   const pieces = signature.split(",").map((piece) => piece.trim());
@@ -65,7 +77,11 @@ function verifyStripeSignature(rawBody: string, signature: string | null): { ok:
 
 function verifyPaystackSignature(rawBody: string, signature: string | null): { ok: boolean; reason?: string } {
   const secret = process.env.PAYSTACK_WEBHOOK_SECRET;
-  if (!secret) return { ok: true };
+  if (!secret) {
+    return isProductionEnvironment()
+      ? { ok: false, reason: "Paystack webhook secret is not configured." }
+      : { ok: true };
+  }
   if (!signature) return { ok: false, reason: "Missing Paystack signature." };
   const expected = createHmac("sha512", secret).update(rawBody).digest("hex");
   return secureCompare(expected, signature)
@@ -79,7 +95,11 @@ export function verifyRevolutSignature(
   requestTimestamp: string | null,
 ): { ok: boolean; reason?: string } {
   const secret = process.env.REVOLUT_WEBHOOK_SECRET;
-  if (!secret) return { ok: true };
+  if (!secret) {
+    return isProductionEnvironment()
+      ? { ok: false, reason: "Revolut webhook secret is not configured." }
+      : { ok: true };
+  }
   if (!signature) return { ok: false, reason: "Missing Revolut signature." };
   if (!requestTimestamp) return { ok: false, reason: "Missing Revolut request timestamp." };
 
@@ -140,10 +160,13 @@ export async function processPaymentWebhookRequest(request: Request, options: { 
   const paystackSignature = request.headers.get("x-paystack-signature");
   const revolutSignature = request.headers.get("revolut-signature");
   const revolutTimestamp = request.headers.get("revolut-request-timestamp");
+  const fallbackSignature = request.headers.get("x-signature");
+
+  if (!stripeSignature && !paystackSignature && !revolutSignature && !fallbackSignature) {
+    return NextResponse.json({ error: "Missing webhook signature." }, { status: 401 });
+  }
 
   if (options.allowFallbackSignature) {
-    const fallbackSignature = request.headers.get("x-signature");
-
     if (revolutSignature || revolutTimestamp) {
       const revolutCheck = verifyRevolutSignature(rawBody, revolutSignature, revolutTimestamp);
       if (!revolutCheck.ok) {
