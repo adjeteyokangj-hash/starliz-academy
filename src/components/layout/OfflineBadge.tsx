@@ -46,10 +46,10 @@ export default function OfflineBadge() {
   return (
     <div className={`fixed bottom-6 right-6 z-30 rounded-2xl px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.28)] backdrop-blur-sm border ${
       !online 
-        ? "border-orange-200/40 bg-gradient-to-br from-orange-50/95 to-amber-50/95 text-orange-900" 
+        ? "border-orange-200/40 bg-orange-50/95 text-orange-900" 
         : syncing
-          ? "border-cyan-200/40 bg-gradient-to-br from-cyan-50/95 to-blue-50/95 text-cyan-900"
-          : "border-emerald-200/40 bg-gradient-to-br from-emerald-50/95 to-teal-50/95 text-emerald-900"
+          ? "border-cyan-200/40 bg-cyan-50/95 text-cyan-900"
+          : "border-emerald-200/40 bg-emerald-50/95 text-emerald-900"
     }`}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">

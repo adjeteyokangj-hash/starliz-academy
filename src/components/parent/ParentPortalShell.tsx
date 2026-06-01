@@ -14,6 +14,7 @@ import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import { resolveDashboardTier, dashboardTierLabel, isProfileComplete } from "@/lib/dashboardResolver";
+import { percentageHeightClass, percentageWidthClass } from "@/lib/progress-class";
 import type { CoverageEntry, SchoolWeekday } from "@/lib/academic-intelligence/types";
 import type { RankedCertificateType, RankingMethod } from "@/lib/ranked-certificates";
 
@@ -1672,7 +1673,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <span className="text-slate-300">{weakness.topic}</span>
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-24 rounded-full bg-white/10">
-                                <div className="h-full rounded-full bg-red-500" style={{ width: `${weakness.accuracy}%` }}></div>
+                                <div className={`h-full rounded-full bg-red-500 ${percentageWidthClass(weakness.accuracy)}`}></div>
                               </div>
                               <span className="w-12 text-right font-semibold text-red-400">{weakness.accuracy}%</span>
                             </div>
@@ -1692,7 +1693,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <span className="text-slate-300">{strength.topic}</span>
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-24 rounded-full bg-white/10">
-                                <div className="h-full rounded-full bg-green-500" style={{ width: `${strength.accuracy}%` }}></div>
+                                <div className={`h-full rounded-full bg-green-500 ${percentageWidthClass(strength.accuracy)}`}></div>
                               </div>
                               <span className="w-12 text-right font-semibold text-green-400">{strength.accuracy}%</span>
                             </div>
@@ -1751,8 +1752,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         return (
                           <div key={day.date} className="flex-1" title={`${day.date}: ${day.count} attempts`}>
                             <div
-                              className="w-full bg-gradient-to-t from-cyan-500 to-cyan-300 rounded-t-sm transition hover:opacity-80"
-                              style={{ height: `${height}%`, minHeight: day.count > 0 ? "4px" : "0px" }}
+                              className={`w-full rounded-t-sm bg-gradient-to-t from-cyan-500 to-cyan-300 transition hover:opacity-80 ${percentageHeightClass(height)}`}
                             ></div>
                           </div>
                         );

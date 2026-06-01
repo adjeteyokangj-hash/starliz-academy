@@ -3,6 +3,7 @@
 import type { DashboardProps } from "./dashboardTypes";
 import { useRouter } from "next/navigation";
 import StudyPlanBadge from "@/components/learning/StudyPlanBadge";
+import { percentageWidthClass } from "@/lib/progress-class";
 import { deriveStudyPlanProgress } from "@/lib/study-plan";
 
 function tagTone(status: string): string {
@@ -353,8 +354,7 @@ export default function PrimaryDashboard({
                 </div>
                 <div className="mt-2 h-1.5 rounded-full bg-slate-200">
                   <div
-                    className={`h-full rounded-full ${row.status === "mastered" ? "bg-emerald-500" : row.status === "improving" ? "bg-amber-500" : "bg-rose-500"}`}
-                    style={{ width: `${row.accuracy}%` }}
+                    className={`h-full rounded-full ${row.status === "mastered" ? "bg-emerald-500" : row.status === "improving" ? "bg-amber-500" : "bg-rose-500"} ${percentageWidthClass(row.accuracy)}`}
                   />
                 </div>
               </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { percentageWidthClass } from "@/lib/progress-class";
 import type { StudyPlanProgress } from "@/lib/study-plan";
 
 type StudyPlanBadgeProps = {
@@ -63,8 +64,7 @@ export default function StudyPlanBadge({ progress, compact = false }: StudyPlanB
         <div
           className={`h-full rounded-full transition-all ${
             complete ? "bg-emerald-500" : "bg-indigo-500"
-          }`}
-          style={{ width: `${progressPercent}%` }}
+          } ${percentageWidthClass(progressPercent)}`}
         />
       </div>
 

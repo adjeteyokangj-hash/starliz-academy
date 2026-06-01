@@ -1,3 +1,5 @@
+import { percentageWidthClass } from "@/lib/progress-class";
+
 type BarPoint = {
   label: string;
   value: number;
@@ -9,6 +11,14 @@ type Props = {
   points: BarPoint[];
   maxValue?: number;
 };
+
+function barColorClass(color?: string): string {
+  if (color === "#00CEC9") return "bg-cyan-500";
+  if (color === "#10b981") return "bg-emerald-500";
+  if (color === "#ef4444") return "bg-red-500";
+  if (color === "#f59e0b") return "bg-amber-500";
+  return "bg-violet-500";
+}
 
 export default function BarChart({ title, points, maxValue }: Props) {
   const safeMax = maxValue ?? Math.max(1, ...points.map((p) => p.value));
@@ -22,11 +32,9 @@ export default function BarChart({ title, points, maxValue }: Props) {
             <span className="text-xs font-semibold text-slate-500">{point.label}</span>
             <div className="h-3 overflow-hidden rounded-full bg-slate-200">
               <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.max(6, (point.value / safeMax) * 100)}%`,
-                  background: point.color ?? "#6C5CE7",
-                }}
+                className={`h-full rounded-full ${barColorClass(point.color)} ${percentageWidthClass(
+                  Math.max(6, (point.value / safeMax) * 100),
+                )}`}
               />
             </div>
             <span className="text-right text-xs font-bold text-slate-700">{point.value}</span>

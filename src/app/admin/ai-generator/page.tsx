@@ -2473,6 +2473,7 @@ export default function AiGeneratorPage() {
         <div className="mb-3 grid gap-3 sm:grid-cols-3">
           <select
             value={weakAreaKeyStageFilter}
+            aria-label="Filter weak areas by key stage"
             onChange={(event) => {
               const nextStage = event.target.value;
               setWeakAreaKeyStageFilter(nextStage);
@@ -2484,12 +2485,14 @@ export default function AiGeneratorPage() {
               setWeakAreaYearGroupFilter((current) => options.includes(current as (typeof YEAR_GROUPS)[number]) ? current : "");
             }}
             className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+            title="Filter weak areas by key stage"
           >
             <option value="">All key stages</option>
             {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
           </select>
           <select
             value={weakAreaYearGroupFilter}
+            aria-label="Filter weak areas by year group"
             onChange={(event) => {
               const nextYear = event.target.value;
               setWeakAreaYearGroupFilter(nextYear);
@@ -2498,6 +2501,7 @@ export default function AiGeneratorPage() {
               }
             }}
             className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+            title="Filter weak areas by year group"
           >
             <option value="">All year groups</option>
             {(weakAreaKeyStageFilter ? yearGroupsForKeyStage(weakAreaKeyStageFilter) : [...YEAR_GROUPS]).map((group) => (
@@ -2506,8 +2510,10 @@ export default function AiGeneratorPage() {
           </select>
           <select
             value={weakAreaSubjectFilter}
+            aria-label="Filter weak areas by subject scope"
             onChange={(event) => setWeakAreaSubjectFilter(event.target.value as "manual" | "all")}
             className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+            title="Filter weak areas by subject scope"
           >
             <option value="manual">Match manual form subject/year/key stage</option>
             <option value="all">All subjects</option>

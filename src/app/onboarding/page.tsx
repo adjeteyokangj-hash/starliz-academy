@@ -124,8 +124,9 @@ export default function OnboardingPage() {
 
         <Card className="mt-8 space-y-6">
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">What is your child&apos;s name?</label>
+            <label htmlFor="child-name" className="mb-2 block text-sm font-semibold text-slate-700">What is your child&apos;s name?</label>
             <input
+              id="child-name"
               className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none ring-primary focus:ring-2"
               placeholder="Enter child name"
               value={name}
@@ -135,8 +136,9 @@ export default function OnboardingPage() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">How old is the learner? (5-10)</label>
+            <label htmlFor="child-age-range" className="mb-2 block text-sm font-semibold text-slate-700">How old is the learner? (5-10)</label>
             <input
+              id="child-age-range"
               type="range"
               min={5}
               max={10}

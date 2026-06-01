@@ -25,7 +25,7 @@ export default function ProductionChecklistPage() {
       <AdminSectionCard title="Final Checks">
         <div className="grid gap-3 md:grid-cols-2">
           {productionChecklist.map((check) => (
-            <div key={`${check.area}-${check.item}`} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div key={`${check.area}-${check.item}`} className="rounded-2xl border border-white/10 bg-white/4 p-4">
               <p className="text-sm font-black text-white">{check.area}</p>
               <p className="mt-2 text-sm text-slate-400">{check.item}</p>
             </div>

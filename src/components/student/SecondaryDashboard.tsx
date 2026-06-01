@@ -4,6 +4,7 @@ import type { DashboardProps } from "./dashboardTypes";
 import { useRouter } from "next/navigation";
 import StudyPlanBadge from "@/components/learning/StudyPlanBadge";
 import LearningTwinInsight from "@/components/academic-intelligence/LearningTwinInsight";
+import { percentageWidthClass } from "@/lib/progress-class";
 import { deriveStudyPlanProgress } from "@/lib/study-plan";
 
 function accuracyBand(accuracy: number): { label: string; color: string } {
@@ -421,8 +422,7 @@ export default function SecondaryDashboard({
                     <div
                       className={`h-full rounded-full transition-all ${
                         row.accuracy >= 80 ? "bg-emerald-500" : row.accuracy >= 60 ? "bg-amber-500" : "bg-rose-500"
-                      }`}
-                      style={{ width: `${row.accuracy}%` }}
+                      } ${percentageWidthClass(row.accuracy)}`}
                     />
                   </div>
                 </div>

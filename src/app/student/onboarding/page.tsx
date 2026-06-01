@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
+import { percentageWidthClass } from "@/lib/progress-class";
 
 type QuickQuestion = {
   id: string;
@@ -246,12 +247,11 @@ export default function StudentOnboardingPage() {
             </p>
             <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-800">
               <div
-                className="h-full bg-cyan-400 transition-all"
-                style={{
-                  width: `${quickSession.totalQuestions > 0
+                className={`h-full bg-cyan-400 transition-all ${percentageWidthClass(
+                  quickSession.totalQuestions > 0
                     ? Math.round((quickSession.answered / quickSession.totalQuestions) * 100)
-                    : 0}%`,
-                }}
+                    : 0,
+                )}`}
               />
             </div>
 
