@@ -19,6 +19,7 @@
     "test:e2e:final-smoke": "playwright test tests/e2e/final-smoke-targeted.spec.ts --workers=1",
     "test:e2e:schools-ops": "playwright test --workers=1 tests/e2e/admin-schools-ops.spec.ts tests/e2e/admin-schools-ops-cleanup.spec.ts",
     "test:e2e:schools-ops-cleanup": "playwright test tests/e2e/admin-schools-ops-cleanup.spec.ts",
+    "audit:launch-env": "tsx scripts/audit_launch_env.ts",
     "seed:admin": "node scripts/seed_admin.mjs",
     "prisma:local:studio": "node scripts/prisma_local.mjs studio",
     "prisma:local:pull": "node scripts/prisma_local.mjs pull",
