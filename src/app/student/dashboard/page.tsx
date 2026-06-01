@@ -19,6 +19,7 @@ import {
   WEEKLY_HOMEWORK_PENDING_MESSAGE,
   WEEKLY_HOMEWORK_SUPPORT_MESSAGE,
 } from "@/lib/homework-phase1c/helpers";
+import { isStudentCertificateCenterEnabled } from "@/lib/launch-scope";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 import type { CoverageEntry, LearningTwinProfile } from "@/lib/academic-intelligence/types";
@@ -415,6 +416,7 @@ function buildInterventionPath(input: {
 
 export default function StudentDashboardPage() {
   const router = useRouter();
+  const certificateCenterEnabled = isStudentCertificateCenterEnabled();
   const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
   const [skills, setSkills] = useState<StudentSkill[]>([]);
   const [journey] = useState<DailyJourneyPayload["journey"] | null>(null);
@@ -556,7 +558,9 @@ export default function StudentDashboardPage() {
             fetch("/api/student/quick-level-finder/levels", { credentials: "include" }),
             fetch("/api/student/placement-lessons", { credentials: "include" }),
             fetch("/api/student/progression/recommendations", { credentials: "include" }),
-            fetch("/api/student/certificates/eligibility", { credentials: "include" }),
+            certificateCenterEnabled
+              ? fetch("/api/student/certificates/eligibility", { credentials: "include" })
+              : Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } })),
           ]);
 
           if (cancelled) return;
@@ -635,7 +639,7 @@ export default function StudentDashboardPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [activeChildId, deferredPanelsLoadedFor, loading]);
+  }, [activeChildId, certificateCenterEnabled, deferredPanelsLoadedFor, loading]);
 
   useEffect(() => {
     if (loading || !activeChildId) return;
@@ -1515,7 +1519,7 @@ export default function StudentDashboardPage() {
               </section>
             ) : null}
 
-            {certificateEligibility && (certificateEligibility.summary || certificateEligibility.message) ? (
+            {certificateCenterEnabled && certificateEligibility && (certificateEligibility.summary || certificateEligibility.message) ? (
               <section className="mb-6 rounded-3xl border border-amber-200 bg-amber-50/70 p-5">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Certificate Progress</p>
                 <div className="mt-3">
@@ -1593,6 +1597,14 @@ export default function StudentDashboardPage() {
                     </button>
                   </div>
                 ) : null}
+              </section>
+            ) : null}
+
+            {!certificateCenterEnabled ? (
+              <section className="mb-6 rounded-3xl border border-slate-200 bg-slate-50/70 p-5">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-600">Certificates</p>
+                <p className="mt-2 text-sm font-semibold text-slate-800">Certificate center is coming soon.</p>
+                <p className="mt-1 text-sm text-slate-700">We are finalising student-facing certificate flows for launch safety.</p>
               </section>
             ) : null}
 

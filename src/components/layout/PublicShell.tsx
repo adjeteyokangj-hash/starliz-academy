@@ -1,11 +1,15 @@
 import Link from "next/link"
 import Logo from "@/components/Logo"
+import { isPublicTrialCtaEnabled, isRoadmapPublicEnabled } from "@/lib/launch-scope"
 
 type PublicShellProps = {
   children: React.ReactNode
 }
 
 export default function PublicShell({ children }: PublicShellProps) {
+  const showTrialCta = isPublicTrialCtaEnabled()
+  const showRoadmap = isRoadmapPublicEnabled()
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <header className="border-b border-slate-800">
@@ -25,17 +29,31 @@ export default function PublicShell({ children }: PublicShellProps) {
             <Link href="/" className="hover:text-white">
               Change country
             </Link>
+            {showRoadmap ? (
+              <Link href="/roadmap" className="hover:text-white">
+                Roadmap
+              </Link>
+            ) : null}
             <Link href="/login" className="hover:text-white">
               Login
             </Link>
           </nav>
 
-          <Link
-            href="/trial"
-            className="hidden rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold hover:bg-blue-500 sm:inline-flex"
-          >
-            Start your child&apos;s learning journey
-          </Link>
+          {showTrialCta ? (
+            <Link
+              href="/trial"
+              className="hidden rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold hover:bg-blue-500 sm:inline-flex"
+            >
+              Start your child&apos;s learning journey
+            </Link>
+          ) : (
+            <Link
+              href="/signup"
+              className="hidden rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold hover:bg-blue-500 sm:inline-flex"
+            >
+              Create account
+            </Link>
+          )}
 
           <details className="relative sm:hidden">
             <summary className="cursor-pointer rounded-xl border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200">
@@ -46,8 +64,13 @@ export default function PublicShell({ children }: PublicShellProps) {
               <Link href="/pricing" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Pricing</Link>
               <Link href="/contact" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Contact</Link>
               <Link href="/" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Change country</Link>
+              {showRoadmap ? <Link href="/roadmap" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Roadmap</Link> : null}
               <Link href="/login" className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Login</Link>
-              <Link href="/trial" className="mt-1 block rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500">Start your child&apos;s learning journey</Link>
+              {showTrialCta ? (
+                <Link href="/trial" className="mt-1 block rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500">Start your child&apos;s learning journey</Link>
+              ) : (
+                <Link href="/signup" className="mt-1 block rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500">Create account</Link>
+              )}
             </div>
           </details>
         </div>

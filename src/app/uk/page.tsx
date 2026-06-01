@@ -3,6 +3,7 @@ import Logo from "@/components/Logo"
 import PublicPricingSection from "@/components/pricing/PublicPricingSection"
 import { getPublicPricingPlans } from "@/lib/pricing/service"
 import CountryPreferenceSync from "@/components/public/CountryPreferenceSync"
+import { isPublicTrialCtaEnabled, isRoadmapPublicEnabled } from "@/lib/launch-scope"
 
 export const dynamic = "force-dynamic"
 
@@ -184,6 +185,9 @@ const roadmapItems = [
 ]
 
 export default async function PublicHomePage() {
+  const showRoadmap = isRoadmapPublicEnabled();
+  const showTrialCta = isPublicTrialCtaEnabled();
+
   let plans = [] as Awaited<ReturnType<typeof getPublicPricingPlans>>;
   try {
     plans = await getPublicPricingPlans();
@@ -207,16 +211,16 @@ export default async function PublicHomePage() {
             <Link href="#how-it-works" className="transition hover:text-white">How it works</Link>
             <Link href="#pricing" className="transition hover:text-white">Pricing</Link>
             <Link href="/" className="transition hover:text-white">Change country</Link>
-            <Link href="/roadmap" className="transition hover:text-white">Roadmap</Link>
+            {showRoadmap ? <Link href="/roadmap" className="transition hover:text-white">Roadmap</Link> : null}
             <Link href="/auth/login" className="transition hover:text-white">Login</Link>
             <Link href="/signup" className="rounded-lg border border-blue-500/50 bg-blue-500/10 px-3 py-1.5 font-semibold text-blue-200 transition hover:bg-blue-500/20 hover:text-blue-100">Create Account</Link>
           </nav>
 
           <Link
-            href="/signup"
+            href={showTrialCta ? "/trial" : "/signup"}
             className="rounded-lg sm:rounded-xl bg-blue-600 px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-bold transition hover:bg-blue-500 whitespace-nowrap"
           >
-            Free Trial
+            {showTrialCta ? "Free Trial" : "Create Account"}
           </Link>
         </div>
 
@@ -232,10 +236,10 @@ export default async function PublicHomePage() {
             <Link href="#how-it-works" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">How it works</Link>
             <Link href="#pricing" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Pricing</Link>
             <Link href="/" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Change country</Link>
-            <Link href="/roadmap" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Roadmap</Link>
+            {showRoadmap ? <Link href="/roadmap" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Roadmap</Link> : null}
             <Link href="/auth/login" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Login</Link>
             <Link href="/signup" className="rounded-lg border border-blue-500/50 bg-blue-500/10 px-3 py-2 text-center font-semibold text-blue-200 transition hover:bg-blue-500/20">Create Account</Link>
-            <Link href="/signup" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Free Trial</Link>
+            <Link href={showTrialCta ? "/trial" : "/signup"} className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">{showTrialCta ? "Free Trial" : "Create Account"}</Link>
           </nav>
         </details>
       </header>
@@ -263,10 +267,10 @@ export default async function PublicHomePage() {
 
             <div className="mt-6 sm:mt-9 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
               <Link
-                href="/trial"
+                href={showTrialCta ? "/trial" : "/signup"}
                 className="rounded-lg sm:rounded-xl bg-blue-600 px-5 sm:px-7 py-3 sm:py-4 text-sm sm:text-base font-bold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500 text-center"
               >
-                Start your child&apos;s learning journey
+                {showTrialCta ? "Start your child&apos;s learning journey" : "Create your child account"}
               </Link>
               <Link
                 href="/pricing"

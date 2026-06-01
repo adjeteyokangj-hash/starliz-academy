@@ -1,6 +1,7 @@
 import { jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { resolveLaunchScopeRedirect } from "@/lib/launch-scope";
 
 const COOKIE_NAME = "starliz_session";
 const REFRESH_COOKIE_NAME = "starliz_refresh";
@@ -189,6 +190,15 @@ export async function middleware(request: NextRequest) {
       return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
     }
     return finalize(NextResponse.redirect(new URL("/parent/profiles", request.url)));
+  }
+
+  const launchScopeRedirect = resolveLaunchScopeRedirect({
+    pathname,
+    authenticated,
+    role: session?.role,
+  });
+  if (launchScopeRedirect) {
+    return finalize(NextResponse.redirect(new URL(launchScopeRedirect, request.url)));
   }
 
   if (authenticated && session.role === "student") {

@@ -22,7 +22,10 @@ export default function AdminHeader() {
           <Logo variant="icon" size={36} animation={false} className="pointer-events-none" />
           <div>
             <p className="text-xs font-bold uppercase text-blue-300">StarLiz Admin</p>
-            <h1 className="text-2xl font-black text-white">{current?.title ?? "Admin Portal"}</h1>
+            <h1 className="text-2xl font-black text-white">
+              {current?.title ?? "Admin Portal"}
+              {current?.launchTag === "beta" ? " (Beta)" : ""}
+            </h1>
           </div>
         </div>
 

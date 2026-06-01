@@ -251,7 +251,14 @@ export default function AdminSidebar() {
                   }`}>
                     {item.icon}
                   </span>
-                  {item.title}
+                  <span className="flex items-center gap-2">
+                    <span>{item.title}</span>
+                    {item.launchTag === "beta" ? (
+                      <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-amber-300">
+                        Beta
+                      </span>
+                    ) : null}
+                  </span>
                 </Link>
               </div>
             );
