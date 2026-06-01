@@ -2,6 +2,8 @@ import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import { expect, test } from "@playwright/test";
 
+import { isFinalSmokeEnabled } from "../../src/lib/release/final-smoke";
+
 const prisma = new PrismaClient();
 
 const ADMIN_EMAIL = "e2e.final.smoke.admin@starliz.local";
@@ -9,6 +11,7 @@ const ADMIN_PASSWORD = "E2EFinalSmokeAdmin#2026";
 const PARENT_EMAIL = "e2e.final.smoke.parent@starliz.local";
 const PARENT_PASSWORD = "E2EFinalSmokeParent#2026";
 const CHILD_ID = "e2e-final-smoke-child";
+const RUN_FINAL_SMOKE = isFinalSmokeEnabled(process.env.E2E_FINAL_SMOKE);
 
 type Seeded = {
   parentId: string;
@@ -166,6 +169,8 @@ async function seedFixtures(): Promise<Seeded> {
 }
 
 test.describe("Final Targeted Smoke", () => {
+  test.skip(!RUN_FINAL_SMOKE, "Set E2E_FINAL_SMOKE=1 to run the final smoke suite with dedicated fixtures.");
+
   test.beforeAll(async () => {
     await cleanupFixtures();
     seeded = await seedFixtures();

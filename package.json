@@ -16,6 +16,7 @@
     "test:e2e:retry-pack": "playwright test tests/e2e/retry-pack-completion.spec.ts",
     "test:e2e:auth": "playwright test tests/e2e/auth-session-refresh.spec.ts tests/e2e/parent-profile-gate.spec.ts tests/e2e/parent-shell-routes.spec.ts --workers=1 --reporter=line",
     "test:e2e:auth:trace": "playwright test tests/e2e/auth-session-refresh.spec.ts tests/e2e/parent-profile-gate.spec.ts tests/e2e/parent-shell-routes.spec.ts --workers=1 --trace on --headed",
+    "test:e2e:final-smoke": "playwright test tests/e2e/final-smoke-targeted.spec.ts --workers=1",
     "test:e2e:schools-ops": "playwright test --workers=1 tests/e2e/admin-schools-ops.spec.ts tests/e2e/admin-schools-ops-cleanup.spec.ts",
     "test:e2e:schools-ops-cleanup": "playwright test tests/e2e/admin-schools-ops-cleanup.spec.ts",
     "seed:admin": "node scripts/seed_admin.mjs",
