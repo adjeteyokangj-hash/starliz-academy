@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated test artifacts and local runtime logs:
+    "test-results/**",
+    "playwright-report/**",
+    "*.log",
+    "*.tsbuildinfo",
+    ".eslintcache",
+    ".vercel/**",
   ]),
 ]);
 
