@@ -6,6 +6,18 @@ import { useSearchParams } from "next/navigation";
 import Logo from "@/components/Logo";
 import Button from "@/components/ui/Button";
 
+export function getLoginDisabledReason(email: string, password: string): string | null {
+  if (!email.trim()) {
+    return "Enter your email address to continue.";
+  }
+
+  if (!password) {
+    return "Enter your password to continue.";
+  }
+
+  return null;
+}
+
 export default function LoginPage() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -13,6 +25,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const resetSuccess = searchParams.get("reset") === "success";
+  const loginDisabledReason = getLoginDisabledReason(email, password);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -81,14 +94,20 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          {error ? <p className="text-xs sm:text-sm font-semibold text-rose-700">{error}</p> : null}
+          {error ? <p role="alert" className="text-xs sm:text-sm font-semibold text-rose-700">{error}</p> : null}
           {resetSuccess ? (
-            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-700">
+            <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-xs sm:text-sm font-semibold text-emerald-700">
               Password updated. Please log in with your new password.
             </p>
           ) : null}
 
-          <Button type="submit" className="w-full mt-2" disabled={loading}>
+          {loginDisabledReason ? (
+            <p id="login-help" className="text-xs sm:text-sm text-slate-500" aria-live="polite">
+              {loginDisabledReason}
+            </p>
+          ) : null}
+
+          <Button type="submit" className="w-full mt-2" disabled={loading || Boolean(loginDisabledReason)} aria-describedby={loginDisabledReason ? "login-help" : undefined} aria-busy={loading}>
             {loading ? "Logging in..." : "Login"}
           </Button>
         </form>

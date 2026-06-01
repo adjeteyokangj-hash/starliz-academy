@@ -76,6 +76,55 @@ function calcAgeFromDob(dob: string): number | '' {
   return age >= 0 ? age : '';
 }
 
+export function getChildFormValidationErrors(formData: ChildFormData, subjectPolicy: SubjectPolicy): FieldErrors {
+  const nextErrors: FieldErrors = {};
+  if (!formData.name.trim()) nextErrors.name = 'Child name is required.';
+  if (formData.name.trim().length > 64) nextErrors.name = 'Child name must be 64 characters or fewer.';
+  if (!formData.yearGroup.trim()) nextErrors.yearGroup = 'Please choose a year group.';
+  if (!formData.keyStageLevel.trim()) nextErrors.keyStageLevel = 'Key stage is required.';
+  if (!formData.subjectLevel.trim()) nextErrors.subjectLevel = 'Please choose a subject level.';
+  if (!formData.ageYears) nextErrors.ageYears = 'Enter a date of birth to calculate age automatically.';
+  if (typeof formData.ageYears === 'number' && (formData.ageYears < 3 || formData.ageYears > 18)) {
+    nextErrors.ageYears = 'Calculated age must be between 3 and 18.';
+  }
+  if (formData.dateOfBirth) {
+    const dob = new Date(formData.dateOfBirth);
+    if (!isNaN(dob.getTime()) && dob > new Date()) {
+      nextErrors.dateOfBirth = 'Date of birth cannot be in the future.';
+    }
+  }
+  const goals = formData.learningGoals
+    .split('\n')
+    .map((goal) => goal.trim())
+    .filter(Boolean);
+  if (goals.length > 8) {
+    nextErrors.learningGoals = 'Please provide no more than 8 learning goals.';
+  }
+  if (goals.some((goal) => goal.length > 120)) {
+    nextErrors.learningGoals = 'Each learning goal must be 120 characters or fewer.';
+  }
+  if (formData.supportNeeds.trim().length > 500) {
+    nextErrors.supportNeeds = 'Support needs must be 500 characters or fewer.';
+  }
+  if (formData.selectedSubjects.length < subjectPolicy.minSubjects) {
+    nextErrors.subjectLevel = `Please select at least ${subjectPolicy.minSubjects} subjects.`;
+  }
+  if (formData.selectedSubjects.length > subjectPolicy.maxSubjects) {
+    nextErrors.subjectLevel = `Please select up to ${subjectPolicy.maxSubjects} subjects.`;
+  }
+  for (const required of subjectPolicy.requiredSubjectKeys) {
+    if (!formData.selectedSubjects.includes(required)) {
+      nextErrors.subjectLevel = 'English and Maths are required.';
+    }
+  }
+  return nextErrors;
+}
+
+export function getChildFormDisabledReason(formData: ChildFormData, subjectPolicy: SubjectPolicy): string | null {
+  const validation = getChildFormValidationErrors(formData, subjectPolicy);
+  return Object.values(validation)[0] ?? null;
+}
+
 export default function ChildManagementForm({ mode, initialData, onSuccess, onCancel }: ChildManagementFormProps) {
   const [formData, setFormData] = useState<ChildFormData>(() => {
     if (initialData) {
@@ -138,48 +187,10 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
   }
 
   function validateLocal(): FieldErrors {
-    const nextErrors: FieldErrors = {};
-    if (!formData.name.trim()) nextErrors.name = 'Child name is required.';
-    if (formData.name.trim().length > 64) nextErrors.name = 'Child name must be 64 characters or fewer.';
-    if (!formData.yearGroup.trim()) nextErrors.yearGroup = 'Please choose a year group.';
-    if (!formData.keyStageLevel.trim()) nextErrors.keyStageLevel = 'Key stage is required.';
-    if (!formData.subjectLevel.trim()) nextErrors.subjectLevel = 'Please choose a subject level.';
-    if (!formData.ageYears) nextErrors.ageYears = 'Enter a date of birth to calculate age automatically.';
-    if (typeof formData.ageYears === 'number' && (formData.ageYears < 3 || formData.ageYears > 18)) {
-      nextErrors.ageYears = 'Calculated age must be between 3 and 18.';
-    }
-    if (formData.dateOfBirth) {
-      const dob = new Date(formData.dateOfBirth);
-      if (!isNaN(dob.getTime()) && dob > new Date()) {
-        nextErrors.dateOfBirth = 'Date of birth cannot be in the future.';
-      }
-    }
-    const goals = formData.learningGoals
-      .split('\n')
-      .map((goal) => goal.trim())
-      .filter(Boolean);
-    if (goals.length > 8) {
-      nextErrors.learningGoals = 'Please provide no more than 8 learning goals.';
-    }
-    if (goals.some((goal) => goal.length > 120)) {
-      nextErrors.learningGoals = 'Each learning goal must be 120 characters or fewer.';
-    }
-    if (formData.supportNeeds.trim().length > 500) {
-      nextErrors.supportNeeds = 'Support needs must be 500 characters or fewer.';
-    }
-    if (formData.selectedSubjects.length < subjectPolicy.minSubjects) {
-      nextErrors.subjectLevel = `Please select at least ${subjectPolicy.minSubjects} subjects.`;
-    }
-    if (formData.selectedSubjects.length > subjectPolicy.maxSubjects) {
-      nextErrors.subjectLevel = `Please select up to ${subjectPolicy.maxSubjects} subjects.`;
-    }
-    for (const required of subjectPolicy.requiredSubjectKeys) {
-      if (!formData.selectedSubjects.includes(required)) {
-        nextErrors.subjectLevel = 'English and Maths are required.';
-      }
-    }
-    return nextErrors;
+    return getChildFormValidationErrors(formData, subjectPolicy);
   }
+
+  const submitDisabledReason = saving ? null : getChildFormDisabledReason(formData, subjectPolicy);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -263,33 +274,36 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+        <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
           {error}
         </div>
       )}
 
       <div>
-        <label className="block text-sm font-semibold text-slate-300 mb-2">
+        <label htmlFor="child-name" className="block text-sm font-semibold text-slate-300 mb-2">
           Child&apos;s name *
         </label>
         <input
+          id="child-name"
           type="text"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           placeholder="Enter child&apos;s first and last name"
           className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500"
           maxLength={64}
+          aria-describedby={fieldErrors.name ? 'child-name-error' : undefined}
           required
         />
-        {fieldErrors.name ? <p className="mt-1 text-xs text-red-400">{fieldErrors.name}</p> : null}
+        {fieldErrors.name ? <p id="child-name-error" className="mt-1 text-xs text-red-400">{fieldErrors.name}</p> : null}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="block text-sm font-semibold text-slate-300 mb-2">
+          <label htmlFor="child-year-group" className="block text-sm font-semibold text-slate-300 mb-2">
             Year group
           </label>
           <select
+            id="child-year-group"
             value={formData.yearGroup}
             onChange={(e) => {
               const nextYear = e.target.value;
@@ -301,20 +315,22 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
               });
             }}
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+            aria-describedby={fieldErrors.yearGroup ? 'child-year-group-error' : undefined}
           >
             <option value="">Select year...</option>
             {yearGroups.map((year) => (
               <option key={year} value={year}>{year}</option>
             ))}
           </select>
-          {fieldErrors.yearGroup ? <p className="mt-1 text-xs text-red-400">{fieldErrors.yearGroup}</p> : null}
+          {fieldErrors.yearGroup ? <p id="child-year-group-error" className="mt-1 text-xs text-red-400">{fieldErrors.yearGroup}</p> : null}
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-slate-300 mb-2">
+          <label htmlFor="child-key-stage-auto" className="block text-sm font-semibold text-slate-300 mb-2">
             Key Stage
           </label>
           <select
+            id="child-key-stage-auto"
             value={formData.keyStageLevel}
             onChange={(e) => {
               setFormData({
@@ -337,10 +353,11 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="block text-sm font-semibold text-slate-300 mb-2">
+          <label htmlFor="child-date-of-birth" className="block text-sm font-semibold text-slate-300 mb-2">
             Date of birth
           </label>
           <input
+            id="child-date-of-birth"
             type="date"
             value={formData.dateOfBirth}
             max={new Date().toISOString().split('T')[0]}
@@ -349,15 +366,17 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
               setFormData({ ...formData, dateOfBirth: dob, ageYears: calcAgeFromDob(dob) });
             }}
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+            aria-describedby={fieldErrors.dateOfBirth ? 'child-date-of-birth-error' : undefined}
           />
-          {fieldErrors.dateOfBirth ? <p className="mt-1 text-xs text-red-400">{fieldErrors.dateOfBirth}</p> : null}
+          {fieldErrors.dateOfBirth ? <p id="child-date-of-birth-error" className="mt-1 text-xs text-red-400">{fieldErrors.dateOfBirth}</p> : null}
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-slate-300 mb-2">
+          <label htmlFor="child-age" className="block text-sm font-semibold text-slate-300 mb-2">
             Age *
           </label>
           <input
+            id="child-age"
             type="number"
             value={formData.ageYears}
             readOnly
@@ -370,20 +389,22 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="block text-sm font-semibold text-slate-300 mb-2">
+          <label htmlFor="child-key-stage" className="block text-sm font-semibold text-slate-300 mb-2">
             Key stage *
           </label>
           <select
+            id="child-key-stage"
             value={formData.keyStageLevel}
             onChange={(e) => setFormData({ ...formData, keyStageLevel: e.target.value })}
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+            aria-describedby={fieldErrors.keyStageLevel ? 'child-key-stage-error' : undefined}
           >
             <option value="">Select key stage...</option>
             {keyStages.map((stage) => (
               <option key={stage} value={stage}>{stage}</option>
             ))}
           </select>
-          {fieldErrors.keyStageLevel ? <p className="mt-1 text-xs text-red-400">{fieldErrors.keyStageLevel}</p> : null}
+          {fieldErrors.keyStageLevel ? <p id="child-key-stage-error" className="mt-1 text-xs text-red-400">{fieldErrors.keyStageLevel}</p> : null}
           {keyStageMismatch ? (
             <p className="mt-1 text-xs text-amber-300">
               Calculated key stage for {formData.yearGroup} is {expectedKeyStage}. Please double-check this selection.
@@ -392,20 +413,22 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-slate-300 mb-2">
+          <label htmlFor="child-subject-level" className="block text-sm font-semibold text-slate-300 mb-2">
             Subject level *
           </label>
           <select
+            id="child-subject-level"
             value={formData.subjectLevel}
             onChange={(e) => setFormData({ ...formData, subjectLevel: e.target.value })}
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+            aria-describedby={fieldErrors.subjectLevel ? 'child-subject-level-error' : undefined}
           >
             <option value="">Select level...</option>
             {subjectLevels.map((level) => (
               <option key={level} value={level}>{level}</option>
             ))}
           </select>
-          {fieldErrors.subjectLevel ? <p className="mt-1 text-xs text-red-400">{fieldErrors.subjectLevel}</p> : null}
+          {fieldErrors.subjectLevel ? <p id="child-subject-level-error" className="mt-1 text-xs text-red-400">{fieldErrors.subjectLevel}</p> : null}
         </div>
       </div>
 
@@ -497,7 +520,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
       </div>
 
       <div className="flex flex-col gap-3 pt-4 sm:flex-row">
-        <Button type="submit" disabled={saving}>
+        <Button type="submit" disabled={saving || Boolean(submitDisabledReason)} aria-describedby={submitDisabledReason ? 'child-form-submit-help' : undefined}>
           {saving ? 'Saving...' : mode === 'add' ? 'Add child' : 'Save changes'}
         </Button>
         <Button
@@ -509,6 +532,11 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           Cancel
         </Button>
       </div>
+      {submitDisabledReason ? (
+        <p id="child-form-submit-help" className="text-xs text-slate-400" aria-live="polite">
+          {submitDisabledReason}
+        </p>
+      ) : null}
     </form>
   );
 }
