@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { NextResponse } from "next/server";
 
 import {
   handleAdminSafeguardingIncidentCreatePost,
@@ -15,7 +16,7 @@ import { handleAdminSafeguardingIncidentTimelinePost } from "../src/app/api/admi
 import { handleAdminUsageEventsPost } from "../src/app/api/admin/usage-events/route";
 
 function deniedResponse() {
-  return Response.json({ error: "Forbidden: admin only" }, { status: 403 });
+  return NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 });
 }
 
 const deniedDeps = {
