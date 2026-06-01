@@ -1,15 +1,24 @@
-import { buildResponse, actorFromHeaders } from "../_lib/response";
+import { buildResponse } from "../_lib/response";
 import { canCreateConcern, canManageSafeguarding, computeSlaState, makeAuditEvent, normalizeRole } from "../_lib/governance";
 import { appendAuditEvent, createIncident, listIncidents } from "../_lib/store";
 import { createIncidentSchema, toValidationErrors } from "../_lib/validation";
 import { requireAdmin } from "@/lib/api_guard";
 
 type Context = { params: Promise<{ schoolId: string }> };
+type AdminDeps = { requireAdmin: typeof requireAdmin };
 
 export async function GET(request: Request, context: Context) {
+  return handleAdminSafeguardingIncidentListGet(request, context);
+}
+
+export async function handleAdminSafeguardingIncidentListGet(
+  request: Request,
+  context: Context,
+  deps: AdminDeps = { requireAdmin },
+) {
   const requestedAt = new Date().toISOString();
   const { schoolId } = await context.params;
-  const { session, response } = await requireAdmin();
+  const { session, response } = await deps.requireAdmin();
   if (!session) return response!;
   const role = normalizeRole("dsl");
 
@@ -37,9 +46,17 @@ export async function GET(request: Request, context: Context) {
 }
 
 export async function POST(request: Request, context: Context) {
+  return handleAdminSafeguardingIncidentCreatePost(request, context);
+}
+
+export async function handleAdminSafeguardingIncidentCreatePost(
+  request: Request,
+  context: Context,
+  deps: AdminDeps = { requireAdmin },
+) {
   const requestedAt = new Date().toISOString();
   const { schoolId } = await context.params;
-  const { session, response } = await requireAdmin();
+  const { session, response } = await deps.requireAdmin();
   if (!session) return response!;
   const actor = session.email || session.userId;
   const role = normalizeRole("dsl");

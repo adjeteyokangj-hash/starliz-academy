@@ -1,16 +1,25 @@
 import { randomUUID } from "crypto";
-import { buildResponse, actorFromHeaders } from "../../../_lib/response";
+import { buildResponse } from "../../../_lib/response";
 import { canManageSafeguarding, computeSlaState, isValidTransition, makeAuditEvent, normalizeRole } from "../../../_lib/governance";
 import { appendAuditEvent, appendEscalationRecord, getIncident, listEscalations, updateIncident } from "../../../_lib/store";
 import { escalationSchema, toValidationErrors } from "../../../_lib/validation";
 import { requireAdmin } from "@/lib/api_guard";
 
 type Context = { params: Promise<{ schoolId: string; incidentId: string }> };
+type AdminDeps = { requireAdmin: typeof requireAdmin };
 
 export async function POST(request: Request, context: Context) {
+  return handleAdminSafeguardingIncidentEscalationPost(request, context);
+}
+
+export async function handleAdminSafeguardingIncidentEscalationPost(
+  request: Request,
+  context: Context,
+  deps: AdminDeps = { requireAdmin },
+) {
   const requestedAt = new Date().toISOString();
   const { schoolId, incidentId } = await context.params;
-  const { session, response } = await requireAdmin();
+  const { session, response } = await deps.requireAdmin();
   if (!session) return response!;
   const actor = session.email || session.userId;
   const role = normalizeRole("dsl");

@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server"
 import { requireAdmin } from "@/lib/api_guard"
 
+type AdminDeps = { requireAdmin: typeof requireAdmin }
+
 export async function POST(request: Request) {
-  const { session, response } = await requireAdmin()
+  return handleAdminUsageEventsPost(request)
+}
+
+export async function handleAdminUsageEventsPost(
+  request: Request,
+  deps: AdminDeps = { requireAdmin },
+) {
+  const { session, response } = await deps.requireAdmin()
   if (!session) return response
 
   const body = await request.json().catch(() => null)
