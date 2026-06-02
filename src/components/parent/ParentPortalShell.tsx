@@ -14,8 +14,9 @@ import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import { resolveDashboardTier, dashboardTierLabel, isProfileComplete } from "@/lib/dashboardResolver";
+import { persistParentActiveChild } from "@/lib/parent-active-child-client";
 import { percentageHeightClass, percentageWidthClass } from "@/lib/progress-class";
-import type { CoverageEntry, SchoolWeekday } from "@/lib/academic-intelligence/types";
+import type { CoverageEntry, QuickLevelFinderBaselineDiagnostic, SchoolWeekday } from "@/lib/academic-intelligence/types";
 import type { RankedCertificateType, RankingMethod } from "@/lib/ranked-certificates";
 
 type PortalSection =
@@ -269,6 +270,7 @@ type ParentAcademicIntelligencePayload = {
     scheduledDay?: SchoolWeekday | null;
     note?: string | null;
   }>;
+  quickLevelFinderBaseline?: QuickLevelFinderBaselineDiagnostic | null;
   assessmentReadiness: string;
   gcseReadiness: {
     applicable: boolean;
@@ -478,6 +480,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [sendingMessage, setSendingMessage] = useState(false);
   const [messageError, setMessageError] = useState<string | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
+  const [switchingChildId, setSwitchingChildId] = useState<string | null>(null);
+  const [childSwitchError, setChildSwitchError] = useState<string | null>(null);
   const [childDetail, setChildDetail] = useState<ChildDetail | null>(null);
   const [insights, setInsights] = useState<InsightsPayload | null>(null);
   const [childAssignments, setChildAssignments] = useState<ChildAssignment[]>([]);
@@ -856,6 +860,48 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const formVisible = modeAdd || showChildForm;
   const effectiveEditingChildId = modeAdd ? null : editingChildId;
 
+  async function switchActiveChild(childId: string) {
+    if (childId === selectedChildId || switchingChildId) return;
+
+    setSwitchingChildId(childId);
+    setChildSwitchError(null);
+    try {
+      const persisted = await persistParentActiveChild(childId);
+
+      if (!persisted) {
+        throw new Error("active_child_switch_failed");
+      }
+
+      const nextChild = children?.children.find((child) => child.id === childId) ?? null;
+      setSelectedChildId(childId);
+      setChildPanelsLoadedFor(null);
+      setChildDetail(null);
+      setInsights(null);
+      setChildAssignments([]);
+      setAcademicIntelligence(null);
+      setAcademicError(null);
+      setChildCertificates([]);
+      setChildCertificatesError(null);
+      if (nextChild) {
+        setAccount((current) => current
+          ? {
+            ...current,
+            activeChild: {
+              id: nextChild.id,
+              name: nextChild.name,
+              avatar: nextChild.avatar,
+            },
+          }
+          : current);
+        setChildren((current) => current ? { ...current, activeChildId: childId } : current);
+      }
+    } catch {
+      setChildSwitchError("We could not switch the active child. Please try again.");
+    } finally {
+      setSwitchingChildId(null);
+    }
+  }
+
   async function goToChildDashboard(childId: string) {
     setGoingToDashboard(true);
     const timeoutId = window.setTimeout(() => {
@@ -1055,7 +1101,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             <div className="space-y-6">
               <div className="grid gap-6 lg:grid-cols-2">
                 <Panel title="Active child" description="Switch between children and review the latest activity.">
-                  <ChildPicker profiles={children?.children ?? []} selectedChildId={selectedChildId} setSelectedChildId={setSelectedChildId} />
+                  <ChildPicker
+                    profiles={children?.children ?? []}
+                    selectedChildId={selectedChildId}
+                    switchingChildId={switchingChildId}
+                    onSelectChild={(childId) => void switchActiveChild(childId)}
+                  />
+                  {childSwitchError ? (
+                    <p className="mt-2 text-sm font-semibold text-rose-300">{childSwitchError}</p>
+                  ) : null}
                   {activeChild ? (
                     <div className="mt-4 space-y-3 text-sm text-slate-300">
                       <div className="flex items-center justify-between gap-2">
@@ -1273,7 +1327,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
               {selectedChildId ? (
                 <Panel title="Child Certificates" description="Issued certificates for the selected child, including approved awards.">
                   <div className="mb-3">
-                    <ChildPicker profiles={children?.children ?? []} selectedChildId={selectedChildId} setSelectedChildId={setSelectedChildId} />
+                    <ChildPicker
+                      profiles={children?.children ?? []}
+                      selectedChildId={selectedChildId}
+                      switchingChildId={switchingChildId}
+                      onSelectChild={(childId) => void switchActiveChild(childId)}
+                    />
+                    {childSwitchError ? (
+                      <p className="mt-2 text-sm font-semibold text-rose-300">{childSwitchError}</p>
+                    ) : null}
                   </div>
                   {childCertificatesLoading ? (
                     <p className="text-sm text-slate-300">Loading certificates...</p>
@@ -1411,6 +1473,38 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         <Metric label="Needs revision" value={String(academicIntelligence.summary.needsRevisionCount)} />
                         <Metric label="Average score" value={`${academicIntelligence.summary.averageScore}%`} />
                       </div>
+
+                      {academicIntelligence.quickLevelFinderBaseline ? (
+                        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-emerald-100">Quick Level Finder completed</p>
+                              <p className="mt-1 text-xs text-emerald-100/80">
+                                Diagnostic baseline captured {new Date(academicIntelligence.quickLevelFinderBaseline.completedAt).toLocaleDateString()}.
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold capitalize text-emerald-100">
+                              {academicIntelligence.quickLevelFinderBaseline.confidenceLabel.replaceAll("_", " ")}
+                            </span>
+                          </div>
+                          <div className="mt-3 grid gap-2 md:grid-cols-3">
+                            {academicIntelligence.quickLevelFinderBaseline.parentSubjectScores.map((score) => (
+                              <Metric
+                                key={score.subject}
+                                label={`${score.subject} starting level`}
+                                value={`${score.level} (${score.accuracy}%)`}
+                              />
+                            ))}
+                            {academicIntelligence.quickLevelFinderBaseline.englishStrandScores.slice(0, 3).map((score) => (
+                              <Metric
+                                key={`english-${score.strand}`}
+                                label={`English ${score.strand}`}
+                                value={`${score.level} (${score.accuracy}%)`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
 
                       <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1830,7 +1924,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     </p>
                   ) : null}
                   <div className="space-y-4">
-                    <ChildPicker profiles={children?.children ?? []} selectedChildId={selectedChildId} setSelectedChildId={setSelectedChildId} />
+                    <ChildPicker
+                      profiles={children?.children ?? []}
+                      selectedChildId={selectedChildId}
+                      switchingChildId={switchingChildId}
+                      onSelectChild={(childId) => void switchActiveChild(childId)}
+                    />
+                    {childSwitchError ? (
+                      <p className="mt-2 text-sm font-semibold text-rose-300">{childSwitchError}</p>
+                    ) : null}
                     <Button
                       onClick={() => {
                         setChildFormMessage(null);
@@ -2247,7 +2349,17 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ChildPicker({ profiles, selectedChildId, setSelectedChildId }: { profiles: ChildListResponse["children"]; selectedChildId: string | null; setSelectedChildId: (value: string) => void; }) {
+function ChildPicker({
+  profiles,
+  selectedChildId,
+  switchingChildId,
+  onSelectChild,
+}: {
+  profiles: ChildListResponse["children"];
+  selectedChildId: string | null;
+  switchingChildId: string | null;
+  onSelectChild: (value: string) => void;
+}) {
   if (!profiles.length) {
     return <EmptyState text="No child profiles are linked yet." />;
   }
@@ -2258,11 +2370,12 @@ function ChildPicker({ profiles, selectedChildId, setSelectedChildId }: { profil
         <button
           key={child.id}
           type="button"
-          onClick={() => setSelectedChildId(child.id)}
-          className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedChildId === child.id ? "border-cyan-400 bg-cyan-400 text-slate-950" : "border-white/10 bg-slate-900 text-slate-300 hover:bg-white/10 hover:text-white"}`}
+          onClick={() => onSelectChild(child.id)}
+          disabled={switchingChildId !== null}
+          className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${selectedChildId === child.id ? "border-cyan-400 bg-cyan-400 text-slate-950" : "border-white/10 bg-slate-900 text-slate-300 hover:bg-white/10 hover:text-white"}`}
         >
           <ChildAvatar avatar={child.avatar} name={child.name} size="sm" />
-          {child.name}
+          {switchingChildId === child.id ? "Switching..." : child.name}
         </button>
       ))}
     </div>

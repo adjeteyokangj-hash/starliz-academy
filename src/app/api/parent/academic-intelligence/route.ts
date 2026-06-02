@@ -58,6 +58,7 @@ export async function GET(request: Request) {
     catchUpRecommendations: safe.catchUpRecommendations,
     catchUpTasks: safe.catchUpTasks,
     homeworkTasks: safe.homeworkTasks,
+    quickLevelFinderBaseline: child.quickLevelFinderBaseline,
     assessmentReadiness: output.assessmentReadiness,
     examReadinessProfile: safe.examReadinessProfile,
     schoolWeekModePlan: safe.schoolWeekModePlan,
