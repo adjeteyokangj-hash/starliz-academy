@@ -481,6 +481,7 @@ const PREFERRED_HINTS = [
 ];
 
 const ROBOTIC_HINTS = ["default", "david", "zira", "desktop", "espeak", "sam"];
+let pinnedBrowserVoice: { key: string; name: string; lang: string } | null = null;
 
 function getVoicesSafe(): SpeechSynthesisVoice[] {
   if (typeof window === "undefined" || !window.speechSynthesis) return [];
@@ -522,6 +523,19 @@ function selectBestVoice(preferredLang: string, accentHints: string[]): { voice:
     return { voice: null, poor: true };
   }
 
+  const pinKey = `${preferredLang}:${accentHints.join("|")}`;
+  if (pinnedBrowserVoice?.key === pinKey) {
+    const pinned = voices.find((voice) => voice.name === pinnedBrowserVoice?.name && voice.lang === pinnedBrowserVoice?.lang) ?? null;
+    if (pinned) {
+      const pinnedScore = scoreVoice(pinned, preferredLang, accentHints);
+      const pinnedName = pinned.name.toLowerCase();
+      return {
+        voice: pinned,
+        poor: ROBOTIC_HINTS.some((hint) => pinnedName.includes(hint)) || pinnedScore < 45,
+      };
+    }
+  }
+
   const preferred = voices.filter((voice) => voice.lang.toLowerCase() === preferredLang.toLowerCase());
   const english = voices.filter((voice) => voice.lang.toLowerCase().startsWith("en"));
   const candidates = preferred.length ? preferred : english.length ? english : voices;
@@ -529,6 +543,7 @@ function selectBestVoice(preferredLang: string, accentHints: string[]): { voice:
   const top = sorted[0] ?? null;
   if (!top) return { voice: null, poor: true };
 
+  pinnedBrowserVoice = { key: pinKey, name: top.name, lang: top.lang };
   const topName = top.name.toLowerCase();
   const poor = ROBOTIC_HINTS.some((hint) => topName.includes(hint)) || scoreVoice(top, preferredLang, accentHints) < 45;
   return { voice: top, poor };

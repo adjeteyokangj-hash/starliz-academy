@@ -104,7 +104,8 @@ type WordMemorySummary = {
 
 type DisplayMode = keyof typeof MODE_LABELS;
 type LessonStage = "ASSESS_SPEECH" | "TEACH_RETRY" | "TAP_SELECT" | "COMPLETE";
-type SpeechFallbackReason = "network" | "not-allowed" | "unsupported" | null;
+type SpeechFallbackReason = "network" | "not-allowed" | "unsupported" | "https-required" | "no-speech" | "audio-capture" | null;
+type CompletionSaveStatus = "idle" | "saving" | "saved" | "failed";
 
 type PersistedSpellingState = {
   currentWord: SpellingWord | null;
@@ -273,6 +274,8 @@ export default function SpellingQuestPage() {
   const [bossPromptReady, setBossPromptReady] = useState(true);
   const [bossStats, setBossStats] = useState({ correct: 0, total: 0 });
   const [bossBonusSummary, setBossBonusSummary] = useState({ completion: 0, perfect: 0 });
+  const [completionSaveStatus, setCompletionSaveStatus] = useState<CompletionSaveStatus>("idle");
+  const [completionSaveMessage, setCompletionSaveMessage] = useState("");
   const [requireSpeech, setRequireSpeech] = useState(false);
   const [speechPassed, setSpeechPassed] = useState(false);
   const [speechAttempts, setSpeechAttempts] = useState(0);
@@ -300,6 +303,50 @@ export default function SpellingQuestPage() {
   const getLevelChoiceKey = (childId: string) => `starliz_spelling_level_choice_${childId}`;
   const getSavedLevelKey = (childId: string) => `starliz_spelling_saved_level_${childId}`;
   const getResumeStateKey = (childId: string) => `starliz_spelling_resume_${childId}`;
+
+  async function saveSessionCompletion(currentProfile: ChildProfile, correctCount: number): Promise<void> {
+    setCompletionSaveStatus("saving");
+    setCompletionSaveMessage("Saving your completed spelling challenge...");
+    try {
+      const totalQuestions = Math.max(1, sessionPlan?.phases.length ?? 1);
+      const response = await fetch("/api/student/progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          studentId: currentProfile.id,
+          assignmentId: assignedAssignmentId,
+          contentId: assignedContentId ?? undefined,
+          subject: "spelling",
+          type: "spelling_challenge",
+          skillFocus: targetWord?.patterns?.[0] ?? targetWord?.categoryHint ?? "spelling",
+          score: Math.round((correctCount / totalQuestions) * 100),
+          correct: correctCount,
+          incorrect: Math.max(0, totalQuestions - correctCount),
+          attempts: totalQuestions,
+          timeSpent: Math.max(0, Math.round((Date.now() - (questionStartedAt || Date.now())) / 1000)),
+          weakWords: sessionWeakWordList,
+          weakSkills: sessionWeakWordList.length ? ["spelling"] : [],
+          firstTryCorrect: correctCount,
+          retryCorrect: 0,
+          skippedCount: 0,
+          unresolvedSkipped: 0,
+          masteryReady: correctCount >= totalQuestions,
+        }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? `Completion save failed with status ${response.status}.`);
+      }
+      setCompletionSaveStatus("saved");
+      setCompletionSaveMessage(assignedAssignmentId ? "Saved. Your assignment is complete." : "Saved. Your spelling session is complete.");
+    } catch (error) {
+      setCompletionSaveStatus("failed");
+      setCompletionSaveMessage(error instanceof Error && error.message.trim()
+        ? error.message
+        : "Completion could not be saved. You can still go to the dashboard.");
+    }
+  }
 
   const loadSpellingSession = useCallback(async (studentId: string, difficulty: number) => {
     setSessionPlanLoading(true);
@@ -1100,6 +1147,8 @@ export default function SpellingQuestPage() {
     setReviewMode(false);
     setRetryPackMode(false);
     setSessionCorrect(0);
+    setCompletionSaveStatus("idle");
+    setCompletionSaveMessage("");
     setAttemptCount(0);
     setHintLevel(0);
     setAnswer("");
@@ -1468,7 +1517,7 @@ export default function SpellingQuestPage() {
     }
 
     const matchResult = classifySpeechMatch(transcript, targetWord.word);
-    const passed = matchResult !== "wrong";
+    const passed = matchResult === "exact";
     setSpeechListening(false);
     setSpokenText(transcript);
     setSpeechFallbackReason(null);
@@ -1593,7 +1642,7 @@ export default function SpellingQuestPage() {
     const RecognitionCtor = AnyWindow.SpeechRecognition ?? AnyWindow.webkitSpeechRecognition;
     if (!RecognitionCtor) {
       setSpeechListening(false);
-      setSpeechStatusMessage("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
+      setSpeechStatusMessage("Browser unsupported. Please use Chrome or Edge for microphone answers.");
       setSpeechFallbackReason("unsupported");
       return;
     }
@@ -1601,8 +1650,8 @@ export default function SpellingQuestPage() {
     const isSecureOrigin = window.location.protocol === "https:" || window.location.hostname === "localhost";
     if (!isSecureOrigin) {
       setSpeechListening(false);
-      setSpeechStatusMessage("Microphone requires a secure origin. Open this lesson on http://localhost:3000 or HTTPS.");
-      setSpeechFallbackReason("unsupported");
+      setSpeechStatusMessage("HTTPS required. Open this lesson on http://localhost:3000 or HTTPS.");
+      setSpeechFallbackReason("https-required");
       return;
     }
 
@@ -1630,21 +1679,21 @@ export default function SpellingQuestPage() {
         return;
       }
       if (code === "not-allowed") {
-        setSpeechStatusMessage("Microphone permission is blocked. Please allow microphone access.");
+        setSpeechStatusMessage("Permission blocked. Please allow microphone access.");
         setSpeechFallbackReason("not-allowed");
         return;
       }
       if (code === "no-speech") {
-        setSpeechStatusMessage("I could not hear you. Try again.");
-        setSpeechFallbackReason(null);
+        setSpeechStatusMessage("No speech detected. Try again.");
+        setSpeechFallbackReason("no-speech");
         return;
       }
       if (code === "audio-capture") {
-        setSpeechStatusMessage("No microphone was found. Please connect or enable a microphone.");
-        setSpeechFallbackReason(null);
+        setSpeechStatusMessage("No microphone detected. Please connect or enable a microphone.");
+        setSpeechFallbackReason("audio-capture");
         return;
       }
-      setSpeechStatusMessage("I could not hear you. Try again.");
+      setSpeechStatusMessage("No speech detected. Try again.");
       setSpeechFallbackReason(null);
     };
     recognition.onend = () => {
@@ -1943,11 +1992,13 @@ export default function SpellingQuestPage() {
         }
         setBossBonusSummary({ completion: completionBonus, perfect: perfectBonus });
         setShowBossCelebration(true);
+        void saveSessionCompletion(rewardedProfile, newSessionCorrect);
         return;
       }
       if (reachedSessionEnd) {
         setBossBonusSummary({ completion: 0, perfect: 0 });
         setShowBossCelebration(true);
+        void saveSessionCompletion(rewardedProfile, newSessionCorrect);
         return;
       }
       window.setTimeout(() => {
@@ -2070,11 +2121,13 @@ export default function SpellingQuestPage() {
         }
         setBossBonusSummary({ completion: completionBonus, perfect: perfectBonus });
         setShowBossCelebration(true);
+        void saveSessionCompletion(awardedProfile, sessionCorrect);
         return;
       }
       if (reachedSessionEnd) {
         setBossBonusSummary({ completion: 0, perfect: 0 });
         setShowBossCelebration(true);
+        void saveSessionCompletion(awardedProfile, sessionCorrect);
         return;
       }
       window.setTimeout(() => {
@@ -2243,11 +2296,13 @@ export default function SpellingQuestPage() {
     if (!reviewMode) setSessionStepIndex(nextIndex);
     if (finishedBossTest) {
       setShowBossCelebration(true);
+      void saveSessionCompletion(awardedProfile, sessionCorrect);
       return;
     }
     if (reachedSessionEnd) {
       setBossBonusSummary({ completion: 0, perfect: 0 });
       setShowBossCelebration(true);
+      void saveSessionCompletion(awardedProfile, sessionCorrect);
       return;
     }
 
@@ -2411,12 +2466,21 @@ export default function SpellingQuestPage() {
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Boss Test Complete</p>
                 <h2 className="mt-2 font-heading text-3xl font-black text-slate-900">Challenge finished</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                  You finished this spelling challenge. Choose what happens next.
+                  You finished this spelling challenge.
                 </p>
                 <p className="mt-2 text-sm font-semibold text-slate-700">
                   {nextSpellingLevel
                     ? `Would you like to continue to ${LEVEL_LABELS[nextSpellingLevel]} or practise this level again?`
                     : "You have completed the highest spelling level. Continue will start a fresh challenge at this level."}
+                </p>
+                <p className={`mt-3 rounded-2xl px-4 py-3 text-sm font-bold ${
+                  completionSaveStatus === "saved"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : completionSaveStatus === "failed"
+                      ? "bg-rose-100 text-rose-800"
+                      : "bg-amber-100 text-amber-800"
+                }`}>
+                  {completionSaveMessage || "Saving your completed spelling challenge..."}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold">
                   <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">Boss Test Bonus: +{bossBonusSummary.completion} coins</span>
@@ -2477,7 +2541,7 @@ export default function SpellingQuestPage() {
               <Button onClick={continueToNextLevel}>
                 {nextSpellingLevel ? `Continue to ${LEVEL_LABELS[nextSpellingLevel]}` : "Continue Challenge"}
               </Button>
-              <Button onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
+              <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
               <Button variant="secondary" onClick={restartCurrentSession}>Practise This Level Again</Button>
             </div>
           </div>
@@ -2891,11 +2955,23 @@ export default function SpellingQuestPage() {
                 <Button variant="secondary" onClick={() => handleSpeechResult(spokenText, "manual")}>Check typed speech</Button>
                 <Button variant="secondary" onClick={repeatQuestion}>Repeat prompt</Button>
               </div>
-              <p className="mt-2 text-xs font-bold text-slate-500">Microphone ready. Click Say it out loud.</p>
+              <p className="mt-2 text-xs font-bold text-slate-500">
+                {speechFallbackReason === "unsupported"
+                  ? "Browser unsupported."
+                  : speechFallbackReason === "https-required"
+                    ? "HTTPS required."
+                    : speechFallbackReason === "not-allowed"
+                      ? "Permission blocked."
+                      : speechFallbackReason === "audio-capture"
+                        ? "No microphone detected."
+                        : speechFallbackReason === "no-speech"
+                          ? "No speech detected."
+                          : "Microphone ready. Click Say it out loud."}
+              </p>
               {speechStatusMessage ? (
                 <p className="mt-2 text-sm font-bold text-slate-700">{speechStatusMessage}</p>
               ) : null}
-              {(speechFallbackReason === "network" || speechFallbackReason === "not-allowed" || speechFallbackReason === "unsupported") ? (
+              {(speechFallbackReason === "network" || speechFallbackReason === "not-allowed" || speechFallbackReason === "unsupported" || speechFallbackReason === "https-required") ? (
                 <div className="mt-3">
                   <Button onClick={continueWithParentTeacherOverride} className="bg-amber-500 text-amber-950 hover:bg-amber-400">
                     Parent/Teacher Continue

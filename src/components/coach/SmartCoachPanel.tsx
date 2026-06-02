@@ -213,6 +213,7 @@ export default function SmartCoachPanel({
     fetch("/api/coach/word-help", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         ...coachContext,
         word,
@@ -291,12 +292,16 @@ export default function SmartCoachPanel({
     fetch("/api/coach", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify(body),
       signal: controller.signal,
     })
       .then(async (res) => {
         if (!res.ok) {
           const errorPayload = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+          if (res.status === 401) {
+            throw new Error("Coach is not available because this session is not signed in. You can still continue the game.");
+          }
           throw new Error(errorPayload?.message ?? errorPayload?.error ?? "Coach unavailable");
         }
         return res.json() as Promise<CoachResponse>;
