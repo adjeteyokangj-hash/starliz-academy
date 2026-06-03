@@ -9,6 +9,7 @@ import {
   toStudentDashboardBrainView,
 } from "../src/lib/student-learning-brain";
 import type { AcademicSourceData } from "../src/lib/academic-intelligence/types";
+import { classifyStudentDataState } from "../src/lib/student-learning-brain/studentDataNormalisation";
 
 function baseSource(overrides: Partial<AcademicSourceData> = {}): AcademicSourceData {
   return {
@@ -256,4 +257,84 @@ test("Brain graph avoids circular target loops, orphan signals, and duplicate re
   assert.equal(circularCount, 0);
   assert.equal(orphanSignalCount, 0);
   assert.equal(duplicateRecommendationCount, 0);
+});
+
+test("classification marks active profiles without QLF as legacy warning instead of fail", () => {
+  const result = classifyStudentDataState({
+    attemptsCount: 30,
+    progressRecordsCount: 22,
+    assignmentsCount: 4,
+    weakAreasCount: 3,
+    sessionCount: 50,
+    hasQuickLevelFinderCompleted: false,
+    hasQuickLevelFinderSession: false,
+    hasQuickLevelFinderPlacementSignal: false,
+    hasAcademicSnapshot: true,
+    hasLearningDna: true,
+    createdAt: "2026-05-01T00:00:00.000Z",
+  });
+
+  assert.equal(result.state, "active_without_qlf_legacy");
+  assert.equal(result.checklistStatus, "warning");
+  assert.equal(result.reviewRecommended, true);
+});
+
+test("classification marks completed QLF without activity as qlf_completed_no_activity", () => {
+  const result = classifyStudentDataState({
+    attemptsCount: 0,
+    progressRecordsCount: 0,
+    assignmentsCount: 0,
+    weakAreasCount: 0,
+    sessionCount: 0,
+    hasQuickLevelFinderCompleted: true,
+    hasQuickLevelFinderSession: true,
+    hasQuickLevelFinderPlacementSignal: true,
+    hasAcademicSnapshot: false,
+    hasLearningDna: false,
+    createdAt: "2026-06-01T00:00:00.000Z",
+  });
+
+  assert.equal(result.state, "qlf_completed_no_activity");
+  assert.equal(result.checklistStatus, "warning");
+});
+
+test("classification marks brand-new profiles with no evidence as new_no_activity", () => {
+  const result = classifyStudentDataState({
+    attemptsCount: 0,
+    progressRecordsCount: 0,
+    assignmentsCount: 0,
+    weakAreasCount: 0,
+    sessionCount: 0,
+    hasQuickLevelFinderCompleted: false,
+    hasQuickLevelFinderSession: false,
+    hasQuickLevelFinderPlacementSignal: false,
+    hasAcademicSnapshot: false,
+    hasLearningDna: false,
+    createdAt: "2026-06-03T00:00:00.000Z",
+  });
+
+  assert.equal(result.state, "new_no_activity");
+  assert.equal(result.checklistStatus, "fail");
+});
+
+test("classification is read-only and does not mutate source profile payload", () => {
+  const input = {
+    attemptsCount: 0,
+    progressRecordsCount: 0,
+    assignmentsCount: 0,
+    weakAreasCount: 0,
+    sessionCount: 0,
+    hasQuickLevelFinderCompleted: false,
+    hasQuickLevelFinderSession: false,
+    hasQuickLevelFinderPlacementSignal: false,
+    hasAcademicSnapshot: false,
+    hasLearningDna: false,
+    createdAt: "2026-06-03T00:00:00.000Z",
+  } as const;
+  const snapshot = JSON.stringify(input);
+
+  const result = classifyStudentDataState(input);
+
+  assert.equal(JSON.stringify(input), snapshot);
+  assert.equal(typeof result.state, "string");
 });

@@ -10,6 +10,7 @@ import { keyStageForYearGroup } from "@/lib/curriculum";
 import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from "@/lib/learning_dna";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
+import { classifyStudentDataState } from "@/lib/student-learning-brain/studentDataNormalisation";
 
 const updateStudentSchema = z.object({
   name: z.string().trim().min(1).optional(),
@@ -53,7 +54,7 @@ export async function GET(_request: Request, context: Context) {
       weakAreas: { orderBy: { lastDetectedAt: "desc" }, take: 20 },
       rewards: { include: { reward: true }, orderBy: { purchasedAt: "desc" }, take: 100 },
       walletTransactions: { orderBy: { createdAt: "desc" }, take: 250 },
-      _count: { select: { progressRecords: true, rewards: true } },
+      _count: { select: { progressRecords: true, rewards: true, assignments: true } },
     },
   });
 
@@ -72,6 +73,31 @@ export async function GET(_request: Request, context: Context) {
     aiLearningProfileJson: student.studentProfile?.aiLearningProfileJson ?? null,
   });
   const learningDna = extractLearningDnaFromProfileJson(student.studentProfile?.aiLearningProfileJson ?? null);
+  let hasAcademicSnapshot = false;
+  let hasPlacementSignal = false;
+  try {
+    const parsedProfile = student.studentProfile?.aiLearningProfileJson
+      ? JSON.parse(student.studentProfile.aiLearningProfileJson) as Record<string, unknown>
+      : null;
+    hasAcademicSnapshot = Boolean(parsedProfile && typeof parsedProfile.academicIntelligenceSnapshot === "object");
+    hasPlacementSignal = Boolean(parsedProfile && typeof parsedProfile.quickLevelFinderPlacementRecommendation === "object");
+  } catch {
+    hasAcademicSnapshot = false;
+    hasPlacementSignal = false;
+  }
+  const learningDataState = classifyStudentDataState({
+    attemptsCount: student.attempts.length,
+    progressRecordsCount: student.progressRecords.length,
+    assignmentsCount: student._count.assignments,
+    weakAreasCount: student.weakAreas.length,
+    sessionCount: total,
+    hasQuickLevelFinderCompleted: quickLevelFinderSession?.status === "completed",
+    hasQuickLevelFinderSession: Boolean(quickLevelFinderSession),
+    hasQuickLevelFinderPlacementSignal: hasPlacementSignal,
+    hasAcademicSnapshot,
+    hasLearningDna: Boolean(learningDna),
+    createdAt: student.createdAt.toISOString(),
+  });
   const adaptiveTutor = learningDna
     ? buildParentLearningDnaSummary(learningDna)
     : {
@@ -121,6 +147,7 @@ export async function GET(_request: Request, context: Context) {
         totalQuestions: quickLevelFinderSession?.questions.length ?? 0,
         levels: quickLevelFinderSession?.levels ?? {},
       },
+      learningDataState,
       adaptiveTutor,
       walletSummary,
       ownedItems: student.rewards.map((reward) => ({

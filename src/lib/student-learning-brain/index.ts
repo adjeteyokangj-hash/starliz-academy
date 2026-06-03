@@ -18,6 +18,7 @@ import { selectPlacementLessons } from "@/lib/placement-lesson-selector";
 import { taskHrefForContentType } from "@/lib/assignments";
 import { buildSubjectLevelProgression, progressionFriendlyLabel } from "@/lib/subject-level-progression";
 import { buildLanguageReadinessBrain, type LanguageReadinessBrain } from "@/lib/student-learning-brain/languageReadinessBrain";
+import { classifyStudentDataState, type StudentDataNormalisationResult } from "@/lib/student-learning-brain/studentDataNormalisation";
 import type {
   AcademicIntelligenceOutput,
   AcademicSourceData,
@@ -57,6 +58,7 @@ export type StudentLearningBrain = {
   coachHeartbeatSignals: CoachHeartbeatSignalSummary | null;
   learningDnaSummary: Record<string, unknown> | null;
   evidenceSummary: BrainEvidenceSummary;
+  dataState: StudentDataNormalisationResult;
   languageReadiness: LanguageReadinessBrain;
   generatedAt: string;
 };
@@ -160,6 +162,19 @@ export function buildStudentLearningBrainFromSource(input: {
       source: input.source,
       homeworkTasks,
       certificateCount: input.certificateCount ?? 0,
+    }),
+    dataState: classifyStudentDataState({
+      attemptsCount: input.source.attempts.length,
+      progressRecordsCount: input.source.progressRecords.length,
+      assignmentsCount: input.source.assignments.length,
+      weakAreasCount: input.source.weakAreas.length,
+      sessionCount: input.source.attempts.length || input.source.progressRecords.length,
+      hasQuickLevelFinderCompleted: Boolean(input.source.quickLevelFinderBaseline),
+      hasQuickLevelFinderSession: Boolean(input.source.quickLevelFinderBaseline),
+      hasQuickLevelFinderPlacementSignal: Boolean(input.source.quickLevelFinderBaseline),
+      hasAcademicSnapshot: false,
+      hasLearningDna: Boolean(input.learningDnaSummary),
+      createdAt: null,
     }),
     languageReadiness,
     generatedAt: academicIntelligence.generatedAt,
@@ -377,6 +392,7 @@ export function toParentLearningBrainView(brain: StudentLearningBrain) {
     learningDna: brain.learningDnaSummary,
     weakAreas: brain.evidenceSummary.weakAreas,
     evidenceSummary: brain.evidenceSummary,
+    dataState: brain.dataState,
     languageReadiness: brain.languageReadiness,
     generatedAt: brain.generatedAt,
   };
@@ -390,6 +406,7 @@ export function toAdminLearningBrainView(brain: StudentLearningBrain) {
     heartbeatSummary: brain.heartbeatSummary,
     coachHeartbeatSignals: brain.coachHeartbeatSignals,
     evidenceSummary: brain.evidenceSummary,
+    dataState: brain.dataState,
     languageReadiness: brain.languageReadiness,
     generatedAt: brain.generatedAt,
   };

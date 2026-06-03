@@ -46,6 +46,19 @@ type StudentDetail = {
     totalQuestions?: number;
     levels?: Record<string, { accuracy: number; level: "below" | "secure" | "advanced" }>;
   };
+  learningDataState?: {
+    state:
+      | "new_no_activity"
+      | "qlf_completed_no_activity"
+      | "active_with_qlf"
+      | "active_without_qlf_legacy"
+      | "insufficient_evidence"
+      | "inconsistent_profile_needs_review";
+    checklistStatus: "pass" | "warning" | "fail";
+    headline: string;
+    detail: string;
+    reviewRecommended: boolean;
+  };
   adaptiveTutor?: {
     enoughHistory?: boolean;
     readinessLabel?: string;
@@ -477,15 +490,23 @@ export default function StudentDetailPage() {
   const hasRecommendationSignals = (academicIntelligence?.catchUpRecommendations.length ?? 0) > 0
     || (academicIntelligence?.assessmentRecommendations.length ?? 0) > 0
     || (progression?.recommendations?.length ?? 0) > 0;
+  const qlfChecklistStatus: ChecklistStatus = quickLevelFinderCompleted
+    ? "pass"
+    : student.learningDataState?.checklistStatus === "warning"
+      ? "warning"
+      : "fail";
+  const qlfChecklistDetail = quickLevelFinderCompleted
+    ? `Completed with ${quickLevelFinderResponses} response${quickLevelFinderResponses === 1 ? "" : "s"}.`
+    : student.learningDataState
+      ? `${student.learningDataState.headline}: ${student.learningDataState.detail}`
+      : "Not completed yet.";
 
   const adminHealthChecklist: ChecklistItem[] = [
     {
       key: "qlf",
       label: "Quick Level Finder completion",
-      status: quickLevelFinderCompleted ? "pass" : "fail",
-      detail: quickLevelFinderCompleted
-        ? `Completed with ${quickLevelFinderResponses} response${quickLevelFinderResponses === 1 ? "" : "s"}.`
-        : "Not completed yet.",
+      status: qlfChecklistStatus,
+      detail: qlfChecklistDetail,
     },
     {
       key: "placement",
