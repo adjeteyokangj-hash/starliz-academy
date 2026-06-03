@@ -26,6 +26,10 @@ import type {
   HomeworkTaskRecord,
 } from "@/lib/academic-intelligence/types";
 
+// Student Learning Brain is the canonical read layer for shared learning intelligence.
+// Routes should consume Brain outputs or Brain view mappers instead of rebuilding intelligence reads.
+// Add future learning intelligence modules here first, then expose them via role-safe view mappers.
+
 type BrainOptions = {
   includeCoachSignals?: boolean;
   syncTasks?: boolean;
@@ -231,6 +235,7 @@ export async function getStudentLearningBrain(studentId: string, options: BrainO
   });
 }
 
+// Role-specific mappers keep route responses consistent and prevent duplicated shaping logic.
 export async function getStudentLearningBrainForDashboard(studentId: string, options: { forceRefresh?: boolean } = {}) {
   const [brain, dashboardAssignments, dashboardSkills] = await Promise.all([
     getStudentLearningBrain(studentId, { includeCoachSignals: false }),
@@ -390,6 +395,8 @@ export function toAdminLearningBrainView(brain: StudentLearningBrain) {
   };
 }
 
+// Progression decision view is a Brain-backed read for display/recommendation consumers.
+// Keep approval, mutation, and audit workflows outside this read layer.
 export async function getProgressionDecisionBrainView(input: {
   studentId: string;
   parentId?: string;

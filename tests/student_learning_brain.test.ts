@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildStudentLearningBrainFromSource,
+  getProgressionDecisionBrainView,
   toAdminLearningBrainView,
   toParentLearningBrainView,
   toStudentDashboardBrainView,
@@ -90,6 +91,11 @@ test("dashboard, parent, and admin views share the same central Brain source", (
   const parent = toParentLearningBrainView(brain);
   const admin = toAdminLearningBrainView(brain);
 
+  assert.ok(dashboard);
+  assert.ok(parent);
+  assert.ok(admin);
+  assert.equal(typeof getProgressionDecisionBrainView, "function");
+
   assert.equal(dashboard.heartbeatSummary, brain.heartbeatSummary);
   assert.equal(parent.heartbeatSummary, brain.heartbeatSummary);
   assert.equal(admin.heartbeatSummary, brain.heartbeatSummary);
@@ -115,9 +121,14 @@ test("Brain output is dashboard-safe and avoids raw metadata exposure", () => {
 
   const dashboard = toStudentDashboardBrainView(brain) as Record<string, unknown>;
   const parent = toParentLearningBrainView(brain) as Record<string, unknown>;
+  const admin = toAdminLearningBrainView(brain) as Record<string, unknown>;
 
   assert.equal(JSON.stringify(dashboard).includes("do-not-expose"), false);
   assert.equal(JSON.stringify(parent).includes("do-not-expose"), false);
+  assert.equal(JSON.stringify(admin).includes("do-not-expose"), false);
+  assert.equal("source" in dashboard, false);
+  assert.equal("source" in parent, false);
+  assert.equal("source" in admin, false);
 });
 
 test("Language Readiness starts new language learners at foundation pending", () => {
@@ -176,4 +187,5 @@ test("missing optional records do not crash any Brain view", () => {
   assert.doesNotThrow(() => toStudentDashboardBrainView(brain));
   assert.doesNotThrow(() => toParentLearningBrainView(brain));
   assert.doesNotThrow(() => toAdminLearningBrainView(brain));
+  assert.ok(brain.languageReadiness);
 });
