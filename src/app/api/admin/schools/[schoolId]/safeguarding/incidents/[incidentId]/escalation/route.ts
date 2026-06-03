@@ -34,7 +34,7 @@ export async function handleAdminSafeguardingIncidentEscalationPost(
     });
   }
 
-  const incident = getIncident(schoolId, incidentId);
+  const incident = await getIncident(schoolId, incidentId);
   if (!incident) {
     return buildResponse({
       success: false,
@@ -85,7 +85,7 @@ export async function handleAdminSafeguardingIncidentEscalationPost(
   }
 
   const nowIso = new Date().toISOString();
-  const escalation = appendEscalationRecord(schoolId, incidentId, {
+  const escalation = await appendEscalationRecord(schoolId, incidentId, {
     id: randomUUID(),
     schoolId,
     incidentId,
@@ -98,7 +98,7 @@ export async function handleAdminSafeguardingIncidentEscalationPost(
     createdAt: nowIso,
   });
 
-  const updated = updateIncident(schoolId, incidentId, {
+  const updated = await updateIncident(schoolId, incidentId, {
     status: parsed.data.status,
     agencyReferralStatus: parsed.data.agencyReferralStatus,
     nextReviewDate: parsed.data.nextReviewDate ?? incident.nextReviewDate,
@@ -117,7 +117,7 @@ export async function handleAdminSafeguardingIncidentEscalationPost(
     });
   }
 
-  const auditEvent = appendAuditEvent(
+  const auditEvent = await appendAuditEvent(
     schoolId,
     incidentId,
     makeAuditEvent({
@@ -136,7 +136,7 @@ export async function handleAdminSafeguardingIncidentEscalationPost(
     success: true,
     data: {
       escalation,
-      escalations: listEscalations(schoolId, incidentId),
+      escalations: await listEscalations(schoolId, incidentId),
       incident: {
         ...updated,
         sla: computeSlaState(updated),

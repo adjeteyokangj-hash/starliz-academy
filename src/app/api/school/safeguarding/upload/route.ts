@@ -1,8 +1,7 @@
 import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import { join } from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { sanitizeFilename, uploadFileToR2 } from "@/lib/r2-upload";
 import { requireSchoolRoles } from "@/lib/schools/guards";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -64,12 +63,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "File too large. Max 10 MB." }, { status: 400 });
   }
 
-  const filename = `${randomUUID()}.${ext}`;
-  const dir = join(process.cwd(), "public", "uploads", "safeguarding");
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, filename), Buffer.from(await file.arrayBuffer()));
+  const now = new Date();
+  const year = String(now.getUTCFullYear());
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  const filename = `${randomUUID().slice(0, 8)}-${sanitizeFilename(file.name || `evidence.${ext}`, file.type)}`;
+  const objectKey = `admin/safeguarding/${schoolId}/${incidentId}/${year}/${month}/${day}/${filename}`;
 
-  const publicUrl = `/uploads/safeguarding/${filename}`;
+  let publicUrl: string;
+  try {
+    const uploaded = await uploadFileToR2({
+      objectKey,
+      body: Buffer.from(await file.arrayBuffer()),
+      mimeType: file.type,
+      cacheControl: "private, max-age=0, no-store",
+    });
+    publicUrl = uploaded.publicUrl;
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to upload safeguarding evidence." },
+      { status: 500 },
+    );
+  }
   const attachment = await prisma.$transaction(async (tx) => {
     const created = await tx.safeguardingEvidenceAttachment.create({
       data: {
@@ -78,7 +93,7 @@ export async function POST(request: NextRequest) {
         uploadedByUserId: access.context.userId,
         label,
         originalName: file.name,
-        storedFilename: filename,
+        storedFilename: objectKey,
         publicUrl,
         mimeType: file.type,
         fileSizeBytes: file.size,

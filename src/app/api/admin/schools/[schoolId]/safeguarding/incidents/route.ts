@@ -32,7 +32,7 @@ export async function handleAdminSafeguardingIncidentListGet(
     });
   }
 
-  const incidents = listIncidents(schoolId).map((incident) => ({
+  const incidents = (await listIncidents(schoolId)).map((incident) => ({
     ...incident,
     sla: computeSlaState(incident),
   }));
@@ -109,7 +109,7 @@ export async function handleAdminSafeguardingIncidentCreatePost(
     });
   }
 
-  const incident = createIncident(schoolId, {
+  const incident = await createIncident(schoolId, {
     student: parsed.data.student,
     concernType: parsed.data.concernType,
     riskLevel: parsed.data.riskLevel,
@@ -134,7 +134,7 @@ export async function handleAdminSafeguardingIncidentCreatePost(
     closedAt: null,
   });
 
-  const auditEvent = appendAuditEvent(
+  const auditEvent = await appendAuditEvent(
     schoolId,
     incident.id,
     makeAuditEvent({

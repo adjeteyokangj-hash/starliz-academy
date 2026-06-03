@@ -17,6 +17,14 @@ function getStripeTimestampToleranceSeconds(): number {
   return raw;
 }
 
+export function isWebhookFallbackSignatureEnabledInRuntime(env: Record<string, string | undefined> = process.env): boolean {
+  const raw = String(env.PAYMENT_WEBHOOK_ALLOW_FALLBACK_SIGNATURE ?? "").trim().toLowerCase();
+  const enabled = raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+  const isProd = String(env.NODE_ENV ?? "").trim() === "production";
+  if (isProd) return enabled;
+  return enabled || raw === "";
+}
+
 function secureCompare(expected: string, provided: string): boolean {
   const expectedBuffer = Buffer.from(expected);
   const providedBuffer = Buffer.from(provided);
@@ -161,54 +169,37 @@ export async function processPaymentWebhookRequest(request: Request, options: { 
   const revolutSignature = request.headers.get("revolut-signature");
   const revolutTimestamp = request.headers.get("revolut-request-timestamp");
   const fallbackSignature = request.headers.get("x-signature");
+  const runtimeFallbackAllowed = options.allowFallbackSignature && isWebhookFallbackSignatureEnabledInRuntime(process.env);
 
   if (!stripeSignature && !paystackSignature && !revolutSignature && !fallbackSignature) {
     return NextResponse.json({ error: "Missing webhook signature." }, { status: 401 });
   }
 
-  if (options.allowFallbackSignature) {
-    if (revolutSignature || revolutTimestamp) {
-      const revolutCheck = verifyRevolutSignature(rawBody, revolutSignature, revolutTimestamp);
-      if (!revolutCheck.ok) {
-        return NextResponse.json({ error: revolutCheck.reason ?? "Invalid webhook signature." }, { status: 401 });
-      }
-
-      const result = await parseWebhookPayload(rawBody);
-      if (!result) {
-        return NextResponse.json({ error: "Invalid webhook payload." }, { status: 400 });
-      }
-
-      return formatWebhookResponse(result, true);
+  if (revolutSignature || revolutTimestamp) {
+    const revolutCheck = verifyRevolutSignature(rawBody, revolutSignature, revolutTimestamp);
+    if (!revolutCheck.ok) {
+      return NextResponse.json({ error: revolutCheck.reason ?? "Invalid webhook signature." }, { status: 401 });
     }
-
-    if (paystackSignature) {
-      const paystackCheck = verifyPaystackSignature(rawBody, paystackSignature);
-      if (!paystackCheck.ok) {
-        return NextResponse.json({ error: paystackCheck.reason ?? "Invalid webhook signature." }, { status: 401 });
-      }
-
-      const result = await parseWebhookPayload(rawBody);
-      if (!result) {
-        return NextResponse.json({ error: "Invalid webhook payload." }, { status: 400 });
-      }
-
-      return formatWebhookResponse(result, true);
+  } else if (paystackSignature) {
+    const paystackCheck = verifyPaystackSignature(rawBody, paystackSignature);
+    if (!paystackCheck.ok) {
+      return NextResponse.json({ error: paystackCheck.reason ?? "Invalid webhook signature." }, { status: 401 });
     }
-
+  } else if (stripeSignature) {
     const stripeCheck = verifyStripeSignature(rawBody, stripeSignature);
     if (!stripeCheck.ok) {
       return NextResponse.json({ error: stripeCheck.reason ?? "Invalid webhook signature." }, { status: 401 });
     }
-
+  } else if (runtimeFallbackAllowed && fallbackSignature) {
     const fallbackCheck = verifyFallbackSignature(rawBody, fallbackSignature);
     if (!fallbackCheck.ok) {
       return NextResponse.json({ error: fallbackCheck.reason ?? "Invalid webhook signature." }, { status: 401 });
     }
   } else {
-    const stripeCheck = verifyStripeSignature(rawBody, stripeSignature);
-    if (!stripeCheck.ok) {
-      return NextResponse.json({ error: stripeCheck.reason ?? "Invalid webhook signature." }, { status: 401 });
-    }
+    return NextResponse.json(
+      { error: "Unsupported signature strategy. Configure provider-specific signature headers." },
+      { status: 401 },
+    );
   }
 
   const result = await parseWebhookPayload(rawBody);
@@ -216,5 +207,5 @@ export async function processPaymentWebhookRequest(request: Request, options: { 
     return NextResponse.json({ error: "Invalid webhook payload." }, { status: 400 });
   }
 
-  return formatWebhookResponse(result, false);
+  return formatWebhookResponse(result, runtimeFallbackAllowed);
 }

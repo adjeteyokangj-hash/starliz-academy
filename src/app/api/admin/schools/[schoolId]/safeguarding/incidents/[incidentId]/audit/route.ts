@@ -31,7 +31,7 @@ export async function handleAdminSafeguardingIncidentAuditGet(
     });
   }
 
-  const incident = getIncident(schoolId, incidentId);
+  const incident = await getIncident(schoolId, incidentId);
   if (!incident) {
     return buildResponse({
       success: false,
@@ -46,7 +46,7 @@ export async function handleAdminSafeguardingIncidentAuditGet(
     success: true,
     data: {
       incidentId,
-      audit: listAuditEvents(schoolId, incidentId),
+      audit: await listAuditEvents(schoolId, incidentId),
     },
     requestedAt,
     status: 200,

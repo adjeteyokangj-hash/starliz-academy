@@ -9,7 +9,14 @@ Scope: Centralizes the blocking commands and reference docs added across the pro
 npm run report:release-readiness
 ```
 
+Primary release gate command:
+
+```bash
+npm run verify:release
+```
+
 ## Blocking Gates
+- Unified release verification: `npm run verify:release`
 - Route smoke baseline: `npm run smoke:routes`
 - Release QA pack: opt-in with `E2E_RELEASE_QA=1`
 - Final smoke pack: opt-in with `E2E_FINAL_SMOKE=1`

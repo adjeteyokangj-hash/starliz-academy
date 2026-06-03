@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare diagnostics folder
+        run: mkdir -p artifacts
+
       - name: Prisma validate
         run: npx prisma validate
 
@@ -36,16 +39,24 @@ jobs:
         run: npx prisma generate
 
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npx tsc --noEmit 2>&1 | tee artifacts/typecheck.txt
 
       - name: Lint
-        run: npm run lint -- --max-warnings=0
+        run: npm run lint -- --max-warnings=0 2>&1 | tee artifacts/lint.txt
 
       - name: Unit tests
-        run: npm test
+        run: npm test 2>&1 | tee artifacts/unit-tests.txt
 
       - name: Build
-        run: npm run build
+        run: npm run build 2>&1 | tee artifacts/build.txt
+
+      - name: Upload verify diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-diagnostics
+          path: artifacts/
+          if-no-files-found: warn
 
   e2e-auth:
     runs-on: ubuntu-latest
@@ -70,3 +81,48 @@ jobs:
 
       - name: Run key E2E auth flow
         run: npm run test:e2e:auth
+
+      - name: Upload auth E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-auth-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+
+  e2e-release-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' || vars.CI_RELEASE_PROFILE == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run release smoke journeys
+        run: npm run verify:release:e2e
+
+      - name: Upload release smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-release-smoke-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn

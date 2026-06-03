@@ -34,7 +34,7 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
     });
   }
 
-  const incident = getIncident(schoolId, incidentId);
+  const incident = await getIncident(schoolId, incidentId);
   if (!incident) {
     return buildResponse({
       success: false,
@@ -71,7 +71,7 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
   }
 
   const timestamp = parsed.data.timestamp ?? new Date().toISOString();
-  const event = appendTimelineEvent(schoolId, incidentId, {
+  const event = await appendTimelineEvent(schoolId, incidentId, {
     id: randomUUID(),
     schoolId,
     incidentId,
@@ -81,12 +81,12 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
     timestamp,
   });
 
-  const updated = updateIncident(schoolId, incidentId, {
+  const updated = await updateIncident(schoolId, incidentId, {
     chronologyNotes: `${incident.chronologyNotes}\n${timestamp}: ${parsed.data.note}`,
     updatedAt: new Date().toISOString(),
   });
 
-  const auditEvent = appendAuditEvent(
+  const auditEvent = await appendAuditEvent(
     schoolId,
     incidentId,
     makeAuditEvent({
@@ -105,7 +105,7 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
     success: true,
     data: {
       timelineEvent: event,
-      timeline: listTimelineEvents(schoolId, incidentId),
+      timeline: await listTimelineEvents(schoolId, incidentId),
       incident: updated,
     },
     auditEvent,

@@ -32,7 +32,7 @@ export async function handleAdminSafeguardingIncidentDetailGet(
     });
   }
 
-  const incident = getIncident(schoolId, incidentId);
+  const incident = await getIncident(schoolId, incidentId);
   if (!incident) {
     return buildResponse({
       success: false,
@@ -82,7 +82,7 @@ export async function handleAdminSafeguardingIncidentPatch(
     });
   }
 
-  const existing = getIncident(schoolId, incidentId);
+  const existing = await getIncident(schoolId, incidentId);
   if (!existing) {
     return buildResponse({
       success: false,
@@ -135,7 +135,7 @@ export async function handleAdminSafeguardingIncidentPatch(
   }
 
   const statusChanged = Boolean(requestedStatus && requestedStatus !== existing.status);
-  const updated = updateIncident(schoolId, incidentId, {
+  const updated = await updateIncident(schoolId, incidentId, {
     ...parsed.data,
     status: requestedStatus ?? existing.status,
     triagedAt: requestedStatus === "Triage Required" ? nowIso : existing.triagedAt,
@@ -155,7 +155,7 @@ export async function handleAdminSafeguardingIncidentPatch(
     });
   }
 
-  const auditEvent = appendAuditEvent(
+  const auditEvent = await appendAuditEvent(
     schoolId,
     incidentId,
     makeAuditEvent({

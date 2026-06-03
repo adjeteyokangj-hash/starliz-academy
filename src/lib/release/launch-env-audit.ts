@@ -4,6 +4,10 @@ type LaunchEnvCategory = {
   optional?: string[];
 };
 
+type LaunchEnvAuditOptions = {
+  strict?: boolean;
+};
+
 export type LaunchEnvAuditCategoryResult = {
   name: string;
   present: string[];
@@ -22,7 +26,7 @@ function isEnabled(value: string | undefined): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
-function buildCategories(env: Record<string, string | undefined>): LaunchEnvCategory[] {
+function buildCategories(env: Record<string, string | undefined>, options: LaunchEnvAuditOptions): LaunchEnvCategory[] {
   const categories: LaunchEnvCategory[] = [
     {
       name: "core",
@@ -68,11 +72,40 @@ function buildCategories(env: Record<string, string | undefined>): LaunchEnvCate
     });
   }
 
+  if (options.strict) {
+    categories.push(
+      {
+        name: "storage:r2",
+        required: [
+          "CLOUDFLARE_R2_ENDPOINT",
+          "CLOUDFLARE_R2_ACCESS_KEY_ID",
+          "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+          "CLOUDFLARE_R2_BUCKET",
+          "CLOUDFLARE_R2_PUBLIC_URL",
+        ],
+        optional: ["CLOUDFLARE_R2_REGION", "CLOUDFLARE_R2_ACCOUNT_ID"],
+      },
+      {
+        name: "payments:webhook-policy",
+        required: ["PAYMENT_WEBHOOK_ALLOW_FALLBACK_SIGNATURE"],
+      },
+      {
+        name: "ops:delivery",
+        required: [],
+        optional: ["BACKUP_PROVIDER", "DATABASE_BACKUP_URL", "SENTRY_DSN", "MONITORING_DSN"],
+      },
+    );
+  }
+
   return categories;
 }
 
-export function auditLaunchEnvironment(env: Record<string, string | undefined>): LaunchEnvAuditResult {
-  const categories = buildCategories(env).map((category) => {
+function hasAnyKey(env: Record<string, string | undefined>, keys: string[]): boolean {
+  return keys.some((key) => Boolean(env[key]?.trim()));
+}
+
+export function auditLaunchEnvironment(env: Record<string, string | undefined>, options: LaunchEnvAuditOptions = {}): LaunchEnvAuditResult {
+  const categories = buildCategories(env, options).map((category) => {
     const present = category.required.filter((key) => Boolean(env[key]?.trim()));
     const missingRequired = category.required.filter((key) => !env[key]?.trim());
     const missingOptional = (category.optional ?? []).filter((key) => !env[key]?.trim());
@@ -86,6 +119,15 @@ export function auditLaunchEnvironment(env: Record<string, string | undefined>):
   });
 
   const missingRequired = categories.flatMap((category) => category.missingRequired);
+
+  if (options.strict) {
+    if (!hasAnyKey(env, ["BACKUP_PROVIDER", "DATABASE_BACKUP_URL"])) {
+      missingRequired.push("BACKUP_PROVIDER|DATABASE_BACKUP_URL");
+    }
+    if (!hasAnyKey(env, ["SENTRY_DSN", "MONITORING_DSN"])) {
+      missingRequired.push("SENTRY_DSN|MONITORING_DSN");
+    }
+  }
 
   return {
     ok: missingRequired.length === 0,

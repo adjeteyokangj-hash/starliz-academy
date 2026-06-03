@@ -2,9 +2,11 @@
 
 import { auditLaunchEnvironment } from "../src/lib/release/launch-env-audit";
 
-const result = auditLaunchEnvironment(process.env);
+const strict = process.argv.includes("--strict");
+const result = auditLaunchEnvironment(process.env, { strict });
 
 console.log("Launch environment audit");
+console.log(`Strict mode: ${strict ? "enabled" : "disabled"}`);
 for (const category of result.categories) {
   console.log(`- ${category.name}`);
   console.log(`  present: ${category.present.length ? category.present.join(", ") : "none"}`);
