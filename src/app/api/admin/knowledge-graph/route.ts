@@ -5,13 +5,10 @@ import { buildCoachWordHelpResponse } from "@/lib/coachDictionary";
 import type { CoachWordHelpResponse } from "@/lib/coachDictionary";
 import { buildKnowledgeGraph } from "@/lib/knowledge_graph";
 import { countDictionaryWordsForGraph, listDictionaryWords } from "@/lib/dictionary";
-import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data";
-import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
-import { listCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
-import { listHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
 import { mergeKnowledgeGraphViews, projectCurriculumGraphToKnowledgeGraph } from "@/lib/admin_graph";
 import { evaluateGraphChangeProposal } from "@/lib/academic-intelligence/graph-protection";
 import { buildStudentGraphOverlay } from "@/lib/academic-intelligence/graph-overlay";
+import { getProgressionDecisionBrainView, getStudentLearningBrain } from "@/lib/student-learning-brain";
 
 const proposalSchema = z.object({
   studentId: z.string().min(1),
@@ -52,8 +49,108 @@ const querySchema = z.object({
   recoveryWord: z.string().optional(),
 });
 
+const EXPECTED_CONNECTED_SYSTEMS = [
+  "curriculum_knowledge_graph",
+  "ai_generator",
+  "smart_catch_up",
+  "assessment_exam_readiness",
+  "learning_twin",
+  "school_day_week_mode",
+  "parent_admin_reports",
+  "content_quality_safeguarding",
+  "storage_media",
+] as const;
+
+type AdminKnowledgeGraphDeps = {
+  requireAdmin: typeof requireAdmin;
+  buildCoachWordHelpResponse: typeof buildCoachWordHelpResponse;
+  countDictionaryWordsForGraph: typeof countDictionaryWordsForGraph;
+  listDictionaryWords: typeof listDictionaryWords;
+  buildKnowledgeGraph: typeof buildKnowledgeGraph;
+  getStudentLearningBrain: typeof getStudentLearningBrain;
+  getProgressionDecisionBrainView: typeof getProgressionDecisionBrainView;
+  mergeKnowledgeGraphViews: typeof mergeKnowledgeGraphViews;
+  projectCurriculumGraphToKnowledgeGraph: typeof projectCurriculumGraphToKnowledgeGraph;
+  buildStudentGraphOverlay: typeof buildStudentGraphOverlay;
+  evaluateGraphChangeProposal: typeof evaluateGraphChangeProposal;
+};
+
+const defaultDeps: AdminKnowledgeGraphDeps = {
+  requireAdmin,
+  buildCoachWordHelpResponse,
+  countDictionaryWordsForGraph,
+  listDictionaryWords,
+  buildKnowledgeGraph,
+  getStudentLearningBrain,
+  getProgressionDecisionBrainView,
+  mergeKnowledgeGraphViews,
+  projectCurriculumGraphToKnowledgeGraph,
+  buildStudentGraphOverlay,
+  evaluateGraphChangeProposal,
+};
+
+function ensureConnectedSystemStates(input: {
+  heartbeat: { sourceOfTruth: string; generatedAt: string; systemStates: Array<{ system: string; connected: boolean; status: string; summary: string; updatedAt: string }> } | null;
+  generatedAt: string;
+  hasBrainEvidence: boolean;
+  weakAreaActiveCount: number;
+  placementReady: boolean;
+  progressionReady: boolean;
+}): { sourceOfTruth: string; generatedAt: string; systemStates: Array<{ system: string; connected: boolean; status: string; summary: string; updatedAt: string }> } | null {
+  if (!input.heartbeat && !input.hasBrainEvidence) return null;
+
+  const generatedAt = input.heartbeat?.generatedAt ?? input.generatedAt;
+  const sourceOfTruth = input.heartbeat?.sourceOfTruth ?? "student_learning_brain";
+  const bySystem = new Map((input.heartbeat?.systemStates ?? []).map((entry) => [entry.system, entry]));
+
+  const fallbackSummaries: Record<(typeof EXPECTED_CONNECTED_SYSTEMS)[number], string> = {
+    curriculum_knowledge_graph: "Brain-backed curriculum graph diagnostics are available.",
+    ai_generator: "Brain-backed recommendation context is available for AI generation.",
+    smart_catch_up: input.weakAreaActiveCount > 0
+      ? `Active weak areas detected (${input.weakAreaActiveCount}); catch-up diagnostics are available.`
+      : "No active weak areas detected; catch-up diagnostics are available.",
+    assessment_exam_readiness: "Exam-readiness signals are available from academic intelligence.",
+    learning_twin: "Learning twin summary signals are available from academic intelligence.",
+    school_day_week_mode: "School day/week planning context is available from academic intelligence.",
+    parent_admin_reports: "Parent/admin reporting signals are available from Brain summaries.",
+    content_quality_safeguarding: "Content quality and safeguarding diagnostics are available in graph governance.",
+    storage_media: "Media/storage references are available through graph media planning.",
+  };
+
+  const systemStates = EXPECTED_CONNECTED_SYSTEMS.map((system) => {
+    const existing = bySystem.get(system);
+    if (existing) return existing;
+    return {
+      system,
+      connected: input.hasBrainEvidence,
+      status: input.hasBrainEvidence ? "ready" : "missing",
+      summary: input.hasBrainEvidence ? fallbackSummaries[system] : "No heartbeat state reported yet.",
+      updatedAt: generatedAt,
+    };
+  });
+
+  if (input.hasBrainEvidence && input.placementReady && input.progressionReady) {
+    for (const row of systemStates) {
+      if (row.system === "assessment_exam_readiness" && row.status === "missing") {
+        row.status = "partial";
+        row.summary = "Placement and progression summaries are available; exam readiness context may still be building.";
+      }
+    }
+  }
+
+  return {
+    sourceOfTruth,
+    generatedAt,
+    systemStates,
+  };
+}
+
 export async function GET(request: Request) {
-  const { session, response } = await requireAdmin();
+  return handleAdminKnowledgeGraphGet(request);
+}
+
+export async function handleAdminKnowledgeGraphGet(request: Request, deps: AdminKnowledgeGraphDeps = defaultDeps) {
+  const { session, response } = await deps.requireAdmin();
   if (!session) return response;
 
   const { searchParams } = new URL(request.url);
@@ -81,14 +178,14 @@ export async function GET(request: Request) {
 
   if (mode === "dictionary" || mode === "hybrid") {
     const [totalWords, listPayload] = await Promise.all([
-      countDictionaryWordsForGraph({
+      deps.countDictionaryWordsForGraph({
         q: parsed.q,
         subject: parsed.subject,
         keyStage: parsed.keyStage,
         yearGroup: parsed.yearGroup,
         active: true,
       }),
-      listDictionaryWords({
+      deps.listDictionaryWords({
         q: parsed.q,
         subject: parsed.subject,
         keyStage: parsed.keyStage,
@@ -99,7 +196,7 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    const graph = buildKnowledgeGraph({
+    const graph = deps.buildKnowledgeGraph({
       words: listPayload.items,
       search: parsed.q,
       depthLimit: depth,
@@ -108,7 +205,7 @@ export async function GET(request: Request) {
     });
 
     if (parsed.recoveryWord) {
-      const coachResponse = await buildCoachWordHelpResponse({
+      const coachResponse = await deps.buildCoachWordHelpResponse({
         word: parsed.recoveryWord,
         subject: parsed.subject,
         keyStage: parsed.keyStage,
@@ -137,12 +234,45 @@ export async function GET(request: Request) {
     edges: ReturnType<typeof projectCurriculumGraphToKnowledgeGraph>["edges"];
     metrics: ReturnType<typeof projectCurriculumGraphToKnowledgeGraph>["metrics"];
   } | null = null;
-  let heartbeat: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["heartbeat"] | null = null;
-  let protection: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["protection"] | null = null;
-  let approvalWorkflow: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["approvalWorkflow"] | null = null;
-  let fallback: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["fallback"] | null = null;
-  let graphAudit: ReturnType<typeof buildAcademicIntelligence>["curriculumIntelligenceGraph"]["auditMetadata"] | null = null;
-  let heartbeatDecision: ReturnType<typeof buildAcademicIntelligence>["heartbeatDecision"] | null = null;
+  let heartbeat: {
+    sourceOfTruth: string;
+    generatedAt: string;
+    systemStates: Array<{ system: string; connected: boolean; status: string; summary: string; updatedAt: string }>;
+  } | null = null;
+  let protection: {
+    status: string;
+    aiSuggestionMode: string;
+    approvalRequiredForActivation: boolean;
+    blockedChangesCount: number;
+    protectedNodeIds: string[];
+    validation: { valid: boolean; issues: Array<{ code: string; message: string }> };
+  } | null = null;
+  let approvalWorkflow: {
+    pendingProposals: unknown[];
+    latestDecision: string;
+    latestDecisionReason: string | null;
+  } | null = null;
+  let fallback: { applied: boolean; reason: string | null; fallbackGeneratedAt: string | null } | null = null;
+  let graphAudit: { decisions: Array<{ decision: string }> } | null = null;
+  let heartbeatDecision: {
+    primaryAction: string;
+    urgency: string;
+    riskLevel: string;
+    confidenceScore: number;
+    actorRequired: string;
+    suggestedNextStep: string;
+    reasons: string[];
+    blockers: string[];
+    evidence: string[];
+  } | null = null;
+  let brainContext: {
+    learningDnaSummary: Record<string, unknown> | null;
+    languageReadiness: unknown;
+    progressionSummary: unknown;
+    placementSummary: unknown;
+    weakAreaSummary: { total: number; active: number; top: string[] } | null;
+    progressSummary: { total: number; completed: number; averageScore: number | null } | null;
+  } | null = null;
   let studentOverlay: {
     masteryGapTopics: string[];
     weakAreaTopics: string[];
@@ -205,29 +335,46 @@ export async function GET(request: Request) {
 
   if (mode === "academic_intelligence" || mode === "hybrid") {
     const studentId = parsed.studentId!.trim();
-    const source = await buildAcademicSourceForStudent(studentId);
-    if (!source) return NextResponse.json({ error: "Student not found." }, { status: 404 });
-
-    const [existingCatchUpTasks, existingHomeworkTasks] = await Promise.all([
-      listCatchUpTasks(studentId),
-      listHomeworkTasks(studentId),
+    const [brain, decisionBrain] = await Promise.all([
+      deps.getStudentLearningBrain(studentId, { includeCoachSignals: true }),
+      deps.getProgressionDecisionBrainView({ studentId }),
     ]);
-    const output = buildAcademicIntelligence(source, {
-      existingCatchUpTasks,
-      existingHomeworkTasks,
-    });
+    if (!brain) return NextResponse.json({ error: "Student not found." }, { status: 404 });
+    const output = brain.academicIntelligence;
 
-    academicView = projectCurriculumGraphToKnowledgeGraph({
+    academicView = deps.projectCurriculumGraphToKnowledgeGraph({
       graph: output.curriculumIntelligenceGraph,
       prefix: "academic",
     });
-    heartbeat = output.curriculumIntelligenceGraph.heartbeat;
+    heartbeat = ensureConnectedSystemStates({
+      heartbeat: output.curriculumIntelligenceGraph.heartbeat,
+      generatedAt: output.generatedAt,
+      hasBrainEvidence: true,
+      weakAreaActiveCount: brain.evidenceSummary.weakAreas.active,
+      placementReady: Boolean(decisionBrain?.quick?.status === "completed"),
+      progressionReady: Boolean(decisionBrain?.progression),
+    });
     protection = output.curriculumIntelligenceGraph.protection;
     approvalWorkflow = output.curriculumIntelligenceGraph.approvalWorkflow;
     fallback = output.curriculumIntelligenceGraph.fallback;
     graphAudit = output.curriculumIntelligenceGraph.auditMetadata;
     heartbeatDecision = output.heartbeatDecision;
-    const liveOverlay = buildStudentGraphOverlay({
+    brainContext = {
+      learningDnaSummary: brain.learningDnaSummary,
+      languageReadiness: brain.languageReadiness,
+      progressionSummary: decisionBrain?.summary ?? null,
+      placementSummary: decisionBrain
+        ? {
+          quickStatus: decisionBrain.quick?.status ?? null,
+          recommendationCount: decisionBrain.placementLessons.recommendations.length,
+          assignedCount: decisionBrain.placementLessons.recommendations.filter((entry) => entry.status === "assigned").length,
+          contentGapCount: decisionBrain.placementLessons.contentGaps.length,
+        }
+        : null,
+      weakAreaSummary: brain.evidenceSummary.weakAreas,
+      progressSummary: brain.evidenceSummary.progress,
+    };
+    const liveOverlay = deps.buildStudentGraphOverlay({
       output,
       graph: output.curriculumIntelligenceGraph,
     });
@@ -246,7 +393,7 @@ export async function GET(request: Request) {
       reportSignals: liveOverlay.reportSignals,
     };
   }
-  const merged = mergeKnowledgeGraphViews({
+  const merged = deps.mergeKnowledgeGraphViews({
     dictionary: dictionaryView
       ? {
         nodes: dictionaryView.nodes,
@@ -291,26 +438,23 @@ export async function GET(request: Request) {
     fallback,
     graphAudit,
     heartbeatDecision,
+    brainContext,
     studentOverlay,
   });
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAdmin();
+  return handleAdminKnowledgeGraphPost(request);
+}
+
+export async function handleAdminKnowledgeGraphPost(request: Request, deps: AdminKnowledgeGraphDeps = defaultDeps) {
+  const { session, response } = await deps.requireAdmin();
   if (!session) return response;
 
   const parsed = proposalSchema.parse(await request.json());
-  const source = await buildAcademicSourceForStudent(parsed.studentId.trim());
-  if (!source) return NextResponse.json({ error: "Student not found." }, { status: 404 });
-
-  const [existingCatchUpTasks, existingHomeworkTasks] = await Promise.all([
-    listCatchUpTasks(parsed.studentId.trim()),
-    listHomeworkTasks(parsed.studentId.trim()),
-  ]);
-  const output = buildAcademicIntelligence(source, {
-    existingCatchUpTasks,
-    existingHomeworkTasks,
-  });
+  const brain = await deps.getStudentLearningBrain(parsed.studentId.trim(), { includeCoachSignals: true });
+  if (!brain) return NextResponse.json({ error: "Student not found." }, { status: 404 });
+  const output = brain.academicIntelligence;
 
   const proposal = {
     proposalId: `${parsed.source}-${Date.now()}`,
@@ -323,7 +467,7 @@ export async function POST(request: Request) {
     edge: parsed.edge,
   } as const;
 
-  const evaluated = evaluateGraphChangeProposal({
+  const evaluated = deps.evaluateGraphChangeProposal({
     graph: output.curriculumIntelligenceGraph,
     proposal,
     approvedBy: parsed.approve ? session.userId : null,
