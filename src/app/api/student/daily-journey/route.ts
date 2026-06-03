@@ -4,10 +4,9 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { buildDailyJourney } from "@/lib/dailyJourney";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
-import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
-import { selectPlacementLessons } from "@/lib/placement-lesson-selector";
 import { taskHrefForContentType } from "@/lib/assignments";
 import { getStudentHomeworkGateSnapshot } from "@/lib/homework-phase1b/service";
+import { getProgressionDecisionBrainView } from "@/lib/student-learning-brain";
 import {
   deriveStudentLearningState,
   parseQuickLevelFinderSummary,
@@ -143,63 +142,10 @@ export async function GET(request: Request) {
       });
     }
 
-    const quick = parseQuickLevelFinderSession(profile?.aiLearningProfileJson ?? null);
-
-    let placementLessons: ReturnType<typeof selectPlacementLessons> | null = null;
-    if (quick && quick.status === "completed") {
-      const [contentRows, assignments] = await Promise.all([
-        prisma.aIContentCache.findMany({
-          where: {
-            status: { not: "rejected" },
-            ...(student.yearGroup ? { yearGroup: student.yearGroup } : {}),
-          },
-          orderBy: { createdAt: "desc" },
-          take: 300,
-          select: {
-            id: true,
-            contentType: true,
-            level: true,
-            status: true,
-            topic: true,
-            skillFocus: true,
-            yearGroup: true,
-            keyStage: true,
-            metadataJson: true,
-          },
-        }),
-        prisma.assignment.findMany({
-          where: {
-            studentId: student.id,
-            student: { parentId: parentScope.parentId },
-          },
-          select: {
-            id: true,
-            contentId: true,
-            status: true,
-            content: {
-              select: {
-                contentType: true,
-              },
-            },
-          },
-        }),
-      ]);
-
-      placementLessons = selectPlacementLessons({
-        studentId: student.id,
-        selectedSubjects: parseSelectedSubjectsFromProfileJson(profile?.aiLearningProfileJson ?? null),
-        placementLevels: quick.levels,
-        availableContent: contentRows,
-        existingAssignments: assignments.map((assignment) => ({
-          id: assignment.id,
-          contentId: assignment.contentId,
-          status: assignment.status,
-          href: taskHrefForContentType(assignment.content.contentType, assignment.id),
-        })),
-        yearGroup: student.yearGroup,
-        keyStage: profile?.keyStageLevel ?? null,
-      });
-    }
+    const decisionBrain = await getProgressionDecisionBrainView({ studentId: student.id, parentId: parentScope.parentId });
+    const placementLessons = decisionBrain?.quick?.status === "completed"
+      ? decisionBrain.placementLessons
+      : null;
 
     const assignedPlacementLesson = placementLessons?.recommendations.find((row) => row.status === "assigned" && row.assignmentId);
 

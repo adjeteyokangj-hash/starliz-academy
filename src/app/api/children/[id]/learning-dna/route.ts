@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession, requireAdmin } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
-import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from "@/lib/learning_dna";
 import { writeAuditLog } from "@/lib/audit";
+import { getStudentLearningBrain, toParentLearningBrainView } from "@/lib/student-learning-brain";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -40,8 +40,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       metadata: { source: "admin" },
     });
 
-    const snapshot = extractLearningDnaFromProfileJson(studentProfile.aiLearningProfileJson);
-    if (!snapshot) {
+    const brain = await getStudentLearningBrain(id, { includeCoachSignals: true });
+    const view = brain ? toParentLearningBrainView(brain) : null;
+    if (!view?.learningDna) {
       return NextResponse.json({ learningDna: null });
     }
 
@@ -49,7 +50,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       learningDna: {
         childId: studentProfile.childId,
         childName: studentProfile.child.name,
-        ...buildParentLearningDnaSummary(snapshot),
+        ...view.learningDna,
+        heartbeatSummary: view.heartbeatSummary,
+        quickLevelFinderBaseline: view.quickLevelFinderBaseline,
+        languageReadiness: view.languageReadiness,
       },
     });
   }
@@ -107,8 +111,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     metadata: { source: "parent", parentId: parentScope.parentId },
   });
 
-  const snapshot = extractLearningDnaFromProfileJson(studentProfile.aiLearningProfileJson);
-  if (!snapshot) {
+  const brain = await getStudentLearningBrain(id, { includeCoachSignals: true });
+  const view = brain ? toParentLearningBrainView(brain) : null;
+  if (!view?.learningDna) {
     return NextResponse.json({ learningDna: null });
   }
 
@@ -116,7 +121,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     learningDna: {
       childId: studentProfile.childId,
       childName: studentProfile.child.name,
-      ...buildParentLearningDnaSummary(snapshot),
+      ...view.learningDna,
+      heartbeatSummary: view.heartbeatSummary,
+      quickLevelFinderBaseline: view.quickLevelFinderBaseline,
+      languageReadiness: view.languageReadiness,
     },
   });
 }

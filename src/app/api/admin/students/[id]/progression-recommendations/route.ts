@@ -2,13 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminPermission } from "@/lib/api_guard";
 import { prisma } from "@/lib/db";
-import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
-import { parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/student-learning-state";
-import { selectPlacementLessons } from "@/lib/placement-lesson-selector";
-import { taskHrefForContentType } from "@/lib/assignments";
-import { buildSubjectLevelProgression, progressionFriendlyLabel } from "@/lib/subject-level-progression";
 import { writeAuditLog } from "@/lib/audit";
 import { normalizeSubject, type Subject } from "@/lib/curriculum";
+import { getProgressionDecisionBrainView } from "@/lib/student-learning-brain";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -342,30 +338,14 @@ export async function GET(_request: Request, context: Context) {
 
   const { id } = await context.params;
 
-  const student = await prisma.childProfile.findFirst({
-    where: { id, archived: false },
-    select: {
-      id: true,
-      name: true,
-      yearGroup: true,
-      studentProfile: {
-        select: {
-          keyStageLevel: true,
-          subjectFocus: true,
-          aiLearningProfileJson: true,
-        },
-      },
-    },
-  });
-
-  if (!student) {
+  const decisionBrain = await getProgressionDecisionBrainView({ studentId: id });
+  if (!decisionBrain) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
+  const { student } = decisionBrain;
 
   const profileJson = student.studentProfile?.aiLearningProfileJson ?? null;
-  const selectedSubjects = parseSelectedSubjectsFromProfileJson(profileJson).length
-    ? parseSelectedSubjectsFromProfileJson(profileJson)
-    : parseSubjectFocus(student.studentProfile?.subjectFocus ?? null);
+  const selectedSubjects = decisionBrain.selectedSubjects;
 
   if (!selectedSubjects.length) {
     return NextResponse.json({
@@ -378,8 +358,7 @@ export async function GET(_request: Request, context: Context) {
     }, { status: 409 });
   }
 
-  const quick = parseQuickLevelFinderSession(profileJson);
-  if (!quick || quick.status !== "completed") {
+  if (!decisionBrain.quick || decisionBrain.quick.status !== "completed") {
     return NextResponse.json({
       ok: false,
       code: "placement_required",
@@ -390,123 +369,17 @@ export async function GET(_request: Request, context: Context) {
     }, { status: 409 });
   }
 
-  const [attempts, assignments, weakAreas, studentSkills, progressRecords, contentRows] = await Promise.all([
-    prisma.attempt.findMany({
-      where: { studentId: student.id },
-      orderBy: { createdAt: "desc" },
-      take: 800,
-      select: {
-        subject: true,
-        skillFocus: true,
-        correct: true,
-      },
-    }),
-    prisma.assignment.findMany({
-      where: { studentId: student.id },
-      orderBy: { updatedAt: "desc" },
-      take: 400,
-      select: {
-        updatedAt: true,
-        status: true,
-        contentId: true,
-        content: {
-          select: {
-            contentType: true,
-            topic: true,
-            skillFocus: true,
-            metadataJson: true,
-          },
-        },
-      },
-    }),
-    prisma.weakArea.findMany({
-      where: { studentId: student.id },
-      orderBy: { updatedAt: "desc" },
-      take: 300,
-      select: {
-        subject: true,
-        skillFocus: true,
-        status: true,
-      },
-    }),
-    prisma.studentSkill.findMany({
-      where: { studentId: student.id },
-      orderBy: { updatedAt: "desc" },
-      take: 250,
-      select: {
-        skill: true,
-        status: true,
-        accuracy: true,
-        attempts: true,
-      },
-    }),
-    prisma.progressRecord.findMany({
-      where: { childId: student.id },
-      orderBy: { createdAt: "desc" },
-      take: 500,
-      select: {
-        activityType: true,
-        activityName: true,
-        score: true,
-        accuracy: true,
-        completed: true,
-      },
-    }),
-    prisma.aIContentCache.findMany({
-      where: {
-        status: { not: "rejected" },
-        ...(student.yearGroup ? { yearGroup: student.yearGroup } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      take: 300,
-      select: {
-        id: true,
-        contentType: true,
-        level: true,
-        status: true,
-        topic: true,
-        skillFocus: true,
-        yearGroup: true,
-        keyStage: true,
-        metadataJson: true,
-      },
-    }),
-  ]);
-
-  const placementLessons = selectPlacementLessons({
-    studentId: student.id,
-    selectedSubjects,
-    placementLevels: quick.levels,
-    availableContent: contentRows,
-    existingAssignments: assignments.map((assignment) => ({
-      id: assignment.contentId,
-      contentId: assignment.contentId,
-      status: assignment.status,
-      href: taskHrefForContentType(assignment.content.contentType, undefined),
-    })),
-    yearGroup: student.yearGroup,
-    keyStage: student.studentProfile?.keyStageLevel ?? null,
-  });
-
-  const progression = buildSubjectLevelProgression({
-    studentId: student.id,
-    yearGroup: student.yearGroup,
-    keyStage: student.studentProfile?.keyStageLevel ?? null,
-    selectedSubjects,
-    placementLevels: quick.levels,
+  const {
     attempts,
-    assignments: assignments.map((row) => ({
-      status: row.status,
-      contentType: row.content.contentType,
-      topic: row.content.topic,
-      skillFocus: row.content.skillFocus,
-      metadataJson: row.content.metadataJson,
-    })),
-    weakAreas,
+    assignments,
     studentSkills,
     progressRecords,
-    placementRecommendations: placementLessons.recommendations,
-  });
+    placementLessons,
+  } = decisionBrain;
+  const progression = decisionBrain.progression;
+  if (!progression) {
+    return NextResponse.json({ error: "Unable to build progression recommendations." }, { status: 500 });
+  }
   const generationTargets = buildGenerationTargets({
     contentGaps: placementLessons.contentGaps,
     studentYearGroup: student.yearGroup,
@@ -753,8 +626,11 @@ export async function GET(_request: Request, context: Context) {
       needsSupport: progression.recommendations.filter((row) => row.status === "needs_support").length,
       readyToAdvance: progression.recommendations.filter((row) => row.status === "ready_to_advance").length,
       reviewNeeded: progression.recommendations.filter((row) => row.status === "review_needed").length,
-      friendlyHeadline: progression.recommendations[0] ? progressionFriendlyLabel(progression.recommendations[0].status) : "Keep practising",
+      friendlyHeadline: decisionBrain.summary?.friendlyHeadline ?? "Keep practising",
     },
+    heartbeatSummary: decisionBrain.heartbeatSummary,
+    quickLevelFinderBaseline: decisionBrain.quickLevelFinderBaseline,
+    languageReadiness: decisionBrain.languageReadiness,
   });
 }
 
