@@ -309,6 +309,8 @@ export default function SpellingQuestPage() {
     setCompletionSaveMessage("Saving your completed spelling challenge...");
     try {
       const totalQuestions = Math.max(1, sessionPlan?.phases.length ?? 1);
+      const completedAt = getTimestampNow();
+      const startedAt = questionStartedAt || completedAt;
       const response = await fetch("/api/student/progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -324,7 +326,7 @@ export default function SpellingQuestPage() {
           correct: correctCount,
           incorrect: Math.max(0, totalQuestions - correctCount),
           attempts: totalQuestions,
-          timeSpent: Math.max(0, Math.round((Date.now() - (questionStartedAt || Date.now())) / 1000)),
+          timeSpent: Math.max(0, Math.round((completedAt - startedAt) / 1000)),
           weakWords: sessionWeakWordList,
           weakSkills: sessionWeakWordList.length ? ["spelling"] : [],
           firstTryCorrect: correctCount,
@@ -470,6 +472,7 @@ export default function SpellingQuestPage() {
   }, []);
 
   const profileYearGroup = profile?.yearGroup?.trim() || undefined;
+  const spellingDifficulty = profile?.adaptive.spellingDifficulty ?? 1;
   const profileContext = useMemo(() => {
     if (!profile) return null;
     const yearGroup = profileYearGroup;
@@ -494,16 +497,15 @@ export default function SpellingQuestPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadSpellingSession, profile?.id, profile?.adaptive.spellingDifficulty]);
 
-  const wordPool = useMemo(() => (profile ? getSpellingWordPool(profile.adaptive.spellingDifficulty) : []), [profile]);
-  const currentContextKey = useMemo(() => {
-    if (!profile) return null;
-    return [
-      profile.id,
-      profile.adaptive.spellingDifficulty,
-      assignedContentId ?? "",
-      assignedAssignmentId ?? "",
-    ].join(":");
-  }, [assignedAssignmentId, assignedContentId, profile]);
+  const wordPool = useMemo(() => (profileId ? getSpellingWordPool(spellingDifficulty) : []), [profileId, spellingDifficulty]);
+  const currentContextKey = profileId
+    ? [
+        profileId,
+        spellingDifficulty,
+        assignedContentId ?? "",
+        assignedAssignmentId ?? "",
+      ].join(":")
+    : null;
   const allSpellingWords = useMemo(() => {
     const wordsByKey = new Map<string, SpellingWord>();
     for (const difficulty of [1, 2, 3, 4, 5]) {
@@ -811,7 +813,7 @@ export default function SpellingQuestPage() {
     setLessonStage("ASSESS_SPEECH");
     setBuildSelection([]);
     setAlphaSelection([]);
-    setQuestionStartedAt(Date.now());
+    setQuestionStartedAt(getTimestampNow());
     if (nextWord) {
       usedInSessionRef.current.add(nextWord.id);
       setRecentWordIds((prev) => {
@@ -841,46 +843,49 @@ export default function SpellingQuestPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignedAssignmentId, assignedContentId, currentWord, profile, wordPool.length]);
 
-  const targetWord = useMemo(() => currentWord, [currentWord]);
-  const currentSessionStep = useMemo(() => {
-    if (!sessionPlan?.phases.length || !targetWord) return null;
+  const targetWord = currentWord;
+  const targetWordText = targetWord?.word ?? "";
+  const targetWordCategoryHint = targetWord?.categoryHint ?? "";
+  const targetWordSyllables = targetWord?.syllables ?? "";
+  const targetWordPatternKey = targetWord?.patterns.join("|") ?? "";
+  const targetWordPrimaryPattern = targetWord?.patterns[0] ?? "";
+  const currentSessionStep = (() => {
+    if (!sessionPlan?.phases.length || !targetWordText) return null;
     return sessionPlan.phases[sessionStepIndex]
-      ?? sessionPlan.phases.find((entry) => entry.word === targetWord.word.toLowerCase())
+      ?? sessionPlan.phases.find((entry) => entry.word === targetWordText.toLowerCase())
       ?? null;
-  }, [sessionPlan, sessionStepIndex, targetWord]);
-  const spellingDifficulty = profile?.adaptive.spellingDifficulty ?? 1;
+  })();
   const patternHighlights = useMemo(
     () => Object.entries(sessionPlan?.patternGroups ?? {}).filter(([, words]) => words.length > 1).slice(0, 3),
     [sessionPlan],
   );
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
-  const displayMode = useMemo<DisplayMode>(() => {
+  const displayMode: DisplayMode = (() => {
     if (!currentSessionStep) return "listen_type";
     if (currentSessionStep.phase === "recall") return "recall_test";
     if (currentSessionStep.phase === "boss_test") return "boss_test";
     return currentSessionStep.mode as DisplayMode;
-  }, [currentSessionStep]);
+  })();
 
-  const buildLetters = useMemo(() => {
-    if (!targetWord) return [];
-    const shuffled = shuffleWithSeed(targetWord.word.split(""), `${targetWord.word}-build`);
-    if (shuffled.join("") === targetWord.word) {
+  const buildLetters = (() => {
+    if (!targetWordText) return [];
+    const shuffled = shuffleWithSeed(targetWordText.split(""), `${targetWordText}-build`);
+    if (shuffled.join("") === targetWordText) {
       return [...shuffled.slice(1), shuffled[0]];
     }
     return shuffled;
-  }, [targetWord]);
+  })();
 
-  const buildTargetAnswer = useMemo(() => {
-    if (!targetWord) return "";
-    if (buildLetters.length === targetWord.word.length) return targetWord.word;
+  const buildTargetAnswer = (() => {
+    if (!targetWordText) return "";
+    if (buildLetters.length === targetWordText.length) return targetWordText;
 
     const remainingLetters = new Map<string, number>();
     buildLetters.forEach((letter) => {
       remainingLetters.set(letter, (remainingLetters.get(letter) ?? 0) + 1);
     });
 
-    const orderedVisibleLetters = targetWord.word
+    const orderedVisibleLetters = targetWordText
       .split("")
       .filter((letter) => {
         const remaining = remainingLetters.get(letter) ?? 0;
@@ -894,74 +899,62 @@ export default function SpellingQuestPage() {
       return orderedVisibleLetters;
     }
 
-    return targetWord.word.slice(0, buildLetters.length);
-  }, [buildLetters, targetWord]);
+    return targetWordText.slice(0, buildLetters.length);
+  })();
 
-  const validBuildSelection = useMemo(
-    () => buildSelection.filter((index) => index >= 0 && index < buildLetters.length),
-    [buildLetters.length, buildSelection],
-  );
+  const validBuildSelection = buildSelection.filter((index) => index >= 0 && index < buildLetters.length);
 
-  const selectedBuildLetters = useMemo(
-    () => validBuildSelection.map((index) => buildLetters[index] ?? ""),
-    [buildLetters, validBuildSelection],
-  );
+  const selectedBuildLetters = validBuildSelection.map((index) => buildLetters[index] ?? "");
 
-  const selectedBuildWord = useMemo(
-    () => selectedBuildLetters.join(""),
-    [selectedBuildLetters],
-  );
+  const selectedBuildWord = selectedBuildLetters.join("");
 
-  const buildDisplaySlots = useMemo(
-    () => Array.from({ length: buildLetters.length }, (_, index) => (
+  const buildDisplaySlots = Array.from({ length: buildLetters.length }, (_, index) => (
       buildWordRevealed ? buildTargetAnswer[index] ?? "_" : selectedBuildLetters[index] ?? "_"
-    )),
-    [buildLetters.length, buildTargetAnswer, buildWordRevealed, selectedBuildLetters],
-  );
+    ));
 
-  const buildWordStateAligned = useMemo(
-    () => validBuildSelection.length <= buildLetters.length
-      && buildDisplaySlots.length === buildLetters.length
-      && buildTargetAnswer.length === buildLetters.length,
-    [buildDisplaySlots.length, buildLetters.length, buildTargetAnswer.length, validBuildSelection.length],
-  );
+  const buildWordStateAligned = validBuildSelection.length <= buildLetters.length
+    && buildDisplaySlots.length === buildLetters.length
+    && buildTargetAnswer.length === buildLetters.length;
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
-  const missingLetterPrompt = useMemo(() => {
-    if (!targetWord) return { maskedWord: "", missingLetters: "", hiddenIndexes: [] as number[], letters: [] as string[] };
-    const letters = targetWord.word.split("");
+  const missingLetterPrompt = (() => {
+    if (!targetWordText) return { maskedWord: "", missingLetters: "", hiddenIndexes: [] as number[], letters: [] as string[] };
+    const letters = targetWordText.split("");
     const available = letters.map((_, index) => index).filter((index) => index !== 0 && index !== letters.length - 1);
     const performanceBonus = sessionCorrect >= 3 || (wordMemorySummary?.masteredWords ?? 0) > (wordMemorySummary?.weakWords ?? 0);
-    const hiddenCount = spellingDifficulty <= 2 ? 1 : Math.min(2, available.length, performanceBonus || targetWord.word.length >= 5 ? 2 : 1);
-    const hiddenIndexes = shuffleWithSeed(available, `${targetWord.word}-missing`).slice(0, hiddenCount).sort((a, b) => a - b);
+    const hiddenCount = spellingDifficulty <= 2 ? 1 : Math.min(2, available.length, performanceBonus || targetWordText.length >= 5 ? 2 : 1);
+    const hiddenIndexes = shuffleWithSeed(available, `${targetWordText}-missing`).slice(0, hiddenCount).sort((a, b) => a - b);
     return {
       maskedWord: letters.map((letter, index) => (hiddenIndexes.includes(index) ? "_" : letter)).join(" "),
       missingLetters: hiddenIndexes.map((index) => letters[index]).join(""),
       letters,
       hiddenIndexes,
     };
-  }, [sessionCorrect, spellingDifficulty, targetWord, wordMemorySummary?.masteredWords, wordMemorySummary?.weakWords]);
+  })();
+  const missingLetterHiddenIndexes = missingLetterPrompt.hiddenIndexes;
+  const missingLetterHiddenCount = missingLetterHiddenIndexes.length;
+  const missingLetterLetters = missingLetterPrompt.letters;
+  const missingLetters = missingLetterPrompt.missingLetters;
 
-  const missingLetterChoiceOptions = useMemo(() => {
-    if (!targetWord) return [];
+  const missingLetterChoiceOptions = (() => {
+    if (!targetWordText) return [];
     const optionCount = spellingDifficulty <= 2 ? 4 : spellingDifficulty <= 4 ? 5 : 6;
     const distractors = shuffleWithSeed(
       "abcdefghijklmnopqrstuvwxyz"
         .split("")
-        .filter((letter) => !missingLetterPrompt.missingLetters.includes(letter) && !targetWord.word.includes(letter)),
-      `${targetWord.word}-missing-options`,
-    ).slice(0, Math.max(2, optionCount - missingLetterPrompt.missingLetters.length));
+        .filter((letter) => !missingLetters.includes(letter) && !targetWordText.includes(letter)),
+      `${targetWordText}-missing-options`,
+    ).slice(0, Math.max(2, optionCount - missingLetters.length));
     return shuffleWithSeed(
-      [...missingLetterPrompt.missingLetters.split(""), ...distractors],
-      `${targetWord.word}-missing-options-display`,
+      [...missingLetters.split(""), ...distractors],
+      `${targetWordText}-missing-options-display`,
     );
-  }, [missingLetterPrompt.missingLetters, spellingDifficulty, targetWord]);
+  })();
 
-  const missingLetterDisplaySlots = useMemo(() => {
-    if (!targetWord) return [] as Array<{ key: string; value: string; isHidden: boolean; isFilled: boolean }>;
+  const missingLetterDisplaySlots = (() => {
+    if (!targetWordText) return [] as Array<{ key: string; value: string; isHidden: boolean; isFilled: boolean }>;
     let filledIndex = 0;
-    return missingLetterPrompt.letters.map((letter, index) => {
-      const isHidden = missingLetterPrompt.hiddenIndexes.includes(index);
+    return missingLetterLetters.map((letter, index) => {
+      const isHidden = missingLetterHiddenIndexes.includes(index);
       const value = isHidden
         ? (missingLetterRevealed ? letter : answer[filledIndex] ?? "_")
         : letter;
@@ -973,57 +966,54 @@ export default function SpellingQuestPage() {
         isFilled: isHidden && value !== "_",
       };
     });
-  }, [answer, missingLetterPrompt.hiddenIndexes, missingLetterPrompt.letters, missingLetterRevealed, targetWord]);
+  })();
 
-  const chooseCorrectOptions = useMemo(() => {
-    if (!targetWord) return [];
+  const chooseCorrectOptions = (() => {
+    if (!targetWordText) return [];
     const variants = [
-      targetWord.word,
-      makeIncorrectSpelling(targetWord.word),
-      `${targetWord.word}${targetWord.word.endsWith("e") ? "" : "e"}`,
-      targetWord.word.split("").reverse().join(""),
+      targetWordText,
+      makeIncorrectSpelling(targetWordText),
+      `${targetWordText}${targetWordText.endsWith("e") ? "" : "e"}`,
+      targetWordText.split("").reverse().join(""),
     ];
-    return shuffleWithSeed([...new Set(variants)].slice(0, 4), `${targetWord.word}-choose`);
-  }, [targetWord]);
+    return shuffleWithSeed([...new Set(variants)].slice(0, 4), `${targetWordText}-choose`);
+  })();
 
-  const incorrectWordPrompt = useMemo(() => (targetWord ? makeIncorrectSpelling(targetWord.word) : ""), [targetWord]);
+  const incorrectWordPrompt = targetWordText ? makeIncorrectSpelling(targetWordText) : "";
 
-  const scrambledWord = useMemo(() => {
-    if (!targetWord) return "";
-    const scrambled = shuffleWithSeed(targetWord.word.split(""), `${targetWord.word}-scramble`).join("");
-    return scrambled === targetWord.word ? `${targetWord.word.slice(1)}${targetWord.word[0] ?? ""}` : scrambled;
-  }, [targetWord]);
+  const scrambledWord = (() => {
+    if (!targetWordText) return "";
+    const scrambled = shuffleWithSeed(targetWordText.split(""), `${targetWordText}-scramble`).join("");
+    return scrambled === targetWordText ? `${targetWordText.slice(1)}${targetWordText[0] ?? ""}` : scrambled;
+  })();
 
-  const alphabeticalWords = useMemo(() => {
-    if (!targetWord) return [];
+  const alphabeticalWords = (() => {
+    if (!targetWordText) return [];
     const sourceWords = [...new Set([...(sessionPlan?.words ?? []), ...wordPool.map((entry) => entry.word)])]
-      .filter((word) => word !== targetWord.word && Math.abs(word.length - targetWord.word.length) <= 1)
+      .filter((word) => word !== targetWordText && Math.abs(word.length - targetWordText.length) <= 1)
       .slice(0, 8);
-    const companions = shuffleWithSeed(sourceWords, `${targetWord.word}-alpha`).slice(0, 2);
-    const words = [...new Set([targetWord.word, ...companions])].slice(0, 3);
-    return shuffleWithSeed(words, `${targetWord.word}-alpha-display`);
-  }, [sessionPlan?.words, targetWord, wordPool]);
+    const companions = shuffleWithSeed(sourceWords, `${targetWordText}-alpha`).slice(0, 2);
+    const words = [...new Set([targetWordText, ...companions])].slice(0, 3);
+    return shuffleWithSeed(words, `${targetWordText}-alpha-display`);
+  })();
 
-  const alphabeticalCorrectAnswer = useMemo(
-    () => [...alphabeticalWords].sort(compareAlphabetically).join("|"),
-    [alphabeticalWords],
-  );
+  const alphabeticalCorrectAnswer = [...alphabeticalWords].sort(compareAlphabetically).join("|");
 
-  const patternFamilyWords = useMemo(() => {
-    if (!targetWord) return [];
-    const family = sessionPlan?.patternGroups[targetWord.patterns?.[0] ?? ""]
-      ?? sessionPlan?.patternGroups[targetWord.word.slice(-3)]
+  const patternFamilyWords = (() => {
+    if (!targetWordText) return [];
+    const family = sessionPlan?.patternGroups[targetWordPrimaryPattern]
+      ?? sessionPlan?.patternGroups[targetWordText.slice(-3)]
       ?? [];
-    return family.filter((word) => word !== targetWord.word).slice(0, 3);
-  }, [sessionPlan?.patternGroups, targetWord]);
+    return family.filter((word) => word !== targetWordText).slice(0, 3);
+  })();
 
-  const patternModeOptions = useMemo(() => {
-    if (!targetWord) return [];
-    const targetPatterns = new Set(targetWord.patterns ?? []);
+  const patternModeOptions = (() => {
+    if (!targetWordText) return [];
+    const targetPatterns = new Set(targetWordPatternKey ? targetWordPatternKey.split("|") : []);
     const nonMatchingCandidates = wordPool
       .filter(
         (entry) =>
-          entry.word !== targetWord.word &&
+          entry.word !== targetWordText &&
           !patternFamilyWords.includes(entry.word) &&
           !(entry.patterns ?? []).some((p) => targetPatterns.has(p)),
       )
@@ -1031,30 +1021,24 @@ export default function SpellingQuestPage() {
     // Fallback: if no non-matching words exist, just exclude targetWord
     const pool = nonMatchingCandidates.length >= 3
       ? nonMatchingCandidates
-      : wordPool.map((e) => e.word).filter((w) => w !== targetWord.word && !patternFamilyWords.includes(w));
-    const distractors = shuffleWithSeed(pool, `${targetWord.word}-pattern-distractors`).slice(0, 3);
-    return shuffleWithSeed([targetWord.word, ...distractors].slice(0, 4), `${targetWord.word}-pattern`);
-  }, [patternFamilyWords, targetWord, wordPool]);
+      : wordPool.map((e) => e.word).filter((w) => w !== targetWordText && !patternFamilyWords.includes(w));
+    const distractors = shuffleWithSeed(pool, `${targetWordText}-pattern-distractors`).slice(0, 3);
+    return shuffleWithSeed([targetWordText, ...distractors].slice(0, 4), `${targetWordText}-pattern`);
+  })();
 
-  const modeTitle = useMemo(() => MODE_LABELS[displayMode], [displayMode]);
-  const blendText = useMemo(() => getBlendText(targetWord?.word ?? ""), [targetWord?.word]);
+  const modeTitle = MODE_LABELS[displayMode];
+  const blendText = getBlendText(targetWordText);
   const tutorPersonality = (profile?.settings?.voiceStyle ?? "default") as TutorPersonality;
-  const isLetterConversation = useMemo(
-    () => Boolean(targetWord && isAlphabetWord(targetWord.word) && displayMode === "listen_type"),
-    [displayMode, targetWord],
-  );
+  const isLetterConversation = Boolean(targetWordText && isAlphabetWord(targetWordText) && displayMode === "listen_type");
   const isWordConversation = displayMode === "build_word";
   const usesTutorConversation = isLetterConversation || isWordConversation;
-  const letterChoiceOptions = useMemo(
-    () => (isLetterConversation && targetWord ? generateLetterOptions([targetWord.word]) : []),
-    [isLetterConversation, targetWord],
-  );
-  const modePromptTitle = useMemo(() => {
+  const letterChoiceOptions = isLetterConversation && targetWordText ? generateLetterOptions([targetWordText]) : [];
+  const modePromptTitle = (() => {
     if (isWordConversation) return "What word do you see on the screen?";
     if (isLetterConversation) return "What letter do you see on the screen?";
-    return getSpellingModePromptTitle(displayMode, targetWord?.word);
-  }, [displayMode, isLetterConversation, isWordConversation, targetWord?.word]);
-  const modeDescription = useMemo(() => {
+    return getSpellingModePromptTitle(displayMode, targetWordText);
+  })();
+  const modeDescription = (() => {
     if (isWordConversation) {
       if (lessonStage === "TAP_SELECT") return "Now type the word.";
       if (lessonStage === "TEACH_RETRY") return "Listen to the tutor, then try saying it again.";
@@ -1062,14 +1046,14 @@ export default function SpellingQuestPage() {
     }
     if (isLetterConversation) {
       if (lessonStage === "TAP_SELECT") {
-        const letterLabel = describeVisualTarget(targetWord?.word ?? "");
+        const letterLabel = describeVisualTarget(targetWordText);
         return `Now tap ${letterLabel}.`;
       }
       if (lessonStage === "TEACH_RETRY") return "Listen to the tutor, then try saying it again.";
       return "Say the letter you see on the screen.";
     }
-    return getSpellingModeInstruction(displayMode, targetWord?.word, missingLetterPrompt.hiddenIndexes.length);
-  }, [displayMode, isLetterConversation, isWordConversation, missingLetterPrompt.hiddenIndexes.length, targetWord?.word, lessonStage]);
+    return getSpellingModeInstruction(displayMode, targetWordText, missingLetterHiddenCount);
+  })();
   const tutorFace = {
     idle: "🙂",
     thinking: "🤔",
@@ -1082,7 +1066,7 @@ export default function SpellingQuestPage() {
 
   const helpLocked = currentSessionStep?.noHints === true || displayMode === "recall_test" || displayMode === "boss_test";
 
-  const currentJourneyIndex = useMemo(() => {
+  const currentJourneyIndex = (() => {
     switch (currentSessionStep?.phase) {
       case "learn":
         return 0;
@@ -1097,7 +1081,7 @@ export default function SpellingQuestPage() {
       default:
         return 0;
     }
-  }, [currentSessionStep?.phase]);
+  })();
 
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const journeyStepLabel = useMemo(() => {
@@ -1105,10 +1089,7 @@ export default function SpellingQuestPage() {
     return `Step ${Math.min(sessionStepIndex + 1, sessionPlan.phases.length)} of ${sessionPlan.phases.length}`;
   }, [sessionPlan?.phases.length, sessionStepIndex]);
 
-  const sessionWeakWordList = useMemo(
-    () => [...new Set([...(sessionPlan?.weakWords ?? []), ...sessionWeakWords])],
-    [sessionPlan?.weakWords, sessionWeakWords],
-  );
+  const sessionWeakWordList = [...new Set([...(sessionPlan?.weakWords ?? []), ...sessionWeakWords])];
 
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const queueProgressSegments = useMemo(() => {
@@ -1246,12 +1227,12 @@ export default function SpellingQuestPage() {
   const showEmojiVisualHint = (spellingDifficulty <= 2 || isLearnPhase) && Boolean(targetWord?.emoji);
   const showVisualPrompt = isVisualMode(displayMode);
 
-  const hintMessage = useMemo(() => getSpellingHintMessage({
+  const hintMessage = getSpellingHintMessage({
     level: hintLevel,
-    word: targetWord?.word,
-    categoryHint: targetWord?.categoryHint,
-    syllables: targetWord?.syllables,
-  }), [hintLevel, targetWord?.categoryHint, targetWord?.syllables, targetWord?.word]);
+    word: targetWordText,
+    categoryHint: targetWordCategoryHint,
+    syllables: targetWordSyllables,
+  });
 
   useEffect(() => {
     if (currentSessionStep?.phase !== "boss_test") {
@@ -1304,7 +1285,7 @@ export default function SpellingQuestPage() {
     if (usesTutorConversation) return;
     if (displayMode === "boss_test" && !bossPromptReady) return;
     const key = `${targetWord.id ?? targetWord.word}:${displayMode}`;
-    const now = Date.now();
+    const now = getTimestampNow();
     if (lastPromptRef.current && lastPromptRef.current.key === key && now - lastPromptRef.current.at < 250) {
       return;
     }
