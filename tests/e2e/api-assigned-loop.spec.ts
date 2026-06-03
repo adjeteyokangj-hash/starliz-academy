@@ -182,7 +182,7 @@ test.describe("API Assigned Loop Deterministic", () => {
             id: "e2e-api-word-1",
             word: "cake",
             hint: "Ends with silent e.",
-            sentenceContext: "I ate a cake.",
+            sentenceContext: "I ate a cake after lunch.",
           },
           {
             id: "e2e-api-word-2",
