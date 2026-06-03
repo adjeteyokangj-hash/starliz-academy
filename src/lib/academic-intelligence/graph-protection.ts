@@ -15,6 +15,10 @@ function normalize(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function isDependencyEdge(type: CurriculumGraphEdge["type"]): boolean {
+  return type === "requires" || type === "blocked_by" || type === "recommends";
+}
+
 function protectedNodeType(node: CurriculumGraphNode): boolean {
   return node.type === "assessment_readiness" || node.type === "learning_twin_signal";
 }
@@ -24,11 +28,15 @@ function hasNode(nodes: Map<string, CurriculumGraphNode>, id: string): boolean {
 }
 
 function nodeFingerprint(node: CurriculumGraphNode): string {
+  const recommendationId = node.type === "recommendation" && node.metadata && typeof node.metadata.recommendationId === "string"
+    ? normalize(node.metadata.recommendationId)
+    : "";
   return [
     normalize(node.type),
     normalize(node.subject),
     normalize(node.topicKey),
     normalize(node.label),
+    recommendationId,
   ].join("|");
 }
 
@@ -39,6 +47,7 @@ export function detectCircularDependencies(input: {
   const graph = new Map<string, string[]>();
   for (const node of input.nodes) graph.set(node.id, []);
   for (const edge of input.edges) {
+    if (!isDependencyEdge(edge.type)) continue;
     const list = graph.get(edge.source) ?? [];
     list.push(edge.target);
     graph.set(edge.source, list);

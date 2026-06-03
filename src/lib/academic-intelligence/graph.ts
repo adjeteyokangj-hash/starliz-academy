@@ -38,6 +38,14 @@ function nodeId(prefix: string, parts: Array<string | null | undefined>): string
   return `${prefix}:${parts.map((part) => keyPart(part)).join(":")}`;
 }
 
+function recommendationTopicKey(input: {
+  subject: string | null | undefined;
+  topic: string | null | undefined;
+  skill: string | null | undefined;
+}): string {
+  return `${keyPart(input.subject)}|${keyPart(input.topic)}|${keyPart(input.skill)}`;
+}
+
 function weakAreaPrerequisites(weakArea: WeakAreaRecord): string[] {
   const metadata = weakArea.metadata;
   if (!metadata || typeof metadata !== "object") return [];
@@ -95,22 +103,50 @@ function buildRecommendationLayer(output: AcademicIntelligenceOutput): Curriculu
     routeTarget: item.routeTarget ?? null,
   }));
 
-  const assessment: CurriculumRecommendationLayer[] = output.assessmentRecommendations.map((item) => ({
-    recommendationId: nodeId("assessment", [item.assessmentType, item.subject, item.topic, item.skill]),
-    source: "assessment",
-    priority: item.readinessStatus === "needs_catch_up" || item.readinessStatus === "not_ready"
+  const assessmentByKey = new Map<string, CurriculumRecommendationLayer>();
+  for (const item of output.assessmentRecommendations) {
+    const id = nodeId("assessment", [item.assessmentType, item.subject, item.topic, item.skill]);
+    const key = `${normalize(item.assessmentType)}|${recommendationTopicKey({
+      subject: item.subject,
+      topic: item.topic,
+      skill: item.skill,
+    })}`;
+    const priority = item.readinessStatus === "needs_catch_up" || item.readinessStatus === "not_ready"
       ? "high"
       : item.readinessStatus === "developing"
         ? "medium"
-        : "low",
-    status: item.readinessStatus,
-    subject: item.subject,
-    topic: item.topic,
-    skill: item.skill,
-    reason: item.reason,
-    action: `Assign ${item.assessmentType}`,
-    routeTarget: item.routeTarget ?? null,
-  }));
+        : "low";
+    const current: CurriculumRecommendationLayer = {
+      recommendationId: id,
+      source: "assessment",
+      priority,
+      status: item.readinessStatus,
+      subject: item.subject,
+      topic: item.topic,
+      skill: item.skill,
+      reason: item.reason,
+      action: `Assign ${item.assessmentType}`,
+      routeTarget: item.routeTarget ?? null,
+    };
+    const previous = assessmentByKey.get(key);
+    if (!previous) {
+      assessmentByKey.set(key, current);
+      continue;
+    }
+    if (current.priority === "high" || (current.priority === "medium" && previous.priority === "low")) {
+      previous.priority = current.priority;
+    }
+    if (previous.status === "ready" && current.status !== "ready") {
+      previous.status = current.status;
+    }
+    if (current.reason && !previous.reason.includes(current.reason)) {
+      previous.reason = `${previous.reason}; ${current.reason}`;
+    }
+    if (!previous.routeTarget && current.routeTarget) {
+      previous.routeTarget = current.routeTarget;
+    }
+  }
+  const assessment = Array.from(assessmentByKey.values());
 
   return [...catchUp, ...assessment];
 }
@@ -146,6 +182,11 @@ function attachCatchUpTaskLinks(
       type: "recommendation",
       label: recommendation.title,
       subject: recommendation.subject,
+      topicKey: recommendationTopicKey({
+        subject: recommendation.subject,
+        topic: recommendation.topic,
+        skill: recommendation.skill,
+      }),
       metadata: {
         recommendationId: recommendation.id,
         source: "catch_up",
@@ -279,9 +320,13 @@ export function buildCurriculumIntelligenceGraph(input: {
     }
   }
 
+  attachCatchUpTaskLinks(output, nodes, edges, topicNodeBySignal);
+
   const twinSignals = output.learningTwin.explanationDNA.topSignals;
+  const signalIds: string[] = [];
   for (const signal of twinSignals) {
     const signalId = nodeId("signal", [signal.style]);
+    signalIds.push(signalId);
     addNode(nodes, {
       id: signalId,
       type: "learning_twin_signal",
@@ -293,7 +338,6 @@ export function buildCurriculumIntelligenceGraph(input: {
     });
 
     for (const recommendation of recommendationLayer) {
-      if (recommendation.source === "assessment") continue;
       const recommendationId = nodeId("recommendation", [recommendation.recommendationId]);
       if (!nodes.has(recommendationId)) continue;
       addEdge(edges, {
@@ -305,8 +349,6 @@ export function buildCurriculumIntelligenceGraph(input: {
       });
     }
   }
-
-  attachCatchUpTaskLinks(output, nodes, edges, topicNodeBySignal);
 
   const readinessNodeId = nodeId("readiness", [output.assessmentReadiness, output.examReadinessProfile.band]);
   addNode(nodes, {
@@ -330,6 +372,11 @@ export function buildCurriculumIntelligenceGraph(input: {
       type: "recommendation",
       label: `${layerItem.action}: ${layerItem.topic ?? layerItem.subject ?? "General"}`,
       subject: layerItem.subject,
+      topicKey: recommendationTopicKey({
+        subject: layerItem.subject,
+        topic: layerItem.topic,
+        skill: layerItem.skill,
+      }),
       metadata: {
         source: layerItem.source,
         recommendationId: layerItem.recommendationId,
@@ -355,6 +402,16 @@ export function buildCurriculumIntelligenceGraph(input: {
       target: readinessNodeId,
       type: "supports_readiness",
       weight: layerItem.priority === "high" ? 1 : 0.6,
+    });
+  }
+
+  for (const signalId of signalIds) {
+    addEdge(edges, {
+      id: `${signalId}|${readinessNodeId}|supports_readiness`,
+      source: signalId,
+      target: readinessNodeId,
+      type: "supports_readiness",
+      weight: 0.5,
     });
   }
 

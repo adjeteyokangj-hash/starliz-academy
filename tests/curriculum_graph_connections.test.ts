@@ -12,6 +12,7 @@ import {
   detectDuplicateNodes,
   detectOrphanNodes,
   evaluateGraphChangeProposal,
+  validateCurriculumGraph,
 } from "../src/lib/academic-intelligence/graph-protection";
 import { toStudentSafeAcademicIntelligence } from "../src/lib/academic-intelligence/academicIntelligence";
 import type { AcademicSourceData } from "../src/lib/academic-intelligence/types";
@@ -281,4 +282,39 @@ test("graph fallback behavior remains available when builder throws", () => {
   assert.equal(output.curriculumIntelligenceGraph.fallback.applied, true);
   assert.match(output.curriculumIntelligenceGraph.fallback.reason ?? "", /forced_graph_failure/);
   assert.equal(output.curriculumIntelligenceGraph.auditMetadata.decisions[0]?.decision, "build_fallback");
+});
+
+test("academic graph avoids orphan signal and duplicate recommendation issues for normal source", () => {
+  const output = buildAcademicIntelligence(source());
+  const issues = output.curriculumIntelligenceGraph.protection.validation.issues;
+
+  const orphanSignal = issues.find((issue) => {
+    if (issue.code !== "orphan_node") return false;
+    const node = output.curriculumIntelligenceGraph.nodes.find((row) => row.id === issue.nodeId);
+    return node?.type === "learning_twin_signal";
+  });
+  const duplicateRecommendation = issues.find((issue) => {
+    if (issue.code !== "duplicate_node") return false;
+    const node = output.curriculumIntelligenceGraph.nodes.find((row) => row.id === issue.nodeId);
+    return node?.type === "recommendation";
+  });
+
+  assert.equal(orphanSignal, undefined);
+  assert.equal(duplicateRecommendation, undefined);
+});
+
+test("graph protection still reports genuine dependency cycle errors", () => {
+  const validation = validateCurriculumGraph({
+    nodes: [
+      { id: "topic:1", type: "topic", label: "Topic 1" },
+      { id: "prereq:1", type: "prerequisite", label: "Prerequisite 1" },
+    ],
+    edges: [
+      { id: "edge-1", source: "topic:1", target: "prereq:1", type: "requires", weight: 1 },
+      { id: "edge-2", source: "prereq:1", target: "topic:1", type: "blocked_by", weight: 1 },
+    ],
+  });
+
+  assert.equal(validation.valid, false);
+  assert.ok(validation.issues.some((issue) => issue.code === "circular_dependency" && issue.severity === "error"));
 });
