@@ -45,3 +45,7 @@ prisma/dev.db
 *.tsbuildinfo
 next-env.d.ts
 .env*.local
+
+# local workspace artifacts
+.eslintcache
+.vscode/mcp.json
