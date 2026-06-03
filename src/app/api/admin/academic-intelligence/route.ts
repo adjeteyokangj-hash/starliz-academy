@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdminPermission } from "@/lib/api_guard";
-import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data";
-import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
-import { listCatchUpTasks, syncCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
-import { listHomeworkTasks, syncHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
-import { getCoachHeartbeatSignals } from "@/lib/academic-intelligence/coachHeartbeatSignals";
+import { getStudentLearningBrain } from "@/lib/student-learning-brain";
 
 export async function GET(request: Request) {
   const { session, response } = await requireAdminPermission("reports:view");
@@ -14,35 +10,12 @@ export async function GET(request: Request) {
   const studentId = params.get("studentId")?.trim();
   if (!studentId) return NextResponse.json({ error: "studentId is required." }, { status: 400 });
 
-  const source = await buildAcademicSourceForStudent(studentId);
-  if (!source) return NextResponse.json({ error: "Student not found." }, { status: 404 });
-
-  const [existingTasks, existingHomework, coachHeartbeatSignals] = await Promise.all([
-    listCatchUpTasks(studentId),
-    listHomeworkTasks(studentId),
-    getCoachHeartbeatSignals(studentId),
-  ]);
-  let output = buildAcademicIntelligence(source, {
-    existingCatchUpTasks: existingTasks,
-    existingHomeworkTasks: existingHomework,
-    coachHeartbeatSignals,
-  });
-  const syncedTasks = await syncCatchUpTasks({
-    studentId,
-    recommendations: output.catchUpRecommendations,
-    schoolWeekModePlan: output.schoolWeekModePlan,
+  const brain = await getStudentLearningBrain(studentId, {
+    includeCoachSignals: true,
+    syncTasks: true,
     actorUserId: session.userId,
   });
-  const syncedHomework = await syncHomeworkTasks({
-    studentId,
-    schoolWeekModePlan: output.schoolWeekModePlan,
-    actorUserId: session.userId,
-  });
-  output = buildAcademicIntelligence(source, {
-    existingCatchUpTasks: syncedTasks,
-    existingHomeworkTasks: syncedHomework,
-    coachHeartbeatSignals,
-  });
+  if (!brain) return NextResponse.json({ error: "Student not found." }, { status: 404 });
 
-  return NextResponse.json(output);
+  return NextResponse.json(brain.academicIntelligence);
 }

@@ -2,10 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
-import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data";
-import { buildAcademicIntelligence, toStudentSafeAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
-import { listCatchUpTasks, syncCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
-import { listHomeworkTasks, syncHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
+import { getStudentLearningBrain } from "@/lib/student-learning-brain";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -27,29 +24,12 @@ export async function GET(request: Request) {
   });
   if (!ownedChild) return NextResponse.json({ error: "Child not found." }, { status: 404 });
 
-  const child = await buildAcademicSourceForStudent(childId);
-  if (!child) return NextResponse.json({ error: "Child not found." }, { status: 404 });
-
-  const existingTasks = await listCatchUpTasks(childId);
-  const existingHomework = await listHomeworkTasks(childId);
-  let output = buildAcademicIntelligence(child, { existingCatchUpTasks: existingTasks, existingHomeworkTasks: existingHomework });
-
-  if (includeSync) {
-    const syncedTasks = await syncCatchUpTasks({
-      studentId: childId,
-      recommendations: output.catchUpRecommendations,
-      schoolWeekModePlan: output.schoolWeekModePlan,
-      actorUserId: session.userId,
-    });
-    const syncedHomework = await syncHomeworkTasks({
-      studentId: childId,
-      schoolWeekModePlan: output.schoolWeekModePlan,
-      actorUserId: session.userId,
-    });
-    output = buildAcademicIntelligence(child, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
-  }
-
-  const safe = toStudentSafeAcademicIntelligence(output);
+  const brain = await getStudentLearningBrain(childId, {
+    syncTasks: includeSync,
+    actorUserId: session.userId,
+  });
+  if (!brain) return NextResponse.json({ error: "Child not found." }, { status: 404 });
+  const safe = brain.studentSafeAcademicIntelligence;
 
   return NextResponse.json({
     studentId: safe.studentId,
@@ -58,15 +38,15 @@ export async function GET(request: Request) {
     catchUpRecommendations: safe.catchUpRecommendations,
     catchUpTasks: safe.catchUpTasks,
     homeworkTasks: safe.homeworkTasks,
-    quickLevelFinderBaseline: child.quickLevelFinderBaseline,
-    assessmentReadiness: output.assessmentReadiness,
+    quickLevelFinderBaseline: brain.quickLevelFinderBaseline,
+    assessmentReadiness: brain.academicIntelligence.assessmentReadiness,
     examReadinessProfile: safe.examReadinessProfile,
     schoolWeekModePlan: safe.schoolWeekModePlan,
     masteryExpansion: safe.masteryExpansion,
-    gcseReadiness: output.gcseReadiness,
+    gcseReadiness: brain.academicIntelligence.gcseReadiness,
     curriculumIntelligenceGraph: safe.curriculumIntelligenceGraph,
-    reviewActions: output.reviewActions,
-    reportNotes: output.reportNotes,
+    reviewActions: brain.academicIntelligence.reviewActions,
+    reportNotes: brain.academicIntelligence.reportNotes,
     parentExplanation: "Use these recommendations to support confidence and steady progress at home.",
     generatedAt: safe.generatedAt,
   });

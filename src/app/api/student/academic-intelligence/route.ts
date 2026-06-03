@@ -3,11 +3,7 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
-import { buildAcademicSourceForStudent } from "@/lib/academic-intelligence/data";
-import { buildAcademicIntelligence, toStudentSafeAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
-import { listCatchUpTasks, syncCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
-import { listHomeworkTasks, syncHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
-import { buildAcademicIntelligenceSnapshot, upsertAcademicIntelligenceSnapshotJson } from "@/lib/academic-intelligence/snapshot";
+import { getStudentLearningBrain } from "@/lib/student-learning-brain";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -55,43 +51,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const source = await buildAcademicSourceForStudent(studentId);
-  if (!source) return NextResponse.json({ error: "Student not found." }, { status: 404 });
-
-  const existingTasks = await listCatchUpTasks(studentId);
-  const existingHomework = await listHomeworkTasks(studentId);
-  let output = buildAcademicIntelligence(source, { existingCatchUpTasks: existingTasks, existingHomeworkTasks: existingHomework });
-
-  if (includeSync) {
-    const syncedTasks = await syncCatchUpTasks({
-      studentId,
-      recommendations: output.catchUpRecommendations,
-      schoolWeekModePlan: output.schoolWeekModePlan,
-      actorUserId: session.userId,
-    });
-    const syncedHomework = await syncHomeworkTasks({
-      studentId,
-      schoolWeekModePlan: output.schoolWeekModePlan,
-      actorUserId: session.userId,
-    });
-    output = buildAcademicIntelligence(source, { existingCatchUpTasks: syncedTasks, existingHomeworkTasks: syncedHomework });
-  }
-
-  const profile = await prisma.studentProfile.findUnique({
-    where: { childId: studentId },
-    select: { aiLearningProfileJson: true },
+  const brain = await getStudentLearningBrain(studentId, {
+    syncTasks: includeSync,
+    actorUserId: session.userId,
+    refreshDashboardSnapshot: true,
   });
-  const snapshot = buildAcademicIntelligenceSnapshot(output, includeSync ? "manual_refresh" : "stale_snapshot");
-  await prisma.studentProfile.upsert({
-    where: { childId: studentId },
-    create: {
-      childId: studentId,
-      aiLearningProfileJson: upsertAcademicIntelligenceSnapshotJson(null, snapshot),
-    },
-    update: {
-      aiLearningProfileJson: upsertAcademicIntelligenceSnapshotJson(profile?.aiLearningProfileJson ?? null, snapshot),
-    },
-  });
+  if (!brain) return NextResponse.json({ error: "Student not found." }, { status: 404 });
 
-  return NextResponse.json(toStudentSafeAcademicIntelligence(output));
+  return NextResponse.json(brain.studentSafeAcademicIntelligence);
 }

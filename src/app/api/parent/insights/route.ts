@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
-import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from "@/lib/learning_dna";
+import { getStudentLearningBrain, toParentLearningBrainView } from "@/lib/student-learning-brain";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -78,26 +78,31 @@ export async function GET(request: Request) {
   }> = [];
 
   if (!summaryMode) {
-    const studentProfiles = await prisma.studentProfile.findMany({
-      where: { child: { parentId: parentScope.parentId } },
+    const children = await prisma.childProfile.findMany({
+      where: { parentId: parentScope.parentId, archived: false },
       select: {
-        childId: true,
-        aiLearningProfileJson: true,
-        child: { select: { name: true } },
+        id: true,
+        name: true,
       },
     });
 
-    learningDna = studentProfiles
-      .map((entry) => {
-        const snapshot = extractLearningDnaFromProfileJson(entry.aiLearningProfileJson);
-        if (!snapshot) return null;
+    const brainViews = await Promise.all(children.map(async (child) => {
+      const brain = await getStudentLearningBrain(child.id, { includeCoachSignals: true });
+      if (!brain) return null;
+      const parentBrain = toParentLearningBrainView(brain);
+      if (!parentBrain.learningDna) return null;
         return {
-          childId: entry.childId,
-          childName: entry.child.name,
-          ...buildParentLearningDnaSummary(snapshot),
+          childId: child.id,
+          childName: child.name,
+          ...parentBrain.learningDna,
+          heartbeatSummary: parentBrain.heartbeatSummary,
+          quickLevelFinderBaseline: parentBrain.quickLevelFinderBaseline,
+          weakAreas: parentBrain.weakAreas,
+          languageReadiness: parentBrain.languageReadiness,
         };
-      })
-      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+    }));
+
+    learningDna = brainViews.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
   }
 
   // Calculate daily activity for the past 30 days
