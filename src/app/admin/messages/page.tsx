@@ -149,9 +149,6 @@ export default function AdminMessagesPage() {
       "image/png",
       "image/gif",
       "image/webp",
-      "application/pdf",
-      "video/mp4",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "audio/mpeg",
       "audio/mp4",
       "audio/aac",
@@ -168,7 +165,7 @@ export default function AdminMessagesPage() {
         break;
       }
       if (!allowed.includes(file.type)) {
-        setError(`"${file.name}" is not an allowed type.`);
+        setError(`"${file.name}" is not an allowed type. Use non-sensitive image or audio files only.`);
         continue;
       }
       if (file.size > maxSize) {
@@ -414,7 +411,8 @@ export default function AdminMessagesPage() {
               </label>
 
               <div>
-                <span className="mb-1.5 block text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Attachments (max 5 files, 5 MB each)</span>
+                <span className="mb-1.5 block text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Non-sensitive media attachments (max 5 files, 5 MB each)</span>
+                <p className="mb-2 text-xs text-slate-500">Images and audio only. Do not attach safeguarding, medical, financial, or confidential documents.</p>
                 {attachments.length > 0 ? (
                   <div className="mb-2 flex flex-wrap gap-2">
                     {attachments.map((a, i) => (
@@ -445,7 +443,7 @@ export default function AdminMessagesPage() {
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,video/mp4,application/vnd.openxmlformats-officedocument.wordprocessingml.document,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/x-wav,audio/ogg"
+                  accept="image/jpeg,image/png,image/gif,image/webp,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/x-wav,audio/ogg"
                   className="hidden"
                   onChange={(event) => {
                     if (event.target.files?.length) {
