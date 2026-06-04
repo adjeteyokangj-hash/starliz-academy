@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { getStudentLearningBrain, toParentLearningBrainView } from "@/lib/student-learning-brain";
-import { buildLearningActivitySummaries, learningActivityTopicBuckets } from "@/lib/learning-activity-aggregation";
+import { learningActivityTopicBuckets, type LearningActivityEvent } from "@/lib/learning-activity-aggregation";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -16,37 +16,48 @@ export async function GET(request: Request) {
 
   const summaryMode = new URL(request.url).searchParams.get("summary") === "1";
 
-  const attempts = await prisma.attempt.findMany({
-    where: { student: { parentId: parentScope.parentId } },
-    select: { id: true, studentId: true, skillFocus: true, correct: true, subject: true, spellingMode: true, createdAt: true },
-    orderBy: { createdAt: "desc" },
-    take: summaryMode ? 120 : 300,
-  });
-
-  const childIds = [...new Set(attempts.map((attempt) => attempt.studentId))];
   const childrenForParent = await prisma.childProfile.findMany({
     where: { parentId: parentScope.parentId, archived: false },
-    select: { id: true, name: true, studentProfile: { select: { aiLearningProfileJson: true } } },
-  });
-  for (const child of childrenForParent) childIds.push(child.id);
-
-  const progressRecords = await prisma.progressRecord.findMany({
-    where: { childId: { in: childIds } },
-    select: { id: true, childId: true, activityType: true, activityName: true, correct: true, completed: true, score: true, accuracy: true, createdAt: true },
-    orderBy: { createdAt: "desc" },
-    take: summaryMode ? 120 : 300,
+    select: { id: true, name: true },
   });
 
-  const activitySummaries = buildLearningActivitySummaries({
-    studentIds: childIds,
-    attempts,
-    progressRecords,
-    profiles: childrenForParent.map((child) => ({
-      studentId: child.id,
-      aiLearningProfileJson: child.studentProfile?.aiLearningProfileJson ?? null,
+  const brainRows = await Promise.all(childrenForParent.map(async (child) => {
+    const brain = await getStudentLearningBrain(child.id, { includeCoachSignals: !summaryMode });
+    return brain ? { child, brain, parentBrain: toParentLearningBrainView(brain) } : null;
+  }));
+  const brainViews = brainRows.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  const activityEvents: LearningActivityEvent[] = brainViews.flatMap(({ brain }) => [
+    ...brain.source.attempts.map((attempt) => ({
+      id: attempt.id,
+      studentId: brain.studentId,
+      source: "attempt" as const,
+      topic: attempt.skill || attempt.topic || attempt.subject || "General",
+      subject: attempt.subject || "general",
+      correct: attempt.correct,
+      completed: true,
+      score: attempt.correct ? 100 : 0,
+      createdAt: attempt.createdAt,
     })),
-  });
-  const activityEvents = [...activitySummaries.values()].flatMap((summary) => summary.events);
+    ...brain.source.progressRecords.map((record) => ({
+      id: record.id,
+      studentId: brain.studentId,
+      source: "progress_record" as const,
+      topic: record.activityName || record.activityType || "General",
+      subject: record.activityType || "general",
+      correct: record.correct ?? null,
+      completed: record.completed,
+      score: typeof record.accuracy === "number"
+        ? record.accuracy
+        : typeof record.score === "number"
+          ? record.score
+          : record.correct === true
+            ? 100
+            : record.correct === false
+              ? 0
+              : null,
+      createdAt: record.createdAt,
+    })),
+  ]);
   const allTopics = learningActivityTopicBuckets(activityEvents);
 
   const strengths = allTopics
@@ -66,7 +77,7 @@ export async function GET(request: Request) {
 
   // Get learning mode from mode struggles
   const modeBuckets = new Map<string, { total: number; correct: number }>();
-  for (const attempt of attempts) {
+  for (const attempt of brainViews.flatMap(({ brain }) => brain.source.attempts)) {
     if (attempt.subject !== "spelling" || !attempt.spellingMode) continue;
     const existing = modeBuckets.get(attempt.spellingMode) ?? { total: 0, correct: 0 };
     existing.total += 1;
@@ -91,11 +102,9 @@ export async function GET(request: Request) {
   }> = [];
 
   if (!summaryMode) {
-    const brainViews = await Promise.all(childrenForParent.map(async (child) => {
-      const brain = await getStudentLearningBrain(child.id, { includeCoachSignals: true });
-      if (!brain) return null;
-      const parentBrain = toParentLearningBrainView(brain);
-      if (!parentBrain.learningDna) return null;
+    learningDna = brainViews
+      .filter(({ parentBrain }) => Boolean(parentBrain.learningDna))
+      .map(({ child, parentBrain }) => {
       return {
           childId: child.id,
           childName: child.name,
@@ -105,9 +114,7 @@ export async function GET(request: Request) {
           weakAreas: parentBrain.weakAreas,
           languageReadiness: parentBrain.languageReadiness,
         };
-    }));
-
-    learningDna = brainViews.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+      });
   }
 
   // Calculate daily activity for the past 30 days

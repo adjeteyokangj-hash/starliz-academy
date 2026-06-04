@@ -8,9 +8,8 @@ import { parseWalletMetadata, summarizeWalletTransactions } from "@/lib/wallet_l
 import { parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { keyStageForYearGroup } from "@/lib/curriculum";
 import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
-import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from "@/lib/learning_dna";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
-import { classifyStudentDataState } from "@/lib/student-learning-brain/studentDataNormalisation";
+import { getStudentLearningBrain } from "@/lib/student-learning-brain";
 
 const updateStudentSchema = z.object({
   name: z.string().trim().min(1).optional(),
@@ -39,6 +38,26 @@ const updateStudentSchema = z.object({
 
 type Context = { params: Promise<{ id: string }> };
 
+function readInterventionMetadata(metadata: unknown): {
+  launchedAt: string | null;
+  completedAt: string | null;
+  improvementPct: number | null;
+} {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata) || !("intervention" in metadata)) {
+    return { launchedAt: null, completedAt: null, improvementPct: null };
+  }
+  const intervention = (metadata as { intervention?: unknown }).intervention;
+  if (!intervention || typeof intervention !== "object" || Array.isArray(intervention)) {
+    return { launchedAt: null, completedAt: null, improvementPct: null };
+  }
+  const row = intervention as Record<string, unknown>;
+  return {
+    launchedAt: typeof row.launchedAt === "string" ? row.launchedAt : null,
+    completedAt: typeof row.completedAt === "string" ? row.completedAt : null,
+    improvementPct: typeof row.improvementPct === "number" ? row.improvementPct : null,
+  };
+}
+
 export async function GET(_request: Request, context: Context) {
   const { session, response } = await requireAdminPermission("students:write");
   if (!session) return response;
@@ -62,8 +81,13 @@ export async function GET(_request: Request, context: Context) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const total = student.attempts.length || student.progressRecords.length;
-  const correct = student.attempts.length ? student.attempts.filter((record) => record.correct === true).length : student.progressRecords.filter((record) => record.correct === true).length;
+  const brain = await getStudentLearningBrain(student.id, { includeCoachSignals: true });
+  const total = brain
+    ? brain.evidenceSummary.attempts.total + brain.evidenceSummary.progress.total
+    : student.attempts.length || student.progressRecords.length;
+  const correct = brain
+    ? brain.evidenceSummary.attempts.correct + student.progressRecords.filter((record) => record.correct === true).length
+    : student.attempts.length ? student.attempts.filter((record) => record.correct === true).length : student.progressRecords.filter((record) => record.correct === true).length;
   const accuracy = total > 0 ? Math.round((correct / total) * 100) : null;
   const normalizedStudent = fromDbRecord(student);
   const quickLevelFinderSession = parseQuickLevelFinderSession(student.studentProfile?.aiLearningProfileJson ?? null);
@@ -72,34 +96,9 @@ export async function GET(_request: Request, context: Context) {
     keyStageLevel: student.studentProfile?.keyStageLevel ?? null,
     aiLearningProfileJson: student.studentProfile?.aiLearningProfileJson ?? null,
   });
-  const learningDna = extractLearningDnaFromProfileJson(student.studentProfile?.aiLearningProfileJson ?? null);
-  let hasAcademicSnapshot = false;
-  let hasPlacementSignal = false;
-  try {
-    const parsedProfile = student.studentProfile?.aiLearningProfileJson
-      ? JSON.parse(student.studentProfile.aiLearningProfileJson) as Record<string, unknown>
-      : null;
-    hasAcademicSnapshot = Boolean(parsedProfile && typeof parsedProfile.academicIntelligenceSnapshot === "object");
-    hasPlacementSignal = Boolean(parsedProfile && typeof parsedProfile.quickLevelFinderPlacementRecommendation === "object");
-  } catch {
-    hasAcademicSnapshot = false;
-    hasPlacementSignal = false;
-  }
-  const learningDataState = classifyStudentDataState({
-    attemptsCount: student.attempts.length,
-    progressRecordsCount: student.progressRecords.length,
-    assignmentsCount: student._count.assignments,
-    weakAreasCount: student.weakAreas.length,
-    sessionCount: total,
-    hasQuickLevelFinderCompleted: quickLevelFinderSession?.status === "completed",
-    hasQuickLevelFinderSession: Boolean(quickLevelFinderSession),
-    hasQuickLevelFinderPlacementSignal: hasPlacementSignal,
-    hasAcademicSnapshot,
-    hasLearningDna: Boolean(learningDna),
-    createdAt: student.createdAt.toISOString(),
-  });
-  const adaptiveTutor = learningDna
-    ? buildParentLearningDnaSummary(learningDna)
+  const learningDataState = brain?.dataState ?? null;
+  const adaptiveTutor = brain?.learningDnaSummary
+    ? brain.learningDnaSummary
     : {
         enoughHistory: false,
         readinessLabel: "Not enough learning history yet",
@@ -148,6 +147,8 @@ export async function GET(_request: Request, context: Context) {
         levels: quickLevelFinderSession?.levels ?? {},
       },
       learningDataState,
+      heartbeatSummary: brain?.heartbeatSummary ?? null,
+      quickLevelFinderBaseline: brain?.quickLevelFinderBaseline ?? null,
       adaptiveTutor,
       walletSummary,
       ownedItems: student.rewards.map((reward) => ({
@@ -201,8 +202,29 @@ export async function GET(_request: Request, context: Context) {
         .filter((item) => item.total >= 2)
         .sort((left, right) => left.accuracy - right.accuracy || right.total - left.total)
         .slice(0, 5),
-      weakAreas: student.weakAreas.map((area) => {
+      weakAreas: brain
+        ? brain.source.weakAreas.map((area) => {
+        const intervention = readInterventionMetadata(area.metadata);
+        return {
+          id: area.id,
+          subject: area.subject,
+          keyStage: area.keyStage,
+          yearGroup: area.yearGroup,
+          skillFocus: area.skill ?? area.topic ?? area.subject,
+          weaknessType: area.weaknessType,
+          accuracy: area.accuracy,
+          attemptsCount: area.attemptsCount,
+          currentDifficulty: null,
+          status: area.status,
+          lastDetectedAt: area.lastDetectedAt,
+          interventionLaunchedAt: intervention.launchedAt,
+          interventionCompletedAt: intervention.completedAt,
+          interventionImprovementPct: intervention.improvementPct,
+        };
+      })
+        : student.weakAreas.map((area) => {
         const metadata = parseWeakAreaMetadata(area.metadataJson);
+        const intervention = readInterventionMetadata(metadata);
         return {
           id: area.id,
           subject: area.subject,
@@ -215,9 +237,9 @@ export async function GET(_request: Request, context: Context) {
           currentDifficulty: area.currentDifficulty,
           status: area.status,
           lastDetectedAt: area.lastDetectedAt.toISOString(),
-          interventionLaunchedAt: metadata.intervention?.launchedAt ?? null,
-          interventionCompletedAt: metadata.intervention?.completedAt ?? null,
-          interventionImprovementPct: metadata.intervention?.improvementPct ?? null,
+          interventionLaunchedAt: intervention.launchedAt,
+          interventionCompletedAt: intervention.completedAt,
+          interventionImprovementPct: intervention.improvementPct,
         };
       }),
     },

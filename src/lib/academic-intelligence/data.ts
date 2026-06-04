@@ -89,6 +89,7 @@ export async function buildAcademicSourceForStudent(studentId: string): Promise<
         select: {
           id: true,
           subject: true,
+          spellingMode: true,
           keyStage: true,
           yearGroup: true,
           skillFocus: true,
@@ -242,6 +243,7 @@ export async function buildAcademicSourceForStudent(studentId: string): Promise<
     attempts: child.attempts.map((item) => ({
       id: item.id,
       subject: item.subject,
+      spellingMode: item.spellingMode,
       topic: pickTopicLabel(null, item.skillFocus),
       skill: item.skillFocus,
       keyStage: item.keyStage ?? keyStage,

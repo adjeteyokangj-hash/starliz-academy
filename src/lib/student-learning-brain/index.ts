@@ -13,7 +13,7 @@ import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from
 import { listPersistedCertificateRecordsForStudent, mergePersistedAndLegacyCertificates } from "@/lib/certificate-records";
 import { buildAssignedWorkSummary, buildSmartCoachSummary } from "@/lib/student-dashboard-summary";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
-import { parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/student-learning-state";
+import { deriveStudentLearningState, parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/student-learning-state";
 import { selectPlacementLessons } from "@/lib/placement-lesson-selector";
 import { taskHrefForContentType } from "@/lib/assignments";
 import { buildSubjectLevelProgression, progressionFriendlyLabel } from "@/lib/subject-level-progression";
@@ -410,6 +410,40 @@ export function toAdminLearningBrainView(brain: StudentLearningBrain) {
     languageReadiness: brain.languageReadiness,
     generatedAt: brain.generatedAt,
   };
+}
+
+export function toBrainBackedStudentLearningState(
+  brain: StudentLearningBrain,
+  input: {
+    selectedSubjects?: string[];
+    placementResponses?: number;
+    speechSamples?: number;
+  } = {},
+) {
+  const selectedSubjects = input.selectedSubjects ?? [];
+  const skillRows = brain.source.studentSkills;
+  const skillAttempts = skillRows.reduce((sum, row) => sum + (row.attempts ?? 0), 0);
+  const masteredSkills = skillRows.filter((row) => row.status === "mastered").length;
+  const spellingAttempts = skillRows
+    .filter((row) => row.skill.toLowerCase().includes("spell"))
+    .reduce((sum, row) => sum + (row.attempts ?? 0), 0);
+  const readingAttempts = skillRows
+    .filter((row) => row.skill.toLowerCase().includes("read"))
+    .reduce((sum, row) => sum + (row.attempts ?? 0), 0);
+
+  return deriveStudentLearningState({
+    assignmentCount: brain.evidenceSummary.assignments.total,
+    selectedSubjects,
+    skillAttempts,
+    progressEvents: brain.evidenceSummary.progress.completed,
+    weakAreaCount: brain.evidenceSummary.weakAreas.active,
+    masteredSkills,
+    spellingAttempts,
+    readingAttempts,
+    speechSamples: input.speechSamples ?? 0,
+    placementResponses: input.placementResponses ?? (brain.quickLevelFinderBaseline ? 1 : 0),
+    placementCompleted: Boolean(brain.quickLevelFinderBaseline),
+  });
 }
 
 // Progression decision view is a Brain-backed read for display/recommendation consumers.

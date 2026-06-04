@@ -195,6 +195,7 @@ export type AssignmentRecord = TopicSignal & {
 export type AttemptRecord = TopicSignal & {
   id: string;
   correct: boolean;
+  spellingMode?: string | null;
   score?: number | null;
   hintsUsed?: number | null;
   responseTimeMs?: number | null;
