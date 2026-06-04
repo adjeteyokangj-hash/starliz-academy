@@ -7,10 +7,13 @@ import { parseSkills, skillFocusToCode } from "@/lib/skills";
 import { upsertLearningDnaProfileFromAttempt } from "@/lib/attempts/learning_dna_pipeline";
 import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 import type { ResolvedAttemptAssignment } from "@/lib/attempts/learning_dna_pipeline";
+import { applyRetentionRules, parseRetentionMetadata } from "@/lib/retentionScheduler";
+import { toLegacyStudentSkillStatus, type SkillMasteryStatus } from "@/lib/learningEngineV2";
 
 type LearningActivityPrisma = typeof prisma;
 
-export type WriteLearningActivityInput = {
+type AttemptActivityInput = {
+  kind?: "attempt";
   actorUserId: string;
   clientStudentId: string;
   resolvedStudentId: string;
@@ -41,8 +44,39 @@ export type WriteLearningActivityInput = {
   };
 };
 
+type SessionSummaryActivityInput = {
+  kind: "session_summary";
+  actorUserId: string;
+  clientStudentId: string;
+  resolvedStudentId: string;
+  idempotencyKey?: string;
+  summary: {
+    subject: string;
+    skillFocus?: string;
+    assignmentId?: string;
+    score: number;
+    correct: number;
+    incorrect: number;
+    attempts: number;
+    weakWords: string[];
+    weakSkills: string[];
+    confidenceStatus?: SkillMasteryStatus;
+    snapshotReason: "lesson_completed" | "quiz_or_test_completed";
+    intervention?: {
+      mode?: boolean;
+      primarySkill?: string | null;
+      baselineAccuracy?: number | null;
+      improvementPct?: number | null;
+      launchedAt?: string | null;
+      completedAt?: string | null;
+    } | null;
+  };
+};
+
+export type WriteLearningActivityInput = AttemptActivityInput | SessionSummaryActivityInput;
+
 export type WriteLearningActivityResult = {
-  attempt: Record<string, unknown>;
+  attempt: Record<string, unknown> | null;
   weakArea: unknown;
   skills: string[];
   learningDnaUpdatedForChildId: string;
@@ -180,7 +214,7 @@ async function assignmentBatchCompleted(input: {
 }
 
 function buildResolution(input: WriteLearningActivityInput): WriteLearningActivityResult["studentResolution"] {
-  return input.assignment
+  return "assignment" in input && input.assignment
     ? {
         source: "assignment",
         assignmentId: input.assignment.id,
@@ -194,10 +228,148 @@ function buildResolution(input: WriteLearningActivityInput): WriteLearningActivi
       };
 }
 
+async function writeLearningSessionSummary(
+  input: SessionSummaryActivityInput,
+  deps: WriteLearningActivityDeps,
+): Promise<WriteLearningActivityResult> {
+  const body = input.summary;
+  const weakSkills = mergeWeakAreas(body.skillFocus ? [body.skillFocus] : [], body.weakSkills);
+  const interventionMode = body.intervention?.mode === true;
+  const detectedAtIso = new Date().toISOString();
+  const weakAreaIds: string[] = [];
+
+  if (body.weakWords.length || weakSkills.length) {
+    for (const skill of weakSkills.length ? weakSkills : [`${body.subject} practice`]) {
+      const existing = await deps.prisma.weakArea.findUnique({
+        where: {
+          studentId_subject_skillFocus: {
+            studentId: input.resolvedStudentId,
+            subject: body.subject,
+            skillFocus: skill,
+          },
+        },
+        select: { metadataJson: true, attemptsCount: true },
+      });
+      const existingMeta = parseWeakAreaMetadata(existing?.metadataJson);
+      const existingRetentionMeta = parseRetentionMetadata(existing?.metadataJson);
+      const weakWords = mergeWeakAreas(existingMeta.weakWords, body.weakWords);
+      const mergedWeakSkills = mergeWeakAreas(existingMeta.weakSkills, [skill]);
+      const existingIntervention = existingMeta.intervention ?? {};
+      const baselineAccuracy = body.intervention?.baselineAccuracy ?? existingIntervention.baselineAccuracy ?? body.score;
+      const improvementPct = body.intervention?.improvementPct
+        ?? (typeof baselineAccuracy === "number" ? body.score - baselineAccuracy : undefined);
+      const interventionMeta = {
+        weakSkillDetectedAt: existingIntervention.weakSkillDetectedAt ?? detectedAtIso,
+        weakSkillCode: body.intervention?.primarySkill ?? skill,
+        launchedAt: body.intervention?.launchedAt ?? existingIntervention.launchedAt ?? detectedAtIso,
+        completedAt: interventionMode ? (body.intervention?.completedAt ?? detectedAtIso) : existingIntervention.completedAt,
+        improvementPct,
+        baselineAccuracy,
+        latestAccuracy: body.score,
+        mode: interventionMode ? "mission" : (existingIntervention.mode ?? "auto_launch"),
+      };
+      const retentionMeta = applyRetentionRules({
+        existing: {
+          ...existingRetentionMeta,
+          weakWords,
+          weakSkills: mergedWeakSkills,
+        },
+        accuracy: body.score,
+        retries: body.incorrect,
+      });
+
+      const weakArea = await deps.prisma.weakArea.upsert({
+        where: {
+          studentId_subject_skillFocus: {
+            studentId: input.resolvedStudentId,
+            subject: body.subject,
+            skillFocus: skill,
+          },
+        },
+        create: {
+          studentId: input.resolvedStudentId,
+          subject: body.subject,
+          skillFocus: skill,
+          weaknessType: body.incorrect > 0 ? "follow_up_needed" : "practice_review",
+          accuracy: Math.round(body.score),
+          attemptsCount: body.attempts,
+          currentDifficulty: 1,
+          metadataJson: stringifyWeakAreaMetadata({
+            ...retentionMeta,
+            assignmentId: body.assignmentId,
+            lastScore: body.score,
+            intervention: interventionMeta,
+          }),
+        },
+        update: {
+          weaknessType: body.incorrect > 0 ? "follow_up_needed" : "practice_review",
+          accuracy: Math.round(body.score),
+          attemptsCount: (existing?.attemptsCount ?? 0) + body.attempts,
+          lastDetectedAt: new Date(),
+          status: "active",
+          metadataJson: stringifyWeakAreaMetadata({
+            ...retentionMeta,
+            assignmentId: body.assignmentId,
+            lastScore: body.score,
+            intervention: interventionMeta,
+          }),
+        },
+      });
+      if (weakArea && typeof weakArea === "object" && "id" in weakArea && typeof weakArea.id === "string") {
+        weakAreaIds.push(weakArea.id);
+      }
+    }
+  }
+
+  if (weakSkills.length) {
+    const skillAttempts = Math.max(1, body.attempts);
+    const skillCorrect = Math.max(0, body.correct);
+    const skillAccuracy = Math.max(0, Math.min(100, (skillCorrect / skillAttempts) * 100));
+    const mappedStatus = toLegacyStudentSkillStatus(body.confidenceStatus ?? "learning");
+
+    for (const skill of weakSkills) {
+      await deps.prisma.studentSkill.upsert({
+        where: { studentId_skill: { studentId: input.resolvedStudentId, skill } },
+        create: {
+          studentId: input.resolvedStudentId,
+          skill,
+          attempts: skillAttempts,
+          correct: skillCorrect,
+          accuracy: skillAccuracy,
+          status: mappedStatus,
+        },
+        update: {
+          attempts: { increment: skillAttempts },
+          correct: { increment: skillCorrect },
+          accuracy: skillAccuracy,
+          status: mappedStatus,
+        },
+      });
+    }
+  }
+
+  await deps.invalidateAcademicIntelligenceSnapshot({
+    studentId: input.resolvedStudentId,
+    reason: body.snapshotReason,
+  }).catch(() => undefined);
+
+  return {
+    attempt: null,
+    weakArea: weakAreaIds,
+    skills: weakSkills,
+    learningDnaUpdatedForChildId: input.resolvedStudentId,
+    studentResolution: buildResolution(input),
+  };
+}
+
 export async function writeLearningActivity(
   input: WriteLearningActivityInput,
   deps: WriteLearningActivityDeps = defaultWriteLearningActivityDeps,
 ): Promise<WriteLearningActivityResult> {
+  if (input.kind === "session_summary") {
+    return writeLearningSessionSummary(input, deps);
+  }
+
   const {
     skills: skillsRaw,
     pronunciationAttempted,

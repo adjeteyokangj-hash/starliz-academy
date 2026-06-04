@@ -3,11 +3,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
-import { mergeWeakAreas, parseWeakAreaMetadata, stringifyWeakAreaMetadata } from "@/lib/weakAreas";
 import { sendEmail } from "@/lib/email-provider";
-import { applyRetentionRules, parseRetentionMetadata } from "@/lib/retentionScheduler";
-import { calculateConfidence, isBossUnlockEligibleV2, skillStatusFromConfidence, toLegacyStudentSkillStatus } from "@/lib/learningEngineV2";
-import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
+import { calculateConfidence, isBossUnlockEligibleV2, skillStatusFromConfidence } from "@/lib/learningEngineV2";
+import { writeLearningActivity } from "@/lib/learning-activity/writeLearningActivity";
 
 const progressSchema = z.object({
   studentId: z.string().min(1),
@@ -192,115 +190,26 @@ export async function POST(request: Request) {
       },
     });
 
-    const weakSkills = mergeWeakAreas(body.skillFocus ? [body.skillFocus] : [], body.weakSkills);
-    const interventionMode = body.intervention?.mode === true;
-    const detectedAtIso = new Date().toISOString();
-    if (body.weakWords.length || weakSkills.length) {
-      for (const skill of weakSkills.length ? weakSkills : [`${body.subject} practice`]) {
-        const existing = await prisma.weakArea.findUnique({
-          where: {
-            studentId_subject_skillFocus: {
-              studentId: body.studentId,
-              subject: body.subject,
-              skillFocus: skill,
-            },
-          },
-          select: { metadataJson: true, attemptsCount: true },
-        });
-        const existingMeta = parseWeakAreaMetadata(existing?.metadataJson);
-        const existingRetentionMeta = parseRetentionMetadata(existing?.metadataJson);
-        const weakWords = mergeWeakAreas(existingMeta.weakWords, body.weakWords);
-        const mergedWeakSkills = mergeWeakAreas(existingMeta.weakSkills, [skill]);
-        const existingIntervention = existingMeta.intervention ?? {};
-        const baselineAccuracy = body.intervention?.baselineAccuracy ?? existingIntervention.baselineAccuracy ?? body.score;
-        const improvementPct = body.intervention?.improvementPct
-          ?? (typeof baselineAccuracy === "number" ? body.score - baselineAccuracy : undefined);
-        const interventionMeta = {
-          weakSkillDetectedAt: existingIntervention.weakSkillDetectedAt ?? detectedAtIso,
-          weakSkillCode: body.intervention?.primarySkill ?? skill,
-          launchedAt: body.intervention?.launchedAt ?? existingIntervention.launchedAt ?? detectedAtIso,
-          completedAt: interventionMode ? (body.intervention?.completedAt ?? detectedAtIso) : existingIntervention.completedAt,
-          improvementPct,
-          baselineAccuracy,
-          latestAccuracy: body.score,
-          mode: interventionMode ? "mission" : (existingIntervention.mode ?? "auto_launch"),
-        };
-        const retentionMeta = applyRetentionRules({
-          existing: {
-            ...existingRetentionMeta,
-            weakWords,
-            weakSkills: mergedWeakSkills,
-          },
-          accuracy: body.score,
-          retries: body.incorrect,
-        });
-
-        await prisma.weakArea.upsert({
-          where: {
-            studentId_subject_skillFocus: {
-              studentId: body.studentId,
-              subject: body.subject,
-              skillFocus: skill,
-            },
-          },
-          create: {
-            studentId: body.studentId,
-            subject: body.subject,
-            skillFocus: skill,
-            weaknessType: body.incorrect > 0 ? "follow_up_needed" : "practice_review",
-            accuracy: Math.round(body.score),
-            attemptsCount: body.attempts,
-            currentDifficulty: 1,
-            metadataJson: stringifyWeakAreaMetadata({
-              ...retentionMeta,
-              assignmentId: body.assignmentId,
-              lastScore: body.score,
-              intervention: interventionMeta,
-            }),
-          },
-          update: {
-            weaknessType: body.incorrect > 0 ? "follow_up_needed" : "practice_review",
-            accuracy: Math.round(body.score),
-            attemptsCount: (existing?.attemptsCount ?? 0) + body.attempts,
-            lastDetectedAt: new Date(),
-            status: "active",
-            metadataJson: stringifyWeakAreaMetadata({
-              ...retentionMeta,
-              assignmentId: body.assignmentId,
-              lastScore: body.score,
-              intervention: interventionMeta,
-            }),
-          },
-        });
-      }
-    }
-
-    if (weakSkills.length) {
-      const skillAttempts = Math.max(1, body.attempts);
-      const skillCorrect = Math.max(0, body.correct);
-      const skillAccuracy = Math.max(0, Math.min(100, (skillCorrect / skillAttempts) * 100));
-      const mappedStatus = toLegacyStudentSkillStatus(confidenceStatus);
-
-      for (const skill of weakSkills) {
-        await prisma.studentSkill.upsert({
-          where: { studentId_skill: { studentId: body.studentId, skill } },
-          create: {
-            studentId: body.studentId,
-            skill,
-            attempts: skillAttempts,
-            correct: skillCorrect,
-            accuracy: skillAccuracy,
-            status: mappedStatus,
-          },
-          update: {
-            attempts: { increment: skillAttempts },
-            correct: { increment: skillCorrect },
-            accuracy: skillAccuracy,
-            status: mappedStatus,
-          },
-        });
-      }
-    }
+    await writeLearningActivity({
+      kind: "session_summary",
+      actorUserId: session.userId,
+      clientStudentId: body.studentId,
+      resolvedStudentId: body.studentId,
+      summary: {
+        subject: body.subject,
+        skillFocus: body.skillFocus,
+        assignmentId: body.assignmentId,
+        score: body.score,
+        correct: body.correct,
+        incorrect: body.incorrect,
+        attempts: body.attempts,
+        weakWords: body.weakWords,
+        weakSkills: body.weakSkills,
+        confidenceStatus,
+        snapshotReason: /quiz|test|exam/i.test(body.type ?? body.subject) ? "quiz_or_test_completed" : "lesson_completed",
+        intervention: body.intervention ?? null,
+      },
+    });
 
     if (body.assignmentId) {
       await prisma.assignment.updateMany({
@@ -308,11 +217,6 @@ export async function POST(request: Request) {
         data: { status: "completed", completedAt: new Date() },
       });
     }
-
-    await invalidateAcademicIntelligenceSnapshot({
-      studentId: body.studentId,
-      reason: /quiz|test|exam/i.test(body.type ?? body.subject) ? "quiz_or_test_completed" : "lesson_completed",
-    }).catch(() => undefined);
 
     const reinforceTomorrow = body.score < 60 || body.incorrect > 0 || body.weakSkills.length > 0;
     const weakSummary = body.weakSkills.length || body.weakWords.length
