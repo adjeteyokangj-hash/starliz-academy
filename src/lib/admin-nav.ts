@@ -4,6 +4,7 @@ export const adminNavItems = [
   { title: "Students", href: "/admin/students", icon: "S", launchTag: null },
   { title: "Schools", href: "/admin/schools", icon: "SC", launchTag: null },
   { title: "Dictionary / Word Bank", href: "/admin/dictionary", icon: "DW", launchTag: null },
+  { title: "Brain Centre", href: "/admin/brain-centre", icon: "BC", launchTag: "beta" },
   { title: "Knowledge Graph", href: "/admin/knowledge-graph", icon: "KG", launchTag: "beta" },
   { title: "Recovery Governance", href: "/admin/recovery-governance", icon: "RG", launchTag: "beta" },
   { title: "AI Generator", href: "/admin/ai", icon: "AI", launchTag: "beta" },
