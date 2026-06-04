@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import type { PrismaClient } from "@prisma/client";
+import { buildAnalyticsRebuildPlan } from "../src/lib/analytics-rebuild";
 import { buildLearningActivitySummaries } from "../src/lib/learning-activity-aggregation";
 
 function loadLocalEnv(): void {
@@ -214,10 +215,15 @@ async function main() {
         id: true,
         studentId: true,
         subject: true,
+        keyStage: true,
+        yearGroup: true,
         skillFocus: true,
         accuracy: true,
         attemptsCount: true,
         status: true,
+        weaknessType: true,
+        currentDifficulty: true,
+        metadataJson: true,
         updatedAt: true,
       },
       take: AUDIT_LIMITS.weakAreas,
@@ -312,7 +318,13 @@ async function main() {
 
   const qlfStudents = studentProfiles
     .filter((profile) => studentIds.has(profile.childId) && hasQuickLevelFinderOrPlacement(profile.aiLearningProfileJson));
-  const qlfMissingAdminSignals = qlfStudents.filter((profile) => {
+  const qlfCompletedRows = qlfStudents.filter((profile) => hasCompletedQlfOrPlacement(profile.aiLearningProfileJson));
+  const qlfActivityPending = qlfCompletedRows.filter((profile) => {
+    const hasLearningActivity = (attemptCounts.get(profile.childId) ?? 0) > 0
+      || (progressCounts.get(profile.childId) ?? 0) > 0;
+    return !hasLearningActivity && readSnapshotStatus(profile.aiLearningProfileJson, now) === "fresh";
+  });
+  const qlfMissingAdminSignals = qlfCompletedRows.filter((profile) => {
     if (!hasCompletedQlfOrPlacement(profile.aiLearningProfileJson)) return false;
     const hasActivity = (attemptCounts.get(profile.childId) ?? 0) > 0
       || (progressCounts.get(profile.childId) ?? 0) > 0
@@ -320,7 +332,7 @@ async function main() {
       || weakAreas.some((area) => area.studentId === profile.childId)
       || studentSkills.some((skill) => skill.studentId === profile.childId);
     const snapshotStatus = readSnapshotStatus(profile.aiLearningProfileJson, now);
-    return !hasActivity || snapshotStatus !== "fresh";
+    return snapshotStatus !== "fresh" || (!hasActivity && snapshotStatus !== "fresh");
   });
 
   const snapshotStatusByStudent = studentProfiles
@@ -331,7 +343,25 @@ async function main() {
 
   const attemptsByStudentSubjectSkill = new Map<string, { total: number; correct: number }>();
   const attemptsForSkillScan = await readOnlyQuery("Attempt full skill scan", () => prisma.attempt.findMany({
-    select: { studentId: true, subject: true, skillFocus: true, correct: true },
+    select: {
+      id: true,
+      studentId: true,
+      subject: true,
+      keyStage: true,
+      yearGroup: true,
+      skillFocus: true,
+      contentId: true,
+      assignmentId: true,
+      questionText: true,
+      correctAnswer: true,
+      answerGiven: true,
+      correct: true,
+      responseTimeMs: true,
+      hintsUsed: true,
+      difficulty: true,
+      skills: true,
+      createdAt: true,
+    },
     take: AUDIT_LIMITS.attemptSkillScan,
   }), [], unavailableModels);
   markPartial("Attempt full skill scan", attemptsForSkillScan.length, AUDIT_LIMITS.attemptSkillScan);
@@ -343,7 +373,7 @@ async function main() {
     attemptsByStudentSubjectSkill.set(id, current);
   }
 
-  const weakAreaMisalignments = weakAreas.filter((area) => {
+  const heuristicWeakAreaMisalignments = weakAreas.filter((area) => {
     const stats = attemptsByStudentSubjectSkill.get(key(area.studentId, area.subject, area.skillFocus));
     if (!stats) return true;
     const accuracy = Math.round((stats.correct / Math.max(1, stats.total)) * 100);
@@ -356,13 +386,29 @@ async function main() {
     rows.push(row);
     skillsByStudent.set(row.studentId, rows);
   }
-  const studentSkillMisalignments = studentSkills.filter((skill) => {
+  const heuristicStudentSkillMisalignments = studentSkills.filter((skill) => {
     const matchingAttemptStats = [...attemptsByStudentSubjectSkill.entries()]
       .filter(([attemptKey]) => attemptKey.startsWith(`${skill.studentId.toLowerCase()}::`) && attemptKey.includes(skill.skill.toLowerCase()))
       .reduce((sum, [, stats]) => ({ total: sum.total + stats.total, correct: sum.correct + stats.correct }), { total: 0, correct: 0 });
     if (matchingAttemptStats.total === 0) return true;
     return Math.abs(matchingAttemptStats.total - skill.attempts) > 3;
   });
+  const rebuildPlan = buildAnalyticsRebuildPlan({
+    mode: "dry-run",
+    studentIds: students.map((student) => student.id),
+    attempts: attemptsForSkillScan,
+    existingWeakAreas: weakAreas,
+    existingStudentSkills: studentSkills,
+    existingProfiles: studentProfiles,
+    assignments: [],
+    homeworkTablesAvailable: !unavailableModels.includes("HomeworkBatch") && !unavailableModels.includes("HomeworkAnswer"),
+    evidenceComplete: partialSections.length === 0,
+    evidenceNote: partialSections.length
+      ? `Partial audit evidence: ${partialSections.map((section) => section.section).join(", ")}`
+      : "complete evidence",
+  });
+  const weakAreaMisalignments = rebuildPlan.weakAreas;
+  const studentSkillMisalignments = rebuildPlan.studentSkills;
 
   const orphanAttemptStudentIds = [...attemptCounts.keys()].filter((id) => !studentIds.has(id));
   const orphanProgressChildIds = [...progressCounts.keys()].filter((id) => !studentIds.has(id));
@@ -454,6 +500,14 @@ async function main() {
           studentId: profile.childId,
           detail: `snapshot=${readSnapshotStatus(profile.aiLearningProfileJson, now)}, attempts=${attemptCounts.get(profile.childId) ?? 0}, progress=${progressCounts.get(profile.childId) ?? 0}`,
         }))),
+        note: "QLF rows with fresh snapshots and no learning activity are reported separately as activity pending.",
+      },
+      qlfCompleteActivityPending: {
+        count: qlfActivityPending.length,
+        samples: sample(qlfActivityPending.map((profile) => ({
+          studentId: profile.childId,
+          detail: "QLF complete, activity pending",
+        }))),
       },
       missingAcademicIntelligenceSnapshots: {
         count: missingSnapshots.length,
@@ -465,17 +519,23 @@ async function main() {
       },
       weakAreasPossiblyOutOfSyncWithAttempts: {
         count: weakAreaMisalignments.length,
-        samples: sample(weakAreaMisalignments.map((area) => ({
-          studentId: area.studentId,
-          detail: `${area.subject}/${area.skillFocus} weakArea=${area.accuracy}% over ${area.attemptsCount} attempt(s)`,
+        samples: sample(weakAreaMisalignments.map((target) => ({
+          studentId: target.studentId,
+          detail: `${target.subject}/${target.skillFocus} before=${target.before?.accuracy ?? "missing"}%/${target.before?.attemptsCount ?? 0} attempt(s), rebuild=${target.accuracy}%/${target.attemptsCount} attempt(s)`,
         }))),
+        note: rebuildPlan.weakAreas.length === 0 && heuristicWeakAreaMisalignments.length > 0
+          ? "Suppressed heuristic drift because rebuild dry-run reports weakAreasToChange=0."
+          : "Uses the same rebuild planner as the approved historical rebuild script.",
       },
       studentSkillsPossiblyOutOfSyncWithAttempts: {
         count: studentSkillMisalignments.length,
-        samples: sample(studentSkillMisalignments.map((skill) => ({
-          studentId: skill.studentId,
-          detail: `${skill.skill} skill=${skill.attempts} attempt(s), ${Math.round(skill.accuracy)}% accuracy`,
+        samples: sample(studentSkillMisalignments.map((target) => ({
+          studentId: target.studentId,
+          detail: `${target.skill} before=${target.before?.attempts ?? 0} attempt(s), rebuild=${target.attempts} attempt(s), ${Math.round(target.accuracy)}% accuracy`,
         }))),
+        note: rebuildPlan.studentSkills.length === 0 && heuristicStudentSkillMisalignments.length > 0
+          ? "Suppressed heuristic drift because rebuild dry-run reports studentSkillsToChange=0."
+          : "Uses the same rebuild planner as the approved historical rebuild script.",
       },
       identityMismatchRisks: {
         count: orphanAttemptStudentIds.length + orphanProgressChildIds.length + assignmentStudentMismatchAttempts.length,
