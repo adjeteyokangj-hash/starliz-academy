@@ -498,6 +498,30 @@ export type RecommendationSyncAudit = {
   generatedAt: string;
 };
 
+export type OrchestrationStatus = "healthy" | "warning" | "blocked";
+
+export type OrchestrationTopicState = "weak" | "recovering" | "secure" | "mastered" | "unknown";
+
+export type OrchestrationNextAction =
+  | "catch_up"
+  | "reinforce_homework"
+  | "progression"
+  | "assessment"
+  | "review_placement"
+  | "maintain";
+
+export type AcademicOrchestration = {
+  status: OrchestrationStatus;
+  canonicalTarget: RecommendationTarget;
+  topicState: OrchestrationTopicState;
+  nextAction: OrchestrationNextAction;
+  gatedEngines: RecommendationEngineKey[];
+  alignedEngines: RecommendationEngineKey[];
+  mismatchedEngines: RecommendationEngineKey[];
+  reason: string;
+  adminAction: string;
+};
+
 export type CoachSignalBreakdownEntry = {
   value: string;
   count: number;
@@ -913,6 +937,7 @@ export type AcademicIntelligenceOutput = {
   studentId: string;
   summary: MasterySummary;
   heartbeatDecision: HeartbeatDecision;
+  orchestration: AcademicOrchestration;
   recommendationSync: RecommendationSyncAudit;
   coachHeartbeatSignals: CoachHeartbeatSignalSummary | null;
   learningTwin: LearningTwinProfile;

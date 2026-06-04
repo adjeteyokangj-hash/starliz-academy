@@ -4,6 +4,7 @@ import type {
   HeartbeatPrimaryAction,
   HomeworkTaskRecord,
   MasteryMapEntry,
+  OrchestrationNextAction,
   RecommendationCanonicalDecision,
   RecommendationEngineSignal,
   RecommendationIntent,
@@ -15,6 +16,11 @@ import type {
 
 function normalize(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
+}
+
+function normalizeSpecific(value: string | null | undefined): string {
+  const normalized = normalize(value);
+  return normalized === "general" ? "" : normalized;
 }
 
 function targetLabel(target: RecommendationTarget): string {
@@ -37,14 +43,37 @@ function targetFromParts(input: {
 }
 
 function targetsConflict(left: RecommendationTarget, right: RecommendationTarget): boolean {
-  const leftTopic = normalize(left.topic ?? left.skill ?? left.label);
-  const rightTopic = normalize(right.topic ?? right.skill ?? right.label);
-  const leftSubject = normalize(left.subject);
-  const rightSubject = normalize(right.subject);
+  const leftSkill = normalizeSpecific(left.skill);
+  const rightSkill = normalizeSpecific(right.skill);
+  if (leftSkill && rightSkill && leftSkill === rightSkill) return false;
+
+  const leftTopic = normalizeSpecific(left.topic ?? left.skill ?? left.label);
+  const rightTopic = normalizeSpecific(right.topic ?? right.skill ?? right.label);
+  const leftSubject = normalizeSpecific(left.subject);
+  const rightSubject = normalizeSpecific(right.subject);
 
   if (!leftTopic || !rightTopic) return false;
   if (leftSubject && rightSubject && leftSubject !== rightSubject) return true;
   return leftTopic !== rightTopic;
+}
+
+function targetSpecificity(entry: {
+  subject?: string | null;
+  topic?: string | null;
+  skill?: string | null;
+}): number {
+  let score = 0;
+  if (normalizeSpecific(entry.subject)) score += 1;
+  if (normalizeSpecific(entry.topic)) score += 2;
+  if (normalizeSpecific(entry.skill)) score += 1;
+  return score;
+}
+
+function mostSpecific(entries: MasteryMapEntry[]): MasteryMapEntry | null {
+  return entries
+    .slice()
+    .sort((left, right) => targetSpecificity(right) - targetSpecificity(left))[0]
+    ?? null;
 }
 
 function activeCatchUpStatus(status: string): boolean {
@@ -76,7 +105,28 @@ function intentFromBlock(block: SchoolWeekModeBlock | null): RecommendationInten
   return "maintain";
 }
 
+function intentFromOrchestration(action: OrchestrationNextAction): RecommendationIntent {
+  if (action === "review_placement") return "placement_review";
+  if (action === "catch_up") return "catch_up";
+  if (action === "reinforce_homework") return "homework";
+  if (action === "assessment") return "assessment";
+  if (action === "progression") return "advance";
+  return "maintain";
+}
+
 function canonicalFromOutput(output: AcademicIntelligenceOutput): RecommendationCanonicalDecision {
+  if (output.orchestration) {
+    const intent = intentFromOrchestration(output.orchestration.nextAction);
+    return {
+      intent,
+      target: output.orchestration.canonicalTarget,
+      locked: output.orchestration.status === "blocked" || intent === "placement_review",
+      lockReason: output.orchestration.status === "blocked" ? output.orchestration.reason : null,
+      sourceEngine: "heartbeat",
+      action: output.orchestration.adminAction,
+    };
+  }
+
   const heartbeatIntent = intentFromHeartbeat(output.heartbeatDecision.primaryAction);
   const topCatchUp = output.catchUpRecommendations.find((item) => activeCatchUpStatus(item.status));
   const topMasteryGap = output.masteryMap.find((item) => item.masteryStatus === "needs_catch_up" || item.weakAreaActive);
@@ -247,6 +297,7 @@ function dailyJourneySignal(output: AcademicIntelligenceOutput, canonical: Recom
     target,
     summary: block ? `Daily plan starts with ${block.title}.` : "Daily plan has no active learning block.",
     evidence: block ? [`Activity: ${block.activityType}`, `Route: ${block.routeTarget ?? "-"}`] : ["No school-week block available."],
+    informational: !block,
   });
 }
 
@@ -285,9 +336,9 @@ function assignmentSignal(output: AcademicIntelligenceOutput, canonical: Recomme
 }
 
 function masterySignal(output: AcademicIntelligenceOutput, canonical: RecommendationCanonicalDecision): RecommendationEngineSignal {
-  const priority = output.masteryMap.find((item: MasteryMapEntry) => item.masteryStatus === "needs_catch_up")
-    ?? output.masteryMap.find((item) => item.masteryStatus === "needs_revision")
-    ?? output.masteryMap.find((item) => item.masteryStatus === "nearly_secure" || item.masteryStatus === "mastered");
+  const priority = mostSpecific(output.masteryMap.filter((item: MasteryMapEntry) => item.masteryStatus === "needs_catch_up"))
+    ?? mostSpecific(output.masteryMap.filter((item) => item.masteryStatus === "needs_revision"))
+    ?? mostSpecific(output.masteryMap.filter((item) => item.masteryStatus === "nearly_secure" || item.masteryStatus === "mastered"));
   const intent: RecommendationIntent = !priority
     ? "maintain"
     : priority.masteryStatus === "needs_catch_up"

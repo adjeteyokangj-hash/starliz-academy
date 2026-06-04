@@ -20,6 +20,7 @@ import {
 import { buildMasteryMap } from "@/lib/academic-intelligence/masteryMap";
 import { buildLearningTwinProfile } from "@/lib/academic-intelligence/learningTwin";
 import { buildHeartbeatDecisionEngine } from "@/lib/academic-intelligence/heartbeatDecisionEngine";
+import { buildAcademicOrchestration } from "@/lib/academic-intelligence/orchestrationLayer";
 import { buildRecommendationSyncAudit } from "@/lib/academic-intelligence/recommendationSync";
 import {
   DEFAULT_SCHOOL_WEEK_SETTINGS,
@@ -462,6 +463,19 @@ export function buildAcademicIntelligence(
       suggestedNextStep: "Compute heartbeat decision.",
       riskLevel: "high",
     },
+    orchestration: {
+      status: "warning",
+      canonicalTarget: {
+        label: "awaiting orchestration",
+      },
+      topicState: "unknown",
+      nextAction: "review_placement",
+      gatedEngines: [],
+      alignedEngines: [],
+      mismatchedEngines: [],
+      reason: "Academic orchestration has not been calculated yet.",
+      adminAction: "Compute academic orchestration.",
+    },
     recommendationSync: {
       status: "warning",
       canonicalDecision: {
@@ -663,6 +677,7 @@ export function buildAcademicIntelligence(
     output,
     coachHeartbeatSignals: output.coachHeartbeatSignals,
   });
+  output.orchestration = buildAcademicOrchestration(output);
   output.recommendationSync = buildRecommendationSyncAudit(output);
   output.auditHistoryDraft = buildAuditDrafts(output);
 
@@ -674,6 +689,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   | "studentId"
   | "summary"
   | "heartbeatDecision"
+  | "orchestration"
   | "recommendationSync"
   | "learningTwin"
   | "masteryExpansion"
@@ -692,6 +708,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
     studentId: output.studentId,
     summary: output.summary,
     heartbeatDecision: output.heartbeatDecision,
+    orchestration: output.orchestration,
     recommendationSync: output.recommendationSync,
     learningTwin: output.learningTwin,
     masteryExpansion: output.masteryExpansion,
