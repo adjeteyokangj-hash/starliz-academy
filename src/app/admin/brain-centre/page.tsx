@@ -161,35 +161,33 @@ function QlfIssues({ rows }: { rows: BrainCentreQlfIssueRow[] }) {
 export default function AdminBrainCentrePage() {
   const [payload, setPayload] = useState<BrainCentrePayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<BrainCentreTab>("all");
+  const [activeTab, setActiveTab] = useState<BrainCentreTab>("warnings");
+
+  async function loadBrainCentre({ silent = false }: { silent?: boolean } = {}) {
+    if (!silent) setLoading(true);
+    if (silent) setRefreshing(true);
+    try {
+      const response = await fetch("/api/admin/brain-centre");
+      if (response.status === 401) {
+        window.location.replace("/admin/login?next=/admin/brain-centre");
+        return;
+      }
+      if (!response.ok) throw new Error("Unable to load Brain Centre.");
+      setPayload(await response.json() as BrainCentrePayload);
+      setError(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Unable to load Brain Centre.");
+    } finally {
+      if (!silent) setLoading(false);
+      if (silent) setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/admin/brain-centre")
-      .then((response) => {
-        if (response.status === 401) {
-          window.location.replace("/admin/login?next=/admin/brain-centre");
-          return null;
-        }
-        if (!response.ok) throw new Error("Unable to load Brain Centre.");
-        return response.json() as Promise<BrainCentrePayload>;
-      })
-      .then((nextPayload) => {
-        if (!cancelled && nextPayload) {
-          setPayload(nextPayload);
-          setError(null);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load Brain Centre.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadBrainCentre();
   }, []);
 
   const tabCounts = useMemo(() => ({
@@ -207,6 +205,40 @@ export default function AdminBrainCentrePage() {
 
         {payload ? (
           <>
+            <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Priority Action Strip</p>
+                  <h2 className="mt-1 text-sm font-bold text-white">Focus warnings and critical mismatches first</h2>
+                  <p className="mt-1 text-xs text-slate-400">Critical issues and warning rows stay in the primary surface. Deep diagnostics remain available below.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("warnings")}
+                    className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-100"
+                  >
+                    Review warnings ({tabCounts.warnings})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("mismatches")}
+                    className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-100"
+                  >
+                    Check mismatches ({tabCounts.mismatches})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void loadBrainCentre({ silent: true })}
+                    disabled={refreshing}
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200 hover:border-slate-500 disabled:opacity-60"
+                  >
+                    {refreshing ? "Refreshing..." : "Refresh snapshot"}
+                  </button>
+                </div>
+              </div>
+            </section>
+
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
                 <p className="text-xs uppercase text-slate-500">Students Checked</p>
@@ -230,16 +262,10 @@ export default function AdminBrainCentrePage() {
               </div>
             </div>
 
-            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-bold text-white">Brain Diagnostics</h2>
-                  <p className="mt-1 text-xs text-slate-400">Health score {payload.diagnostics.healthScore} · {payload.diagnostics.status}</p>
-                </div>
-                <span className={`rounded-full border px-2 py-1 text-xs font-bold ${statusClass(payload.diagnostics.status)}`}>
-                  {payload.diagnostics.issues.length} issue types
-                </span>
-              </div>
+            <details className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+              <summary className="cursor-pointer list-none text-sm font-bold text-white">
+                Brain Diagnostics (low-priority detail) · score {payload.diagnostics.healthScore} · {payload.diagnostics.issues.length} issue types
+              </summary>
               <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                 {payload.diagnostics.issues.length ? payload.diagnostics.issues.slice(0, 8).map((issue) => (
                   <div key={issue.code} className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
@@ -251,7 +277,7 @@ export default function AdminBrainCentrePage() {
                   </div>
                 )) : <p className="text-xs text-slate-500">No diagnostic issues in the current sample.</p>}
               </div>
-            </section>
+            </details>
 
             <div className="flex flex-wrap gap-2">
               {tabs.map((tab) => (
@@ -285,10 +311,13 @@ export default function AdminBrainCentrePage() {
             ) : null}
 
             {(activeTab === "all" || activeTab === "qlf") ? (
-              <section>
+              <details className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+                <summary className="cursor-pointer list-none text-sm font-bold text-white">QLF / Brain Connection Status (expanded detail)</summary>
+                <div className="mt-3">
                 <h2 className="mb-2 text-sm font-bold text-white">QLF / Brain Connection Status</h2>
                 <QlfIssues rows={payload.qlfIssues} />
-              </section>
+                </div>
+              </details>
             ) : null}
           </>
         ) : null}

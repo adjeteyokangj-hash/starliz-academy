@@ -966,6 +966,11 @@ export default function StudentDashboardPage() {
     blockNewLearningSession: weeklyHomeworkGate?.homeworkGate?.blockNewLearningSession === true,
     reason: weeklyHomeworkGate?.reason,
   });
+  const catchUpPendingCount = (academicIntelligence?.catchUpTasks ?? []).filter((task) => task.status !== "completed" && task.status !== "waived" && task.status !== "skipped").length;
+  const homeworkPendingCount = (academicIntelligence?.homeworkTasks ?? []).filter((task) => task.status !== "completed" && task.status !== "waived").length;
+  const activeAssignmentCount = visibleAssignments.length;
+  const certificateStatus = certificateEligibility?.summary?.status ?? null;
+  const openCertificateByDefault = certificateStatus === "eligible" || certificateStatus === "issued";
   const dashboardExperience = dashboardTier === "primary"
     ? (
       <PrimaryDashboard
@@ -1134,6 +1139,67 @@ export default function StudentDashboardPage() {
               </div>
             ) : null}
 
+            <section className="mb-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-600">Priority Summary</p>
+                  <h2 className="mt-1 text-lg font-black text-slate-900">Today&apos;s top actions</h2>
+                  <p className="mt-1 text-sm text-slate-600">Start with assigned lessons and pending support tasks, then expand lower-priority details when needed.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (focusAssignment) {
+                        startAssignment(focusAssignment);
+                        return;
+                      }
+                      document.getElementById("smart-catch-up-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
+                  >
+                    {focusAssignment ? "Start next lesson" : "Open catch-up"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      document.getElementById("weekly-homework-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
+                  >
+                    Weekly homework
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      document.getElementById("certificate-progress-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
+                  >
+                    Certificate status
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Assigned now</p>
+                  <p className="mt-1 text-lg font-black text-slate-900">{activeAssignmentCount}</p>
+                </div>
+                <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2">
+                  <p className="text-xs uppercase tracking-[0.08em] text-cyan-700">Catch-up pending</p>
+                  <p className="mt-1 text-lg font-black text-cyan-900">{catchUpPendingCount}</p>
+                </div>
+                <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+                  <p className="text-xs uppercase tracking-[0.08em] text-violet-700">Homework pending</p>
+                  <p className="mt-1 text-lg font-black text-violet-900">{homeworkPendingCount}</p>
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                  <p className="text-xs uppercase tracking-[0.08em] text-amber-700">Certificate</p>
+                  <p className="mt-1 text-lg font-black text-amber-900">{certificateStatus?.replaceAll("_", " ") ?? "not ready"}</p>
+                </div>
+              </div>
+            </section>
+
             {showWeeklyHomeworkCard ? (
               <section className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1254,14 +1320,19 @@ export default function StudentDashboardPage() {
                     </div>
                   ) : null}
 
-                  <CurriculumMasteryMap
-                    variant="light"
-                    title="Curriculum Mastery Map"
-                    subtitle="Subjects, levels, and topic status across the learner's curriculum."
-                    eyebrow="Mastery map"
-                    summary={academicIntelligence.summary}
-                    rows={academicIntelligence.curriculumCoverage ?? []}
-                  />
+                  <details className="rounded-2xl border border-cyan-200 bg-white p-4">
+                    <summary className="cursor-pointer list-none text-sm font-bold text-cyan-900">
+                      Open full learning map and task planner
+                    </summary>
+                    <div className="mt-3 space-y-4">
+                      <CurriculumMasteryMap
+                        variant="light"
+                        title="Curriculum Mastery Map"
+                        subtitle="Subjects, levels, and topic status across the learner's curriculum."
+                        eyebrow="Mastery map"
+                        summary={academicIntelligence.summary}
+                        rows={academicIntelligence.curriculumCoverage ?? []}
+                      />
 
                   {((academicIntelligence.catchUpTasks ?? []).length === 0 && academicIntelligence.catchUpRecommendations.length === 0) ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
@@ -1465,22 +1536,35 @@ export default function StudentDashboardPage() {
                     </div>
                   ) : null}
 
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <p className="text-sm font-bold text-slate-900">School Week Report</p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      Catch-up completed: {(academicIntelligence.catchUpTasks ?? []).filter((task) => task.status === "completed").length} •
-                      Homework completed: {(academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "completed").length} •
-                      Overdue items: {(academicIntelligence.catchUpTasks ?? []).filter((task) => task.status === "overdue").length + (academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "overdue").length}
-                    </p>
-                  </div>
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <p className="text-sm font-bold text-slate-900">School Week Report</p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Catch-up completed: {(academicIntelligence.catchUpTasks ?? []).filter((task) => task.status === "completed").length} •
+                          Homework completed: {(academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "completed").length} •
+                          Overdue items: {(academicIntelligence.catchUpTasks ?? []).filter((task) => task.status === "overdue").length + (academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "overdue").length}
+                        </p>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               )}
             </section>
 
-            <WeeklyHomeworkPanel />
+            <details id="weekly-homework-panel" className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
+              <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.18em] text-violet-700">
+                Weekly Homework Details (expand)
+              </summary>
+              <div className="mt-3">
+                <WeeklyHomeworkPanel />
+              </div>
+            </details>
 
             {progression && (Array.isArray(progression.recommendations) ? progression.recommendations.length > 0 : Boolean(progression.message)) ? (
-              <section className="mb-6 rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5">
+              <details className="mb-6 rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5">
+                <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                  Subject Progression (expand)
+                </summary>
+                <div className="mt-3">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Subject Progression</p>
                 <p className="mt-1 text-sm font-semibold text-emerald-900">{progression.message ?? "Progression recommendations updated."}</p>
 
@@ -1523,11 +1607,16 @@ export default function StudentDashboardPage() {
                     ))}
                   </div>
                 ) : null}
-              </section>
+                </div>
+              </details>
             ) : null}
 
             {certificateCenterEnabled && certificateEligibility && (certificateEligibility.summary || certificateEligibility.message) ? (
-              <section className="mb-6 rounded-3xl border border-amber-200 bg-amber-50/70 p-5">
+              <details id="certificate-progress-panel" open={openCertificateByDefault} className="mb-6 rounded-3xl border border-amber-200 bg-amber-50/70 p-5">
+                <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.18em] text-amber-700">
+                  Certificate Progress (expand)
+                </summary>
+                <div className="mt-3">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Certificate Progress</p>
                 <div className="mt-3">
                   <button
@@ -1604,15 +1693,21 @@ export default function StudentDashboardPage() {
                     </button>
                   </div>
                 ) : null}
-              </section>
+                </div>
+              </details>
             ) : null}
 
             {!certificateCenterEnabled ? (
-              <section className="mb-6 rounded-3xl border border-slate-200 bg-slate-50/70 p-5">
+              <details id="certificate-progress-panel" className="mb-6 rounded-3xl border border-slate-200 bg-slate-50/70 p-5">
+                <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.18em] text-slate-600">
+                  Certificates (expand)
+                </summary>
+                <div className="mt-3">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-600">Certificates</p>
                 <p className="mt-2 text-sm font-semibold text-slate-800">Certificate center is coming soon.</p>
                 <p className="mt-1 text-sm text-slate-700">We are finalising student-facing certificate flows for launch safety.</p>
-              </section>
+                </div>
+              </details>
             ) : null}
 
           </div>
