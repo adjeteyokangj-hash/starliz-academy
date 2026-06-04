@@ -402,6 +402,25 @@ function heartbeatSignal(output: AcademicIntelligenceOutput, canonical: Recommen
   };
 }
 
+function coachTutorSignal(output: AcademicIntelligenceOutput): RecommendationEngineSignal {
+  const audit = output.coachTutorAudit;
+  return {
+    engine: "coach_tutor",
+    label: "Coach/Tutor",
+    intent: audit.intent,
+    target: audit.target,
+    status: audit.status,
+    summary: audit.reason,
+    evidence: [
+      `Recent coach help: ${audit.recentCoachHelpCount}`,
+      `Still struggling: ${audit.stillStrugglingCount}`,
+      `Catch-up signals: ${audit.needsCatchUpCount}`,
+      `Tutor support signals: ${audit.liveTutorSupportCount}`,
+      `Unresolved skipped: ${audit.unresolvedTutorSkippedCount}`,
+    ],
+  };
+}
+
 function mismatchFromSignal(signal: RecommendationEngineSignal, canonical: RecommendationCanonicalDecision): RecommendationMismatch | null {
   if (signal.status !== "mismatch") return null;
   return {
@@ -419,6 +438,7 @@ export function buildRecommendationSyncAudit(output: AcademicIntelligenceOutput)
   const canonical = canonicalFromOutput(output);
   const signals = [
     heartbeatSignal(output, canonical),
+    coachTutorSignal(output),
     catchUpSignal(output, canonical),
     dailyJourneySignal(output, canonical),
     homeworkSignal(output, canonical),

@@ -435,6 +435,7 @@ export type HeartbeatDecision = {
 
 export type RecommendationEngineKey =
   | "heartbeat"
+  | "coach_tutor"
   | "catch_up"
   | "daily_journey"
   | "homework"
@@ -447,6 +448,7 @@ export type RecommendationSyncStatus = "synced" | "warning" | "blocked";
 export type RecommendationIntent =
   | "placement_review"
   | "catch_up"
+  | "tutor_support"
   | "revision"
   | "homework"
   | "assessment"
@@ -518,6 +520,28 @@ export type AcademicOrchestration = {
   gatedEngines: RecommendationEngineKey[];
   alignedEngines: RecommendationEngineKey[];
   mismatchedEngines: RecommendationEngineKey[];
+  reason: string;
+  adminAction: string;
+};
+
+export type CoachTutorAuditIntent = "catch_up" | "tutor_support" | "maintain" | "advance" | "unknown";
+
+export type CoachTutorAuditStatus = "aligned" | "mismatch" | "informational";
+
+export type CoachTutorOrchestrationAudit = {
+  recentCoachHelpCount: number;
+  stillStrugglingCount: number;
+  needsCatchUpCount: number;
+  liveTutorSupportCount: number;
+  differentExplanationStyleCount: number;
+  topSubject: string | null;
+  topTopic: string | null;
+  topSkillId: string | null;
+  topSkillLabel: string | null;
+  unresolvedTutorSkippedCount: number;
+  intent: CoachTutorAuditIntent;
+  target: RecommendationTarget;
+  status: CoachTutorAuditStatus;
   reason: string;
   adminAction: string;
 };
@@ -938,6 +962,7 @@ export type AcademicIntelligenceOutput = {
   summary: MasterySummary;
   heartbeatDecision: HeartbeatDecision;
   orchestration: AcademicOrchestration;
+  coachTutorAudit: CoachTutorOrchestrationAudit;
   recommendationSync: RecommendationSyncAudit;
   coachHeartbeatSignals: CoachHeartbeatSignalSummary | null;
   learningTwin: LearningTwinProfile;

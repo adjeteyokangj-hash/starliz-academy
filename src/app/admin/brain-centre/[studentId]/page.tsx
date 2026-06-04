@@ -156,7 +156,7 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
             </div>
           </div>
 
-          <div className="grid gap-3 xl:grid-cols-2">
+          <div className="grid gap-3 xl:grid-cols-3">
             <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
               <h2 className="text-sm font-bold text-white">HEART BEAT Details</h2>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
@@ -168,6 +168,25 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
               <div className="mt-3">
                 <p className="mb-1 text-xs font-bold uppercase text-slate-500">Signals involved</p>
                 <DetailList items={heartbeatSignals} />
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+              <h2 className="text-sm font-bold text-white">Coach/Tutor Audit</h2>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                <span className={`rounded-full border px-2 py-1 ${badgeClass(payload.coachTutorAudit.status)}`}>{payload.coachTutorAudit.status}</span>
+                <span className="rounded-full border border-slate-700 px-2 py-1 text-slate-300">Intent: {payload.coachTutorAudit.intent}</span>
+                <span className="rounded-full border border-slate-700 px-2 py-1 text-slate-300">Target: {payload.coachTutorAudit.target.label}</span>
+              </div>
+              <p className="mt-3 text-xs text-slate-200">{payload.coachTutorAudit.reason}</p>
+              <p className="mt-2 text-xs text-slate-300">Action: {payload.coachTutorAudit.adminAction}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+                <span>Help: {payload.coachTutorAudit.recentCoachHelpCount}</span>
+                <span>Still struggling: {payload.coachTutorAudit.stillStrugglingCount}</span>
+                <span>Catch-up: {payload.coachTutorAudit.needsCatchUpCount}</span>
+                <span>Live tutor: {payload.coachTutorAudit.liveTutorSupportCount}</span>
+                <span>Style: {payload.coachTutorAudit.differentExplanationStyleCount}</span>
+                <span>Skipped: {payload.coachTutorAudit.unresolvedTutorSkippedCount}</span>
               </div>
             </section>
 
@@ -222,7 +241,7 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
 
           <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
             <h2 className="text-sm font-bold text-white">Evidence Chain</h2>
-            <div className="mt-3 grid gap-2 lg:grid-cols-7">
+            <div className="mt-3 grid gap-2 lg:grid-cols-8">
               {payload.evidenceChain.map((item) => (
                 <div key={item.stage} className={`rounded-lg border p-2 ${badgeClass(item.status)}`}>
                   <p className="text-xs font-black">{item.stage}</p>

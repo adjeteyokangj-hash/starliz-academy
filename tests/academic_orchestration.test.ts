@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildAcademicIntelligence } from "../src/lib/academic-intelligence/academicIntelligence";
+import { buildCoachTutorOrchestrationAudit } from "../src/lib/academic-intelligence/coachOrchestrationAudit";
 import {
   buildStudentLearningBrainFromSource,
   toAdminLearningBrainView,
@@ -11,6 +12,7 @@ import {
 import type {
   AcademicSourceData,
   CatchUpTaskRecord,
+  CoachHeartbeatSignalSummary,
   HomeworkTaskRecord,
 } from "../src/lib/academic-intelligence/types";
 
@@ -128,6 +130,27 @@ function completedCatchUpTask(overrides: Partial<CatchUpTaskRecord> = {}): Catch
     metadata: undefined,
     createdAt: now,
     updatedAt: now,
+    ...overrides,
+  };
+}
+
+function coachSignals(overrides: Partial<CoachHeartbeatSignalSummary> = {}): CoachHeartbeatSignalSummary {
+  return {
+    windowDays: 14,
+    totalCoachSignals: 1,
+    understoodAfterHelpCount: 0,
+    stillStrugglingCount: 1,
+    repeatedWeakAreaCount: 1,
+    needsCatchUpCount: 1,
+    needsDifferentExplanationStyleCount: 0,
+    needsLiveTutorSupportCount: 0,
+    topSubjects: [{ value: "math", count: 1 }],
+    topStrands: [{ value: "Fractions", count: 1 }],
+    topSkillTopics: [{ value: "equivalent_fractions", count: 1 }],
+    latestSignalAt: nowIso(),
+    hasCoachConcern: true,
+    hasTutorEscalationSignal: false,
+    hasCatchUpSignal: true,
     ...overrides,
   };
 }
@@ -261,4 +284,126 @@ test("recommendation sync canonical decision follows orchestration output", () =
   assert.equal(output.recommendationSync.canonicalDecision.intent, "catch_up");
   assert.deepEqual(output.recommendationSync.canonicalDecision.target, output.orchestration.canonicalTarget);
   assert.equal(output.recommendationSync.canonicalDecision.action, output.orchestration.adminAction);
+});
+
+test("Coach catch-up signal aligns when orchestration is locked to the same catch-up target", () => {
+  const output = buildAcademicIntelligence(weakFractionsSource(), {
+    existingHomeworkTasks: [homeworkTask()],
+    coachHeartbeatSignals: coachSignals(),
+  });
+
+  assert.equal(output.coachTutorAudit.intent, "catch_up");
+  assert.equal(output.coachTutorAudit.status, "aligned");
+  assert.equal(output.coachTutorAudit.target.skill, "equivalent_fractions");
+  assert.ok(output.recommendationSync.signals.some((signal) => signal.engine === "coach_tutor" && signal.status === "aligned"));
+});
+
+test("Coach catch-up signal mismatches when orchestration allows progression", () => {
+  const now = nowIso();
+  const output = buildAcademicIntelligence(withCompletedQlf(baseSource({
+    attempts: Array.from({ length: 8 }).map((_, index) => ({
+      id: `coach-advance-${index}`,
+      subject: "math",
+      topic: "Fractions",
+      skill: "equivalent_fractions",
+      correct: true,
+      score: 94,
+      hintsUsed: 0,
+      createdAt: now,
+    })),
+    assignments: [{
+      id: "assignment-coach-advance",
+      status: "completed",
+      subject: "math",
+      topic: "Fractions",
+      skill: "equivalent_fractions",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: now,
+    }],
+  })), {
+    coachHeartbeatSignals: coachSignals(),
+  });
+
+  assert.equal(output.orchestration.nextAction, "progression");
+  assert.equal(output.coachTutorAudit.intent, "catch_up");
+  assert.equal(output.coachTutorAudit.status, "mismatch");
+  assert.ok(output.recommendationSync.mismatches.some((item) => item.engine === "coach_tutor"));
+});
+
+test("Coach live tutor support mismatches when orchestration has no intervention lock", () => {
+  const now = nowIso();
+  const output = buildAcademicIntelligence(withCompletedQlf(baseSource({
+    attempts: Array.from({ length: 8 }).map((_, index) => ({
+      id: `coach-tutor-${index}`,
+      subject: "math",
+      topic: "Fractions",
+      skill: "equivalent_fractions",
+      correct: true,
+      score: 94,
+      hintsUsed: 0,
+      createdAt: now,
+    })),
+    assignments: [{
+      id: "assignment-coach-tutor",
+      status: "completed",
+      subject: "math",
+      topic: "Fractions",
+      skill: "equivalent_fractions",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: now,
+    }],
+  })), {
+    coachHeartbeatSignals: coachSignals({
+      needsCatchUpCount: 0,
+      needsLiveTutorSupportCount: 2,
+      hasCatchUpSignal: false,
+      hasTutorEscalationSignal: true,
+    }),
+  });
+
+  assert.equal(output.coachTutorAudit.intent, "tutor_support");
+  assert.equal(output.coachTutorAudit.status, "mismatch");
+});
+
+test("low Coach usage is informational", () => {
+  const output = buildAcademicIntelligence(withCompletedQlf(baseSource()));
+
+  assert.equal(output.coachTutorAudit.recentCoachHelpCount, 0);
+  assert.equal(output.coachTutorAudit.status, "informational");
+  assert.ok(output.recommendationSync.signals.some((signal) => signal.engine === "coach_tutor" && signal.status === "informational"));
+});
+
+test("Coach signals with missing target stay informational instead of false warning", () => {
+  const output = buildAcademicIntelligence(weakFractionsSource());
+  const audit = buildCoachTutorOrchestrationAudit({
+    orchestration: output.orchestration,
+    coachHeartbeatSignals: coachSignals({
+      topSubjects: [],
+      topStrands: [],
+      topSkillTopics: [],
+    }),
+    coachUsage: [],
+    progressRecords: [],
+  });
+
+  assert.equal(audit.intent, "catch_up");
+  assert.equal(audit.status, "informational");
+  assert.match(audit.reason, /do not include/i);
+});
+
+test("student, parent, and admin Brain views expose Coach Tutor audit from the same Brain truth", () => {
+  const brain = buildStudentLearningBrainFromSource({
+    source: weakFractionsSource(),
+    homeworkTasks: [homeworkTask()],
+    coachHeartbeatSignals: coachSignals(),
+  });
+  const student = toStudentDashboardBrainView(brain);
+  const parent = toParentLearningBrainView(brain);
+  const admin = toAdminLearningBrainView(brain);
+
+  assert.equal(student.coachTutorAuditSummary.status, brain.academicIntelligence.coachTutorAudit.status);
+  assert.equal(parent.coachTutorAudit.status, brain.academicIntelligence.coachTutorAudit.status);
+  assert.equal(admin.coachTutorAudit.status, brain.academicIntelligence.coachTutorAudit.status);
 });

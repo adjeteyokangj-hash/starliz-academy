@@ -21,6 +21,7 @@ import { buildMasteryMap } from "@/lib/academic-intelligence/masteryMap";
 import { buildLearningTwinProfile } from "@/lib/academic-intelligence/learningTwin";
 import { buildHeartbeatDecisionEngine } from "@/lib/academic-intelligence/heartbeatDecisionEngine";
 import { buildAcademicOrchestration } from "@/lib/academic-intelligence/orchestrationLayer";
+import { buildCoachTutorOrchestrationAudit } from "@/lib/academic-intelligence/coachOrchestrationAudit";
 import { buildRecommendationSyncAudit } from "@/lib/academic-intelligence/recommendationSync";
 import {
   DEFAULT_SCHOOL_WEEK_SETTINGS,
@@ -476,6 +477,25 @@ export function buildAcademicIntelligence(
       reason: "Academic orchestration has not been calculated yet.",
       adminAction: "Compute academic orchestration.",
     },
+    coachTutorAudit: {
+      recentCoachHelpCount: 0,
+      stillStrugglingCount: 0,
+      needsCatchUpCount: 0,
+      liveTutorSupportCount: 0,
+      differentExplanationStyleCount: 0,
+      topSubject: null,
+      topTopic: null,
+      topSkillId: null,
+      topSkillLabel: null,
+      unresolvedTutorSkippedCount: 0,
+      intent: "unknown",
+      target: {
+        label: "Coach/Tutor signal target missing",
+      },
+      status: "informational",
+      reason: "Coach/Tutor orchestration audit has not been calculated yet.",
+      adminAction: "Compute Coach/Tutor orchestration audit.",
+    },
     recommendationSync: {
       status: "warning",
       canonicalDecision: {
@@ -678,6 +698,12 @@ export function buildAcademicIntelligence(
     coachHeartbeatSignals: output.coachHeartbeatSignals,
   });
   output.orchestration = buildAcademicOrchestration(output);
+  output.coachTutorAudit = buildCoachTutorOrchestrationAudit({
+    orchestration: output.orchestration,
+    coachHeartbeatSignals: output.coachHeartbeatSignals,
+    coachUsage: data.coachUsage,
+    progressRecords: data.progressRecords,
+  });
   output.recommendationSync = buildRecommendationSyncAudit(output);
   output.auditHistoryDraft = buildAuditDrafts(output);
 
@@ -690,6 +716,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   | "summary"
   | "heartbeatDecision"
   | "orchestration"
+  | "coachTutorAudit"
   | "recommendationSync"
   | "learningTwin"
   | "masteryExpansion"
@@ -709,6 +736,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
     summary: output.summary,
     heartbeatDecision: output.heartbeatDecision,
     orchestration: output.orchestration,
+    coachTutorAudit: output.coachTutorAudit,
     recommendationSync: output.recommendationSync,
     learningTwin: output.learningTwin,
     masteryExpansion: output.masteryExpansion,

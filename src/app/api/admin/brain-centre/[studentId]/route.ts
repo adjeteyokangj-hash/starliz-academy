@@ -47,6 +47,7 @@ export type BrainCentreDetailPayload = {
     generatedAt: string;
   };
   heartbeat: StudentLearningBrain["heartbeatSummary"];
+  coachTutorAudit: StudentLearningBrain["academicIntelligence"]["coachTutorAudit"];
   recommendationSync: StudentLearningBrain["academicIntelligence"]["recommendationSync"];
   learningDnaSummary: StudentLearningBrain["learningDnaSummary"];
   weakAreas: StudentLearningBrain["source"]["weakAreas"];
@@ -170,6 +171,12 @@ function buildEvidenceChain(brain: StudentLearningBrain, snapshot: ReturnType<ty
       summary: `${brain.heartbeatSummary.primaryAction} (${brain.heartbeatSummary.riskLevel}/${brain.heartbeatSummary.urgency}).`,
     },
     {
+      stage: "Coach/Tutor",
+      status: brain.academicIntelligence.coachTutorAudit.status === "mismatch" ? "warning" : "present",
+      timestamp: brain.coachHeartbeatSignals?.latestSignalAt ?? latestIso(brain.source.coachUsage.map((usage) => usage.createdAt)),
+      summary: brain.academicIntelligence.coachTutorAudit.reason,
+    },
+    {
       stage: "Recommendation",
       status: brain.academicIntelligence.recommendationSync.status === "synced" ? "present" : "warning",
       timestamp: brain.academicIntelligence.recommendationSync.generatedAt,
@@ -235,6 +242,7 @@ function buildDetailPayload(student: BrainCentreDetailStudent, brain: StudentLea
       generatedAt: brain.generatedAt,
     },
     heartbeat: brain.heartbeatSummary,
+    coachTutorAudit: brain.academicIntelligence.coachTutorAudit,
     recommendationSync: brain.academicIntelligence.recommendationSync,
     learningDnaSummary: brain.learningDnaSummary,
     weakAreas: brain.source.weakAreas,

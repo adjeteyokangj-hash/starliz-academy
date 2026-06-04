@@ -11,6 +11,7 @@ import {
 } from "../src/app/api/admin/brain-centre/[studentId]/route";
 import { handleAdminBrainCentreActionPost } from "../src/app/api/admin/brain-centre/[studentId]/actions/route";
 import type {
+  CoachTutorOrchestrationAudit,
   HeartbeatDecision,
   RecommendationSyncAudit,
 } from "../src/lib/academic-intelligence/types";
@@ -61,6 +62,27 @@ function recommendationSync(overrides: Partial<RecommendationSyncAudit> = {}): R
     ],
     action: "Lock next recommendation to Fractions catch-up until mastery improves.",
     generatedAt: now,
+    ...overrides,
+  };
+}
+
+function coachTutorAudit(overrides: Partial<CoachTutorOrchestrationAudit> = {}): CoachTutorOrchestrationAudit {
+  return {
+    recentCoachHelpCount: 2,
+    stillStrugglingCount: 1,
+    needsCatchUpCount: 1,
+    liveTutorSupportCount: 0,
+    differentExplanationStyleCount: 0,
+    topSubject: "math",
+    topTopic: "Fractions",
+    topSkillId: "equivalent_fractions",
+    topSkillLabel: "Equivalent Fractions",
+    unresolvedTutorSkippedCount: 0,
+    intent: "catch_up",
+    target: { subject: "math", topic: "Fractions", skill: "equivalent_fractions", label: "Fractions" },
+    status: "aligned",
+    reason: "Coach/Tutor signals agree with the orchestrated catch-up target.",
+    adminAction: "Keep Coach/Tutor support aligned with the current orchestrated action.",
     ...overrides,
   };
 }
@@ -134,6 +156,7 @@ function makeBrain(input: {
     heartbeatSummary: input.heartbeat ?? heartbeat(),
     academicIntelligence: {
       generatedAt: now,
+      coachTutorAudit: coachTutorAudit(),
       recommendationSync: input.sync ?? recommendationSync(),
     },
     quickLevelFinderBaseline: input.qlfComplete === false ? null : { completedAt: now },
@@ -303,6 +326,7 @@ test("Brain Centre student investigation exposes evidence chain, diagnostics, co
           },
         ],
       },
+      coachTutorAudit: coachTutorAudit({ status: "mismatch", reason: "Coach/Tutor mismatch for display." }),
       summary: {
         totalTopics: 1,
         byStatus: {
@@ -404,6 +428,8 @@ test("Brain Centre student investigation exposes evidence chain, diagnostics, co
   assert.equal(response.status, 200);
   assert.equal(payload.student.id, "student-1");
   assert.ok(payload.evidenceChain.some((stage) => stage.stage === "Attempt" && stage.status === "present"));
+  assert.equal(payload.coachTutorAudit.status, "mismatch");
+  assert.ok(payload.evidenceChain.some((stage) => stage.stage === "Coach/Tutor" && stage.status === "warning"));
   assert.ok(payload.diagnostics.issues.some((issue) => issue.code === "recommendation_conflicts"));
   assert.ok(payload.recommendationControlRoom.some((row) => row.engine === "Homework" && row.conflict));
   assert.ok(payload.timeline.some((event) => event.type === "heartbeat_warning"));
