@@ -10,6 +10,35 @@ import { mergeWeakAreas, parseWeakAreaMetadata, stringifyWeakAreaMetadata } from
 import { updateStudentSkills } from "@/lib/skillEngine";
 import { parseSkills, skillFocusToCode } from "@/lib/skills";
 import { resolveAttemptStudentIdentity, upsertLearningDnaProfileFromAttempt } from "@/lib/attempts/learning_dna_pipeline";
+import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
+
+type AttemptRouteDeps = {
+  prisma: typeof prisma;
+  requireSession: typeof requireSession;
+  resolveParentScope: typeof resolveParentScope;
+  checkSubscriptionAccess: typeof checkSubscriptionAccess;
+  getTrialSessionLimit: typeof getTrialSessionLimit;
+  resolveAttemptStudentIdentity: typeof resolveAttemptStudentIdentity;
+  recalculateWeakAreaFromAttempts: typeof recalculateWeakAreaFromAttempts;
+  updateStudentSkills: typeof updateStudentSkills;
+  upsertLearningDnaProfileFromAttempt: typeof upsertLearningDnaProfileFromAttempt;
+  invalidateAcademicIntelligenceSnapshot: typeof invalidateAcademicIntelligenceSnapshot;
+  writeAuditLog: typeof writeAuditLog;
+};
+
+const defaultDeps: AttemptRouteDeps = {
+  prisma,
+  requireSession,
+  resolveParentScope,
+  checkSubscriptionAccess,
+  getTrialSessionLimit,
+  resolveAttemptStudentIdentity,
+  recalculateWeakAreaFromAttempts,
+  updateStudentSkills,
+  upsertLearningDnaProfileFromAttempt,
+  invalidateAcademicIntelligenceSnapshot,
+  writeAuditLog,
+};
 
 const attemptSchema = z.object({
   studentId: z.string().min(1),
@@ -104,6 +133,7 @@ function attemptMatchesAssignedItem(input: AttemptMatchInput, item: Record<strin
 }
 
 async function assignmentBatchCompleted(input: {
+  prismaClient: typeof prisma;
   assignmentId: string;
   studentId: string;
   subject: "spelling" | "math" | "reading";
@@ -112,7 +142,7 @@ async function assignmentBatchCompleted(input: {
   const assignedItems = parseAssignedItems(input.contentJson);
   if (!assignedItems.length) return false;
 
-  const attempts = await prisma.attempt.findMany({
+  const attempts = await input.prismaClient.attempt.findMany({
     where: {
       assignmentId: input.assignmentId,
       studentId: input.studentId,
@@ -141,34 +171,34 @@ async function assignmentBatchCompleted(input: {
   );
 }
 
-export async function POST(request: Request) {
-  const { session, response } = await requireSession();
+export async function handleAttemptPost(request: Request, deps: AttemptRouteDeps = defaultDeps) {
+  const { session, response } = await deps.requireSession();
   if (!session) return response;
 
   try {
     const body = attemptSchema.parse(await request.json());
-    const parentScope = await resolveParentScope(session);
+    const parentScope = await deps.resolveParentScope(session);
     if (!parentScope) {
       return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
     }
 
     const [user, access] = await Promise.all([
-      prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { trialSessionsUsed: true } }),
-      checkSubscriptionAccess(parentScope.parentId),
+      deps.prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { trialSessionsUsed: true } }),
+      deps.checkSubscriptionAccess(parentScope.parentId),
     ]);
 
     const hasPaidSubscription = access.hasPaidSubscription === true && access.allowed;
-    if (!hasPaidSubscription && (user?.trialSessionsUsed ?? 0) >= getTrialSessionLimit()) {
+    if (!hasPaidSubscription && (user?.trialSessionsUsed ?? 0) >= deps.getTrialSessionLimit()) {
       return NextResponse.json({ error: "Subscription required" }, { status: 403 });
     }
 
-    const { resolvedStudentId, assignment } = await resolveAttemptStudentIdentity(prisma, {
+    const { resolvedStudentId, assignment } = await deps.resolveAttemptStudentIdentity(deps.prisma, {
       assignmentId: body.assignmentId,
       requestedStudentId: body.studentId,
       parentId: parentScope.parentId,
     });
 
-    const student = await prisma.childProfile.findFirst({
+    const student = await deps.prisma.childProfile.findFirst({
       where: { id: resolvedStudentId, parentId: parentScope.parentId },
       select: { id: true },
     });
@@ -183,7 +213,7 @@ export async function POST(request: Request) {
       errorType,
       ...attemptData
     } = body;
-    const attempt = await prisma.attempt.create({
+    const attempt = await deps.prisma.attempt.create({
       data: {
         ...attemptData,
         studentId: resolvedStudentId,
@@ -194,7 +224,7 @@ export async function POST(request: Request) {
     });
 
     if (pronunciationAttempted || pronunciationPassed !== undefined || spokenText || targetText || errorType) {
-      await writeAuditLog({
+      await deps.writeAuditLog({
         actorUserId: session.userId,
         action: "attempt.pronunciation",
         entityType: "attempt",
@@ -222,7 +252,7 @@ export async function POST(request: Request) {
         ? [inferredSkill]
         : [];
     if (skillsToUpdate.length) {
-      void updateStudentSkills({ studentId: resolvedStudentId, skills: skillsToUpdate, isCorrect: body.correct });
+      void deps.updateStudentSkills({ studentId: resolvedStudentId, skills: skillsToUpdate, isCorrect: body.correct });
     }
 
     if (assignment) {
@@ -245,8 +275,8 @@ export async function POST(request: Request) {
           );
 
         if (attemptedAssignedItem && assignment.status === "assigned") {
-          await prisma.assignment.update({ where: { id: assignment.id }, data: { status: "in_progress" } });
-          await writeAuditLog({
+          await deps.prisma.assignment.update({ where: { id: assignment.id }, data: { status: "in_progress" } });
+          await deps.writeAuditLog({
             actorUserId: session.userId,
             action: "assignment.in_progress",
             entityType: "assignment",
@@ -257,6 +287,7 @@ export async function POST(request: Request) {
 
         if (attemptedAssignedItem && body.correct && assignment.status !== "completed") {
           const completed = await assignmentBatchCompleted({
+            prismaClient: deps.prisma,
             assignmentId: assignment.id,
             studentId: resolvedStudentId,
             subject: body.subject,
@@ -264,11 +295,11 @@ export async function POST(request: Request) {
           });
 
           if (completed) {
-            await prisma.assignment.update({
+            await deps.prisma.assignment.update({
               where: { id: assignment.id },
               data: { status: "completed", completedAt: new Date() },
             });
-            await writeAuditLog({
+            await deps.writeAuditLog({
               actorUserId: session.userId,
               action: "assignment.completed",
               entityType: "assignment",
@@ -279,7 +310,7 @@ export async function POST(request: Request) {
         }
     }
 
-    const weakArea = await recalculateWeakAreaFromAttempts({
+    const weakArea = await deps.recalculateWeakAreaFromAttempts({
       studentId: resolvedStudentId,
       subject: body.subject,
       skillFocus: body.skillFocus,
@@ -290,10 +321,10 @@ export async function POST(request: Request) {
       const weakWord = body.subject === "spelling"
         ? body.correctAnswer || body.questionText || body.answerGiven
         : body.questionText || body.correctAnswer || body.answerGiven;
-      const existing = await prisma.weakArea.findUnique({
+      const existing = await deps.prisma.weakArea.findUnique({
         where: {
           studentId_subject_skillFocus: {
-            studentId: body.studentId,
+            studentId: resolvedStudentId,
             subject: body.subject,
             skillFocus: body.skillFocus,
           },
@@ -301,10 +332,10 @@ export async function POST(request: Request) {
         select: { metadataJson: true },
       });
       const metadata = parseWeakAreaMetadata(existing?.metadataJson);
-      await prisma.weakArea.update({
+      await deps.prisma.weakArea.update({
         where: {
           studentId_subject_skillFocus: {
-            studentId: body.studentId,
+            studentId: resolvedStudentId,
             subject: body.subject,
             skillFocus: body.skillFocus,
           },
@@ -314,15 +345,23 @@ export async function POST(request: Request) {
             ...metadata,
             weakWords: mergeWeakAreas(metadata.weakWords, weakWord ? [weakWord] : []),
             weakSkills: mergeWeakAreas(metadata.weakSkills, [body.skillFocus]),
-            assignmentId: body.assignmentId,
+            assignmentId: assignment?.id ?? body.assignmentId,
           }),
         },
-      }).catch(() => undefined);
+      }).catch((metadataError) => {
+        console.warn("Weak-area metadata update skipped", {
+          studentId: resolvedStudentId,
+          subject: body.subject,
+          skillFocus: body.skillFocus,
+          attemptId: attempt.id,
+          error: metadataError instanceof Error ? metadataError.message : String(metadataError),
+        });
+      });
     }
 
     // Learning DNA update: aggregate cognitive, pacing, and emotional learning signals.
     try {
-      await upsertLearningDnaProfileFromAttempt(prisma, resolvedStudentId, {
+      await deps.upsertLearningDnaProfileFromAttempt(deps.prisma, resolvedStudentId, {
         subject: body.subject,
         skillFocus: body.skillFocus,
         correct: body.correct,
@@ -334,6 +373,17 @@ export async function POST(request: Request) {
     } catch (learningDnaError) {
       if (process.env.NODE_ENV !== "production") {
         console.warn("Learning DNA update skipped:", learningDnaError);
+      }
+    }
+
+    try {
+      await deps.invalidateAcademicIntelligenceSnapshot({
+        studentId: resolvedStudentId,
+        reason: assignment ? "lesson_completed" : "quiz_or_test_completed",
+      });
+    } catch (snapshotError) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("Academic intelligence snapshot invalidation skipped:", snapshotError);
       }
     }
 
@@ -354,4 +404,8 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: "Invalid attempt payload." }, { status: 400 });
   }
+}
+
+export async function POST(request: Request) {
+  return handleAttemptPost(request);
 }

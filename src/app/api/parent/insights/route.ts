@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { getStudentLearningBrain, toParentLearningBrainView } from "@/lib/student-learning-brain";
+import { buildLearningActivitySummaries, learningActivityTopicBuckets } from "@/lib/learning-activity-aggregation";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -17,26 +18,36 @@ export async function GET(request: Request) {
 
   const attempts = await prisma.attempt.findMany({
     where: { student: { parentId: parentScope.parentId } },
-    select: { skillFocus: true, correct: true, subject: true, spellingMode: true, createdAt: true },
+    select: { id: true, studentId: true, skillFocus: true, correct: true, subject: true, spellingMode: true, createdAt: true },
     orderBy: { createdAt: "desc" },
     take: summaryMode ? 120 : 300,
   });
 
-  const buckets = new Map<string, { total: number; correct: number }>();
-  for (const attempt of attempts) {
-    const key = attempt.skillFocus || "General";
-    const existing = buckets.get(key) ?? { total: 0, correct: 0 };
-    existing.total += 1;
-    if (attempt.correct) existing.correct += 1;
-    buckets.set(key, existing);
-  }
+  const childIds = [...new Set(attempts.map((attempt) => attempt.studentId))];
+  const childrenForParent = await prisma.childProfile.findMany({
+    where: { parentId: parentScope.parentId, archived: false },
+    select: { id: true, name: true, studentProfile: { select: { aiLearningProfileJson: true } } },
+  });
+  for (const child of childrenForParent) childIds.push(child.id);
 
-  const allTopics = Array.from(buckets.entries())
-    .map(([topic, stats]) => {
-      const accuracy = stats.total ? Math.round((stats.correct / stats.total) * 100) : 0;
-      return { topic, accuracy, attempts: stats.total };
-    })
-    .sort((a, b) => b.accuracy - a.accuracy);
+  const progressRecords = await prisma.progressRecord.findMany({
+    where: { childId: { in: childIds } },
+    select: { id: true, childId: true, activityType: true, activityName: true, correct: true, completed: true, score: true, accuracy: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+    take: summaryMode ? 120 : 300,
+  });
+
+  const activitySummaries = buildLearningActivitySummaries({
+    studentIds: childIds,
+    attempts,
+    progressRecords,
+    profiles: childrenForParent.map((child) => ({
+      studentId: child.id,
+      aiLearningProfileJson: child.studentProfile?.aiLearningProfileJson ?? null,
+    })),
+  });
+  const activityEvents = [...activitySummaries.values()].flatMap((summary) => summary.events);
+  const allTopics = learningActivityTopicBuckets(activityEvents);
 
   const strengths = allTopics
     .filter((item) => item.accuracy >= 80)
@@ -47,9 +58,11 @@ export async function GET(request: Request) {
     .slice(0, 5);
 
   // Calculate overall metrics
-  const totalAttempts = attempts.length;
-  const correctAttempts = attempts.filter((a) => a.correct).length;
-  const averageAccuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
+  const scoredEvents = activityEvents.filter((event) => typeof event.score === "number");
+  const totalAttempts = scoredEvents.length;
+  const averageAccuracy = totalAttempts > 0
+    ? Math.round(scoredEvents.reduce((sum, event) => sum + (event.score ?? 0), 0) / totalAttempts)
+    : 0;
 
   // Get learning mode from mode struggles
   const modeBuckets = new Map<string, { total: number; correct: number }>();
@@ -78,20 +91,12 @@ export async function GET(request: Request) {
   }> = [];
 
   if (!summaryMode) {
-    const children = await prisma.childProfile.findMany({
-      where: { parentId: parentScope.parentId, archived: false },
-      select: {
-        id: true,
-        name: true,
-      },
-    });
-
-    const brainViews = await Promise.all(children.map(async (child) => {
+    const brainViews = await Promise.all(childrenForParent.map(async (child) => {
       const brain = await getStudentLearningBrain(child.id, { includeCoachSignals: true });
       if (!brain) return null;
       const parentBrain = toParentLearningBrainView(brain);
       if (!parentBrain.learningDna) return null;
-        return {
+      return {
           childId: child.id,
           childName: child.name,
           ...parentBrain.learningDna,
@@ -112,14 +117,14 @@ export async function GET(request: Request) {
   const activityByDay = new Map<string, number>();
   let lastActivityAt: Date | null = null;
   
-  for (const attempt of attempts) {
-    if (attempt.createdAt < thirtyDaysAgo) continue;
-    const dateKey = new Date(attempt.createdAt).toISOString().split('T')[0]; // YYYY-MM-DD
+  for (const event of activityEvents) {
+    const eventDate = new Date(event.createdAt);
+    if (eventDate < thirtyDaysAgo) continue;
+    const dateKey = eventDate.toISOString().split('T')[0]; // YYYY-MM-DD
     activityByDay.set(dateKey, (activityByDay.get(dateKey) ?? 0) + 1);
     
-    // Track the most recent attempt
-    if (!lastActivityAt || attempt.createdAt > lastActivityAt) {
-      lastActivityAt = attempt.createdAt;
+    if (!lastActivityAt || eventDate > lastActivityAt) {
+      lastActivityAt = eventDate;
     }
   }
 

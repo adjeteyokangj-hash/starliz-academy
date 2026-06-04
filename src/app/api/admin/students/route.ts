@@ -8,6 +8,7 @@ import { keyStageForYearGroup } from "@/lib/curriculum";
 import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 import { deriveAdminStudentSnapshotLevels } from "@/lib/admin-student-levels";
+import { buildLearningActivitySummaries } from "@/lib/learning-activity-aggregation";
 
 const createStudentSchema = z.object({
   parentId: z.string().min(1),
@@ -142,27 +143,52 @@ export async function GET(request: Request) {
 
   const childIds = children.map((c) => c.id);
 
-  const [correctCounts, totalCounts, recentActivity] = await Promise.all([
-    prisma.progressRecord.groupBy({
-      by: ["childId"],
-      where: { childId: { in: childIds }, correct: true },
-      _count: { id: true },
+  const [activityAttempts, activityProgress, activityAssignments, activityWeakAreas, activitySkills] = await Promise.all([
+    prisma.attempt.findMany({
+      where: { studentId: { in: childIds } },
+      orderBy: { createdAt: "desc" },
+      take: 5000,
+      select: { id: true, studentId: true, subject: true, skillFocus: true, correct: true, createdAt: true },
     }),
-    prisma.progressRecord.groupBy({
-      by: ["childId"],
+    prisma.progressRecord.findMany({
       where: { childId: { in: childIds } },
-      _count: { id: true },
+      orderBy: { createdAt: "desc" },
+      take: 5000,
+      select: { id: true, childId: true, activityType: true, activityName: true, correct: true, completed: true, score: true, accuracy: true, createdAt: true },
     }),
-    prisma.progressRecord.groupBy({
-      by: ["childId"],
-      where: { childId: { in: childIds }, createdAt: { gte: todayStart } },
-      _count: { id: true },
+    prisma.assignment.findMany({
+      where: { studentId: { in: childIds } },
+      orderBy: { updatedAt: "desc" },
+      take: 5000,
+      select: { id: true, studentId: true, status: true, updatedAt: true, completedAt: true },
+    }),
+    prisma.weakArea.findMany({
+      where: { studentId: { in: childIds } },
+      orderBy: { updatedAt: "desc" },
+      take: 5000,
+      select: { studentId: true, skillFocus: true, status: true, accuracy: true, attemptsCount: true, lastDetectedAt: true },
+    }),
+    prisma.studentSkill.findMany({
+      where: { studentId: { in: childIds } },
+      orderBy: { updatedAt: "desc" },
+      take: 5000,
+      select: { studentId: true, skill: true, status: true, accuracy: true, attempts: true, updatedAt: true },
     }),
   ]);
 
-  const correctMap = Object.fromEntries(correctCounts.map((r) => [r.childId, r._count.id]));
-  const totalMap = Object.fromEntries(totalCounts.map((r) => [r.childId, r._count.id]));
-  const activeToday = new Set(recentActivity.map((r) => r.childId));
+  const activitySummaries = buildLearningActivitySummaries({
+    studentIds: childIds,
+    attempts: activityAttempts,
+    progressRecords: activityProgress,
+    assignments: activityAssignments,
+    weakAreas: activityWeakAreas,
+    studentSkills: activitySkills,
+    profiles: children.map((child) => ({
+      studentId: child.id,
+      aiLearningProfileJson: child.studentProfile?.aiLearningProfileJson ?? null,
+    })),
+    today: todayStart,
+  });
 
   // Frustration signal counts from the last 7 days
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -190,9 +216,8 @@ export async function GET(request: Request) {
   const frustrationThreshold = adaptSettings?.frustrationThreshold ?? 3;
 
   const result = children.map((child) => {
-    const total = totalMap[child.id] ?? 0;
-    const correct = correctMap[child.id] ?? 0;
-    const accuracy = total > 0 ? Math.round((correct / total) * 100) : null;
+    const activity = activitySummaries.get(child.id);
+    const accuracy = activity?.accuracy ?? null;
 
     const snapshotLevels = deriveAdminStudentSnapshotLevels(child.snapshotJson, child.level);
 
@@ -233,9 +258,9 @@ export async function GET(request: Request) {
       streak: child.streak,
       accuracy,
       weakPatterns: snapshotLevels.weakPatterns,
-      totalSessions: child._count.progressRecords,
-      activeToday: activeToday.has(child.id),
-      lastActive: child.updatedAt.toISOString(),
+      totalSessions: activity?.totalEvents ?? child._count.progressRecords,
+      activeToday: activity?.activeToday ?? false,
+      lastActive: activity?.lastActivityAt ?? child.updatedAt.toISOString(),
       parentEmail: child.parent.email,
       parentName: child.parent.name,
       frustrationCount: frustrationMap[child.id] ?? 0,

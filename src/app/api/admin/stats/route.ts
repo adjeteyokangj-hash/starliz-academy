@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { getFinancialDashboardSnapshot } from "@/lib/billing/reconciliation";
+import { buildLearningActivitySummaries } from "@/lib/learning-activity-aggregation";
 
 type PrismaWithComms = typeof prisma & {
   adminEmail?: { count: (args: { where: { direction: string; isRead: boolean } }) => Promise<number> };
@@ -52,6 +53,7 @@ export async function GET() {
       lessonsCompleted,
       contentItems,
       recentRecords,
+      recentAttemptRecords,
       rewards,
       storeItems,
       supportTickets,
@@ -90,6 +92,13 @@ export async function GET() {
         take: 8,
         include: {
           child: { select: { name: true, parent: { select: { email: true } } } },
+        },
+      }),
+      prisma.attempt.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        include: {
+          student: { select: { name: true, parent: { select: { email: true } } } },
         },
       }),
       Promise.all([
@@ -139,7 +148,30 @@ export async function GET() {
       ),
     ]);
 
-    const activeToday = new Set([...recentProgress.map((p) => p.childId), ...recentAttempts.map((attempt) => attempt.studentId)]).size;
+    const todayActivity = buildLearningActivitySummaries({
+      studentIds: [],
+      attempts: recentAttempts.map((attempt) => ({
+        id: attempt.studentId,
+        studentId: attempt.studentId,
+        subject: "activity",
+        skillFocus: null,
+        correct: true,
+        createdAt: todayStart,
+      })),
+      progressRecords: recentProgress.map((record) => ({
+        id: record.childId,
+        childId: record.childId,
+        activityType: "activity",
+        activityName: "Activity",
+        correct: true,
+        completed: true,
+        score: 100,
+        accuracy: 100,
+        createdAt: todayStart,
+      })),
+      today: todayStart,
+    });
+    const activeToday = [...todayActivity.values()].filter((summary) => summary.activeToday).length;
 
     const patternCounts: Record<string, number> = {};
     for (const child of allChildren) {
@@ -162,16 +194,27 @@ export async function GET() {
       .slice(0, 5)
       .map(([pattern, count]) => ({ pattern, count }));
 
-    const [totalCorrect, totalAttempts, attemptCorrect, attemptTotal] = await Promise.all([
-      prisma.progressRecord.count({ where: { correct: true } }),
-      prisma.progressRecord.count(),
-      prisma.attempt.count({ where: { correct: true } }),
-      prisma.attempt.count(),
+    const [allProgressForAccuracy, allAttemptsForAccuracy] = await Promise.all([
+      prisma.progressRecord.findMany({
+        select: { id: true, childId: true, activityType: true, activityName: true, correct: true, completed: true, score: true, accuracy: true, createdAt: true },
+        take: 5000,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.attempt.findMany({
+        select: { id: true, studentId: true, subject: true, skillFocus: true, correct: true, createdAt: true },
+        take: 5000,
+        orderBy: { createdAt: "desc" },
+      }),
     ]);
 
-    const combinedAttempts = attemptTotal || totalAttempts;
-    const combinedCorrect = attemptTotal ? attemptCorrect : totalCorrect;
-    const avgAccuracy = combinedAttempts > 0 ? Math.round((combinedCorrect / combinedAttempts) * 100) : 0;
+    const aggregateAccuracy = [...buildLearningActivitySummaries({
+      studentIds: [],
+      attempts: allAttemptsForAccuracy,
+      progressRecords: allProgressForAccuracy,
+    }).values()].flatMap((summary) => summary.events).filter((event) => typeof event.score === "number");
+    const avgAccuracy = aggregateAccuracy.length
+      ? Math.round(aggregateAccuracy.reduce((sum, event) => sum + (event.score ?? 0), 0) / aggregateAccuracy.length)
+      : 0;
     const wordsGenerated = contentItems.reduce((total, item) => {
       try {
         const parsed = JSON.parse(item.contentJson);
@@ -191,17 +234,32 @@ export async function GET() {
       createdBy: item.createdBy,
     }));
 
-    const recentActivity = recentRecords.map((record) => ({
-      id: record.id,
-      childName: record.child.name,
-      parentEmail: record.child.parent.email,
-      activityType: record.activityType,
-      activityName: record.activityName,
-      accuracy: record.accuracy,
-      correct: record.correct,
-      completed: record.completed,
-      createdAt: record.createdAt.toISOString(),
-    }));
+    const recentActivity = [
+      ...recentRecords.map((record) => ({
+        id: record.id,
+        childName: record.child.name,
+        parentEmail: record.child.parent.email,
+        activityType: record.activityType,
+        activityName: record.activityName,
+        accuracy: record.accuracy,
+        correct: record.correct,
+        completed: record.completed,
+        createdAt: record.createdAt.toISOString(),
+      })),
+      ...recentAttemptRecords.map((attempt) => ({
+        id: attempt.id,
+        childName: attempt.student.name,
+        parentEmail: attempt.student.parent.email,
+        activityType: attempt.subject,
+        activityName: attempt.skillFocus || attempt.subject,
+        accuracy: attempt.correct ? 100 : 0,
+        correct: attempt.correct,
+        completed: true,
+        createdAt: attempt.createdAt.toISOString(),
+      })),
+    ]
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, 8);
 
     const recentSessionSignals = await prisma.progressRecord.findMany({
       where: { completed: true },
