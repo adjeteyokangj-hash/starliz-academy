@@ -12,7 +12,14 @@ type SessionSignals = {
   emotionalMood?: string | null;
 };
 
-export async function GET() {
+const legacySessionSummaryMetadata = {
+  source: "legacy_progress_record_session_signals",
+  type: "legacy_engagement_summary",
+  canonical: false,
+  status: "recent_activity_only",
+} as const;
+
+export async function GET(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
 
@@ -20,6 +27,7 @@ export async function GET() {
   if (!parentScope) {
     return NextResponse.json({
       ok: true,
+      ...legacySessionSummaryMetadata,
       summary: {
         learningConfidence: "Not enough data yet",
         engagementLevel: "Not enough data yet",
@@ -30,10 +38,12 @@ export async function GET() {
     });
   }
 
-  const activeChildId = await resolveParentActiveChildId(parentScope.parentId);
+  const requestedStudentId = new URL(request.url).searchParams.get("studentId")?.trim();
+  const activeChildId = requestedStudentId || await resolveParentActiveChildId(parentScope.parentId);
   if (!activeChildId) {
     return NextResponse.json({
       ok: true,
+      ...legacySessionSummaryMetadata,
       summary: {
         learningConfidence: "Not enough data yet",
         engagementLevel: "Not enough data yet",
@@ -42,6 +52,14 @@ export async function GET() {
         dominantMood: "unknown",
       },
     });
+  }
+
+  const ownedChild = await prisma.childProfile.findFirst({
+    where: { id: activeChildId, parentId: parentScope.parentId, archived: false },
+    select: { id: true },
+  });
+  if (!ownedChild) {
+    return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
   const records = await prisma.progressRecord.findMany({
@@ -69,6 +87,7 @@ export async function GET() {
   if (!signals.length) {
     return NextResponse.json({
       ok: true,
+      ...legacySessionSummaryMetadata,
       summary: {
         learningConfidence: "Not enough data yet",
         engagementLevel: "Not enough data yet",
@@ -114,6 +133,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
+    ...legacySessionSummaryMetadata,
     summary: {
       learningConfidence: improving >= needsSupport ? "Improving" : "Needs support",
       engagementLevel: highEngagement >= Math.max(1, mediumEngagement) ? "High" : mediumEngagement > 0 ? "Medium" : "Low",

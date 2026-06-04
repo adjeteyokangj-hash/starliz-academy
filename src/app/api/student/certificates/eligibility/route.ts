@@ -2,10 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
-import { prisma } from "@/lib/db";
-import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
-import { parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/student-learning-state";
-import { buildSubjectLevelProgression } from "@/lib/subject-level-progression";
+import { getProgressionDecisionBrainView } from "@/lib/student-learning-brain";
 import { buildCertificateEligibility } from "@/lib/certificate-eligibility";
 import { mergeIssuedCertificateRecords, parseIssuedCertificates } from "@/lib/certificate-issuing";
 import { listPersistedCertificateRecordsForStudent } from "@/lib/certificate-records";
@@ -29,44 +26,26 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
 
-  const studentId = await resolveParentActiveChildId(parentScope.parentId);
+  const params = new URL(request.url).searchParams;
+  const studentId = params.get("studentId")?.trim() || await resolveParentActiveChildId(parentScope.parentId);
   if (!studentId) {
     return NextResponse.json({ error: "No active student selected." }, { status: 400 });
   }
 
-  const student = await prisma.childProfile.findFirst({
-    where: { id: studentId, parentId: parentScope.parentId, archived: false },
-    select: {
-      id: true,
-      name: true,
-      yearGroup: true,
-      studentProfile: {
-        select: {
-          keyStageLevel: true,
-          subjectFocus: true,
-          aiLearningProfileJson: true,
-        },
-      },
-    },
-  });
-
-  if (!student) {
+  const decisionBrain = await getProgressionDecisionBrainView({ studentId, parentId: parentScope.parentId });
+  if (!decisionBrain) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const params = new URL(request.url).searchParams;
   const term = resolveAcademicTerm(params.get("term"));
+  const student = decisionBrain.student;
 
   const profileJson = student.studentProfile?.aiLearningProfileJson ?? null;
   const issuedCertificates = mergeIssuedCertificateRecords(
     await listPersistedCertificateRecordsForStudent(student.id),
     parseIssuedCertificates(profileJson),
   );
-  const selectedSubjects = parseSelectedSubjectsFromProfileJson(profileJson).length
-    ? parseSelectedSubjectsFromProfileJson(profileJson)
-    : parseSubjectFocus(student.studentProfile?.subjectFocus ?? null);
-
-  const quick = parseQuickLevelFinderSession(profileJson);
+  const quick = decisionBrain.quick;
 
   if (!quick || quick.status !== "completed") {
     const payload = buildCertificateEligibility({
@@ -74,7 +53,7 @@ export async function GET(request: Request) {
       yearGroup: student.yearGroup,
       keyStage: student.studentProfile?.keyStageLevel ?? null,
       term,
-      selectedSubjects,
+      selectedSubjects: decisionBrain.selectedSubjects,
       placementLevels: {},
       progressionRecommendations: [],
       assignments: [],
@@ -96,110 +75,27 @@ export async function GET(request: Request) {
       ...payload,
     }, { status: 409 });
   }
-
-  const [attempts, assignments, weakAreas, studentSkills, progressRecords] = await Promise.all([
-    prisma.attempt.findMany({
-      where: { studentId: student.id },
-      orderBy: { createdAt: "desc" },
-      take: 800,
-      select: {
-        subject: true,
-        skillFocus: true,
-        correct: true,
-      },
-    }),
-    prisma.assignment.findMany({
-      where: {
-        studentId: student.id,
-        student: { parentId: parentScope.parentId },
-      },
-      orderBy: { updatedAt: "desc" },
-      take: 450,
-      select: {
-        status: true,
-        content: {
-          select: {
-            contentType: true,
-            topic: true,
-            skillFocus: true,
-            metadataJson: true,
-          },
-        },
-      },
-    }),
-    prisma.weakArea.findMany({
-      where: { studentId: student.id },
-      orderBy: { updatedAt: "desc" },
-      take: 320,
-      select: {
-        subject: true,
-        skillFocus: true,
-        status: true,
-      },
-    }),
-    prisma.studentSkill.findMany({
-      where: { studentId: student.id },
-      orderBy: { updatedAt: "desc" },
-      take: 280,
-      select: {
-        skill: true,
-        status: true,
-        accuracy: true,
-        attempts: true,
-      },
-    }),
-    prisma.progressRecord.findMany({
-      where: { childId: student.id },
-      orderBy: { createdAt: "desc" },
-      take: 520,
-      select: {
-        activityType: true,
-        activityName: true,
-        score: true,
-        accuracy: true,
-        completed: true,
-      },
-    }),
-  ]);
-
-  const progression = buildSubjectLevelProgression({
-    studentId: student.id,
-    yearGroup: student.yearGroup,
-    keyStage: student.studentProfile?.keyStageLevel ?? null,
-    selectedSubjects,
-    placementLevels: quick.levels,
-    attempts,
-    assignments: assignments.map((row) => ({
-      status: row.status,
-      contentType: row.content.contentType,
-      topic: row.content.topic,
-      skillFocus: row.content.skillFocus,
-      metadataJson: row.content.metadataJson,
-    })),
-    weakAreas,
-    studentSkills,
-    progressRecords,
-  });
+  const assignments = decisionBrain.assignments.map((row) => ({
+    status: row.status,
+    contentType: row.content.contentType,
+    topic: row.content.topic,
+    skillFocus: row.content.skillFocus,
+    metadataJson: row.content.metadataJson,
+  }));
 
   const eligibility = buildCertificateEligibility({
     studentId: student.id,
     yearGroup: student.yearGroup,
     keyStage: student.studentProfile?.keyStageLevel ?? null,
     term,
-    selectedSubjects,
+    selectedSubjects: decisionBrain.selectedSubjects,
     placementLevels: quick.levels,
-    progressionRecommendations: progression.recommendations,
-    assignments: assignments.map((row) => ({
-      status: row.status,
-      contentType: row.content.contentType,
-      topic: row.content.topic,
-      skillFocus: row.content.skillFocus,
-      metadataJson: row.content.metadataJson,
-    })),
-    attempts,
-    weakAreas,
-    studentSkills,
-    progressRecords,
+    progressionRecommendations: decisionBrain.progression?.recommendations ?? [],
+    assignments,
+    attempts: decisionBrain.attempts,
+    weakAreas: decisionBrain.weakAreas,
+    studentSkills: decisionBrain.studentSkills,
+    progressRecords: decisionBrain.progressRecords,
     existingIssuedCertificates: issuedCertificates
       .map((row) => row.certificateType)
       .filter((type): type is "term_completion" | "end_of_term_exam" | "subject_achievement" | "english_achievement" | "mastery_certificate" => type !== "award_certificate"),

@@ -4,7 +4,7 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { getProgressionDecisionBrainView } from "@/lib/student-learning-brain";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
 
@@ -13,7 +13,8 @@ export async function GET() {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
 
-  const studentId = await resolveParentActiveChildId(parentScope.parentId);
+  const params = new URL(request.url).searchParams;
+  const studentId = params.get("studentId")?.trim() || await resolveParentActiveChildId(parentScope.parentId);
   if (!studentId) {
     return NextResponse.json({ error: "No active student selected." }, { status: 400 });
   }

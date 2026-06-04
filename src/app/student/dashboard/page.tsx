@@ -149,6 +149,10 @@ type DashboardSummaryPayload = {
 
 type SessionSummaryPayload = {
   ok?: boolean;
+  source?: "legacy_progress_record_session_signals";
+  type?: "legacy_engagement_summary";
+  canonical?: false;
+  status?: "recent_activity_only";
   summary?: {
     learningConfidence: string;
     engagementLevel: string;
@@ -539,27 +543,29 @@ export default function StudentDashboardPage() {
     if (deferredPanelsLoadedFor === activeChildId) return;
 
     let cancelled = false;
+    const deferredStudentId = activeChildId;
 
     const timer = window.setTimeout(() => {
       async function loadDeferredPanels() {
+        const studentParam = `studentId=${encodeURIComponent(deferredStudentId)}`;
         setAcademicLoading(true);
         setAcademicError("");
 
         try {
           const [sessionSummaryRes, academicIntelligenceRes, learningStateRes, bossStatusRes, ownedResponse] = await Promise.all([
-            fetch("/api/student/session-summary", { credentials: "include" }),
-            fetch("/api/student/academic-intelligence", { credentials: "include" }),
-            fetch("/api/student/learning-state", { credentials: "include" }),
+            fetch(`/api/student/session-summary?${studentParam}`, { credentials: "include" }),
+            fetch(`/api/student/academic-intelligence?${studentParam}`, { credentials: "include" }),
+            fetch(`/api/student/learning-state?${studentParam}`, { credentials: "include" }),
             fetch("/api/student/boss-battle", { credentials: "include" }),
-            fetch(`/api/shop/owned?childId=${encodeURIComponent(activeChildId ?? "")}`, { credentials: "include" }),
+            fetch(`/api/shop/owned?childId=${encodeURIComponent(deferredStudentId)}`, { credentials: "include" }),
           ]);
 
           const [placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes] = await Promise.all([
             fetch("/api/student/quick-level-finder/levels", { credentials: "include" }),
             fetch("/api/student/placement-lessons", { credentials: "include" }),
-            fetch("/api/student/progression/recommendations", { credentials: "include" }),
+            fetch(`/api/student/progression/recommendations?${studentParam}`, { credentials: "include" }),
             certificateCenterEnabled
-              ? fetch("/api/student/certificates/eligibility", { credentials: "include" })
+              ? fetch(`/api/student/certificates/eligibility?${studentParam}`, { credentials: "include" })
               : Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } })),
           ]);
 
@@ -624,7 +630,7 @@ export default function StudentDashboardPage() {
             setOwnedBadges((ownedPayload.owned ?? []).filter((item) => item.category === "badges"));
           }
 
-          setDeferredPanelsLoadedFor(activeChildId);
+          setDeferredPanelsLoadedFor(deferredStudentId);
         } finally {
           if (!cancelled) {
             setAcademicLoading(false);
@@ -837,7 +843,8 @@ export default function StudentDashboardPage() {
     setStartingJourney(true);
     setError("");
     try {
-      const response = await fetch("/api/student/daily-journey?quick=1", { credentials: "include" });
+      const studentParam = activeChildId ? `&studentId=${encodeURIComponent(activeChildId)}` : "";
+      const response = await fetch(`/api/student/daily-journey?quick=1${studentParam}`, { credentials: "include" });
       const payload = (await response.json()) as DailyJourneyPayload;
       if (!response.ok) {
         if (response.status === 409 && payload && typeof payload === "object" && "code" in payload) {

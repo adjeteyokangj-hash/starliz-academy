@@ -30,7 +30,8 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const quickMode = params.get("quick") === "1";
 
-  const studentId = await resolveParentActiveChildId(parentScope.parentId);
+  const requestedStudentId = params.get("studentId")?.trim();
+  const studentId = requestedStudentId || await resolveParentActiveChildId(parentScope.parentId);
   if (!studentId) {
     return NextResponse.json({ error: "No active student selected." }, { status: 400 });
   }
