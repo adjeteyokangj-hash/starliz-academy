@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import type {
   BrainCentreMismatchRow,
@@ -45,7 +46,7 @@ function EmptyRow({ label }: { label: string }) {
   );
 }
 
-function HeartbeatWarnings({ rows }: { rows: BrainCentreWarningRow[] }) {
+function HeartbeatWarnings({ rows, onOpenStudentIssue }: { rows: BrainCentreWarningRow[]; onOpenStudentIssue: (studentId: string) => void }) {
   if (!rows.length) return <EmptyRow label="No HEART BEAT warnings in the current sample." />;
   return (
     <div className="overflow-x-auto">
@@ -61,7 +62,19 @@ function HeartbeatWarnings({ rows }: { rows: BrainCentreWarningRow[] }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={`${row.studentId}-${row.warningStatus}`} className="border-b border-slate-800/70 text-slate-300">
+            <tr
+              key={`${row.studentId}-${row.warningStatus}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenStudentIssue(row.studentId)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpenStudentIssue(row.studentId);
+                }
+              }}
+              className="cursor-pointer border-b border-slate-800/70 text-slate-300 transition hover:bg-slate-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+            >
               <td className="px-3 py-3">
                 <Link href={`/admin/brain-centre/${row.studentId}`} className="font-bold text-white hover:text-blue-200">{row.studentName}</Link>
                 <p className="mt-0.5 font-mono text-xs text-slate-500">{row.studentId}</p>
@@ -86,7 +99,7 @@ function HeartbeatWarnings({ rows }: { rows: BrainCentreWarningRow[] }) {
   );
 }
 
-function RecommendationMismatches({ rows }: { rows: BrainCentreMismatchRow[] }) {
+function RecommendationMismatches({ rows, onOpenStudentIssue }: { rows: BrainCentreMismatchRow[]; onOpenStudentIssue: (studentId: string) => void }) {
   if (!rows.length) return <EmptyRow label="No recommendation sync mismatches in the current sample." />;
   return (
     <div className="overflow-x-auto">
@@ -102,7 +115,19 @@ function RecommendationMismatches({ rows }: { rows: BrainCentreMismatchRow[] }) 
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={`${row.studentId}-${row.mismatchingEngine}-${index}`} className="border-b border-slate-800/70 text-slate-300">
+            <tr
+              key={`${row.studentId}-${row.mismatchingEngine}-${index}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenStudentIssue(row.studentId)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpenStudentIssue(row.studentId);
+                }
+              }}
+              className="cursor-pointer border-b border-slate-800/70 text-slate-300 transition hover:bg-slate-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+            >
               <td className="px-3 py-3">
                 <Link href={`/admin/brain-centre/${row.studentId}`} className="font-bold text-white hover:text-blue-200">{row.studentName}</Link>
                 <p className="mt-0.5 font-mono text-xs text-slate-500">{row.studentId}</p>
@@ -123,7 +148,7 @@ function RecommendationMismatches({ rows }: { rows: BrainCentreMismatchRow[] }) 
   );
 }
 
-function QlfIssues({ rows }: { rows: BrainCentreQlfIssueRow[] }) {
+function QlfIssues({ rows, onOpenStudentIssue }: { rows: BrainCentreQlfIssueRow[]; onOpenStudentIssue: (studentId: string) => void }) {
   if (!rows.length) return <EmptyRow label="No QLF or Brain connection issues in the current sample." />;
   return (
     <div className="overflow-x-auto">
@@ -138,7 +163,19 @@ function QlfIssues({ rows }: { rows: BrainCentreQlfIssueRow[] }) {
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={`${row.studentId}-${row.issueType}-${index}`} className="border-b border-slate-800/70 text-slate-300">
+            <tr
+              key={`${row.studentId}-${row.issueType}-${index}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenStudentIssue(row.studentId)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpenStudentIssue(row.studentId);
+                }
+              }}
+              className="cursor-pointer border-b border-slate-800/70 text-slate-300 transition hover:bg-slate-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+            >
               <td className="px-3 py-3">
                 <Link href={`/admin/brain-centre/${row.studentId}`} className="font-bold text-white hover:text-blue-200">{row.studentName}</Link>
                 <p className="mt-0.5 font-mono text-xs text-slate-500">{row.studentId}</p>
@@ -159,6 +196,7 @@ function QlfIssues({ rows }: { rows: BrainCentreQlfIssueRow[] }) {
 }
 
 export default function AdminBrainCentrePage() {
+  const router = useRouter();
   const [payload, setPayload] = useState<BrainCentrePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -196,6 +234,10 @@ export default function AdminBrainCentrePage() {
     mismatches: payload?.recommendationMismatches.length ?? 0,
     qlf: payload?.qlfIssues.length ?? 0,
   }), [payload]);
+
+  const openStudentIssue = (studentId: string) => {
+    router.push(`/admin/brain-centre/${studentId}`);
+  };
 
   return (
     <AdminSectionCard title="Brain Centre" eyebrow="Stage 1 visibility">
@@ -299,14 +341,14 @@ export default function AdminBrainCentrePage() {
             {(activeTab === "all" || activeTab === "warnings") ? (
               <section>
                 <h2 className="mb-2 text-sm font-bold text-white">HEART BEAT Warnings</h2>
-                <HeartbeatWarnings rows={payload.heartbeatWarnings} />
+                <HeartbeatWarnings rows={payload.heartbeatWarnings} onOpenStudentIssue={openStudentIssue} />
               </section>
             ) : null}
 
             {(activeTab === "all" || activeTab === "mismatches") ? (
               <section>
                 <h2 className="mb-2 text-sm font-bold text-white">Recommendation Sync Mismatches</h2>
-                <RecommendationMismatches rows={payload.recommendationMismatches} />
+                <RecommendationMismatches rows={payload.recommendationMismatches} onOpenStudentIssue={openStudentIssue} />
               </section>
             ) : null}
 
@@ -315,7 +357,7 @@ export default function AdminBrainCentrePage() {
                 <summary className="cursor-pointer list-none text-sm font-bold text-white">QLF / Brain Connection Status (expanded detail)</summary>
                 <div className="mt-3">
                 <h2 className="mb-2 text-sm font-bold text-white">QLF / Brain Connection Status</h2>
-                <QlfIssues rows={payload.qlfIssues} />
+                <QlfIssues rows={payload.qlfIssues} onOpenStudentIssue={openStudentIssue} />
                 </div>
               </details>
             ) : null}
