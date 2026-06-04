@@ -20,6 +20,7 @@ import {
 import { buildMasteryMap } from "@/lib/academic-intelligence/masteryMap";
 import { buildLearningTwinProfile } from "@/lib/academic-intelligence/learningTwin";
 import { buildHeartbeatDecisionEngine } from "@/lib/academic-intelligence/heartbeatDecisionEngine";
+import { buildRecommendationSyncAudit } from "@/lib/academic-intelligence/recommendationSync";
 import {
   DEFAULT_SCHOOL_WEEK_SETTINGS,
   sanitizeSchoolWeekSettings,
@@ -461,6 +462,23 @@ export function buildAcademicIntelligence(
       suggestedNextStep: "Compute heartbeat decision.",
       riskLevel: "high",
     },
+    recommendationSync: {
+      status: "warning",
+      canonicalDecision: {
+        intent: "placement_review",
+        target: {
+          label: "awaiting recommendation decision",
+        },
+        locked: true,
+        lockReason: "Recommendation sync has not been calculated yet.",
+        sourceEngine: "heartbeat",
+        action: "Compute recommendation sync audit.",
+      },
+      signals: [],
+      mismatches: [],
+      action: "Compute recommendation sync audit.",
+      generatedAt,
+    },
     coachHeartbeatSignals: options?.coachHeartbeatSignals ?? null,
     learningTwin: buildLearningTwinProfile({
       source: data,
@@ -645,6 +663,7 @@ export function buildAcademicIntelligence(
     output,
     coachHeartbeatSignals: output.coachHeartbeatSignals,
   });
+  output.recommendationSync = buildRecommendationSyncAudit(output);
   output.auditHistoryDraft = buildAuditDrafts(output);
 
   return output;
@@ -655,6 +674,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   | "studentId"
   | "summary"
   | "heartbeatDecision"
+  | "recommendationSync"
   | "learningTwin"
   | "masteryExpansion"
   | "curriculumCoverage"
@@ -672,6 +692,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
     studentId: output.studentId,
     summary: output.summary,
     heartbeatDecision: output.heartbeatDecision,
+    recommendationSync: output.recommendationSync,
     learningTwin: output.learningTwin,
     masteryExpansion: output.masteryExpansion,
     curriculumCoverage: output.curriculumCoverage,

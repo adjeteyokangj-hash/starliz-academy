@@ -433,6 +433,71 @@ export type HeartbeatDecision = {
   riskLevel: HeartbeatDecisionRisk;
 };
 
+export type RecommendationEngineKey =
+  | "heartbeat"
+  | "catch_up"
+  | "daily_journey"
+  | "homework"
+  | "assignments"
+  | "mastery_map"
+  | "certificates";
+
+export type RecommendationSyncStatus = "synced" | "warning" | "blocked";
+
+export type RecommendationIntent =
+  | "placement_review"
+  | "catch_up"
+  | "revision"
+  | "homework"
+  | "assessment"
+  | "advance"
+  | "maintain"
+  | "certificate"
+  | "unknown";
+
+export type RecommendationTarget = {
+  subject?: string | null;
+  topic?: string | null;
+  skill?: string | null;
+  label: string;
+};
+
+export type RecommendationCanonicalDecision = {
+  intent: RecommendationIntent;
+  target: RecommendationTarget;
+  locked: boolean;
+  lockReason: string | null;
+  sourceEngine: RecommendationEngineKey;
+  action: string;
+};
+
+export type RecommendationEngineSignal = {
+  engine: RecommendationEngineKey;
+  label: string;
+  intent: RecommendationIntent;
+  target: RecommendationTarget;
+  status: "aligned" | "mismatch" | "informational";
+  summary: string;
+  evidence: string[];
+};
+
+export type RecommendationMismatch = {
+  engine: RecommendationEngineKey;
+  label: string;
+  expected: string;
+  actual: string;
+  reason: string;
+};
+
+export type RecommendationSyncAudit = {
+  status: RecommendationSyncStatus;
+  canonicalDecision: RecommendationCanonicalDecision;
+  signals: RecommendationEngineSignal[];
+  mismatches: RecommendationMismatch[];
+  action: string;
+  generatedAt: string;
+};
+
 export type CoachSignalBreakdownEntry = {
   value: string;
   count: number;
@@ -848,6 +913,7 @@ export type AcademicIntelligenceOutput = {
   studentId: string;
   summary: MasterySummary;
   heartbeatDecision: HeartbeatDecision;
+  recommendationSync: RecommendationSyncAudit;
   coachHeartbeatSignals: CoachHeartbeatSignalSummary | null;
   learningTwin: LearningTwinProfile;
   masteryMap: MasteryMapEntry[];

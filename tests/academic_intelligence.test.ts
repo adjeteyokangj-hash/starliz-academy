@@ -95,6 +95,64 @@ test("low score produces needs_catch_up", () => {
   assert.equal(result.masteryMap[0]?.masteryStatus, "needs_catch_up");
 });
 
+test("recommendation sync warns when homework drifts from HEART BEAT catch-up", () => {
+  const now = new Date().toISOString();
+  const source = withCompletedQlf(baseSource({
+    weakAreas: [
+      {
+        id: "weak-fractions",
+        subject: "math",
+        topic: "Fractions",
+        skill: "equivalent_fractions",
+        status: "active",
+        accuracy: 42,
+        attemptsCount: 5,
+        lastDetectedAt: now,
+      },
+    ],
+    attempts: [
+      {
+        id: "attempt-fractions-1",
+        subject: "math",
+        topic: "Fractions",
+        skill: "equivalent_fractions",
+        correct: false,
+        score: 35,
+        hintsUsed: 2,
+        createdAt: now,
+      },
+    ],
+  }));
+
+  const output = buildAcademicIntelligence(source, {
+    existingHomeworkTasks: [
+      {
+        taskId: "homework-spelling",
+        studentId: "student-1",
+        blockId: "block-1",
+        title: "Spelling practice",
+        subject: "spelling",
+        topic: "Common exception words",
+        status: "assigned",
+        estimatedMinutes: 15,
+        dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        scheduledDay: "Monday",
+        routeTarget: "/student/dashboard",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+  });
+
+  assert.equal(output.heartbeatDecision.primaryAction, "assign_catch_up");
+  assert.equal(output.recommendationSync.status, "warning");
+  assert.equal(output.recommendationSync.canonicalDecision.intent, "catch_up");
+  assert.equal(output.recommendationSync.canonicalDecision.locked, true);
+  assert.match(output.recommendationSync.canonicalDecision.target.label, /Fractions/i);
+  assert.ok(output.recommendationSync.mismatches.some((item) => item.engine === "homework"));
+  assert.match(output.recommendationSync.action, /Lock next recommendation/i);
+});
+
 test("old completed work produces needs_revision", () => {
   const oldDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const source = baseSource({
