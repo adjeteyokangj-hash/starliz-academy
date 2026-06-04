@@ -139,6 +139,17 @@ test("assigned gameplay uses resolved student id for attempts, weak-area metadat
   assert.equal(payload.studentResolution?.resolvedStudentId, "assignment-student");
   assert.equal(calls.attemptsCreated[0].studentId, "assignment-student");
   assert.equal(calls.recalculatedWeakAreas[0].studentId, "assignment-student");
+  assert.deepEqual(calls.skillsUpdated[0], { studentId: "assignment-student", skills: ["cvc"], isCorrect: false });
+  assert.deepEqual(calls.learningDna[0], {
+    childId: "assignment-student",
+    subject: "spelling",
+    skillFocus: "cvc",
+    correct: false,
+    responseTimeMs: 1200,
+    hintsUsed: 1,
+    difficulty: 1,
+    errorType: undefined,
+  });
   assert.equal(
     (calls.weakAreaFindUnique[0].where as { studentId_subject_skillFocus: { studentId: string } }).studentId_subject_skillFocus.studentId,
     "assignment-student",
@@ -176,4 +187,22 @@ test("unauthenticated attempts fail before creating attempts or completion signa
   assert.equal(calls.attemptsCreated.length, 0);
   assert.equal(calls.assignmentUpdates.length, 0);
   assert.equal(calls.invalidatedSnapshots.length, 0);
+});
+
+test("idempotency key is accepted but identical practice still creates an attempt without a stored marker", async () => {
+  const { deps, calls } = makeDeps({ resolvedStudentId: "assignment-student" });
+
+  const response = await handleAttemptPost(attemptRequest({
+    studentId: "spoofed-client-student",
+    idempotencyKey: "attempt-key-1",
+  }), deps as never);
+  const payload = await response.json() as { attempt?: { id?: string } };
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.attempt?.id, "attempt-1");
+  assert.equal(calls.attemptsCreated.length, 1);
+  assert.equal(calls.recalculatedWeakAreas.length, 1);
+  assert.equal(calls.skillsUpdated.length, 1);
+  assert.equal(calls.learningDna.length, 1);
+  assert.equal(calls.invalidatedSnapshots.length, 1);
 });

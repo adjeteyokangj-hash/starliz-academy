@@ -6,11 +6,13 @@ import { writeAuditLog } from "@/lib/audit";
 import { recalculateWeakAreaFromAttempts } from "@/lib/ai/weak-area-detector";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { checkSubscriptionAccess, getTrialSessionLimit } from "@/lib/subscriptions/enforcement";
-import { mergeWeakAreas, parseWeakAreaMetadata, stringifyWeakAreaMetadata } from "@/lib/weakAreas";
 import { updateStudentSkills } from "@/lib/skillEngine";
-import { parseSkills, skillFocusToCode } from "@/lib/skills";
 import { resolveAttemptStudentIdentity, upsertLearningDnaProfileFromAttempt } from "@/lib/attempts/learning_dna_pipeline";
 import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
+import {
+  writeLearningActivity,
+  type WriteLearningActivityDeps,
+} from "@/lib/learning-activity/writeLearningActivity";
 
 type AttemptRouteDeps = {
   prisma: typeof prisma;
@@ -24,6 +26,7 @@ type AttemptRouteDeps = {
   upsertLearningDnaProfileFromAttempt: typeof upsertLearningDnaProfileFromAttempt;
   invalidateAcademicIntelligenceSnapshot: typeof invalidateAcademicIntelligenceSnapshot;
   writeAuditLog: typeof writeAuditLog;
+  writeLearningActivity?: typeof writeLearningActivity;
 };
 
 const defaultDeps: AttemptRouteDeps = {
@@ -38,6 +41,7 @@ const defaultDeps: AttemptRouteDeps = {
   upsertLearningDnaProfileFromAttempt,
   invalidateAcademicIntelligenceSnapshot,
   writeAuditLog,
+  writeLearningActivity,
 };
 
 const attemptSchema = z.object({
@@ -62,114 +66,8 @@ const attemptSchema = z.object({
   spokenText: z.string().optional(),
   targetText: z.string().optional(),
   errorType: z.string().optional(),
+  idempotencyKey: z.string().min(1).optional(),
 });
-
-function normalizeText(value: string | undefined | null): string {
-  return (value ?? "").trim().toLowerCase();
-}
-
-function parseAssignedItems(contentJson: string): Record<string, unknown>[] {
-  try {
-    const parsed = JSON.parse(contentJson) as unknown;
-    if (Array.isArray(parsed)) {
-      return parsed.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
-    }
-    if (parsed && typeof parsed === "object") {
-      return [parsed as Record<string, unknown>];
-    }
-  } catch {
-    return [];
-  }
-  return [];
-}
-
-type AttemptMatchInput = {
-  subject: "spelling" | "math" | "reading";
-  questionText?: string;
-  answerGiven?: string;
-  correctAnswer?: string;
-};
-
-function attemptMatchesAssignedItem(input: AttemptMatchInput, item: Record<string, unknown>): boolean {
-  const questionText = normalizeText(input.questionText);
-  const answerGiven = normalizeText(input.answerGiven);
-  const correctAnswer = normalizeText(input.correctAnswer);
-
-  if (input.subject === "spelling") {
-    const word = normalizeText(typeof item.word === "string" ? item.word : undefined);
-    if (!word) return false;
-    return questionText === word || correctAnswer === word || answerGiven === word;
-  }
-
-  if (input.subject === "math") {
-    const prompt = normalizeText(
-      typeof item.prompt === "string"
-        ? item.prompt
-        : typeof item.question === "string"
-          ? item.question
-          : undefined,
-    );
-    const expectedAnswerRaw =
-      typeof item.answer === "number"
-        ? String(item.answer)
-        : typeof item.answer === "string"
-          ? item.answer
-          : undefined;
-    const expectedAnswer = normalizeText(expectedAnswerRaw);
-    if (!prompt || !expectedAnswer) return false;
-    return questionText === prompt && correctAnswer === expectedAnswer;
-  }
-
-  const readingQuestion = normalizeText(
-    typeof item.question === "string"
-      ? item.question
-      : typeof item.prompt === "string"
-        ? item.prompt
-        : undefined,
-  );
-  const readingAnswer = normalizeText(typeof item.answer === "string" ? item.answer : undefined);
-  if (!readingQuestion || !readingAnswer) return false;
-  return questionText === readingQuestion && correctAnswer === readingAnswer;
-}
-
-async function assignmentBatchCompleted(input: {
-  prismaClient: typeof prisma;
-  assignmentId: string;
-  studentId: string;
-  subject: "spelling" | "math" | "reading";
-  contentJson: string;
-}): Promise<boolean> {
-  const assignedItems = parseAssignedItems(input.contentJson);
-  if (!assignedItems.length) return false;
-
-  const attempts = await input.prismaClient.attempt.findMany({
-    where: {
-      assignmentId: input.assignmentId,
-      studentId: input.studentId,
-      subject: input.subject,
-      correct: true,
-    },
-    select: {
-      questionText: true,
-      answerGiven: true,
-      correctAnswer: true,
-    },
-  });
-
-  return assignedItems.every((item) =>
-    attempts.some((attempt) =>
-      attemptMatchesAssignedItem(
-        {
-          subject: input.subject,
-          questionText: attempt.questionText ?? undefined,
-          answerGiven: attempt.answerGiven ?? undefined,
-          correctAnswer: attempt.correctAnswer ?? undefined,
-        },
-        item,
-      ),
-    ),
-  );
-}
 
 export async function handleAttemptPost(request: Request, deps: AttemptRouteDeps = defaultDeps) {
   const { session, response } = await deps.requireSession();
@@ -204,198 +102,30 @@ export async function handleAttemptPost(request: Request, deps: AttemptRouteDeps
     });
     if (!student) return NextResponse.json({ error: "Student not found." }, { status: 404 });
 
-    const {
-      skills: skillsRaw,
-      pronunciationAttempted,
-      pronunciationPassed,
-      spokenText,
-      targetText,
-      errorType,
-      ...attemptData
-    } = body;
-    const attempt = await deps.prisma.attempt.create({
-      data: {
-        ...attemptData,
-        studentId: resolvedStudentId,
-        assignmentId: assignment?.id ?? attemptData.assignmentId,
-        contentId: assignment?.contentId ?? attemptData.contentId,
-        skills: skillsRaw,
-      },
-    });
-
-    if (pronunciationAttempted || pronunciationPassed !== undefined || spokenText || targetText || errorType) {
-      await deps.writeAuditLog({
-        actorUserId: session.userId,
-        action: "attempt.pronunciation",
-        entityType: "attempt",
-        entityId: attempt.id,
-        metadata: {
-          studentId: body.studentId,
-          resolvedStudentId,
-          subject: body.subject,
-          skillFocus: body.skillFocus,
-          pronunciationAttempted: Boolean(pronunciationAttempted),
-          pronunciationPassed: pronunciationPassed === true,
-          spokenText: spokenText ?? "",
-          targetText: targetText ?? body.correctAnswer ?? "",
-          errorType: errorType ?? null,
-        },
-      });
-    }
-
-    // --- Skill engine: update StudentSkill rows ---
-    const explicitSkills = parseSkills(skillsRaw);
-    const inferredSkill = skillFocusToCode(body.skillFocus);
-    const skillsToUpdate = explicitSkills.length > 0
-      ? explicitSkills
-      : inferredSkill
-        ? [inferredSkill]
-        : [];
-    if (skillsToUpdate.length) {
-      void deps.updateStudentSkills({ studentId: resolvedStudentId, skills: skillsToUpdate, isCorrect: body.correct });
-    }
-
-    if (assignment) {
-        const contentTypeMatchesSubject = assignment.content.contentType === body.subject;
-        const matchesAssignedContent = !body.contentId || body.contentId === assignment.contentId;
-        const assignedItems = parseAssignedItems(assignment.content.contentJson);
-        const attemptedAssignedItem =
-          contentTypeMatchesSubject
-          && matchesAssignedContent
-          && assignedItems.some((item) =>
-            attemptMatchesAssignedItem(
-              {
-                subject: body.subject,
-                questionText: body.questionText,
-                answerGiven: body.answerGiven,
-                correctAnswer: body.correctAnswer,
-              },
-              item,
-            ),
-          );
-
-        if (attemptedAssignedItem && assignment.status === "assigned") {
-          await deps.prisma.assignment.update({ where: { id: assignment.id }, data: { status: "in_progress" } });
-          await deps.writeAuditLog({
-            actorUserId: session.userId,
-            action: "assignment.in_progress",
-            entityType: "assignment",
-            entityId: assignment.id,
-            metadata: { studentId: resolvedStudentId, attemptId: attempt.id },
-          });
-        }
-
-        if (attemptedAssignedItem && body.correct && assignment.status !== "completed") {
-          const completed = await assignmentBatchCompleted({
-            prismaClient: deps.prisma,
-            assignmentId: assignment.id,
-            studentId: resolvedStudentId,
-            subject: body.subject,
-            contentJson: assignment.content.contentJson,
-          });
-
-          if (completed) {
-            await deps.prisma.assignment.update({
-              where: { id: assignment.id },
-              data: { status: "completed", completedAt: new Date() },
-            });
-            await deps.writeAuditLog({
-              actorUserId: session.userId,
-              action: "assignment.completed",
-              entityType: "assignment",
-              entityId: assignment.id,
-              metadata: { studentId: resolvedStudentId, attemptId: attempt.id, contentId: assignment.contentId },
-            });
-          }
-        }
-    }
-
-    const weakArea = await deps.recalculateWeakAreaFromAttempts({
-      studentId: resolvedStudentId,
-      subject: body.subject,
-      skillFocus: body.skillFocus,
+    const { idempotencyKey, ...attempt } = body;
+    const result = await (deps.writeLearningActivity ?? writeLearningActivity)({
       actorUserId: session.userId,
-    });
-
-    if (!body.correct) {
-      const weakWord = body.subject === "spelling"
-        ? body.correctAnswer || body.questionText || body.answerGiven
-        : body.questionText || body.correctAnswer || body.answerGiven;
-      const existing = await deps.prisma.weakArea.findUnique({
-        where: {
-          studentId_subject_skillFocus: {
-            studentId: resolvedStudentId,
-            subject: body.subject,
-            skillFocus: body.skillFocus,
-          },
-        },
-        select: { metadataJson: true },
-      });
-      const metadata = parseWeakAreaMetadata(existing?.metadataJson);
-      await deps.prisma.weakArea.update({
-        where: {
-          studentId_subject_skillFocus: {
-            studentId: resolvedStudentId,
-            subject: body.subject,
-            skillFocus: body.skillFocus,
-          },
-        },
-        data: {
-          metadataJson: stringifyWeakAreaMetadata({
-            ...metadata,
-            weakWords: mergeWeakAreas(metadata.weakWords, weakWord ? [weakWord] : []),
-            weakSkills: mergeWeakAreas(metadata.weakSkills, [body.skillFocus]),
-            assignmentId: assignment?.id ?? body.assignmentId,
-          }),
-        },
-      }).catch((metadataError) => {
-        console.warn("Weak-area metadata update skipped", {
-          studentId: resolvedStudentId,
-          subject: body.subject,
-          skillFocus: body.skillFocus,
-          attemptId: attempt.id,
-          error: metadataError instanceof Error ? metadataError.message : String(metadataError),
-        });
-      });
-    }
-
-    // Learning DNA update: aggregate cognitive, pacing, and emotional learning signals.
-    try {
-      await deps.upsertLearningDnaProfileFromAttempt(deps.prisma, resolvedStudentId, {
-        subject: body.subject,
-        skillFocus: body.skillFocus,
-        correct: body.correct,
-        responseTimeMs: body.responseTimeMs,
-        hintsUsed: body.hintsUsed,
-        difficulty: body.difficulty,
-        errorType,
-      });
-    } catch (learningDnaError) {
-      if (process.env.NODE_ENV !== "production") {
-        console.warn("Learning DNA update skipped:", learningDnaError);
-      }
-    }
-
-    try {
-      await deps.invalidateAcademicIntelligenceSnapshot({
-        studentId: resolvedStudentId,
-        reason: assignment ? "lesson_completed" : "quiz_or_test_completed",
-      });
-    } catch (snapshotError) {
-      if (process.env.NODE_ENV !== "production") {
-        console.warn("Academic intelligence snapshot invalidation skipped:", snapshotError);
-      }
-    }
+      clientStudentId: body.studentId,
+      resolvedStudentId,
+      assignment,
+      idempotencyKey,
+      attempt,
+    }, {
+      prisma: deps.prisma,
+      recalculateWeakAreaFromAttempts: deps.recalculateWeakAreaFromAttempts,
+      updateStudentSkills: deps.updateStudentSkills,
+      upsertLearningDnaProfileFromAttempt: deps.upsertLearningDnaProfileFromAttempt,
+      invalidateAcademicIntelligenceSnapshot: deps.invalidateAcademicIntelligenceSnapshot,
+      writeAuditLog: deps.writeAuditLog,
+    } satisfies WriteLearningActivityDeps);
 
     return NextResponse.json({
       ok: true,
-      attempt,
-      weakArea,
-      skills: skillsToUpdate,
-      learningDnaUpdatedForChildId: resolvedStudentId,
-      studentResolution: assignment
-        ? { source: "assignment", assignmentId: assignment.id, clientStudentId: body.studentId, resolvedStudentId }
-        : { source: "client", clientStudentId: body.studentId, resolvedStudentId },
+      attempt: result.attempt,
+      weakArea: result.weakArea,
+      skills: result.skills,
+      learningDnaUpdatedForChildId: result.learningDnaUpdatedForChildId,
+      studentResolution: result.studentResolution,
       message: "Attempt saved.",
     }, { status: 201 });
   } catch (error) {
