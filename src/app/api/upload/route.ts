@@ -9,6 +9,19 @@ import {
 } from "@/lib/r2-upload";
 
 const ALLOWED_FOLDERS = new Set<UploadFolder>(["avatars", "lessons", "certificates", "audio", "admin"]);
+const ALLOWED_AVATAR_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+type UploadDeps = {
+  requireAdmin: typeof requireAdmin;
+  generateR2ObjectKey: typeof generateR2ObjectKey;
+  uploadFileToR2: typeof uploadFileToR2;
+};
+
+const defaultDeps: UploadDeps = {
+  requireAdmin,
+  generateR2ObjectKey,
+  uploadFileToR2,
+};
 
 function getFolder(value: FormDataEntryValue | null): UploadFolder {
   const requested = String(value ?? "admin").trim().toLowerCase() as UploadFolder;
@@ -18,8 +31,22 @@ function getFolder(value: FormDataEntryValue | null): UploadFolder {
   return requested;
 }
 
-export async function POST(request: NextRequest) {
-  const { session, response } = await requireAdmin();
+function isAllowedForFolder(folder: UploadFolder, mimeType: string): boolean {
+  if (folder === "avatars") {
+    return ALLOWED_AVATAR_MIME_TYPES.has(mimeType);
+  }
+  return ALLOWED_UPLOAD_MIME_TYPES.has(mimeType);
+}
+
+function fileTypeError(folder: UploadFolder): string {
+  if (folder === "avatars") {
+    return "Avatar uploads must be non-identifying PNG, JPEG, WebP, or GIF images. SVG, documents, audio, and video are not allowed.";
+  }
+  return "File type not allowed. Use supported images, PDFs, audio, or lesson media formats.";
+}
+
+export async function handleUpload(request: Request, deps: UploadDeps = defaultDeps) {
+  const { session, response } = await deps.requireAdmin();
   if (!session) return response!;
 
   const form = await request.formData().catch(() => null);
@@ -40,9 +67,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid folder." }, { status: 400 });
   }
 
-  if (!rawFile.type || !ALLOWED_UPLOAD_MIME_TYPES.has(rawFile.type)) {
+  if (!rawFile.type || !isAllowedForFolder(folder, rawFile.type)) {
     return NextResponse.json(
-      { error: "File type not allowed. Use supported images, PDFs, audio, or lesson media formats." },
+      { error: fileTypeError(folder) },
       { status: 400 },
     );
   }
@@ -55,7 +82,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `File too large. Max ${(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB.` }, { status: 400 });
   }
 
-  const objectKey = generateR2ObjectKey({
+  const objectKey = deps.generateR2ObjectKey({
     folder,
     originalFilename: rawFile.name,
     mimeType: rawFile.type,
@@ -63,7 +90,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const bytes = Buffer.from(await rawFile.arrayBuffer());
-    const uploaded = await uploadFileToR2({
+    const uploaded = await deps.uploadFileToR2({
       objectKey,
       body: bytes,
       mimeType: rawFile.type,
@@ -85,4 +112,8 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+export async function POST(request: NextRequest) {
+  return handleUpload(request);
 }

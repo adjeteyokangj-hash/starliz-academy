@@ -248,12 +248,16 @@ export default function NewStudentPage() {
             </label>
             <label className="block text-sm font-bold text-slate-300">
               Avatar URL
+              <span className="mt-1 block text-xs font-medium text-amber-200">
+                Use approved non-identifying avatar images only. Do not upload child face photos, school uniform images, names, or school identifiers.
+              </span>
               <input
                 value={avatar}
                 onChange={(event) => setAvatar(event.target.value)}
                 className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
                 placeholder="https://..."
               />
+              <p className="mt-1 text-xs text-slate-500">External URLs should also point only to approved non-identifying avatar images.</p>
               <input
                 type="file"
                 accept="image/*"
@@ -411,4 +415,3 @@ export default function NewStudentPage() {
     </AdminSectionCard>
   );
 }
-
