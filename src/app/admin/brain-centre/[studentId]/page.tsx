@@ -34,6 +34,10 @@ type DiagnosticPlaybook = {
   action: GuidedAction | null;
 };
 
+function isActionKey(action: GuidedAction | null): action is ActionKey {
+  return actions.some((item) => item.key === action);
+}
+
 function badgeClass(status: string): string {
   if (status === "critical" || status === "mismatch" || status === "blocked") return "border-rose-500/40 bg-rose-500/10 text-rose-100";
   if (status === "warning") return "border-amber-500/40 bg-amber-500/10 text-amber-100";
@@ -85,7 +89,7 @@ function diagnosticPlaybook(issue: BrainDiagnosticIssue): DiagnosticPlaybook {
       return {
         why: issue.detail,
         impact: "Without a complete baseline, progression decisions are low-confidence.",
-        actionLabel: "Complete Quick Level Finder baseline",
+        actionLabel: "Open QLF baseline",
         action: "open_qlf_baseline",
       };
     case "recommendation_conflicts":
@@ -224,29 +228,46 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
   }, [payload]);
 
   const runGuidedAction = async (action: GuidedAction | null) => {
-    if (!action || !payload) return;
+    if (!payload) return;
+    if (!action) {
+      setMessage("No direct fix available yet.");
+      return;
+    }
+    const studentProfilePath = `/admin/students/${encodeURIComponent(payload.student.id)}`;
     if (action === "open_qlf_baseline") {
-      router.push(`/admin/students/${payload.student.id}`);
+      setError(null);
+      setMessage("Opening QLF baseline on the student profile.");
+      router.push(`${studentProfilePath}?focus=qlf-baseline#qlf-baseline`);
       return;
     }
     if (action === "open_attempts") {
-      router.push(`/admin/students/${payload.student.id}`);
+      setError(null);
+      setMessage("Opening attempts on the student profile.");
+      router.push(`${studentProfilePath}?focus=attempts#attempts`);
       return;
     }
     if (action === "open_weak_areas") {
-      router.push(`/admin/students/${payload.student.id}`);
+      setError(null);
+      setMessage("Opening weak areas on the student profile.");
+      router.push(`${studentProfilePath}?focus=weak-areas#weak-areas`);
       return;
     }
     if (action === "open_snapshot_view") {
       evidenceSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setError(null);
+      setMessage("Opened snapshot evidence details.");
       return;
     }
     if (action === "open_heartbeat") {
       heartbeatSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setError(null);
+      setMessage("Opened HEART BEAT details.");
       return;
     }
     if (action === "open_recommendation") {
       recommendationSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setError(null);
+      setMessage("Opened Recommendation Sync details.");
       return;
     }
     await runAction(action);
@@ -257,7 +278,7 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
     if (!payload.qlfBaseline) {
       return {
         label: "QLF baseline missing",
-        actionLabel: "Complete Quick Level Finder baseline",
+        actionLabel: "Open QLF baseline",
         action: "open_qlf_baseline" as GuidedAction,
       };
     }
@@ -300,6 +321,14 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
     });
   }, [payload]);
 
+  const mainAction = mainIssue?.action ?? null;
+  const mainActionBusy = isActionKey(mainAction) && busyAction === mainAction;
+  const mainButtonLabel = mainAction
+    ? mainActionBusy
+      ? "Running..."
+      : mainIssue?.actionLabel ?? "Review details"
+    : "No direct fix available yet";
+
   return (
     <AdminSectionCard
       title="Brain Investigation"
@@ -307,8 +336,10 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
       action={<Link href="/admin/brain-centre" className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200">Back to Brain Centre</Link>}
     >
       {loading ? <p className="text-sm text-slate-400">Loading investigation...</p> : null}
-      {error ? <div className="mb-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{error}</div> : null}
-      {message ? <div className="mb-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">{message}</div> : null}
+      <div aria-live="polite" aria-atomic="true">
+        {error ? <div className="mb-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{error}</div> : null}
+        {message ? <div className="mb-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">{message}</div> : null}
+      </div>
 
       {payload ? (
         <div className="space-y-4">
@@ -338,10 +369,11 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
             </div>
             <button
               type="button"
-              onClick={() => void runGuidedAction(mainIssue?.action ?? null)}
-              className="mt-4 inline-flex rounded-lg border border-indigo-300/50 bg-indigo-500 px-4 py-2 text-sm font-black text-white hover:bg-indigo-400"
+              onClick={() => void runGuidedAction(mainAction)}
+              disabled={!mainAction || busyAction !== null}
+              className="mt-4 inline-flex rounded-lg border border-indigo-300/50 bg-indigo-500 px-4 py-2 text-sm font-black text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Fix main issue
+              {mainButtonLabel}
             </button>
           </section>
 
