@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 export type UploadFolder = "avatars" | "lessons" | "certificates" | "audio" | "admin";
 
@@ -157,5 +157,24 @@ export async function uploadFileToR2(input: {
   return {
     objectKey: input.objectKey,
     publicUrl: buildR2PublicUrl(input.objectKey),
+  };
+}
+
+export async function downloadFileFromR2(objectKey: string): Promise<{
+  body: Uint8Array;
+  contentType?: string;
+  contentLength?: number;
+}> {
+  const { client, config } = getR2Client();
+  const result = await client.send(new GetObjectCommand({
+    Bucket: config.bucket,
+    Key: objectKey,
+  }));
+  const body = result.Body ? await result.Body.transformToByteArray() : new Uint8Array();
+
+  return {
+    body,
+    contentType: result.ContentType ?? undefined,
+    contentLength: result.ContentLength ?? body.byteLength,
   };
 }

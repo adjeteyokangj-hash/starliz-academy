@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sanitizeFilename, uploadFileToR2 } from "@/lib/r2-upload";
 import { requireSchoolRoles } from "@/lib/schools/guards";
+import { toSafeguardingEvidenceAttachmentView } from "@/lib/schools/safeguarding-evidence";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED: Record<string, string> = {
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
         actorUserId: access.context.userId,
         eventType: "evidence_uploaded",
         note: label,
-        metadataJson: JSON.stringify({ attachmentId: created.id, publicUrl }),
+        metadataJson: JSON.stringify({ attachmentId: created.id }),
       },
     });
 
@@ -117,15 +118,6 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    attachment: {
-      id: attachment.id,
-      label: attachment.label,
-      originalName: attachment.originalName,
-      publicUrl: attachment.publicUrl,
-      mimeType: attachment.mimeType,
-      fileSizeBytes: attachment.fileSizeBytes,
-      note: attachment.note,
-      createdAt: attachment.createdAt.toISOString(),
-    },
+    attachment: toSafeguardingEvidenceAttachmentView(attachment),
   });
 }

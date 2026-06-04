@@ -12,6 +12,7 @@ import { requireSchoolRoles } from "@/lib/schools/guards";
 import { withSchoolId } from "@/lib/schools/tenant";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
 import { canResolveIncident } from "@/lib/schools/governance_rules";
+import { toSafeguardingEvidenceAttachmentView } from "@/lib/schools/safeguarding-evidence";
 
 const raiseAlertSchema = z.object({
   action: z.literal("raiseAlert"),
@@ -368,7 +369,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Attachment does not belong to this incident." }, { status: 400 });
     }
 
-    return NextResponse.json({ ok: true, attachment });
+    return NextResponse.json({ ok: true, attachment: toSafeguardingEvidenceAttachmentView(attachment) });
   }
 
   // resolveIncident
@@ -502,17 +503,7 @@ export async function GET(request: Request) {
         createdAt: event.createdAt.toISOString(),
         actor: event.actor,
       })),
-      evidenceAttachments: incident.evidenceAttachments.map((attachment) => ({
-        id: attachment.id,
-        label: attachment.label,
-        originalName: attachment.originalName,
-        publicUrl: attachment.publicUrl,
-        mimeType: attachment.mimeType,
-        fileSizeBytes: attachment.fileSizeBytes,
-        note: attachment.note,
-        createdAt: attachment.createdAt.toISOString(),
-        uploadedBy: attachment.uploadedBy,
-      })),
+      evidenceAttachments: incident.evidenceAttachments.map(toSafeguardingEvidenceAttachmentView),
     })),
   });
 }

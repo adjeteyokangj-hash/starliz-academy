@@ -97,7 +97,7 @@ type SafeguardingIncident = {
     id: string;
     label: string;
     originalName: string;
-    publicUrl: string;
+    downloadUrl: string;
     mimeType: string | null;
     fileSizeBytes: number | null;
     note: string | null;
@@ -637,7 +637,7 @@ export default function TeacherGovernancePanel({
                   <div className="space-y-3">
                     {incident.evidenceAttachments.map((attachment) => (
                       <div key={attachment.id} className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-                        <a href={attachment.publicUrl} target="_blank" rel="noreferrer" className="font-bold text-cyan-200 hover:text-cyan-100">
+                        <a href={attachment.downloadUrl} target="_blank" rel="noreferrer" className="font-bold text-cyan-200 hover:text-cyan-100">
                           {attachment.label}
                         </a>
                         <p className="text-xs text-slate-400">{attachment.originalName} • {fmtDate(attachment.createdAt)}</p>
