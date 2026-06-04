@@ -192,6 +192,7 @@ function signalStatus(input: {
     if (input.intent === "homework" && !targetsConflict(input.canonical.target, input.target)) return "aligned";
     return input.intent === "maintain" ? "informational" : "mismatch";
   }
+  if (input.canonical.intent === "advance" && input.intent === "assessment") return "aligned";
   if (input.intent !== input.canonical.intent) return "mismatch";
   return targetsConflict(input.canonical.target, input.target) ? "mismatch" : "aligned";
 }
@@ -229,6 +230,7 @@ function catchUpSignal(output: AcademicIntelligenceOutput, canonical: Recommenda
     target,
     summary: top ? `Catch-up recommends ${targetLabel(target)}.` : "No active catch-up recommendation.",
     evidence: top ? [top.reason, `Status: ${top.status}`, `Priority: ${top.priority}`] : ["No unresolved catch-up task."],
+    informational: !top,
   });
 }
 

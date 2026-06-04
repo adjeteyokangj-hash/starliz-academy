@@ -405,6 +405,7 @@ export function toAdminLearningBrainView(brain: StudentLearningBrain) {
     quickLevelFinderBaseline: brain.quickLevelFinderBaseline,
     heartbeatSummary: brain.heartbeatSummary,
     coachHeartbeatSignals: brain.coachHeartbeatSignals,
+    learningDnaSummary: brain.learningDnaSummary,
     evidenceSummary: brain.evidenceSummary,
     dataState: brain.dataState,
     languageReadiness: brain.languageReadiness,
