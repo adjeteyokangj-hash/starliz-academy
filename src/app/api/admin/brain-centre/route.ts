@@ -3,16 +3,16 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { getStudentLearningBrain } from "@/lib/student-learning-brain";
 import {
-  isAcademicIntelligenceSnapshotStale,
-  readAcademicIntelligenceSnapshot,
-} from "@/lib/academic-intelligence/snapshot";
+  healthForBrain,
+  heartbeatNeedsAdminVisibility,
+  snapshotStatus,
+  type BrainHealthStatus,
+} from "@/app/api/admin/brain-centre/_lib";
 import type {
   HeartbeatDecision,
   RecommendationSyncAudit,
 } from "@/lib/academic-intelligence/types";
 import type { StudentDataNormalisationResult } from "@/lib/student-learning-brain/studentDataNormalisation";
-
-type BrainCentreHealthStatus = "healthy" | "warning" | "critical";
 
 type BrainCentreStudent = {
   id: string;
@@ -40,6 +40,7 @@ type BrainCentreBrain = {
     skills: { total: number; mastered: number; weak: number; averageAccuracy: number | null };
     homework: { total: number; active: number; completed: number; overdue: number };
   };
+  learningDnaSummary?: Record<string, unknown> | null;
   dataState: StudentDataNormalisationResult;
   generatedAt: string;
 };
@@ -48,7 +49,7 @@ export type BrainCentreWarningRow = {
   studentId: string;
   studentName: string;
   yearGroup: string | null;
-  status: BrainCentreHealthStatus;
+  status: BrainHealthStatus;
   warningStatus: string;
   reasonSignals: string[];
   recommendedAction: string;
@@ -79,7 +80,7 @@ export type BrainCentreStudentSummary = {
   studentId: string;
   studentName: string;
   yearGroup: string | null;
-  status: BrainCentreHealthStatus;
+  status: BrainHealthStatus;
   heartbeatAction: string;
   recommendationSyncStatus: RecommendationSyncAudit["status"];
   dataState: StudentDataNormalisationResult["state"];
@@ -99,6 +100,16 @@ export type BrainCentrePayload = {
   heartbeatWarnings: BrainCentreWarningRow[];
   recommendationMismatches: BrainCentreMismatchRow[];
   qlfIssues: BrainCentreQlfIssueRow[];
+  diagnostics: {
+    healthScore: number;
+    status: BrainHealthStatus;
+    issues: Array<{
+      code: string;
+      label: string;
+      count: number;
+      affectedStudents: Array<{ studentId: string; studentName: string }>;
+    }>;
+  };
   generatedAt: string;
 };
 
@@ -124,46 +135,6 @@ function describeTarget(label: string): string {
 function canonicalLabel(sync: RecommendationSyncAudit): string {
   const target = describeTarget(sync.canonicalDecision.target.label);
   return `${sync.canonicalDecision.intent}: ${target}`;
-}
-
-function snapshotStatus(profileJson: string | null | undefined): {
-  status: "fresh" | "stale" | "missing";
-  lastCalculatedAt: string | null;
-} {
-  const snapshot = readAcademicIntelligenceSnapshot(profileJson ?? null);
-  if (!snapshot) return { status: "missing", lastCalculatedAt: null };
-  if (isAcademicIntelligenceSnapshotStale(snapshot)) {
-    return { status: "stale", lastCalculatedAt: snapshot.lastCalculatedAt };
-  }
-  return { status: "fresh", lastCalculatedAt: snapshot.lastCalculatedAt };
-}
-
-function heartbeatNeedsAdminVisibility(heartbeat: HeartbeatDecision): boolean {
-  if (heartbeat.riskLevel === "critical" || heartbeat.riskLevel === "high") return true;
-  if (heartbeat.urgency === "critical" || heartbeat.urgency === "high") return true;
-  return heartbeat.primaryAction !== "advance_student" && heartbeat.primaryAction !== "maintain_level";
-}
-
-function healthForStudent(input: {
-  heartbeat: HeartbeatDecision;
-  sync: RecommendationSyncAudit;
-  dataState: StudentDataNormalisationResult;
-  snapshot: "fresh" | "stale" | "missing";
-}): BrainCentreHealthStatus {
-  if (input.heartbeat.riskLevel === "critical" || input.sync.status === "blocked" || input.dataState.checklistStatus === "fail") {
-    return "critical";
-  }
-  if (
-    input.heartbeat.riskLevel === "high"
-    || input.heartbeat.urgency === "critical"
-    || input.heartbeat.urgency === "high"
-    || input.sync.status === "warning"
-    || input.dataState.checklistStatus === "warning"
-    || input.snapshot !== "fresh"
-  ) {
-    return "warning";
-  }
-  return "healthy";
 }
 
 function qlfIssuesForStudent(input: {
@@ -224,16 +195,27 @@ function buildBrainCentrePayload(rows: Array<{ student: BrainCentreStudent; brai
   const recommendationMismatches: BrainCentreMismatchRow[] = [];
   const qlfIssues: BrainCentreQlfIssueRow[] = [];
   const students: BrainCentreStudentSummary[] = [];
+  const diagnostics = new Map<string, { label: string; affectedStudents: Array<{ studentId: string; studentName: string }> }>();
+
+  const addDiagnostic = (code: string, label: string, student: BrainCentreStudent) => {
+    const current = diagnostics.get(code) ?? { label, affectedStudents: [] };
+    if (!current.affectedStudents.some((row) => row.studentId === student.id)) {
+      current.affectedStudents.push({ studentId: student.id, studentName: student.name });
+    }
+    diagnostics.set(code, current);
+  };
 
   for (const row of rows) {
     const snapshot = snapshotStatus(row.student.studentProfile?.aiLearningProfileJson ?? null);
     const heartbeat = row.brain.heartbeatSummary;
     const sync = row.brain.academicIntelligence.recommendationSync;
-    const status = healthForStudent({
-      heartbeat,
-      sync,
-      dataState: row.brain.dataState,
-      snapshot: snapshot.status,
+    const status = healthForBrain({
+      brain: {
+        heartbeatSummary: heartbeat,
+        academicIntelligence: { recommendationSync: sync },
+        dataState: row.brain.dataState,
+      },
+      snapshotStatus: snapshot.status,
     });
 
     students.push({
@@ -248,7 +230,8 @@ function buildBrainCentrePayload(rows: Array<{ student: BrainCentreStudent; brai
       snapshotStatus: snapshot.status,
     });
 
-    if (heartbeatNeedsAdminVisibility(heartbeat)) {
+    if (heartbeatNeedsAdminVisibility({ heartbeatSummary: heartbeat })) {
+      addDiagnostic("heartbeat_conflicts", "HEART BEAT conflicts", row.student);
       heartbeatWarnings.push({
         studentId: row.student.id,
         studentName: row.student.name,
@@ -262,6 +245,7 @@ function buildBrainCentrePayload(rows: Array<{ student: BrainCentreStudent; brai
     }
 
     for (const mismatch of sync.mismatches) {
+      addDiagnostic("recommendation_conflicts", "Recommendation conflicts", row.student);
       recommendationMismatches.push({
         studentId: row.student.id,
         studentName: row.student.name,
@@ -273,13 +257,22 @@ function buildBrainCentrePayload(rows: Array<{ student: BrainCentreStudent; brai
       });
     }
 
-    qlfIssues.push(...qlfIssuesForStudent({ student: row.student, brain: row.brain, snapshot }));
+    const studentQlfIssues = qlfIssuesForStudent({ student: row.student, brain: row.brain, snapshot });
+    for (const issue of studentQlfIssues) addDiagnostic(issue.issueType, issue.issueType.replaceAll("_", " "), row.student);
+    if (!row.brain.learningDnaSummary) addDiagnostic("missing_learning_dna", "Missing Learning DNA", row.student);
+    if (row.brain.evidenceSummary.weakAreas.active > 0 && sync.canonicalDecision.intent !== "catch_up") addDiagnostic("missing_weak_area_links", "Missing WeakArea links", row.student);
+    if (row.brain.evidenceSummary.attempts.total > 0 && row.brain.evidenceSummary.skills.total === 0) addDiagnostic("missing_student_skill_links", "Missing StudentSkill links", row.student);
+    qlfIssues.push(...studentQlfIssues);
   }
 
   const healthyCount = students.filter((student) => student.status === "healthy").length;
   const warningCount = students.filter((student) => student.status === "warning").length;
   const criticalCount = students.filter((student) => student.status === "critical").length;
   const staleOrMissingDataCount = students.filter((student) => student.snapshotStatus !== "fresh" || student.dataState !== "active_with_qlf").length;
+  const healthScore = students.length
+    ? Math.max(0, Math.round(((healthyCount * 100) + (warningCount * 65) + (criticalCount * 25)) / students.length))
+    : 100;
+  const diagnosticsStatus: BrainHealthStatus = criticalCount > 0 ? "critical" : warningCount > 0 ? "warning" : "healthy";
 
   return {
     summary: {
@@ -293,6 +286,16 @@ function buildBrainCentrePayload(rows: Array<{ student: BrainCentreStudent; brai
     heartbeatWarnings,
     recommendationMismatches,
     qlfIssues,
+    diagnostics: {
+      healthScore,
+      status: diagnosticsStatus,
+      issues: Array.from(diagnostics.entries()).map(([code, issue]) => ({
+        code,
+        label: issue.label,
+        count: issue.affectedStudents.length,
+        affectedStudents: issue.affectedStudents,
+      })),
+    },
     generatedAt: new Date().toISOString(),
   };
 }

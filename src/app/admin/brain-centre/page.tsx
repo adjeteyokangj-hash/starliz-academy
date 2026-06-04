@@ -63,7 +63,7 @@ function HeartbeatWarnings({ rows }: { rows: BrainCentreWarningRow[] }) {
           {rows.map((row) => (
             <tr key={`${row.studentId}-${row.warningStatus}`} className="border-b border-slate-800/70 text-slate-300">
               <td className="px-3 py-3">
-                <Link href={`/admin/students/${row.studentId}`} className="font-bold text-white hover:text-blue-200">{row.studentName}</Link>
+                <Link href={`/admin/brain-centre/${row.studentId}`} className="font-bold text-white hover:text-blue-200">{row.studentName}</Link>
                 <p className="mt-0.5 font-mono text-xs text-slate-500">{row.studentId}</p>
               </td>
               <td className="px-3 py-3">
@@ -104,7 +104,7 @@ function RecommendationMismatches({ rows }: { rows: BrainCentreMismatchRow[] }) 
           {rows.map((row, index) => (
             <tr key={`${row.studentId}-${row.mismatchingEngine}-${index}`} className="border-b border-slate-800/70 text-slate-300">
               <td className="px-3 py-3">
-                <Link href={`/admin/students/${row.studentId}`} className="font-bold text-white hover:text-blue-200">{row.studentName}</Link>
+                <Link href={`/admin/brain-centre/${row.studentId}`} className="font-bold text-white hover:text-blue-200">{row.studentName}</Link>
                 <p className="mt-0.5 font-mono text-xs text-slate-500">{row.studentId}</p>
               </td>
               <td className="px-3 py-3 text-xs text-emerald-100">{row.canonicalRecommendation}</td>
@@ -140,7 +140,7 @@ function QlfIssues({ rows }: { rows: BrainCentreQlfIssueRow[] }) {
           {rows.map((row, index) => (
             <tr key={`${row.studentId}-${row.issueType}-${index}`} className="border-b border-slate-800/70 text-slate-300">
               <td className="px-3 py-3">
-                <Link href={`/admin/students/${row.studentId}`} className="font-bold text-white hover:text-blue-200">{row.studentName}</Link>
+                <Link href={`/admin/brain-centre/${row.studentId}`} className="font-bold text-white hover:text-blue-200">{row.studentName}</Link>
                 <p className="mt-0.5 font-mono text-xs text-slate-500">{row.studentId}</p>
               </td>
               <td className="px-3 py-3">
@@ -229,6 +229,29 @@ export default function AdminBrainCentrePage() {
                 <p className="mt-1 text-2xl font-black text-slate-100">{payload.summary.staleOrMissingDataCount}</p>
               </div>
             </div>
+
+            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-white">Brain Diagnostics</h2>
+                  <p className="mt-1 text-xs text-slate-400">Health score {payload.diagnostics.healthScore} · {payload.diagnostics.status}</p>
+                </div>
+                <span className={`rounded-full border px-2 py-1 text-xs font-bold ${statusClass(payload.diagnostics.status)}`}>
+                  {payload.diagnostics.issues.length} issue types
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                {payload.diagnostics.issues.length ? payload.diagnostics.issues.slice(0, 8).map((issue) => (
+                  <div key={issue.code} className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+                    <p className="text-xs font-black text-white">{issue.label}</p>
+                    <p className="mt-1 text-xs text-slate-400">{issue.count} affected</p>
+                    <p className="mt-1 truncate text-[11px] text-slate-500">
+                      {issue.affectedStudents.map((student) => student.studentName).join(", ")}
+                    </p>
+                  </div>
+                )) : <p className="text-xs text-slate-500">No diagnostic issues in the current sample.</p>}
+              </div>
+            </section>
 
             <div className="flex flex-wrap gap-2">
               {tabs.map((tab) => (
