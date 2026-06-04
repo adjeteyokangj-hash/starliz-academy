@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
+import { validateSpellingContentContract } from "@/lib/content-governance";
 import { validateQuestionBatch } from "@/lib/starliz-question-validator";
 import {
   GCSE_EXAM_BOARD_WARNING,
@@ -269,6 +270,12 @@ export async function POST(req: Request) {
       difficulty: body.difficulty,
       topic: body.topic,
     });
+    if (legacyType === "spelling") {
+      const spellingContract = validateSpellingContentContract(contentItems);
+      if (!spellingContract.ok) {
+        return NextResponse.json({ error: spellingContract.reason ?? "Invalid spelling content." }, { status: 422 });
+      }
+    }
     const quality = validateAiContentQuality({
       type: generationType,
       keyStage: body.keyStage,

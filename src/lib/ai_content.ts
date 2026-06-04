@@ -1,4 +1,5 @@
 import type { MathQuestion, ReadingPassage, SpellingWord } from "@/lib/adaptive";
+import { validateSpellingContentContract } from "@/lib/content-governance";
 
 type NextContentResponse = {
   item: Record<string, unknown> | null;
@@ -234,6 +235,10 @@ function parseAssignedItems<T>(
   normalizer: (item: Record<string, unknown> | null) => T | null,
 ): AssignedContentBatch<T> | null {
   if (!payload || payload.content.contentType !== expectedType) return null;
+
+  if (expectedType === "spelling" && !validateSpellingContentContract(payload.content.items).ok) {
+    return null;
+  }
 
   const items: T[] = [];
   for (const raw of payload.content.items) {

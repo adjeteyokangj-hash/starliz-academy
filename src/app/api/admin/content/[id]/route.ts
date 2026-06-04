@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
+import { validateSpellingContentContract } from "@/lib/content-governance";
 
 const patchSchema = z
   .object({
@@ -28,7 +29,8 @@ function isValidForContentType(contentType: string, parsed: unknown): boolean {
   if (!items.length) return false;
 
   if (contentType === "spelling") {
-    return items.every((item) => typeof item.word === "string" && item.word.trim().length > 0);
+    const contract = validateSpellingContentContract(items);
+    return contract.ok;
   }
 
   if (contentType === "math") {

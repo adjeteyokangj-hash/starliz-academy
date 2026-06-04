@@ -18,6 +18,7 @@ import { readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 import { extractLearningDnaFromProfileJson } from "@/lib/learning_dna";
 import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
+import { validateSpellingContentContract } from "@/lib/content-governance";
 
 export class SchoolLicenceAccessError extends Error {
   reason: SchoolLicenceBlockedReason;
@@ -307,10 +308,10 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     warningReason: null,
     warningFlags: [],
   };
+  const contentLegacyType = mapSubjectToLegacyContentType(content.contentType);
 
   if (contentSubject !== "unknown") {
     const inferredLegacyType = mapSubjectToLegacyContentType(contentSubject);
-    const contentLegacyType = mapSubjectToLegacyContentType(content.contentType);
     if (inferredLegacyType && contentLegacyType && inferredLegacyType !== contentLegacyType) {
       return {
         safe: false,
@@ -330,6 +331,23 @@ export async function getAssignmentSafetyAndRecommendation(input: {
 
   if (!isValidContentJson(content.contentJson)) {
     return { safe: false, reason: "Content is not valid JSON and cannot be assigned.", meta };
+  }
+
+  if (contentLegacyType === "spelling") {
+    let parsedContent: unknown = [];
+    try {
+      parsedContent = JSON.parse(content.contentJson);
+    } catch {
+      parsedContent = [];
+    }
+    const spellingContract = validateSpellingContentContract(parsedContent);
+    if (!spellingContract.ok) {
+      return {
+        safe: false,
+        reason: spellingContract.reason ?? "Invalid spelling content cannot be assigned.",
+        meta,
+      };
+    }
   }
 
   if (meta.schoolId && studentSchoolIds.length > 0 && !studentSchoolIds.includes(meta.schoolId)) {
@@ -609,7 +627,7 @@ export async function assignContentToStudent(input: {
 export function taskHrefForContentType(contentType: string, assignmentId?: string) {
   const normalized = contentType.trim().toLowerCase();
   const readingTypes = new Set(["reading", "english-language", "english-literature", "gcse-english", "vocabulary"]);
-  const lessonTypes = new Set(["lesson", "ai_daily", "daily", "science", "gcse-science"]);
+  const lessonTypes = new Set(["lesson", "ai_daily", "daily", "science", "gcse-science", "writing", "grammar", "punctuation"]);
   const mathTypes = new Set(["math", "maths", "times-tables", "gcse-maths", "11-plus-practice", "sats-practice"]);
   const path = lessonTypes.has(normalized)
     ? "/games/lesson"

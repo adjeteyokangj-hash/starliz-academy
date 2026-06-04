@@ -23,7 +23,7 @@ export type KeyStage = (typeof KEY_STAGES)[number];
 export type CurriculumPathway = (typeof CURRICULUM_PATHWAYS)[number];
 export type ExamBoard = (typeof EXAM_BOARDS)[number];
 
-export type LegacyContentType = "spelling" | "math" | "reading" | "science";
+export type LegacyContentType = "spelling" | "grammar" | "punctuation" | "writing" | "reading" | "math" | "science";
 
 const YEAR_GROUP_ORDINAL: Record<YearGroup, number> = {
   "Reception": 0,
@@ -483,11 +483,14 @@ export function normalizeSubject(value: string | null | undefined): Subject | nu
 export function mapSubjectToLegacyContentType(subject: string | null | undefined): LegacyContentType | null {
   const normalized = normalizeSubject(subject);
   if (!normalized) return null;
-  if (normalized === "science" || normalized === "gcse-science" || normalized === "gcse-combined-science" || normalized === "gcse-biology" || normalized === "gcse-chemistry" || normalized === "gcse-physics") return "science";
+  if (normalized === "spelling" || normalized === "phonics") return "spelling";
+  if (normalized === "grammar") return "grammar";
+  if (normalized === "punctuation") return "punctuation";
+  if (normalized === "writing" || normalized === "english-language" || normalized === "english-literature") return "writing";
+  if (normalized === "reading" || normalized === "vocabulary" || normalized === "gcse-english" || normalized === "gcse-english-language" || normalized === "gcse-english-literature") return "reading";
   if (normalized === "maths" || normalized === "times-tables" || normalized === "gcse-maths" || normalized === "sats-practice" || normalized === "11-plus-practice") return "math";
-  if (normalized === "reading" || normalized === "vocabulary" || normalized === "english-language" || normalized === "english-literature" || normalized === "gcse-english" || normalized === "gcse-english-language" || normalized === "gcse-english-literature") return "reading";
-  if (normalized.startsWith("gcse-")) return "reading";
-  return "spelling";
+  if (normalized === "science" || normalized === "gcse-science" || normalized === "gcse-combined-science" || normalized === "gcse-biology" || normalized === "gcse-chemistry" || normalized === "gcse-physics") return "science";
+  return null;
 }
 
 export type GenerationType =

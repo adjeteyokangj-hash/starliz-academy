@@ -22,6 +22,8 @@ import assert from "node:assert/strict";
 
 import { evaluateAssignmentCandidate } from "../src/components/admin/content-library/utils";
 import type { ContentItem, StudentOption } from "../src/components/admin/content-library/types";
+import { taskHrefForContentType } from "../src/lib/assignments";
+import { validateSpellingContentContract } from "../src/lib/content-governance";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -283,4 +285,40 @@ test("fully matching student/content remains allowed without warning", () => {
 
   assert.equal(result.hardEligible, true);
   assert.equal(result.warningReason, null);
+});
+
+test("contaminated spelling content is rejected before spelling game routing", () => {
+  const contaminatedItems = [
+    { questionType: "grammar", prompt: "Fix this sentence.", answer: "Runs." },
+  ];
+  const contract = validateSpellingContentContract(contaminatedItems);
+
+  assert.equal(contract.ok, false);
+  assert.equal(taskHrefForContentType("spelling"), "/games/spelling");
+});
+
+test("writing content routes to lesson flow, not spelling game", () => {
+  assert.equal(taskHrefForContentType("writing"), "/games/lesson");
+});
+
+test("grammar content routes to lesson flow, not spelling game", () => {
+  assert.equal(taskHrefForContentType("grammar"), "/games/lesson");
+});
+
+test("punctuation content routes to lesson flow, not spelling game", () => {
+  assert.equal(taskHrefForContentType("punctuation"), "/games/lesson");
+});
+
+test("valid spelling content still routes to spelling game", () => {
+  const validSpellingItems = [
+    {
+      questionType: "spelling",
+      word: "accommodate",
+      sentenceContext: "Please accommodate our request.",
+    },
+  ];
+  const contract = validateSpellingContentContract(validSpellingItems);
+
+  assert.equal(contract.ok, true);
+  assert.equal(taskHrefForContentType("spelling"), "/games/spelling");
 });
