@@ -26,6 +26,11 @@ const actions: Array<{ key: ActionKey; label: string }> = [
 ];
 
 type GuidedAction = ActionKey | "open_qlf_baseline" | "open_attempts" | "open_weak_areas" | "open_snapshot_view" | "open_heartbeat" | "open_recommendation";
+type ActionCentreMeta = {
+  buttonLabel: string;
+  type: "Navigate" | "Refresh" | "Audit" | "Generate" | "Review";
+  purpose: string;
+};
 
 type DiagnosticPlaybook = {
   why: string;
@@ -36,6 +41,53 @@ type DiagnosticPlaybook = {
 
 function isActionKey(action: GuidedAction | null): action is ActionKey {
   return actions.some((item) => item.key === action);
+}
+
+function actionCentreMeta(action: GuidedAction): ActionCentreMeta {
+  switch (action) {
+    case "open_qlf_baseline":
+      return {
+        buttonLabel: "Open QLF baseline guidance",
+        type: "Navigate",
+        purpose: "Opens Student Profile > Quick Level Finder.",
+      };
+    case "refresh_snapshot":
+      return {
+        buttonLabel: "Refresh snapshot",
+        type: "Refresh",
+        purpose: "Refreshes the current Academic Intelligence snapshot.",
+      };
+    case "rerun_recommendation_sync_audit":
+      return {
+        buttonLabel: "Review and log sync audit",
+        type: "Audit",
+        purpose: "Reviews current Recommendation Sync output and records an audit event.",
+      };
+    case "generate_catch_up_recommendation":
+      return {
+        buttonLabel: "Sync catch-up recommendation",
+        type: "Generate",
+        purpose: "Syncs catch-up tasks from current Brain recommendations.",
+      };
+    case "generate_homework_recommendation":
+      return {
+        buttonLabel: "Sync homework recommendation",
+        type: "Generate",
+        purpose: "Syncs homework tasks from the current plan.",
+      };
+    case "mark_warning_reviewed":
+      return {
+        buttonLabel: "Log warning review",
+        type: "Review",
+        purpose: "Records this warning review in the Brain timeline.",
+      };
+    default:
+      return {
+        buttonLabel: "Open details",
+        type: "Navigate",
+        purpose: "Opens the relevant Brain evidence section.",
+      };
+  }
 }
 
 function badgeClass(status: string): string {
@@ -509,20 +561,29 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
             <h2 className="text-sm font-bold text-white">Action Centre</h2>
             <p className="mt-2 text-xs text-slate-300">Follow these steps in order. The first one is the next best action.</p>
             <div className="mt-3 grid gap-2">
-              {prioritizedActions.map((step, index) => (
-                <div key={step.key} className={`rounded-lg border p-3 ${index === 0 ? "border-indigo-400/50 bg-indigo-500/10" : "border-slate-800 bg-slate-900/40"}`}>
-                  <p className="text-xs font-bold text-white">{index + 1}. {step.label}</p>
-                  <p className="mt-1 text-xs text-slate-300">{step.reason}</p>
-                  <button
-                    type="button"
-                    onClick={() => void runGuidedAction(step.key)}
-                    disabled={busyAction !== null}
-                    className="mt-2 rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-3 py-2 text-xs font-bold text-indigo-100 disabled:opacity-50"
-                  >
-                    {busyAction === step.key ? "Running..." : index === 0 ? "Do this now" : "Run action"}
-                  </button>
-                </div>
-              ))}
+              {prioritizedActions.map((step, index) => {
+                const meta = actionCentreMeta(step.key);
+                return (
+                  <div key={step.key} className={`rounded-lg border p-3 ${index === 0 ? "border-indigo-400/50 bg-indigo-500/10" : "border-slate-800 bg-slate-900/40"}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="text-xs font-bold text-white">{index + 1}. {step.label}</p>
+                      <span className="rounded-full border border-slate-600 bg-slate-950/70 px-2 py-0.5 text-[10px] font-black uppercase text-slate-200">
+                        {meta.type}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-300">{step.reason}</p>
+                    <p className="mt-1 text-xs text-slate-400">{meta.purpose}</p>
+                    <button
+                      type="button"
+                      onClick={() => void runGuidedAction(step.key)}
+                      disabled={busyAction !== null}
+                      className="mt-2 rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-3 py-2 text-xs font-bold text-indigo-100 disabled:opacity-50"
+                    >
+                      {busyAction === step.key ? "Running..." : meta.buttonLabel}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </section>
 

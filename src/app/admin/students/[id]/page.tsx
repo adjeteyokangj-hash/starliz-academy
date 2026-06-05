@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import AdminStatCard from "@/components/admin/AdminStatCard";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
+import { buildAiGeneratorUrl } from "@/lib/admin-ai-generator-url";
 import { mapHeartbeatActionButton, toHeartbeatDecisionViewModel } from "@/lib/academic-intelligence/heartbeatActionMap";
 import type { CoachHeartbeatSignalSummary, CoverageEntry, HeartbeatDecision, SchoolWeekday } from "@/lib/academic-intelligence/types";
 
@@ -1314,14 +1315,20 @@ export default function StudentDetailPage() {
                   </div>
                   <div className="mt-3 grid gap-3 xl:grid-cols-2">
                     {progression.generationTargets.map((target) => {
-                      const params = new URLSearchParams({
+                      const aiGeneratorHref = buildAiGeneratorUrl({
                         studentId: student.id,
                         subject: target.subject,
                         skill: target.skillFocus,
-                        difficulty: String(target.difficulty),
+                        strand: target.strand,
+                        englishStrand: target.strand,
+                        topic: target.skillFocus,
+                        activityType: "targeted practice",
+                        masteryOutcome: target.reason,
+                        source: "student-profile",
+                        yearGroup: target.yearGroup,
+                        keyStage: target.keyStage,
+                        difficulty: target.difficulty,
                       });
-                      if (target.yearGroup) params.set("yearGroup", target.yearGroup);
-                      if (target.keyStage) params.set("keyStage", target.keyStage);
 
                       return (
                         <div key={target.scopedSubject} className="rounded-2xl border border-emerald-400/20 bg-slate-950/40 p-3">
@@ -1332,7 +1339,7 @@ export default function StudentDetailPage() {
                           <p className="mt-2 text-sm text-slate-300">{target.skillFocus}</p>
                           <p className="mt-1 text-xs text-slate-400">Accuracy {target.accuracy}% · {target.reason}</p>
                           <Link
-                            href={`/admin/ai-generator?${params.toString()}`}
+                            href={aiGeneratorHref}
                             className="mt-3 inline-flex rounded-xl bg-emerald-400 px-3 py-2 text-xs font-black text-slate-950 transition hover:bg-emerald-300"
                           >
                             Open AI Generate

@@ -240,7 +240,7 @@ type GenerationContext = {
   masteryOutcome?: string;
   aiMode: AiGenerationMode;
   targetStudentId: string | null;
-  source: "manual" | "weak-area";
+  source: "manual" | "weak-area" | "student-profile";
   weakAreaId: string | null;
 };
 
@@ -256,6 +256,29 @@ const ENGLISH_STRAND_OPTIONS: Array<{ value: EnglishStrand; label: string }> = [
   { value: "writing", label: "Writing" },
   { value: "vocabulary", label: "Vocabulary" },
 ];
+
+function isEnglishStrandValue(value: string | null): value is EnglishStrand {
+  return ENGLISH_STRAND_OPTIONS.some((option) => option.value === value);
+}
+
+function normalizeGenerationSource(value: string | null): GenerationContext["source"] {
+  if (value === "weak-area") return "weak-area";
+  if (value === "student-profile") return "student-profile";
+  return "manual";
+}
+
+function generationContextSourceLabel(source: GenerationContext["source"]): string {
+  if (source === "weak-area") return "AI Intervention Engine";
+  if (source === "student-profile") return "Student profile target";
+  return "Manual generator";
+}
+
+function normalizePrefillItemCount(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return null;
+  return Math.max(1, Math.min(10, Math.floor(parsed)));
+}
 
 function isEnglishParentSubject(value: Subject): boolean {
   return value === "english-language" || value === "gcse-english" || value === "gcse-english-language";
@@ -671,6 +694,24 @@ export default function AiGeneratorPage() {
   const prefillYearGroup = searchParams.get("yearGroup");
   const prefillKeyStage = searchParams.get("keyStage");
   const prefillDifficulty = Number(searchParams.get("difficulty"));
+  const prefillTopic = searchParams.get("topic");
+  const prefillStrand = searchParams.get("englishStrand") ?? searchParams.get("strand");
+  const prefillActivityType = searchParams.get("activityType");
+  const prefillMasteryOutcome = searchParams.get("masteryOutcome");
+  const rawPrefillSource = searchParams.get("source");
+  const prefillSource = normalizeGenerationSource(rawPrefillSource);
+  const prefillWeakAreaId = searchParams.get("weakAreaId");
+  const prefillItemCount = normalizePrefillItemCount(searchParams.get("itemCount"));
+  const hasTargetPrefill = Boolean(
+    prefillSubject
+    || prefillSkill
+    || prefillTopic
+    || prefillActivityType
+    || prefillMasteryOutcome
+    || prefillStudentId
+    || prefillWeakAreaId
+    || rawPrefillSource
+  );
 
   // Initialize with sensible defaults; validate against curriculum
   const initialYearGroup: YearGroup = prefillYearGroup && YEAR_GROUPS.includes(prefillYearGroup as YearGroup)
@@ -702,24 +743,30 @@ export default function AiGeneratorPage() {
     : keyStageForYearGroup(yearGroup);
   const [keyStage, setKeyStage] = useState<(typeof KEY_STAGES)[number]>(initialKeyStage);
   const requiresEnglishStrand = isEnglishParentSubject(subject);
+  const initialEnglishStrand = requiresEnglishStrand && isEnglishStrandValue(prefillStrand)
+    ? prefillStrand
+    : requiresEnglishStrand
+      ? "reading"
+      : "";
   const [englishStrand, setEnglishStrand] = useState<EnglishStrand | "">(
-    isEnglishParentSubject(subject) ? "reading" : ""
+    initialEnglishStrand
   );
   const skillSubject = resolvePathValidationSubject(subject, requiresEnglishStrand ? englishStrand : null);
   const availableSkills = getAvailableSkills(skillSubject, yearGroup);
-  const [skillFocus, setSkillFocus] = useState(
-    prefillSkill && availableSkills.includes(prefillSkill) ? prefillSkill : availableSkills[0] ?? ""
-  );
+  const prefillSkillMatched = Boolean(prefillSkill && availableSkills.includes(prefillSkill));
+  const initialSkillFocus = prefillSkillMatched && prefillSkill ? prefillSkill : availableSkills[0] ?? "";
+  const [skillFocus, setSkillFocus] = useState(initialSkillFocus);
   const [difficulty, setDifficulty] = useState(
     Number.isFinite(prefillDifficulty) && prefillDifficulty >= 1 ? prefillDifficulty : prefillWords ? 1 : 2
   );
   const [aiMode, setAiMode] = useState<AiGenerationMode>(DEFAULT_AI_MODE);
-  const [items, setItems] = useState(5);
-  const [autoItemsEnabled, setAutoItemsEnabled] = useState(true);
-  const [topicChoice, setTopicChoice] = useState<string>(prefillWords ? CUSTOM_TOPIC_VALUE : "");
-  const [customTopic, setCustomTopic] = useState(prefillWords ? `Focus practice on: ${prefillWords}` : "");
-  const [activityType, setActivityType] = useState("");
-  const [masteryOutcome, setMasteryOutcome] = useState("");
+  const [items, setItems] = useState(prefillItemCount ?? 5);
+  const [autoItemsEnabled, setAutoItemsEnabled] = useState(prefillItemCount === null);
+  const initialCustomTopic = prefillTopic?.trim() || (prefillWords ? `Focus practice on: ${prefillWords}` : "");
+  const [topicChoice, setTopicChoice] = useState<string>(initialCustomTopic ? CUSTOM_TOPIC_VALUE : "");
+  const [customTopic, setCustomTopic] = useState(initialCustomTopic);
+  const [activityType, setActivityType] = useState(prefillActivityType ?? "");
+  const [masteryOutcome, setMasteryOutcome] = useState(prefillMasteryOutcome ?? "");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -744,7 +791,11 @@ export default function AiGeneratorPage() {
   const [automationDurationMs, setAutomationDurationMs] = useState<number | null>(null);
   const [automationRetryMode, setAutomationRetryMode] = useState<"autofill" | "weaknesses" | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(
-    prefillWords ? "Follow-up practice prefilled from assignment weak areas." : null
+    hasTargetPrefill
+      ? "Some fields were auto-filled from the student target. Please review before generating."
+      : prefillWords
+        ? "Follow-up practice prefilled from assignment weak areas."
+        : null
   );
   const [weakAreas, setWeakAreas] = useState<WeakArea[]>([]);
   const [weakAreaKeyStageFilter, setWeakAreaKeyStageFilter] = useState("");
@@ -754,7 +805,7 @@ export default function AiGeneratorPage() {
   const [assetUploadBusy, setAssetUploadBusy] = useState<"image" | "audio" | null>(null);
   const [visualAssetActionId, setVisualAssetActionId] = useState<string | null>(null);
   const [visualBatchBusy, setVisualBatchBusy] = useState(false);
-  const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId);
+  const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId?.trim() || null);
   const [generationPhase, setGenerationPhase] = useState<"idle" | "generating" | "repairing-response" | "validating-content" | "retrying-parse">("idle");
   const [generationDiagnostics, setGenerationDiagnostics] = useState<{
     rawResponse: string;
@@ -770,7 +821,7 @@ export default function AiGeneratorPage() {
   const regenerateRequestIdRef = useRef(0);
   const heartbeatTimerRef = useRef<number | null>(null);
   const [previewContext, setPreviewContext] = useState<GenerationContext | null>(null);
-  const [loadedWeakAreaId, setLoadedWeakAreaId] = useState<string | null>(null);
+  const [loadedWeakAreaId, setLoadedWeakAreaId] = useState<string | null>(prefillWeakAreaId?.trim() || null);
   const [weakAreaFormSynced, setWeakAreaFormSynced] = useState(false);
 
   const topicSuggestions = useMemo(() => topicSuggestionsForSelection({
@@ -881,8 +932,8 @@ export default function AiGeneratorPage() {
     masteryOutcome,
     aiMode,
     targetStudentId,
-    source: "manual" as const,
-    weakAreaId: null,
+    source: prefillSource,
+    weakAreaId: loadedWeakAreaId,
   };
   const previewMissingFields = findAiGeneratorPreviewMissingFields(preview, effectiveGenerationContext.subject);
   const saveBlocked = saveState.blocked || previewMissingFields.length > 0;
@@ -988,8 +1039,8 @@ export default function AiGeneratorPage() {
       masteryOutcome,
       aiMode,
       targetStudentId,
-      source: "manual",
-      weakAreaId: null,
+      source: prefillSource,
+      weakAreaId: loadedWeakAreaId,
     };
 
     if (!context.subject || !context.keyStage || !context.yearGroup || !context.skillFocus.trim()) {
@@ -1075,6 +1126,7 @@ export default function AiGeneratorPage() {
           skillFocus: context.skillFocus,
           ageGroup: context.ageGroup,
           difficulty: context.difficulty,
+          studentId: context.targetStudentId ?? undefined,
           numberOfItems: effectiveItemCount,
           topic: context.topic,
           activityType: context.activityType,
@@ -1265,8 +1317,8 @@ export default function AiGeneratorPage() {
       activityType,
       masteryOutcome,
       targetStudentId,
-      source: "manual" as const,
-      weakAreaId: null,
+      source: prefillSource,
+      weakAreaId: loadedWeakAreaId,
     };
 
     const generationTypeForContext = GENERATION_CONTENT_TYPE_BY_SUBJECT[context.subject];
@@ -1873,6 +1925,11 @@ export default function AiGeneratorPage() {
       <div className="xl:sticky xl:top-24 xl:z-20 xl:max-h-[calc(100vh-96px)] xl:overflow-y-auto">
       <AdminSectionCard title="Manual Curriculum Generator" eyebrow="Manual AI generator">
         <div className="space-y-4 pb-6">
+          {hasTargetPrefill ? (
+            <p className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-100">
+              Some fields were auto-filled from the student target. Please review before generating.
+            </p>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-bold text-slate-300">
               Year group
@@ -2375,7 +2432,7 @@ export default function AiGeneratorPage() {
             <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-xs text-slate-400">
               <p className="font-bold text-slate-300 mb-2">Diagnostic Info:</p>
               <ul className="space-y-1">
-                <li><strong>Source:</strong> {effectiveGenerationContext.source === "weak-area" ? "AI Intervention Engine" : "Manual generator"}</li>
+                <li><strong>Source:</strong> {generationContextSourceLabel(effectiveGenerationContext.source)}</li>
                 <li><strong>AI Mode:</strong> {effectiveGenerationContext.aiMode}</li>
                 <li><strong>Year Group:</strong> {effectiveGenerationContext.yearGroup}</li>
                 <li><strong>Subject:</strong> {formatSubjectLabel(effectiveGenerationContext.subject)}</li>
@@ -2663,7 +2720,7 @@ export default function AiGeneratorPage() {
                 </span>
               ) : null}
               <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-black text-slate-200">
-                {effectiveGenerationContext.source === "weak-area" ? "Source: AI Intervention Engine" : "Source: Manual generator"}
+                Source: {generationContextSourceLabel(effectiveGenerationContext.source)}
               </span>
               <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-black text-slate-200">
                 Subject: {formatSubjectLabel(effectiveGenerationContext.subject)}
