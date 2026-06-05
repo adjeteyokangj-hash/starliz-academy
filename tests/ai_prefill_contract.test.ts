@@ -9,7 +9,7 @@ import {
   type LegacyAiGeneratorPrefill,
   type UniversalAiPrefillContract,
 } from "../src/lib/ai-prefill-contract";
-import { normalizeSubject, subjectsForYearGroup, skillsForSubjectAndYear, type Subject, type YearGroup } from "../src/lib/curriculum";
+import { aiGeneratorSubjectsForYearGroup, normalizeSubject, skillsForSubjectAndYear, type Subject, type YearGroup } from "../src/lib/curriculum";
 
 const emptyLegacy: LegacyAiGeneratorPrefill = {
   studentId: null,
@@ -32,18 +32,20 @@ function runResolve(contract: UniversalAiPrefillContract | null) {
   return resolveUniversalPrefill({
     contract,
     legacy: emptyLegacy,
-    availableSubjectsForYear: (year: YearGroup) => subjectsForYearGroup(year),
+    availableSubjectsForYear: (year: YearGroup) => aiGeneratorSubjectsForYearGroup(year),
     normalizeSubject,
     isEnglishParentSubject: (value: Subject) => value === "english-language" || value === "gcse-english" || value === "gcse-english-language",
     normalizeEnglishStrand: (value: string | null) => {
       const normalized = value?.trim().toLowerCase();
       if (!normalized) return null;
-      return ["phonics", "spelling", "reading", "grammar", "punctuation", "writing", "vocabulary"].includes(normalized)
+      return ["phonics", "spelling", "reading", "comprehension", "grammar", "punctuation", "writing", "vocabulary"].includes(normalized)
         ? normalized
         : null;
     },
     deriveSkillFromEnglishStrand: (strand: string, year: YearGroup, subject: Subject) => {
-      const mappedSubject = subject === "english-language" ? (strand as Subject) : subject;
+      const mappedSubject = subject === "english-language"
+        ? (normalizeSubject(strand) ?? subject)
+        : subject;
       return skillsForSubjectAndYear(mappedSubject, year)[0] ?? "";
     },
     availableSkillsForSubjectAndYear: (subject: Subject, year: YearGroup) => skillsForSubjectAndYear(subject, year),
@@ -105,6 +107,62 @@ test("english grammar prefill prevents silent phonics fallback", () => {
   const resolved = runResolve(contract);
   assert.equal(resolved.values.englishStrand, "grammar");
   assert.equal(/phonics/i.test(resolved.values.skillFocus), false);
+});
+
+test("year 1 english grammar prefill resolves to grammar skill", () => {
+  const contract = buildUniversalPrefillContract({
+    trigger: "student-target",
+    studentId: "student-year-1-grammar",
+    fields: {
+      yearGroup: { value: "Year 1", source: "student", confidence: "high" },
+      keyStage: { value: "KS1", source: "student", confidence: "high" },
+      subject: { value: "english-language", source: "prediction", confidence: "high" },
+      englishStrand: { value: "grammar", source: "prediction", confidence: "high" },
+      skillFocus: { value: "Grammar", source: "prediction", confidence: "medium" },
+    },
+  });
+
+  const resolved = runResolve(contract);
+  assert.equal(resolved.values.subject, "english-language");
+  assert.equal(resolved.values.englishStrand, "grammar");
+  assert.equal(resolved.values.skillFocus, "Simple sentences");
+  assert.equal(/phonics/i.test(resolved.values.skillFocus), false);
+  assert.equal(resolved.blockingWarnings.length, 0);
+});
+
+test("comprehension strand maps to reading skill internally", () => {
+  const contract = buildUniversalPrefillContract({
+    trigger: "student-target",
+    studentId: "student-comprehension",
+    fields: {
+      yearGroup: { value: "Year 1", source: "student", confidence: "high" },
+      keyStage: { value: "KS1", source: "student", confidence: "high" },
+      subject: { value: "english-language", source: "prediction", confidence: "high" },
+      englishStrand: { value: "comprehension", source: "prediction", confidence: "high" },
+    },
+  });
+
+  const resolved = runResolve(contract);
+  assert.equal(resolved.values.subject, "english-language");
+  assert.equal(resolved.values.englishStrand, "comprehension");
+  assert.equal(resolved.values.skillFocus, skillsForSubjectAndYear("reading", "Year 1")[0]);
+  assert.equal(resolved.blockingWarnings.length, 0);
+});
+
+test("student-targeted english prefill without strand blocks for review", () => {
+  const contract = buildUniversalPrefillContract({
+    trigger: "student-target",
+    studentId: "student-english-missing-strand",
+    fields: {
+      yearGroup: { value: "Year 1", source: "student", confidence: "high" },
+      keyStage: { value: "KS1", source: "student", confidence: "high" },
+      subject: { value: "english-language", source: "prediction", confidence: "high" },
+    },
+  });
+
+  const resolved = runResolve(contract);
+  assert.equal(resolved.values.subject, "english-language");
+  assert.ok(resolved.blockingWarnings.some((entry) => entry.toLowerCase().includes("english strand is missing")));
 });
 
 test("prefill contract encode/decode roundtrip preserves trigger and fields", () => {

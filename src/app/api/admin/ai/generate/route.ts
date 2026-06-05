@@ -40,10 +40,10 @@ import {
   ageGroupForYearGroup,
   isValidCurriculumPath,
   topicSuggestionsForSelection,
+  aiGeneratorSubjectsForYearGroup,
   type GenerationType,
   type Subject,
   skillsForSubjectAndYear,
-  subjectsForYearGroup,
 } from "@/lib/curriculum";
 
 const BATCH_SIZE = 12;
@@ -92,7 +92,7 @@ const DIFFICULTY_PROFILE: Record<number, {
 };
 
 type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" | "writing" | "science" | "languages";
-type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuation" | "writing" | "vocabulary";
+type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuation" | "writing" | "vocabulary" | "comprehension";
 type VisualGenerationMode = "none" | "planned_only" | "generate_now";
 type ScienceDiscipline = "chemistry" | "physics" | "biology";
 
@@ -136,6 +136,7 @@ function normalizeEnglishStrand(value: unknown): EnglishStrand | null {
   if (normalized === "phonics") return "phonics";
   if (normalized === "spelling") return "spelling";
   if (normalized === "reading") return "reading";
+  if (normalized === "comprehension") return "comprehension";
   if (normalized === "grammar") return "grammar";
   if (normalized === "punctuation") return "punctuation";
   if (normalized === "writing") return "writing";
@@ -146,7 +147,7 @@ function normalizeEnglishStrand(value: unknown): EnglishStrand | null {
 function englishStrandToGenerationType(strand: EnglishStrand): GenerationType {
   if (strand === "phonics") return "phonics";
   if (strand === "spelling") return "spelling";
-  if (strand === "reading") return "reading";
+  if (strand === "reading" || strand === "comprehension") return "reading";
   if (strand === "grammar") return "grammar";
   if (strand === "punctuation") return "punctuation";
   if (strand === "writing") return "writing";
@@ -156,7 +157,7 @@ function englishStrandToGenerationType(strand: EnglishStrand): GenerationType {
 function englishStrandToSubject(strand: EnglishStrand): Subject {
   if (strand === "phonics") return "phonics";
   if (strand === "spelling") return "spelling";
-  if (strand === "reading") return "reading";
+  if (strand === "reading" || strand === "comprehension") return "reading";
   if (strand === "grammar") return "grammar";
   if (strand === "punctuation") return "punctuation";
   if (strand === "writing") return "writing";
@@ -190,7 +191,7 @@ function shouldAutoGenerateVisuals(type: GenerationType): boolean {
 
 function mapEnglishStrandToPromptType(strand: EnglishStrand): PromptType {
   if (strand === "phonics" || strand === "spelling") return "spelling";
-  if (strand === "reading" || strand === "vocabulary") return "reading";
+  if (strand === "reading" || strand === "comprehension" || strand === "vocabulary") return "reading";
   if (strand === "grammar") return "grammar";
   if (strand === "punctuation") return "punctuation";
   return "writing";
@@ -220,7 +221,7 @@ function mapGenerationTypeToValidatorType(
 function mapEnglishStrandToValidatorType(strand: EnglishStrand): "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" {
   if (strand === "phonics") return "phonics";
   if (strand === "spelling") return "spelling";
-  if (strand === "reading" || strand === "vocabulary") return "reading";
+  if (strand === "reading" || strand === "comprehension" || strand === "vocabulary") return "reading";
   if (strand === "grammar") return "grammar";
   if (strand === "punctuation") return "punctuation";
   return "writing";
@@ -2027,7 +2028,7 @@ export async function POST(req: Request) {
       details: {
         category: "validation_error",
         field: "englishStrand",
-        allowed: ["phonics", "spelling", "reading", "grammar", "punctuation", "writing", "vocabulary"],
+        allowed: ["phonics", "spelling", "reading", "comprehension", "grammar", "punctuation", "writing", "vocabulary"],
       },
     }, { status: 422 });
   }
@@ -2099,7 +2100,7 @@ export async function POST(req: Request) {
     })
     : undefined;
 
-  const allowedSubjectsForYear = subjectsForYearGroup(safeYearGroup);
+  const allowedSubjectsForYear = aiGeneratorSubjectsForYearGroup(safeYearGroup);
   if (!allowedSubjectsForYear.includes(sourceSubject)) {
     return NextResponse.json({
       success: false,

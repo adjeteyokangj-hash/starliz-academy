@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCurriculumCoverageReport,
+  aiGeneratorSubjectsForYearGroup,
   isValidCurriculumPath,
   skillsForSubjectAndYear,
   topicSuggestionsForSelection,
@@ -25,6 +26,53 @@ test("year 4 punctuation skills are fully mapped", () => {
     assert.ok(skills.includes(skill), `Missing required Year 4 punctuation skill: ${skill}`);
     const topics = topicSuggestionsForSelection({ yearGroup, subject, skillFocus: skill });
     assert.ok(topics.length > 0, `Missing topics for Year 4 punctuation skill: ${skill}`);
+  }
+});
+
+test("AI Generator exposes parent English for KS1/KS2 while keeping strands internal", () => {
+  const year1Subjects = aiGeneratorSubjectsForYearGroup("Year 1");
+  assert.ok(year1Subjects.includes("english-language"));
+  assert.ok(!year1Subjects.includes("grammar"));
+  assert.ok(!year1Subjects.includes("punctuation"));
+  assert.ok(!year1Subjects.includes("vocabulary"));
+
+  const year4Subjects = aiGeneratorSubjectsForYearGroup("Year 4");
+  assert.ok(year4Subjects.includes("english-language"));
+  assert.ok(!year4Subjects.includes("grammar"));
+  assert.ok(!year4Subjects.includes("punctuation"));
+  assert.ok(!year4Subjects.includes("vocabulary"));
+});
+
+test("KS1 English internal strand skills are mapped for generation", () => {
+  const expected = {
+    "Year 1": {
+      grammar: ["Simple sentences", "Nouns and verbs", "Adjectives", "Joining words"],
+      punctuation: ["Capital letters", "Full stops", "Question marks", "Exclamation marks"],
+      vocabulary: ["Word meanings", "Describing words", "Synonyms", "Topic words"],
+    },
+    "Year 2": {
+      grammar: ["Expanded noun phrases", "Past and present tense", "Adverbs", "Sentence types"],
+      punctuation: ["Commas in lists", "Apostrophes for contractions", "Question marks", "Exclamation marks"],
+      vocabulary: ["Context clues", "Synonyms and antonyms", "Word families", "Precise word choice"],
+    },
+  } as const;
+
+  for (const [yearGroup, subjects] of Object.entries(expected)) {
+    for (const [subject, requiredSkills] of Object.entries(subjects)) {
+      const skills = skillsForSubjectAndYear(subject as "grammar" | "punctuation" | "vocabulary", yearGroup);
+      assert.deepEqual(skills, requiredSkills);
+      const result = isValidCurriculumPath({
+        yearGroup,
+        subject: subject as "grammar" | "punctuation" | "vocabulary",
+        skillFocus: requiredSkills[0],
+        topic: topicSuggestionsForSelection({
+          yearGroup,
+          subject: subject as "grammar" | "punctuation" | "vocabulary",
+          skillFocus: requiredSkills[0],
+        })[0],
+      });
+      assert.equal(result.ok, true, `Expected ${yearGroup} ${subject} path to validate: ${result.reason}`);
+    }
   }
 });
 

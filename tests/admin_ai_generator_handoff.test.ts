@@ -82,6 +82,28 @@ test("buildAiGeneratorUrl maps English strand targets to parent English context"
   assert.equal(params.get("keyStage"), "KS2");
 });
 
+test("buildAiGeneratorUrl maps comprehension targets to parent English context", () => {
+  const href = buildAiGeneratorUrl({
+    studentId: "student-1",
+    subject: "comprehension",
+    skill: "Retrieval",
+    strand: "Comprehension",
+    topic: "Reading comprehension practice",
+    source: "student-profile",
+    yearGroup: "Year 1",
+    keyStage: "KS1",
+  });
+
+  const params = paramsFor(href);
+
+  assert.equal(params.get("subject"), "english-language");
+  assert.equal(params.get("strand"), "comprehension");
+  assert.equal(params.get("englishStrand"), "comprehension");
+  assert.equal(params.get("skill"), "Retrieval");
+  assert.equal(params.get("yearGroup"), "Year 1");
+  assert.equal(params.get("keyStage"), "KS1");
+});
+
 test("buildAiGeneratorUrl serializes universal prefill contract when provided", () => {
   const href = buildAiGeneratorUrl({
     subject: "maths",

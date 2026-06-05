@@ -19,7 +19,7 @@ export type AiGeneratorHandoffParams = {
 };
 
 const AI_GENERATOR_PATH = "/admin/ai-generator";
-const ENGLISH_STRANDS = new Set(["phonics", "spelling", "reading", "grammar", "punctuation", "writing", "vocabulary"]);
+const ENGLISH_STRANDS = new Set(["phonics", "spelling", "reading", "grammar", "punctuation", "writing", "vocabulary", "comprehension"]);
 
 function cleanText(value: string | null | undefined): string | null {
   const cleaned = value?.trim();

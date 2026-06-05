@@ -411,6 +411,7 @@ export function normalizeSubject(value: string | null | undefined): Subject | nu
     mathematics: "maths",
     algebra: "maths",
     english: "english-language",
+    comprehension: "reading",
     literature: "english-literature",
     lang: "english-language",
     "english-lang": "english-language",
@@ -470,6 +471,7 @@ export function normalizeSubject(value: string | null | undefined): Subject | nu
   if (cleaned.includes("english") && cleaned.includes("literature")) return "english-literature";
   if (cleaned.includes("english") && cleaned.includes("language")) return "english-language";
   if (cleaned.includes("english")) return "english-language";
+  if (cleaned.includes("comprehension")) return "reading";
   if (cleaned.includes("reading")) return "reading";
   if (cleaned.includes("spelling")) return "spelling";
   if (cleaned.includes("phonics")) return "phonics";
@@ -651,6 +653,24 @@ export function subjectsForYearGroup(yearGroup: string | null | undefined): read
   return SUBJECTS_BY_YEAR[normalized] ?? SUBJECTS_BY_YEAR["Year 1"];
 }
 
+const PRIMARY_ENGLISH_PARENT_YEARS = new Set<YearGroup>(["Year 1", "Year 2", "Year 3", "Year 4", "Year 5", "Year 6"]);
+const INTERNAL_ENGLISH_STRAND_SUBJECTS = new Set<Subject>([
+  "phonics",
+  "spelling",
+  "reading",
+  "writing",
+  "grammar",
+  "punctuation",
+  "vocabulary",
+]);
+
+export function aiGeneratorSubjectsForYearGroup(yearGroup: string | null | undefined): readonly Subject[] {
+  const normalized = normalizeYearGroup(yearGroup);
+  const subjects = subjectsForYearGroup(normalized);
+  if (!normalized || !PRIMARY_ENGLISH_PARENT_YEARS.has(normalized)) return subjects;
+  return ["english-language", ...subjects.filter((subject) => !INTERNAL_ENGLISH_STRAND_SUBJECTS.has(subject))];
+}
+
 // Skill focus options by subject and year group
 type SkillsBySubjectAndYear = Partial<Record<Subject, Record<string, readonly string[]>>>;
 
@@ -744,6 +764,8 @@ const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
     "Year 11": ["Extended writing", "Critical response", "Transactional writing"],
   },
   "grammar": {
+    "Year 1": ["Simple sentences", "Nouns and verbs", "Adjectives", "Joining words"],
+    "Year 2": ["Expanded noun phrases", "Past and present tense", "Adverbs", "Sentence types"],
     "Year 3": ["Nouns", "Verbs", "Adjectives", "Capital letters", "Full stops"],
     "Year 4": ["Determiners", "Adverbs", "Prepositions", "Tenses"],
     "Year 5": ["Coordinating conjunctions", "Subordinating conjunctions", "Subject and object", "Active voice"],
@@ -755,6 +777,8 @@ const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
     "Year 11": ["Grammar for effect", "Stylistic analysis", "Language transformation"],
   },
   "punctuation": {
+    "Year 1": ["Capital letters", "Full stops", "Question marks", "Exclamation marks"],
+    "Year 2": ["Commas in lists", "Apostrophes for contractions", "Question marks", "Exclamation marks"],
     "Year 3": ["Full stops", "Capital letters", "Question marks", "Exclamation marks"],
     "Year 4": [
       "Commas in lists",
@@ -773,6 +797,8 @@ const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
     "Year 11": ["Punctuation sophistication", "Semantic awareness", "Register control"],
   },
   "vocabulary": {
+    "Year 1": ["Word meanings", "Describing words", "Synonyms", "Topic words"],
+    "Year 2": ["Context clues", "Synonyms and antonyms", "Word families", "Precise word choice"],
     "Year 3": ["High frequency words", "Synonyms", "Opposites"],
     "Year 4": ["Word families", "Morphology", "Context clues"],
     "Year 5": ["Etymology", "Semantic fields", "Connotation and denotation"],
@@ -1590,7 +1616,9 @@ function generateTopicsFromSkill(skillFocus: string, subject: Subject): readonly
     const year = normalizeYearGroup(input.yearGroup);
     if (!year) return { ok: false, reason: "Invalid year group" };
     const subjects = subjectsForYearGroup(year);
-    if (!subjects.includes(input.subject)) return { ok: false, reason: "Subject is not available for selected year group" };
+    const hasInternalEnglishStrandPath = INTERNAL_ENGLISH_STRAND_SUBJECTS.has(input.subject)
+      && skillsForSubjectAndYear(input.subject, year).length > 0;
+    if (!subjects.includes(input.subject) && !hasInternalEnglishStrandPath) return { ok: false, reason: "Subject is not available for selected year group" };
 
     const skill = (input.skillFocus ?? "").trim();
     const skills = skillsForSubjectAndYear(input.subject, year);

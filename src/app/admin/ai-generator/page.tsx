@@ -26,7 +26,7 @@ import {
   yearGroupsForKeyStage,
   ageGroupForYearGroup,
   shouldApplyExamBoardTag,
-  subjectsForYearGroup,
+  aiGeneratorSubjectsForYearGroup,
   skillsForSubjectAndYear,
   topicSuggestionsForSelection,
   type Subject,
@@ -83,7 +83,7 @@ type GeneratedPreview = {
 };
 
 function getAvailableSubjects(yearGroup: string | null | undefined): readonly Subject[] {
-  return subjectsForYearGroup(yearGroup);
+  return aiGeneratorSubjectsForYearGroup(yearGroup);
 }
 
 function getAvailableSkills(subject: Subject, yearGroup: string | null | undefined): readonly string[] {
@@ -251,12 +251,13 @@ type GenerationContext = {
 };
 
 const CUSTOM_TOPIC_VALUE = "__custom_topic__";
-type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuation" | "writing" | "vocabulary";
+type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuation" | "writing" | "vocabulary" | "comprehension";
 
 const ENGLISH_STRAND_OPTIONS: Array<{ value: EnglishStrand; label: string }> = [
   { value: "phonics", label: "Phonics" },
   { value: "spelling", label: "Spelling" },
   { value: "reading", label: "Reading" },
+  { value: "comprehension", label: "Comprehension" },
   { value: "grammar", label: "Grammar" },
   { value: "punctuation", label: "Punctuation" },
   { value: "writing", label: "Writing" },
@@ -293,6 +294,7 @@ function resolvePathValidationSubject(subject: Subject, strand: EnglishStrand | 
   if (isGcseEnglishSubject(subject)) {
     return subject === "gcse-english" ? "gcse-english-language" : subject;
   }
+  if (strand === "comprehension") return "reading";
   return strand as Subject;
 }
 
@@ -306,6 +308,7 @@ function deriveSkillFocusFromEnglishStrand(strand: EnglishStrand | "", yearGroup
     phonics: ["phonics", "grapheme", "blending", "segmenting"],
     spelling: ["spelling"],
     reading: ["reading", "comprehension", "inference", "analysis", "retrieval"],
+    comprehension: ["comprehension", "retrieval", "inference", "reading"],
     grammar: ["grammar"],
     punctuation: ["punctuation"],
     writing: ["writing", "creative", "transactional", "response", "extended"],
