@@ -275,7 +275,7 @@ export default function AdminBrainCentrePage() {
                     disabled={refreshing}
                     className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200 hover:border-slate-500 disabled:opacity-60"
                   >
-                    {refreshing ? "Refreshing..." : "Refresh snapshot"}
+                    {refreshing ? "Refreshing dashboard..." : "Refresh dashboard"}
                   </button>
                 </div>
               </div>

@@ -21,8 +21,8 @@ const actions: Array<{ key: ActionKey; label: string }> = [
   { key: "refresh_snapshot", label: "Refresh Snapshot" },
   { key: "generate_catch_up_recommendation", label: "Generate Catch-Up Recommendation" },
   { key: "generate_homework_recommendation", label: "Generate Homework Recommendation" },
-  { key: "rerun_recommendation_sync_audit", label: "Re-run Recommendation Sync Audit" },
-  { key: "mark_warning_reviewed", label: "Mark Warning Reviewed" },
+  { key: "rerun_recommendation_sync_audit", label: "Review current sync audit" },
+  { key: "mark_warning_reviewed", label: "Log warning review" },
 ];
 
 type GuidedAction = ActionKey | "open_qlf_baseline" | "open_attempts" | "open_weak_areas" | "open_snapshot_view" | "open_heartbeat" | "open_recommendation";
@@ -96,7 +96,7 @@ function diagnosticPlaybook(issue: BrainDiagnosticIssue): DiagnosticPlaybook {
       return {
         why: issue.detail,
         impact: "Different engines are disagreeing, so the next step can be wrong.",
-        actionLabel: "Re-run Recommendation Sync Audit",
+        actionLabel: "Review current sync audit",
         action: "rerun_recommendation_sync_audit",
       };
     case "heartbeat_conflicts":
@@ -308,11 +308,11 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
       plan.push({ key: "refresh_snapshot", label: "Refresh Snapshot", reason: "Snapshot must be fresh before trusting recommendations." });
     }
     if (payload.recommendationSync.mismatches.length > 0) {
-      plan.push({ key: "rerun_recommendation_sync_audit", label: "Re-run Recommendation Sync Audit", reason: "Engines disagree on the next action and need re-alignment." });
+      plan.push({ key: "rerun_recommendation_sync_audit", label: "Review current sync audit", reason: "Engines disagree on the next action and need review." });
     }
     plan.push({ key: "generate_catch_up_recommendation", label: "Generate Catch-Up Recommendation", reason: "Create targeted recovery tasks after baseline and sync checks." });
     plan.push({ key: "generate_homework_recommendation", label: "Generate Homework Recommendation", reason: "Follow up with reinforcement tasks for home learning." });
-    plan.push({ key: "mark_warning_reviewed", label: "Mark Warning Reviewed", reason: "Only close the warning after actions are completed." });
+    plan.push({ key: "mark_warning_reviewed", label: "Log warning review", reason: "Record that this warning has been reviewed." });
     const seen = new Set<GuidedAction>();
     return plan.filter((step) => {
       if (seen.has(step.key)) return false;
@@ -468,14 +468,14 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
                     <p className="mt-1">Expected: {friendlyRecommendationLabel(mismatch.expected)}</p>
                     <p className="mt-1">Current: {friendlyRecommendationLabel(mismatch.actual)}</p>
                     <p className="mt-1">Reason: {mismatch.reason}</p>
-                    <p className="mt-1 font-semibold">Recommended action: Re-run recommendation sync audit</p>
+                    <p className="mt-1 font-semibold">Recommended action: Review current sync audit</p>
                     <button
                       type="button"
                       onClick={() => void runGuidedAction("rerun_recommendation_sync_audit")}
                       disabled={busyAction !== null}
                       className="mt-2 rounded-lg border border-amber-200/40 bg-amber-400/20 px-3 py-2 text-xs font-bold text-amber-50 hover:bg-amber-400/30 disabled:opacity-50"
                     >
-                      Re-run Sync Audit
+                      Review sync audit
                     </button>
                   </article>
                 )) : <p className="text-xs text-slate-500">No mismatches.</p>}
