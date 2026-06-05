@@ -6,7 +6,14 @@ import { timelineSchema, toValidationErrors } from "../../../_lib/validation";
 import { requireAdmin } from "@/lib/api_guard";
 
 type Context = { params: Promise<{ schoolId: string; incidentId: string }> };
-type AdminDeps = { requireAdmin: typeof requireAdmin };
+type AdminDeps = {
+  requireAdmin: typeof requireAdmin;
+  getIncident?: typeof getIncident;
+  appendTimelineEvent?: typeof appendTimelineEvent;
+  updateIncident?: typeof updateIncident;
+  appendAuditEvent?: typeof appendAuditEvent;
+  listTimelineEvents?: typeof listTimelineEvents;
+};
 
 export async function POST(request: Request, context: Context) {
   return handleAdminSafeguardingIncidentTimelinePost(request, context);
@@ -15,7 +22,14 @@ export async function POST(request: Request, context: Context) {
 export async function handleAdminSafeguardingIncidentTimelinePost(
   request: Request,
   context: Context,
-  deps: AdminDeps = { requireAdmin },
+  deps: AdminDeps = {
+    requireAdmin,
+    getIncident,
+    appendTimelineEvent,
+    updateIncident,
+    appendAuditEvent,
+    listTimelineEvents,
+  },
 ) {
   const requestedAt = new Date().toISOString();
   const { schoolId, incidentId } = await context.params;
@@ -23,6 +37,11 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
   if (!session) return response!;
   const actor = session.email || session.userId;
   const role = normalizeRole("dsl");
+  const getIncidentFn = deps.getIncident ?? getIncident;
+  const appendTimelineEventFn = deps.appendTimelineEvent ?? appendTimelineEvent;
+  const updateIncidentFn = deps.updateIncident ?? updateIncident;
+  const appendAuditEventFn = deps.appendAuditEvent ?? appendAuditEvent;
+  const listTimelineEventsFn = deps.listTimelineEvents ?? listTimelineEvents;
 
   if (!canAccessDetail(role)) {
     return buildResponse({
@@ -34,7 +53,7 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
     });
   }
 
-  const incident = await getIncident(schoolId, incidentId);
+  const incident = await getIncidentFn(schoolId, incidentId);
   if (!incident) {
     return buildResponse({
       success: false,
@@ -71,7 +90,7 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
   }
 
   const timestamp = parsed.data.timestamp ?? new Date().toISOString();
-  const event = await appendTimelineEvent(schoolId, incidentId, {
+  const event = await appendTimelineEventFn(schoolId, incidentId, {
     id: randomUUID(),
     schoolId,
     incidentId,
@@ -81,12 +100,12 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
     timestamp,
   });
 
-  const updated = await updateIncident(schoolId, incidentId, {
+  const updated = await updateIncidentFn(schoolId, incidentId, {
     chronologyNotes: `${incident.chronologyNotes}\n${timestamp}: ${parsed.data.note}`,
     updatedAt: new Date().toISOString(),
   });
 
-  const auditEvent = await appendAuditEvent(
+  const auditEvent = await appendAuditEventFn(
     schoolId,
     incidentId,
     makeAuditEvent({
@@ -105,7 +124,7 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
     success: true,
     data: {
       timelineEvent: event,
-      timeline: await listTimelineEvents(schoolId, incidentId),
+      timeline: await listTimelineEventsFn(schoolId, incidentId),
       incident: updated,
     },
     auditEvent,

@@ -433,10 +433,10 @@ export function normalizeSubject(value: string | null | undefined): Subject | nu
   if (directAlias) return directAlias;
 
   if (cleaned.includes("gcse") && cleaned.includes("combined") && cleaned.includes("science")) return "gcse-combined-science";
+  if (cleaned.includes("gcse") && cleaned.includes("science")) return "gcse-science";
   if (cleaned.includes("gcse") && cleaned.includes("biology")) return "gcse-biology";
   if (cleaned.includes("gcse") && cleaned.includes("chemistry")) return "gcse-chemistry";
   if (cleaned.includes("gcse") && cleaned.includes("physics")) return "gcse-physics";
-  if (cleaned.includes("gcse") && cleaned.includes("science")) return "gcse-science";
   if (cleaned.includes("gcse") && cleaned.includes("french")) return "gcse-french";
   if (cleaned.includes("gcse") && cleaned.includes("german")) return "gcse-german";
   if (cleaned.includes("gcse") && cleaned.includes("spanish")) return "gcse-spanish";
