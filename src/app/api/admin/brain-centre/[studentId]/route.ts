@@ -94,7 +94,7 @@ type DetailDeps = {
   requireAdmin: typeof requireAdmin;
   findStudent: (studentId: string) => Promise<BrainCentreDetailStudent | null>;
   getStudentLearningBrain: (studentId: string) => Promise<StudentLearningBrain | null>;
-  findLatestWarningReview: (studentId: string, fingerprint: string) => Promise<{
+  findLatestWarningReview: (studentId: string) => Promise<{
     actorUserId: string | null;
     createdAt: Date;
     metadataJson: string | null;
@@ -235,13 +235,16 @@ function buildTimeline(
   if (brain.academicIntelligence.recommendationSync.status !== "synced") {
     pushEvent(events, brain.academicIntelligence.recommendationSync.generatedAt, "recommendation_sync_warning", "Recommendation Sync Warning", brain.academicIntelligence.recommendationSync.action);
   }
-  if (warningReview.status === "reviewed") {
+  if (warningReview.status === "reviewed" || warningReview.status === "changed_since_review") {
+    const changedDetail = warningReview.signalChanged
+      ? ` Signal changed since review. Reviewed fingerprint: ${warningReview.reviewedFingerprint ?? "unknown"}. Current fingerprint: ${warningReview.fingerprint}.`
+      : ` Signal unchanged since review. Reviewed fingerprint: ${warningReview.reviewedFingerprint ?? warningReview.fingerprint}. Current fingerprint: ${warningReview.fingerprint}.`;
     pushEvent(
       events,
       warningReview.reviewedAt,
       "brain_warning_reviewed",
-      "Brain Warning Reviewed",
-      warningReview.note ? `Reviewed by admin. Note: ${warningReview.note}` : "Reviewed by admin.",
+      warningReview.signalChanged ? "Brain Warning Changed Since Review" : "Brain Warning Reviewed",
+      `${warningReview.note ? `Reviewed by admin. Note: ${warningReview.note}.` : "Reviewed by admin."}${changedDetail}`,
     );
   }
   for (const task of brain.academicIntelligence.catchUpTasks.slice(0, 10)) {
@@ -310,12 +313,11 @@ export async function handleAdminBrainCentreStudentGet(
       },
     }),
     getStudentLearningBrain: (studentId) => getStudentLearningBrain(studentId, { includeCoachSignals: true }),
-    findLatestWarningReview: (studentId, fingerprint) => prisma.auditLog.findFirst({
+    findLatestWarningReview: (studentId) => prisma.auditLog.findFirst({
       where: {
         action: BRAIN_WARNING_REVIEW_ACTION,
         entityType: BRAIN_WARNING_REVIEW_ENTITY_TYPE,
         entityId: studentId,
-        metadataJson: { contains: fingerprint },
       },
       orderBy: { createdAt: "desc" },
       select: {
@@ -342,7 +344,7 @@ export async function handleAdminBrainCentreStudentGet(
     dataState: brain.dataState,
     snapshotStatus: snapshot.status,
   });
-  const review = await deps.findLatestWarningReview(student.id, fingerprint);
+  const review = await deps.findLatestWarningReview(student.id);
   const warningReview = parseBrainWarningReviewState({ fingerprint, review });
   return NextResponse.json(buildDetailPayload(student, brain, warningReview));
 }

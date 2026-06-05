@@ -69,6 +69,12 @@ function friendlyRecommendationLabel(raw: string): string {
   return toTitleCase(normal);
 }
 
+function warningReviewLabel(status: BrainCentreDetailPayload["warningReview"]["status"]): string {
+  if (status === "changed_since_review") return "Changed Since Review";
+  if (status === "reviewed") return "Reviewed";
+  return "Unreviewed";
+}
+
 function diagnosticPlaybook(issue: BrainDiagnosticIssue): DiagnosticPlaybook {
   switch (issue.code) {
     case "missing_snapshot":
@@ -369,15 +375,16 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
               <div>
                 <p className="text-[11px] uppercase text-indigo-200/80">Review Status</p>
                 <span className={`mt-1 inline-flex rounded-full border px-2 py-1 text-xs font-bold ${badgeClass(payload.warningReview.status)}`}>
-                  {payload.warningReview.status === "reviewed" ? "Reviewed" : "Unreviewed"}
+                  {warningReviewLabel(payload.warningReview.status)}
                 </span>
               </div>
             </div>
-            {payload.warningReview.status === "reviewed" ? (
+            {payload.warningReview.status === "reviewed" || payload.warningReview.status === "changed_since_review" ? (
               <p className="mt-3 text-xs text-indigo-100">
                 Last reviewed {formatDate(payload.warningReview.reviewedAt)}
                 {payload.warningReview.reviewedBy ? ` by ${payload.warningReview.reviewedBy}` : ""}
                 {payload.warningReview.note ? `: ${payload.warningReview.note}` : ""}
+                {payload.warningReview.signalChanged ? " Signal changed since that review." : ""}
               </p>
             ) : (
               <p className="mt-3 text-xs text-indigo-100">This warning is active and has not been reviewed yet.</p>

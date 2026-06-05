@@ -11,8 +11,10 @@ export const BRAIN_WARNING_REVIEW_ACTION = "brain_warning_reviewed";
 export const BRAIN_WARNING_REVIEW_ENTITY_TYPE = "brain_centre_student";
 
 export type BrainWarningReviewState = {
-  status: "reviewed" | "unreviewed";
+  status: "reviewed" | "unreviewed" | "changed_since_review";
   fingerprint: string;
+  reviewedFingerprint: string | null;
+  signalChanged: boolean;
   reviewedAt: string | null;
   reviewedBy: string | null;
   note: string | null;
@@ -108,6 +110,8 @@ export function parseBrainWarningReviewState(input: {
     return {
       status: "unreviewed",
       fingerprint: input.fingerprint,
+      reviewedFingerprint: null,
+      signalChanged: false,
       reviewedAt: null,
       reviewedBy: null,
       note: null,
@@ -115,16 +119,22 @@ export function parseBrainWarningReviewState(input: {
   }
 
   let note: string | null = null;
+  let reviewedFingerprint: string | null = null;
   try {
     const metadata = input.review.metadataJson ? JSON.parse(input.review.metadataJson) as Record<string, unknown> : {};
     note = typeof metadata.note === "string" && metadata.note.trim() ? metadata.note : null;
+    reviewedFingerprint = typeof metadata.warningFingerprint === "string" ? metadata.warningFingerprint : null;
   } catch {
     note = null;
+    reviewedFingerprint = null;
   }
+  const signalChanged = Boolean(reviewedFingerprint && reviewedFingerprint !== input.fingerprint);
 
   return {
-    status: "reviewed",
+    status: signalChanged ? "changed_since_review" : "reviewed",
     fingerprint: input.fingerprint,
+    reviewedFingerprint,
+    signalChanged,
     reviewedAt: new Date(input.review.createdAt).toISOString(),
     reviewedBy: input.review.actorUserId,
     note,

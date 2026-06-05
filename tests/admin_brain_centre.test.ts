@@ -10,6 +10,7 @@ import {
   type BrainCentreDetailPayload,
 } from "../src/app/api/admin/brain-centre/[studentId]/route";
 import { handleAdminBrainCentreActionPost } from "../src/app/api/admin/brain-centre/[studentId]/actions/route";
+import { buildBrainWarningFingerprint, snapshotStatus } from "../src/app/api/admin/brain-centre/_lib";
 import type {
   CoachTutorOrchestrationAudit,
   HeartbeatDecision,
@@ -614,6 +615,13 @@ test("Brain Centre student investigation overlays matching warning review audit 
     },
     quickLevelFinderBaseline: { completedAt: now },
   };
+  const reviewedFingerprint = buildBrainWarningFingerprint({
+    studentId: "student-1",
+    heartbeat: brain.heartbeatSummary,
+    recommendationSync: brain.academicIntelligence.recommendationSync,
+    dataState: brain.dataState,
+    snapshotStatus: snapshotStatus(profileWithSnapshot(now)).status,
+  });
   const response = await handleAdminBrainCentreStudentGet(
     new Request("http://localhost/api/admin/brain-centre/student-1"),
     { params: Promise.resolve({ studentId: "student-1" }) },
@@ -627,10 +635,13 @@ test("Brain Centre student investigation overlays matching warning review audit 
         studentProfile: { aiLearningProfileJson: profileWithSnapshot(now) },
       }),
       getStudentLearningBrain: async () => brain as never,
-      findLatestWarningReview: async (_studentId, fingerprint) => ({
+      findLatestWarningReview: async () => ({
         actorUserId: "admin-1",
         createdAt: new Date(now),
-        metadataJson: JSON.stringify({ warningFingerprint: fingerprint, note: "Reviewed with tutor." }),
+        metadataJson: JSON.stringify({
+          warningFingerprint: reviewedFingerprint,
+          note: "Reviewed with tutor.",
+        }),
       }),
     },
   );
@@ -642,6 +653,114 @@ test("Brain Centre student investigation overlays matching warning review audit 
   assert.equal(payload.warningReview.note, "Reviewed with tutor.");
   assert.ok(payload.warningReview.fingerprint.startsWith("brain-warning-"));
   assert.ok(payload.timeline.some((event) => event.type === "brain_warning_reviewed"));
+});
+
+test("Brain Centre student investigation flags warning changed since latest review", async () => {
+  const brain = {
+    ...makeBrain({
+      studentId: "student-1",
+      heartbeat: heartbeat({
+        primaryAction: "assign_catch_up",
+        riskLevel: "high",
+        urgency: "critical",
+        suggestedNextStep: "Start urgent catch-up before progression.",
+      }),
+    }),
+    source: {
+      studentId: "student-1",
+      studentName: "Ada",
+      yearGroup: "Year 5",
+      keyStage: "KS2",
+      assignments: [],
+      attempts: [],
+      weakAreas: [],
+      studentSkills: [],
+      coachUsage: [],
+      dictionarySignals: [],
+      progressRecords: [],
+      assessmentHistory: [],
+      generatedAt: now,
+    },
+    learningDnaSummary: { readinessLabel: "Needs support" },
+    academicIntelligence: {
+      ...makeBrain({ studentId: "student-1" }).academicIntelligence,
+      summary: {
+        totalTopics: 0,
+        byStatus: {
+          not_started: 0,
+          started: 0,
+          practising: 0,
+          needs_catch_up: 0,
+          nearly_secure: 0,
+          mastered: 0,
+          needs_revision: 0,
+        },
+        needsCatchUpCount: 0,
+        needsRevisionCount: 0,
+        coveredCount: 0,
+        averageScore: null,
+      },
+      masteryExpansion: {
+        needsCatchUpTopics: 0,
+        nearlySecureTopics: 0,
+        masteredTopics: 0,
+        overdueRevisionTopics: 0,
+        highConfidenceTopics: 0,
+        priorityTopics: [],
+      },
+      nextRecommendedActions: ["Review current support need."],
+      assessmentReadiness: "needs_review",
+      catchUpRecommendations: [],
+      examReadinessProfile: {
+        score: 0,
+        band: "not_ready",
+        headline: "Not ready",
+        blockers: [],
+        recommendedActions: [],
+        signals: {
+          masteryScore: 0,
+          consistencyScore: 0,
+          examEvidenceScore: 0,
+          weakAreaPenalty: 0,
+        },
+      },
+      catchUpTasks: [],
+      homeworkTasks: [],
+    },
+    quickLevelFinderBaseline: { completedAt: now },
+  };
+  const response = await handleAdminBrainCentreStudentGet(
+    new Request("http://localhost/api/admin/brain-centre/student-1"),
+    { params: Promise.resolve({ studentId: "student-1" }) },
+    {
+      requireAdmin: async () => ({ session: { userId: "admin-1", email: "admin@example.com", role: "admin" }, response: null }),
+      findStudent: async () => ({
+        id: "student-1",
+        name: "Ada",
+        yearGroup: "Year 5",
+        updatedAt: new Date(now),
+        studentProfile: { aiLearningProfileJson: profileWithSnapshot(now) },
+      }),
+      getStudentLearningBrain: async () => brain as never,
+      findLatestWarningReview: async () => ({
+        actorUserId: "admin-1",
+        createdAt: new Date(now),
+        metadataJson: JSON.stringify({
+          warningFingerprint: "brain-warning-old",
+          note: "Reviewed earlier.",
+        }),
+      }),
+    },
+  );
+  const payload = await response.json() as BrainCentreDetailPayload;
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.warningReview.status, "changed_since_review");
+  assert.equal(payload.warningReview.reviewedFingerprint, "brain-warning-old");
+  assert.equal(payload.warningReview.signalChanged, true);
+  assert.notEqual(payload.warningReview.fingerprint, payload.warningReview.reviewedFingerprint);
+  assert.ok(payload.timeline.some((event) => event.label === "Brain Warning Changed Since Review"));
+  assert.ok(payload.timeline.some((event) => event.detail.includes("Reviewed fingerprint: brain-warning-old")));
 });
 
 test("Brain Centre actions are admin-only, audited, and use safe services", async () => {
