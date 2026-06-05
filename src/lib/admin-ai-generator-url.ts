@@ -16,6 +16,7 @@ export type AiGeneratorHandoffParams = {
 };
 
 const AI_GENERATOR_PATH = "/admin/ai-generator";
+const ENGLISH_STRANDS = new Set(["phonics", "spelling", "reading", "grammar", "punctuation", "writing", "vocabulary"]);
 
 function cleanText(value: string | null | undefined): string | null {
   const cleaned = value?.trim();
@@ -28,8 +29,29 @@ function cleanPositiveNumber(value: number | string | null | undefined): string 
   return Number.isFinite(numberValue) && numberValue > 0 ? String(numberValue) : null;
 }
 
+function normalizeToken(value: string | null | undefined): string | null {
+  const cleaned = cleanText(value)?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return cleaned || null;
+}
+
 export function buildAiGeneratorUrl(params: AiGeneratorHandoffParams): string {
   const query = new URLSearchParams();
+  const normalizedSubject = normalizeToken(params.subject);
+  const normalizedStrand = normalizeToken(params.englishStrand) ?? normalizeToken(params.strand);
+  const subjectIsEnglishStrand = Boolean(normalizedSubject && ENGLISH_STRANDS.has(normalizedSubject));
+  const strandIsEnglishStrand = Boolean(normalizedStrand && ENGLISH_STRANDS.has(normalizedStrand));
+  const subjectIsEnglishParent = normalizedSubject === "english" || normalizedSubject === "english-language";
+  const englishStrand = strandIsEnglishStrand
+    ? normalizedStrand
+    : subjectIsEnglishStrand
+      ? normalizedSubject
+      : null;
+
+  if (englishStrand && (subjectIsEnglishStrand || subjectIsEnglishParent)) {
+    query.set("subject", "english-language");
+    query.set("strand", englishStrand);
+    query.set("englishStrand", englishStrand);
+  }
 
   const textFields: Array<keyof AiGeneratorHandoffParams> = [
     "studentId",
@@ -47,6 +69,7 @@ export function buildAiGeneratorUrl(params: AiGeneratorHandoffParams): string {
   ];
 
   for (const field of textFields) {
+    if (query.has(field)) continue;
     const value = cleanText(params[field] as string | null | undefined);
     if (value) query.set(field, value);
   }

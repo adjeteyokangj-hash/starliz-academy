@@ -257,8 +257,9 @@ const ENGLISH_STRAND_OPTIONS: Array<{ value: EnglishStrand; label: string }> = [
   { value: "vocabulary", label: "Vocabulary" },
 ];
 
-function isEnglishStrandValue(value: string | null): value is EnglishStrand {
-  return ENGLISH_STRAND_OPTIONS.some((option) => option.value === value);
+function normalizeEnglishStrandValue(value: string | null): EnglishStrand | null {
+  const cleaned = value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-") ?? "";
+  return ENGLISH_STRAND_OPTIONS.some((option) => option.value === cleaned) ? cleaned as EnglishStrand : null;
 }
 
 function normalizeGenerationSource(value: string | null): GenerationContext["source"] {
@@ -372,6 +373,7 @@ function applyDefaultItemStatuses(items: GeneratedPreviewItem[]): GeneratedPrevi
 }
 
 function formatSubjectLabel(value: string): string {
+  if (value === "english-language") return "English";
   const labels: Partial<Record<Subject | "math", string>> = {
     math: "Maths",
     maths: "Maths",
@@ -695,7 +697,7 @@ export default function AiGeneratorPage() {
   const prefillKeyStage = searchParams.get("keyStage");
   const prefillDifficulty = Number(searchParams.get("difficulty"));
   const prefillTopic = searchParams.get("topic");
-  const prefillStrand = searchParams.get("englishStrand") ?? searchParams.get("strand");
+  const prefillStrand = normalizeEnglishStrandValue(searchParams.get("englishStrand") ?? searchParams.get("strand"));
   const prefillActivityType = searchParams.get("activityType");
   const prefillMasteryOutcome = searchParams.get("masteryOutcome");
   const rawPrefillSource = searchParams.get("source");
@@ -733,9 +735,15 @@ export default function AiGeneratorPage() {
   const [requireVisualApproval, setRequireVisualApproval] = useState(true);
   const [ageGroup, setAgeGroup] = useState(initialAgeGroup);
   const availableSubjects = getAvailableSubjects(yearGroup);
+  const normalizedPrefillSubject = normalizeCurriculumSubject(prefillSubject);
+  const shouldAllowEnglishParentPrefill = Boolean(
+    normalizedPrefillSubject
+    && isEnglishParentSubject(normalizedPrefillSubject)
+    && prefillStrand
+  );
   const [subject, setSubject] = useState<Subject>(
-    prefillSubject && (availableSubjects as string[]).includes(prefillSubject as string)
-      ? (prefillSubject as Subject)
+    normalizedPrefillSubject && ((availableSubjects as string[]).includes(normalizedPrefillSubject) || shouldAllowEnglishParentPrefill)
+      ? normalizedPrefillSubject
       : availableSubjects[0]
   );
   const initialKeyStage: (typeof KEY_STAGES)[number] = prefillKeyStage && KEY_STAGES.includes(prefillKeyStage as (typeof KEY_STAGES)[number])
@@ -743,7 +751,7 @@ export default function AiGeneratorPage() {
     : keyStageForYearGroup(yearGroup);
   const [keyStage, setKeyStage] = useState<(typeof KEY_STAGES)[number]>(initialKeyStage);
   const requiresEnglishStrand = isEnglishParentSubject(subject);
-  const initialEnglishStrand = requiresEnglishStrand && isEnglishStrandValue(prefillStrand)
+  const initialEnglishStrand = requiresEnglishStrand && prefillStrand
     ? prefillStrand
     : requiresEnglishStrand
       ? "reading"
@@ -754,7 +762,8 @@ export default function AiGeneratorPage() {
   const skillSubject = resolvePathValidationSubject(subject, requiresEnglishStrand ? englishStrand : null);
   const availableSkills = getAvailableSkills(skillSubject, yearGroup);
   const prefillSkillMatched = Boolean(prefillSkill && availableSkills.includes(prefillSkill));
-  const initialSkillFocus = prefillSkillMatched && prefillSkill ? prefillSkill : availableSkills[0] ?? "";
+  const strandSkillFocus = requiresEnglishStrand ? deriveSkillFocusFromEnglishStrand(initialEnglishStrand, yearGroup, subject) : "";
+  const initialSkillFocus = prefillSkillMatched && prefillSkill ? prefillSkill : (strandSkillFocus || availableSkills[0] || "");
   const [skillFocus, setSkillFocus] = useState(initialSkillFocus);
   const [difficulty, setDifficulty] = useState(
     Number.isFinite(prefillDifficulty) && prefillDifficulty >= 1 ? prefillDifficulty : prefillWords ? 1 : 2
@@ -2031,6 +2040,9 @@ export default function AiGeneratorPage() {
                     <option key={s} value={s}>{formatSubjectLabel(s)}</option>
                   ))}
                 </optgroup>
+              ) : null}
+              {!availableSubjects.includes(subject) ? (
+                <option value={subject}>{formatSubjectLabel(subject)}</option>
               ) : null}
             </select>
           </label>
