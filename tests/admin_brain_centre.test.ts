@@ -196,6 +196,116 @@ test("Brain Centre route requires admin access", async () => {
   assert.equal(response?.status, 401);
 });
 
+test("Brain Centre route uses the default limit when no limit is supplied", async () => {
+  let requestedLimit = 0;
+  const deps: BrainCentreDeps = {
+    requireAdmin: async () => ({
+      session: { userId: "admin-1", email: "admin@example.com", role: "admin" },
+      response: null,
+    }),
+    findStudents: async (limit) => {
+      requestedLimit = limit;
+      return [];
+    },
+    getStudentLearningBrain: async () => null,
+  };
+
+  const response = await handleAdminBrainCentreGet(new Request("http://localhost/api/admin/brain-centre"), deps);
+
+  assert.equal(response.status, 200);
+  assert.equal(requestedLimit, 50);
+});
+
+test("Brain Centre route respects valid limits, caps high limits, and defaults invalid limits", async () => {
+  const cases = [
+    { url: "http://localhost/api/admin/brain-centre?limit=50", expected: 50 },
+    { url: "http://localhost/api/admin/brain-centre?limit=500", expected: 100 },
+    { url: "http://localhost/api/admin/brain-centre?limit=not-a-number", expected: 50 },
+    { url: "http://localhost/api/admin/brain-centre?limit=", expected: 50 },
+    { url: "http://localhost/api/admin/brain-centre?limit=0", expected: 50 },
+    { url: "http://localhost/api/admin/brain-centre?limit=-4", expected: 50 },
+  ];
+
+  for (const row of cases) {
+    let requestedLimit = 0;
+    const deps: BrainCentreDeps = {
+      requireAdmin: async () => ({
+        session: { userId: "admin-1", email: "admin@example.com", role: "admin" },
+        response: null,
+      }),
+      findStudents: async (limit) => {
+        requestedLimit = limit;
+        return [];
+      },
+      getStudentLearningBrain: async () => null,
+    };
+
+    const response = await handleAdminBrainCentreGet(new Request(row.url), deps);
+
+    assert.equal(response.status, 200);
+    assert.equal(requestedLimit, row.expected, row.url);
+  }
+});
+
+test("Brain Centre includes multiple students when no limit parameter is supplied", async () => {
+  const students = [
+    {
+      id: "student-1",
+      name: "Ada",
+      yearGroup: "Year 5",
+      updatedAt: new Date(now),
+      studentProfile: { aiLearningProfileJson: profileWithSnapshot(now) },
+    },
+    {
+      id: "student-2",
+      name: "Ben",
+      yearGroup: "Year 6",
+      updatedAt: new Date(now),
+      studentProfile: { aiLearningProfileJson: profileWithSnapshot(now) },
+    },
+    {
+      id: "student-3",
+      name: "Cara",
+      yearGroup: "Year 7",
+      updatedAt: new Date(now),
+      studentProfile: { aiLearningProfileJson: profileWithSnapshot(now) },
+    },
+  ];
+  let requestedLimit = 0;
+  const deps: BrainCentreDeps = {
+    requireAdmin: async () => ({
+      session: { userId: "admin-1", email: "admin@example.com", role: "admin" },
+      response: null,
+    }),
+    findStudents: async (limit) => {
+      requestedLimit = limit;
+      return students;
+    },
+    getStudentLearningBrain: async (studentId) => makeBrain({
+      studentId,
+      heartbeat: heartbeat({
+        primaryAction: "maintain_level",
+        riskLevel: "low",
+        urgency: "low",
+        suggestedNextStep: "Maintain current learning path.",
+      }),
+      sync: recommendationSync({
+        status: "synced",
+        mismatches: [],
+        action: "Recommendation engines are aligned.",
+      }),
+    }),
+  };
+
+  const response = await handleAdminBrainCentreGet(new Request("http://localhost/api/admin/brain-centre"), deps);
+  const payload = await response.json() as BrainCentrePayload;
+
+  assert.equal(response.status, 200);
+  assert.equal(requestedLimit, 50);
+  assert.equal(payload.summary.totalStudentsChecked, 3);
+  assert.deepEqual(payload.students.map((student) => student.studentName), ["Ada", "Ben", "Cara"]);
+});
+
 test("Brain Centre route aggregates Stage 1 warnings, mismatches, and QLF issues", async () => {
   const oldSnapshot = "2026-06-04T07:00:00.000Z";
   const deps: BrainCentreDeps = {

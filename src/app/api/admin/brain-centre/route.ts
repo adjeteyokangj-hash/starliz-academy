@@ -122,9 +122,10 @@ type BrainCentreDeps = {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
 
-function clampLimit(raw: string | null): number {
+function clampLimit(raw: string | null | undefined): number {
+  if (raw === null || raw === undefined || raw.trim() === "") return DEFAULT_LIMIT;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return DEFAULT_LIMIT;
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_LIMIT;
   return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
 }
 
