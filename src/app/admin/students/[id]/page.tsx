@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import AdminStatCard from "@/components/admin/AdminStatCard";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
@@ -256,8 +256,18 @@ const defaultSchoolWeekSettings: SchoolWeekSettingsPayload = {
   parentAdminNotes: null,
 };
 
+type StudentFocusTarget = "qlf-baseline" | "attempts" | "weak-areas";
+
+const studentFocusTargets = new Set<string>(["qlf-baseline", "attempts", "weak-areas"]);
+
+function isStudentFocusTarget(value: string | null): value is StudentFocusTarget {
+  return Boolean(value && studentFocusTargets.has(value));
+}
+
 export default function StudentDetailPage() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const focus = searchParams.get("focus");
   const showDevAttemptSeeding = process.env.NODE_ENV !== "production";
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
@@ -417,6 +427,34 @@ export default function StudentDetailPage() {
     void loadProgressionRecommendations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
+
+  useEffect(() => {
+    if (!student || !isStudentFocusTarget(focus)) return;
+    const element = document.getElementById(focus);
+    if (!element) return;
+
+    const highlightClasses = [
+      "ring-2",
+      "ring-cyan-300",
+      "ring-offset-2",
+      "ring-offset-slate-950",
+      "bg-cyan-500/10",
+    ];
+
+    const scrollTimer = window.setTimeout(() => {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      element.classList.add(...highlightClasses);
+    }, 100);
+    const clearTimer = window.setTimeout(() => {
+      element.classList.remove(...highlightClasses);
+    }, 3000);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+      element.classList.remove(...highlightClasses);
+    };
+  }, [focus, student]);
 
   async function saveSchoolWeekSettings() {
     setSchoolWeekSaving(true);
@@ -631,7 +669,7 @@ export default function StudentDetailPage() {
             <p>Guardian Permissions: {student.studentProfile?.guardianPermissions ?? "Not set"}</p>
             <p>School Information: {student.studentProfile?.schoolInformation ?? "Not set"}</p>
           </div>
-          <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 p-3">
+          <div id="qlf-baseline" className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 p-3 transition">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">Quick Level Finder Control</p>
             <p className="mt-2 text-sm text-slate-300">
               Status: {quickLevelFinderCompleted ? "Completed" : "Not completed"} · Responses: {quickLevelFinderResponses}
@@ -717,7 +755,7 @@ export default function StudentDetailPage() {
         ) : null}
 
         <AdminSectionCard title="Weak Areas & Adaptive Difficulty">
-          <div id="weak-areas" />
+          <div id="weak-areas" className="rounded-2xl transition">
           {student.weakAreas.length === 0 ? (
             <p className="text-sm text-slate-400">No weak areas detected yet.</p>
           ) : (
@@ -753,6 +791,7 @@ export default function StudentDetailPage() {
               ))}
             </div>
           )}
+          </div>
         </AdminSectionCard>
 
         <AdminSectionCard title="Academic Intelligence" eyebrow="Smart Catch-Up & Exam Readiness">
@@ -1331,6 +1370,7 @@ export default function StudentDetailPage() {
         </AdminSectionCard>
 
         <AdminSectionCard title="Recent Progress">
+          <div id="attempts" className="rounded-2xl transition">
           {student.attempts.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -1382,6 +1422,7 @@ export default function StudentDetailPage() {
               </table>
             </div>
           )}
+          </div>
         </AdminSectionCard>
 
         <AdminSectionCard title="Wallet Audit Log">
