@@ -1,52 +1,40 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
-import { adminNavItems } from "@/lib/admin-nav";
+import { adminNavGroups, type AdminNavItem } from "@/lib/admin-nav";
 
-const ORDER_STORAGE_KEY = "starliz.admin.sidebar.order.v1";
 const VISIBILITY_STORAGE_KEY = "starliz.admin.sidebar.visible.v1";
-type AdminNavHref = (typeof adminNavItems)[number]["href"];
+const COLLAPSED_GROUPS_STORAGE_KEY = "starliz.admin.sidebar.collapsed-groups.v1";
 
-function isAdminNavHref(value: string): value is AdminNavHref {
-  return adminNavItems.some((item) => item.href === value);
+function isActiveHref(pathname: string, href: string): boolean {
+  return href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
 }
 
-function reorderByHref(items: readonly { href: AdminNavHref }[], fromHref: AdminNavHref, toHref: AdminNavHref): AdminNavHref[] {
-  const hrefs = items.map((item) => item.href);
-  const fromIndex = hrefs.indexOf(fromHref);
-  const toIndex = hrefs.indexOf(toHref);
-  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return hrefs;
-
-  const next = [...hrefs];
-  const [moved] = next.splice(fromIndex, 1);
-  next.splice(toIndex, 0, moved);
-  return next;
+function groupDomId(groupTitle: string): string {
+  return `admin-nav-group-${groupTitle.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`;
 }
 
 export default function AdminSidebar() {
   const pathname = usePathname();
-  const [savedOrder, setSavedOrder] = useState<AdminNavHref[] | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const raw = window.localStorage.getItem(ORDER_STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return null;
-      const filtered = parsed.filter((value): value is AdminNavHref => typeof value === "string" && isAdminNavHref(value));
-      return filtered.length ? filtered : null;
-    } catch {
-      return null;
-    }
-  });
-  const [draggingHref, setDraggingHref] = useState<AdminNavHref | null>(null);
-  const [overHref, setOverHref] = useState<AdminNavHref | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
   const activeItemRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((value): value is string => typeof value === "string");
+    } catch {
+      return [];
+    }
+  });
   const [isVisible, setIsVisible] = useState(() => {
     if (typeof window === "undefined") return true;
     try {
@@ -88,14 +76,14 @@ export default function AdminSidebar() {
     }
   }
 
-  // Scroll active item into view
+  // Scroll active item into view.
   useEffect(() => {
     if (activeItemRef.current && navRef.current) {
       activeItemRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
-  }, [pathname]);
+  }, [pathname, collapsedGroups]);
 
-  // Track scroll position for up/down indicators
+  // Track scroll position for up/down indicators.
   useEffect(() => {
     const nav = navRef.current;
     if (!nav) return;
@@ -116,39 +104,55 @@ export default function AdminSidebar() {
     };
   }, []);
 
-  const navItems = useMemo(() => {
-    if (!savedOrder?.length) return [...adminNavItems];
-
-    const byHref = new Map(adminNavItems.map((item) => [item.href, item]));
-    const ordered = savedOrder
-      .map((href) => byHref.get(href))
-      .filter((item): item is (typeof adminNavItems)[number] => Boolean(item));
-
-    for (const item of adminNavItems) {
-      if (!savedOrder.includes(item.href)) {
-        ordered.push(item);
-      }
-    }
-
-    return ordered;
-  }, [savedOrder]);
-
-  function persistOrder(nextOrder: AdminNavHref[]) {
-    setSavedOrder(nextOrder);
+  function toggleGroup(groupTitle: string) {
+    const nextCollapsed = collapsedGroups.includes(groupTitle)
+      ? collapsedGroups.filter((title) => title !== groupTitle)
+      : [...collapsedGroups, groupTitle];
+    setCollapsedGroups(nextCollapsed);
     try {
-      window.localStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify(nextOrder));
+      window.localStorage.setItem(COLLAPSED_GROUPS_STORAGE_KEY, JSON.stringify(nextCollapsed));
     } catch {
       // Ignore storage write issues.
     }
   }
 
-  function resetOrder() {
-    setSavedOrder(null);
+  function expandAllGroups() {
+    setCollapsedGroups([]);
     try {
-      window.localStorage.removeItem(ORDER_STORAGE_KEY);
+      window.localStorage.removeItem(COLLAPSED_GROUPS_STORAGE_KEY);
     } catch {
       // Ignore storage write issues.
     }
+  }
+
+  function renderNavItem(item: AdminNavItem) {
+    const active = isActiveHref(pathname, item.href);
+    return (
+      <div ref={active ? activeItemRef : null} key={item.href}>
+        <Link
+          href={item.href}
+          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
+            active
+              ? "bg-indigo-500 text-white shadow-lg shadow-indigo-950/30"
+              : "text-slate-400 hover:bg-slate-900 hover:text-white"
+          }`}
+        >
+          <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[0.65rem] font-black ${
+            active ? "bg-white/16 text-white" : "bg-slate-900 text-slate-500"
+          }`}>
+            {item.icon}
+          </span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate">{item.title}</span>
+            {item.launchTag === "beta" ? (
+              <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-amber-300">
+                Beta
+              </span>
+            ) : null}
+          </span>
+        </Link>
+      </div>
+    );
   }
 
   const sidebarVisible = isDesktop ? true : isVisible;
@@ -164,7 +168,6 @@ export default function AdminSidebar() {
           ☰
         </button>
       )}
-      {/* Mobile backdrop — closes sidebar when clicking outside */}
       {sidebarVisible && !isDesktop && (
         <div
           className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden lg:pointer-events-none"
@@ -193,94 +196,60 @@ export default function AdminSidebar() {
             className="absolute right-2 top-1 rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
             title="Hide sidebar"
           >
-            ✕
+            x
           </button>
         </div>
 
-      <div ref={navRef} className="relative mt-8 flex-1 min-h-0 space-y-1 overflow-y-auto pr-2">
-        {canScrollUp && (
-          <div className="sticky top-0 z-10 -mx-2 flex justify-center bg-gradient-to-b from-slate-950 to-transparent py-2">
-            <div className="text-slate-500 text-xs">↑ Scroll up</div>
-          </div>
-        )}
-        <nav aria-label="Admin navigation">
-          {navItems.map((item) => {
-            const active = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
-            const dragOver = overHref === item.href && draggingHref !== item.href;
-            return (
-              <div
-                ref={active ? activeItemRef : null}
-                key={item.href}
-                draggable
-                onDragStart={() => {
-                  setDraggingHref(item.href);
-                  setOverHref(null);
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  if (!draggingHref || draggingHref === item.href) return;
-                  setOverHref(item.href);
-                }}
-                onDragLeave={() => {
-                  if (overHref === item.href) setOverHref(null);
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  if (!draggingHref || draggingHref === item.href) return;
-                  const nextOrder = reorderByHref(navItems, draggingHref, item.href);
-                  persistOrder(nextOrder);
-                  setDraggingHref(null);
-                  setOverHref(null);
-                }}
-                onDragEnd={() => {
-                  setDraggingHref(null);
-                  setOverHref(null);
-                }}
-              >
-                <Link
-                  href={item.href}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
-                    active
-                      ? "bg-indigo-500 text-white shadow-lg shadow-indigo-950/30"
-                      : "text-slate-400 hover:bg-slate-900 hover:text-white"
-                  } ${dragOver ? "ring-2 ring-indigo-400/70" : ""}`}
-                  title="Drag to rearrange"
-                >
-                  <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[0.65rem] font-black ${
-                    active ? "bg-white/16 text-white" : "bg-slate-900 text-slate-500"
-                  }`}>
-                    {item.icon}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span>{item.title}</span>
-                    {item.launchTag === "beta" ? (
-                      <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-amber-300">
-                        Beta
-                      </span>
-                    ) : null}
-                  </span>
-                </Link>
-              </div>
-            );
-          })}
-        </nav>
+        <div ref={navRef} className="relative mt-8 min-h-0 flex-1 space-y-1 overflow-y-auto pr-2">
+          {canScrollUp && (
+            <div className="sticky top-0 z-10 -mx-2 flex justify-center bg-gradient-to-b from-slate-950 to-transparent py-2">
+              <div className="text-xs text-slate-500">Scroll up</div>
+            </div>
+          )}
+          <nav aria-label="Admin navigation" className="space-y-3">
+            {adminNavGroups.map((group) => {
+              const activeGroup = group.items.some((item) => isActiveHref(pathname, item.href));
+              const collapsed = collapsedGroups.includes(group.title) && !activeGroup;
+              return (
+                <section key={group.title} className="rounded-xl border border-slate-900 bg-slate-950/50 p-1.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.title)}
+                    aria-expanded={!collapsed}
+                    aria-controls={groupDomId(group.title)}
+                    className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.14em] transition ${
+                      activeGroup ? "text-indigo-200" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"
+                    }`}
+                  >
+                    <span>{group.title}</span>
+                    <span aria-hidden="true" className="text-sm">{collapsed ? "+" : "-"}</span>
+                  </button>
+                  {!collapsed ? (
+                    <div id={groupDomId(group.title)} className="mt-1 space-y-1">
+                      {group.items.map((item) => renderNavItem(item))}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
+          </nav>
 
-        {canScrollDown && (
-          <div className="sticky bottom-0 z-10 -mx-2 flex justify-center bg-gradient-to-t from-slate-950 to-transparent py-2">
-            <div className="text-slate-500 text-xs">↓ Scroll down</div>
-          </div>
-        )}
-      </div>
+          {canScrollDown && (
+            <div className="sticky bottom-0 z-10 -mx-2 flex justify-center bg-gradient-to-t from-slate-950 to-transparent py-2">
+              <div className="text-xs text-slate-500">Scroll down</div>
+            </div>
+          )}
+        </div>
 
-      <div className="mt-4 px-1">
-        <button
-          type="button"
-          onClick={resetOrder}
-          className="w-full rounded-lg border border-slate-800 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400 hover:bg-slate-900 hover:text-white"
-        >
-          Reset Sidebar Order
-        </button>
-      </div>
+        <div className="mt-4 px-1">
+          <button
+            type="button"
+            onClick={expandAllGroups}
+            className="w-full rounded-lg border border-slate-800 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400 hover:bg-slate-900 hover:text-white"
+          >
+            Expand All Sections
+          </button>
+        </div>
       </aside>
     </>
   );
