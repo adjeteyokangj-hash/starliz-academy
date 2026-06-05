@@ -719,6 +719,12 @@ export default function AiGeneratorPage() {
   const initialYearGroup: YearGroup = prefillYearGroup && YEAR_GROUPS.includes(prefillYearGroup as YearGroup)
     ? (prefillYearGroup as YearGroup)
     : "Year 1";
+  const normalizedPrefillKeyStage = prefillKeyStage && KEY_STAGES.includes(prefillKeyStage as (typeof KEY_STAGES)[number])
+    ? (prefillKeyStage as (typeof KEY_STAGES)[number])
+    : null;
+  const prefillKeyStageMatchesYear = Boolean(
+    normalizedPrefillKeyStage && yearGroupsForKeyStage(normalizedPrefillKeyStage).includes(initialYearGroup)
+  );
   const initialAgeGroup = ageGroupForYearGroup(initialYearGroup);
 
   const [yearGroup, setYearGroup] = useState<string>(initialYearGroup);
@@ -746,8 +752,8 @@ export default function AiGeneratorPage() {
       ? normalizedPrefillSubject
       : availableSubjects[0]
   );
-  const initialKeyStage: (typeof KEY_STAGES)[number] = prefillKeyStage && KEY_STAGES.includes(prefillKeyStage as (typeof KEY_STAGES)[number])
-    ? (prefillKeyStage as (typeof KEY_STAGES)[number])
+  const initialKeyStage: (typeof KEY_STAGES)[number] = prefillKeyStageMatchesYear && normalizedPrefillKeyStage
+    ? normalizedPrefillKeyStage
     : keyStageForYearGroup(yearGroup);
   const [keyStage, setKeyStage] = useState<(typeof KEY_STAGES)[number]>(initialKeyStage);
   const requiresEnglishStrand = isEnglishParentSubject(subject);
@@ -764,6 +770,7 @@ export default function AiGeneratorPage() {
   const prefillSkillMatched = Boolean(prefillSkill && availableSkills.includes(prefillSkill));
   const strandSkillFocus = requiresEnglishStrand ? deriveSkillFocusFromEnglishStrand(initialEnglishStrand, yearGroup, subject) : "";
   const initialSkillFocus = prefillSkillMatched && prefillSkill ? prefillSkill : (strandSkillFocus || availableSkills[0] || "");
+  const missingEnglishStrandSkill = Boolean(requiresEnglishStrand && initialEnglishStrand && !initialSkillFocus);
   const [skillFocus, setSkillFocus] = useState(initialSkillFocus);
   const [difficulty, setDifficulty] = useState(
     Number.isFinite(prefillDifficulty) && prefillDifficulty >= 1 ? prefillDifficulty : prefillWords ? 1 : 2
@@ -801,7 +808,9 @@ export default function AiGeneratorPage() {
   const [automationRetryMode, setAutomationRetryMode] = useState<"autofill" | "weaknesses" | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(
     hasTargetPrefill
-      ? "Some fields were auto-filled from the student target. Please review before generating."
+      ? missingEnglishStrandSkill
+        ? "Some fields were auto-filled from the student target, but no matching English strand skill exists for this year group. Please review before generating."
+        : "Some fields were auto-filled from the student target. Please review before generating."
       : prefillWords
         ? "Follow-up practice prefilled from assignment weak areas."
         : null

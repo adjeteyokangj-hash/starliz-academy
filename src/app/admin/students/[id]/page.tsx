@@ -9,6 +9,7 @@ import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumM
 import { buildAiGeneratorUrl } from "@/lib/admin-ai-generator-url";
 import { mapHeartbeatActionButton, toHeartbeatDecisionViewModel } from "@/lib/academic-intelligence/heartbeatActionMap";
 import type { CoachHeartbeatSignalSummary, CoverageEntry, HeartbeatDecision, SchoolWeekday } from "@/lib/academic-intelligence/types";
+import { keyStageForYearGroup } from "@/lib/curriculum";
 
 type StudentDetail = {
   id: string;
@@ -535,6 +536,9 @@ export default function StudentDetailPage() {
     return <AdminSectionCard title="Student Profile"><p className="text-sm text-slate-400">Loading student...</p></AdminSectionCard>;
   }
 
+  const canonicalKeyStage = student.yearGroup ? keyStageForYearGroup(student.yearGroup) : null;
+  const onboardingKeyStage = student.studentProfile?.keyStageLevel ?? null;
+  const keyStageMismatch = Boolean(canonicalKeyStage && onboardingKeyStage && canonicalKeyStage !== onboardingKeyStage);
   const filteredWalletTransactions = student.walletTransactions.filter((entry) => auditFilter === "all" ? true : entry.type === auditFilter);
   const hasPlacementLevels = Object.keys(student.quickLevelFinder?.levels ?? {}).length > 0;
   const qlfBaselineMissing = !quickLevelFinderCompleted || !hasPlacementLevels;
@@ -665,6 +669,11 @@ export default function StudentDetailPage() {
         </AdminSectionCard>
 
         <AdminSectionCard title="Student Onboarding Profile">
+          {keyStageMismatch ? (
+            <p className="mb-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100">
+              Student year group suggests {canonicalKeyStage}, but onboarding profile shows {onboardingKeyStage}. Review student setup.
+            </p>
+          ) : null}
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">DOB: {student.studentProfile?.dateOfBirth ? new Date(student.studentProfile.dateOfBirth).toLocaleDateString() : "Not set"}</div>
             <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3 text-sm text-slate-300">Voice: {student.studentProfile?.voiceProfile ?? student.selectedVoice}</div>

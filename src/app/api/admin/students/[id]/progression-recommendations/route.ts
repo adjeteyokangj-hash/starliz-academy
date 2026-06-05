@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAdminPermission } from "@/lib/api_guard";
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
-import { normalizeSubject, type Subject } from "@/lib/curriculum";
+import { keyStageForYearGroup, normalizeSubject, normalizeYearGroup, type Subject } from "@/lib/curriculum";
 import { getProgressionDecisionBrainView } from "@/lib/student-learning-brain";
 
 type Context = { params: Promise<{ id: string }> };
@@ -309,24 +309,29 @@ function buildGenerationTargets(input: {
 }): AiGenerationTarget[] {
   return input.contentGaps
     .map((row) => {
+      const finalYearGroup = normalizeYearGroup(input.studentYearGroup) ?? normalizeYearGroup(row.generatorHint?.yearGroup) ?? null;
+      const finalKeyStage = finalYearGroup
+        ? keyStageForYearGroup(finalYearGroup)
+        : row.generatorHint?.keyStage ?? input.studentKeyStage;
       const subject = resolveGenerationSubject({
         parentSubject: row.parentSubject,
         strand: row.strand,
-        yearGroup: row.generatorHint?.yearGroup ?? input.studentYearGroup,
+        yearGroup: finalYearGroup,
       });
       if (!subject) return null;
 
-      return {
+      const target: AiGenerationTarget = {
         scopedSubject: row.scopedSubject,
         subject,
         strand: row.strand,
-        yearGroup: row.generatorHint?.yearGroup ?? input.studentYearGroup,
-        keyStage: row.generatorHint?.keyStage ?? input.studentKeyStage,
+        yearGroup: finalYearGroup,
+        keyStage: finalKeyStage,
         skillFocus: row.generatorHint?.skillFocus?.trim() || row.reason,
         difficulty: Math.max(1, Math.min(5, Math.round(row.generatorHint?.level ?? row.level ?? 3))),
         accuracy: row.accuracy,
         reason: row.reason,
-      } satisfies AiGenerationTarget;
+      };
+      return target;
     })
     .filter((item): item is AiGenerationTarget => item !== null)
     .slice(0, 8);
