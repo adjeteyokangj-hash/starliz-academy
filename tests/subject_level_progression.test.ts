@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildSubjectLevelProgression } from "../src/lib/subject-level-progression";
-import type { PlacementRecommendation } from "../src/lib/placement-lesson-selector";
+import { selectPlacementLessons, type PlacementRecommendation } from "../src/lib/placement-lesson-selector";
 
 type Overrides = Partial<Parameters<typeof buildSubjectLevelProgression>[0]>;
 
@@ -208,6 +208,44 @@ test("generatorHint uses target learning level, not student school year", () => 
   assert.equal(grammar?.generatorHint?.yearGroup, "Year 2");
   assert.equal(grammar?.generatorHint?.keyStage, "KS1");
   assert.equal(grammar?.generatorHint?.level, 2);
+});
+
+test("placement generator hint uses target learning year for Year 4 grammar", () => {
+  const result = selectPlacementLessons({
+    studentId: "student-year-4",
+    selectedSubjects: ["english"],
+    placementLevels: {
+      "english:grammar": { accuracy: 45, level: "below" },
+    },
+    availableContent: [],
+    existingAssignments: [],
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+  });
+
+  const grammar = result.contentGaps.find((row) => row.scopedSubject === "english:grammar");
+  assert.equal(grammar?.generatorHint?.level, 2);
+  assert.equal(grammar?.generatorHint?.yearGroup, "Year 2");
+  assert.equal(grammar?.generatorHint?.keyStage, "KS1");
+});
+
+test("placement generator hint uses target learning year for Year 6 maths", () => {
+  const result = selectPlacementLessons({
+    studentId: "student-year-6",
+    selectedSubjects: ["maths"],
+    placementLevels: {
+      maths: { accuracy: 72, level: "secure" },
+    },
+    availableContent: [],
+    existingAssignments: [],
+    yearGroup: "Year 6",
+    keyStage: "KS2",
+  });
+
+  const maths = result.contentGaps.find((row) => row.scopedSubject === "maths");
+  assert.equal(maths?.generatorHint?.level, 3);
+  assert.equal(maths?.generatorHint?.yearGroup, "Year 3");
+  assert.equal(maths?.generatorHint?.keyStage, "KS2");
 });
 
 test("progression does not create fake lesson data", () => {

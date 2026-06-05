@@ -316,9 +316,11 @@ function resolveTargetLearningYearGroup(input: {
   studentYearGroup: string | null;
 }): { yearGroup: string | null; source: "qlf" | "progression" | "fallback" } {
   const hintedYearGroup = normalizeYearGroup(input.generatorHint?.yearGroup);
-  if (hintedYearGroup) return { yearGroup: hintedYearGroup, source: "qlf" };
-
   const levelYearGroup = normalizeYearGroup(yearGroupFromLearningLevel(input.generatorHint?.level ?? input.progressionLevel));
+  if (hintedYearGroup && levelYearGroup && hintedYearGroup !== levelYearGroup) {
+    return { yearGroup: levelYearGroup, source: "progression" };
+  }
+  if (hintedYearGroup) return { yearGroup: hintedYearGroup, source: "qlf" };
   if (levelYearGroup) return { yearGroup: levelYearGroup, source: "progression" };
 
   return { yearGroup: normalizeYearGroup(input.studentYearGroup), source: "fallback" };

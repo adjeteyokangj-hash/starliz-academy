@@ -146,3 +146,77 @@ test("buildAiGeneratorUrl serializes universal prefill contract when provided", 
   assert.equal(decoded?.studentId, "student-2");
   assert.equal(decoded?.fields.subject?.value, "maths");
 });
+
+test("buildAiGeneratorUrl keeps student year separate from lower grammar target", () => {
+  const href = buildAiGeneratorUrl({
+    studentId: "student-year-4",
+    subject: "english-language",
+    skill: "Grammar",
+    strand: "grammar",
+    englishStrand: "grammar",
+    topic: "Grammar placement needs a generated lesson",
+    source: "student-profile",
+    yearGroup: "Year 2",
+    keyStage: "KS1",
+    studentYearGroup: "Year 4",
+    studentKeyStage: "KS2",
+    targetLearningYearGroup: "Year 2",
+    targetLearningKeyStage: "KS1",
+    subjectLevel: 2,
+    strandLevel: 2,
+    levelSource: "progression",
+  });
+
+  const params = paramsFor(href);
+
+  assert.equal(params.get("yearGroup"), "Year 2");
+  assert.equal(params.get("keyStage"), "KS1");
+  assert.equal(params.get("studentYearGroup"), "Year 4");
+  assert.equal(params.get("studentKeyStage"), "KS2");
+  assert.equal(params.get("targetLearningYearGroup"), "Year 2");
+  assert.equal(params.get("targetLearningKeyStage"), "KS1");
+  assert.equal(params.get("subjectLevel"), "2");
+  assert.equal(params.get("strandLevel"), "2");
+});
+
+test("buildAiGeneratorUrl keeps student year separate from lower maths target", () => {
+  const href = buildAiGeneratorUrl({
+    studentId: "student-year-6",
+    subject: "maths",
+    skill: "Maths",
+    topic: "Maths placement needs a generated lesson",
+    source: "student-profile",
+    yearGroup: "Year 3",
+    keyStage: "KS2",
+    studentYearGroup: "Year 6",
+    studentKeyStage: "KS2",
+    targetLearningYearGroup: "Year 3",
+    targetLearningKeyStage: "KS2",
+    subjectLevel: 3,
+    levelSource: "progression",
+  });
+
+  const params = paramsFor(href);
+
+  assert.equal(params.get("subject"), "maths");
+  assert.equal(params.get("yearGroup"), "Year 3");
+  assert.equal(params.get("studentYearGroup"), "Year 6");
+  assert.equal(params.get("targetLearningYearGroup"), "Year 3");
+  assert.equal(params.get("subjectLevel"), "3");
+});
+
+test("buildAiGeneratorUrl preserves legacy yearGroup as target learning alias", () => {
+  const href = buildAiGeneratorUrl({
+    subject: "maths",
+    skill: "Place value",
+    yearGroup: "Year 3",
+    keyStage: "KS2",
+    source: "student-profile",
+  });
+
+  const params = paramsFor(href);
+
+  assert.equal(params.get("yearGroup"), "Year 3");
+  assert.equal(params.get("keyStage"), "KS2");
+  assert.equal(params.get("targetLearningYearGroup"), null);
+});

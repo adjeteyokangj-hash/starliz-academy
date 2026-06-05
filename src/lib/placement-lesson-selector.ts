@@ -1,4 +1,5 @@
 import { ENGLISH_STRANDS } from "@/lib/subject-selection";
+import { keyStageForYearGroup } from "@/lib/curriculum";
 
 export type PlacementBand = "below" | "secure" | "advanced";
 export type PlacementRecommendationStatus = "assigned" | "ready" | "content_needed" | "blocked";
@@ -174,6 +175,13 @@ function desiredDifficulty(placementLevel: number): number {
   return 2;
 }
 
+function yearGroupFromPlacementLevel(level: number): string | null {
+  if (!Number.isFinite(level)) return null;
+  const rounded = Math.max(0, Math.min(11, Math.round(level)));
+  if (rounded === 0) return "Reception";
+  return `Year ${rounded}`;
+}
+
 function keywordBundle(scope: ParsedScope): string[] {
   if (scope.parentSubject === "english") {
     const strand = scope.strand ?? "reading";
@@ -263,18 +271,18 @@ function reasonForBlocked(status: string): string {
 function generatorHintForScope(input: {
   scope: ParsedScope;
   level: number;
-  yearGroup?: string | null;
-  keyStage?: string | null;
 }): PlacementGeneratorHint {
   const focus = input.scope.parentSubject === "english"
     ? (input.scope.strand === "comprehension" ? "Reading comprehension" : titleCase((input.scope.strand ?? "reading").replace("-", " ")))
     : parentLabel(input.scope.parentSubject);
+  const targetLearningYearGroup = yearGroupFromPlacementLevel(input.level);
+  const targetLearningKeyStage = targetLearningYearGroup ? keyStageForYearGroup(targetLearningYearGroup) : null;
   return {
     subject: input.scope.parentSubject,
     strand: input.scope.strand,
     level: input.level,
-    yearGroup: input.yearGroup ?? null,
-    keyStage: input.keyStage ?? null,
+    yearGroup: targetLearningYearGroup,
+    keyStage: targetLearningKeyStage,
     skillFocus: focus,
     reason: "No reviewed/published content currently matches this placement target.",
   };
@@ -378,8 +386,6 @@ export function selectPlacementLessons(input: SelectorInput): PlacementRecommend
         generatorHint: generatorHintForScope({
           scope,
           level: levelInfo.numeric,
-          yearGroup: input.yearGroup,
-          keyStage: input.keyStage,
         }),
       });
       continue;
