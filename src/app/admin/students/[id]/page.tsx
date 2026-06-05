@@ -1279,7 +1279,7 @@ export default function StudentDetailPage() {
                 className="w-36 rounded-xl bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-600 ring-1 ring-slate-700 focus:outline-none focus:ring-indigo-500"
               />
             </label>
-            <label className="flex flex-1 flex-col gap-1 min-w-[14rem]">
+            <label className="flex min-w-56 flex-1 flex-col gap-1">
               <span className="text-xs uppercase text-slate-500">Reason</span>
               <input
                 type="text"

@@ -1037,12 +1037,18 @@ export default function AiGeneratorPage() {
     setWeakAreaFormSynced(false);
   };
 
-  const stopGenerationHeartbeat = () => {
+  const clearGenerationHeartbeatTimer = () => {
     if (heartbeatTimerRef.current !== null) {
       window.clearInterval(heartbeatTimerRef.current);
       heartbeatTimerRef.current = null;
     }
-    setGenerationHeartbeat(null);
+  };
+
+  const stopGenerationHeartbeat = (resetLabel = true) => {
+    clearGenerationHeartbeatTimer();
+    if (resetLabel) {
+      setGenerationHeartbeat(null);
+    }
   };
 
   const startGenerationHeartbeat = (label = "Generating content") => {
@@ -1057,7 +1063,7 @@ export default function AiGeneratorPage() {
 
   useEffect(() => {
     return () => {
-      stopGenerationHeartbeat();
+      clearGenerationHeartbeatTimer();
     };
   }, []);
 

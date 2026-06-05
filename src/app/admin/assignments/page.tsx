@@ -176,6 +176,7 @@ export default function AdminAssignmentsPage() {
           className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white lg:col-span-2"
         />
         <select
+          title="Filter by key stage"
           value={keyStageFilter}
           onChange={(event) => {
             const nextStage = event.target.value;
@@ -196,6 +197,7 @@ export default function AdminAssignmentsPage() {
           {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
         </select>
         <select
+          title="Filter by year group"
           value={yearGroupFilter}
           onChange={(event) => {
             const nextYear = event.target.value;
@@ -215,6 +217,7 @@ export default function AdminAssignmentsPage() {
           ))}
         </select>
         <select
+          title="Filter by exam board"
           value={examBoardFilter}
           onChange={(event) => setExamBoardFilter(event.target.value)}
           className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"

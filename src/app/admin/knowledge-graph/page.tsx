@@ -158,6 +158,24 @@ const EDGE_COLORS: Record<KnowledgeEdgeType, string> = {
   supports_readiness: "#10b981",
 };
 
+const EDGE_DOT_CLASS: Record<KnowledgeEdgeType, string> = {
+  prerequisite: "bg-amber-500",
+  easier: "bg-green-500",
+  harder: "bg-red-500",
+  related: "bg-sky-400",
+  intervention: "bg-orange-500",
+  phonics: "bg-violet-500",
+  curriculum: "bg-teal-500",
+  has_mastery_state: "bg-indigo-500",
+  has_weak_area: "bg-red-600",
+  recommends: "bg-green-600",
+  blocked_by: "bg-rose-500",
+  requires: "bg-amber-500",
+  informed_by: "bg-cyan-500",
+  targets: "bg-sky-500",
+  supports_readiness: "bg-emerald-500",
+};
+
 const NODE_COLORS: Record<string, string> = {
   word: "#0ea5e9",
   phonics_family: "#a855f7",
@@ -750,14 +768,14 @@ export default function KnowledgeGraphPage() {
   const graphControls = (
     <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <select value={mode} onChange={(event) => setMode(event.target.value as "dictionary" | "academic_intelligence" | "hybrid")} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+        <select title="Select graph mode" value={mode} onChange={(event) => setMode(event.target.value as "dictionary" | "academic_intelligence" | "hybrid")} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
           <option value="dictionary">Dictionary graph</option>
           <option value="academic_intelligence">Academic intelligence graph</option>
           <option value="hybrid">Hybrid graph</option>
         </select>
         <input value={studentId} onChange={(event) => setStudentId(event.target.value)} placeholder="Student ID (required for academic/hybrid)" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search concepts" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
-        <select value={subject} onChange={(event) => setSubject(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+        <select title="Filter by subject" value={subject} onChange={(event) => setSubject(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
           <option value="">All subjects</option>
           <option value="english">English</option>
           <option value="spelling">Spelling</option>
@@ -765,7 +783,7 @@ export default function KnowledgeGraphPage() {
           <option value="maths">Maths</option>
           <option value="science">Science</option>
         </select>
-        <select value={keyStage} onChange={(event) => setKeyStage(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+        <select title="Filter by key stage" value={keyStage} onChange={(event) => setKeyStage(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
           <option value="">All key stages</option>
           <option value="early-years">Early Years</option>
           <option value="ks1">KS1</option>
@@ -789,7 +807,7 @@ export default function KnowledgeGraphPage() {
             key={type}
             type="button"
             onClick={() => setSelectedEdgeType(type)}
-            className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.08em] ${
+            className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-widest ${
               selectedEdgeType === type
                 ? "border-cyan-400/80 bg-cyan-500/20 text-cyan-100"
                 : "border-slate-700 bg-slate-900 text-slate-300"
@@ -808,7 +826,7 @@ export default function KnowledgeGraphPage() {
             setOffset(0);
             setSearchTick((tick) => tick + 1);
           }}
-          className="rounded-xl border border-cyan-500/40 bg-cyan-500/15 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-cyan-100"
+          className="rounded-xl border border-cyan-500/40 bg-cyan-500/15 px-3 py-2 text-xs font-black uppercase tracking-widest text-cyan-100"
         >
           Show Recovery Path
         </button>
@@ -819,7 +837,7 @@ export default function KnowledgeGraphPage() {
   return (
     <div className="space-y-4 pb-12">
       <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-5">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">StarLiz Intelligence Infrastructure</p>
+        <p className="text-xs font-black uppercase tracking-widest text-cyan-300">StarLiz Intelligence Infrastructure</p>
         <h1 className="mt-2 text-3xl font-black text-white">{hasStudentHeartbeatContext ? "Student HEART BEAT Engine" : "StarLiz Heartbeat Engine"}</h1>
         <p className="mt-2 text-sm text-slate-300">
           {hasStudentHeartbeatContext
@@ -828,7 +846,7 @@ export default function KnowledgeGraphPage() {
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {heartbeatBadges.map((badge) => (
-            <span key={badge} className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.09em] text-cyan-100">
+            <span key={badge} className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-cyan-100">
               {badge}
             </span>
           ))}
@@ -843,7 +861,7 @@ export default function KnowledgeGraphPage() {
             onClick={() => navigateToTab(card.tab)}
             className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4 text-left transition hover:border-cyan-400/40 hover:bg-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
           >
-            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-cyan-200">{card.title}</p>
+            <p className="text-[11px] font-black uppercase tracking-widest text-cyan-200">{card.title}</p>
             <p className="mt-2 text-lg font-black text-white">{card.value}</p>
             <p className="mt-1 text-xs text-slate-300">{card.detail}</p>
           </button>
@@ -858,7 +876,7 @@ export default function KnowledgeGraphPage() {
             onClick={() => navigateToTab(card.tab)}
             className={`cursor-pointer rounded-xl border p-3 text-left transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${statusTone(card.tone)}`}
           >
-            <p className="text-[11px] uppercase tracking-[0.12em]">{card.label}</p>
+            <p className="text-[11px] uppercase tracking-widest">{card.label}</p>
             <p className="mt-1 text-lg font-black">{card.value}</p>
           </button>
         ))}
@@ -871,7 +889,7 @@ export default function KnowledgeGraphPage() {
               key={tab.id}
               type="button"
               onClick={() => navigateToTab(tab.id)}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em] ${
+              className={`rounded-lg border px-3 py-1.5 text-xs font-black uppercase tracking-widest ${
                 activeTab === tab.id
                   ? "border-cyan-400/70 bg-cyan-500/20 text-cyan-100"
                   : "border-slate-700 bg-slate-900 text-slate-300"
@@ -890,7 +908,7 @@ export default function KnowledgeGraphPage() {
               {graphControls}
               {!hasStudentHeartbeatContext ? (
                 <section className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 text-amber-100">
-                  <h2 className="text-sm font-black uppercase tracking-[0.14em]">Select a student for accurate HEART BEAT</h2>
+                  <h2 className="text-sm font-black uppercase tracking-widest">Select a student for accurate HEART BEAT</h2>
                   <p className="mt-2 text-xs">
                     Select a student to view an accurate Student HEART BEAT with QLF baseline, mastery, catch-up, learning twin, and decision signals.
                   </p>
@@ -900,7 +918,7 @@ export default function KnowledgeGraphPage() {
               {hasStudentHeartbeatContext ? (
                 <section className="grid gap-3 md:grid-cols-2">
                   <article className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4">
-                    <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-100">Student Identity</h2>
+                    <h2 className="text-sm font-black uppercase tracking-widest text-cyan-100">Student Identity</h2>
                     <p className="mt-2 text-xs text-cyan-50">Student: {studentHeartbeatProfile?.name ?? trimmedStudentId}</p>
                     <p className="text-xs text-cyan-50">Year group: {studentHeartbeatProfile?.yearGroup ?? "-"}</p>
                     <p className="text-xs text-cyan-50">Level: {studentHeartbeatProfile?.level ?? "-"}</p>
@@ -908,14 +926,14 @@ export default function KnowledgeGraphPage() {
                     <div className="mt-2">
                       <Link
                         href={`/admin/students/${encodeURIComponent(trimmedStudentId)}`}
-                        className="inline-flex rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.08em] text-cyan-50"
+                        className="inline-flex rounded-lg border border-cyan-400/40 bg-cyan-500/20 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-cyan-50"
                       >
                         Open Student Profile
                       </Link>
                     </div>
                   </article>
                   <article className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4">
-                    <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-100">QLF and Baseline Pulse</h2>
+                    <h2 className="text-sm font-black uppercase tracking-widest text-cyan-100">QLF and Baseline Pulse</h2>
                     <p className="mt-2 text-xs text-cyan-50">QLF status: {studentHeartbeatProfile?.quickLevelFinder.status ?? "-"}</p>
                     <p className="text-xs text-cyan-50">QLF completed: {studentHeartbeatProfile?.quickLevelFinder.completed ? "yes" : "no"}</p>
                     <p className="text-xs text-cyan-50">QLF responses: {studentHeartbeatProfile?.quickLevelFinder.responseCount ?? 0}/{studentHeartbeatProfile?.quickLevelFinder.totalQuestions ?? 0}</p>
@@ -927,8 +945,8 @@ export default function KnowledgeGraphPage() {
               {hasStudentHeartbeatContext ? (
                 <section className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="text-sm font-black uppercase tracking-[0.14em] text-emerald-100">Next Best Action</h2>
-                    <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.08em]">
+                    <h2 className="text-sm font-black uppercase tracking-widest text-emerald-100">Next Best Action</h2>
+                    <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-widest">
                       <span className="rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-emerald-50">Action: {heartbeatDecision?.primaryAction ?? "-"}</span>
                       <span className="rounded-full border border-amber-300/40 bg-amber-500/20 px-2 py-1 text-amber-50">Urgency: {heartbeatDecision?.urgency ?? "-"}</span>
                       <span className="rounded-full border border-rose-300/40 bg-rose-500/20 px-2 py-1 text-rose-50">Risk: {heartbeatDecision?.riskLevel ?? "-"}</span>
@@ -945,7 +963,7 @@ export default function KnowledgeGraphPage() {
 
                   <div className="mt-3 grid gap-3 md:grid-cols-3">
                     <div>
-                      <p className="text-[11px] font-black uppercase tracking-[0.1em] text-emerald-100">Reasons</p>
+                      <p className="text-[11px] font-black uppercase tracking-widest text-emerald-100">Reasons</p>
                       <div className="mt-1 space-y-1 text-xs text-emerald-50">
                         {(heartbeatDecision?.reasons ?? []).slice(0, 4).map((reason, index) => (
                           <p key={`reason-${index}`}>- {reason}</p>
@@ -954,7 +972,7 @@ export default function KnowledgeGraphPage() {
                       </div>
                     </div>
                     <div>
-                      <p className="text-[11px] font-black uppercase tracking-[0.1em] text-emerald-100">Blockers</p>
+                      <p className="text-[11px] font-black uppercase tracking-widest text-emerald-100">Blockers</p>
                       <div className="mt-1 space-y-1 text-xs text-emerald-50">
                         {(heartbeatDecision?.blockers ?? []).slice(0, 4).map((blocker, index) => (
                           <p key={`blocker-${index}`}>- {blocker}</p>
@@ -963,7 +981,7 @@ export default function KnowledgeGraphPage() {
                       </div>
                     </div>
                     <div>
-                      <p className="text-[11px] font-black uppercase tracking-[0.1em] text-emerald-100">Evidence Summary</p>
+                      <p className="text-[11px] font-black uppercase tracking-widest text-emerald-100">Evidence Summary</p>
                       <div className="mt-1 space-y-1 text-xs text-emerald-50">
                         {(heartbeatDecision?.evidence ?? []).slice(0, 5).map((entry, index) => (
                           <p key={`evidence-${index}`}>- {entry}</p>
@@ -977,21 +995,21 @@ export default function KnowledgeGraphPage() {
 
               <section className="grid gap-3 md:grid-cols-2">
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
-                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">System Heartbeat Diagnostics</h2>
+                  <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">System Heartbeat Diagnostics</h2>
                   <p className="mt-2 text-xs text-slate-300">Source of truth: {heartbeat?.sourceOfTruth ?? "not available"}</p>
                   <p className="text-xs text-slate-300">Validation: {protection?.validation.valid ? "valid" : "needs attention"}</p>
                   <p className="text-xs text-slate-300">Pending proposals: {approvalWorkflow?.pendingProposals.length ?? 0}</p>
                   <p className="text-xs text-slate-300">Fallback applied: {fallback?.applied ? "yes" : "no"}</p>
                 </article>
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
-                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Subject & Feature Body Orchestration</h2>
+                  <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Subject & Feature Body Orchestration</h2>
                   <p className="mt-2 text-xs text-slate-300">Verdict: {bodyOrchestration?.verdict ?? "unknown"}</p>
                   <p className="text-xs text-slate-300">Schema changes required: {bodyOrchestration?.canShipWithoutSchemaChanges ? "no" : "yes"}</p>
                   <p className="text-xs text-slate-300">HEART BEAT warning: {bodyOrchestration?.heartBeatWarning ?? "-"}</p>
                   <div className="mt-3 space-y-2">
                     {(bodyOrchestration?.phases ?? []).map((phase) => (
                       <div key={phase.phase} className="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2 text-[11px] text-slate-300">
-                        <p className="font-black uppercase tracking-[0.08em] text-slate-100">Phase {phase.phase}: {phase.name}</p>
+                        <p className="font-black uppercase tracking-widest text-slate-100">Phase {phase.phase}: {phase.name}</p>
                         <p className="text-slate-400">{phase.status}</p>
                         <p className="mt-1 text-slate-300">{phase.summary}</p>
                       </div>
@@ -1002,23 +1020,23 @@ export default function KnowledgeGraphPage() {
 
               <section className="grid gap-3 md:grid-cols-2">
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
-                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Body System Warnings</h2>
+                  <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Body System Warnings</h2>
                   {(bodyOrchestration?.warnings ?? []).length === 0 ? (
                     <p className="mt-2 text-xs text-slate-400">No body-system warnings reported.</p>
                   ) : (
                     <div className="mt-2 space-y-2 text-xs text-slate-300">
                       {(bodyOrchestration?.warnings ?? []).map((warning) => (
                         <div key={warning.title} className={`rounded-lg border px-3 py-2 ${warning.severity === "critical" ? "border-rose-500/30 bg-rose-500/10 text-rose-50" : "border-amber-500/30 bg-amber-500/10 text-amber-50"}`}>
-                          <p className="font-black uppercase tracking-[0.08em]">{warning.title}</p>
+                          <p className="font-black uppercase tracking-widest">{warning.title}</p>
                           <p className="mt-1">{warning.summary}</p>
-                          <p className="mt-1 text-[11px] uppercase tracking-[0.08em]">Affected surfaces: {warning.affectedSurfaces.join(" | ")}</p>
+                          <p className="mt-1 text-[11px] uppercase tracking-widest">Affected surfaces: {warning.affectedSurfaces.join(" | ")}</p>
                         </div>
                       ))}
                     </div>
                   )}
                 </article>
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
-                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Registry & Phase 1</h2>
+                  <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Registry & Phase 1</h2>
                   <p className="mt-2 text-xs text-slate-300">Registry input source: {bodyOrchestration?.registry.inputSource ?? "-"}</p>
                   <p className="text-xs text-slate-300">English strands: {(bodyOrchestration?.registry.englishStrands ?? []).join(", ") || "-"}</p>
                   <p className="text-xs text-slate-300">Supported subjects: {bodyOrchestration?.registry.subjectCount ?? 0}</p>
@@ -1031,12 +1049,12 @@ export default function KnowledgeGraphPage() {
               </section>
 
               <section className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">System Connections</h2>
+                <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">System Connections</h2>
                 <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {(bodyOrchestration?.surfaces ?? []).map((surface) => (
                     <article key={surface.key} className={`rounded-lg border px-3 py-2 ${surface.status === "missing" ? "border-rose-500/30 bg-rose-500/10 text-rose-50" : surface.status === "partial" ? "border-amber-500/30 bg-amber-500/10 text-amber-50" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-50"}`}>
-                      <p className="text-xs font-black uppercase tracking-[0.08em]">{surface.label}</p>
-                      <p className="mt-1 text-[11px] uppercase tracking-[0.08em]">{surface.status}</p>
+                      <p className="text-xs font-black uppercase tracking-widest">{surface.label}</p>
+                      <p className="mt-1 text-[11px] uppercase tracking-widest">{surface.status}</p>
                       <p className="mt-1 text-xs">{surface.summary}</p>
                     </article>
                   ))}
@@ -1045,7 +1063,7 @@ export default function KnowledgeGraphPage() {
 
               <section className="grid gap-3 md:grid-cols-2">
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
-                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Student Intelligence Overlay</h2>
+                  <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Student Intelligence Overlay</h2>
                   <p className="mt-2 text-xs text-slate-300">Mastery gaps: {(studentOverlay?.masteryGapTopics ?? []).join(", ") || "-"}</p>
                   <p className="text-xs text-slate-300">Weak areas: {(studentOverlay?.weakAreaTopics ?? []).join(", ") || "-"}</p>
                   <p className="text-xs text-slate-300">Confidence: {studentOverlay?.confidenceScore ?? "-"}%</p>
@@ -1054,7 +1072,7 @@ export default function KnowledgeGraphPage() {
                   <p className="text-xs text-slate-300">Focus: {(studentOverlay?.recommendationFocus ?? []).join(" | ") || "-"}</p>
                 </article>
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
-                  <h3 className="text-sm font-black uppercase tracking-[0.12em] text-cyan-200">Temporal Intelligence</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-cyan-200">Temporal Intelligence</h3>
                   <p className="mt-2 text-xs text-slate-300">Recently improved: {overlaySummary.temporal.recentlyImproved.join(", ") || "-"}</p>
                   <p className="text-xs text-slate-300">Decaying mastery: {overlaySummary.temporal.decayingMastery.join(", ") || "-"}</p>
                   <p className="text-xs text-slate-300">Overdue revision: {overlaySummary.temporal.overdueRevision.join(", ") || "-"}</p>
@@ -1064,7 +1082,7 @@ export default function KnowledgeGraphPage() {
 
               <section className="grid gap-3 md:grid-cols-2">
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
-                  <h3 className="text-sm font-black uppercase tracking-[0.12em] text-cyan-200">Learning Twin Visualization</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-cyan-200">Learning Twin Visualization</h3>
                   <p className="mt-2 text-xs text-slate-300">Preferred style: {studentOverlay?.learningTwin.preferredExplanationStyle ?? "-"}</p>
                   <p className="text-xs text-slate-300">Pace profile: {studentOverlay?.learningTwin.paceProfile ?? "-"}</p>
                   <p className="text-xs text-slate-300">Confidence profile: {studentOverlay?.learningTwin.confidenceProfile ?? "-"}</p>
@@ -1128,14 +1146,14 @@ export default function KnowledgeGraphPage() {
           {activeTab === "systems" ? (
             <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Connected Systems</h2>
-                <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">System diagnostics (secondary when student selected)</p>
+                <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Connected Systems</h2>
+                <p className="text-[11px] uppercase tracking-widest text-slate-400">System diagnostics (secondary when student selected)</p>
               </div>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {systemStatus.map((entry) => (
                   <article key={entry.system} className={`rounded-xl border p-3 ${statusTone(entry.status)}`}>
-                    <p className="text-xs font-black uppercase tracking-[0.08em]">{entry.label}</p>
-                    <p className="mt-1 text-[11px] uppercase tracking-[0.08em]">{entry.status}</p>
+                    <p className="text-xs font-black uppercase tracking-widest">{entry.label}</p>
+                    <p className="mt-1 text-[11px] uppercase tracking-widest">{entry.status}</p>
                     <p className="mt-1 text-xs">{entry.summary}</p>
                   </article>
                 ))}
@@ -1146,7 +1164,7 @@ export default function KnowledgeGraphPage() {
           {activeTab === "protection" ? (
             <section className="space-y-3">
               <article className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Graph Protection Status</h2>
+                <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Graph Protection Status</h2>
                 <p className="mt-2 text-xs text-slate-300">Status: {protection?.status ?? "unknown"}</p>
                 <p className="text-xs text-slate-300">AI mode: {protection?.aiSuggestionMode ?? "suggestion_only"}</p>
                 <p className="text-xs text-slate-300">Approval required: {protection?.approvalRequiredForActivation ? "yes" : "yes"}</p>
@@ -1155,7 +1173,7 @@ export default function KnowledgeGraphPage() {
               </article>
 
               <article className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-amber-100">Validation Issues</h2>
+                <h2 className="text-sm font-black uppercase tracking-widest text-amber-100">Validation Issues</h2>
                 {(protection?.validation.issues.length ?? 0) === 0 ? (
                   <p className="mt-2 text-xs text-amber-50">No validation issues reported.</p>
                 ) : (
@@ -1168,14 +1186,14 @@ export default function KnowledgeGraphPage() {
               </article>
 
               <article className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Pending/Admin Approval Workflow</h2>
+                <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Pending/Admin Approval Workflow</h2>
                 <p className="mt-2 text-xs text-slate-300">Latest decision: {approvalWorkflow?.latestDecision ?? "not_requested"}</p>
                 <p className="text-xs text-slate-300">Decision reason: {approvalWorkflow?.latestDecisionReason ?? "-"}</p>
                 <p className="text-xs text-slate-300">Pending proposals: {approvalWorkflow?.pendingProposals.length ?? 0}</p>
               </article>
 
               <article className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-100">AI Reasoning Visualization</h2>
+                <h2 className="text-sm font-black uppercase tracking-widest text-cyan-100">AI Reasoning Visualization</h2>
                 <p className="mt-2 text-xs text-cyan-50">Why: {(overlaySummary.reasoning.why ?? []).join(" | ") || "-"}</p>
                 <p className="text-xs text-cyan-50">Prerequisite blockers: {(overlaySummary.reasoning.prerequisiteBlockers ?? []).join(" | ") || "-"}</p>
                 <p className="text-xs text-cyan-50">Reasoning chain: {(overlaySummary.reasoning.chain ?? []).join(" -> ") || "-"}</p>
@@ -1186,7 +1204,7 @@ export default function KnowledgeGraphPage() {
           {activeTab === "recommendations" ? (
             <section className="space-y-3">
               <article className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-100">Recommendation Signals</h2>
+                <h2 className="text-sm font-black uppercase tracking-widest text-cyan-100">Recommendation Signals</h2>
                 <div className="mt-2 space-y-1 text-xs text-cyan-50">
                   {(studentOverlay?.reportSignals ?? []).map((signal, index) => (
                     <p key={`${signal}-${index}`}>{signal}</p>
@@ -1196,7 +1214,7 @@ export default function KnowledgeGraphPage() {
               </article>
 
               <article className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Recovery Path</h2>
+                <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Recovery Path</h2>
                 {recoveryPlan ? (
                   <div className="mt-2 space-y-1 text-xs text-slate-200">
                     <p>Target: {recoveryPlan.targetWord ?? "-"}</p>
@@ -1211,7 +1229,7 @@ export default function KnowledgeGraphPage() {
               </article>
 
               <article className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-rose-100">Graph Heatmaps</h2>
+                <h2 className="text-sm font-black uppercase tracking-widest text-rose-100">Graph Heatmaps</h2>
                 <p className="mt-2 text-xs text-rose-50">Weak clusters: {overlaySummary.heatmap.weakClusters.join(" | ") || "-"}</p>
                 <p className="text-xs text-rose-50">High-risk concepts: {overlaySummary.heatmap.highRiskConcepts.join(" | ") || "-"}</p>
                 <p className="text-xs text-rose-50">Intervention-heavy areas: {overlaySummary.heatmap.interventionHeavyAreas.join(" | ") || "-"}</p>
@@ -1223,7 +1241,7 @@ export default function KnowledgeGraphPage() {
 
         <aside className="space-y-4">
           <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-            <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Heartbeat Inspector</h2>
+            <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Heartbeat Inspector</h2>
             <p className="mt-2 text-xs text-slate-300">Mode: {mode}</p>
             <p className="text-xs text-slate-300">Connected: {connectedCount} | Partial: {partialCount} | Missing: {missingCount}</p>
             <p className="text-xs text-slate-300">Fallback: {fallback?.applied ? "active" : "not active"}</p>
@@ -1237,7 +1255,7 @@ export default function KnowledgeGraphPage() {
             ) : null}
             {heartbeat?.baselineSignals && heartbeat.baselineSignals.length > 0 ? (
               <div className="mt-3">
-                <p className="text-[11px] font-black uppercase tracking-[0.1em] text-cyan-300">Initial Placement Pulse</p>
+                <p className="text-[11px] font-black uppercase tracking-widest text-cyan-300">Initial Placement Pulse</p>
                 <p className="mt-1 text-[10px] text-slate-400">Diagnostic evidence from Quick Level Finder — not confirmed mastery.</p>
                 <div className="mt-2 space-y-1">
                   {heartbeat.baselineSignals.map((signal, index) => (
@@ -1249,7 +1267,7 @@ export default function KnowledgeGraphPage() {
           </section>
 
           <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-            <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Selected Node</h2>
+            <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Selected Node</h2>
             {selectedNode ? (
               <div className="mt-2 space-y-1 text-xs text-slate-300">
                 <p className="text-sm font-black text-white">{String((selectedNode.data as { label?: string })?.label ?? selectedNode.id)}</p>
@@ -1264,12 +1282,12 @@ export default function KnowledgeGraphPage() {
           </section>
 
           <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-            <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Relationship Legend</h2>
+            <h2 className="text-sm font-black uppercase tracking-widest text-cyan-200">Relationship Legend</h2>
             <div className="mt-2 space-y-1">
               {(Object.keys(EDGE_COLORS) as KnowledgeEdgeType[]).map((edgeType) => (
                 <div key={edgeType} className="flex items-center justify-between text-xs text-slate-300">
                   <span className="inline-flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: EDGE_COLORS[edgeType] }} />
+                    <span className={`h-2.5 w-2.5 rounded-full ${EDGE_DOT_CLASS[edgeType]}`} />
                     {edgeType}
                   </span>
                   <span className="text-slate-500">{relationBadge(edgeType)}</span>

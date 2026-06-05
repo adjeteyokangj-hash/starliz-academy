@@ -652,7 +652,7 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
           <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
             <h2 className="text-sm font-bold text-white">Recommendation Control Room</h2>
             <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-xs">
+              <table className="w-full min-w-190 text-left text-xs">
                 <thead className="uppercase text-slate-500">
                   <tr><th className="px-2 py-2">Engine</th><th className="px-2 py-2">Current Recommendation</th><th className="px-2 py-2">Source</th><th className="px-2 py-2">Sync</th></tr>
                 </thead>

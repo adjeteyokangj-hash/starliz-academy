@@ -50,7 +50,7 @@ function HeartbeatWarnings({ rows, onOpenStudentIssue }: { rows: BrainCentreWarn
   if (!rows.length) return <EmptyRow label="No HEART BEAT warnings in the current sample." />;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[980px] text-left text-sm">
+      <table className="w-full min-w-245 text-left text-sm">
         <thead>
           <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
             <th className="px-3 py-3">Student</th>
@@ -103,7 +103,7 @@ function RecommendationMismatches({ rows, onOpenStudentIssue }: { rows: BrainCen
   if (!rows.length) return <EmptyRow label="No recommendation sync mismatches in the current sample." />;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1000px] text-left text-sm">
+      <table className="w-full min-w-250 text-left text-sm">
         <thead>
           <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
             <th className="px-3 py-3">Student</th>
@@ -152,7 +152,7 @@ function QlfIssues({ rows, onOpenStudentIssue }: { rows: BrainCentreQlfIssueRow[
   if (!rows.length) return <EmptyRow label="No QLF or Brain connection issues in the current sample." />;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[900px] text-left text-sm">
+      <table className="w-full min-w-225 text-left text-sm">
         <thead>
           <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
             <th className="px-3 py-3">Student</th>
@@ -204,7 +204,6 @@ export default function AdminBrainCentrePage() {
   const [activeTab, setActiveTab] = useState<BrainCentreTab>("warnings");
 
   async function loadBrainCentre({ silent = false }: { silent?: boolean } = {}) {
-    if (!silent) setLoading(true);
     if (silent) setRefreshing(true);
     try {
       const response = await fetch("/api/admin/brain-centre");
