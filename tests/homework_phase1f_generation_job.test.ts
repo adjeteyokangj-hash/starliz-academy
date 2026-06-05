@@ -12,7 +12,7 @@ type CapturedPersistPayload = {
   generation: {
     batch: {
       plannedMinutes: number;
-      questions: Array<{ id: string }>;
+      questions: Array<{ id: string; targetLearningYearGroup?: string | null; targetLearningKeyStage?: string | null; studentYearGroup?: string | null }>;
     };
   };
 };
@@ -171,6 +171,42 @@ test("workload caps by year group", async () => {
   const persisted = persistedPayloads[0] as CapturedPersistPayload | undefined;
   assert.ok(persisted);
   assert.ok((persisted?.generation.batch.plannedMinutes ?? 999) <= 15);
+});
+
+test("generation carries weak-area target level while workload cap uses student year", async () => {
+  process.env.WEEKLY_HOMEWORK_PHASE1B_ENABLED = "true";
+  const persistedPayloads: unknown[] = [];
+
+  await runWeeklyHomeworkFridayGeneration({
+    now: FRIDAY_NOW,
+    students: [makeStudent({
+      yearGroup: "Year 4",
+      weakAreas: [{
+        id: "grammar-y2",
+        subject: "english",
+        skillFocus: "sentence structure",
+        weaknessType: "core_topic",
+        accuracy: 38,
+        attemptsCount: 6,
+        metadataJson: JSON.stringify({
+          targetLearningYearGroup: "Year 2",
+          targetLearningKeyStage: "KS1",
+          strand: "grammar",
+        }),
+      }],
+    })],
+    persistGeneratedBatch: async (payload) => {
+      persistedPayloads.push(payload);
+      return "created";
+    },
+  });
+
+  const persisted = persistedPayloads[0] as CapturedPersistPayload | undefined;
+  assert.ok(persisted);
+  assert.equal(persisted.generation.batch.questions[0]?.targetLearningYearGroup, "Year 2");
+  assert.equal(persisted.generation.batch.questions[0]?.targetLearningKeyStage, "KS1");
+  assert.equal(persisted.generation.batch.questions[0]?.studentYearGroup, "Year 4");
+  assert.ok(persisted.generation.batch.plannedMinutes <= 20);
 });
 
 test("feature flag off prevents live effect", async () => {

@@ -19,6 +19,7 @@ import { taskHrefForContentType } from "@/lib/assignments";
 import { buildSubjectLevelProgression, progressionFriendlyLabel } from "@/lib/subject-level-progression";
 import { buildLanguageReadinessBrain, type LanguageReadinessBrain } from "@/lib/student-learning-brain/languageReadinessBrain";
 import { classifyStudentDataState, type StudentDataNormalisationResult } from "@/lib/student-learning-brain/studentDataNormalisation";
+import { supportedContentYearGroups } from "@/lib/curriculum-level-targets";
 import type {
   AcademicIntelligenceOutput,
   AcademicSourceData,
@@ -474,6 +475,7 @@ export async function getProgressionDecisionBrainView(input: {
           keyStageLevel: true,
           subjectFocus: true,
           aiLearningProfileJson: true,
+          learningLevel: true,
         },
       },
     },
@@ -485,6 +487,11 @@ export async function getProgressionDecisionBrainView(input: {
     ? parseSelectedSubjectsFromProfileJson(profileJson)
     : parseSubjectFocus(student.studentProfile?.subjectFocus ?? null);
   const quick = parseQuickLevelFinderSession(profileJson);
+  const contentYearGroups = supportedContentYearGroups({
+    studentYearGroup: student.yearGroup,
+    placementLevels: quick?.levels ?? {},
+    learningLevel: student.studentProfile?.learningLevel ?? null,
+  });
 
   const [attempts, assignments, weakAreas, studentSkills, progressRecords, contentRows, brain] = await Promise.all([
     prisma.attempt.findMany({
@@ -523,7 +530,10 @@ export async function getProgressionDecisionBrainView(input: {
       select: { activityType: true, activityName: true, score: true, accuracy: true, completed: true },
     }),
     prisma.aIContentCache.findMany({
-      where: { status: { not: "rejected" }, ...(student.yearGroup ? { yearGroup: student.yearGroup } : {}) },
+      where: {
+        status: { not: "rejected" },
+        ...(contentYearGroups.length ? { yearGroup: { in: contentYearGroups } } : student.yearGroup ? { yearGroup: student.yearGroup } : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: 300,
       select: {

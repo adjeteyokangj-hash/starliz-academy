@@ -106,6 +106,36 @@ test("workload caps by year group are enforced", () => {
   }
 });
 
+test("homework questions carry lower target learning year while workload cap uses student year", () => {
+  const cap = workloadCapForYearGroup("Year 4");
+  const result = generateWeeklyHomeworkBatch({
+    now: FRIDAY_UTC_NOON,
+    timezone: "Europe/London",
+    studentId: "student-year-4",
+    yearGroup: "Year 4",
+    completedSessionCount: 2,
+    startedSessionCount: 2,
+    existingBatchForWeek: false,
+    weaknesses: [{
+      ...makeWeakness("grammar-year-2", 10, 5),
+      subject: "english",
+      topic: "grammar",
+      skill: "sentence structure",
+      targetLearningYearGroup: "Year 2",
+      targetLearningKeyStage: "KS1",
+      studentYearGroup: "Year 4",
+    }],
+  });
+
+  assert.equal(result.created, true);
+  if (result.created) {
+    assert.equal(result.batch.workloadCapMinutes, cap.maxMinutes);
+    assert.equal(result.batch.questions[0]?.targetLearningYearGroup, "Year 2");
+    assert.equal(result.batch.questions[0]?.targetLearningKeyStage, "KS1");
+    assert.equal(result.batch.questions[0]?.studentYearGroup, "Year 4");
+  }
+});
+
 test("freeze after start", () => {
   const initial = createGeneratedBatchState(["q1", "q2"]);
   assert.equal(isQuestionSetFrozen(initial), false);

@@ -40,6 +40,9 @@ export type WeeklyWeaknessCandidate = {
   subject: string;
   topic?: string | null;
   skill?: string | null;
+  targetLearningYearGroup?: string | null;
+  targetLearningKeyStage?: string | null;
+  studentYearGroup?: string | null;
   estimatedMinutes: number;
   repeatedMistakes: number;
   averageScore: number | null;
@@ -55,6 +58,9 @@ export type HomeworkQuestionPlan = {
   subject: string;
   topic?: string | null;
   skill?: string | null;
+  targetLearningYearGroup?: string | null;
+  targetLearningKeyStage?: string | null;
+  studentYearGroup?: string | null;
   estimatedMinutes: number;
   required: boolean;
 };

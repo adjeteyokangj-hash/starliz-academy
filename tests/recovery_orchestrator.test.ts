@@ -8,6 +8,7 @@ import {
   evaluateRecoveryGuardrails,
   resolvePolicyRules,
 } from "../src/lib/recovery_orchestrator";
+import { resolveRecoveryCurriculumTarget } from "../src/lib/recovery_orchestrator_runtime";
 
 test("detectRecoveryTriggers emits expected trigger types", () => {
   const rules = resolvePolicyRules();
@@ -168,4 +169,45 @@ test("admin confirm guardrail block persists failure classification", () => {
 
   assert.equal(result.result.changed, false);
   assert.equal(result.plan.execution.failureClassification?.category, "guardrail_failure");
+});
+
+test("recovery target uses Year 2 Grammar weakness for Year 4 student", () => {
+  const target = resolveRecoveryCurriculumTarget({
+    studentYearGroup: "Year 4",
+    studentKeyStage: "KS2",
+    weakAreaMetadata: {
+      targetLearningYearGroup: "Year 2",
+      strand: "grammar",
+    },
+  });
+
+  assert.equal(target.yearGroup, "Year 2");
+  assert.equal(target.keyStage, "KS1");
+  assert.equal(target.studentYearGroup, "Year 4");
+});
+
+test("recovery target uses Year 3 Maths weakness for Year 6 student", () => {
+  const target = resolveRecoveryCurriculumTarget({
+    studentYearGroup: "Year 6",
+    studentKeyStage: "KS2",
+    weakAreaMetadata: {
+      targetLearningYearGroup: "Year 3",
+      subject: "maths",
+    },
+  });
+
+  assert.equal(target.yearGroup, "Year 3");
+  assert.equal(target.keyStage, "KS2");
+  assert.equal(target.studentYearGroup, "Year 6");
+});
+
+test("recovery target falls back to student year when no evidence exists", () => {
+  const target = resolveRecoveryCurriculumTarget({
+    studentYearGroup: "Year 5",
+    studentKeyStage: "KS2",
+    weakAreaMetadata: {},
+  });
+
+  assert.equal(target.yearGroup, "Year 5");
+  assert.equal(target.keyStage, "KS2");
 });

@@ -128,6 +128,9 @@ export type RecoveryOrchestrationPlan = {
   schoolId: string;
   studentId: string | null;
   targetConcept: string;
+  subject?: string | null;
+  yearGroup?: string | null;
+  keyStage?: string | null;
   createdAtIso: string;
   status: RecoveryPlanStatus;
   triggers: RecoveryTrigger[];
@@ -421,6 +424,9 @@ export function buildRecoveryActionPlan(input: {
   schoolId: string;
   studentId?: string | null;
   targetConcept: string;
+  subject?: string | null;
+  yearGroup?: string | null;
+  keyStage?: string | null;
   createdAtIso: string;
   triggers: RecoveryTrigger[];
   estimatedComplexity: "low" | "medium" | "high";
@@ -440,6 +446,9 @@ export function buildRecoveryActionPlan(input: {
     schoolId: input.schoolId,
     studentId: input.studentId ?? null,
     targetConcept: input.targetConcept,
+    subject: input.subject ?? null,
+    yearGroup: input.yearGroup ?? null,
+    keyStage: input.keyStage ?? null,
     createdAtIso: input.createdAtIso,
     status: "planned",
     triggers: input.triggers,
@@ -525,6 +534,9 @@ export async function planAdaptiveRecovery(input: RecoveryPlannerInput): Promise
     schoolId: input.schoolId,
     studentId: input.studentId ?? null,
     targetConcept,
+    subject: input.subject,
+    yearGroup: input.yearGroup,
+    keyStage: input.keyStage,
     createdAtIso: nowIso,
     triggers,
     estimatedComplexity: coach.recoveryPlan.estimatedComplexity,

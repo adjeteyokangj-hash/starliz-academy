@@ -10,6 +10,7 @@ import {
 } from "../src/lib/student-learning-brain";
 import type { AcademicSourceData } from "../src/lib/academic-intelligence/types";
 import { classifyStudentDataState } from "../src/lib/student-learning-brain/studentDataNormalisation";
+import { supportedContentYearGroups } from "../src/lib/curriculum-level-targets";
 
 function baseSource(overrides: Partial<AcademicSourceData> = {}): AcademicSourceData {
   return {
@@ -337,4 +338,40 @@ test("classification is read-only and does not mutate source profile payload", (
 
   assert.equal(JSON.stringify(input), snapshot);
   assert.equal(typeof result.state, "string");
+});
+
+test("Brain content lookup years include Year 2 Grammar target for Year 4 student", () => {
+  const years = supportedContentYearGroups({
+    studentYearGroup: "Year 4",
+    placementLevels: { "english:grammar": { accuracy: 45, level: "below" } },
+  });
+
+  assert.deepEqual(years.sort(), ["Year 2", "Year 4"].sort());
+});
+
+test("Brain content lookup years include Year 3 Maths target for Year 6 student", () => {
+  const years = supportedContentYearGroups({
+    studentYearGroup: "Year 6",
+    placementLevels: { maths: { accuracy: 72, level: "secure" } },
+  });
+
+  assert.deepEqual(years.sort(), ["Year 3", "Year 6"].sort());
+});
+
+test("Brain content lookup years include Year 6 Reading target for Year 9 student", () => {
+  const years = supportedContentYearGroups({
+    studentYearGroup: "Year 9",
+    learningLevel: "Level 6",
+  });
+
+  assert.deepEqual(years.sort(), ["Year 6", "Year 9"].sort());
+});
+
+test("Brain content lookup excludes unsupported higher-level content", () => {
+  const years = supportedContentYearGroups({
+    studentYearGroup: "Year 6",
+    placementLevels: {},
+  });
+
+  assert.equal(years.includes("Year 8"), false);
 });

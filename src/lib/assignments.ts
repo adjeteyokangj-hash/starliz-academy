@@ -19,6 +19,12 @@ import { extractLearningDnaFromProfileJson } from "@/lib/learning_dna";
 import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 import { validateSpellingContentContract } from "@/lib/content-governance";
+import {
+  findPlacementEvidence,
+  isLowerOrSameYear,
+  parseTargetLearningEvidenceFromMetadata,
+  yearGroupFromLearningLevel,
+} from "@/lib/curriculum-level-targets";
 
 export class SchoolLicenceAccessError extends Error {
   reason: SchoolLicenceBlockedReason;
@@ -89,8 +95,13 @@ function parseContentMetadata(raw: string | null | undefined): {
   topic: string | null;
   skillFocus: string | null;
   schoolId: string | null;
+  strand: string | null;
+  targetLearningYearGroup: string | null;
+  targetLearningKeyStage: string | null;
+  subjectLevel: number | null;
+  strandLevel: number | null;
 } {
-  if (!raw) return { subject: null, curriculumPathway: null, examBoard: null, ageGroup: null, yearGroup: null, keyStage: null, topic: null, skillFocus: null, schoolId: null };
+  if (!raw) return { subject: null, curriculumPathway: null, examBoard: null, ageGroup: null, yearGroup: null, keyStage: null, topic: null, skillFocus: null, schoolId: null, strand: null, targetLearningYearGroup: null, targetLearningKeyStage: null, subjectLevel: null, strandLevel: null };
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
@@ -103,9 +114,14 @@ function parseContentMetadata(raw: string | null | undefined): {
       topic: typeof parsed.topic === "string" ? parsed.topic : null,
       skillFocus: typeof parsed.skillFocus === "string" ? parsed.skillFocus : null,
       schoolId: typeof parsed.schoolId === "string" ? parsed.schoolId : null,
+      strand: typeof parsed.strand === "string" ? parsed.strand : typeof parsed.englishStrand === "string" ? parsed.englishStrand : null,
+      targetLearningYearGroup: typeof parsed.targetLearningYearGroup === "string" ? parsed.targetLearningYearGroup : null,
+      targetLearningKeyStage: typeof parsed.targetLearningKeyStage === "string" ? parsed.targetLearningKeyStage : null,
+      subjectLevel: typeof parsed.subjectLevel === "number" ? parsed.subjectLevel : null,
+      strandLevel: typeof parsed.strandLevel === "number" ? parsed.strandLevel : null,
     };
   } catch {
-    return { subject: null, curriculumPathway: null, examBoard: null, ageGroup: null, yearGroup: null, keyStage: null, topic: null, skillFocus: null, schoolId: null };
+    return { subject: null, curriculumPathway: null, examBoard: null, ageGroup: null, yearGroup: null, keyStage: null, topic: null, skillFocus: null, schoolId: null, strand: null, targetLearningYearGroup: null, targetLearningKeyStage: null, subjectLevel: null, strandLevel: null };
   }
 }
 
@@ -152,12 +168,14 @@ function parseLearningLevel(value: string | null | undefined): number | null {
 function placementEntryForSubject(
   levels: Record<string, { accuracy: number; level: "below" | "secure" | "advanced" }> | undefined,
   subject: string,
+  aliases: string[] = [],
 ): { accuracy: number; level: "below" | "secure" | "advanced" } | null {
   if (!levels) return null;
   const keys = [
     normalizeText(subject),
     normalizeText(subject).replace(/-/g, " "),
     normalizeText(subject).replace(/\s+/g, "-"),
+    ...aliases.map((alias) => normalizeText(alias)),
   ];
   for (const key of keys) {
     if (key && levels[key]) return levels[key];
@@ -165,13 +183,17 @@ function placementEntryForSubject(
   return null;
 }
 
-function placementSupportsAssignment(input: {
+export function placementSupportsAssignment(input: {
   contentSubject: string;
   contentPathway: string | null;
   contentKeyStage: string | null;
+  contentYearGroup: string | null;
   contentLevel: number | null;
+  contentType: string | null;
+  contentStrand: string | null;
   studentPathway: string | null;
   studentKeyStage: string | null;
+  studentYearGroup: string | null;
   studentLearningLevel: string | null;
   placementLevels: Record<string, { accuracy: number; level: "below" | "secure" | "advanced" }>;
 }): boolean {
@@ -181,10 +203,25 @@ function placementSupportsAssignment(input: {
   const keyStageMatches = !input.contentKeyStage
     || !input.studentKeyStage
     || normalizeText(input.contentKeyStage) === normalizeText(input.studentKeyStage);
-  if (!pathwayMatches || !keyStageMatches) return false;
-
-  const placementBySubject = placementEntryForSubject(input.placementLevels, input.contentSubject);
+  const placementEvidence = findPlacementEvidence({
+    placementLevels: input.placementLevels,
+    subject: input.contentSubject,
+    contentType: input.contentType,
+    strand: input.contentStrand,
+  });
+  const placementBySubject = placementEntryForSubject(input.placementLevels, input.contentSubject, [
+    input.contentType ?? "",
+    input.contentStrand ?? "",
+    input.contentStrand ? `english:${input.contentStrand}` : "",
+    input.contentStrand ? `english-language:${input.contentStrand}` : "",
+  ]);
   const learningLevel = parseLearningLevel(input.studentLearningLevel);
+  const evidenceYearGroup = placementEvidence?.targetLearningYearGroup ?? yearGroupFromLearningLevel(learningLevel);
+  const supportedLowerLevel = isLowerOrSameYear(input.contentYearGroup, input.studentYearGroup)
+    && Boolean(evidenceYearGroup)
+    && isLowerOrSameYear(input.contentYearGroup, evidenceYearGroup);
+  if (!pathwayMatches && !supportedLowerLevel) return false;
+  if (!keyStageMatches && !supportedLowerLevel) return false;
 
   if (placementBySubject) {
     if (placementBySubject.level === "below") return input.contentLevel === null || input.contentLevel <= 2;
@@ -196,7 +233,24 @@ function placementSupportsAssignment(input: {
     return learningLevel >= input.contentLevel - 1;
   }
 
+  if (supportedLowerLevel) return true;
+
   return false;
+}
+
+export function assignmentMismatchWarningFlags(input: {
+  yearMismatch: boolean;
+  keyStageMismatch: boolean;
+  placementSupported: boolean;
+  lowerLevelRemediation: boolean;
+  adminOverride: boolean;
+}): string[] {
+  const flags: string[] = [];
+  if (input.yearMismatch) flags.push("year_mismatch");
+  if (input.lowerLevelRemediation) flags.push("lower_level_remediation");
+  if (input.adminOverride && input.yearMismatch && !input.placementSupported) flags.push("admin_year_override");
+  if (input.adminOverride && input.keyStageMismatch && !input.lowerLevelRemediation) flags.push("admin_ks_override");
+  return Array.from(new Set(flags));
 }
 
 export async function getAssignmentSafetyAndRecommendation(input: {
@@ -272,14 +326,22 @@ export async function getAssignmentSafetyAndRecommendation(input: {
   }
 
   const parsedMeta = parseContentMetadata(content.metadataJson);
+  const parsedMetaObject = (() => {
+    try {
+      return content.metadataJson ? JSON.parse(content.metadataJson) as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  })();
+  const targetLearningEvidence = parseTargetLearningEvidenceFromMetadata(parsedMetaObject);
   const contentSubject = normalizeCurriculumSubject(parsedMeta.subject) ?? "unknown";
-  const contentYearGroup = content.yearGroup ?? parsedMeta.yearGroup ?? null;
+  const contentYearGroup = content.yearGroup ?? parsedMeta.targetLearningYearGroup ?? targetLearningEvidence?.targetLearningYearGroup ?? parsedMeta.yearGroup ?? null;
   const contentYearRange = parseYearGroupRange(contentYearGroup)
     ?? parseYearGroupRange(parsedMeta.keyStage)
     ?? parseYearGroupRange(parsedMeta.ageGroup)
     ?? parseYearGroupRange(parsedMeta.curriculumPathway);
   const normalizedContentYearGroup = normalizeYearGroup(contentYearGroup) ?? contentYearRange?.min ?? null;
-  const rawContentKeyStage = content.keyStage ?? parsedMeta.keyStage ?? null;
+  const rawContentKeyStage = content.keyStage ?? parsedMeta.targetLearningKeyStage ?? targetLearningEvidence?.targetLearningKeyStage ?? parsedMeta.keyStage ?? null;
   const normalizedContentKeyStage = normalizeKeyStage(rawContentKeyStage) ?? (normalizedContentYearGroup ? keyStageForYearGroup(normalizedContentYearGroup) : null);
   const contentPathway = parsedMeta.curriculumPathway ?? null;
   const contentExamBoard = parsedMeta.examBoard ?? null;
@@ -370,13 +432,27 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     contentSubject,
     contentPathway,
     contentKeyStage: normalizedContentKeyStage,
+    contentYearGroup: normalizedContentYearGroup,
     contentLevel: Number.isFinite(content.level) ? content.level : null,
+    contentType: content.contentType,
+    contentStrand: parsedMeta.strand,
     studentPathway: studentCurriculum.curriculumPathway,
     studentKeyStage,
+    studentYearGroup,
     studentLearningLevel: student.studentProfile?.learningLevel ?? null,
     placementLevels,
   });
   const placementWarning = "Placement pathway supports assignment; DOB/year mismatch flagged for review.";
+  const lowerLevelRemediation = placementSupported && isLowerOrSameYear(normalizedContentYearGroup, studentYearGroup) && normalizedContentYearGroup !== studentYearGroup;
+  const yearMismatch = Boolean(normalizedContentYearGroup && studentYearGroup && normalizedContentYearGroup !== studentYearGroup);
+  const keyStageMismatch = Boolean(normalizedContentKeyStage && studentKeyStage && normalizedContentKeyStage !== studentKeyStage);
+  const mismatchFlags = () => assignmentMismatchWarningFlags({
+    yearMismatch,
+    keyStageMismatch,
+    placementSupported,
+    lowerLevelRemediation,
+    adminOverride: input.adminOverride ?? false,
+  });
   const studentYearOrdinal = yearGroupToOrdinal(studentYearGroup);
   if (contentYearRange && studentYearOrdinal !== null && (studentYearOrdinal < contentYearRange.minOrdinal || studentYearOrdinal > contentYearRange.maxOrdinal)) {
     if (!placementSupported) {
@@ -391,7 +467,7 @@ export async function getAssignmentSafetyAndRecommendation(input: {
         meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "admin_year_override"]));
     }
     meta.warningReason = placementWarning;
-    meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "year_mismatch"]));
+    meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), ...mismatchFlags()]));
   }
 
   if (!contentYearRange && normalizedContentYearGroup && studentYearGroup && normalizedContentYearGroup !== studentYearGroup) {
@@ -407,19 +483,21 @@ export async function getAssignmentSafetyAndRecommendation(input: {
         meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "admin_year_override"]));
     }
     meta.warningReason = placementWarning;
-    meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "year_mismatch"]));
+    meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), ...mismatchFlags()]));
   }
 
-  if (normalizedContentKeyStage && studentKeyStage && normalizedContentKeyStage !== studentKeyStage) {
-    if (!input.adminOverride) {
+  if (keyStageMismatch) {
+    if (!input.adminOverride && !lowerLevelRemediation) {
       return {
         safe: false,
         reason: `This content is for ${normalizedContentYearGroup ?? "specific year"} / ${normalizedContentKeyStage} and cannot be assigned to this student.`,
         meta,
       };
     }
-    meta.warningReason = input.overrideReason ?? "Admin manual assignment after Level Finder review";
-    meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "admin_ks_override"]));
+    meta.warningReason = lowerLevelRemediation
+      ? placementWarning
+      : input.overrideReason ?? "Admin manual assignment after Level Finder review";
+    meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), ...mismatchFlags()]));
   }
 
   const shouldCheckExamBoard = shouldApplyExamBoardTag({

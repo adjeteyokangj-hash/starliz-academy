@@ -22,7 +22,11 @@ import assert from "node:assert/strict";
 
 import { evaluateAssignmentCandidate } from "../src/components/admin/content-library/utils";
 import type { ContentItem, StudentOption } from "../src/components/admin/content-library/types";
-import { taskHrefForContentType } from "../src/lib/assignments";
+import {
+  assignmentMismatchWarningFlags,
+  placementSupportsAssignment,
+  taskHrefForContentType,
+} from "../src/lib/assignments";
 import { validateSpellingContentContract } from "../src/lib/content-governance";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -321,4 +325,92 @@ test("valid spelling content still routes to spelling game", () => {
 
   assert.equal(contract.ok, true);
   assert.equal(taskHrefForContentType("spelling"), "/games/spelling");
+});
+
+test("Year 4 student with Year 2 Grammar evidence can receive Year 2 Grammar without override", () => {
+  const supported = placementSupportsAssignment({
+    contentSubject: "english-language",
+    contentPathway: "primary",
+    contentKeyStage: "KS1",
+    contentYearGroup: "Year 2",
+    contentLevel: 2,
+    contentType: "grammar",
+    contentStrand: "grammar",
+    studentPathway: "primary",
+    studentKeyStage: "KS2",
+    studentYearGroup: "Year 4",
+    studentLearningLevel: null,
+    placementLevels: { "english:grammar": { accuracy: 45, level: "below" } },
+  });
+
+  assert.equal(supported, true);
+});
+
+test("Year 9 student with Year 6 Reading evidence can receive Year 6 Reading without override", () => {
+  const supported = placementSupportsAssignment({
+    contentSubject: "reading",
+    contentPathway: "primary",
+    contentKeyStage: "KS2",
+    contentYearGroup: "Year 6",
+    contentLevel: 6,
+    contentType: "reading",
+    contentStrand: "reading",
+    studentPathway: "ks3",
+    studentKeyStage: "KS3",
+    studentYearGroup: "Year 9",
+    studentLearningLevel: "Level 6",
+    placementLevels: {},
+  });
+
+  assert.equal(supported, true);
+});
+
+test("Year 6 student cannot receive unsupported Year 8 Maths without override", () => {
+  const supported = placementSupportsAssignment({
+    contentSubject: "maths",
+    contentPathway: "ks3",
+    contentKeyStage: "KS3",
+    contentYearGroup: "Year 8",
+    contentLevel: 8,
+    contentType: "maths",
+    contentStrand: null,
+    studentPathway: "ks2",
+    studentKeyStage: "KS2",
+    studentYearGroup: "Year 6",
+    studentLearningLevel: null,
+    placementLevels: {},
+  });
+
+  assert.equal(supported, false);
+});
+
+test("unsupported lower-level content still requires override", () => {
+  const supported = placementSupportsAssignment({
+    contentSubject: "science",
+    contentPathway: "primary",
+    contentKeyStage: "KS1",
+    contentYearGroup: "Year 2",
+    contentLevel: 2,
+    contentType: "science",
+    contentStrand: null,
+    studentPathway: "primary",
+    studentKeyStage: "KS2",
+    studentYearGroup: "Year 4",
+    studentLearningLevel: null,
+    placementLevels: {},
+  });
+
+  assert.equal(supported, false);
+});
+
+test("supported lower-level remediation warning flags include year mismatch", () => {
+  const flags = assignmentMismatchWarningFlags({
+    yearMismatch: true,
+    keyStageMismatch: true,
+    placementSupported: true,
+    lowerLevelRemediation: true,
+    adminOverride: false,
+  });
+
+  assert.deepEqual(flags, ["year_mismatch", "lower_level_remediation"]);
 });

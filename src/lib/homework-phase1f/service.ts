@@ -8,6 +8,8 @@ import type { WeeklyWeaknessCandidate } from "@/lib/homework-phase1a/types";
 import { readSchoolWeekSettingsFromProfileJson } from "@/lib/academic-intelligence/schoolWeekSettings";
 import { isWeeklyHomeworkPhase1GEnabled } from "@/lib/homework-phase1g/config";
 import { toHeartbeatSignalRecords } from "@/lib/homework-phase1g/intelligence";
+import { keyStageForYearGroup } from "@/lib/curriculum";
+import { parseTargetLearningEvidenceFromMetadata } from "@/lib/curriculum-level-targets";
 import {
   hasPausedOrHolidayNote,
   isStudentInAllowedHomeworkCohort,
@@ -184,12 +186,24 @@ function toWeaknessCandidates(student: WeeklyHomeworkGenerationStudentInput, cur
     const repeatedMistakes = Math.max(1, weakArea.attemptsCount - 1);
     const normalizedWeaknessType = weakArea.weaknessType.toLowerCase();
     const normalizedSkill = weakArea.skillFocus.trim().toLowerCase();
+    const weakMetadata = (() => {
+      if (!weakArea.metadataJson) return {};
+      try {
+        return JSON.parse(weakArea.metadataJson) as Record<string, unknown>;
+      } catch {
+        return {};
+      }
+    })();
+    const targetEvidence = parseTargetLearningEvidenceFromMetadata(weakMetadata);
 
     return {
       id: weakArea.id,
       subject: weakArea.subject,
       topic: null,
       skill: weakArea.skillFocus,
+      targetLearningYearGroup: targetEvidence?.targetLearningYearGroup ?? null,
+      targetLearningKeyStage: targetEvidence?.targetLearningKeyStage ?? (targetEvidence?.targetLearningYearGroup ? keyStageForYearGroup(targetEvidence.targetLearningYearGroup) : null),
+      studentYearGroup: student.yearGroup,
       estimatedMinutes: 5,
       repeatedMistakes,
       averageScore: Number.isFinite(weakArea.accuracy) ? weakArea.accuracy : null,
@@ -330,6 +344,9 @@ async function persistGeneratedBatch(payload: PersistPayload): Promise<"created"
               questionType: "short_answer",
               promptJson: JSON.stringify({
                 text: `Practise ${question.skill ?? question.topic ?? question.subject} to strengthen this week\'s weak area.`,
+                targetLearningYearGroup: question.targetLearningYearGroup ?? null,
+                targetLearningKeyStage: question.targetLearningKeyStage ?? null,
+                studentYearGroup: question.studentYearGroup ?? null,
               }),
               optionsJson: null,
               expectedAnswerJson: null,

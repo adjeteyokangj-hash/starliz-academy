@@ -3,6 +3,8 @@ import { assignContentToStudent } from "@/lib/assignments";
 import { parseWeakAreaMetadata, stringifyWeakAreaMetadata } from "@/lib/weakAreas";
 import { classifyRecoveryFailure, type RecoveryOrchestrationPlan } from "@/lib/recovery_orchestrator";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
+import { keyStageForYearGroup, normalizeYearGroup } from "@/lib/curriculum";
+import { parseTargetLearningEvidenceFromMetadata } from "@/lib/curriculum-level-targets";
 
 function normalizeContentType(subject: string | null | undefined): string {
   const value = String(subject ?? "").trim().toLowerCase();
@@ -45,6 +47,26 @@ function withExecutionError(plan: RecoveryOrchestrationPlan, message: string): R
 function isExecutionComplete(plan: RecoveryOrchestrationPlan): boolean {
   const effects = plan.execution.executionEffects;
   return Boolean(effects.createdContentId && effects.assignmentId && effects.weakAreaId && effects.revisionScheduled);
+}
+
+export function resolveRecoveryCurriculumTarget(input: {
+  planYearGroup?: string | null;
+  planKeyStage?: string | null;
+  studentYearGroup?: string | null;
+  studentKeyStage?: string | null;
+  weakAreaMetadata?: Record<string, unknown> | null;
+}) {
+  const metadataEvidence = parseTargetLearningEvidenceFromMetadata(input.weakAreaMetadata);
+  const studentYearGroup = normalizeYearGroup(input.studentYearGroup);
+  const targetYearGroup = normalizeYearGroup(input.planYearGroup)
+    ?? metadataEvidence?.targetLearningYearGroup
+    ?? studentYearGroup;
+  return {
+    yearGroup: targetYearGroup,
+    keyStage: targetYearGroup ? keyStageForYearGroup(targetYearGroup) : input.planKeyStage ?? metadataEvidence?.targetLearningKeyStage ?? input.studentKeyStage ?? null,
+    studentYearGroup,
+    studentKeyStage: studentYearGroup ? keyStageForYearGroup(studentYearGroup) : input.studentKeyStage ?? null,
+  };
 }
 
 async function executeOrRetry(plan: RecoveryOrchestrationPlan, actorUserId: string): Promise<RecoveryOrchestrationPlan> {
@@ -92,12 +114,35 @@ async function executeOrRetry(plan: RecoveryOrchestrationPlan, actorUserId: stri
     };
   }
 
-  const subject = "maths";
+  const subject = plan.subject ?? "maths";
   const skillFocus = plan.targetConcept;
   const checkpoints = revisionCheckpoints();
   const effects = {
     ...plan.execution.executionEffects,
   };
+
+  const previousWeakArea = await prisma.weakArea.findUnique({
+    where: {
+      studentId_subject_skillFocus: {
+        studentId: student.id,
+        subject,
+        skillFocus,
+      },
+    },
+    select: {
+      id: true,
+      metadataJson: true,
+      currentDifficulty: true,
+    },
+  });
+  const previousMetadata = parseWeakAreaMetadata(previousWeakArea?.metadataJson);
+  const curriculumTarget = resolveRecoveryCurriculumTarget({
+    planYearGroup: plan.yearGroup,
+    planKeyStage: plan.keyStage,
+    studentYearGroup: student.yearGroup,
+    studentKeyStage: student.studentProfile?.keyStageLevel ?? null,
+    weakAreaMetadata: previousMetadata,
+  });
 
   const computeProgressPercent = () => {
     const score = [
@@ -127,16 +172,20 @@ async function executeOrRetry(plan: RecoveryOrchestrationPlan, actorUserId: stri
           ]),
           status: "reviewed",
           createdBy: actorUserId,
-          keyStage: student.studentProfile?.keyStageLevel ?? null,
-          yearGroup: student.yearGroup ?? null,
+          keyStage: curriculumTarget.keyStage,
+          yearGroup: curriculumTarget.yearGroup,
           skillFocus,
           metadataJson: JSON.stringify({
             schoolId: plan.schoolId,
             subject,
             targetConcept: plan.targetConcept,
             runId: plan.runId,
-            yearGroup: student.yearGroup ?? null,
-            keyStage: student.studentProfile?.keyStageLevel ?? null,
+            yearGroup: curriculumTarget.yearGroup,
+            keyStage: curriculumTarget.keyStage,
+            targetLearningYearGroup: curriculumTarget.yearGroup,
+            targetLearningKeyStage: curriculumTarget.keyStage,
+            studentYearGroup: curriculumTarget.studentYearGroup,
+            studentKeyStage: curriculumTarget.studentKeyStage,
           }),
         },
         select: { id: true },
@@ -157,22 +206,6 @@ async function executeOrRetry(plan: RecoveryOrchestrationPlan, actorUserId: stri
     }
 
     if (!effects.weakAreaId) {
-      const previousWeakArea = await prisma.weakArea.findUnique({
-        where: {
-          studentId_subject_skillFocus: {
-            studentId: student.id,
-            subject,
-            skillFocus,
-          },
-        },
-        select: {
-          id: true,
-          metadataJson: true,
-          currentDifficulty: true,
-        },
-      });
-
-      const previousMetadata = parseWeakAreaMetadata(previousWeakArea?.metadataJson);
       const nextMetadata = stringifyWeakAreaMetadata({
         ...previousMetadata,
         weakSkills: [...new Set([...(previousMetadata.weakSkills ?? []), skillFocus])],
@@ -187,6 +220,10 @@ async function executeOrRetry(plan: RecoveryOrchestrationPlan, actorUserId: stri
           runId: plan.runId,
           recoveryPath: plan.recoveryPath,
           revisionCheckpoints: checkpoints,
+          targetLearningYearGroup: curriculumTarget.yearGroup,
+          targetLearningKeyStage: curriculumTarget.keyStage,
+          studentYearGroup: curriculumTarget.studentYearGroup,
+          studentKeyStage: curriculumTarget.studentKeyStage,
         },
       });
 
@@ -201,8 +238,8 @@ async function executeOrRetry(plan: RecoveryOrchestrationPlan, actorUserId: stri
         create: {
           studentId: student.id,
           subject,
-          keyStage: student.studentProfile?.keyStageLevel ?? null,
-          yearGroup: student.yearGroup ?? null,
+          keyStage: curriculumTarget.keyStage,
+          yearGroup: curriculumTarget.yearGroup,
           skillFocus,
           weaknessType: "knowledge_gap",
           accuracy: Math.max(20, Math.round(100 - plan.estimatedInterventionMinutes * 2)),

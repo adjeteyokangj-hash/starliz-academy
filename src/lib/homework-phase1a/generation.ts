@@ -91,6 +91,9 @@ export function generateWeeklyHomeworkBatch(input: GenerationInput): GenerationR
     subject: candidate.subject,
     topic: candidate.topic ?? null,
     skill: candidate.skill ?? null,
+    targetLearningYearGroup: candidate.targetLearningYearGroup ?? null,
+    targetLearningKeyStage: candidate.targetLearningKeyStage ?? null,
+    studentYearGroup: candidate.studentYearGroup ?? input.yearGroup ?? null,
     estimatedMinutes: Math.max(1, candidate.estimatedMinutes),
     required: true,
   }));
