@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
+import { prisma } from "@/lib/db";
+import {
+  BRAIN_WARNING_REVIEW_ACTION,
+  BRAIN_WARNING_REVIEW_ENTITY_TYPE,
+  buildBrainWarningFingerprint,
+  snapshotStatus,
+} from "@/app/api/admin/brain-centre/_lib";
 import { getStudentLearningBrain } from "@/lib/student-learning-brain";
 import { refreshAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 import { syncCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
@@ -27,6 +34,7 @@ type ActionDeps = {
   syncCatchUpTasks: typeof syncCatchUpTasks;
   syncHomeworkTasks: typeof syncHomeworkTasks;
   writeAuditLog: typeof writeAuditLog;
+  findStudentProfileJson: (studentId: string) => Promise<string | null>;
 };
 
 export async function handleAdminBrainCentreActionPost(
@@ -39,6 +47,13 @@ export async function handleAdminBrainCentreActionPost(
     syncCatchUpTasks,
     syncHomeworkTasks,
     writeAuditLog,
+    findStudentProfileJson: async (studentId) => {
+      const student = await prisma.childProfile.findFirst({
+        where: { id: studentId, archived: false },
+        select: { studentProfile: { select: { aiLearningProfileJson: true } } },
+      });
+      return student?.studentProfile?.aiLearningProfileJson ?? null;
+    },
   },
 ) {
   const { session, response } = await deps.requireAdmin();
@@ -49,6 +64,15 @@ export async function handleAdminBrainCentreActionPost(
 
   const brain = await deps.getStudentLearningBrain(studentId, { includeCoachSignals: true });
   if (!brain) return NextResponse.json({ error: "Brain not available." }, { status: 404 });
+  const profileJson = await deps.findStudentProfileJson(studentId);
+  const snapshot = snapshotStatus(profileJson);
+  const warningFingerprint = buildBrainWarningFingerprint({
+    studentId,
+    heartbeat: brain.heartbeatSummary,
+    recommendationSync: brain.academicIntelligence.recommendationSync,
+    dataState: brain.dataState,
+    snapshotStatus: snapshot.status,
+  });
 
   let result: Record<string, unknown> = {};
   if (body.action === "refresh_snapshot") {
@@ -90,6 +114,7 @@ export async function handleAdminBrainCentreActionPost(
   if (body.action === "mark_warning_reviewed") {
     result = {
       reviewed: true,
+      warningFingerprint,
       heartbeatAction: brain.heartbeatSummary.primaryAction,
       recommendationSyncStatus: brain.academicIntelligence.recommendationSync.status,
     };
@@ -97,13 +122,21 @@ export async function handleAdminBrainCentreActionPost(
 
   await deps.writeAuditLog({
     actorUserId: session.userId,
-    action: `brain_centre_${body.action}`,
-    entityType: "brain_centre_student",
+    action: body.action === "mark_warning_reviewed" ? BRAIN_WARNING_REVIEW_ACTION : `brain_centre_${body.action}`,
+    entityType: BRAIN_WARNING_REVIEW_ENTITY_TYPE,
     entityId: studentId,
     metadata: {
       note: body.note ?? null,
+      warningFingerprint,
+      lifecycleStatus: body.action === "mark_warning_reviewed" ? "reviewed" : null,
       heartbeatAction: brain.heartbeatSummary.primaryAction,
+      heartbeatRiskLevel: brain.heartbeatSummary.riskLevel,
+      heartbeatUrgency: brain.heartbeatSummary.urgency,
       recommendationSyncStatus: brain.academicIntelligence.recommendationSync.status,
+      recommendationMismatchCount: brain.academicIntelligence.recommendationSync.mismatches.length,
+      dataState: brain.dataState.state,
+      checklistStatus: brain.dataState.checklistStatus,
+      snapshotStatus: snapshot.status,
     },
   });
 

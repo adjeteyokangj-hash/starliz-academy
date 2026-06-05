@@ -7,6 +7,17 @@ import type { StudentDataNormalisationResult } from "@/lib/student-learning-brai
 
 export type BrainHealthStatus = "healthy" | "warning" | "critical";
 
+export const BRAIN_WARNING_REVIEW_ACTION = "brain_warning_reviewed";
+export const BRAIN_WARNING_REVIEW_ENTITY_TYPE = "brain_centre_student";
+
+export type BrainWarningReviewState = {
+  status: "reviewed" | "unreviewed";
+  fingerprint: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  note: string | null;
+};
+
 export function snapshotStatus(profileJson: string | null | undefined): {
   status: "fresh" | "stale" | "missing";
   lastCalculatedAt: string | null;
@@ -53,4 +64,69 @@ export function heartbeatNeedsAdminVisibility(brain: { heartbeatSummary: Heartbe
   if (heartbeat.riskLevel === "critical" || heartbeat.riskLevel === "high") return true;
   if (heartbeat.urgency === "critical" || heartbeat.urgency === "high") return true;
   return heartbeat.primaryAction !== "advance_student" && heartbeat.primaryAction !== "maintain_level";
+}
+
+function stableHash(value: string): string {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash) + value.charCodeAt(index);
+    hash &= 0xffffffff;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+export function buildBrainWarningFingerprint(input: {
+  studentId: string;
+  heartbeat: Pick<HeartbeatDecision, "primaryAction" | "riskLevel" | "urgency" | "suggestedNextStep">;
+  recommendationSync: Pick<RecommendationSyncAudit, "status" | "action" | "mismatches">;
+  dataState: Pick<StudentDataNormalisationResult, "state" | "checklistStatus">;
+  snapshotStatus: "fresh" | "stale" | "missing";
+}): string {
+  const mismatchEngines = input.recommendationSync.mismatches
+    .map((mismatch) => mismatch.engine)
+    .sort()
+    .join(",");
+  const raw = [
+    `student:${input.studentId}`,
+    `heartbeat:${input.heartbeat.primaryAction}:${input.heartbeat.riskLevel}:${input.heartbeat.urgency}:${input.heartbeat.suggestedNextStep}`,
+    `sync:${input.recommendationSync.status}:${input.recommendationSync.action}:${input.recommendationSync.mismatches.length}:${mismatchEngines}`,
+    `data:${input.dataState.state}:${input.dataState.checklistStatus}`,
+    `snapshot:${input.snapshotStatus}`,
+  ].join("|");
+  return `brain-warning-${stableHash(raw)}`;
+}
+
+export function parseBrainWarningReviewState(input: {
+  fingerprint: string;
+  review: {
+    actorUserId: string | null;
+    createdAt: Date | string;
+    metadataJson: string | null;
+  } | null;
+}): BrainWarningReviewState {
+  if (!input.review) {
+    return {
+      status: "unreviewed",
+      fingerprint: input.fingerprint,
+      reviewedAt: null,
+      reviewedBy: null,
+      note: null,
+    };
+  }
+
+  let note: string | null = null;
+  try {
+    const metadata = input.review.metadataJson ? JSON.parse(input.review.metadataJson) as Record<string, unknown> : {};
+    note = typeof metadata.note === "string" && metadata.note.trim() ? metadata.note : null;
+  } catch {
+    note = null;
+  }
+
+  return {
+    status: "reviewed",
+    fingerprint: input.fingerprint,
+    reviewedAt: new Date(input.review.createdAt).toISOString(),
+    reviewedBy: input.review.actorUserId,
+    note,
+  };
 }

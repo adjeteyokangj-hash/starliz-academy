@@ -531,6 +531,7 @@ test("Brain Centre student investigation exposes evidence chain, diagnostics, co
         studentProfile: { aiLearningProfileJson: profileWithSnapshot(now) },
       }),
       getStudentLearningBrain: async () => brain as never,
+      findLatestWarningReview: async () => null,
     },
   );
   const payload = await response.json() as BrainCentreDetailPayload;
@@ -544,6 +545,103 @@ test("Brain Centre student investigation exposes evidence chain, diagnostics, co
   assert.ok(payload.recommendationControlRoom.some((row) => row.engine === "Homework" && row.conflict));
   assert.ok(payload.timeline.some((event) => event.type === "heartbeat_warning"));
   assert.ok(payload.timeline.some((event) => event.type === "catch_up_generated"));
+  assert.equal(payload.warningReview.status, "unreviewed");
+});
+
+test("Brain Centre student investigation overlays matching warning review audit state", async () => {
+  const brain = {
+    ...makeBrain({ studentId: "student-1" }),
+    source: {
+      studentId: "student-1",
+      studentName: "Ada",
+      yearGroup: "Year 5",
+      keyStage: "KS2",
+      assignments: [],
+      attempts: [],
+      weakAreas: [],
+      studentSkills: [],
+      coachUsage: [],
+      dictionarySignals: [],
+      progressRecords: [],
+      assessmentHistory: [],
+      generatedAt: now,
+    },
+    learningDnaSummary: { readinessLabel: "Needs support" },
+    academicIntelligence: {
+      ...makeBrain({ studentId: "student-1" }).academicIntelligence,
+      summary: {
+        totalTopics: 0,
+        byStatus: {
+          not_started: 0,
+          started: 0,
+          practising: 0,
+          needs_catch_up: 0,
+          nearly_secure: 0,
+          mastered: 0,
+          needs_revision: 0,
+        },
+        needsCatchUpCount: 0,
+        needsRevisionCount: 0,
+        coveredCount: 0,
+        averageScore: null,
+      },
+      masteryExpansion: {
+        needsCatchUpTopics: 0,
+        nearlySecureTopics: 0,
+        masteredTopics: 0,
+        overdueRevisionTopics: 0,
+        highConfidenceTopics: 0,
+        priorityTopics: [],
+      },
+      nextRecommendedActions: ["Review current support need."],
+      assessmentReadiness: "needs_review",
+      catchUpRecommendations: [],
+      examReadinessProfile: {
+        score: 0,
+        band: "not_ready",
+        headline: "Not ready",
+        blockers: [],
+        recommendedActions: [],
+        signals: {
+          masteryScore: 0,
+          consistencyScore: 0,
+          examEvidenceScore: 0,
+          weakAreaPenalty: 0,
+        },
+      },
+      catchUpTasks: [],
+      homeworkTasks: [],
+    },
+    quickLevelFinderBaseline: { completedAt: now },
+  };
+  const response = await handleAdminBrainCentreStudentGet(
+    new Request("http://localhost/api/admin/brain-centre/student-1"),
+    { params: Promise.resolve({ studentId: "student-1" }) },
+    {
+      requireAdmin: async () => ({ session: { userId: "admin-1", email: "admin@example.com", role: "admin" }, response: null }),
+      findStudent: async () => ({
+        id: "student-1",
+        name: "Ada",
+        yearGroup: "Year 5",
+        updatedAt: new Date(now),
+        studentProfile: { aiLearningProfileJson: profileWithSnapshot(now) },
+      }),
+      getStudentLearningBrain: async () => brain as never,
+      findLatestWarningReview: async (_studentId, fingerprint) => ({
+        actorUserId: "admin-1",
+        createdAt: new Date(now),
+        metadataJson: JSON.stringify({ warningFingerprint: fingerprint, note: "Reviewed with tutor." }),
+      }),
+    },
+  );
+  const payload = await response.json() as BrainCentreDetailPayload;
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.warningReview.status, "reviewed");
+  assert.equal(payload.warningReview.reviewedBy, "admin-1");
+  assert.equal(payload.warningReview.note, "Reviewed with tutor.");
+  assert.ok(payload.warningReview.fingerprint.startsWith("brain-warning-"));
+  assert.ok(payload.timeline.some((event) => event.type === "brain_warning_reviewed"));
 });
 
 test("Brain Centre actions are admin-only, audited, and use safe services", async () => {
@@ -615,6 +713,7 @@ test("Brain Centre actions are admin-only, audited, and use safe services", asyn
       writeAuditLog: async (input) => {
         calls.push(`audit:${input.action}`);
       },
+      findStudentProfileJson: async () => profileWithSnapshot(now),
     },
   );
   const payload = await response.json() as { ok: boolean; action: string };
@@ -623,6 +722,39 @@ test("Brain Centre actions are admin-only, audited, and use safe services", asyn
   assert.equal(payload.ok, true);
   assert.equal(payload.action, "generate_catch_up_recommendation");
   assert.deepEqual(calls, ["catch-up", "audit:brain_centre_generate_catch_up_recommendation"]);
+});
+
+test("Brain Centre log warning review writes durable warning fingerprint audit event", async () => {
+  let auditMetadata: Record<string, unknown> | undefined;
+  const response = await handleAdminBrainCentreActionPost(
+    new Request("http://localhost/api/admin/brain-centre/student-1/actions", {
+      method: "POST",
+      body: JSON.stringify({ action: "mark_warning_reviewed", note: "Reviewed with tutor." }),
+    }),
+    { params: Promise.resolve({ studentId: "student-1" }) },
+    {
+      requireAdmin: async () => ({ session: { userId: "admin-1", email: "admin@example.com", role: "admin" }, response: null }),
+      getStudentLearningBrain: async () => makeBrain({ studentId: "student-1" }) as never,
+      refreshAcademicIntelligenceSnapshot: async () => null,
+      syncCatchUpTasks: async () => [],
+      syncHomeworkTasks: async () => [],
+      writeAuditLog: async (input) => {
+        auditMetadata = input.metadata;
+        assert.equal(input.action, "brain_warning_reviewed");
+        assert.equal(input.entityType, "brain_centre_student");
+        assert.equal(input.entityId, "student-1");
+      },
+      findStudentProfileJson: async () => profileWithSnapshot(now),
+    },
+  );
+  const payload = await response.json() as { ok: boolean; result: { warningFingerprint: string } };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.ok, true);
+  assert.ok(payload.result.warningFingerprint.startsWith("brain-warning-"));
+  assert.equal(auditMetadata?.warningFingerprint, payload.result.warningFingerprint);
+  assert.equal(auditMetadata?.lifecycleStatus, "reviewed");
+  assert.equal(auditMetadata?.note, "Reviewed with tutor.");
 });
 
 test("Brain Centre actions reject non-admin requests before services run", async () => {
@@ -656,6 +788,10 @@ test("Brain Centre actions reject non-admin requests before services run", async
       },
       writeAuditLog: async () => {
         calls.push("audit");
+      },
+      findStudentProfileJson: async () => {
+        calls.push("profile");
+        return null;
       },
     },
   );

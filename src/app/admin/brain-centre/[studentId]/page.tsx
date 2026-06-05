@@ -345,7 +345,7 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
         <div className="space-y-4">
           <section className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-4">
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-indigo-200">Top Summary</p>
-            <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+            <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-6">
               <div>
                 <p className="text-[11px] uppercase text-indigo-200/80">Student</p>
                 <p className="text-sm font-bold text-white">{payload.student.name}</p>
@@ -366,7 +366,22 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
                 <p className="text-[11px] uppercase text-indigo-200/80">Risk</p>
                 <p className="text-sm font-bold text-white">{toTitleCase(payload.heartbeat.riskLevel)}</p>
               </div>
+              <div>
+                <p className="text-[11px] uppercase text-indigo-200/80">Review Status</p>
+                <span className={`mt-1 inline-flex rounded-full border px-2 py-1 text-xs font-bold ${badgeClass(payload.warningReview.status)}`}>
+                  {payload.warningReview.status === "reviewed" ? "Reviewed" : "Unreviewed"}
+                </span>
+              </div>
             </div>
+            {payload.warningReview.status === "reviewed" ? (
+              <p className="mt-3 text-xs text-indigo-100">
+                Last reviewed {formatDate(payload.warningReview.reviewedAt)}
+                {payload.warningReview.reviewedBy ? ` by ${payload.warningReview.reviewedBy}` : ""}
+                {payload.warningReview.note ? `: ${payload.warningReview.note}` : ""}
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-indigo-100">This warning is active and has not been reviewed yet.</p>
+            )}
             <button
               type="button"
               onClick={() => void runGuidedAction(mainAction)}

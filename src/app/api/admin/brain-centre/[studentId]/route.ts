@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { getStudentLearningBrain } from "@/lib/student-learning-brain";
-import { healthForBrain, snapshotStatus } from "@/app/api/admin/brain-centre/_lib";
+import {
+  BRAIN_WARNING_REVIEW_ACTION,
+  BRAIN_WARNING_REVIEW_ENTITY_TYPE,
+  buildBrainWarningFingerprint,
+  healthForBrain,
+  parseBrainWarningReviewState,
+  snapshotStatus,
+  type BrainWarningReviewState,
+} from "@/app/api/admin/brain-centre/_lib";
 import type { StudentLearningBrain } from "@/lib/student-learning-brain";
 
 type Params = { params: Promise<{ studentId: string }> };
@@ -79,12 +87,18 @@ export type BrainCentreDetailPayload = {
     conflict: boolean;
   }>;
   timeline: BrainTimelineEvent[];
+  warningReview: BrainWarningReviewState;
 };
 
 type DetailDeps = {
   requireAdmin: typeof requireAdmin;
   findStudent: (studentId: string) => Promise<BrainCentreDetailStudent | null>;
   getStudentLearningBrain: (studentId: string) => Promise<StudentLearningBrain | null>;
+  findLatestWarningReview: (studentId: string, fingerprint: string) => Promise<{
+    actorUserId: string | null;
+    createdAt: Date;
+    metadataJson: string | null;
+  } | null>;
 };
 
 function latestIso(values: Array<string | null | undefined>): string | null {
@@ -200,7 +214,11 @@ function pushEvent(events: BrainTimelineEvent[], at: string | null | undefined, 
   events.push({ at, type, label, detail });
 }
 
-function buildTimeline(brain: StudentLearningBrain, snapshot: ReturnType<typeof snapshotStatus>): BrainTimelineEvent[] {
+function buildTimeline(
+  brain: StudentLearningBrain,
+  snapshot: ReturnType<typeof snapshotStatus>,
+  warningReview: BrainWarningReviewState,
+): BrainTimelineEvent[] {
   const events: BrainTimelineEvent[] = [];
   pushEvent(events, brain.quickLevelFinderBaseline?.completedAt, "qlf_completed", "QLF Completed", "Quick Level Finder baseline completed.");
   for (const weak of brain.source.weakAreas.slice(0, 20)) {
@@ -217,6 +235,15 @@ function buildTimeline(brain: StudentLearningBrain, snapshot: ReturnType<typeof 
   if (brain.academicIntelligence.recommendationSync.status !== "synced") {
     pushEvent(events, brain.academicIntelligence.recommendationSync.generatedAt, "recommendation_sync_warning", "Recommendation Sync Warning", brain.academicIntelligence.recommendationSync.action);
   }
+  if (warningReview.status === "reviewed") {
+    pushEvent(
+      events,
+      warningReview.reviewedAt,
+      "brain_warning_reviewed",
+      "Brain Warning Reviewed",
+      warningReview.note ? `Reviewed by admin. Note: ${warningReview.note}` : "Reviewed by admin.",
+    );
+  }
   for (const task of brain.academicIntelligence.catchUpTasks.slice(0, 10)) {
     pushEvent(events, task.createdAt, "catch_up_generated", "Catch-Up Generated", `${task.title} (${task.status})`);
   }
@@ -227,7 +254,11 @@ function buildTimeline(brain: StudentLearningBrain, snapshot: ReturnType<typeof 
   return events.sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime());
 }
 
-function buildDetailPayload(student: BrainCentreDetailStudent, brain: StudentLearningBrain): BrainCentreDetailPayload {
+function buildDetailPayload(
+  student: BrainCentreDetailStudent,
+  brain: StudentLearningBrain,
+  warningReview: BrainWarningReviewState,
+): BrainCentreDetailPayload {
   const snapshot = snapshotStatus(student.studentProfile?.aiLearningProfileJson ?? null);
   const status = healthForBrain({ brain, snapshotStatus: snapshot.status });
   const issues = diagnosticsForBrain({ brain, snapshot });
@@ -258,7 +289,8 @@ function buildDetailPayload(student: BrainCentreDetailStudent, brain: StudentLea
     evidenceChain: buildEvidenceChain(brain, snapshot),
     diagnostics: { status, score, issues },
     recommendationControlRoom: buildControlRoom(brain),
-    timeline: buildTimeline(brain, snapshot),
+    timeline: buildTimeline(brain, snapshot, warningReview),
+    warningReview,
   };
 }
 
@@ -278,6 +310,20 @@ export async function handleAdminBrainCentreStudentGet(
       },
     }),
     getStudentLearningBrain: (studentId) => getStudentLearningBrain(studentId, { includeCoachSignals: true }),
+    findLatestWarningReview: (studentId, fingerprint) => prisma.auditLog.findFirst({
+      where: {
+        action: BRAIN_WARNING_REVIEW_ACTION,
+        entityType: BRAIN_WARNING_REVIEW_ENTITY_TYPE,
+        entityId: studentId,
+        metadataJson: { contains: fingerprint },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        actorUserId: true,
+        createdAt: true,
+        metadataJson: true,
+      },
+    }),
   },
 ) {
   void request;
@@ -288,7 +334,17 @@ export async function handleAdminBrainCentreStudentGet(
   if (!student) return NextResponse.json({ error: "Student not found." }, { status: 404 });
   const brain = await deps.getStudentLearningBrain(student.id);
   if (!brain) return NextResponse.json({ error: "Brain not available." }, { status: 404 });
-  return NextResponse.json(buildDetailPayload(student, brain));
+  const snapshot = snapshotStatus(student.studentProfile?.aiLearningProfileJson ?? null);
+  const fingerprint = buildBrainWarningFingerprint({
+    studentId: student.id,
+    heartbeat: brain.heartbeatSummary,
+    recommendationSync: brain.academicIntelligence.recommendationSync,
+    dataState: brain.dataState,
+    snapshotStatus: snapshot.status,
+  });
+  const review = await deps.findLatestWarningReview(student.id, fingerprint);
+  const warningReview = parseBrainWarningReviewState({ fingerprint, review });
+  return NextResponse.json(buildDetailPayload(student, brain, warningReview));
 }
 
 export async function GET(request: Request, context: Params) {
