@@ -10,6 +10,7 @@ import { buildAiGeneratorUrl } from "@/lib/admin-ai-generator-url";
 import { mapHeartbeatActionButton, toHeartbeatDecisionViewModel } from "@/lib/academic-intelligence/heartbeatActionMap";
 import type { CoachHeartbeatSignalSummary, CoverageEntry, HeartbeatDecision, SchoolWeekday } from "@/lib/academic-intelligence/types";
 import { keyStageForYearGroup } from "@/lib/curriculum";
+import type { UniversalAiPrefillContract } from "@/lib/ai-prefill-contract";
 
 type StudentDetail = {
   id: string;
@@ -213,6 +214,7 @@ type AdminProgressionPayload = {
     difficulty: number;
     accuracy: number;
     reason: string;
+    prefillContract?: UniversalAiPrefillContract;
   }>;
   autoPromotion?: {
     appliedCount?: number;
@@ -1337,6 +1339,7 @@ export default function StudentDetailPage() {
                         yearGroup: target.yearGroup,
                         keyStage: target.keyStage,
                         difficulty: target.difficulty,
+                        prefillContract: target.prefillContract ?? null,
                       });
 
                       return (

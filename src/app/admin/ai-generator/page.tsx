@@ -40,6 +40,12 @@ import {
 } from "@/lib/ai/exam-board-resolver";
 import type { VisualAsset } from "@/lib/ai/visual-generation";
 import { uploadMediaFile } from "@/lib/upload-client";
+import {
+  adaptLegacyQueryToContract,
+  decodeUniversalPrefillContract,
+  legacyPrefillFromQueryMap,
+  resolveUniversalPrefill,
+} from "@/lib/ai-prefill-contract";
 
 type GeneratedPreviewItem = Record<string, unknown> & {
   id?: string;
@@ -262,23 +268,16 @@ function normalizeEnglishStrandValue(value: string | null): EnglishStrand | null
   return ENGLISH_STRAND_OPTIONS.some((option) => option.value === cleaned) ? cleaned as EnglishStrand : null;
 }
 
-function normalizeGenerationSource(value: string | null): GenerationContext["source"] {
-  if (value === "weak-area") return "weak-area";
-  if (value === "student-profile") return "student-profile";
-  return "manual";
+function mapTriggerToGenerationSource(trigger: "manual" | "student-target", signal: string | null): GenerationContext["source"] {
+  if (trigger === "manual") return "manual";
+  if (signal === "weak-area") return "weak-area";
+  return "student-profile";
 }
 
 function generationContextSourceLabel(source: GenerationContext["source"]): string {
   if (source === "weak-area") return "AI Intervention Engine";
   if (source === "student-profile") return "Student profile target";
   return "Manual generator";
-}
-
-function normalizePrefillItemCount(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 1) return null;
-  return Math.max(1, Math.min(10, Math.floor(parsed)));
 }
 
 function isEnglishParentSubject(value: Subject): boolean {
@@ -689,38 +688,51 @@ function recommendItemCount(input: {
 
 export default function AiGeneratorPage() {
   const searchParams = useSearchParams();
+  const serializedPrefillContract = searchParams.get("prefillContract");
   const prefillSubject = searchParams.get("subject");
   const prefillSkill = searchParams.get("skill");
   const prefillWords = searchParams.get("words");
-  const prefillStudentId = searchParams.get("studentId");
-  const prefillYearGroup = searchParams.get("yearGroup");
-  const prefillKeyStage = searchParams.get("keyStage");
-  const prefillDifficulty = Number(searchParams.get("difficulty"));
-  const prefillTopic = searchParams.get("topic");
-  const prefillStrand = normalizeEnglishStrandValue(searchParams.get("englishStrand") ?? searchParams.get("strand"));
-  const prefillActivityType = searchParams.get("activityType");
-  const prefillMasteryOutcome = searchParams.get("masteryOutcome");
-  const rawPrefillSource = searchParams.get("source");
-  const prefillSource = normalizeGenerationSource(rawPrefillSource);
-  const prefillWeakAreaId = searchParams.get("weakAreaId");
-  const prefillItemCount = normalizePrefillItemCount(searchParams.get("itemCount"));
-  const hasTargetPrefill = Boolean(
-    prefillSubject
-    || prefillSkill
-    || prefillTopic
-    || prefillActivityType
-    || prefillMasteryOutcome
-    || prefillStudentId
-    || prefillWeakAreaId
-    || rawPrefillSource
-  );
+  const legacyPrefill = legacyPrefillFromQueryMap({
+    studentId: searchParams.get("studentId"),
+    subject: prefillSubject,
+    skill: prefillSkill,
+    englishStrand: searchParams.get("englishStrand"),
+    strand: searchParams.get("strand"),
+    topic: searchParams.get("topic"),
+    activityType: searchParams.get("activityType"),
+    masteryOutcome: searchParams.get("masteryOutcome"),
+    source: searchParams.get("source"),
+    weakAreaId: searchParams.get("weakAreaId"),
+    yearGroup: searchParams.get("yearGroup"),
+    keyStage: searchParams.get("keyStage"),
+    difficulty: searchParams.get("difficulty"),
+    itemCount: searchParams.get("itemCount"),
+  });
+  const decodedPrefillContract = decodeUniversalPrefillContract(serializedPrefillContract);
+  const effectiveIncomingPrefillContract = decodedPrefillContract ?? adaptLegacyQueryToContract(legacyPrefill);
+  const prefillResolution = resolveUniversalPrefill({
+    contract: effectiveIncomingPrefillContract,
+    legacy: legacyPrefill,
+    availableSubjectsForYear: getAvailableSubjects,
+    normalizeSubject: normalizeCurriculumSubject,
+    isEnglishParentSubject,
+    normalizeEnglishStrand: (value) => normalizeEnglishStrandValue(value),
+    deriveSkillFromEnglishStrand: (strand, year, subject) => deriveSkillFocusFromEnglishStrand(strand as EnglishStrand | "", year, subject),
+    availableSkillsForSubjectAndYear: getAvailableSkills,
+  });
+  const resolvedPrefill = prefillResolution.values;
+  const prefillSource = mapTriggerToGenerationSource(resolvedPrefill.trigger, resolvedPrefill.signal);
+  const prefillBlockingWarnings = prefillResolution.blockingWarnings;
+  const prefillAssumptions = prefillResolution.assumptions;
+  const prefillFieldSources = prefillResolution.fieldSources;
+  const hasTargetPrefill = resolvedPrefill.trigger === "student-target";
 
   // Initialize with sensible defaults; validate against curriculum
-  const initialYearGroup: YearGroup = prefillYearGroup && YEAR_GROUPS.includes(prefillYearGroup as YearGroup)
-    ? (prefillYearGroup as YearGroup)
+  const initialYearGroup: YearGroup = resolvedPrefill.yearGroup && YEAR_GROUPS.includes(resolvedPrefill.yearGroup as YearGroup)
+    ? (resolvedPrefill.yearGroup as YearGroup)
     : "Year 1";
-  const normalizedPrefillKeyStage = prefillKeyStage && KEY_STAGES.includes(prefillKeyStage as (typeof KEY_STAGES)[number])
-    ? (prefillKeyStage as (typeof KEY_STAGES)[number])
+  const normalizedPrefillKeyStage = resolvedPrefill.keyStage && KEY_STAGES.includes(resolvedPrefill.keyStage as (typeof KEY_STAGES)[number])
+    ? (resolvedPrefill.keyStage as (typeof KEY_STAGES)[number])
     : null;
   const prefillKeyStageMatchesYear = Boolean(
     normalizedPrefillKeyStage && yearGroupsForKeyStage(normalizedPrefillKeyStage).includes(initialYearGroup)
@@ -728,24 +740,24 @@ export default function AiGeneratorPage() {
   const initialAgeGroup = ageGroupForYearGroup(initialYearGroup);
 
   const [yearGroup, setYearGroup] = useState<string>(initialYearGroup);
-  const [examBoard, setExamBoard] = useState("");
+  const [examBoard, setExamBoard] = useState(resolvedPrefill.examBoard || "");
   const [autoSelectExamBoard, setAutoSelectExamBoard] = useState(true);
-  const [countryRegion, setCountryRegion] = useState("UK");
-  const [curriculumFramework, setCurriculumFramework] = useState("National Curriculum England");
+  const [countryRegion, setCountryRegion] = useState(resolvedPrefill.countryRegion || "UK");
+  const [curriculumFramework, setCurriculumFramework] = useState(resolvedPrefill.curriculumFramework || "National Curriculum England");
   const [allowManualExamBoardOverride, setAllowManualExamBoardOverride] = useState(true);
-  const [schoolPreferredGcseBoard, setSchoolPreferredGcseBoard] = useState("");
-  const [visualGenerationEnabled, setVisualGenerationEnabled] = useState(false);
-  const [visualGenerationMode, setVisualGenerationMode] = useState<"none" | "planned_only" | "generate_now">("planned_only");
-  const [maxVisualsPerLesson, setMaxVisualsPerLesson] = useState(2);
-  const [visualAllowedSubjects, setVisualAllowedSubjects] = useState<string[]>([]);
-  const [requireVisualApproval, setRequireVisualApproval] = useState(true);
+  const [schoolPreferredGcseBoard, setSchoolPreferredGcseBoard] = useState(resolvedPrefill.schoolPreferredGcseBoard || "");
+  const [visualGenerationEnabled, setVisualGenerationEnabled] = useState(resolvedPrefill.visualGenerationEnabled);
+  const [visualGenerationMode, setVisualGenerationMode] = useState<"none" | "planned_only" | "generate_now">(resolvedPrefill.visualGenerationMode);
+  const [maxVisualsPerLesson, setMaxVisualsPerLesson] = useState(resolvedPrefill.maxVisualsPerLesson);
+  const [visualAllowedSubjects, setVisualAllowedSubjects] = useState<string[]>(resolvedPrefill.visualAllowedSubjects);
+  const [requireVisualApproval, setRequireVisualApproval] = useState(resolvedPrefill.requireVisualApproval);
   const [ageGroup, setAgeGroup] = useState(initialAgeGroup);
   const availableSubjects = getAvailableSubjects(yearGroup);
-  const normalizedPrefillSubject = normalizeCurriculumSubject(prefillSubject);
+  const normalizedPrefillSubject = resolvedPrefill.subject ?? normalizeCurriculumSubject(prefillSubject);
   const shouldAllowEnglishParentPrefill = Boolean(
     normalizedPrefillSubject
     && isEnglishParentSubject(normalizedPrefillSubject)
-    && prefillStrand
+    && resolvedPrefill.englishStrand
   );
   const [subject, setSubject] = useState<Subject>(
     normalizedPrefillSubject && ((availableSubjects as string[]).includes(normalizedPrefillSubject) || shouldAllowEnglishParentPrefill)
@@ -757,8 +769,8 @@ export default function AiGeneratorPage() {
     : keyStageForYearGroup(yearGroup);
   const [keyStage, setKeyStage] = useState<(typeof KEY_STAGES)[number]>(initialKeyStage);
   const requiresEnglishStrand = isEnglishParentSubject(subject);
-  const initialEnglishStrand = requiresEnglishStrand && prefillStrand
-    ? prefillStrand
+  const initialEnglishStrand = requiresEnglishStrand && resolvedPrefill.englishStrand
+    ? (normalizeEnglishStrandValue(resolvedPrefill.englishStrand) ?? "reading")
     : requiresEnglishStrand
       ? "reading"
       : "";
@@ -767,22 +779,20 @@ export default function AiGeneratorPage() {
   );
   const skillSubject = resolvePathValidationSubject(subject, requiresEnglishStrand ? englishStrand : null);
   const availableSkills = getAvailableSkills(skillSubject, yearGroup);
-  const prefillSkillMatched = Boolean(prefillSkill && availableSkills.includes(prefillSkill));
+  const prefillSkillMatched = Boolean(resolvedPrefill.skillFocus && availableSkills.includes(resolvedPrefill.skillFocus));
   const strandSkillFocus = requiresEnglishStrand ? deriveSkillFocusFromEnglishStrand(initialEnglishStrand, yearGroup, subject) : "";
-  const initialSkillFocus = prefillSkillMatched && prefillSkill ? prefillSkill : (strandSkillFocus || availableSkills[0] || "");
+  const initialSkillFocus = prefillSkillMatched && resolvedPrefill.skillFocus ? resolvedPrefill.skillFocus : (strandSkillFocus || availableSkills[0] || "");
   const missingEnglishStrandSkill = Boolean(requiresEnglishStrand && initialEnglishStrand && !initialSkillFocus);
   const [skillFocus, setSkillFocus] = useState(initialSkillFocus);
-  const [difficulty, setDifficulty] = useState(
-    Number.isFinite(prefillDifficulty) && prefillDifficulty >= 1 ? prefillDifficulty : prefillWords ? 1 : 2
-  );
-  const [aiMode, setAiMode] = useState<AiGenerationMode>(DEFAULT_AI_MODE);
-  const [items, setItems] = useState(prefillItemCount ?? 5);
-  const [autoItemsEnabled, setAutoItemsEnabled] = useState(prefillItemCount === null);
-  const initialCustomTopic = prefillTopic?.trim() || (prefillWords ? `Focus practice on: ${prefillWords}` : "");
+  const [difficulty, setDifficulty] = useState(resolvedPrefill.difficulty || (prefillWords ? 1 : 2));
+  const [aiMode, setAiMode] = useState<AiGenerationMode>(resolvedPrefill.aiMode || DEFAULT_AI_MODE);
+  const [items, setItems] = useState(resolvedPrefill.itemCount ?? 5);
+  const [autoItemsEnabled, setAutoItemsEnabled] = useState(resolvedPrefill.itemCount === null);
+  const initialCustomTopic = resolvedPrefill.topic?.trim() || (prefillWords ? `Focus practice on: ${prefillWords}` : "");
   const [topicChoice, setTopicChoice] = useState<string>(initialCustomTopic ? CUSTOM_TOPIC_VALUE : "");
   const [customTopic, setCustomTopic] = useState(initialCustomTopic);
-  const [activityType, setActivityType] = useState(prefillActivityType ?? "");
-  const [masteryOutcome, setMasteryOutcome] = useState(prefillMasteryOutcome ?? "");
+  const [activityType, setActivityType] = useState(resolvedPrefill.activityType ?? "");
+  const [masteryOutcome, setMasteryOutcome] = useState(resolvedPrefill.masteryOutcome ?? "");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -807,7 +817,9 @@ export default function AiGeneratorPage() {
   const [automationDurationMs, setAutomationDurationMs] = useState<number | null>(null);
   const [automationRetryMode, setAutomationRetryMode] = useState<"autofill" | "weaknesses" | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(
-    hasTargetPrefill
+    prefillBlockingWarnings.length
+      ? `Student target requires review before generation: ${prefillBlockingWarnings.join(" ")}`
+      : hasTargetPrefill
       ? missingEnglishStrandSkill
         ? "Some fields were auto-filled from the student target, but no matching English strand skill exists for this year group. Please review before generating."
         : "Some fields were auto-filled from the student target. Please review before generating."
@@ -823,7 +835,7 @@ export default function AiGeneratorPage() {
   const [assetUploadBusy, setAssetUploadBusy] = useState<"image" | "audio" | null>(null);
   const [visualAssetActionId, setVisualAssetActionId] = useState<string | null>(null);
   const [visualBatchBusy, setVisualBatchBusy] = useState(false);
-  const [targetStudentId, setTargetStudentId] = useState<string | null>(prefillStudentId?.trim() || null);
+  const [targetStudentId, setTargetStudentId] = useState<string | null>(resolvedPrefill.studentId?.trim() || null);
   const [generationPhase, setGenerationPhase] = useState<"idle" | "generating" | "repairing-response" | "validating-content" | "retrying-parse">("idle");
   const [generationDiagnostics, setGenerationDiagnostics] = useState<{
     rawResponse: string;
@@ -839,7 +851,7 @@ export default function AiGeneratorPage() {
   const regenerateRequestIdRef = useRef(0);
   const heartbeatTimerRef = useRef<number | null>(null);
   const [previewContext, setPreviewContext] = useState<GenerationContext | null>(null);
-  const [loadedWeakAreaId, setLoadedWeakAreaId] = useState<string | null>(prefillWeakAreaId?.trim() || null);
+  const [loadedWeakAreaId, setLoadedWeakAreaId] = useState<string | null>(resolvedPrefill.weakAreaId?.trim() || null);
   const [weakAreaFormSynced, setWeakAreaFormSynced] = useState(false);
 
   const topicSuggestions = useMemo(() => topicSuggestionsForSelection({
@@ -909,6 +921,7 @@ export default function AiGeneratorPage() {
     && selectedTopicTheme
     && (!requiresEnglishStrand || Boolean(englishStrand))
     && (!shouldTagExamBoard || Boolean(effectiveExamBoardForRequest))
+    && prefillBlockingWarnings.length === 0
   );
 
   const automationDurationLabel = automationDurationMs === null
@@ -1024,6 +1037,41 @@ export default function AiGeneratorPage() {
     if (!subject) return filtered;
     return Array.from(new Set([...filtered, subject]));
   }, [yearGroup, subject, visualAllowedSubjects]);
+
+  const prefillContractContext = {
+    trigger: resolvedPrefill.trigger,
+    studentId: targetStudentId,
+    weakAreaId: loadedWeakAreaId,
+    assumptions: prefillAssumptions,
+    blockingWarnings: prefillBlockingWarnings,
+    fieldSources: prefillFieldSources,
+    resolvedValues: {
+      yearGroup,
+      keyStage,
+      ageGroup,
+      subject,
+      englishStrand: englishStrand || null,
+      skillFocus,
+      topic: selectedTopicTheme,
+      activityType,
+      masteryOutcome,
+      curriculumPathway,
+      countryRegion,
+      curriculumFramework,
+      examBoard: effectiveExamBoardForRequest || null,
+      examBoardSource: resolvedExamBoardSelection.examBoardSource,
+      difficulty,
+      itemCount: effectiveItemCount,
+      aiMode,
+      visualSettings: {
+        enabled: visualGenerationEnabled,
+        mode: visualGenerationMode,
+        maxPerLesson: maxVisualsPerLesson,
+        allowedSubjects: effectiveVisualAllowedSubjects,
+        requireApproval: requireVisualApproval,
+      },
+    },
+  };
 
   function formatRepairMessage(error: string) {
     const [type, word] = error.split(":");
@@ -1155,6 +1203,7 @@ export default function AiGeneratorPage() {
           maxVisualsPerLesson,
           visualAllowedSubjects: effectiveVisualAllowedSubjects,
           requireVisualApproval,
+          prefillContract: prefillContractContext,
         }),
       }, AI_REQUEST_TIMEOUT_MS);
       setGenerationPhase("repairing-response");
@@ -1391,6 +1440,7 @@ export default function AiGeneratorPage() {
             allowedSubjects: effectiveVisualAllowedSubjects,
             requireApproval: requireVisualApproval,
           },
+          prefillContract: prefillContractContext,
         }),
       });
       const payload = await response.json();
@@ -1948,6 +1998,36 @@ export default function AiGeneratorPage() {
               Some fields were auto-filled from the student target. Please review before generating.
             </p>
           ) : null}
+          {prefillBlockingWarnings.length ? (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-3 text-xs text-rose-100">
+              <p className="font-bold">Review required before generation</p>
+              <ul className="mt-2 list-disc space-y-1 pl-4">
+                {prefillBlockingWarnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {prefillAssumptions.length ? (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-100">
+              <p className="font-bold">Prefill assumptions</p>
+              <ul className="mt-2 list-disc space-y-1 pl-4">
+                {prefillAssumptions.map((entry) => (
+                  <li key={entry}>{entry}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {Object.keys(prefillFieldSources).length ? (
+            <div className="rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-3 text-xs text-slate-300">
+              <p className="font-bold text-slate-100">Prefill source panel</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {(Object.entries(prefillFieldSources) as Array<[string, string]>).map(([field, source]) => (
+                  <p key={`${field}-${source}`}><span className="text-slate-400">{field}</span>: {source}</p>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-bold text-slate-300">
               Year group
@@ -2426,7 +2506,7 @@ export default function AiGeneratorPage() {
             <button onClick={() => void generatePreview()} disabled={loading || !canGenerate} className="rounded-xl bg-indigo-500 px-4 py-3 font-black text-white hover:bg-indigo-400 disabled:opacity-50">
               {loading ? "Generating with AI..." : "Generate Preview"}
             </button>
-            <button onClick={saveGeneratedContent} disabled={saving || saveBlocked || !approvedCount} className="rounded-xl bg-emerald-500 px-4 py-3 font-black text-white hover:bg-emerald-400 disabled:opacity-50">
+            <button onClick={saveGeneratedContent} disabled={saving || saveBlocked || !approvedCount || prefillBlockingWarnings.length > 0} className="rounded-xl bg-emerald-500 px-4 py-3 font-black text-white hover:bg-emerald-400 disabled:opacity-50">
               {saving ? "Saving..." : saveBlocked ? "Fix required before save" : "Save to Content Library"}
             </button>
           </div>

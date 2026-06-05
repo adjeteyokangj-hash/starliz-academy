@@ -1,3 +1,5 @@
+import { encodeUniversalPrefillContract, type UniversalAiPrefillContract } from "@/lib/ai-prefill-contract";
+
 export type AiGeneratorHandoffParams = {
   studentId?: string | null;
   subject?: string | null;
@@ -13,6 +15,7 @@ export type AiGeneratorHandoffParams = {
   keyStage?: string | null;
   difficulty?: number | string | null;
   itemCount?: number | string | null;
+  prefillContract?: UniversalAiPrefillContract | string | null;
 };
 
 const AI_GENERATOR_PATH = "/admin/ai-generator";
@@ -36,6 +39,14 @@ function normalizeToken(value: string | null | undefined): string | null {
 
 export function buildAiGeneratorUrl(params: AiGeneratorHandoffParams): string {
   const query = new URLSearchParams();
+  if (params.prefillContract) {
+    const serialized = typeof params.prefillContract === "string"
+      ? params.prefillContract
+      : encodeUniversalPrefillContract(params.prefillContract);
+    if (serialized.trim()) {
+      query.set("prefillContract", serialized.trim());
+    }
+  }
   const normalizedSubject = normalizeToken(params.subject);
   const normalizedStrand = normalizeToken(params.englishStrand) ?? normalizeToken(params.strand);
   const subjectIsEnglishStrand = Boolean(normalizedSubject && ENGLISH_STRANDS.has(normalizedSubject));

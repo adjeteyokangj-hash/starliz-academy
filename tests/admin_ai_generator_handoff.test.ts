@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildAiGeneratorUrl } from "../src/lib/admin-ai-generator-url";
+import { decodeUniversalPrefillContract } from "../src/lib/ai-prefill-contract";
 
 function paramsFor(href: string): URLSearchParams {
   return new URL(`https://starliz.test${href}`).searchParams;
@@ -79,4 +80,31 @@ test("buildAiGeneratorUrl maps English strand targets to parent English context"
   assert.equal(params.get("topic"), "Grammar placement needs a generated lesson");
   assert.equal(params.get("yearGroup"), "Year 4");
   assert.equal(params.get("keyStage"), "KS2");
+});
+
+test("buildAiGeneratorUrl serializes universal prefill contract when provided", () => {
+  const href = buildAiGeneratorUrl({
+    subject: "maths",
+    prefillContract: {
+      version: 1,
+      trigger: "student-target",
+      studentId: "student-2",
+      fields: {
+        yearGroup: { value: "Year 6", source: "student", confidence: "high" },
+        keyStage: { value: "KS2", source: "curriculum", confidence: "high" },
+        subject: { value: "maths", source: "prediction", confidence: "high" },
+      },
+      warnings: [],
+      blockingIssues: [],
+    },
+  });
+
+  const params = paramsFor(href);
+  const encoded = params.get("prefillContract");
+  assert.ok(encoded);
+  const decoded = decodeUniversalPrefillContract(encoded);
+  assert.ok(decoded);
+  assert.equal(decoded?.trigger, "student-target");
+  assert.equal(decoded?.studentId, "student-2");
+  assert.equal(decoded?.fields.subject?.value, "maths");
 });
