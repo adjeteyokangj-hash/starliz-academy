@@ -230,6 +230,14 @@ type GenerationContext = {
   subject: Subject;
   keyStage: (typeof KEY_STAGES)[number];
   yearGroup: YearGroup;
+  studentYearGroup?: YearGroup | null;
+  studentKeyStage?: (typeof KEY_STAGES)[number] | null;
+  targetLearningYearGroup?: YearGroup | null;
+  targetLearningKeyStage?: (typeof KEY_STAGES)[number] | null;
+  subjectLevel?: number | null;
+  strandLevel?: number | null;
+  levelSource?: string;
+  adminOverrideReason?: string;
   curriculumPathway: string;
   curriculumFramework?: string;
   countryRegion?: string;
@@ -708,6 +716,14 @@ export default function AiGeneratorPage() {
     weakAreaId: searchParams.get("weakAreaId"),
     yearGroup: searchParams.get("yearGroup"),
     keyStage: searchParams.get("keyStage"),
+    studentYearGroup: searchParams.get("studentYearGroup"),
+    studentKeyStage: searchParams.get("studentKeyStage"),
+    targetLearningYearGroup: searchParams.get("targetLearningYearGroup"),
+    targetLearningKeyStage: searchParams.get("targetLearningKeyStage"),
+    subjectLevel: searchParams.get("subjectLevel"),
+    strandLevel: searchParams.get("strandLevel"),
+    levelSource: searchParams.get("levelSource"),
+    adminOverrideReason: searchParams.get("adminOverrideReason"),
     difficulty: searchParams.get("difficulty"),
     itemCount: searchParams.get("itemCount"),
   });
@@ -729,6 +745,7 @@ export default function AiGeneratorPage() {
   const prefillAssumptions = prefillResolution.assumptions;
   const prefillFieldSources = prefillResolution.fieldSources;
   const hasTargetPrefill = resolvedPrefill.trigger === "student-target";
+  const launchedFromStudentTarget = hasTargetPrefill && Boolean(resolvedPrefill.studentYearGroup);
 
   // Initialize with sensible defaults; validate against curriculum
   const initialYearGroup: YearGroup = resolvedPrefill.yearGroup && YEAR_GROUPS.includes(resolvedPrefill.yearGroup as YearGroup)
@@ -743,6 +760,8 @@ export default function AiGeneratorPage() {
   const initialAgeGroup = ageGroupForYearGroup(initialYearGroup);
 
   const [yearGroup, setYearGroup] = useState<string>(initialYearGroup);
+  const [levelSource, setLevelSource] = useState(resolvedPrefill.levelSource || (hasTargetPrefill ? "fallback" : "manual"));
+  const [adminOverrideReason, setAdminOverrideReason] = useState(resolvedPrefill.adminOverrideReason || "");
   const [examBoard, setExamBoard] = useState(resolvedPrefill.examBoard || "");
   const [autoSelectExamBoard, setAutoSelectExamBoard] = useState(true);
   const [countryRegion, setCountryRegion] = useState(resolvedPrefill.countryRegion || "UK");
@@ -950,6 +969,14 @@ export default function AiGeneratorPage() {
     subject,
     keyStage,
     yearGroup: yearGroup as YearGroup,
+    studentYearGroup: resolvedPrefill.studentYearGroup,
+    studentKeyStage: resolvedPrefill.studentKeyStage,
+    targetLearningYearGroup: yearGroup as YearGroup,
+    targetLearningKeyStage: keyStage,
+    subjectLevel: resolvedPrefill.subjectLevel,
+    strandLevel: resolvedPrefill.strandLevel,
+    levelSource,
+    adminOverrideReason,
     curriculumPathway,
     curriculumFramework,
     countryRegion,
@@ -1051,6 +1078,14 @@ export default function AiGeneratorPage() {
     resolvedValues: {
       yearGroup,
       keyStage,
+      studentYearGroup: resolvedPrefill.studentYearGroup,
+      studentKeyStage: resolvedPrefill.studentKeyStage,
+      targetLearningYearGroup: yearGroup,
+      targetLearningKeyStage: keyStage,
+      subjectLevel: resolvedPrefill.subjectLevel,
+      strandLevel: resolvedPrefill.strandLevel,
+      levelSource,
+      adminOverrideReason,
       ageGroup,
       subject,
       englishStrand: englishStrand || null,
@@ -1175,6 +1210,14 @@ export default function AiGeneratorPage() {
           scienceDiscipline: deriveScienceDiscipline(context.subject, context.skillFocus),
           keyStage: context.keyStage,
           yearGroup: context.yearGroup,
+          studentYearGroup: context.studentYearGroup,
+          studentKeyStage: context.studentKeyStage,
+          targetLearningYearGroup: context.targetLearningYearGroup ?? context.yearGroup,
+          targetLearningKeyStage: context.targetLearningKeyStage ?? context.keyStage,
+          subjectLevel: context.subjectLevel,
+          strandLevel: context.strandLevel,
+          levelSource: context.levelSource,
+          adminOverrideReason: context.adminOverrideReason,
           curriculumPathway: context.curriculumPathway,
           curriculumFramework: context.curriculumFramework,
           countryRegion: context.countryRegion,
@@ -1372,6 +1415,14 @@ export default function AiGeneratorPage() {
       subject,
       keyStage,
       yearGroup: yearGroup as YearGroup,
+      studentYearGroup: resolvedPrefill.studentYearGroup,
+      studentKeyStage: resolvedPrefill.studentKeyStage,
+      targetLearningYearGroup: yearGroup as YearGroup,
+      targetLearningKeyStage: keyStage,
+      subjectLevel: resolvedPrefill.subjectLevel,
+      strandLevel: resolvedPrefill.strandLevel,
+      levelSource,
+      adminOverrideReason,
       curriculumPathway,
       curriculumFramework,
       countryRegion,
@@ -1412,6 +1463,14 @@ export default function AiGeneratorPage() {
           ageGroup: context.ageGroup,
           keyStage: context.keyStage,
           yearGroup: context.yearGroup,
+          studentYearGroup: context.studentYearGroup,
+          studentKeyStage: context.studentKeyStage,
+          targetLearningYearGroup: context.targetLearningYearGroup ?? context.yearGroup,
+          targetLearningKeyStage: context.targetLearningKeyStage ?? context.keyStage,
+          subjectLevel: context.subjectLevel,
+          strandLevel: context.strandLevel,
+          levelSource: context.levelSource,
+          adminOverrideReason: context.adminOverrideReason,
           curriculumPathway: context.curriculumPathway,
           curriculumFramework: context.curriculumFramework,
           countryRegion: context.countryRegion,
@@ -2031,9 +2090,20 @@ export default function AiGeneratorPage() {
               </div>
             </div>
           ) : null}
+          {launchedFromStudentTarget ? (
+            <div className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-3 py-3 text-xs text-indigo-100">
+              <p className="font-bold">Student context</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <p><span className="text-indigo-200/80">Student year group:</span> {resolvedPrefill.studentYearGroup ?? "Unknown"}</p>
+                <p><span className="text-indigo-200/80">Student key stage:</span> {resolvedPrefill.studentKeyStage ?? "Unknown"}</p>
+                <p><span className="text-indigo-200/80">Generated lesson level:</span> {yearGroup}</p>
+                <p><span className="text-indigo-200/80">Level source:</span> {levelSource.replace(/_/g, " ")}</p>
+              </div>
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-bold text-slate-300">
-              Year group
+              {launchedFromStudentTarget ? "Generated lesson level" : "Year group"}
               <select
                 value={yearGroup}
                 onChange={(event) => {
@@ -2042,6 +2112,10 @@ export default function AiGeneratorPage() {
                   setYearGroup(nextYear);
                   setKeyStage(keyStageForYearGroup(nextYear));
                   setAgeGroup(ageGroupForYearGroup(nextYear));
+                  if (hasTargetPrefill) {
+                    setLevelSource("admin_override");
+                    setAdminOverrideReason((current) => current || "Admin changed generated lesson level in AI Generator.");
+                  }
                   if (!shouldApplyExamBoardTag({
                     yearGroup: nextYear,
                     keyStage: keyStageForYearGroup(nextYear),

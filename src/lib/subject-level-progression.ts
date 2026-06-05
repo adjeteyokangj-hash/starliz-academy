@@ -1,5 +1,6 @@
 import { ENGLISH_STRANDS } from "@/lib/subject-selection";
 import type { PlacementBand, PlacementRecommendation } from "@/lib/placement-lesson-selector";
+import { keyStageForYearGroup } from "@/lib/curriculum";
 
 export type ProgressionStatus =
   | "needs_support"
@@ -320,13 +321,16 @@ function buildGeneratorHint(input: {
   const skillFocus = input.scope.parentSubject === "english"
     ? (input.scope.strand === "speaking-listening" ? "Speaking & Listening" : titleCase(input.scope.strand ?? "reading"))
     : titleCase(input.scope.parentSubject);
+  const targetYearGroup = input.currentLevel <= 0
+    ? "Reception"
+    : `Year ${Math.max(1, Math.min(11, Math.round(input.currentLevel)))}`;
 
   return {
     subject: input.scope.parentSubject,
     strand: input.scope.strand,
     level: input.currentLevel,
-    yearGroup: input.yearGroup ?? null,
-    keyStage: input.keyStage ?? null,
+    yearGroup: targetYearGroup,
+    keyStage: keyStageForYearGroup(targetYearGroup),
     skillFocus,
     reason: input.action === "assign_mastery_check"
       ? "Mastery-check content is required for this progression decision."

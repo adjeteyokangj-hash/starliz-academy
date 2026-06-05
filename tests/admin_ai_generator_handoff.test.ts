@@ -22,6 +22,14 @@ test("buildAiGeneratorUrl includes supported student target query params", () =>
     weakAreaId: "weak-1",
     yearGroup: "Year 5",
     keyStage: "KS2",
+    studentYearGroup: "Year 6",
+    studentKeyStage: "KS2",
+    targetLearningYearGroup: "Year 5",
+    targetLearningKeyStage: "KS2",
+    subjectLevel: 5,
+    strandLevel: 5,
+    levelSource: "progression",
+    adminOverrideReason: "Testing override metadata",
     difficulty: 3,
     itemCount: 6,
   });
@@ -41,6 +49,14 @@ test("buildAiGeneratorUrl includes supported student target query params", () =>
   assert.equal(params.get("weakAreaId"), "weak-1");
   assert.equal(params.get("yearGroup"), "Year 5");
   assert.equal(params.get("keyStage"), "KS2");
+  assert.equal(params.get("studentYearGroup"), "Year 6");
+  assert.equal(params.get("studentKeyStage"), "KS2");
+  assert.equal(params.get("targetLearningYearGroup"), "Year 5");
+  assert.equal(params.get("targetLearningKeyStage"), "KS2");
+  assert.equal(params.get("subjectLevel"), "5");
+  assert.equal(params.get("strandLevel"), "5");
+  assert.equal(params.get("levelSource"), "progression");
+  assert.equal(params.get("adminOverrideReason"), "Testing override metadata");
   assert.equal(params.get("difficulty"), "3");
   assert.equal(params.get("itemCount"), "6");
 });

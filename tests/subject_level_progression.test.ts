@@ -46,8 +46,8 @@ function basePlacementRecommendations(): PlacementRecommendation[] {
         subject: "english",
         strand: "spelling",
         level: 1,
-        yearGroup: "Year 5",
-        keyStage: "KS2",
+        yearGroup: "Year 1",
+        keyStage: "KS1",
         skillFocus: "Spelling",
         reason: "No matching content",
       },
@@ -172,6 +172,42 @@ test("content gap returns generatorHint for catch-up/mastery content", () => {
   assert.equal(spelling?.status, "needs_support");
   assert.equal(spelling?.action, "assign_catch_up");
   assert.ok(spelling?.generatorHint);
+});
+
+test("generatorHint uses target learning level, not student school year", () => {
+  const result = buildSubjectLevelProgression(buildInput({
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+    selectedSubjects: ["english"],
+    placementLevels: {
+      "english:grammar": { accuracy: 45, level: "below" as const },
+    },
+    weakAreas: [{ subject: "english", skillFocus: "grammar", status: "active" }],
+    attempts: [{ subject: "grammar", skillFocus: "sentence structure", correct: false }],
+    placementRecommendations: [{
+      scopedSubject: "english:grammar",
+      parentSubject: "english",
+      strand: "grammar",
+      subjectLabel: "English",
+      strandLabel: "Grammar",
+      status: "content_needed",
+      reason: "Needs grammar content",
+      accuracy: 45,
+      levelBand: "below",
+      level: 2,
+      levelLabel: "Developing",
+      contentId: null,
+      assignmentId: null,
+      href: null,
+      contentStatus: null,
+      generatorHint: null,
+    }],
+  }));
+
+  const grammar = result.recommendations.find((row) => row.scopedSubject === "english:grammar");
+  assert.equal(grammar?.generatorHint?.yearGroup, "Year 2");
+  assert.equal(grammar?.generatorHint?.keyStage, "KS1");
+  assert.equal(grammar?.generatorHint?.level, 2);
 });
 
 test("progression does not create fake lesson data", () => {

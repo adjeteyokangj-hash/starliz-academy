@@ -31,6 +31,13 @@ type AiGenerationTarget = {
   strand: string | null;
   yearGroup: string | null;
   keyStage: string | null;
+  studentYearGroup: string | null;
+  studentKeyStage: string | null;
+  targetLearningYearGroup: string | null;
+  targetLearningKeyStage: string | null;
+  subjectLevel: number | null;
+  strandLevel: number | null;
+  levelSource: "qlf" | "progression" | "mastery" | "admin_override" | "fallback";
   skillFocus: string;
   difficulty: number;
   accuracy: number;
@@ -296,6 +303,27 @@ function resolveGenerationSubject(input: { parentSubject: string; strand: string
   return gcseMap[normalizedParent] ?? normalizeSubject(normalizedParent);
 }
 
+function yearGroupFromLearningLevel(level: number | null | undefined): string | null {
+  if (!Number.isFinite(Number(level))) return null;
+  const rounded = Math.max(0, Math.min(11, Math.round(Number(level))));
+  if (rounded === 0) return "Reception";
+  return `Year ${rounded}`;
+}
+
+function resolveTargetLearningYearGroup(input: {
+  generatorHint: { level: number; yearGroup: string | null } | null;
+  progressionLevel: number | null | undefined;
+  studentYearGroup: string | null;
+}): { yearGroup: string | null; source: "qlf" | "progression" | "fallback" } {
+  const hintedYearGroup = normalizeYearGroup(input.generatorHint?.yearGroup);
+  if (hintedYearGroup) return { yearGroup: hintedYearGroup, source: "qlf" };
+
+  const levelYearGroup = normalizeYearGroup(yearGroupFromLearningLevel(input.generatorHint?.level ?? input.progressionLevel));
+  if (levelYearGroup) return { yearGroup: levelYearGroup, source: "progression" };
+
+  return { yearGroup: normalizeYearGroup(input.studentYearGroup), source: "fallback" };
+}
+
 function buildGenerationTargets(input: {
   contentGaps: Array<{
     scopedSubject: string;
@@ -311,36 +339,54 @@ function buildGenerationTargets(input: {
 }): AiGenerationTarget[] {
   return input.contentGaps
     .map((row) => {
-      const finalYearGroup = normalizeYearGroup(input.studentYearGroup) ?? normalizeYearGroup(row.generatorHint?.yearGroup) ?? null;
-      const finalKeyStage = finalYearGroup
-        ? keyStageForYearGroup(finalYearGroup)
-        : row.generatorHint?.keyStage ?? input.studentKeyStage;
+      const studentYearGroup = normalizeYearGroup(input.studentYearGroup) ?? null;
+      const studentKeyStage = studentYearGroup
+        ? keyStageForYearGroup(studentYearGroup)
+        : input.studentKeyStage;
+      const targetLearning = resolveTargetLearningYearGroup({
+        generatorHint: row.generatorHint,
+        progressionLevel: row.level,
+        studentYearGroup,
+      });
+      const targetLearningYearGroup = targetLearning.yearGroup;
+      const targetLearningKeyStage = targetLearningYearGroup
+        ? keyStageForYearGroup(targetLearningYearGroup)
+        : row.generatorHint?.keyStage ?? studentKeyStage;
+      const subjectLevel = row.generatorHint?.level ?? row.level ?? null;
+      const strandLevel = row.strand ? subjectLevel : null;
       const subject = resolveGenerationSubject({
         parentSubject: row.parentSubject,
         strand: row.strand,
-        yearGroup: finalYearGroup,
+        yearGroup: targetLearningYearGroup,
       });
       if (!subject) return null;
 
       const prefillContract = buildUniversalPrefillContract({
         trigger: "student-target",
         fields: {
-          yearGroup: { value: finalYearGroup, source: "student", confidence: finalYearGroup ? "high" : "low" },
-          keyStage: { value: finalKeyStage, source: finalYearGroup ? "curriculum" : "prediction", confidence: finalYearGroup ? "high" : "medium" },
-          ageGroup: { value: finalYearGroup ? ageGroupForYearGroup(finalYearGroup) : null, source: "curriculum", confidence: finalYearGroup ? "high" : "low" },
+          yearGroup: { value: targetLearningYearGroup, source: targetLearning.source === "fallback" ? "fallback" : "prediction", confidence: targetLearningYearGroup ? "high" : "low" },
+          keyStage: { value: targetLearningKeyStage, source: targetLearningYearGroup ? "curriculum" : "prediction", confidence: targetLearningYearGroup ? "high" : "medium" },
+          studentYearGroup: { value: studentYearGroup, source: "student", confidence: studentYearGroup ? "high" : "low" },
+          studentKeyStage: { value: studentKeyStage, source: studentYearGroup ? "curriculum" : "prediction", confidence: studentKeyStage ? "high" : "low" },
+          targetLearningYearGroup: { value: targetLearningYearGroup, source: targetLearning.source === "fallback" ? "fallback" : "prediction", confidence: targetLearningYearGroup ? "high" : "low" },
+          targetLearningKeyStage: { value: targetLearningKeyStage, source: targetLearningYearGroup ? "curriculum" : "prediction", confidence: targetLearningKeyStage ? "high" : "low" },
+          subjectLevel: { value: subjectLevel, source: "progression", confidence: subjectLevel ? "medium" : "low" },
+          strandLevel: { value: strandLevel, source: row.strand ? "progression" : "fallback", confidence: strandLevel ? "medium" : "low" },
+          levelSource: { value: targetLearning.source, source: "prediction", confidence: "medium" },
+          ageGroup: { value: targetLearningYearGroup ? ageGroupForYearGroup(targetLearningYearGroup) : null, source: "curriculum", confidence: targetLearningYearGroup ? "high" : "low" },
           subject: { value: subject, source: "prediction", confidence: "high" },
           englishStrand: { value: row.strand, source: row.strand ? "prediction" : "fallback", confidence: row.strand ? "medium" : "low" },
           skillFocus: { value: row.generatorHint?.skillFocus?.trim() || row.reason, source: row.generatorHint?.skillFocus ? "prediction" : "recommendation", confidence: row.generatorHint?.skillFocus ? "high" : "medium" },
           topic: { value: row.generatorHint?.skillFocus?.trim() || row.reason, source: "recommendation", confidence: "medium" },
           activityType: { value: "targeted practice", source: "recommendation", confidence: "medium" },
           masteryOutcome: { value: row.reason, source: "recommendation", confidence: "medium" },
-          curriculumPathway: { value: finalYearGroup ? curriculumPathwayForYearGroup(finalYearGroup) : null, source: "curriculum", confidence: finalYearGroup ? "high" : "low" },
+          curriculumPathway: { value: targetLearningYearGroup ? curriculumPathwayForYearGroup(targetLearningYearGroup) : null, source: "curriculum", confidence: targetLearningYearGroup ? "high" : "low" },
           countryRegion: { value: "UK", source: "fallback", confidence: "low" },
           curriculumFramework: { value: "National Curriculum England", source: "fallback", confidence: "low" },
           examBoard: { value: null, source: "fallback", confidence: "low" },
           examBoardSource: { value: "auto", source: "fallback", confidence: "low" },
           difficulty: { value: Math.max(1, Math.min(5, Math.round(row.generatorHint?.level ?? row.level ?? 3))), source: row.generatorHint?.level ? "prediction" : "recommendation", confidence: row.generatorHint?.level ? "high" : "medium" },
-          itemCount: { value: finalYearGroup && /Year\s*(10|11)/i.test(finalYearGroup) ? 6 : 5, source: "policy", confidence: "medium" },
+          itemCount: { value: targetLearningYearGroup && /Year\s*(10|11)/i.test(targetLearningYearGroup) ? 6 : 5, source: "policy", confidence: "medium" },
           aiMode: { value: "live_openai_only", source: "policy", confidence: "high" },
           visualGenerationEnabled: { value: false, source: "policy", confidence: "high" },
           visualGenerationMode: { value: "planned_only", source: "policy", confidence: "high" },
@@ -348,16 +394,23 @@ function buildGenerationTargets(input: {
           visualAllowedSubjects: { value: [subject], source: "policy", confidence: "high" },
           requireVisualApproval: { value: true, source: "policy", confidence: "high" },
         },
-        warnings: finalYearGroup ? [] : ["Missing canonical student year group for student-triggered prefill."],
-        blockingIssues: finalYearGroup ? [] : ["Student-triggered prefill requires canonical year group before generation."],
+        warnings: targetLearningYearGroup ? [] : ["Missing target learning year group for student-triggered prefill."],
+        blockingIssues: targetLearningYearGroup ? [] : ["Student-triggered prefill requires target learning year group before generation."],
       });
 
       const target: AiGenerationTarget = {
         scopedSubject: row.scopedSubject,
         subject,
         strand: row.strand,
-        yearGroup: finalYearGroup,
-        keyStage: finalKeyStage,
+        yearGroup: targetLearningYearGroup,
+        keyStage: targetLearningKeyStage,
+        studentYearGroup,
+        studentKeyStage,
+        targetLearningYearGroup,
+        targetLearningKeyStage,
+        subjectLevel,
+        strandLevel,
+        levelSource: targetLearning.source,
         skillFocus: row.generatorHint?.skillFocus?.trim() || row.reason,
         difficulty: Math.max(1, Math.min(5, Math.round(row.generatorHint?.level ?? row.level ?? 3))),
         accuracy: row.accuracy,

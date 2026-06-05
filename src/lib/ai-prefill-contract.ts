@@ -20,6 +20,10 @@ export type PrefillSource =
   | "country-profile"
   | "curriculum"
   | "placement"
+  | "qlf"
+  | "progression"
+  | "mastery"
+  | "admin_override"
   | "weak-area"
   | "heartbeat"
   | "recommendation"
@@ -34,6 +38,14 @@ export type PrefillConfidence = "high" | "medium" | "low";
 export type PrefillFieldName =
   | "yearGroup"
   | "keyStage"
+  | "studentYearGroup"
+  | "studentKeyStage"
+  | "targetLearningYearGroup"
+  | "targetLearningKeyStage"
+  | "subjectLevel"
+  | "strandLevel"
+  | "levelSource"
+  | "adminOverrideReason"
   | "ageGroup"
   | "subject"
   | "englishStrand"
@@ -89,6 +101,14 @@ export type LegacyAiGeneratorPrefill = {
   weakAreaId: string | null;
   yearGroup: string | null;
   keyStage: string | null;
+  studentYearGroup: string | null;
+  studentKeyStage: string | null;
+  targetLearningYearGroup: string | null;
+  targetLearningKeyStage: string | null;
+  subjectLevel: number | null;
+  strandLevel: number | null;
+  levelSource: string | null;
+  adminOverrideReason: string | null;
   difficulty: number | null;
   itemCount: number | null;
 };
@@ -112,6 +132,14 @@ export type UniversalPrefillResolvedValues = {
   signal: string | null;
   yearGroup: YearGroup | null;
   keyStage: (typeof KEY_STAGES)[number] | null;
+  studentYearGroup: YearGroup | null;
+  studentKeyStage: (typeof KEY_STAGES)[number] | null;
+  targetLearningYearGroup: YearGroup | null;
+  targetLearningKeyStage: (typeof KEY_STAGES)[number] | null;
+  subjectLevel: number | null;
+  strandLevel: number | null;
+  levelSource: string;
+  adminOverrideReason: string;
   ageGroup: (typeof AGE_GROUPS)[number] | null;
   subject: Subject | null;
   englishStrand: string;
@@ -193,6 +221,14 @@ export function adaptLegacyQueryToContract(legacy: LegacyAiGeneratorPrefill): Un
     || legacy.masteryOutcome
     || legacy.yearGroup
     || legacy.keyStage
+    || legacy.studentYearGroup
+    || legacy.studentKeyStage
+    || legacy.targetLearningYearGroup
+    || legacy.targetLearningKeyStage
+    || legacy.subjectLevel
+    || legacy.strandLevel
+    || legacy.levelSource
+    || legacy.adminOverrideReason
     || legacy.difficulty
     || legacy.itemCount
   );
@@ -201,9 +237,25 @@ export function adaptLegacyQueryToContract(legacy: LegacyAiGeneratorPrefill): Un
   const fields: UniversalAiPrefillContract["fields"] = {};
   if (legacy.yearGroup) {
     fields.yearGroup = { value: legacy.yearGroup, source: "legacy-query", confidence: "medium" };
+    fields.targetLearningYearGroup = { value: legacy.yearGroup, source: "legacy-query", confidence: "medium" };
   }
   if (legacy.keyStage) {
     fields.keyStage = { value: legacy.keyStage, source: "legacy-query", confidence: "medium" };
+    fields.targetLearningKeyStage = { value: legacy.keyStage, source: "legacy-query", confidence: "medium" };
+  }
+  if (legacy.studentYearGroup) {
+    fields.studentYearGroup = { value: legacy.studentYearGroup, source: "legacy-query", confidence: "medium" };
+  }
+  if (legacy.studentKeyStage) {
+    fields.studentKeyStage = { value: legacy.studentKeyStage, source: "legacy-query", confidence: "medium" };
+  }
+  if (legacy.targetLearningYearGroup) {
+    fields.targetLearningYearGroup = { value: legacy.targetLearningYearGroup, source: "legacy-query", confidence: "medium" };
+    fields.yearGroup = fields.yearGroup ?? { value: legacy.targetLearningYearGroup, source: "legacy-query", confidence: "medium" };
+  }
+  if (legacy.targetLearningKeyStage) {
+    fields.targetLearningKeyStage = { value: legacy.targetLearningKeyStage, source: "legacy-query", confidence: "medium" };
+    fields.keyStage = fields.keyStage ?? { value: legacy.targetLearningKeyStage, source: "legacy-query", confidence: "medium" };
   }
   if (legacy.subject) {
     fields.subject = { value: legacy.subject, source: "legacy-query", confidence: "medium" };
@@ -226,6 +278,18 @@ export function adaptLegacyQueryToContract(legacy: LegacyAiGeneratorPrefill): Un
   }
   if (legacy.difficulty) {
     fields.difficulty = { value: legacy.difficulty, source: "legacy-query", confidence: "medium" };
+  }
+  if (legacy.subjectLevel) {
+    fields.subjectLevel = { value: legacy.subjectLevel, source: "legacy-query", confidence: "medium" };
+  }
+  if (legacy.strandLevel) {
+    fields.strandLevel = { value: legacy.strandLevel, source: "legacy-query", confidence: "medium" };
+  }
+  if (legacy.levelSource) {
+    fields.levelSource = { value: legacy.levelSource, source: "legacy-query", confidence: "medium" };
+  }
+  if (legacy.adminOverrideReason) {
+    fields.adminOverrideReason = { value: legacy.adminOverrideReason, source: "legacy-query", confidence: "medium" };
   }
   if (legacy.itemCount) {
     fields.itemCount = { value: legacy.itemCount, source: "legacy-query", confidence: "medium" };
@@ -298,21 +362,37 @@ export function resolveUniversalPrefill(input: UniversalPrefillResolverInput): U
   const legacy = input.legacy;
   const trigger: PrefillTrigger = contract?.trigger ?? (isTriggerFromStudent(legacy.source) ? "student-target" : "manual");
 
+  const contractTargetLearningYear = getFieldValue<string>(contract, "targetLearningYearGroup");
   const contractYear = getFieldValue<string>(contract, "yearGroup");
   const legacyYear = cleanText(legacy.yearGroup);
-  const yearGroup = normalizeYearGroup(contractYear.value ?? legacyYear);
-  if (contractYear.source) fieldSources.yearGroup = contractYear.source;
+  const legacyTargetLearningYear = cleanText(legacy.targetLearningYearGroup);
+  const yearGroup = normalizeYearGroup(contractTargetLearningYear.value ?? contractYear.value ?? legacyTargetLearningYear ?? legacyYear);
+  if (contractTargetLearningYear.source) {
+    fieldSources.targetLearningYearGroup = contractTargetLearningYear.source;
+    fieldSources.yearGroup = contractTargetLearningYear.source;
+  } else if (contractYear.source) fieldSources.yearGroup = contractYear.source;
+  else if (legacyTargetLearningYear) {
+    fieldSources.targetLearningYearGroup = "legacy-query";
+    fieldSources.yearGroup = "legacy-query";
+  }
   else if (legacyYear) fieldSources.yearGroup = "legacy-query";
 
   if (!yearGroup && trigger === "student-target") {
-    blockingWarnings.push("Student-triggered prefill is missing year group. Review required before generation.");
+    blockingWarnings.push("Student-triggered prefill is missing target learning year group. Review required before generation.");
   }
 
-  let keyStage = cleanText(String(getFieldValue<string>(contract, "keyStage").value ?? "")) as (typeof KEY_STAGES)[number] | "";
+  const contractTargetLearningKeyStage = getFieldValue<string>(contract, "targetLearningKeyStage");
+  let keyStage = cleanText(String(contractTargetLearningKeyStage.value ?? getFieldValue<string>(contract, "keyStage").value ?? "")) as (typeof KEY_STAGES)[number] | "";
   const legacyKeyStage = cleanText(legacy.keyStage);
-  if (!keyStage && legacyKeyStage) {
-    keyStage = legacyKeyStage as (typeof KEY_STAGES)[number];
+  const legacyTargetLearningKeyStage = cleanText(legacy.targetLearningKeyStage);
+  if (!keyStage && (legacyTargetLearningKeyStage || legacyKeyStage)) {
+    keyStage = (legacyTargetLearningKeyStage ?? legacyKeyStage) as (typeof KEY_STAGES)[number];
+    if (legacyTargetLearningKeyStage) fieldSources.targetLearningKeyStage = "legacy-query";
     fieldSources.keyStage = "legacy-query";
+  }
+  if (contractTargetLearningKeyStage.source) {
+    fieldSources.targetLearningKeyStage = contractTargetLearningKeyStage.source;
+    fieldSources.keyStage = contractTargetLearningKeyStage.source;
   }
   if (yearGroup) {
     const canonicalKeyStage = keyStageForYearGroup(yearGroup);
@@ -320,15 +400,41 @@ export function resolveUniversalPrefill(input: UniversalPrefillResolverInput): U
       assumptions.push(`Key stage ${keyStage} was corrected to ${canonicalKeyStage} to match ${yearGroup}.`);
       keyStage = canonicalKeyStage;
       fieldSources.keyStage = "curriculum";
+      fieldSources.targetLearningKeyStage = "curriculum";
     }
     if (!keyStage) {
       keyStage = canonicalKeyStage;
       fieldSources.keyStage = "curriculum";
+      fieldSources.targetLearningKeyStage = "curriculum";
     }
   }
 
   const ageGroup = yearGroup ? ageGroupForYearGroup(yearGroup) : null;
   const curriculumPathway = yearGroup ? curriculumPathwayForYearGroup(yearGroup) : null;
+
+  const contractStudentYear = getFieldValue<string>(contract, "studentYearGroup");
+  const studentYearGroup = normalizeYearGroup(contractStudentYear.value ?? legacy.studentYearGroup);
+  if (contractStudentYear.source) fieldSources.studentYearGroup = contractStudentYear.source;
+  else if (legacy.studentYearGroup) fieldSources.studentYearGroup = "legacy-query";
+
+  const contractStudentKeyStage = getFieldValue<string>(contract, "studentKeyStage");
+  let studentKeyStage = cleanText(String(contractStudentKeyStage.value ?? legacy.studentKeyStage ?? "")) as (typeof KEY_STAGES)[number] | "";
+  if (studentYearGroup) {
+    const canonicalStudentKeyStage = keyStageForYearGroup(studentYearGroup);
+    if (studentKeyStage && studentKeyStage !== canonicalStudentKeyStage) {
+      assumptions.push(`Student key stage ${studentKeyStage} was corrected to ${canonicalStudentKeyStage} to match ${studentYearGroup}.`);
+      studentKeyStage = canonicalStudentKeyStage;
+      fieldSources.studentKeyStage = "curriculum";
+    }
+    if (!studentKeyStage) {
+      studentKeyStage = canonicalStudentKeyStage;
+      fieldSources.studentKeyStage = "curriculum";
+    }
+  } else if (contractStudentKeyStage.source) {
+    fieldSources.studentKeyStage = contractStudentKeyStage.source;
+  } else if (legacy.studentKeyStage) {
+    fieldSources.studentKeyStage = "legacy-query";
+  }
 
   const contractSubject = getFieldValue<string>(contract, "subject");
   const subjectToken = cleanText(contractSubject.value ?? legacy.subject);
@@ -469,6 +575,14 @@ export function resolveUniversalPrefill(input: UniversalPrefillResolverInput): U
     ? visualAllowedSubjectsRaw.map((value) => cleanText(String(value))).filter((value): value is string => Boolean(value))
     : [];
   const requireVisualApproval = toBoolean(getFieldValue<boolean>(contract, "requireVisualApproval").value) ?? true;
+  const subjectLevel = toPositiveInt(getFieldValue<number>(contract, "subjectLevel").value ?? legacy.subjectLevel);
+  const strandLevel = toPositiveInt(getFieldValue<number>(contract, "strandLevel").value ?? legacy.strandLevel);
+  const levelSource = cleanText(String(getFieldValue<string>(contract, "levelSource").value ?? legacy.levelSource ?? "")) ?? (trigger === "student-target" ? "fallback" : "manual");
+  const adminOverrideReason = cleanText(String(getFieldValue<string>(contract, "adminOverrideReason").value ?? legacy.adminOverrideReason ?? "")) ?? "";
+  if (subjectLevel) fieldSources.subjectLevel = getFieldValue<number>(contract, "subjectLevel").source ?? "legacy-query";
+  if (strandLevel) fieldSources.strandLevel = getFieldValue<number>(contract, "strandLevel").source ?? "legacy-query";
+  if (levelSource) fieldSources.levelSource = getFieldValue<string>(contract, "levelSource").source ?? (legacy.levelSource ? "legacy-query" : "fallback");
+  if (adminOverrideReason) fieldSources.adminOverrideReason = getFieldValue<string>(contract, "adminOverrideReason").source ?? "legacy-query";
 
   const values: UniversalPrefillResolvedValues = {
     trigger,
@@ -478,6 +592,14 @@ export function resolveUniversalPrefill(input: UniversalPrefillResolverInput): U
     signal: cleanText(contract?.signal ?? legacy.source),
     yearGroup,
     keyStage: keyStage || null,
+    studentYearGroup,
+    studentKeyStage: studentKeyStage || null,
+    targetLearningYearGroup: yearGroup,
+    targetLearningKeyStage: keyStage || null,
+    subjectLevel,
+    strandLevel,
+    levelSource,
+    adminOverrideReason,
     ageGroup,
     subject,
     englishStrand,
@@ -504,6 +626,8 @@ export function resolveUniversalPrefill(input: UniversalPrefillResolverInput): U
   if (trigger === "manual" && !values.yearGroup) {
     values.yearGroup = "Year 1";
     values.keyStage = keyStageForYearGroup("Year 1");
+    values.targetLearningYearGroup = "Year 1";
+    values.targetLearningKeyStage = keyStageForYearGroup("Year 1");
     values.ageGroup = ageGroupForYearGroup("Year 1");
     values.curriculumPathway = curriculumPathwayForYearGroup("Year 1");
     assumptions.push("Manual mode fallback applied: defaulted to Year 1/KS1.");
@@ -555,6 +679,14 @@ export function legacyPrefillFromQueryMap(query: Record<string, string | null>):
     weakAreaId: cleanText(query.weakAreaId),
     yearGroup: cleanText(query.yearGroup),
     keyStage: cleanText(query.keyStage),
+    studentYearGroup: cleanText(query.studentYearGroup),
+    studentKeyStage: cleanText(query.studentKeyStage),
+    targetLearningYearGroup: cleanText(query.targetLearningYearGroup),
+    targetLearningKeyStage: cleanText(query.targetLearningKeyStage),
+    subjectLevel: toPositiveInt(query.subjectLevel),
+    strandLevel: toPositiveInt(query.strandLevel),
+    levelSource: cleanText(query.levelSource),
+    adminOverrideReason: cleanText(query.adminOverrideReason),
     difficulty: toPositiveInt(query.difficulty),
     itemCount: toPositiveInt(query.itemCount),
   };

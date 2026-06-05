@@ -210,6 +210,13 @@ type AdminProgressionPayload = {
     strand: string | null;
     yearGroup: string | null;
     keyStage: string | null;
+    studentYearGroup?: string | null;
+    studentKeyStage?: string | null;
+    targetLearningYearGroup?: string | null;
+    targetLearningKeyStage?: string | null;
+    subjectLevel?: number | null;
+    strandLevel?: number | null;
+    levelSource?: string | null;
     skillFocus: string;
     difficulty: number;
     accuracy: number;
@@ -1338,6 +1345,13 @@ export default function StudentDetailPage() {
                         source: "student-profile",
                         yearGroup: target.yearGroup,
                         keyStage: target.keyStage,
+                        studentYearGroup: target.studentYearGroup,
+                        studentKeyStage: target.studentKeyStage,
+                        targetLearningYearGroup: target.targetLearningYearGroup,
+                        targetLearningKeyStage: target.targetLearningKeyStage,
+                        subjectLevel: target.subjectLevel,
+                        strandLevel: target.strandLevel,
+                        levelSource: target.levelSource,
                         difficulty: target.difficulty,
                         prefillContract: target.prefillContract ?? null,
                       });

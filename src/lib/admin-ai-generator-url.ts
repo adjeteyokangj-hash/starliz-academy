@@ -13,6 +13,14 @@ export type AiGeneratorHandoffParams = {
   weakAreaId?: string | null;
   yearGroup?: string | null;
   keyStage?: string | null;
+  studentYearGroup?: string | null;
+  studentKeyStage?: string | null;
+  targetLearningYearGroup?: string | null;
+  targetLearningKeyStage?: string | null;
+  subjectLevel?: number | string | null;
+  strandLevel?: number | string | null;
+  levelSource?: string | null;
+  adminOverrideReason?: string | null;
   difficulty?: number | string | null;
   itemCount?: number | string | null;
   prefillContract?: UniversalAiPrefillContract | string | null;
@@ -77,6 +85,12 @@ export function buildAiGeneratorUrl(params: AiGeneratorHandoffParams): string {
     "weakAreaId",
     "yearGroup",
     "keyStage",
+    "studentYearGroup",
+    "studentKeyStage",
+    "targetLearningYearGroup",
+    "targetLearningKeyStage",
+    "levelSource",
+    "adminOverrideReason",
   ];
 
   for (const field of textFields) {
@@ -87,6 +101,12 @@ export function buildAiGeneratorUrl(params: AiGeneratorHandoffParams): string {
 
   const difficulty = cleanPositiveNumber(params.difficulty);
   if (difficulty) query.set("difficulty", difficulty);
+
+  const subjectLevel = cleanPositiveNumber(params.subjectLevel);
+  if (subjectLevel) query.set("subjectLevel", subjectLevel);
+
+  const strandLevel = cleanPositiveNumber(params.strandLevel);
+  if (strandLevel) query.set("strandLevel", strandLevel);
 
   const itemCount = cleanPositiveNumber(params.itemCount);
   if (itemCount) query.set("itemCount", itemCount);

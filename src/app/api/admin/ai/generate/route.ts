@@ -2034,7 +2034,11 @@ export async function POST(req: Request) {
   }
   const requestedCount = body.itemCount ?? body.numberOfItems ?? body.count;
   const requestedLevel = body.difficulty ?? body.level;
-  const rawYearGroup = typeof body.yearGroup === "string" ? body.yearGroup : "Year 1";
+  const rawYearGroup = typeof body.targetLearningYearGroup === "string"
+    ? body.targetLearningYearGroup
+    : typeof body.yearGroup === "string"
+      ? body.yearGroup
+      : "Year 1";
   const rawTopic = body.topicTheme ?? body.topic;
 
   const parentGenerationType = mapSubjectToGenerationType(sourceSubject);
@@ -2044,8 +2048,22 @@ export async function POST(req: Request) {
   const topic = typeof rawTopic === "string" ? rawTopic : "";
   const ageGroup = typeof body.ageGroup === "string" ? body.ageGroup : ageGroupForYearGroup(rawYearGroup);
   const count = Math.max(1, Math.min(10, Number(requestedCount ?? BATCH_SIZE)));
-  const keyStage = typeof body.keyStage === "string" ? body.keyStage : "KS1";
-  const yearGroup = typeof body.yearGroup === "string" ? body.yearGroup : "";
+  const keyStage = typeof body.targetLearningKeyStage === "string"
+    ? body.targetLearningKeyStage
+    : typeof body.keyStage === "string"
+      ? body.keyStage
+      : "KS1";
+  const yearGroup = typeof body.targetLearningYearGroup === "string"
+    ? body.targetLearningYearGroup
+    : typeof body.yearGroup === "string"
+      ? body.yearGroup
+      : "";
+  const studentYearGroup = typeof body.studentYearGroup === "string" ? body.studentYearGroup : null;
+  const studentKeyStage = typeof body.studentKeyStage === "string" ? body.studentKeyStage : null;
+  const subjectLevel = typeof body.subjectLevel === "number" ? body.subjectLevel : Number(body.subjectLevel);
+  const strandLevel = typeof body.strandLevel === "number" ? body.strandLevel : Number(body.strandLevel);
+  const levelSource = typeof body.levelSource === "string" ? body.levelSource : null;
+  const adminOverrideReason = typeof body.adminOverrideReason === "string" ? body.adminOverrideReason : null;
   const requestedCurriculumPathway = typeof body.curriculumPathway === "string"
     ? body.curriculumPathway
     : curriculumPathwayForYearGroup(yearGroup);
@@ -2339,6 +2357,14 @@ export async function POST(req: Request) {
     topic,
     activityType,
     strand: englishStrand,
+    studentYearGroup,
+    studentKeyStage,
+    targetLearningYearGroup: safeYearGroup,
+    targetLearningKeyStage: safeKeyStage,
+    subjectLevel: Number.isFinite(subjectLevel) ? subjectLevel : null,
+    strandLevel: Number.isFinite(strandLevel) ? strandLevel : null,
+    levelSource,
+    adminOverrideReason,
     examBoardSource,
     curriculumFramework,
     countryRegion: examBoardRecommendation.countryRegion,
