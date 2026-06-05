@@ -8,6 +8,7 @@ import { countDictionaryWordsForGraph, listDictionaryWords } from "@/lib/diction
 import { mergeKnowledgeGraphViews, projectCurriculumGraphToKnowledgeGraph } from "@/lib/admin_graph";
 import { evaluateGraphChangeProposal } from "@/lib/academic-intelligence/graph-protection";
 import { buildStudentGraphOverlay } from "@/lib/academic-intelligence/graph-overlay";
+import { buildSubjectFeatureOrchestrationReport } from "@/lib/academic-intelligence/subject-feature-orchestration";
 import { getProgressionDecisionBrainView, getStudentLearningBrain } from "@/lib/student-learning-brain";
 
 const proposalSchema = z.object({
@@ -265,6 +266,7 @@ export async function handleAdminKnowledgeGraphGet(request: Request, deps: Admin
     blockers: string[];
     evidence: string[];
   } | null = null;
+  const bodyOrchestration = buildSubjectFeatureOrchestrationReport();
   let brainContext: {
     learningDnaSummary: Record<string, unknown> | null;
     languageReadiness: unknown;
@@ -438,6 +440,7 @@ export async function handleAdminKnowledgeGraphGet(request: Request, deps: Admin
     fallback,
     graphAudit,
     heartbeatDecision,
+    bodyOrchestration,
     brainContext,
     studentOverlay,
   });

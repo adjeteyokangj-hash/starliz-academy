@@ -25,6 +25,7 @@ import type {
   CurriculumGraphProtectionStatus,
   HeartbeatDecision,
 } from "@/lib/academic-intelligence/types";
+import type { BodyOrchestrationReport } from "@/lib/academic-intelligence/subject-feature-orchestration";
 import { edgeFocusClass, topicKeyFromLabel } from "@/lib/academic-intelligence/graph-overlay";
 
 type ApiResponse = {
@@ -52,6 +53,7 @@ type ApiResponse = {
   };
   heartbeat: CurriculumGraphHeartbeat | null;
   heartbeatDecision: HeartbeatDecision | null;
+  bodyOrchestration: BodyOrchestrationReport | null;
   protection: CurriculumGraphProtectionStatus | null;
   approvalWorkflow: CurriculumGraphApprovalWorkflow | null;
   fallback: CurriculumGraphFallback | null;
@@ -383,6 +385,7 @@ export default function KnowledgeGraphPage() {
   const [approvalWorkflow, setApprovalWorkflow] = useState<CurriculumGraphApprovalWorkflow | null>(null);
   const [fallback, setFallback] = useState<CurriculumGraphFallback | null>(null);
   const [graphAudit, setGraphAudit] = useState<CurriculumGraphAuditMetadata | null>(null);
+  const [bodyOrchestration, setBodyOrchestration] = useState<ApiResponse["bodyOrchestration"]>(null);
   const [studentOverlay, setStudentOverlay] = useState<ApiResponse["studentOverlay"]>(null);
   const [studentHeartbeatProfile, setStudentHeartbeatProfile] = useState<StudentHeartbeatProfile | null>(null);
   const [studentHeartbeatLoading, setStudentHeartbeatLoading] = useState(false);
@@ -520,6 +523,7 @@ export default function KnowledgeGraphPage() {
         setApprovalWorkflow(payload.approvalWorkflow);
         setFallback(payload.fallback);
         setGraphAudit(payload.graphAudit);
+        setBodyOrchestration(payload.bodyOrchestration);
         setStudentOverlay(payload.studentOverlay);
       } catch {
         setError("Unable to load heartbeat graph data.");
@@ -980,6 +984,67 @@ export default function KnowledgeGraphPage() {
                   <p className="text-xs text-slate-300">Fallback applied: {fallback?.applied ? "yes" : "no"}</p>
                 </article>
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
+                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Subject & Feature Body Orchestration</h2>
+                  <p className="mt-2 text-xs text-slate-300">Verdict: {bodyOrchestration?.verdict ?? "unknown"}</p>
+                  <p className="text-xs text-slate-300">Schema changes required: {bodyOrchestration?.canShipWithoutSchemaChanges ? "no" : "yes"}</p>
+                  <p className="text-xs text-slate-300">HEART BEAT warning: {bodyOrchestration?.heartBeatWarning ?? "-"}</p>
+                  <div className="mt-3 space-y-2">
+                    {(bodyOrchestration?.phases ?? []).map((phase) => (
+                      <div key={phase.phase} className="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2 text-[11px] text-slate-300">
+                        <p className="font-black uppercase tracking-[0.08em] text-slate-100">Phase {phase.phase}: {phase.name}</p>
+                        <p className="text-slate-400">{phase.status}</p>
+                        <p className="mt-1 text-slate-300">{phase.summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              </section>
+
+              <section className="grid gap-3 md:grid-cols-2">
+                <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
+                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Body System Warnings</h2>
+                  {(bodyOrchestration?.warnings ?? []).length === 0 ? (
+                    <p className="mt-2 text-xs text-slate-400">No body-system warnings reported.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2 text-xs text-slate-300">
+                      {(bodyOrchestration?.warnings ?? []).map((warning) => (
+                        <div key={warning.title} className={`rounded-lg border px-3 py-2 ${warning.severity === "critical" ? "border-rose-500/30 bg-rose-500/10 text-rose-50" : "border-amber-500/30 bg-amber-500/10 text-amber-50"}`}>
+                          <p className="font-black uppercase tracking-[0.08em]">{warning.title}</p>
+                          <p className="mt-1">{warning.summary}</p>
+                          <p className="mt-1 text-[11px] uppercase tracking-[0.08em]">Affected surfaces: {warning.affectedSurfaces.join(" | ")}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </article>
+                <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
+                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Registry & Phase 1</h2>
+                  <p className="mt-2 text-xs text-slate-300">Registry input source: {bodyOrchestration?.registry.inputSource ?? "-"}</p>
+                  <p className="text-xs text-slate-300">English strands: {(bodyOrchestration?.registry.englishStrands ?? []).join(", ") || "-"}</p>
+                  <p className="text-xs text-slate-300">Supported subjects: {bodyOrchestration?.registry.subjectCount ?? 0}</p>
+                  <div className="mt-3 space-y-1 text-xs text-slate-300">
+                    {(bodyOrchestration?.recommendedPhase1 ?? []).map((step) => (
+                      <p key={step}>- {step}</p>
+                    ))}
+                  </div>
+                </article>
+              </section>
+
+              <section className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">System Connections</h2>
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {(bodyOrchestration?.surfaces ?? []).map((surface) => (
+                    <article key={surface.key} className={`rounded-lg border px-3 py-2 ${surface.status === "missing" ? "border-rose-500/30 bg-rose-500/10 text-rose-50" : surface.status === "partial" ? "border-amber-500/30 bg-amber-500/10 text-amber-50" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-50"}`}>
+                      <p className="text-xs font-black uppercase tracking-[0.08em]">{surface.label}</p>
+                      <p className="mt-1 text-[11px] uppercase tracking-[0.08em]">{surface.status}</p>
+                      <p className="mt-1 text-xs">{surface.summary}</p>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="grid gap-3 md:grid-cols-2">
+                <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
                   <h2 className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">Student Intelligence Overlay</h2>
                   <p className="mt-2 text-xs text-slate-300">Mastery gaps: {(studentOverlay?.masteryGapTopics ?? []).join(", ") || "-"}</p>
                   <p className="text-xs text-slate-300">Weak areas: {(studentOverlay?.weakAreaTopics ?? []).join(", ") || "-"}</p>
@@ -988,9 +1053,6 @@ export default function KnowledgeGraphPage() {
                   <p className="text-xs text-slate-300">Active interventions: {studentOverlay?.activeInterventions.length ?? 0}</p>
                   <p className="text-xs text-slate-300">Focus: {(studentOverlay?.recommendationFocus ?? []).join(" | ") || "-"}</p>
                 </article>
-              </section>
-
-              <section className="grid gap-3 md:grid-cols-2">
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
                   <h3 className="text-sm font-black uppercase tracking-[0.12em] text-cyan-200">Temporal Intelligence</h3>
                   <p className="mt-2 text-xs text-slate-300">Recently improved: {overlaySummary.temporal.recentlyImproved.join(", ") || "-"}</p>
@@ -998,6 +1060,9 @@ export default function KnowledgeGraphPage() {
                   <p className="text-xs text-slate-300">Overdue revision: {overlaySummary.temporal.overdueRevision.join(", ") || "-"}</p>
                   <p className="text-xs text-slate-300">Forgotten concepts: {overlaySummary.temporal.forgottenConcepts.join(", ") || "-"}</p>
                 </article>
+              </section>
+
+              <section className="grid gap-3 md:grid-cols-2">
                 <article className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-4">
                   <h3 className="text-sm font-black uppercase tracking-[0.12em] text-cyan-200">Learning Twin Visualization</h3>
                   <p className="mt-2 text-xs text-slate-300">Preferred style: {studentOverlay?.learningTwin.preferredExplanationStyle ?? "-"}</p>
