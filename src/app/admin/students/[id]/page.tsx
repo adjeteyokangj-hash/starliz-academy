@@ -259,6 +259,7 @@ const defaultSchoolWeekSettings: SchoolWeekSettingsPayload = {
 type StudentFocusTarget = "qlf-baseline" | "attempts" | "weak-areas";
 
 const studentFocusTargets = new Set<string>(["qlf-baseline", "attempts", "weak-areas"]);
+const qlfBaselineInstructions = "Please log in to StarLiz Academy, open the Student Dashboard, and select Start My Level Finder to complete the Quick Level Finder baseline.";
 
 function isStudentFocusTarget(value: string | null): value is StudentFocusTarget {
   return Boolean(value && studentFocusTargets.has(value));
@@ -287,6 +288,7 @@ export default function StudentDetailPage() {
   const [quickLevelFinderResponses, setQuickLevelFinderResponses] = useState(0);
   const [quickLevelFinderSaving, setQuickLevelFinderSaving] = useState(false);
   const [quickLevelFinderMessage, setQuickLevelFinderMessage] = useState<string | null>(null);
+  const [quickLevelFinderInstructionMessage, setQuickLevelFinderInstructionMessage] = useState<string | null>(null);
   const [progression, setProgression] = useState<AdminProgressionPayload | null>(null);
   const [progressionLoading, setProgressionLoading] = useState(true);
   const [progressionError, setProgressionError] = useState<string | null>(null);
@@ -418,6 +420,16 @@ export default function StudentDetailPage() {
     setQuickLevelFinderSaving(false);
   }
 
+  async function copyQuickLevelFinderInstructions() {
+    setQuickLevelFinderInstructionMessage(null);
+    try {
+      await navigator.clipboard.writeText(qlfBaselineInstructions);
+      setQuickLevelFinderInstructionMessage("Student instructions copied.");
+    } catch {
+      setQuickLevelFinderInstructionMessage(qlfBaselineInstructions);
+    }
+  }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadStudent();
@@ -524,6 +536,7 @@ export default function StudentDetailPage() {
 
   const filteredWalletTransactions = student.walletTransactions.filter((entry) => auditFilter === "all" ? true : entry.type === auditFilter);
   const hasPlacementLevels = Object.keys(student.quickLevelFinder?.levels ?? {}).length > 0;
+  const qlfBaselineMissing = !quickLevelFinderCompleted || !hasPlacementLevels;
   const hasLessonSignals = student.totalSessions > 0 || student.progressRecords.length > 0;
   const hasRecommendationSignals = (academicIntelligence?.catchUpRecommendations.length ?? 0) > 0
     || (academicIntelligence?.assessmentRecommendations.length ?? 0) > 0
@@ -683,6 +696,24 @@ export default function StudentDetailPage() {
               Retest button: {quickLevelFinderRetestEnabled ? "Enabled for learner" : "Disabled"}
             </p>
 
+            {qlfBaselineMissing ? (
+              <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-50">
+                <p className="font-black">Quick Level Finder baseline has not been completed.</p>
+                <p className="mt-1">The student must complete Quick Level Finder from their student dashboard.</p>
+                <p className="mt-1">Ask the student/parent to log in and open Student Dashboard -&gt; Start My Level Finder.</p>
+                <button
+                  type="button"
+                  onClick={() => void copyQuickLevelFinderInstructions()}
+                  className="mt-3 rounded-xl border border-amber-200/50 bg-amber-300/20 px-3 py-2 text-xs font-bold text-amber-50 transition hover:bg-amber-300/30"
+                >
+                  Copy student instructions
+                </button>
+                {quickLevelFinderInstructionMessage ? (
+                  <p className="mt-2 text-xs text-amber-100">{quickLevelFinderInstructionMessage}</p>
+                ) : null}
+              </div>
+            ) : null}
+
             {student.quickLevelFinder?.levels && Object.keys(student.quickLevelFinder.levels).length > 0 ? (
               <div className="mt-3 rounded-xl border border-cyan-400/20 bg-cyan-500/10 p-3">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200">Placement Results</p>
@@ -700,26 +731,53 @@ export default function StudentDetailPage() {
               <p className="mt-2 text-xs text-slate-400">No subject-level placement results yet.</p>
             )}
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void toggleQuickLevelFinderRetest(true)}
-                disabled={quickLevelFinderSaving || quickLevelFinderRetestEnabled}
-                className="rounded-xl bg-cyan-500 px-3 py-2 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {quickLevelFinderSaving ? "Saving..." : "Enable Retest Button"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void toggleQuickLevelFinderRetest(false)}
-                disabled={quickLevelFinderSaving || !quickLevelFinderRetestEnabled}
-                className="rounded-xl border border-slate-600 px-3 py-2 text-xs font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Disable Retest Button
-              </button>
+            {qlfBaselineMissing ? (
+              <div className="mt-3 rounded-xl border border-slate-700 bg-slate-900/50 p-3">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Secondary admin override</p>
+                <p className="mt-1 text-xs text-slate-400">Use this only if you need to force the dashboard QLF prompt; it does not create or complete a baseline.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void toggleQuickLevelFinderRetest(true)}
+                    disabled={quickLevelFinderSaving || quickLevelFinderRetestEnabled}
+                    className="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {quickLevelFinderSaving ? "Saving..." : "Enable dashboard QLF prompt"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void toggleQuickLevelFinderRetest(false)}
+                    disabled={quickLevelFinderSaving || !quickLevelFinderRetestEnabled}
+                    className="rounded-xl border border-slate-600 px-3 py-2 text-xs font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Disable dashboard QLF prompt
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void toggleQuickLevelFinderRetest(true)}
+                  disabled={quickLevelFinderSaving || quickLevelFinderRetestEnabled}
+                  className="rounded-xl bg-cyan-500 px-3 py-2 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {quickLevelFinderSaving ? "Saving..." : "Enable Retest Button"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void toggleQuickLevelFinderRetest(false)}
+                  disabled={quickLevelFinderSaving || !quickLevelFinderRetestEnabled}
+                  className="rounded-xl border border-slate-600 px-3 py-2 text-xs font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Disable Retest Button
+                </button>
+              </div>
+            )}
+            <div className="mt-3">
               <Link
                 href={`/admin/knowledge-graph?mode=academic_intelligence&studentId=${encodeURIComponent(params.id)}&tab=overview`}
-                className="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-100"
+                className="inline-flex rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-100"
               >
                 Open HEART BEAT Engine
               </Link>
