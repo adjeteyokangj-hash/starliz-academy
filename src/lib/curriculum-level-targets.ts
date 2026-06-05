@@ -8,7 +8,19 @@ export type LearningLevelEvidence = {
   levelSource: "qlf" | "progression" | "mastery" | "weak_area" | "learning_level" | "metadata" | "fallback";
 };
 
-type PlacementLevel = { accuracy: number; level: "below" | "secure" | "advanced" };
+type PlacementLevel = {
+  accuracy: number;
+  level: "below" | "secure" | "advanced";
+  explicitLearningLevel?: number | null;
+  explicitLearningYearGroup?: string | null;
+};
+
+type PlacementEvidenceOptions = {
+  accuracy?: number | null;
+  studentYearGroup?: string | null;
+  explicitLearningLevel?: number | null;
+  explicitLearningYearGroup?: string | null;
+};
 
 function normalizeToken(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase().replace(/[_\s]+/g, "-");
@@ -24,10 +36,30 @@ export function yearGroupFromLearningLevel(level: number | string | null | undef
   return `Year ${rounded}`;
 }
 
-export function learningLevelFromPlacementBand(level: PlacementLevel["level"] | null | undefined, accuracy?: number | null): number | null {
+function cohortFallbackLevel(studentYearGroup: string | null | undefined): number {
+  const cohortOrdinal = yearGroupToOrdinal(normalizeYearGroup(studentYearGroup));
+  if (cohortOrdinal === null) return 2;
+  return Math.max(1, cohortOrdinal - 1);
+}
+
+function explicitLearningLevel(options: PlacementEvidenceOptions): number | null {
+  if (typeof options.explicitLearningLevel === "number" && Number.isFinite(options.explicitLearningLevel)) {
+    return Math.max(1, Math.min(11, Math.round(options.explicitLearningLevel)));
+  }
+  const explicitOrdinal = yearGroupToOrdinal(normalizeYearGroup(options.explicitLearningYearGroup));
+  if (explicitOrdinal !== null) return Math.max(1, explicitOrdinal);
+  return null;
+}
+
+export function learningLevelFromPlacementBand(level: PlacementLevel["level"] | null | undefined, options: PlacementEvidenceOptions = {}): number | null {
   if (level === "advanced") return 4;
   if (level === "secure") return 3;
-  if (level === "below") return typeof accuracy === "number" && Math.round(accuracy) < 30 ? 1 : 2;
+  if (level === "below") {
+    const explicitLevel = explicitLearningLevel(options);
+    if (explicitLevel !== null) return explicitLevel;
+    if (typeof options.accuracy === "number" && Math.round(options.accuracy) < 30) return 1;
+    return cohortFallbackLevel(options.studentYearGroup);
+  }
   return null;
 }
 
@@ -63,6 +95,7 @@ export function findPlacementEvidence(input: {
   subject?: string | null;
   contentType?: string | null;
   strand?: string | null;
+  studentYearGroup?: string | null;
 }): LearningLevelEvidence | null {
   const subject = normalizeToken(input.subject);
   const contentType = normalizeToken(input.contentType);
@@ -80,7 +113,12 @@ export function findPlacementEvidence(input: {
   for (const key of candidates) {
     const placement = input.placementLevels[key];
     if (!placement) continue;
-    const level = learningLevelFromPlacementBand(placement.level, placement.accuracy);
+    const level = learningLevelFromPlacementBand(placement.level, {
+      accuracy: placement.accuracy,
+      studentYearGroup: input.studentYearGroup,
+      explicitLearningLevel: placement.explicitLearningLevel,
+      explicitLearningYearGroup: placement.explicitLearningYearGroup,
+    });
     const targetLearningYearGroup = yearGroupFromLearningLevel(level);
     return {
       targetLearningYearGroup,
@@ -117,7 +155,12 @@ export function supportedContentYearGroups(input: {
 
   const placementLevels = input.placementLevels ?? {};
   for (const placement of Object.values(placementLevels)) {
-    const level = learningLevelFromPlacementBand(placement.level, placement.accuracy);
+    const level = learningLevelFromPlacementBand(placement.level, {
+      accuracy: placement.accuracy,
+      studentYearGroup: studentYear,
+      explicitLearningLevel: placement.explicitLearningLevel,
+      explicitLearningYearGroup: placement.explicitLearningYearGroup,
+    });
     const year = normalizeYearGroup(yearGroupFromLearningLevel(level));
     if (year && (!studentYear || isLowerOrSameYear(year, studentYear))) years.add(year);
   }

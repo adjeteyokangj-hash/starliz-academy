@@ -12,32 +12,32 @@ import { resolveRecoveryCurriculumTarget } from "../src/lib/recovery_orchestrato
 
 const FRIDAY = new Date("2026-06-05T12:00:00.000Z");
 
-test("Year 4 student at Year 2 Grammar carries target level through generation, assignment, brain, recovery, and homework", () => {
+test("Year 4 student below in Grammar defaults to Year 3 target through orchestration", () => {
   const aiHref = buildAiGeneratorUrl({
     studentId: "student-y4",
     subject: "english-language",
     englishStrand: "grammar",
     strand: "grammar",
     skill: "Grammar",
-    yearGroup: "Year 2",
-    keyStage: "KS1",
+    yearGroup: "Year 3",
+    keyStage: "KS2",
     studentYearGroup: "Year 4",
     studentKeyStage: "KS2",
-    targetLearningYearGroup: "Year 2",
-    targetLearningKeyStage: "KS1",
-    subjectLevel: 2,
-    strandLevel: 2,
+    targetLearningYearGroup: "Year 3",
+    targetLearningKeyStage: "KS2",
+    subjectLevel: 3,
+    strandLevel: 3,
     source: "student-profile",
   });
   const params = new URL(`https://starliz.test${aiHref}`).searchParams;
-  assert.equal(params.get("targetLearningYearGroup"), "Year 2");
+  assert.equal(params.get("targetLearningYearGroup"), "Year 3");
 
   const assignmentAllowed = placementSupportsAssignment({
     contentSubject: "english-language",
     contentPathway: "primary",
-    contentKeyStage: "KS1",
-    contentYearGroup: "Year 2",
-    contentLevel: 2,
+    contentKeyStage: "KS2",
+    contentYearGroup: "Year 3",
+    contentLevel: 3,
     contentType: "grammar",
     contentStrand: "grammar",
     studentPathway: "primary",
@@ -46,7 +46,7 @@ test("Year 4 student at Year 2 Grammar carries target level through generation, 
     studentLearningLevel: null,
     placementLevels: { "english:grammar": { accuracy: 45, level: "below" } },
   });
-  assert.equal(assignmentAllowed, true);
+  assert.equal(assignmentAllowed, false);
   assert.deepEqual(assignmentMismatchWarningFlags({
     yearMismatch: true,
     keyStageMismatch: true,
@@ -58,12 +58,12 @@ test("Year 4 student at Year 2 Grammar carries target level through generation, 
   assert.ok(supportedContentYearGroups({
     studentYearGroup: "Year 4",
     placementLevels: { "english:grammar": { accuracy: 45, level: "below" } },
-  }).includes("Year 2"));
+  }).includes("Year 3"));
 
   assert.equal(resolveRecoveryCurriculumTarget({
     studentYearGroup: "Year 4",
-    weakAreaMetadata: { targetLearningYearGroup: "Year 2" },
-  }).yearGroup, "Year 2");
+    weakAreaMetadata: { targetLearningYearGroup: "Year 3" },
+  }).yearGroup, "Year 3");
 
   const homework = generateWeeklyHomeworkBatch({
     now: FRIDAY,
@@ -78,8 +78,8 @@ test("Year 4 student at Year 2 Grammar carries target level through generation, 
       subject: "english",
       topic: "grammar",
       skill: "sentence structure",
-      targetLearningYearGroup: "Year 2",
-      targetLearningKeyStage: "KS1",
+      targetLearningYearGroup: "Year 3",
+      targetLearningKeyStage: "KS2",
       studentYearGroup: "Year 4",
       estimatedMinutes: 5,
       repeatedMistakes: 5,
@@ -92,7 +92,22 @@ test("Year 4 student at Year 2 Grammar carries target level through generation, 
     }],
   });
   assert.equal(homework.created, true);
-  if (homework.created) assert.equal(homework.batch.questions[0]?.targetLearningYearGroup, "Year 2");
+  if (homework.created) assert.equal(homework.batch.questions[0]?.targetLearningYearGroup, "Year 3");
+});
+
+test("explicit lower remediation evidence still allows Year 2 support for Year 4 grammar", () => {
+  const years = supportedContentYearGroups({
+    studentYearGroup: "Year 4",
+    placementLevels: {
+      "english:grammar": {
+        accuracy: 45,
+        level: "below",
+        explicitLearningYearGroup: "Year 2",
+      },
+    },
+  });
+
+  assert.ok(years.includes("Year 2"));
 });
 
 test("Year 6 student at Year 3 Maths carries lower maths target and blocks unsupported Year 8", () => {

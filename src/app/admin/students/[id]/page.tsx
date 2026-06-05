@@ -179,6 +179,24 @@ type ChecklistItem = {
   detail: string;
 };
 
+/** Derives the expected UK school year group from a date of birth. */
+function ukYearGroupFromDob(dob: Date): string | null {
+  const today = new Date();
+  const SEPT = 8; // September is month index 8 (0-based)
+  // Current academic year started in September of 'schoolYearStart'
+  const schoolYearStart = today.getMonth() < SEPT ? today.getFullYear() - 1 : today.getFullYear();
+  // Birthday falls before September 1 in the year?
+  const birthdayBeforeSept = dob.getMonth() < SEPT || (dob.getMonth() === SEPT && dob.getDate() === 1);
+  let ageAtSchoolStart = schoolYearStart - dob.getFullYear();
+  if (!birthdayBeforeSept) ageAtSchoolStart -= 1;
+  // Reception is age 4; Year N is age 4+N
+  const yearGroupNum = ageAtSchoolStart - 4;
+  if (yearGroupNum < 0) return null;
+  if (yearGroupNum === 0) return "Reception";
+  if (yearGroupNum >= 1 && yearGroupNum <= 11) return `Year ${yearGroupNum}`;
+  return null;
+}
+
 type AdminProgressionPayload = {
   ok?: boolean;
   message?: string;
@@ -551,10 +569,15 @@ export default function StudentDetailPage() {
   const filteredWalletTransactions = student.walletTransactions.filter((entry) => auditFilter === "all" ? true : entry.type === auditFilter);
   const hasPlacementLevels = Object.keys(student.quickLevelFinder?.levels ?? {}).length > 0;
   const qlfBaselineMissing = !quickLevelFinderCompleted || !hasPlacementLevels;
-  const hasLessonSignals = student.totalSessions > 0 || student.progressRecords.length > 0;
-  const hasRecommendationSignals = (academicIntelligence?.catchUpRecommendations.length ?? 0) > 0
-    || (academicIntelligence?.assessmentRecommendations.length ?? 0) > 0
-    || (progression?.recommendations?.length ?? 0) > 0;
+  const hasLessonSignals = student.totalSessions > 0 || student.progressRecords.length > 0 || student.attempts.length > 0;
+  const generationTargetsCount = progression?.generationTargets?.length ?? 0;
+  const hasGenerationTargetSignals = generationTargetsCount > 0;
+  const progressionRecommendationCount = progression?.recommendations?.length ?? 0;
+  const academicRecommendationCount = (academicIntelligence?.catchUpRecommendations.length ?? 0)
+    + (academicIntelligence?.assessmentRecommendations.length ?? 0);
+  const totalRecommendationSignals = progressionRecommendationCount + academicRecommendationCount;
+  const hasRecommendationSignals = totalRecommendationSignals > 0;
+  const hasFirstLearningPathEvidence = hasLessonSignals || hasGenerationTargetSignals;
   const qlfChecklistStatus: ChecklistStatus = quickLevelFinderCompleted
     ? "pass"
     : student.learningDataState?.checklistStatus === "warning"
@@ -582,14 +605,30 @@ export default function StudentDetailPage() {
         : "No subject-level placements available yet.",
     },
     {
+      key: "recommendation-signals",
+      label: "Recommendation signals ready",
+      status: hasRecommendationSignals ? "pass" : quickLevelFinderCompleted ? "warning" : "fail",
+      detail: hasRecommendationSignals
+        ? `${totalRecommendationSignals} recommendation signal${totalRecommendationSignals === 1 ? "" : "s"} ready for admin review.`
+        : "No recommendation signals yet. Complete more activity to unlock next-step guidance.",
+    },
+    {
       key: "first-path",
       label: "First learning path available",
-      status: hasLessonSignals || hasRecommendationSignals ? "pass" : quickLevelFinderCompleted ? "warning" : "fail",
-      detail: hasLessonSignals
-        ? "Lesson activity/progress evidence detected."
+      status: hasFirstLearningPathEvidence
+        ? "pass"
         : hasRecommendationSignals
-          ? "Recommendation signals are ready; assignment execution may still be pending."
-          : "No first-lesson signal yet. Review approved content and assignment feed.",
+          ? "warning"
+          : quickLevelFinderCompleted
+            ? "warning"
+            : "fail",
+      detail: hasFirstLearningPathEvidence
+        ? hasGenerationTargetSignals
+          ? `${generationTargetsCount} generation target${generationTargetsCount === 1 ? "" : "s"} ready for assignment.`
+          : "Lesson and assignment activity evidence detected."
+        : hasRecommendationSignals
+          ? "Recommendations are ready, but no live learning path is active yet. Assign or generate the first path to move this to pass."
+          : "No first learning path evidence yet. Review approved content and assignment feed.",
     },
     {
       key: "adaptive",
@@ -609,6 +648,24 @@ export default function StudentDetailPage() {
       status: "pass",
       detail: "Use Open HEART BEAT Engine to inspect system, student, and decision layers.",
     },
+    ...(keyStageMismatch ? [{
+      key: "ks-mismatch",
+      label: "Key stage mismatch",
+      status: "warning" as ChecklistStatus,
+      detail: `Student year group (${student.yearGroup ?? "not set"}) maps to ${canonicalKeyStage}, but the onboarding profile has ${onboardingKeyStage}. Edit the student profile to correct the key stage.`,
+    }] : []),
+    ...((() => {
+      const dobStr = student.studentProfile?.dateOfBirth ?? null;
+      if (!dobStr || !student.yearGroup) return [];
+      const derivedYear = ukYearGroupFromDob(new Date(dobStr));
+      if (!derivedYear || derivedYear === student.yearGroup) return [];
+      return [{
+        key: "dob-year-group",
+        label: "Year group vs date of birth",
+        status: "warning" as ChecklistStatus,
+        detail: `Stored year group is ${student.yearGroup}, but DOB (${new Date(dobStr).toLocaleDateString()}) suggests ${derivedYear}. Edit the student profile to correct the year group and key stage so AI generation targets the right curriculum level.`,
+      }];
+    })()),
   ];
 
   const failCount = adminHealthChecklist.filter((item) => item.status === "fail").length;

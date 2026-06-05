@@ -147,7 +147,7 @@ test("buildAiGeneratorUrl serializes universal prefill contract when provided", 
   assert.equal(decoded?.fields.subject?.value, "maths");
 });
 
-test("buildAiGeneratorUrl keeps student year separate from lower grammar target", () => {
+test("buildAiGeneratorUrl keeps student year separate from Year 3 grammar target", () => {
   const href = buildAiGeneratorUrl({
     studentId: "student-year-4",
     subject: "english-language",
@@ -156,27 +156,27 @@ test("buildAiGeneratorUrl keeps student year separate from lower grammar target"
     englishStrand: "grammar",
     topic: "Grammar placement needs a generated lesson",
     source: "student-profile",
-    yearGroup: "Year 2",
-    keyStage: "KS1",
+    yearGroup: "Year 3",
+    keyStage: "KS2",
     studentYearGroup: "Year 4",
     studentKeyStage: "KS2",
-    targetLearningYearGroup: "Year 2",
-    targetLearningKeyStage: "KS1",
-    subjectLevel: 2,
-    strandLevel: 2,
+    targetLearningYearGroup: "Year 3",
+    targetLearningKeyStage: "KS2",
+    subjectLevel: 3,
+    strandLevel: 3,
     levelSource: "progression",
   });
 
   const params = paramsFor(href);
 
-  assert.equal(params.get("yearGroup"), "Year 2");
-  assert.equal(params.get("keyStage"), "KS1");
+  assert.equal(params.get("yearGroup"), "Year 3");
+  assert.equal(params.get("keyStage"), "KS2");
   assert.equal(params.get("studentYearGroup"), "Year 4");
   assert.equal(params.get("studentKeyStage"), "KS2");
-  assert.equal(params.get("targetLearningYearGroup"), "Year 2");
-  assert.equal(params.get("targetLearningKeyStage"), "KS1");
-  assert.equal(params.get("subjectLevel"), "2");
-  assert.equal(params.get("strandLevel"), "2");
+  assert.equal(params.get("targetLearningYearGroup"), "Year 3");
+  assert.equal(params.get("targetLearningKeyStage"), "KS2");
+  assert.equal(params.get("subjectLevel"), "3");
+  assert.equal(params.get("strandLevel"), "3");
 });
 
 test("buildAiGeneratorUrl keeps student year separate from lower maths target", () => {

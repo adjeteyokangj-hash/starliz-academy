@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAdminPermission } from "@/lib/api_guard";
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
-import { ageGroupForYearGroup, curriculumPathwayForYearGroup, keyStageForYearGroup, normalizeSubject, normalizeYearGroup, type Subject } from "@/lib/curriculum";
+import { ageGroupForYearGroup, curriculumPathwayForYearGroup, keyStageForYearGroup, normalizeSubject, normalizeYearGroup, yearGroupToOrdinal, type Subject } from "@/lib/curriculum";
 import { getProgressionDecisionBrainView } from "@/lib/student-learning-brain";
 import { buildUniversalPrefillContract, type UniversalAiPrefillContract } from "@/lib/ai-prefill-contract";
 
@@ -276,11 +276,11 @@ function resolveGenerationSubject(input: { parentSubject: string; strand: string
   const normalizedParent = String(input.parentSubject ?? "").trim().toLowerCase();
 
   if (normalizedParent === "english") {
-    if (input.strand === "phonics" || input.strand === "spelling") return input.strand;
-    if (input.strand === "reading" || input.strand === "comprehension" || input.strand === "vocabulary") return "reading";
-    if (input.strand === "grammar") return "grammar";
-    if (input.strand === "punctuation") return "punctuation";
-    if (input.strand === "writing") return "writing";
+    // Always use "english-language" as the parent subject for the AI generator.
+    // The specific strand is passed separately via the englishStrand field in the prefill
+    // contract. This ensures the subject is accepted by aiGeneratorSubjectsForYearGroup,
+    // which replaces all internal English strand subjects (grammar, reading, spelling, etc.)
+    // with "english-language" for Year 1–6 primary years.
     return "english-language";
   }
 
@@ -318,6 +318,11 @@ function resolveTargetLearningYearGroup(input: {
   const hintedYearGroup = normalizeYearGroup(input.generatorHint?.yearGroup);
   const levelYearGroup = normalizeYearGroup(yearGroupFromLearningLevel(input.generatorHint?.level ?? input.progressionLevel));
   if (hintedYearGroup && levelYearGroup && hintedYearGroup !== levelYearGroup) {
+    const hintedOrdinal = yearGroupToOrdinal(hintedYearGroup);
+    const levelOrdinal = yearGroupToOrdinal(levelYearGroup);
+    if (hintedOrdinal !== null && levelOrdinal !== null && hintedOrdinal < levelOrdinal) {
+      return { yearGroup: hintedYearGroup, source: "qlf" };
+    }
     return { yearGroup: levelYearGroup, source: "progression" };
   }
   if (hintedYearGroup) return { yearGroup: hintedYearGroup, source: "qlf" };
@@ -329,11 +334,12 @@ function resolveTargetLearningYearGroup(input: {
 function buildGenerationTargets(input: {
   contentGaps: Array<{
     scopedSubject: string;
-    parentSubject: string;
     strand: string | null;
-    accuracy: number;
-    level: number;
-    reason: string;
+    currentLevel: number;
+    reasons: string[];
+    evidenceSummary: {
+      averageScore: number;
+    };
     generatorHint: { subject: string; strand: string | null; level: number; yearGroup: string | null; keyStage: string | null; skillFocus: string; reason: string } | null;
   }>;
   studentYearGroup: string | null;
@@ -345,19 +351,23 @@ function buildGenerationTargets(input: {
       const studentKeyStage = studentYearGroup
         ? keyStageForYearGroup(studentYearGroup)
         : input.studentKeyStage;
+      const parsedScope = parseScopedSubject(row.scopedSubject);
+      const parentSubject = parsedScope.parentSubject;
+      const targetReason = row.generatorHint?.reason?.trim() || row.reasons[0]?.trim() || "Progression recommends targeted practice.";
+      const fallbackSkillFocus = row.reasons[0]?.trim() || parentSubject;
       const targetLearning = resolveTargetLearningYearGroup({
         generatorHint: row.generatorHint,
-        progressionLevel: row.level,
+        progressionLevel: row.currentLevel,
         studentYearGroup,
       });
       const targetLearningYearGroup = targetLearning.yearGroup;
       const targetLearningKeyStage = targetLearningYearGroup
         ? keyStageForYearGroup(targetLearningYearGroup)
         : row.generatorHint?.keyStage ?? studentKeyStage;
-      const subjectLevel = row.generatorHint?.level ?? row.level ?? null;
+      const subjectLevel = row.generatorHint?.level ?? row.currentLevel ?? null;
       const strandLevel = row.strand ? subjectLevel : null;
       const subject = resolveGenerationSubject({
-        parentSubject: row.parentSubject,
+        parentSubject,
         strand: row.strand,
         yearGroup: targetLearningYearGroup,
       });
@@ -378,16 +388,16 @@ function buildGenerationTargets(input: {
           ageGroup: { value: targetLearningYearGroup ? ageGroupForYearGroup(targetLearningYearGroup) : null, source: "curriculum", confidence: targetLearningYearGroup ? "high" : "low" },
           subject: { value: subject, source: "prediction", confidence: "high" },
           englishStrand: { value: row.strand, source: row.strand ? "prediction" : "fallback", confidence: row.strand ? "medium" : "low" },
-          skillFocus: { value: row.generatorHint?.skillFocus?.trim() || row.reason, source: row.generatorHint?.skillFocus ? "prediction" : "recommendation", confidence: row.generatorHint?.skillFocus ? "high" : "medium" },
-          topic: { value: row.generatorHint?.skillFocus?.trim() || row.reason, source: "recommendation", confidence: "medium" },
+          skillFocus: { value: row.generatorHint?.skillFocus?.trim() || fallbackSkillFocus, source: row.generatorHint?.skillFocus ? "prediction" : "recommendation", confidence: row.generatorHint?.skillFocus ? "high" : "medium" },
+          topic: { value: row.generatorHint?.skillFocus?.trim() || fallbackSkillFocus, source: "recommendation", confidence: "medium" },
           activityType: { value: "targeted practice", source: "recommendation", confidence: "medium" },
-          masteryOutcome: { value: row.reason, source: "recommendation", confidence: "medium" },
+          masteryOutcome: { value: targetReason, source: "recommendation", confidence: "medium" },
           curriculumPathway: { value: targetLearningYearGroup ? curriculumPathwayForYearGroup(targetLearningYearGroup) : null, source: "curriculum", confidence: targetLearningYearGroup ? "high" : "low" },
           countryRegion: { value: "UK", source: "fallback", confidence: "low" },
           curriculumFramework: { value: "National Curriculum England", source: "fallback", confidence: "low" },
           examBoard: { value: null, source: "fallback", confidence: "low" },
           examBoardSource: { value: "auto", source: "fallback", confidence: "low" },
-          difficulty: { value: Math.max(1, Math.min(5, Math.round(row.generatorHint?.level ?? row.level ?? 3))), source: row.generatorHint?.level ? "prediction" : "recommendation", confidence: row.generatorHint?.level ? "high" : "medium" },
+          difficulty: { value: Math.max(1, Math.min(5, Math.round(row.generatorHint?.level ?? row.currentLevel ?? 3))), source: row.generatorHint?.level ? "prediction" : "recommendation", confidence: row.generatorHint?.level ? "high" : "medium" },
           itemCount: { value: targetLearningYearGroup && /Year\s*(10|11)/i.test(targetLearningYearGroup) ? 6 : 5, source: "policy", confidence: "medium" },
           aiMode: { value: "live_openai_only", source: "policy", confidence: "high" },
           visualGenerationEnabled: { value: false, source: "policy", confidence: "high" },
@@ -413,10 +423,10 @@ function buildGenerationTargets(input: {
         subjectLevel,
         strandLevel,
         levelSource: targetLearning.source,
-        skillFocus: row.generatorHint?.skillFocus?.trim() || row.reason,
-        difficulty: Math.max(1, Math.min(5, Math.round(row.generatorHint?.level ?? row.level ?? 3))),
-        accuracy: row.accuracy,
-        reason: row.reason,
+        skillFocus: row.generatorHint?.skillFocus?.trim() || fallbackSkillFocus,
+        difficulty: Math.max(1, Math.min(5, Math.round(row.generatorHint?.level ?? row.currentLevel ?? 3))),
+        accuracy: Math.max(0, Math.min(100, Math.round(row.evidenceSummary.averageScore ?? 0))),
+        reason: targetReason,
         prefillContract,
       };
       return target;
@@ -467,14 +477,13 @@ export async function GET(_request: Request, context: Context) {
     assignments,
     studentSkills,
     progressRecords,
-    placementLessons,
   } = decisionBrain;
   const progression = decisionBrain.progression;
   if (!progression) {
     return NextResponse.json({ error: "Unable to build progression recommendations." }, { status: 500 });
   }
   const generationTargets = buildGenerationTargets({
-    contentGaps: placementLessons.contentGaps,
+    contentGaps: progression.contentGaps,
     studentYearGroup: student.yearGroup,
     studentKeyStage: student.studentProfile?.keyStageLevel ?? null,
   });

@@ -205,9 +205,9 @@ test("generatorHint uses target learning level, not student school year", () => 
   }));
 
   const grammar = result.recommendations.find((row) => row.scopedSubject === "english:grammar");
-  assert.equal(grammar?.generatorHint?.yearGroup, "Year 2");
-  assert.equal(grammar?.generatorHint?.keyStage, "KS1");
-  assert.equal(grammar?.generatorHint?.level, 2);
+  assert.equal(grammar?.generatorHint?.yearGroup, "Year 3");
+  assert.equal(grammar?.generatorHint?.keyStage, "KS2");
+  assert.equal(grammar?.generatorHint?.level, 3);
 });
 
 test("placement generator hint uses target learning year for Year 4 grammar", () => {
@@ -216,6 +216,29 @@ test("placement generator hint uses target learning year for Year 4 grammar", ()
     selectedSubjects: ["english"],
     placementLevels: {
       "english:grammar": { accuracy: 45, level: "below" },
+    },
+    availableContent: [],
+    existingAssignments: [],
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+  });
+
+  const grammar = result.contentGaps.find((row) => row.scopedSubject === "english:grammar");
+  assert.equal(grammar?.generatorHint?.level, 3);
+  assert.equal(grammar?.generatorHint?.yearGroup, "Year 3");
+  assert.equal(grammar?.generatorHint?.keyStage, "KS2");
+});
+
+test("explicit lower evidence preserves Year 2 target for Year 4 grammar", () => {
+  const result = selectPlacementLessons({
+    studentId: "student-year-4-explicit",
+    selectedSubjects: ["english"],
+    placementLevels: {
+      "english:grammar": {
+        accuracy: 45,
+        level: "below",
+        explicitLearningLevel: 2,
+      },
     },
     availableContent: [],
     existingAssignments: [],

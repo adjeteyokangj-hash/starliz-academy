@@ -1,6 +1,6 @@
 import { ENGLISH_STRANDS } from "@/lib/subject-selection";
 import type { PlacementBand, PlacementRecommendation } from "@/lib/placement-lesson-selector";
-import { keyStageForYearGroup } from "@/lib/curriculum";
+import { keyStageForYearGroup, normalizeYearGroup, yearGroupToOrdinal } from "@/lib/curriculum";
 
 export type ProgressionStatus =
   | "needs_support"
@@ -101,6 +101,8 @@ type ProgressRecordEvidence = {
 type PlacementLevel = {
   accuracy: number;
   level: PlacementBand;
+  explicitLearningLevel?: number | null;
+  explicitLearningYearGroup?: string | null;
 };
 
 type ParsedScope = {
@@ -199,11 +201,28 @@ function deriveScopes(selectedSubjects: string[], placementKeys: string[]): Pars
   return out;
 }
 
-function levelFromPlacement(level: PlacementLevel): number {
+function cohortFallbackLevel(studentYearGroup: string | null | undefined): number {
+  const cohortOrdinal = yearGroupToOrdinal(normalizeYearGroup(studentYearGroup));
+  if (cohortOrdinal === null) return 2;
+  return Math.max(1, cohortOrdinal - 1);
+}
+
+function explicitLearningLevel(level: PlacementLevel): number | null {
+  if (typeof level.explicitLearningLevel === "number" && Number.isFinite(level.explicitLearningLevel)) {
+    return Math.max(1, Math.min(11, Math.round(level.explicitLearningLevel)));
+  }
+  const explicitOrdinal = yearGroupToOrdinal(normalizeYearGroup(level.explicitLearningYearGroup));
+  if (explicitOrdinal !== null) return Math.max(1, explicitOrdinal);
+  return null;
+}
+
+function levelFromPlacement(level: PlacementLevel, studentYearGroup?: string | null): number {
   if (level.level === "advanced") return 4;
   if (level.level === "secure") return 3;
+  const explicitLevel = explicitLearningLevel(level);
+  if (explicitLevel !== null) return explicitLevel;
   if (Math.round(level.accuracy) < 30) return 1;
-  return 2;
+  return cohortFallbackLevel(studentYearGroup);
 }
 
 function scopeKeywords(scope: ParsedScope): string[] {
@@ -361,7 +380,7 @@ export function buildSubjectLevelProgression(input: ProgressionInput): SubjectPr
       ?? input.placementLevels[scope.parentSubject];
     if (!placement) continue;
 
-    const currentLevel = levelFromPlacement(placement);
+    const currentLevel = levelFromPlacement(placement, input.yearGroup);
     const keywords = scopeKeywords(scope);
 
     const relevantAttempts = input.attempts.filter((row) => {

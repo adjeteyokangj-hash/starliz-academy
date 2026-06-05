@@ -1,5 +1,5 @@
 import { ENGLISH_STRANDS } from "@/lib/subject-selection";
-import { keyStageForYearGroup } from "@/lib/curriculum";
+import { keyStageForYearGroup, normalizeYearGroup, yearGroupToOrdinal } from "@/lib/curriculum";
 
 export type PlacementBand = "below" | "secure" | "advanced";
 export type PlacementRecommendationStatus = "assigned" | "ready" | "content_needed" | "blocked";
@@ -7,6 +7,8 @@ export type PlacementRecommendationStatus = "assigned" | "ready" | "content_need
 export type PlacementLevelInput = {
   accuracy: number;
   level: PlacementBand;
+  explicitLearningLevel?: number | null;
+  explicitLearningYearGroup?: string | null;
 };
 
 export type PlacementContentCandidate = {
@@ -160,12 +162,31 @@ function strandLabel(strand: string | null): string | null {
   return titleCase(strand);
 }
 
-function levelFromPlacement(input: PlacementLevelInput): { numeric: number; label: string } {
+function cohortFallbackLevel(studentYearGroup: string | null | undefined): number {
+  const cohortOrdinal = yearGroupToOrdinal(normalizeYearGroup(studentYearGroup));
+  if (cohortOrdinal === null) return 2;
+  return Math.max(1, cohortOrdinal - 1);
+}
+
+function explicitLearningLevel(input: PlacementLevelInput): number | null {
+  if (typeof input.explicitLearningLevel === "number" && Number.isFinite(input.explicitLearningLevel)) {
+    return Math.max(1, Math.min(11, Math.round(input.explicitLearningLevel)));
+  }
+  const explicitOrdinal = yearGroupToOrdinal(normalizeYearGroup(input.explicitLearningYearGroup));
+  if (explicitOrdinal !== null) return Math.max(1, explicitOrdinal);
+  return null;
+}
+
+function levelFromPlacement(input: PlacementLevelInput, studentYearGroup?: string | null): { numeric: number; label: string } {
   const accuracy = Math.max(0, Math.min(100, Math.round(input.accuracy)));
   if (input.level === "advanced") return { numeric: 4, label: "Advanced" };
   if (input.level === "secure") return { numeric: 3, label: "Expected" };
+  const explicitLevel = explicitLearningLevel(input);
+  if (explicitLevel !== null) return { numeric: explicitLevel, label: "Developing" };
   if (accuracy < 30) return { numeric: 1, label: "Foundation" };
-  return { numeric: 2, label: "Developing" };
+  const fallback = cohortFallbackLevel(studentYearGroup);
+  if (fallback <= 1) return { numeric: fallback, label: "Foundation" };
+  return { numeric: fallback, label: "Developing" };
 }
 
 function desiredDifficulty(placementLevel: number): number {
@@ -344,7 +365,7 @@ export function selectPlacementLessons(input: SelectorInput): PlacementRecommend
     if (!placement) continue;
 
     const accuracy = Math.max(0, Math.min(100, Math.round(placement.accuracy)));
-    const levelInfo = levelFromPlacement(placement);
+    const levelInfo = levelFromPlacement(placement, input.yearGroup);
     const targetDifficulty = desiredDifficulty(levelInfo.numeric);
 
     const rankedCandidates = [...input.availableContent]
