@@ -319,6 +319,14 @@ body::after {
   border-top-left-radius: 0.5rem;
 }
 
+.knowledge-graph-flow .react-flow__panel {
+  background: transparent;
+}
+
+.knowledge-graph-flow .react-flow__panel.react-flow__attribution {
+  background: rgba(2, 6, 23, 0.72);
+}
+
 @keyframes heartbeatPulseWeak {
   0%,
   100% { box-shadow: 0 0 0 1px rgba(244,63,94,0.4), 0 0 14px rgba(239,68,68,0.24); }

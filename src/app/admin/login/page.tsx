@@ -2,12 +2,20 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Logo from "@/components/Logo";
 import Button from "@/components/ui/Button";
 
+function resolveAdminNextPath(value: string | null): string {
+  if (!value) return "/admin";
+  if (!value.startsWith("/admin")) return "/admin";
+  if (value.startsWith("//")) return "/admin";
+  return value;
+}
+
 export default function AdminLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +40,8 @@ export default function AdminLoginPage() {
         setError("Admin access required.");
         return;
       }
-      const nextPath = new URLSearchParams(window.location.search).get("next");
-      router.replace(nextPath?.startsWith("/admin") ? nextPath : "/admin");
+      const nextPath = resolveAdminNextPath(searchParams.get("next"));
+      router.replace(nextPath);
     } catch {
       setError("Unable to login right now.");
     } finally {

@@ -41,6 +41,13 @@ const PUBLIC_PATHS = [
 
 type DecodedSession = { userId: string; email: string; role: string };
 
+function safeAdminNextPath(value: string | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith("/admin")) return null;
+  if (value.startsWith("//")) return null;
+  return value;
+}
+
 function withSecurityHeaders(response: NextResponse): NextResponse {
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");
@@ -152,6 +159,7 @@ export async function middleware(request: NextRequest) {
   };
 
   if (pathname.startsWith("/admin")) {
+    const requestedAdminNext = safeAdminNextPath(request.nextUrl.searchParams.get("next"));
     if (!authenticated) {
       // Allow unauthenticated access to /admin/login, redirect all other admin routes there.
       if (pathname !== "/admin/login") {
@@ -166,7 +174,7 @@ export async function middleware(request: NextRequest) {
     } else if (session.role !== "admin") {
       return finalize(NextResponse.redirect(new URL("/dashboard", request.url)));
     } else if (pathname === "/admin/login") {
-      return finalize(NextResponse.redirect(new URL("/admin", request.url)));
+      return finalize(NextResponse.redirect(new URL(requestedAdminNext ?? "/admin", request.url)));
     }
   }
 

@@ -370,6 +370,12 @@ function prettySystemLabel(system: string): string {
   return labels[system] ?? system;
 }
 
+function buildAdminLoginHref(pathname: string, searchParams: URLSearchParams): string {
+  const search = searchParams.toString();
+  const next = `${pathname}${search ? `?${search}` : ""}`;
+  return `/admin/login?next=${encodeURIComponent(next)}`;
+}
+
 export default function KnowledgeGraphPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -418,6 +424,7 @@ export default function KnowledgeGraphPage() {
   const debounceRef = useRef<number | null>(null);
   const trimmedStudentId = studentId.trim();
   const hasStudentHeartbeatContext = trimmedStudentId.length > 0;
+  const adminLoginHref = useMemo(() => buildAdminLoginHref(pathname, new URLSearchParams(searchParams.toString())), [pathname, searchParams]);
 
   const heartbeatBadges: HeartbeatBadge[] = [
     "Protected",
@@ -503,7 +510,7 @@ export default function KnowledgeGraphPage() {
         });
 
         if (response.status === 401) {
-          window.location.replace("/admin/login?next=/admin/knowledge-graph");
+          router.replace(adminLoginHref);
           return;
         }
 
@@ -549,7 +556,7 @@ export default function KnowledgeGraphPage() {
         setLoading(false);
       }
     },
-    [depth, interventionType, keyStage, limit, mode, query, school, selectedEdgeType, studentId, subject, yearGroup],
+    [adminLoginHref, depth, interventionType, keyStage, limit, mode, query, router, school, selectedEdgeType, studentId, subject, yearGroup],
   );
 
   useEffect(() => {
@@ -589,7 +596,7 @@ export default function KnowledgeGraphPage() {
         });
 
         if (response.status === 401) {
-          window.location.replace("/admin/login?next=/admin/knowledge-graph");
+          router.replace(adminLoginHref);
           return;
         }
 
@@ -610,7 +617,7 @@ export default function KnowledgeGraphPage() {
     return () => {
       cancelled = true;
     };
-  }, [trimmedStudentId]);
+  }, [adminLoginHref, router, trimmedStudentId]);
 
   const renderedEdges = useMemo(() => {
     return edges.map((edge) => ({
@@ -1139,6 +1146,9 @@ export default function KnowledgeGraphPage() {
                   </div>
                 </div>
                 {error ? <p className="mt-2 text-sm text-rose-300">{error}</p> : null}
+                {!loading && !error && nodes.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-400">No graph data returned for the current filters. Adjust mode, student ID, or filters and try again.</p>
+                ) : null}
               </section>
             </>
           ) : null}

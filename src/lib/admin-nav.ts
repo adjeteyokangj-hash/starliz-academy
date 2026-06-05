@@ -36,7 +36,7 @@ export const adminNavGroups: readonly AdminNavGroup[] = [
       { title: "Brain Centre", href: "/admin/brain-centre", icon: "BC", launchTag: "beta" },
       { title: "Knowledge Graph", href: "/admin/knowledge-graph", icon: "KG", launchTag: "beta" },
       { title: "Recovery Governance", href: "/admin/recovery-governance", icon: "RG", launchTag: "beta" },
-      { title: "AI Generator", href: "/admin/ai", icon: "AI", launchTag: "beta" },
+      { title: "AI Generator", href: "/admin/ai-generator", icon: "AI", launchTag: "beta" },
     ],
   },
   {

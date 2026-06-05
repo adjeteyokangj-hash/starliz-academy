@@ -327,6 +327,27 @@
 
 ---
 
+## Test 12: Admin Knowledge Graph Access + UX Hardening ⏳
+
+### Steps
+1. [ ] Log out and navigate directly to `/admin/knowledge-graph?mode=student&studentId=test-student`
+2. [ ] Verify redirect to `/admin/login` with a `next` query containing the full knowledge graph URL
+3. [ ] Log in as admin
+4. [ ] Verify post-login redirect lands on the original knowledge graph deep link (mode + filters preserved)
+5. [ ] Confirm sidebar contains **AI Generator** link and it opens `/admin/ai-generator`
+6. [ ] In Knowledge Graph, apply filters that return no data
+7. [ ] Verify empty-state guidance appears instead of a blank/unreadable panel
+8. [ ] Confirm minimap/controls remain readable (no white-wash card effect)
+
+### ✓ Test Passed If
+- Unauthenticated deep links preserve destination through login
+- Admin login safely redirects only to admin routes
+- Sidebar route for AI Generator is correct
+- Empty-state message appears for zero-node responses
+- Knowledge Graph controls/minimap remain readable
+
+---
+
 ## Summary Checklist
 
 ### All Tests Complete?
@@ -341,6 +362,7 @@
 - [ ] Test 9: Weak Areas Detection ✓
 - [ ] Test 10: Parent Dashboard ✓
 - [ ] Test 11: Admin-Controlled Assignment Flow ✓
+- [ ] Test 12: Admin Knowledge Graph Access + UX Hardening ✓
 
 ### No Errors?
 - [ ] No console errors (check DevTools)
