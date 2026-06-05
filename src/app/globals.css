@@ -258,6 +258,67 @@ body::after {
   background: var(--page-grad-b);
 }
 
+.knowledge-graph-flow,
+.knowledge-graph-flow .react-flow,
+.knowledge-graph-flow .react-flow__renderer,
+.knowledge-graph-flow .react-flow__pane,
+.knowledge-graph-flow .react-flow__viewport {
+  background: #020617;
+}
+
+.knowledge-graph-flow .react-flow__controls,
+.knowledge-graph-flow__controls {
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: rgba(2, 6, 23, 0.92);
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.42);
+}
+
+.knowledge-graph-flow .react-flow__controls-button,
+.knowledge-graph-flow__controls .react-flow__controls-button {
+  border-color: rgba(30, 41, 59, 0.9);
+  background: transparent;
+  color: #bae6fd;
+}
+
+.knowledge-graph-flow .react-flow__controls-button:hover,
+.knowledge-graph-flow__controls .react-flow__controls-button:hover {
+  background: rgba(14, 116, 144, 0.28);
+}
+
+.knowledge-graph-flow .react-flow__controls-button svg,
+.knowledge-graph-flow__controls .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.knowledge-graph-flow .react-flow__minimap,
+.knowledge-graph-flow__minimap {
+  background: rgba(2, 6, 23, 0.98) !important;
+  border-radius: 0.625rem;
+  overflow: hidden;
+}
+
+.knowledge-graph-flow__minimap svg {
+  background: rgba(2, 6, 23, 0.98) !important;
+}
+
+.knowledge-graph-flow .react-flow__minimap-mask,
+.knowledge-graph-flow__minimap .react-flow__minimap-mask {
+  fill: rgba(148, 163, 184, 0.12) !important;
+}
+
+.knowledge-graph-flow .react-flow__minimap-background,
+.knowledge-graph-flow__minimap .react-flow__minimap-background {
+  fill: rgba(2, 6, 23, 0.96) !important;
+}
+
+.knowledge-graph-flow .react-flow__attribution {
+  background: rgba(2, 6, 23, 0.72);
+  color: #94a3b8;
+  border-top-left-radius: 0.5rem;
+}
+
 @keyframes heartbeatPulseWeak {
   0%,
   100% { box-shadow: 0 0 0 1px rgba(244,63,94,0.4), 0 0 14px rgba(239,68,68,0.24); }

@@ -1081,6 +1081,7 @@ export default function KnowledgeGraphPage() {
               <section className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3">
                 <div className="h-[68vh] rounded-xl border border-slate-800 bg-slate-950">
                   <ReactFlow
+                    className="knowledge-graph-flow"
                     nodes={nodes}
                     edges={renderedEdges}
                     onNodesChange={onNodesChange}
@@ -1092,8 +1093,15 @@ export default function KnowledgeGraphPage() {
                     }}
                     fitView
                   >
-                    <MiniMap nodeColor={(node) => NODE_COLORS[(node.data as { nodeType?: string })?.nodeType ?? "word"] ?? "#334155"} />
-                    <Controls />
+                    <MiniMap
+                      className="knowledge-graph-flow__minimap"
+                      nodeColor={(node) => NODE_COLORS[(node.data as { nodeType?: string })?.nodeType ?? "word"] ?? "#334155"}
+                      maskColor="rgba(148, 163, 184, 0.12)"
+                      pannable
+                      zoomable
+                      style={{ backgroundColor: "#020617", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: 10 }}
+                    />
+                    <Controls className="knowledge-graph-flow__controls" />
                     <Background gap={18} color="#0f172a" />
                   </ReactFlow>
                 </div>
