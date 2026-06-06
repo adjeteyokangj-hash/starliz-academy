@@ -28,6 +28,7 @@ export const adminNavGroups: readonly AdminNavGroup[] = [
       { title: "Content Library", href: "/admin/content-library", icon: "CL", launchTag: null },
       { title: "Lessons", href: "/admin/lessons", icon: "L", launchTag: null },
       { title: "Dictionary / Word Bank", href: "/admin/dictionary", icon: "DW", launchTag: null },
+      { title: "Ga Word Bank", href: "/admin/ga-word-bank", icon: "GA", launchTag: "beta" },
     ],
   },
   {

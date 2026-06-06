@@ -666,6 +666,54 @@ model DictionaryWord {
   @@index([active, keyStage])
 }
 
+model GaSource {
+  id            String   @id @default(cuid())
+  sourceName    String
+  sourceYear    Int?
+  fileName      String?
+  fileReference String?
+  pageNumber    Int?
+  section       String?
+  notes         String?
+  words         GaWord[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([sourceName])
+  @@index([sourceYear])
+  @@index([pageNumber])
+  @@index([section])
+}
+
+model GaWord {
+  id           String    @id @default(cuid())
+  englishWord  String
+  gaWord       String
+  wordType     String
+  category     String
+  level        String
+  sourceId     String?
+  source       GaSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  sourcePage   Int?
+  reviewStatus String    @default("Pending")
+  audioStatus  String    @default("Not Started")
+  quizReady    Boolean   @default(false)
+  storyReady   Boolean   @default(false)
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([englishWord, gaWord, sourceId])
+  @@index([reviewStatus])
+  @@index([category])
+  @@index([level])
+  @@index([wordType])
+  @@index([audioStatus])
+  @@index([quizReady])
+  @@index([storyReady])
+  @@index([sourcePage])
+}
+
 model CoachDictionaryLookup {
   id              String   @id @default(cuid())
   word            String

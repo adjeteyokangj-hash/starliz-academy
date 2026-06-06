@@ -1,0 +1,411 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import {
+  GA_AUDIO_STATUSES,
+  GA_CATEGORIES,
+  GA_LEVELS,
+  GA_REVIEW_STATUSES,
+  GA_WORD_TYPES,
+} from "@/lib/ga-word-bank";
+
+type GaSourceRow = {
+  id: string;
+  sourceName: string;
+  sourceYear: number | null;
+  fileName: string | null;
+  fileReference: string | null;
+  pageNumber: number | null;
+  section: string | null;
+  notes: string | null;
+};
+
+type GaWordRow = {
+  id: string;
+  englishWord: string;
+  gaWord: string;
+  wordType: string;
+  category: string;
+  level: string;
+  sourceId: string | null;
+  sourcePage: number | null;
+  reviewStatus: string;
+  audioStatus: string;
+  quizReady: boolean;
+  storyReady: boolean;
+  notes: string | null;
+  source: GaSourceRow | null;
+};
+
+type WordForm = {
+  englishWord: string;
+  gaWord: string;
+  wordType: string;
+  category: string;
+  level: string;
+  sourceId: string;
+  sourcePage: string;
+  reviewStatus: string;
+  audioStatus: string;
+  quizReady: boolean;
+  storyReady: boolean;
+  notes: string;
+};
+
+type Filters = {
+  q: string;
+  reviewStatus: string;
+  category: string;
+  level: string;
+  wordType: string;
+  sourcePage: string;
+  audioStatus: string;
+  quizReady: string;
+  storyReady: string;
+};
+
+const defaultWordForm: WordForm = {
+  englishWord: "",
+  gaWord: "",
+  wordType: "noun",
+  category: "Greetings",
+  level: "Foundation",
+  sourceId: "",
+  sourcePage: "",
+  reviewStatus: "Pending",
+  audioStatus: "Not Started",
+  quizReady: false,
+  storyReady: false,
+  notes: "",
+};
+
+const defaultFilters: Filters = {
+  q: "",
+  reviewStatus: "",
+  category: "",
+  level: "",
+  wordType: "",
+  sourcePage: "",
+  audioStatus: "",
+  quizReady: "",
+  storyReady: "",
+};
+
+function SelectField({ label, value, options, onChange, allowAll = false }: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+  allowAll?: boolean;
+}) {
+  return (
+    <label className="block text-xs font-bold uppercase text-slate-400">
+      {label}
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+        {allowAll ? <option value="">All</option> : null}
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function TextField({ label, value, onChange, placeholder = "" }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block text-xs font-bold uppercase text-slate-400">
+      {label}
+      <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600" />
+    </label>
+  );
+}
+
+function queryFromFilters(filters: Filters): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value.trim()) params.set(key, value.trim());
+  }
+  params.set("limit", "200");
+  return params.toString();
+}
+
+function wordFormFromRow(row: GaWordRow): WordForm {
+  return {
+    englishWord: row.englishWord,
+    gaWord: row.gaWord,
+    wordType: row.wordType,
+    category: row.category,
+    level: row.level,
+    sourceId: row.sourceId ?? "",
+    sourcePage: row.sourcePage === null ? "" : String(row.sourcePage),
+    reviewStatus: row.reviewStatus,
+    audioStatus: row.audioStatus,
+    quizReady: row.quizReady,
+    storyReady: row.storyReady,
+    notes: row.notes ?? "",
+  };
+}
+
+function wordPayload(form: WordForm) {
+  return {
+    englishWord: form.englishWord,
+    gaWord: form.gaWord,
+    wordType: form.wordType,
+    category: form.category,
+    level: form.level,
+    sourceId: form.sourceId || null,
+    sourcePage: form.sourcePage ? Number(form.sourcePage) : null,
+    reviewStatus: form.reviewStatus,
+    audioStatus: form.audioStatus,
+    quizReady: form.quizReady,
+    storyReady: form.storyReady,
+    notes: form.notes || null,
+  };
+}
+
+export default function GaWordBankPage() {
+  const [sources, setSources] = useState<GaSourceRow[]>([]);
+  const [words, setWords] = useState<GaWordRow[]>([]);
+  const [filters, setFilters] = useState(defaultFilters);
+  const [appliedFilters, setAppliedFilters] = useState(defaultFilters);
+  const [wordForm, setWordForm] = useState(defaultWordForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [sourceName, setSourceName] = useState("Kasahorow Ga Children's Dictionary");
+  const [sourceYear, setSourceYear] = useState("2025");
+  const [fileName, setFileName] = useState("");
+  const [fileReference, setFileReference] = useState("");
+  const [pageNumber, setPageNumber] = useState("");
+  const [section, setSection] = useState("English-Ga");
+  const [sourceNotes, setSourceNotes] = useState("Verified dictionary scan source");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<{ totalWords: number; approvedWords: number; pendingReview: number; audioApproved: number } | null>(null);
+
+  const editingWord = useMemo(() => words.find((word) => word.id === editingId) ?? null, [editingId, words]);
+
+  const loadSources = useCallback(async () => {
+    const response = await fetch("/api/admin/ga/sources");
+    if (response.status === 401) {
+      window.location.replace("/admin/login?next=/admin/ga-word-bank");
+      return;
+    }
+    const payload = await response.json().catch(() => null) as { items?: GaSourceRow[] } | null;
+    setSources(payload?.items ?? []);
+  }, []);
+
+  const loadWords = useCallback(async (nextFilters: Filters) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/admin/ga/words?${queryFromFilters(nextFilters)}`);
+      if (response.status === 401) {
+        window.location.replace("/admin/login?next=/admin/ga-word-bank");
+        return;
+      }
+      const payload = await response.json().catch(() => null) as { items?: GaWordRow[]; metrics?: typeof metrics; error?: string } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to load Ga words.");
+        setWords([]);
+        return;
+      }
+      setWords(payload?.items ?? []);
+      setMetrics(payload?.metrics ?? null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadSources();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadSources]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadWords(appliedFilters);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [appliedFilters, loadWords]);
+
+  async function saveSource() {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/admin/ga/sources", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sourceName,
+          sourceYear: sourceYear ? Number(sourceYear) : null,
+          fileName: fileName || null,
+          fileReference: fileReference || null,
+          pageNumber: pageNumber ? Number(pageNumber) : null,
+          section: section || null,
+          notes: sourceNotes || null,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to save source.");
+        return;
+      }
+      setMessage("Ga source saved.");
+      setPageNumber("");
+      await loadSources();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveWord() {
+    setSaving(true);
+    try {
+      const response = await fetch(editingWord ? `/api/admin/ga/words/${editingWord.id}` : "/api/admin/ga/words", {
+        method: editingWord ? "PATCH" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(wordPayload(wordForm)),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to save Ga word.");
+        return;
+      }
+      setMessage(editingWord ? "Ga word updated." : "Ga word created.");
+      setEditingId(null);
+      setWordForm(defaultWordForm);
+      await loadWords(appliedFilters);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function startEdit(row: GaWordRow) {
+    setEditingId(row.id);
+    setWordForm(wordFormFromRow(row));
+    setMessage(null);
+  }
+
+  return (
+    <div className="space-y-6 pb-24">
+      <section className="rounded-3xl border border-slate-800/80 bg-linear-to-br from-emerald-500/15 via-slate-950 to-cyan-500/10 p-6 shadow-2xl shadow-slate-950/20">
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">Ga Learning Hub</p>
+        <h1 className="mt-2 text-3xl font-black text-white">Verified Ga Word Bank</h1>
+        <p className="mt-3 max-w-3xl text-sm text-slate-300">Store Ga vocabulary with source references, review status and student-safe approval controls. Only Approved words are available to student-facing Ga APIs.</p>
+      </section>
+
+      {message ? <p className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-100">{message}</p> : null}
+
+      {metrics ? (
+        <section className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4"><p className="text-xs uppercase text-slate-500">Total words</p><p className="mt-2 text-3xl font-black text-white">{metrics.totalWords}</p></div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4"><p className="text-xs uppercase text-slate-500">Approved</p><p className="mt-2 text-3xl font-black text-emerald-300">{metrics.approvedWords}</p></div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4"><p className="text-xs uppercase text-slate-500">Pending review</p><p className="mt-2 text-3xl font-black text-amber-300">{metrics.pendingReview}</p></div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4"><p className="text-xs uppercase text-slate-500">Audio approved</p><p className="mt-2 text-3xl font-black text-cyan-300">{metrics.audioApproved}</p></div>
+        </section>
+      ) : null}
+
+      <AdminSectionCard title="Source Library" eyebrow="Trusted references">
+        <div className="grid gap-3 md:grid-cols-3">
+          <TextField label="Source name" value={sourceName} onChange={setSourceName} />
+          <TextField label="Source year" value={sourceYear} onChange={setSourceYear} />
+          <TextField label="File name" value={fileName} onChange={setFileName} placeholder="Scan_20260605_182045.pdf" />
+          <TextField label="File reference" value={fileReference} onChange={setFileReference} placeholder="storage path or note" />
+          <TextField label="Page number" value={pageNumber} onChange={setPageNumber} />
+          <TextField label="Section" value={section} onChange={setSection} />
+          <div className="md:col-span-3">
+            <TextField label="Notes" value={sourceNotes} onChange={setSourceNotes} />
+          </div>
+        </div>
+        <button type="button" onClick={saveSource} disabled={saving} className="mt-4 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Save source</button>
+        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {sources.map((source) => (
+            <article key={source.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+              <p className="font-black text-white">{source.sourceName}</p>
+              <p>{source.sourceYear ?? "-"} · Page {source.pageNumber ?? "-"} · {source.section ?? "-"}</p>
+              <p className="mt-1 text-slate-500">{source.fileName ?? source.fileReference ?? "No file reference"}</p>
+            </article>
+          ))}
+        </div>
+      </AdminSectionCard>
+
+      <AdminSectionCard title={editingWord ? "Edit Ga Word" : "Add Ga Word"} eyebrow="Controlled vocabulary">
+        <div className="grid gap-3 md:grid-cols-3">
+          <TextField label="English word" value={wordForm.englishWord} onChange={(value) => setWordForm((form) => ({ ...form, englishWord: value }))} />
+          <TextField label="Ga word" value={wordForm.gaWord} onChange={(value) => setWordForm((form) => ({ ...form, gaWord: value }))} />
+          <SelectField label="Word type" value={wordForm.wordType} options={GA_WORD_TYPES} onChange={(value) => setWordForm((form) => ({ ...form, wordType: value }))} />
+          <SelectField label="Category" value={wordForm.category} options={GA_CATEGORIES} onChange={(value) => setWordForm((form) => ({ ...form, category: value }))} />
+          <SelectField label="Level" value={wordForm.level} options={GA_LEVELS} onChange={(value) => setWordForm((form) => ({ ...form, level: value }))} />
+          <label className="block text-xs font-bold uppercase text-slate-400">
+            Source
+            <select value={wordForm.sourceId} onChange={(event) => setWordForm((form) => ({ ...form, sourceId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+              <option value="">No linked source</option>
+              {sources.map((source) => <option key={source.id} value={source.id}>{source.sourceName} · page {source.pageNumber ?? "-"}</option>)}
+            </select>
+          </label>
+          <TextField label="Source page" value={wordForm.sourcePage} onChange={(value) => setWordForm((form) => ({ ...form, sourcePage: value }))} />
+          <SelectField label="Review status" value={wordForm.reviewStatus} options={GA_REVIEW_STATUSES} onChange={(value) => setWordForm((form) => ({ ...form, reviewStatus: value }))} />
+          <SelectField label="Audio status" value={wordForm.audioStatus} options={GA_AUDIO_STATUSES} onChange={(value) => setWordForm((form) => ({ ...form, audioStatus: value }))} />
+          <label className="flex items-center gap-2 text-sm font-bold text-slate-300"><input type="checkbox" checked={wordForm.quizReady} onChange={(event) => setWordForm((form) => ({ ...form, quizReady: event.target.checked }))} /> Quiz ready</label>
+          <label className="flex items-center gap-2 text-sm font-bold text-slate-300"><input type="checkbox" checked={wordForm.storyReady} onChange={(event) => setWordForm((form) => ({ ...form, storyReady: event.target.checked }))} /> Story ready</label>
+          <div className="md:col-span-3">
+            <TextField label="Notes" value={wordForm.notes} onChange={(value) => setWordForm((form) => ({ ...form, notes: value }))} />
+          </div>
+        </div>
+        <div className="mt-4 flex gap-2">
+          <button type="button" onClick={saveWord} disabled={saving} className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{editingWord ? "Update word" : "Add word"}</button>
+          {editingWord ? <button type="button" onClick={() => { setEditingId(null); setWordForm(defaultWordForm); }} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
+        </div>
+      </AdminSectionCard>
+
+      <AdminSectionCard title="Search & Filters" eyebrow="Admin-only vocabulary review">
+        <div className="grid gap-3 md:grid-cols-4">
+          <TextField label="Search" value={filters.q} onChange={(value) => setFilters((next) => ({ ...next, q: value }))} />
+          <SelectField label="Review status" value={filters.reviewStatus} options={GA_REVIEW_STATUSES} onChange={(value) => setFilters((next) => ({ ...next, reviewStatus: value }))} allowAll />
+          <SelectField label="Category" value={filters.category} options={GA_CATEGORIES} onChange={(value) => setFilters((next) => ({ ...next, category: value }))} allowAll />
+          <SelectField label="Level" value={filters.level} options={GA_LEVELS} onChange={(value) => setFilters((next) => ({ ...next, level: value }))} allowAll />
+          <SelectField label="Word type" value={filters.wordType} options={GA_WORD_TYPES} onChange={(value) => setFilters((next) => ({ ...next, wordType: value }))} allowAll />
+          <TextField label="Source page" value={filters.sourcePage} onChange={(value) => setFilters((next) => ({ ...next, sourcePage: value }))} />
+          <SelectField label="Audio status" value={filters.audioStatus} options={GA_AUDIO_STATUSES} onChange={(value) => setFilters((next) => ({ ...next, audioStatus: value }))} allowAll />
+          <SelectField label="Quiz ready" value={filters.quizReady} options={["true", "false"]} onChange={(value) => setFilters((next) => ({ ...next, quizReady: value }))} allowAll />
+          <SelectField label="Story ready" value={filters.storyReady} options={["true", "false"]} onChange={(value) => setFilters((next) => ({ ...next, storyReady: value }))} allowAll />
+        </div>
+        <div className="mt-4 flex gap-2">
+          <button type="button" onClick={() => setAppliedFilters(filters)} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white">Apply filters</button>
+          <button type="button" onClick={() => { setFilters(defaultFilters); setAppliedFilters(defaultFilters); }} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Reset</button>
+        </div>
+      </AdminSectionCard>
+
+      <AdminSectionCard title={`Ga Words (${words.length})`} eyebrow="Only Approved words can reach students">
+        {loading ? <p className="text-sm text-slate-400">Loading Ga words...</p> : null}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-240 text-left text-xs">
+            <thead className="uppercase text-slate-500">
+              <tr><th className="px-2 py-2">English</th><th className="px-2 py-2">Ga</th><th className="px-2 py-2">Type</th><th className="px-2 py-2">Category</th><th className="px-2 py-2">Level</th><th className="px-2 py-2">Source</th><th className="px-2 py-2">Review</th><th className="px-2 py-2">Audio</th><th className="px-2 py-2">Ready</th><th className="px-2 py-2">Action</th></tr>
+            </thead>
+            <tbody>
+              {words.map((word) => (
+                <tr key={word.id} className="border-t border-slate-800 text-slate-300">
+                  <td className="px-2 py-2 font-bold text-white">{word.englishWord}</td>
+                  <td className="px-2 py-2 font-bold text-emerald-200">{word.gaWord}</td>
+                  <td className="px-2 py-2">{word.wordType}</td>
+                  <td className="px-2 py-2">{word.category}</td>
+                  <td className="px-2 py-2">{word.level}</td>
+                  <td className="px-2 py-2">{word.source?.sourceName ?? "-"} · page {word.sourcePage ?? word.source?.pageNumber ?? "-"}</td>
+                  <td className="px-2 py-2"><span className={`rounded-full border px-2 py-1 ${word.reviewStatus === "Approved" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>{word.reviewStatus}</span></td>
+                  <td className="px-2 py-2">{word.audioStatus}</td>
+                  <td className="px-2 py-2">{word.quizReady ? "Quiz" : "-"} {word.storyReady ? "Story" : ""}</td>
+                  <td className="px-2 py-2"><button type="button" onClick={() => startEdit(word)} className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100">Edit</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </AdminSectionCard>
+    </div>
+  );
+}
