@@ -293,11 +293,6 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
     }
   }
 
-  const heartbeatSignals = useMemo(() => {
-    if (!payload) return [];
-    return [...payload.heartbeat.reasons, ...payload.heartbeat.blockers, ...payload.heartbeat.evidence].slice(0, 10);
-  }, [payload]);
-
   const hasHeartbeatInvestigationData = useMemo(() => {
     if (!payload) return false;
     const investigation = payload.heartbeatInvestigation;
@@ -532,15 +527,23 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
           <div className="grid gap-3 xl:grid-cols-3">
             <section ref={heartbeatSectionRef} className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
               <h2 className="text-sm font-bold text-white">HEART BEAT Details</h2>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                <span className={`rounded-full border px-2 py-1 ${badgeClass(payload.heartbeat.riskLevel)}`}>Risk: {payload.heartbeat.riskLevel}</span>
-                <span className={`rounded-full border px-2 py-1 ${badgeClass(payload.heartbeat.urgency)}`}>Urgency: {payload.heartbeat.urgency}</span>
-                <span className="rounded-full border border-slate-700 px-2 py-1 text-slate-300">Action: {payload.heartbeat.primaryAction}</span>
-              </div>
-              <p className="mt-3 text-xs text-slate-200">Recommended action: {payload.heartbeat.suggestedNextStep}</p>
-              <div className="mt-3">
-                <p className="mb-1 text-xs font-bold uppercase text-slate-500">Signals involved</p>
-                <DetailList items={heartbeatSignals} />
+              <div className="mt-3 grid gap-2 text-xs">
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2">
+                  <span className="font-bold uppercase text-slate-500">Risk</span>
+                  <span className={`rounded-full border px-2 py-1 font-bold ${badgeClass(payload.heartbeat.riskLevel)}`}>{toTitleCase(payload.heartbeat.riskLevel)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2">
+                  <span className="font-bold uppercase text-slate-500">Urgency</span>
+                  <span className={`rounded-full border px-2 py-1 font-bold ${badgeClass(payload.heartbeat.urgency)}`}>{toTitleCase(payload.heartbeat.urgency)}</span>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2">
+                  <p className="font-bold uppercase text-slate-500">Action</p>
+                  <p className="mt-1 font-black text-white">{toTitleCase(toFriendlyPhrase(payload.heartbeat.primaryAction))}</p>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2">
+                  <p className="font-bold uppercase text-slate-500">Current Status</p>
+                  <p className="mt-1 text-slate-200">{payload.heartbeat.suggestedNextStep}</p>
+                </div>
               </div>
               <button
                 type="button"
@@ -689,6 +692,36 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
               </section>
             ) : null}
 
+            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4 xl:col-span-3">
+              <h2 className="text-sm font-bold text-white">Action Centre</h2>
+              <p className="mt-2 text-xs text-slate-300">Follow these steps in order. The first one is the next best action.</p>
+              <div className="mt-3 grid gap-2">
+                {prioritizedActions.map((step, index) => {
+                  const meta = actionCentreMeta(step.key);
+                  return (
+                    <div key={step.key} className={`rounded-lg border p-3 ${index === 0 ? "border-indigo-400/50 bg-indigo-500/10" : "border-slate-800 bg-slate-900/40"}`}>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-xs font-bold text-white">{index + 1}. {step.label}</p>
+                        <span className="rounded-full border border-slate-600 bg-slate-950/70 px-2 py-0.5 text-[10px] font-black uppercase text-slate-200">
+                          {meta.type}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-300">{step.reason}</p>
+                      <p className="mt-1 text-xs text-slate-400">{meta.purpose}</p>
+                      <button
+                        type="button"
+                        onClick={() => void runGuidedAction(step.key)}
+                        disabled={busyAction !== null}
+                        className="mt-2 rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-3 py-2 text-xs font-bold text-indigo-100 disabled:opacity-50"
+                      >
+                        {busyAction === step.key ? "Running..." : meta.buttonLabel}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
             <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
               <h2 className="text-sm font-bold text-white">Coach/Tutor Audit</h2>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
@@ -732,53 +765,6 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
                   </article>
                 )) : <p className="text-xs text-slate-500">No mismatches.</p>}
               </div>
-            </section>
-          </div>
-
-          <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-            <h2 className="text-sm font-bold text-white">Action Centre</h2>
-            <p className="mt-2 text-xs text-slate-300">Follow these steps in order. The first one is the next best action.</p>
-            <div className="mt-3 grid gap-2">
-              {prioritizedActions.map((step, index) => {
-                const meta = actionCentreMeta(step.key);
-                return (
-                  <div key={step.key} className={`rounded-lg border p-3 ${index === 0 ? "border-indigo-400/50 bg-indigo-500/10" : "border-slate-800 bg-slate-900/40"}`}>
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="text-xs font-bold text-white">{index + 1}. {step.label}</p>
-                      <span className="rounded-full border border-slate-600 bg-slate-950/70 px-2 py-0.5 text-[10px] font-black uppercase text-slate-200">
-                        {meta.type}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-300">{step.reason}</p>
-                    <p className="mt-1 text-xs text-slate-400">{meta.purpose}</p>
-                    <button
-                      type="button"
-                      onClick={() => void runGuidedAction(step.key)}
-                      disabled={busyAction !== null}
-                      className="mt-2 rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-3 py-2 text-xs font-bold text-indigo-100 disabled:opacity-50"
-                    >
-                      {busyAction === step.key ? "Running..." : meta.buttonLabel}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          <div className="grid gap-3 xl:grid-cols-3">
-            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-              <h2 className="text-sm font-bold text-white">Learning DNA</h2>
-              <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{JSON.stringify(payload.learningDnaSummary ?? {}, null, 2)}</pre>
-            </section>
-            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-              <h2 className="text-sm font-bold text-white">QLF Baseline</h2>
-              <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{JSON.stringify(payload.qlfBaseline ?? {}, null, 2)}</pre>
-            </section>
-            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-              <h2 className="text-sm font-bold text-white">Academic Intelligence</h2>
-              <p className="mt-2 text-xs text-slate-300">Assessment readiness: {payload.academicSummary.assessmentReadiness}</p>
-              <p className="mt-1 text-xs text-slate-300">Exam readiness: {payload.academicSummary.examReadiness.band}</p>
-              <p className="mt-1 text-xs text-slate-300">Next: {payload.academicSummary.nextRecommendedActions[0] ?? "-"}</p>
             </section>
           </div>
 
@@ -848,17 +834,6 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
             </div>
           </section>
 
-          <div className="grid gap-3 xl:grid-cols-2">
-            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-              <h2 className="text-sm font-bold text-white">Weak Areas</h2>
-              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{JSON.stringify(payload.weakAreas, null, 2)}</pre>
-            </section>
-            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-              <h2 className="text-sm font-bold text-white">Student Skills</h2>
-              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{JSON.stringify(payload.studentSkills, null, 2)}</pre>
-            </section>
-          </div>
-
           <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
             <h2 className="text-sm font-bold text-white">Brain Timeline</h2>
             <div className="mt-3 space-y-2">
@@ -871,6 +846,36 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
               ))}
             </div>
           </section>
+
+          <div className="grid gap-3 xl:grid-cols-3">
+            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+              <h2 className="text-sm font-bold text-white">Learning DNA</h2>
+              <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{JSON.stringify(payload.learningDnaSummary ?? {}, null, 2)}</pre>
+            </section>
+            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+              <h2 className="text-sm font-bold text-white">QLF Baseline</h2>
+              <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{JSON.stringify(payload.qlfBaseline ?? {}, null, 2)}</pre>
+            </section>
+            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+              <h2 className="text-sm font-bold text-white">Academic Intelligence</h2>
+              <p className="mt-2 text-xs text-slate-300">Assessment readiness: {payload.academicSummary.assessmentReadiness}</p>
+              <p className="mt-1 text-xs text-slate-300">Exam readiness: {payload.academicSummary.examReadiness.band}</p>
+              <p className="mt-1 text-xs text-slate-300">Next: {payload.academicSummary.nextRecommendedActions[0] ?? "-"}</p>
+            </section>
+          </div>
+
+          <div className="grid gap-3 xl:grid-cols-2">
+            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+              <h2 className="text-sm font-bold text-white">Weak Areas</h2>
+              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{JSON.stringify(payload.weakAreas, null, 2)}</pre>
+            </section>
+            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+              <h2 className="text-sm font-bold text-white">Student Skills</h2>
+              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{JSON.stringify(payload.studentSkills, null, 2)}</pre>
+            </section>
+          </div>
+
+
         </div>
       ) : null}
     </AdminSectionCard>
