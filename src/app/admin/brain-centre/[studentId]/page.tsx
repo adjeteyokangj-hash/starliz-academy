@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
@@ -127,6 +127,17 @@ function warningReviewLabel(status: BrainCentreDetailPayload["warningReview"]["s
   return "Unreviewed";
 }
 
+function trendLabel(trend: BrainCentreDetailPayload["heartbeatInvestigation"]["reasoning"]["trend"]): string {
+  if (trend === "declining") return "Declining";
+  if (trend === "improving") return "Improving";
+  if (trend === "mixed") return "Mixed";
+  return "Insufficient data";
+}
+
+function confidenceLabel(value: number | null): string {
+  return value === null ? "confidence unavailable" : `${value}% confidence`;
+}
+
 function diagnosticPlaybook(issue: BrainDiagnosticIssue): DiagnosticPlaybook {
   switch (issue.code) {
     case "missing_snapshot":
@@ -207,6 +218,7 @@ function DetailList({ items }: { items: string[] }) {
 export default function AdminBrainCentreStudentPage({ params }: Props) {
   const router = useRouter();
   const heartbeatSectionRef = useRef<HTMLElement | null>(null);
+  const heartbeatInvestigationRef = useRef<HTMLElement | null>(null);
   const recommendationSectionRef = useRef<HTMLElement | null>(null);
   const evidenceSectionRef = useRef<HTMLElement | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
@@ -215,6 +227,7 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
   const [busyAction, setBusyAction] = useState<ActionKey | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showHeartbeatInvestigation, setShowHeartbeatInvestigation] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -285,6 +298,26 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
     return [...payload.heartbeat.reasons, ...payload.heartbeat.blockers, ...payload.heartbeat.evidence].slice(0, 10);
   }, [payload]);
 
+  const hasHeartbeatInvestigationData = useMemo(() => {
+    if (!payload) return false;
+    const investigation = payload.heartbeatInvestigation;
+    if (!investigation) return false;
+    return Boolean(
+      investigation.conflictSummary
+      && investigation.reasoning
+      && investigation.evidence
+      && Array.isArray(investigation.systems)
+      && Array.isArray(investigation.recommendedActions),
+    );
+  }, [payload]);
+
+  const openHeartbeatInvestigationView = useCallback(() => {
+    setShowHeartbeatInvestigation(true);
+    window.setTimeout(() => {
+      heartbeatInvestigationRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }, []);
+
   const runGuidedAction = async (action: GuidedAction | null) => {
     if (!payload) return;
     if (!action) {
@@ -317,9 +350,9 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
       return;
     }
     if (action === "open_heartbeat") {
-      heartbeatSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      openHeartbeatInvestigationView();
       setError(null);
-      setMessage("Opened HEART BEAT details.");
+      setMessage("Opened HEART BEAT investigation details.");
       return;
     }
     if (action === "open_recommendation") {
@@ -509,7 +542,152 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
                 <p className="mb-1 text-xs font-bold uppercase text-slate-500">Signals involved</p>
                 <DetailList items={heartbeatSignals} />
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (showHeartbeatInvestigation) {
+                    setShowHeartbeatInvestigation(false);
+                    return;
+                  }
+                  openHeartbeatInvestigationView();
+                }}
+                className="mt-3 rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-3 py-2 text-xs font-bold text-indigo-100"
+              >
+                {showHeartbeatInvestigation ? "Hide HEART BEAT investigation view" : "Review HEART BEAT details"}
+              </button>
             </section>
+
+            {showHeartbeatInvestigation ? (
+              <section ref={heartbeatInvestigationRef} className="rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-4 xl:col-span-3">
+                <h3 className="text-xs font-black uppercase tracking-[0.12em] text-indigo-200">HEART BEAT Investigation View</h3>
+
+                {hasHeartbeatInvestigationData ? (
+                  <div className="mt-4 space-y-3">
+                    <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                      <p className="text-xs font-bold uppercase text-slate-400">1. Investigation Summary</p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                          <p className="text-[11px] font-bold uppercase text-slate-500">Student</p>
+                          <p className="mt-1 text-sm font-black text-white">{payload.heartbeatInvestigation.conflictSummary.studentName}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                          <p className="text-[11px] font-bold uppercase text-slate-500">School Year</p>
+                          <p className="mt-1 text-sm font-black text-white">{payload.heartbeatInvestigation.conflictSummary.schoolYear ?? "-"}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                          <p className="text-[11px] font-bold uppercase text-slate-500">Current Working Level</p>
+                          <p className="mt-1 text-sm font-black text-white">{payload.heartbeatInvestigation.conflictSummary.currentWorkingLevel}</p>
+                        </div>
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                          <p className="text-[11px] font-bold uppercase text-amber-200/80">Learning Gap</p>
+                          <p className="mt-1 text-sm font-black text-amber-50">{payload.heartbeatInvestigation.conflictSummary.learningGapLabel}</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-3 text-xs text-slate-200 lg:grid-cols-2">
+                        <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                          <p className="text-[11px] font-bold uppercase text-slate-500">HEART BEAT Recommendation</p>
+                          <p className="mt-1 text-sm font-black text-white">{payload.heartbeatInvestigation.conflictSummary.heartbeatRecommendation}</p>
+                          <p className="mt-2 text-slate-300">Reason: {payload.heartbeatInvestigation.conflictSummary.learningGapReason}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                          <p className="text-[11px] font-bold uppercase text-slate-500">Assignment Engine</p>
+                          <p className="mt-1 text-sm font-black text-white">
+                            {payload.heartbeatInvestigation.conflictSummary.assignmentEngineRecommendation}
+                            <span className="font-semibold text-slate-400"> ({confidenceLabel(payload.heartbeatInvestigation.conflictSummary.assignmentEngineConfidence)})</span>
+                          </p>
+                          <p className="mt-2 text-slate-300">Reason: {payload.heartbeatInvestigation.conflictSummary.assignmentEngineReason}</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs text-slate-300 md:grid-cols-3">
+                        <p><span className="text-slate-500">Severity:</span> {toTitleCase(payload.heartbeatInvestigation.conflictSummary.severity)}</p>
+                        <p><span className="text-slate-500">Detected:</span> {formatDate(payload.heartbeatInvestigation.conflictSummary.detectedAt)}</p>
+                        <p><span className="text-slate-500">Status:</span> {payload.heartbeatInvestigation.conflictSummary.status === "conflict_detected" ? "Conflict Detected" : "Aligned"}</p>
+                      </div>
+                    </section>
+
+                    <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                      <p className="text-xs font-bold uppercase text-slate-400">2. Which Systems Disagree?</p>
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="w-full min-w-150 text-left text-xs">
+                          <thead className="uppercase text-slate-500">
+                            <tr>
+                              <th className="px-2 py-2">System</th>
+                              <th className="px-2 py-2">Recommendation</th>
+                              <th className="px-2 py-2">Confidence</th>
+                              <th className="px-2 py-2">Agreement</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {payload.heartbeatInvestigation.systems.map((row) => (
+                              <tr key={row.system} className="border-t border-slate-800 text-slate-200">
+                                <td className="px-2 py-2 font-bold text-white">{row.system}</td>
+                                <td className="px-2 py-2">{row.recommendation}</td>
+                                <td className="px-2 py-2">{row.confidence === null ? "-" : `${row.confidence}%`}</td>
+                                <td className="px-2 py-2">
+                                  <span className={`rounded-full border px-2 py-1 ${row.disagreeing ? "border-amber-500/40 bg-amber-500/10 text-amber-100" : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"}`}>
+                                    {row.disagreeing ? "Disagree" : "Agree"}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+
+                    <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                      <p className="text-xs font-bold uppercase text-slate-400">3. Why HEART BEAT Raised Warning</p>
+                      <div className="mt-2 grid gap-3 text-xs text-slate-200 md:grid-cols-2">
+                        <div>
+                          <p className="font-semibold text-slate-100">Weak Areas</p>
+                          <DetailList items={payload.heartbeatInvestigation.reasoning.weakAreas.map((item) => `- ${item}`)} />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-100">Recent Scores</p>
+                          {payload.heartbeatInvestigation.reasoning.recentScores.length ? (
+                            <ul className="space-y-1 text-xs text-slate-300">
+                              {payload.heartbeatInvestigation.reasoning.recentScores.map((score, index) => (
+                                <li key={`${score}-${index}`}>Quiz {index + 1}: {score}%</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-xs text-slate-500">No recent scores available.</p>
+                          )}
+                        </div>
+                        <p><span className="text-slate-400">Trend:</span> {trendLabel(payload.heartbeatInvestigation.reasoning.trend)}</p>
+                        <p><span className="text-slate-400">Reason:</span> {payload.heartbeatInvestigation.reasoning.reason}</p>
+                      </div>
+                    </section>
+
+                    <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                      <p className="text-xs font-bold uppercase text-slate-400">4. Evidence Used</p>
+                      <div className="mt-2 grid gap-2 text-xs text-slate-200 md:grid-cols-2">
+                        <p><span className="text-slate-400">Attempts analysed:</span> {payload.heartbeatInvestigation.evidence.attemptsAnalysed}</p>
+                        <p><span className="text-slate-400">Assignments completed:</span> {payload.heartbeatInvestigation.evidence.assignmentsCompleted}</p>
+                        <p><span className="text-slate-400">Catch-up tasks outstanding:</span> {payload.heartbeatInvestigation.evidence.catchUpTasksOutstanding}</p>
+                        <p><span className="text-slate-400">Weak areas:</span> {payload.heartbeatInvestigation.evidence.weakAreas}</p>
+                        <p><span className="text-slate-400">Learning DNA updated:</span> {formatDate(payload.heartbeatInvestigation.evidence.learningDnaUpdatedAt)}</p>
+                        <p><span className="text-slate-400">Snapshot updated:</span> {formatDate(payload.heartbeatInvestigation.evidence.snapshotUpdatedAt)}</p>
+                      </div>
+                    </section>
+
+                    <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                      <p className="text-xs font-bold uppercase text-slate-400">5. Recommended Action</p>
+                      <ol className="mt-2 space-y-1 text-xs text-slate-200">
+                        {payload.heartbeatInvestigation.recommendedActions.map((step, index) => (
+                          <li key={`${step}-${index}`}>{index + 1}. {step}</li>
+                        ))}
+                      </ol>
+                    </section>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                    <p className="text-sm font-bold text-amber-100">Investigation data is unavailable.</p>
+                    <p className="mt-1 text-xs text-amber-100/90">Refresh snapshot or rerun recommendation sync audit, then reopen HEART BEAT Investigation View.</p>
+                  </div>
+                )}
+              </section>
+            ) : null}
 
             <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
               <h2 className="text-sm font-bold text-white">Coach/Tutor Audit</h2>

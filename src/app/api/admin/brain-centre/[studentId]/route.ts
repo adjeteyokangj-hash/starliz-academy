@@ -11,6 +11,7 @@ import {
   snapshotStatus,
   type BrainWarningReviewState,
 } from "@/app/api/admin/brain-centre/_lib";
+import { yearGroupToOrdinal } from "@/lib/curriculum";
 import type { StudentLearningBrain } from "@/lib/student-learning-brain";
 
 type Params = { params: Promise<{ studentId: string }> };
@@ -88,7 +89,240 @@ export type BrainCentreDetailPayload = {
   }>;
   timeline: BrainTimelineEvent[];
   warningReview: BrainWarningReviewState;
+  heartbeatInvestigation: {
+    conflictSummary: {
+      conflictType: string;
+      severity: "low" | "medium" | "high" | "critical";
+      detectedAt: string;
+      studentName: string;
+      currentYearGroup: string | null;
+      currentLearningLevel: string;
+      schoolYear: string | null;
+      currentWorkingLevel: string;
+      learningGapYears: number | null;
+      learningGapLabel: string;
+      learningGapReason: string;
+      heartbeatRecommendation: string;
+      assignmentEngineRecommendation: string;
+      assignmentEngineConfidence: number | null;
+      assignmentEngineReason: string;
+      status: "conflict_detected" | "aligned";
+    };
+    systems: Array<{
+      system: string;
+      recommendation: string;
+      confidence: number | null;
+      disagreeing: boolean;
+    }>;
+    reasoning: {
+      weakAreas: string[];
+      recentScores: number[];
+      trend: "declining" | "improving" | "mixed" | "insufficient_data";
+      reason: string;
+    };
+    evidence: {
+      attemptsAnalysed: number;
+      assignmentsCompleted: number;
+      catchUpTasksOutstanding: number;
+      weakAreas: number;
+      learningDnaUpdatedAt: string | null;
+      snapshotUpdatedAt: string | null;
+    };
+    recommendedActions: string[];
+  };
 };
+
+function recommendationFromHeartbeatAction(action: StudentLearningBrain["heartbeatSummary"]["primaryAction"]): string {
+  if (action === "assign_catch_up") return "Catch-Up Required";
+  if (action === "advance_student") return "Ready For Next Lesson";
+  if (action === "maintain_level") return "Maintain Current Level";
+  if (action === "review_placement") return "Review Placement";
+  if (action === "generate_assessment") return "Re-run Mastery Assessment";
+  return action.replaceAll("_", " ");
+}
+
+function recommendationFromIntent(intent: StudentLearningBrain["academicIntelligence"]["recommendationSync"]["canonicalDecision"]["intent"]): string {
+  if (intent === "catch_up") return "Catch-Up Required";
+  if (intent === "advance") return "Ready For Next Lesson";
+  if (intent === "maintain") return "Maintain Current Level";
+  if (intent === "placement_review") return "Review Placement";
+  if (intent === "assessment") return "Re-run Mastery Assessment";
+  return intent.replaceAll("_", " ");
+}
+
+function stanceForRecommendation(recommendation: string): "catch_up" | "advance" | "maintain" | "review" {
+  const normal = recommendation.toLowerCase();
+  if (normal.includes("catch-up") || normal.includes("catch up")) return "catch_up";
+  if (normal.includes("next lesson") || normal.includes("advance")) return "advance";
+  if (normal.includes("maintain")) return "maintain";
+  return "review";
+}
+
+function average(values: number[]): number | null {
+  if (!values.length) return null;
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return Math.round(total / values.length);
+}
+
+function scoreFromAttempt(attempt: StudentLearningBrain["source"]["attempts"][number]): number {
+  if (typeof attempt.score === "number" && Number.isFinite(attempt.score)) {
+    return Math.max(0, Math.min(100, Math.round(attempt.score)));
+  }
+  return attempt.correct ? 100 : 0;
+}
+
+function trendFromScores(scores: number[]): "declining" | "improving" | "mixed" | "insufficient_data" {
+  if (scores.length < 2) return "insufficient_data";
+  const first = scores[0];
+  const last = scores[scores.length - 1];
+  if (last >= first + 8) return "improving";
+  if (last <= first - 8) return "declining";
+  return "mixed";
+}
+
+function confidenceFromSignalStatus(status: StudentLearningBrain["academicIntelligence"]["recommendationSync"]["signals"][number]["status"]): number {
+  if (status === "aligned") return 82;
+  if (status === "mismatch") return 76;
+  return 68;
+}
+
+function buildHeartbeatInvestigation(
+  student: BrainCentreDetailStudent,
+  brain: StudentLearningBrain,
+  snapshot: ReturnType<typeof snapshotStatus>,
+): BrainCentreDetailPayload["heartbeatInvestigation"] {
+  const sync = brain.academicIntelligence.recommendationSync;
+  const assignmentSignal = sync.signals.find((signal) => signal.engine === "assignments");
+  const assignmentRecommendation = assignmentSignal
+    ? recommendationFromIntent(assignmentSignal.intent)
+    : recommendationFromIntent(sync.canonicalDecision.intent);
+
+  const heartbeatRecommendation = recommendationFromHeartbeatAction(brain.heartbeatSummary.primaryAction);
+  const heartbeatStance = stanceForRecommendation(heartbeatRecommendation);
+
+  const weakAreas = brain.source.weakAreas
+    .filter((row) => row.status === "active")
+    .slice(0, 3)
+    .map((row) => row.topic ?? row.skill ?? row.subject);
+
+  const recentAttempts = [...brain.source.attempts]
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+    .slice(-3);
+  const recentScores = recentAttempts.map(scoreFromAttempt);
+  const trend = trendFromScores(recentScores);
+
+  const qlfScores = (brain.quickLevelFinderBaseline?.parentSubjectScores ?? []).map((row) => row.accuracy);
+  const qlfConfidence = average(qlfScores);
+  const qlfRecommendation = qlfConfidence !== null
+    ? (qlfConfidence < 65 ? "Catch-Up Required" : "Ready For Next Lesson")
+    : "Baseline Missing";
+
+  const skillConfidence = average(brain.source.studentSkills.map((row) => row.accuracy));
+  const learningDnaRecommendation = brain.learningDnaSummary
+    ? (brain.evidenceSummary.weakAreas.active > 0 ? "Catch-Up Required" : "Maintain Current Level")
+    : "Learning DNA Missing";
+
+  const systems: BrainCentreDetailPayload["heartbeatInvestigation"]["systems"] = [
+    {
+      system: "HEART BEAT",
+      recommendation: heartbeatRecommendation,
+      confidence: Math.max(0, Math.min(100, Math.round(brain.heartbeatSummary.confidenceScore))),
+      disagreeing: false,
+    },
+    {
+      system: "Learning DNA",
+      recommendation: learningDnaRecommendation,
+      confidence: skillConfidence,
+      disagreeing: stanceForRecommendation(learningDnaRecommendation) !== heartbeatStance,
+    },
+    {
+      system: "Assignment Engine",
+      recommendation: assignmentRecommendation,
+      confidence: assignmentSignal ? confidenceFromSignalStatus(assignmentSignal.status) : null,
+      disagreeing: stanceForRecommendation(assignmentRecommendation) !== heartbeatStance,
+    },
+    {
+      system: "Recommendation Engine",
+      recommendation: recommendationFromIntent(sync.canonicalDecision.intent),
+      confidence: sync.status === "synced" ? 84 : sync.status === "warning" ? 74 : 62,
+      disagreeing: stanceForRecommendation(recommendationFromIntent(sync.canonicalDecision.intent)) !== heartbeatStance,
+    },
+    {
+      system: "QLF Baseline",
+      recommendation: qlfRecommendation,
+      confidence: qlfConfidence,
+      disagreeing: stanceForRecommendation(qlfRecommendation) !== heartbeatStance,
+    },
+  ];
+
+  const conflictDetected = systems.some((row) => row.disagreeing);
+  const topWeakArea = weakAreas[0] ?? "Foundational skills";
+  const activeCatchUpTasks = brain.academicIntelligence.catchUpTasks.filter((task) => task.status !== "completed" && task.status !== "waived" && task.status !== "skipped");
+  const schoolYear = student.yearGroup;
+  const workingYear = brain.quickLevelFinderBaseline?.yearGroup ?? null;
+  const schoolYearOrdinal = yearGroupToOrdinal(schoolYear);
+  const workingYearOrdinal = yearGroupToOrdinal(workingYear);
+  const learningGapYears = schoolYearOrdinal !== null && workingYearOrdinal !== null
+    ? Math.max(0, schoolYearOrdinal - workingYearOrdinal)
+    : null;
+  const currentWorkingLevel = workingYear ? `${workingYear} ${topWeakArea}` : topWeakArea;
+  const learningGapLabel = learningGapYears === null
+    ? "Gap not calculated"
+    : learningGapYears === 0
+      ? "No academic year gap detected"
+      : `${learningGapYears} academic year${learningGapYears === 1 ? "" : "s"}`;
+  const learningGapReason = learningGapYears === null
+    ? "Brain does not yet have enough year-level evidence to compare school year and working level."
+    : learningGapYears > 0 && schoolYear
+      ? `Student is currently performing below expected ${schoolYear} level.`
+      : "Current working level is aligned with the student's school year.";
+  const assignmentEngineConfidence = assignmentSignal ? confidenceFromSignalStatus(assignmentSignal.status) : null;
+  const assignmentEngineReason = activeCatchUpTasks.length > 0
+    ? "Outstanding catch-up pathway still active."
+    : assignmentSignal?.summary ?? sync.action;
+
+  return {
+    conflictSummary: {
+      conflictType: conflictDetected ? "Progression Conflict" : "Aligned Recommendation",
+      severity: brain.heartbeatSummary.riskLevel,
+      detectedAt: brain.generatedAt,
+      studentName: student.name,
+      currentYearGroup: student.yearGroup,
+      currentLearningLevel: currentWorkingLevel,
+      schoolYear,
+      currentWorkingLevel,
+      learningGapYears,
+      learningGapLabel,
+      learningGapReason,
+      heartbeatRecommendation: heartbeatRecommendation,
+      assignmentEngineRecommendation: assignmentRecommendation,
+      assignmentEngineConfidence,
+      assignmentEngineReason,
+      status: conflictDetected ? "conflict_detected" : "aligned",
+    },
+    systems,
+    reasoning: {
+      weakAreas,
+      recentScores,
+      trend,
+      reason: brain.heartbeatSummary.reasons[0] ?? brain.heartbeatSummary.suggestedNextStep,
+    },
+    evidence: {
+      attemptsAnalysed: brain.source.attempts.length,
+      assignmentsCompleted: brain.evidenceSummary.assignments.completed,
+      catchUpTasksOutstanding: activeCatchUpTasks.length,
+      weakAreas: brain.evidenceSummary.weakAreas.active,
+      learningDnaUpdatedAt: brain.learningDnaSummary ? brain.generatedAt : null,
+      snapshotUpdatedAt: snapshot.lastCalculatedAt,
+    },
+    recommendedActions: [
+      activeCatchUpTasks[0]?.title ? `Complete Catch-Up Task: ${activeCatchUpTasks[0].title}` : "Complete highest-priority catch-up task",
+      "Re-run mastery assessment",
+      "Refresh snapshot",
+      "Recalculate progression recommendation",
+    ],
+  };
+}
 
 type DetailDeps = {
   requireAdmin: typeof requireAdmin;
@@ -294,6 +528,7 @@ function buildDetailPayload(
     recommendationControlRoom: buildControlRoom(brain),
     timeline: buildTimeline(brain, snapshot, warningReview),
     warningReview,
+    heartbeatInvestigation: buildHeartbeatInvestigation(student, brain, snapshot),
   };
 }
 
