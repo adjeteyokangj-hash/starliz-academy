@@ -215,7 +215,6 @@ export default function AdminSidebar() {
                   <button
                     type="button"
                     onClick={() => toggleGroup(group.title)}
-                    aria-expanded={!collapsed ? "true" : "false"}
                     aria-controls={groupDomId(group.title)}
                     className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.14em] transition ${
                       activeGroup ? "text-indigo-200" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"
@@ -224,11 +223,9 @@ export default function AdminSidebar() {
                     <span>{group.title}</span>
                     <span aria-hidden="true" className="text-sm">{collapsed ? "+" : "-"}</span>
                   </button>
-                  {!collapsed ? (
-                    <div id={groupDomId(group.title)} className="mt-1 space-y-1">
-                      {group.items.map((item) => renderNavItem(item))}
-                    </div>
-                  ) : null}
+                  <div id={groupDomId(group.title)} className="mt-1 space-y-1" hidden={collapsed}>
+                    {group.items.map((item) => renderNavItem(item))}
+                  </div>
                 </section>
               );
             })}
