@@ -45,6 +45,13 @@ import {
   type TutorEmotion,
   type TutorPersonality,
 } from "@/lib/tutorPersonality";
+import {
+  filterSessionCandidatesWithoutRepeats,
+  isLastPlannedStep,
+  nextPlannedStepIndex,
+  shouldCompleteSessionAtStep,
+  shouldReloadSessionPlan,
+} from "@/lib/spelling-session-runtime";
 
 const LEVEL_LABELS: Record<number, string> = {
   1: "⭐ Alphabet foundation",
@@ -492,10 +499,11 @@ export default function SpellingQuestPage() {
 
   useEffect(() => {
     if (!profile) return;
+    if (!shouldReloadSessionPlan(sessionStepIndex)) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadSpellingSession(profile.id, profile.adaptive.spellingDifficulty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadSpellingSession, profile?.id, profile?.adaptive.spellingDifficulty]);
+  }, [loadSpellingSession, profile?.id, profile?.adaptive.spellingDifficulty, sessionStepIndex]);
 
   const wordPool = useMemo(() => (profileId ? getSpellingWordPool(spellingDifficulty) : []), [profileId, spellingDifficulty]);
   const currentContextKey = profileId
@@ -749,10 +757,12 @@ export default function SpellingQuestPage() {
     }
 
     if (!nextWord) {
-      const sessionCandidates = allSpellingWords.filter((word) =>
-        sessionPlan?.words.includes(word.word.toLowerCase())
-        && !recentWordIds.includes(word.id),
-      );
+      const sessionCandidates = filterSessionCandidatesWithoutRepeats({
+        allWords: allSpellingWords,
+        sessionWords: sessionPlan?.words ?? [],
+        recentIds: recentWordIds,
+        usedIds: usedInSessionRef.current,
+      });
 
       if (sessionCandidates.length) {
         const weightedId = getWeightedSpellingWordId(currentProfile, sessionCandidates, recentWordIds);
@@ -1113,13 +1123,11 @@ export default function SpellingQuestPage() {
   }, [profile, sessionStartStats]);
 
   function getNextSessionIndex(): number {
-    if (!sessionPlan?.phases.length) return 0;
-    return Math.min(sessionStepIndex + 1, sessionPlan.phases.length - 1);
+    return nextPlannedStepIndex(sessionStepIndex, sessionPlan?.phases.length ?? 0);
   }
 
   function isLastSessionStep(): boolean {
-    if (!sessionPlan?.phases.length) return false;
-    return sessionStepIndex >= sessionPlan.phases.length - 1;
+    return isLastPlannedStep(sessionStepIndex, sessionPlan?.phases.length ?? 0);
   }
 
   function startSessionRun(nextProfile: ChildProfile, feedbackMessage = ""): void {
@@ -1700,7 +1708,9 @@ export default function SpellingQuestPage() {
 
     const memoryPayload = await updateWordMemory(profile.id, targetWord.word, memoryInput ?? nextAnswer);
     if (memoryPayload) {
-      void loadSpellingSession(profile.id, profile.adaptive.spellingDifficulty);
+      // Keep one stable session plan for the current run.
+      // Rebuilding after every answer can reshuffle phases, causing
+      // repeats and incorrect completion timing.
       if (memoryPayload.updated.status === "mastered") {
         setMasteredTodayWords((prev) => (prev.includes(targetWord.word) ? prev : [...prev, targetWord.word]));
       }
@@ -1952,9 +1962,12 @@ export default function SpellingQuestPage() {
         setInsightMessage(insight ?? "You are on a roll! Keep practising — you are doing brilliantly!");
       }
 
-      const finishedBossTest = !reviewMode && currentSessionStep?.phase === "boss_test"
-        && (isLastSessionStep() || sessionPlan?.phases[sessionStepIndex + 1]?.phase !== "boss_test");
-      const reachedSessionEnd = !reviewMode && isLastSessionStep();
+      const reachedSessionEnd = shouldCompleteSessionAtStep({
+        reviewMode,
+        sessionStepIndex,
+        totalSteps: sessionPlan?.phases.length ?? 0,
+      });
+      const finishedBossTest = reachedSessionEnd && currentSessionStep?.phase === "boss_test";
       const nextIndex = reviewMode ? sessionStepIndex : getNextSessionIndex();
       if (!reviewMode) setSessionStepIndex(nextIndex);
       if (wasBuildWordMode) {
@@ -2086,9 +2099,12 @@ export default function SpellingQuestPage() {
       setTutorFeedback(lockedTutorPlan.text);
       speakTutorFeedback(lockedTutorPlan);
       setAttemptCount(0);
-      const finishedBossTest = !reviewMode && currentSessionStep?.phase === "boss_test"
-        && (isLastSessionStep() || sessionPlan?.phases[sessionStepIndex + 1]?.phase !== "boss_test");
-      const reachedSessionEnd = !reviewMode && isLastSessionStep();
+      const reachedSessionEnd = shouldCompleteSessionAtStep({
+        reviewMode,
+        sessionStepIndex,
+        totalSteps: sessionPlan?.phases.length ?? 0,
+      });
+      const finishedBossTest = reachedSessionEnd && currentSessionStep?.phase === "boss_test";
       const nextIndex = reviewMode ? sessionStepIndex : getNextSessionIndex();
       if (!reviewMode) setSessionStepIndex(nextIndex);
       if (finishedBossTest) {
@@ -2270,9 +2286,12 @@ export default function SpellingQuestPage() {
     setAttemptCount(0);
     setBuildSelection([]);
     setAlphaSelection([]);
-    const finishedBossTest = !reviewMode && currentSessionStep?.phase === "boss_test"
-      && (isLastSessionStep() || sessionPlan?.phases[sessionStepIndex + 1]?.phase !== "boss_test");
-    const reachedSessionEnd = !reviewMode && isLastSessionStep();
+    const reachedSessionEnd = shouldCompleteSessionAtStep({
+      reviewMode,
+      sessionStepIndex,
+      totalSteps: sessionPlan?.phases.length ?? 0,
+    });
+    const finishedBossTest = reachedSessionEnd && currentSessionStep?.phase === "boss_test";
     const nextIndex = reviewMode ? sessionStepIndex : getNextSessionIndex();
     if (!reviewMode) setSessionStepIndex(nextIndex);
     if (finishedBossTest) {
