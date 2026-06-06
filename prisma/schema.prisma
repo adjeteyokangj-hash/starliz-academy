@@ -183,6 +183,7 @@ model ChildProfile {
   skillMasteries        SkillMastery[]
   masteryCheckResults   MasteryCheckResult[]
   coachInteractionLogs  CoachInteractionLog[]
+  gaLessonProgress      GaStudentLessonProgress[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -700,6 +701,8 @@ model GaWord {
   quizReady    Boolean   @default(false)
   storyReady   Boolean   @default(false)
   notes        String?
+  lessons      GaLessonWord[]
+  quizQuestions GaQuizQuestion[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -712,6 +715,100 @@ model GaWord {
   @@index([quizReady])
   @@index([storyReady])
   @@index([sourcePage])
+}
+
+model GaLesson {
+  id            String                    @id @default(cuid())
+  title         String
+  slug          String                    @unique
+  description   String?
+  level         String
+  category      String
+  objective     String
+  packKey       String?
+  lessonOrder   Int                       @default(0)
+  publishStatus String                    @default("Draft")
+  words         GaLessonWord[]
+  activities    GaLessonActivity[]
+  quizQuestions GaQuizQuestion[]
+  progress      GaStudentLessonProgress[]
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@index([publishStatus])
+  @@index([level])
+  @@index([category])
+  @@index([packKey, lessonOrder])
+}
+
+model GaLessonWord {
+  id        String   @id @default(cuid())
+  lessonId  String
+  lesson    GaLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  wordId    String
+  word      GaWord   @relation(fields: [wordId], references: [id], onDelete: Restrict)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([lessonId, wordId])
+  @@index([lessonId, sortOrder])
+  @@index([wordId])
+}
+
+model GaLessonActivity {
+  id           String   @id @default(cuid())
+  lessonId     String
+  lesson       GaLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  activityType String
+  title        String
+  instructions String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([lessonId, sortOrder])
+  @@index([activityType])
+}
+
+model GaQuizQuestion {
+  id            String   @id @default(cuid())
+  lessonId      String
+  lesson        GaLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  wordId        String?
+  word          GaWord?  @relation(fields: [wordId], references: [id], onDelete: Restrict)
+  questionType  String
+  prompt        String
+  optionsJson   String
+  correctAnswer String
+  explanation   String?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([lessonId, sortOrder])
+  @@index([wordId])
+  @@index([questionType])
+}
+
+model GaStudentLessonProgress {
+  id             String       @id @default(cuid())
+  studentId      String
+  student        ChildProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lessonId       String
+  lesson         GaLesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  status         String       @default("started")
+  score          Int          @default(0)
+  totalQuestions Int          @default(0)
+  correctAnswers Int          @default(0)
+  completedAt    DateTime?
+  metadataJson   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([studentId, lessonId])
+  @@index([studentId])
+  @@index([lessonId])
+  @@index([status])
 }
 
 model CoachDictionaryLookup {
