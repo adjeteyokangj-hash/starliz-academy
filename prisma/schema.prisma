@@ -62,6 +62,46 @@ enum SchoolInviteType {
   parent
 }
 
+enum GaAudioSourceType {
+  AI_GENERATED
+  AI_GENERATED_SONG
+  ADMIN_UPLOADED
+  PRONUNCIATION_REFERENCE
+  STUDENT_RECORDING
+  FUTURE_NATIVE_SPEAKER
+  NATIVE_VERIFIED
+}
+
+enum GaAudioReviewStatus {
+  DRAFT
+  AI_GENERATED
+  APPROVED_FOR_EARLY_LEARNING
+  NEEDS_NATIVE_REVIEW
+  NATIVE_VERIFIED
+  REJECTED
+  REPLACED
+}
+
+enum GaAudioApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REPLACED
+}
+
+enum GaReferencePermissionStatus {
+  UNKNOWN
+  REFERENCE_ONLY
+  LICENSED
+}
+
+enum GaStudentRecordingReviewStatus {
+  PENDING
+  REVIEWED
+  NEEDS_REPEAT
+  FLAGGED
+}
+
 model User {
   id                 String    @id @default(cuid())
   email              String    @unique
@@ -108,6 +148,15 @@ model User {
   parentProfile                   ParentProfile?
   parentPinResetTokens            ParentPinResetToken[]
   homeworkAuditLogs               HomeworkAuditLog[]
+  gaAudioAssetsCreated            GaAudioAsset[]              @relation("GaAudioAssetCreatedBy")
+  gaAudioAssetsApproved           GaAudioAsset[]              @relation("GaAudioAssetApprovedBy")
+  gaAudioAssetsRejected           GaAudioAsset[]              @relation("GaAudioAssetRejectedBy")
+  gaPronunciationReferencesCreated GaPronunciationReference[] @relation("GaReferenceCreatedBy")
+  gaPronunciationReferencesReviewed GaPronunciationReference[] @relation("GaReferenceReviewedBy")
+  gaStudentRecordingReviews       GaStudentRecording[]        @relation("GaStudentRecordingReviewedBy")
+  gaSongLessonsCreated            GaSongLesson[]             @relation("GaSongLessonCreatedBy")
+  gaSongLessonsApproved           GaSongLesson[]             @relation("GaSongLessonApprovedBy")
+  gaAudioAuditLogs                GaAudioAuditLog[]          @relation("GaAudioAuditPerformedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -184,6 +233,7 @@ model ChildProfile {
   masteryCheckResults   MasteryCheckResult[]
   coachInteractionLogs  CoachInteractionLog[]
   gaLessonProgress      GaStudentLessonProgress[]
+  gaStudentRecordings   GaStudentRecording[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -703,6 +753,9 @@ model GaWord {
   notes        String?
   lessons      GaLessonWord[]
   quizQuestions GaQuizQuestion[]
+  audioAssets  GaAudioAsset[]
+  pronunciationReferences GaPronunciationReference[]
+  studentRecordings GaStudentRecording[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -732,6 +785,9 @@ model GaLesson {
   activities    GaLessonActivity[]
   quizQuestions GaQuizQuestion[]
   progress      GaStudentLessonProgress[]
+  audioAssets   GaAudioAsset[]
+  pronunciationReferences GaPronunciationReference[]
+  studentRecordings GaStudentRecording[]
   createdAt     DateTime                  @default(now())
   updatedAt     DateTime                  @updatedAt
 
@@ -809,6 +865,178 @@ model GaStudentLessonProgress {
   @@index([studentId])
   @@index([lessonId])
   @@index([status])
+}
+
+model GaAudioAsset {
+  id                String                @id @default(cuid())
+  wordId            String?
+  word              GaWord?               @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  lessonId          String?
+  lesson            GaLesson?             @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  phraseText        String?
+  songId            String?
+  song              GaSongLesson?         @relation("GaSongAudioAssets", fields: [songId], references: [id], onDelete: SetNull)
+  letterKey         String?
+  soundKey          String?
+  audioUrl          String
+  audioStorageKey   String?
+  sourceType        GaAudioSourceType
+  reviewStatus      GaAudioReviewStatus   @default(DRAFT)
+  approvalStatus    GaAudioApprovalStatus @default(PENDING)
+  confidenceLevel   Int?
+  pronunciationNote String?
+  adminNotes        String?
+  createdById       String?
+  createdBy         User?                 @relation("GaAudioAssetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedById      String?
+  approvedBy        User?                 @relation("GaAudioAssetApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectedById      String?
+  rejectedBy        User?                 @relation("GaAudioAssetRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  replacedByAudioId String?
+  replacedByAudio   GaAudioAsset?         @relation("GaAudioAssetReplacement", fields: [replacedByAudioId], references: [id], onDelete: SetNull)
+  replacedAssets    GaAudioAsset[]        @relation("GaAudioAssetReplacement")
+  auditLogs         GaAudioAuditLog[]
+  currentForSong    GaSongLesson?         @relation("GaSongCurrentAudio")
+
+  @@index([wordId])
+  @@index([lessonId])
+  @@index([songId])
+  @@index([sourceType])
+  @@index([reviewStatus])
+  @@index([approvalStatus])
+  @@index([createdById])
+  @@index([approvedById])
+  @@index([rejectedById])
+  @@index([letterKey])
+  @@index([soundKey])
+}
+
+model GaPronunciationReference {
+  id                String                      @id @default(cuid())
+  referenceType     String
+  sourceUrl         String
+  sourceTitle       String?
+  speakerName       String?
+  channelName       String?
+  timestampStart    String?
+  timestampEnd      String?
+  linkedWordId      String?
+  linkedWord        GaWord?                     @relation(fields: [linkedWordId], references: [id], onDelete: SetNull)
+  linkedLessonId    String?
+  linkedLesson      GaLesson?                   @relation(fields: [linkedLessonId], references: [id], onDelete: SetNull)
+  linkedLetter      String?
+  linkedSound       String?
+  linkedPhraseText  String?
+  pronunciationNote String?
+  permissionStatus  GaReferencePermissionStatus @default(REFERENCE_ONLY)
+  reviewStatus      GaAudioReviewStatus         @default(DRAFT)
+  confidenceLevel   Int?
+  createdById       String?
+  createdBy         User?                       @relation("GaReferenceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedById      String?
+  reviewedBy        User?                       @relation("GaReferenceReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+  auditLogs         GaAudioAuditLog[]
+
+  @@index([referenceType])
+  @@index([linkedWordId])
+  @@index([linkedLessonId])
+  @@index([linkedLetter])
+  @@index([linkedSound])
+  @@index([permissionStatus])
+  @@index([reviewStatus])
+  @@index([createdById])
+  @@index([reviewedById])
+}
+
+model GaStudentRecording {
+  id                String                         @id @default(cuid())
+  studentId         String
+  student           ChildProfile                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  wordId            String?
+  word              GaWord?                        @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  lessonId          String?
+  lesson            GaLesson?                      @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  phraseText        String?
+  soundKey          String?
+  audioUrl          String
+  audioStorageKey   String?
+  attemptNumber     Int                            @default(1)
+  studentConfidence Int?
+  aiFeedbackSummary String?
+  adminFeedback     String?
+  reviewStatus      GaStudentRecordingReviewStatus @default(PENDING)
+  createdAt         DateTime                       @default(now())
+  reviewedAt        DateTime?
+  reviewedById      String?
+  reviewedBy        User?                          @relation("GaStudentRecordingReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  auditLogs         GaAudioAuditLog[]
+
+  @@index([studentId])
+  @@index([wordId])
+  @@index([lessonId])
+  @@index([soundKey])
+  @@index([reviewStatus])
+  @@index([reviewedById])
+}
+
+model GaSongLesson {
+  id                    String              @id @default(cuid())
+  title                 String
+  level                 String
+  category              String
+  lyricsGa              String
+  lyricsEnglish         String?
+  wordIdsUsed           String[]
+  unapprovedWordsFlagged String[]
+  currentAudioAssetId   String?             @unique
+  currentAudioAsset     GaAudioAsset?       @relation("GaSongCurrentAudio", fields: [currentAudioAssetId], references: [id], onDelete: SetNull)
+  audioAssets           GaAudioAsset[]      @relation("GaSongAudioAssets")
+  sourceType            GaAudioSourceType?
+  reviewStatus          GaAudioReviewStatus @default(DRAFT)
+  createdById           String?
+  createdBy             User?               @relation("GaSongLessonCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedById          String?
+  approvedBy            User?               @relation("GaSongLessonApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  approvedAt            DateTime?
+
+  @@index([level])
+  @@index([category])
+  @@index([sourceType])
+  @@index([reviewStatus])
+  @@index([createdById])
+  @@index([approvedById])
+}
+
+model GaAudioAuditLog {
+  id                 String                   @id @default(cuid())
+  audioAssetId       String?
+  audioAsset         GaAudioAsset?            @relation(fields: [audioAssetId], references: [id], onDelete: Cascade)
+  referenceId        String?
+  reference          GaPronunciationReference? @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  studentRecordingId String?
+  studentRecording   GaStudentRecording?      @relation(fields: [studentRecordingId], references: [id], onDelete: Cascade)
+  action             String
+  oldStatus          String?
+  newStatus          String?
+  notes              String?
+  performedById      String?
+  performedBy        User?                    @relation("GaAudioAuditPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+  createdAt          DateTime                 @default(now())
+
+  @@index([audioAssetId])
+  @@index([referenceId])
+  @@index([studentRecordingId])
+  @@index([action])
+  @@index([performedById])
+  @@index([createdAt])
 }
 
 model CoachDictionaryLookup {

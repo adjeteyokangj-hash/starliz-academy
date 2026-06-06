@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const [sources, existingWords] = await Promise.all([
       listGaSources(),
       prisma.gaWord.findMany({
-        select: { id: true, englishWord: true, gaWord: true, sourcePage: true },
+        select: { id: true, englishWord: true, gaWord: true, category: true, sourcePage: true },
       }),
     ]);
 

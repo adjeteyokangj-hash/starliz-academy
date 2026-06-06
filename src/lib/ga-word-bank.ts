@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
+import { GA_APPROVED_CATEGORIES, normalizeGaCategory } from "@/lib/ga-word-categories";
 
 export const GA_WORD_TYPES = ["noun", "verb", "adjective", "pronoun", "expression", "conjunction", "determiner"] as const;
-export const GA_CATEGORIES = ["Greetings", "Time", "Days", "Numbers", "Family", "Body", "Food", "Animals", "Home", "School", "Actions", "Places", "Objects", "Nature", "Feelings", "Grammar"] as const;
+export const GA_CATEGORIES = GA_APPROVED_CATEGORIES;
 export const GA_LEVELS = ["Foundation", "Beginner 1", "Beginner 2", "Intermediate"] as const;
 export const GA_REVIEW_STATUSES = ["Pending", "Reviewed", "Approved", "Rejected"] as const;
 export const GA_AUDIO_STATUSES = ["Not Started", "Draft", "Needs Review", "Approved"] as const;
@@ -73,6 +74,7 @@ export type GaBulkImportExistingWord = {
   id: string;
   englishWord: string;
   gaWord: string;
+  category: string;
   sourcePage: number | null;
 };
 
@@ -162,8 +164,8 @@ function parseImportBoolean(value: string): boolean | null {
   return null;
 }
 
-function buildDuplicateKey(englishWord: string, gaWord: string, sourcePage: number): string {
-  return `${englishWord.trim().toLowerCase()}::${gaWord.trim().toLowerCase()}::${String(sourcePage)}`;
+function buildDuplicateKey(englishWord: string, gaWord: string, category: string, sourcePage: number | null): string {
+  return `${englishWord.trim().toLowerCase()}::${gaWord.trim().toLowerCase()}::${category.trim().toLowerCase()}::${sourcePage === null ? "null" : String(sourcePage)}`;
 }
 
 function optionalText(value: unknown): string | null {
@@ -232,7 +234,6 @@ export function previewGaBulkImport(
     "wordType",
     "category",
     "level",
-    "sourcePage",
     "reviewStatus",
     "audioStatus",
     "quizReady",
@@ -242,8 +243,7 @@ export function previewGaBulkImport(
   const sourceByName = new Map(sources.map((source) => [source.sourceName.trim().toLowerCase(), source.id]));
   const existingByKey = new Map<string, GaBulkImportExistingWord>();
   for (const item of existingWords) {
-    if (item.sourcePage === null) continue;
-    const key = buildDuplicateKey(item.englishWord, item.gaWord, item.sourcePage);
+    const key = buildDuplicateKey(item.englishWord, item.gaWord, item.category, item.sourcePage);
     existingByKey.set(key, item);
   }
 
@@ -281,9 +281,10 @@ export function previewGaBulkImport(
       }
     }
 
-    const sourcePageValue = Number(cleanText(row.values.sourcePage));
-    if (!Number.isInteger(sourcePageValue) || sourcePageValue < 0) {
-      errors.push("sourcePage must be a valid non-negative integer.");
+    const sourcePageRaw = cleanText(row.values.sourcePage);
+    const sourcePageValue = sourcePageRaw === "" ? null : Number(sourcePageRaw);
+    if (sourcePageValue !== null && (!Number.isInteger(sourcePageValue) || sourcePageValue < 0)) {
+      errors.push("sourcePage must be a valid non-negative integer when provided.");
     }
 
     const quizReady = parseImportBoolean(row.values.quizReady);
@@ -323,7 +324,7 @@ export function previewGaBulkImport(
       continue;
     }
 
-    const duplicateKey = buildDuplicateKey(data.englishWord, data.gaWord, sourcePageValue);
+    const duplicateKey = buildDuplicateKey(data.englishWord, data.gaWord, data.category, data.sourcePage ?? null);
     const existingMatch = existingByKey.get(duplicateKey);
     if (existingMatch) duplicateWarnings += 1;
     const priorRow = uploadSeen.get(duplicateKey);
@@ -384,6 +385,7 @@ export function planGaBulkImportCommit(items: GaBulkImportValidRow[], strategy: 
 export function buildGaWordData(input: GaWordInput) {
   const englishWord = cleanText(input.englishWord);
   const gaWord = cleanText(input.gaWord);
+  const category = normalizeGaCategory(cleanText(input.category));
   if (!englishWord) throw new Error("English word is required.");
   if (!gaWord) throw new Error("Ga word is required.");
 
@@ -391,7 +393,7 @@ export function buildGaWordData(input: GaWordInput) {
     englishWord,
     gaWord,
     wordType: assertAllowed(cleanText(input.wordType), GA_WORD_TYPES, "Word type"),
-    category: assertAllowed(cleanText(input.category), GA_CATEGORIES, "Category"),
+    category: assertAllowed(category, GA_CATEGORIES, "Category"),
     level: assertAllowed(cleanText(input.level), GA_LEVELS, "Level"),
     sourceId: optionalText(input.sourceId),
     sourcePage: numberOrNull(input.sourcePage),

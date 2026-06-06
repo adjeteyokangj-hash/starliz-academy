@@ -9,6 +9,7 @@ import {
   previewGaBulkImport,
   toStudentSafeGaWord,
 } from "../src/lib/ga-word-bank";
+import { normalizeGaCategory } from "../src/lib/ga-word-categories";
 
 const approvedWord = {
   id: "ga-1",
@@ -110,7 +111,7 @@ test("bulk import duplicate handling supports skip and update planning", () => {
   const preview = previewGaBulkImport(
     parsed,
     [{ id: "source-1", sourceName: "Kasahorow Ga Children's Dictionary" }],
-    [{ id: "existing-1", englishWord: "one", gaWord: "ekome", sourcePage: 18 }],
+      [{ id: "existing-1", englishWord: "one", gaWord: "ekome", category: "Numbers", sourcePage: 18 }],
   );
   assert.equal(preview.validRows, 2);
   assert.equal(preview.invalidRows, 0);
@@ -121,6 +122,32 @@ test("bulk import duplicate handling supports skip and update planning", () => {
 
   const updatePlan = planGaBulkImportCommit(preview.validItems, "update");
   assert.deepEqual(updatePlan, { creates: 1, updates: 1, skips: 0 });
+});
+
+test("category normalization maps loose labels to approved category set", () => {
+  assert.equal(normalizeGaCategory("Object"), "Objects");
+  assert.equal(normalizeGaCategory("people/family"), "People");
+  assert.equal(normalizeGaCategory("transportation"), "Transport");
+});
+
+test("duplicate Ga spellings with different meanings/categories can coexist", () => {
+  const shoulder = buildGaWordData({
+    englishWord: "shoulder",
+    gaWord: "kɔŋ",
+    wordType: "noun",
+    category: "Body",
+    level: "Foundation",
+  });
+  const angle = buildGaWordData({
+    englishWord: "angle",
+    gaWord: "kɔŋ",
+    wordType: "noun",
+    category: "Shapes",
+    level: "Foundation",
+  });
+
+  assert.equal(shoulder.gaWord, angle.gaWord);
+  assert.notEqual(shoulder.category, angle.category);
 });
 
 test("imported Pending and Reviewed words remain blocked from student payloads while Approved passes", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import {
   GA_BULK_IMPORT_TEMPLATE,
@@ -10,6 +10,8 @@ import {
   GA_REVIEW_STATUSES,
   GA_WORD_TYPES,
 } from "@/lib/ga-word-bank";
+
+const MAX_PDF_BYTES = 25 * 1024 * 1024;
 
 type GaSourceRow = {
   id: string;
@@ -45,8 +47,6 @@ type WordForm = {
   wordType: string;
   category: string;
   level: string;
-  sourceId: string;
-  sourcePage: string;
   reviewStatus: string;
   audioStatus: string;
   quizReady: boolean;
@@ -87,8 +87,6 @@ const defaultWordForm: WordForm = {
   wordType: "noun",
   category: "Greetings",
   level: "Foundation",
-  sourceId: "",
-  sourcePage: "",
   reviewStatus: "Pending",
   audioStatus: "Not Started",
   quizReady: false,
@@ -126,16 +124,17 @@ function SelectField({ label, value, options, onChange, allowAll = false }: {
   );
 }
 
-function TextField({ label, value, onChange, placeholder = "" }: {
+function TextField({ label, value, onChange, placeholder = "", inputRef }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  inputRef?: { current: HTMLInputElement | null };
 }) {
   return (
     <label className="block text-xs font-bold uppercase text-slate-400">
       {label}
-      <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600" />
+      <input ref={inputRef} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600" />
     </label>
   );
 }
@@ -156,8 +155,6 @@ function wordFormFromRow(row: GaWordRow): WordForm {
     wordType: row.wordType,
     category: row.category,
     level: row.level,
-    sourceId: row.sourceId ?? "",
-    sourcePage: row.sourcePage === null ? "" : String(row.sourcePage),
     reviewStatus: row.reviewStatus,
     audioStatus: row.audioStatus,
     quizReady: row.quizReady,
@@ -166,15 +163,15 @@ function wordFormFromRow(row: GaWordRow): WordForm {
   };
 }
 
-function wordPayload(form: WordForm) {
+function wordPayload(form: WordForm, sourceId: string | null, sourcePage: number | null) {
   return {
     englishWord: form.englishWord,
     gaWord: form.gaWord,
     wordType: form.wordType,
     category: form.category,
     level: form.level,
-    sourceId: form.sourceId || null,
-    sourcePage: form.sourcePage ? Number(form.sourcePage) : null,
+    sourceId,
+    sourcePage,
     reviewStatus: form.reviewStatus,
     audioStatus: form.audioStatus,
     quizReady: form.quizReady,
@@ -205,8 +202,25 @@ export default function GaWordBankPage() {
   const [bulkPreview, setBulkPreview] = useState<BulkPreview | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkDuplicateStrategy, setBulkDuplicateStrategy] = useState<"skip" | "update">("skip");
+  const [pdfFileName, setPdfFileName] = useState<string>("");
+  const [pdfUploading, setPdfUploading] = useState(false);
+  const editFormRef = useRef<HTMLDivElement | null>(null);
+  const englishWordInputRef = useRef<HTMLInputElement | null>(null);
 
+  const isEditing = editingId !== null;
   const editingWord = useMemo(() => words.find((word) => word.id === editingId) ?? null, [editingId, words]);
+  const activeSource = useMemo(
+    () => sources.find((source) => source.sourceName.trim().toLowerCase() === sourceName.trim().toLowerCase()) ?? sources[0] ?? null,
+    [sources, sourceName],
+  );
+
+  const focusEditForm = useCallback(() => {
+    editFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => {
+      englishWordInputRef.current?.focus();
+      englishWordInputRef.current?.select();
+    }, 200);
+  }, []);
 
   const loadSources = useCallback(async () => {
     const response = await fetch("/api/admin/ga/sources");
@@ -283,19 +297,26 @@ export default function GaWordBankPage() {
   }
 
   async function saveWord() {
+    const resolvedSourceId = activeSource?.id ?? editingWord?.sourceId ?? null;
+    const resolvedSourcePage = editingWord?.sourcePage ?? null;
+    if (!resolvedSourceId) {
+      setMessage("Save a source in Source Library first so words can inherit dictionary reference.");
+      return;
+    }
+
     setSaving(true);
     try {
-      const response = await fetch(editingWord ? `/api/admin/ga/words/${editingWord.id}` : "/api/admin/ga/words", {
-        method: editingWord ? "PATCH" : "POST",
+      const response = await fetch(isEditing ? `/api/admin/ga/words/${editingId}` : "/api/admin/ga/words", {
+        method: isEditing ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(wordPayload(wordForm)),
+        body: JSON.stringify(wordPayload(wordForm, resolvedSourceId, resolvedSourcePage)),
       });
       const payload = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) {
         setMessage(payload?.error ?? "Unable to save Ga word.");
         return;
       }
-      setMessage(editingWord ? "Ga word updated." : "Ga word created.");
+      setMessage(isEditing ? "Ga word updated." : "Ga word created.");
       setEditingId(null);
       setWordForm(defaultWordForm);
       await loadWords(appliedFilters);
@@ -308,6 +329,36 @@ export default function GaWordBankPage() {
     const content = await file.text();
     setBulkText(content);
     setBulkPreview(null);
+  }
+
+  async function uploadPdfSource(file: File) {
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      setMessage("Invalid file type. Please upload a PDF file.");
+      return;
+    }
+    if (file.size > MAX_PDF_BYTES) {
+      setMessage("File too large. Maximum PDF size is 25MB.");
+      return;
+    }
+
+    setPdfFileName(file.name);
+    setPdfUploading(true);
+    setMessage("Uploading PDF...");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/admin/ga/pdf-sources", { method: "POST", body: formData });
+      const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? payload?.message ?? "Upload failed.");
+        return;
+      }
+      setMessage(payload?.message ?? "PDF uploaded for Ga word extraction review.");
+      await loadSources();
+    } finally {
+      setPdfUploading(false);
+    }
   }
 
   function downloadTemplate() {
@@ -369,6 +420,13 @@ export default function GaWordBankPage() {
     setEditingId(row.id);
     setWordForm(wordFormFromRow(row));
     setMessage(null);
+    focusEditForm();
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setWordForm(defaultWordForm);
+    setMessage("Edit cancelled.");
   }
 
   return (
@@ -414,21 +472,14 @@ export default function GaWordBankPage() {
         </div>
       </AdminSectionCard>
 
-      <AdminSectionCard title={editingWord ? "Edit Ga Word" : "Add Ga Word"} eyebrow="Controlled vocabulary">
+      <AdminSectionCard title={isEditing ? "Edit Ga Word" : "Add Ga Word"} eyebrow="Controlled vocabulary">
+        <div ref={editFormRef} className="h-0" aria-hidden="true" />
         <div className="grid gap-3 md:grid-cols-3">
-          <TextField label="English word" value={wordForm.englishWord} onChange={(value) => setWordForm((form) => ({ ...form, englishWord: value }))} />
+          <TextField label="English word" value={wordForm.englishWord} onChange={(value) => setWordForm((form) => ({ ...form, englishWord: value }))} inputRef={englishWordInputRef} />
           <TextField label="Ga word" value={wordForm.gaWord} onChange={(value) => setWordForm((form) => ({ ...form, gaWord: value }))} />
           <SelectField label="Word type" value={wordForm.wordType} options={GA_WORD_TYPES} onChange={(value) => setWordForm((form) => ({ ...form, wordType: value }))} />
           <SelectField label="Category" value={wordForm.category} options={GA_CATEGORIES} onChange={(value) => setWordForm((form) => ({ ...form, category: value }))} />
           <SelectField label="Level" value={wordForm.level} options={GA_LEVELS} onChange={(value) => setWordForm((form) => ({ ...form, level: value }))} />
-          <label className="block text-xs font-bold uppercase text-slate-400">
-            Source
-            <select value={wordForm.sourceId} onChange={(event) => setWordForm((form) => ({ ...form, sourceId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
-              <option value="">No linked source</option>
-              {sources.map((source) => <option key={source.id} value={source.id}>{source.sourceName} · page {source.pageNumber ?? "-"}</option>)}
-            </select>
-          </label>
-          <TextField label="Source page" value={wordForm.sourcePage} onChange={(value) => setWordForm((form) => ({ ...form, sourcePage: value }))} />
           <SelectField label="Review status" value={wordForm.reviewStatus} options={GA_REVIEW_STATUSES} onChange={(value) => setWordForm((form) => ({ ...form, reviewStatus: value }))} />
           <SelectField label="Audio status" value={wordForm.audioStatus} options={GA_AUDIO_STATUSES} onChange={(value) => setWordForm((form) => ({ ...form, audioStatus: value }))} />
           <label className="flex items-center gap-2 text-sm font-bold text-slate-300"><input type="checkbox" checked={wordForm.quizReady} onChange={(event) => setWordForm((form) => ({ ...form, quizReady: event.target.checked }))} /> Quiz ready</label>
@@ -438,8 +489,8 @@ export default function GaWordBankPage() {
           </div>
         </div>
         <div className="mt-4 flex gap-2">
-          <button type="button" onClick={saveWord} disabled={saving} className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{editingWord ? "Update word" : "Add word"}</button>
-          {editingWord ? <button type="button" onClick={() => { setEditingId(null); setWordForm(defaultWordForm); }} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
+          <button type="button" onClick={saveWord} disabled={saving} className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{isEditing ? "Update word" : "Add word"}</button>
+          {isEditing ? <button type="button" onClick={cancelEdit} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
         </div>
       </AdminSectionCard>
 
@@ -460,7 +511,20 @@ export default function GaWordBankPage() {
               }}
             />
           </label>
+          <label className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">
+            Upload PDF
+            <input
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void uploadPdfSource(file);
+              }}
+            />
+          </label>
         </div>
+        {pdfFileName ? <p className="mt-2 text-xs text-slate-400">Selected PDF: {pdfFileName}{pdfUploading ? " (uploading...)" : ""}</p> : null}
         <textarea
           value={bulkText}
           onChange={(event) => { setBulkText(event.target.value); setBulkPreview(null); }}
@@ -536,9 +600,9 @@ export default function GaWordBankPage() {
       <AdminSectionCard title={`Ga Words (${words.length})`} eyebrow="Only Approved words can reach students">
         {loading ? <p className="text-sm text-slate-400">Loading Ga words...</p> : null}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-240 text-left text-xs">
+          <table className="w-full min-w-220 text-left text-xs">
             <thead className="uppercase text-slate-500">
-              <tr><th className="px-2 py-2">English</th><th className="px-2 py-2">Ga</th><th className="px-2 py-2">Type</th><th className="px-2 py-2">Category</th><th className="px-2 py-2">Level</th><th className="px-2 py-2">Source</th><th className="px-2 py-2">Review</th><th className="px-2 py-2">Audio</th><th className="px-2 py-2">Ready</th><th className="px-2 py-2">Action</th></tr>
+              <tr><th className="px-2 py-2">English</th><th className="px-2 py-2">Ga</th><th className="px-2 py-2">Type</th><th className="px-2 py-2">Category</th><th className="px-2 py-2">Level</th><th className="px-2 py-2">Review</th><th className="px-2 py-2">Audio</th><th className="px-2 py-2">Ready</th><th className="px-2 py-2">Action</th></tr>
             </thead>
             <tbody>
               {words.map((word) => (
@@ -548,7 +612,6 @@ export default function GaWordBankPage() {
                   <td className="px-2 py-2">{word.wordType}</td>
                   <td className="px-2 py-2">{word.category}</td>
                   <td className="px-2 py-2">{word.level}</td>
-                  <td className="px-2 py-2">{word.source?.sourceName ?? "-"} · page {word.sourcePage ?? word.source?.pageNumber ?? "-"}</td>
                   <td className="px-2 py-2"><span className={`rounded-full border px-2 py-1 ${word.reviewStatus === "Approved" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>{word.reviewStatus}</span></td>
                   <td className="px-2 py-2">{word.audioStatus}</td>
                   <td className="px-2 py-2">{word.quizReady ? "Quiz" : "-"} {word.storyReady ? "Story" : ""}</td>

@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db";
 import { GA_CATEGORIES, GA_LEVELS, toStudentSafeGaWord } from "@/lib/ga-word-bank";
+import { GA_VOICE_ACTIVITY_TYPES } from "@/lib/ga-voice";
 
 export const GA_LESSON_STATUSES = ["Draft", "Published", "Archived"] as const;
-export const GA_ACTIVITY_TYPES = ["flashcards", "quiz"] as const;
+export const GA_ACTIVITY_TYPES = ["flashcards", "quiz", ...GA_VOICE_ACTIVITY_TYPES] as const;
 export const GA_QUIZ_TYPES = ["english_to_ga", "ga_to_english", "review"] as const;
 
 export const BEGINNER_PACK_1_LESSONS = [
