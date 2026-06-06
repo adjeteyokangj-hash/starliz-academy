@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
-import { createGaSource, listGaSources } from "@/lib/ga-word-bank";
+import { createGaSource, isGaWordSchemaNotReadyError, listGaSources } from "@/lib/ga-word-bank";
 
 const sourceSchema = z.object({
   sourceName: z.string().trim().min(1),
@@ -21,8 +21,15 @@ function serializeSource<T extends { createdAt: Date; updatedAt: Date }>(source:
 export async function GET() {
   const { session, response } = await requireAdmin();
   if (!session) return response;
-  const items = await listGaSources();
-  return NextResponse.json({ items: items.map(serializeSource) });
+  try {
+    const items = await listGaSources();
+    return NextResponse.json({ items: items.map(serializeSource) });
+  } catch (error) {
+    if (isGaWordSchemaNotReadyError(error)) {
+      return NextResponse.json({ items: [], warning: "Ga Source table is not ready yet. Apply migrations to enable full data." });
+    }
+    return NextResponse.json({ error: "Unable to load Ga sources." }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {

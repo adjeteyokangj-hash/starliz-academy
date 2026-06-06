@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
-import { createGaWord, getGaWordMetrics, listGaWords } from "@/lib/ga-word-bank";
+import { createGaWord, getGaWordMetrics, isGaWordSchemaNotReadyError, listGaWords } from "@/lib/ga-word-bank";
 
 const querySchema = z.object({
   q: z.string().optional(),
@@ -51,22 +51,33 @@ export async function GET(request: Request) {
   const { session, response } = await requireAdmin();
   if (!session) return response;
 
-  const { searchParams } = new URL(request.url);
-  const parsed = querySchema.parse(Object.fromEntries(searchParams.entries()));
-  const items = await listGaWords({
-    q: parsed.q,
-    reviewStatus: parsed.reviewStatus,
-    category: parsed.category,
-    level: parsed.level,
-    wordType: parsed.wordType,
-    sourcePage: parsed.sourcePage ? Number(parsed.sourcePage) : undefined,
-    audioStatus: parsed.audioStatus,
-    quizReady: parseBoolean(parsed.quizReady),
-    storyReady: parseBoolean(parsed.storyReady),
-    limit: parsed.limit ? Number(parsed.limit) : undefined,
-  });
-  const metrics = await getGaWordMetrics();
-  return NextResponse.json({ items: items.map(serializeWord), metrics });
+  try {
+    const { searchParams } = new URL(request.url);
+    const parsed = querySchema.parse(Object.fromEntries(searchParams.entries()));
+    const items = await listGaWords({
+      q: parsed.q,
+      reviewStatus: parsed.reviewStatus,
+      category: parsed.category,
+      level: parsed.level,
+      wordType: parsed.wordType,
+      sourcePage: parsed.sourcePage ? Number(parsed.sourcePage) : undefined,
+      audioStatus: parsed.audioStatus,
+      quizReady: parseBoolean(parsed.quizReady),
+      storyReady: parseBoolean(parsed.storyReady),
+      limit: parsed.limit ? Number(parsed.limit) : undefined,
+    });
+    const metrics = await getGaWordMetrics();
+    return NextResponse.json({ items: items.map(serializeWord), metrics });
+  } catch (error) {
+    if (isGaWordSchemaNotReadyError(error)) {
+      return NextResponse.json({
+        items: [],
+        metrics: { totalWords: 0, approvedWords: 0, pendingReview: 0, audioApproved: 0 },
+        warning: "Ga Word tables are not ready yet. Apply migrations to enable full data.",
+      });
+    }
+    return NextResponse.json({ error: "Unable to load Ga words." }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {

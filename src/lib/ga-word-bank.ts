@@ -46,6 +46,16 @@ export type GaWordFilters = {
   limit?: number | null;
 };
 
+export function isGaWordSchemaNotReadyError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("p2021")
+    || (normalized.includes("relation") && (normalized.includes("gaword") || normalized.includes("gasource")) && normalized.includes("does not exist"))
+    || (normalized.includes("table") && (normalized.includes("gaword") || normalized.includes("gasource")) && normalized.includes("does not exist"))
+  );
+}
+
 function cleanText(value: unknown): string {
   return String(value ?? "").trim();
 }

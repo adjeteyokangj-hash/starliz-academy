@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildGaWordData, isGaWordStudentSafe, toStudentSafeGaWord } from "../src/lib/ga-word-bank";
+import { buildGaWordData, isGaWordSchemaNotReadyError, isGaWordStudentSafe, toStudentSafeGaWord } from "../src/lib/ga-word-bank";
 
 const approvedWord = {
   id: "ga-1",
@@ -62,4 +62,10 @@ test("student-safe Ga payload only allows Approved words", () => {
     quizReady: true,
     storyReady: false,
   });
+});
+
+test("Ga schema readiness helper detects missing-table errors", () => {
+  assert.equal(isGaWordSchemaNotReadyError(new Error("P2021: The table `public.GaWord` does not exist in the current database.")), true);
+  assert.equal(isGaWordSchemaNotReadyError(new Error("relation \"GaSource\" does not exist")), true);
+  assert.equal(isGaWordSchemaNotReadyError(new Error("network timeout")), false);
 });

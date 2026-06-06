@@ -16,7 +16,7 @@ export default function AdminHeader() {
   }
 
   return (
-    <header className="relative z-20 border-b border-slate-800 bg-slate-950/92 backdrop-blur-xl lg:sticky lg:top-0 lg:z-30">
+    <header className="relative z-20 border-b border-slate-800 bg-slate-950/92 backdrop-blur-xl">
       <div className="flex min-h-20 flex-col gap-4 px-4 py-4 md:px-6 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-center gap-3">
           <Logo variant="icon" size={36} animation={false} className="pointer-events-none" />
