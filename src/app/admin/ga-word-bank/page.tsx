@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import {
+  GA_BULK_IMPORT_TEMPLATE,
   GA_AUDIO_STATUSES,
   GA_CATEGORIES,
   GA_LEVELS,
@@ -63,6 +64,21 @@ type Filters = {
   audioStatus: string;
   quizReady: string;
   storyReady: string;
+};
+
+type BulkPreviewRow = {
+  rowNumber: number;
+  valid: boolean;
+  duplicateExisting: boolean;
+  errors: string[];
+};
+
+type BulkPreview = {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  duplicateWarnings: number;
+  rows: BulkPreviewRow[];
 };
 
 const defaultWordForm: WordForm = {
@@ -185,6 +201,10 @@ export default function GaWordBankPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<{ totalWords: number; approvedWords: number; pendingReview: number; audioApproved: number } | null>(null);
+  const [bulkText, setBulkText] = useState(GA_BULK_IMPORT_TEMPLATE);
+  const [bulkPreview, setBulkPreview] = useState<BulkPreview | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkDuplicateStrategy, setBulkDuplicateStrategy] = useState<"skip" | "update">("skip");
 
   const editingWord = useMemo(() => words.find((word) => word.id === editingId) ?? null, [editingId, words]);
 
@@ -284,6 +304,67 @@ export default function GaWordBankPage() {
     }
   }
 
+  async function loadBulkFile(file: File) {
+    const content = await file.text();
+    setBulkText(content);
+    setBulkPreview(null);
+  }
+
+  function downloadTemplate() {
+    const blob = new Blob([`${GA_BULK_IMPORT_TEMPLATE}\n`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "ga-word-import-template.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function previewBulkImport() {
+    setBulkLoading(true);
+    try {
+      const response = await fetch("/api/admin/ga/words/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "preview", text: bulkText }),
+      });
+      if (response.status === 401) {
+        window.location.replace("/admin/login?next=/admin/ga-word-bank");
+        return;
+      }
+      const payload = await response.json().catch(() => null) as (BulkPreview & { error?: string }) | null;
+      if (!response.ok || !payload) {
+        setMessage(payload?.error ?? "Unable to preview bulk import.");
+        return;
+      }
+      setBulkPreview(payload);
+      setMessage(`Preview ready: ${payload.validRows} valid, ${payload.invalidRows} invalid.`);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function commitBulkImport() {
+    setBulkLoading(true);
+    try {
+      const response = await fetch("/api/admin/ga/words/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "commit", text: bulkText, duplicateStrategy: bulkDuplicateStrategy }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string; created?: number; updated?: number; skipped?: number } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to import rows.");
+        return;
+      }
+      setMessage(`Bulk import complete. Created ${payload?.created ?? 0}, updated ${payload?.updated ?? 0}, skipped ${payload?.skipped ?? 0}.`);
+      setBulkPreview(null);
+      await loadWords(appliedFilters);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
   function startEdit(row: GaWordRow) {
     setEditingId(row.id);
     setWordForm(wordFormFromRow(row));
@@ -360,6 +441,78 @@ export default function GaWordBankPage() {
           <button type="button" onClick={saveWord} disabled={saving} className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{editingWord ? "Update word" : "Add word"}</button>
           {editingWord ? <button type="button" onClick={() => { setEditingId(null); setWordForm(defaultWordForm); }} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
         </div>
+      </AdminSectionCard>
+
+      <AdminSectionCard title="Bulk Import" eyebrow="CSV/Table importer with preview safeguards">
+        <p className="text-xs text-slate-400">Required columns: englishWord, gaWord, wordType, category, level, sourcePage, reviewStatus, audioStatus, quizReady, storyReady and sourceId or sourceName. Pending/Reviewed rows remain hidden from student APIs.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={downloadTemplate} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">Download CSV template</button>
+          <button type="button" onClick={() => { setBulkText(`${GA_BULK_IMPORT_TEMPLATE}\n`); setBulkPreview(null); }} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">Reset to template</button>
+          <label className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">
+            Upload CSV
+            <input
+              type="file"
+              accept=".csv,text/csv,text/plain"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void loadBulkFile(file);
+              }}
+            />
+          </label>
+        </div>
+        <textarea
+          value={bulkText}
+          onChange={(event) => { setBulkText(event.target.value); setBulkPreview(null); }}
+          rows={8}
+          className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
+          placeholder="Paste CSV or tab-separated rows with a header row"
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button type="button" onClick={previewBulkImport} disabled={bulkLoading} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Preview import</button>
+          <label className="text-xs font-bold uppercase text-slate-400">
+            Duplicate strategy
+            <select value={bulkDuplicateStrategy} onChange={(event) => setBulkDuplicateStrategy(event.target.value as "skip" | "update")} className="ml-2 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white">
+              <option value="skip">Skip duplicates</option>
+              <option value="update">Update existing duplicates</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={commitBulkImport}
+            disabled={bulkLoading || !bulkPreview || bulkPreview.validRows === 0}
+            className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
+          >
+            Import valid rows
+          </button>
+        </div>
+
+        {bulkPreview ? (
+          <div className="mt-4 space-y-3">
+            <div className="grid gap-2 text-xs md:grid-cols-4">
+              <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-slate-300">Total rows: <span className="font-black text-white">{bulkPreview.totalRows}</span></p>
+              <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-slate-300">Valid rows: <span className="font-black text-emerald-300">{bulkPreview.validRows}</span></p>
+              <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-slate-300">Invalid rows: <span className="font-black text-amber-300">{bulkPreview.invalidRows}</span></p>
+              <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-slate-300">Duplicate warnings: <span className="font-black text-cyan-300">{bulkPreview.duplicateWarnings}</span></p>
+            </div>
+            <div className="max-h-56 overflow-auto rounded-xl border border-slate-800">
+              <table className="w-full min-w-200 text-left text-xs">
+                <thead className="uppercase text-slate-500">
+                  <tr><th className="px-2 py-2">Row</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Notes</th></tr>
+                </thead>
+                <tbody>
+                  {bulkPreview.rows.map((row) => (
+                    <tr key={row.rowNumber} className="border-t border-slate-800 text-slate-300">
+                      <td className="px-2 py-2">{row.rowNumber}</td>
+                      <td className="px-2 py-2">{row.valid ? (row.duplicateExisting ? "Valid (duplicate existing)" : "Valid") : "Invalid"}</td>
+                      <td className="px-2 py-2">{row.errors.length ? row.errors.join(" ") : (row.duplicateExisting ? "Will apply duplicate strategy." : "Ready")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
       </AdminSectionCard>
 
       <AdminSectionCard title="Search & Filters" eyebrow="Admin-only vocabulary review">

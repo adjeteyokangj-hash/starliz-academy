@@ -5,6 +5,22 @@ export const GA_CATEGORIES = ["Greetings", "Time", "Days", "Numbers", "Family", 
 export const GA_LEVELS = ["Foundation", "Beginner 1", "Beginner 2", "Intermediate"] as const;
 export const GA_REVIEW_STATUSES = ["Pending", "Reviewed", "Approved", "Rejected"] as const;
 export const GA_AUDIO_STATUSES = ["Not Started", "Draft", "Needs Review", "Approved"] as const;
+export const GA_BULK_IMPORT_HEADERS = [
+  "englishWord",
+  "gaWord",
+  "wordType",
+  "category",
+  "level",
+  "sourcePage",
+  "reviewStatus",
+  "audioStatus",
+  "quizReady",
+  "storyReady",
+  "notes",
+  "sourceId",
+  "sourceName",
+] as const;
+export const GA_BULK_IMPORT_TEMPLATE = "englishWord,gaWord,wordType,category,level,sourcePage,reviewStatus,audioStatus,quizReady,storyReady,notes,sourceName";
 
 export type GaReviewStatus = typeof GA_REVIEW_STATUSES[number];
 export type GaWordInput = {
@@ -46,6 +62,53 @@ export type GaWordFilters = {
   limit?: number | null;
 };
 
+export type GaBulkImportDuplicateStrategy = "skip" | "update";
+
+export type GaBulkImportSource = {
+  id: string;
+  sourceName: string;
+};
+
+export type GaBulkImportExistingWord = {
+  id: string;
+  englishWord: string;
+  gaWord: string;
+  sourcePage: number | null;
+};
+
+export type GaBulkImportParsedRow = {
+  rowNumber: number;
+  values: Record<string, string>;
+};
+
+export type GaBulkImportValidRow = {
+  rowNumber: number;
+  duplicateKey: string;
+  duplicateExisting: boolean;
+  existingWordId: string | null;
+  data: ReturnType<typeof buildGaWordData>;
+};
+
+export type GaBulkImportInvalidRow = {
+  rowNumber: number;
+  errors: string[];
+};
+
+export type GaBulkImportPreview = {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  duplicateWarnings: number;
+  rows: {
+    rowNumber: number;
+    valid: boolean;
+    duplicateExisting: boolean;
+    errors: string[];
+  }[];
+  validItems: GaBulkImportValidRow[];
+  invalidItems: GaBulkImportInvalidRow[];
+};
+
 export function isGaWordSchemaNotReadyError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const normalized = message.toLowerCase();
@@ -58,6 +121,49 @@ export function isGaWordSchemaNotReadyError(error: unknown): boolean {
 
 function cleanText(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function normalizeHeader(value: string): string {
+  return value.replace(/\s+/g, "").trim().toLowerCase();
+}
+
+function parseDelimitedLine(line: string, delimiter: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      const next = line[index + 1];
+      if (inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+        continue;
+      }
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === delimiter && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  values.push(current.trim());
+  return values;
+}
+
+function parseImportBoolean(value: string): boolean | null {
+  const normalized = cleanText(value).toLowerCase();
+  if (["true", "1", "yes", "y"].includes(normalized)) return true;
+  if (["false", "0", "no", "n", ""].includes(normalized)) return false;
+  return null;
+}
+
+function buildDuplicateKey(englishWord: string, gaWord: string, sourcePage: number): string {
+  return `${englishWord.trim().toLowerCase()}::${gaWord.trim().toLowerCase()}::${String(sourcePage)}`;
 }
 
 function optionalText(value: unknown): string | null {
@@ -75,6 +181,204 @@ function assertAllowed(value: string, allowed: readonly string[], label: string)
 function numberOrNull(value: number | null | undefined): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Math.max(0, Math.round(value));
+}
+
+export function parseGaBulkImportText(text: string): GaBulkImportParsedRow[] {
+  const rows = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (rows.length === 0) return [];
+
+  const delimiter = rows[0].includes("\t") ? "\t" : ",";
+  const headers = parseDelimitedLine(rows[0], delimiter).map((header) => normalizeHeader(header));
+  const headerMap = new Map<string, string>([
+    ["englishword", "englishWord"],
+    ["gaword", "gaWord"],
+    ["wordtype", "wordType"],
+    ["category", "category"],
+    ["level", "level"],
+    ["sourcepage", "sourcePage"],
+    ["reviewstatus", "reviewStatus"],
+    ["audiostatus", "audioStatus"],
+    ["quizready", "quizReady"],
+    ["storyready", "storyReady"],
+    ["notes", "notes"],
+    ["sourceid", "sourceId"],
+    ["sourcename", "sourceName"],
+  ]);
+
+  return rows.slice(1).map((line, rowIndex) => {
+    const columns = parseDelimitedLine(line, delimiter);
+    const values: Record<string, string> = {};
+    for (let index = 0; index < headers.length; index += 1) {
+      const mappedHeader = headerMap.get(headers[index]);
+      if (!mappedHeader) continue;
+      values[mappedHeader] = columns[index] ?? "";
+    }
+    return { rowNumber: rowIndex + 2, values };
+  });
+}
+
+export function previewGaBulkImport(
+  parsedRows: GaBulkImportParsedRow[],
+  sources: GaBulkImportSource[],
+  existingWords: GaBulkImportExistingWord[],
+): GaBulkImportPreview {
+  const requiredFields = [
+    "englishWord",
+    "gaWord",
+    "wordType",
+    "category",
+    "level",
+    "sourcePage",
+    "reviewStatus",
+    "audioStatus",
+    "quizReady",
+    "storyReady",
+  ] as const;
+  const sourceById = new Map(sources.map((source) => [source.id, source.id]));
+  const sourceByName = new Map(sources.map((source) => [source.sourceName.trim().toLowerCase(), source.id]));
+  const existingByKey = new Map<string, GaBulkImportExistingWord>();
+  for (const item of existingWords) {
+    if (item.sourcePage === null) continue;
+    const key = buildDuplicateKey(item.englishWord, item.gaWord, item.sourcePage);
+    existingByKey.set(key, item);
+  }
+
+  const uploadSeen = new Map<string, number>();
+  const validItems: GaBulkImportValidRow[] = [];
+  const invalidItems: GaBulkImportInvalidRow[] = [];
+  const rows: GaBulkImportPreview["rows"] = [];
+  let duplicateWarnings = 0;
+
+  for (const row of parsedRows) {
+    const errors: string[] = [];
+    for (const field of requiredFields) {
+      if (!cleanText(row.values[field])) {
+        errors.push(`${field} is required.`);
+      }
+    }
+
+    const sourceIdRaw = cleanText(row.values.sourceId);
+    const sourceNameRaw = cleanText(row.values.sourceName);
+    let sourceId: string | null = null;
+    if (!sourceIdRaw && !sourceNameRaw) {
+      errors.push("Either sourceId or sourceName is required.");
+    } else if (sourceIdRaw) {
+      if (!sourceById.has(sourceIdRaw)) {
+        errors.push(`sourceId '${sourceIdRaw}' was not found.`);
+      } else {
+        sourceId = sourceIdRaw;
+      }
+    } else if (sourceNameRaw) {
+      const matched = sourceByName.get(sourceNameRaw.toLowerCase());
+      if (!matched) {
+        errors.push(`sourceName '${sourceNameRaw}' was not found.`);
+      } else {
+        sourceId = matched;
+      }
+    }
+
+    const sourcePageValue = Number(cleanText(row.values.sourcePage));
+    if (!Number.isInteger(sourcePageValue) || sourcePageValue < 0) {
+      errors.push("sourcePage must be a valid non-negative integer.");
+    }
+
+    const quizReady = parseImportBoolean(row.values.quizReady);
+    if (quizReady === null) {
+      errors.push("quizReady must be true/false.");
+    }
+    const storyReady = parseImportBoolean(row.values.storyReady);
+    if (storyReady === null) {
+      errors.push("storyReady must be true/false.");
+    }
+
+    let data: ReturnType<typeof buildGaWordData> | null = null;
+    if (errors.length === 0) {
+      try {
+        data = buildGaWordData({
+          englishWord: row.values.englishWord,
+          gaWord: row.values.gaWord,
+          wordType: row.values.wordType,
+          category: row.values.category,
+          level: row.values.level,
+          sourceId,
+          sourcePage: sourcePageValue,
+          reviewStatus: row.values.reviewStatus,
+          audioStatus: row.values.audioStatus,
+          quizReady: quizReady ?? false,
+          storyReady: storyReady ?? false,
+          notes: cleanText(row.values.notes) || null,
+        });
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : "Invalid row values.");
+      }
+    }
+
+    if (!data || errors.length > 0) {
+      invalidItems.push({ rowNumber: row.rowNumber, errors });
+      rows.push({ rowNumber: row.rowNumber, valid: false, duplicateExisting: false, errors });
+      continue;
+    }
+
+    const duplicateKey = buildDuplicateKey(data.englishWord, data.gaWord, sourcePageValue);
+    const existingMatch = existingByKey.get(duplicateKey);
+    if (existingMatch) duplicateWarnings += 1;
+    const priorRow = uploadSeen.get(duplicateKey);
+    if (priorRow) {
+      duplicateWarnings += 1;
+      const duplicateErrors = [`Duplicate row in this import batch (already appears on row ${priorRow}).`];
+      invalidItems.push({ rowNumber: row.rowNumber, errors: duplicateErrors });
+      rows.push({ rowNumber: row.rowNumber, valid: false, duplicateExisting: false, errors: duplicateErrors });
+      continue;
+    }
+    uploadSeen.set(duplicateKey, row.rowNumber);
+
+    const validRow: GaBulkImportValidRow = {
+      rowNumber: row.rowNumber,
+      duplicateKey,
+      duplicateExisting: Boolean(existingMatch),
+      existingWordId: existingMatch?.id ?? null,
+      data,
+    };
+    validItems.push(validRow);
+    rows.push({
+      rowNumber: row.rowNumber,
+      valid: true,
+      duplicateExisting: Boolean(existingMatch),
+      errors: [],
+    });
+  }
+
+  return {
+    totalRows: parsedRows.length,
+    validRows: validItems.length,
+    invalidRows: invalidItems.length,
+    duplicateWarnings,
+    rows,
+    validItems,
+    invalidItems,
+  };
+}
+
+export function planGaBulkImportCommit(items: GaBulkImportValidRow[], strategy: GaBulkImportDuplicateStrategy) {
+  let creates = 0;
+  let updates = 0;
+  let skips = 0;
+  for (const item of items) {
+    if (item.duplicateExisting) {
+      if (strategy === "update") {
+        updates += 1;
+      } else {
+        skips += 1;
+      }
+      continue;
+    }
+    creates += 1;
+  }
+  return { creates, updates, skips };
 }
 
 export function buildGaWordData(input: GaWordInput) {

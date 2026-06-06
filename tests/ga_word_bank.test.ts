@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildGaWordData, isGaWordSchemaNotReadyError, isGaWordStudentSafe, toStudentSafeGaWord } from "../src/lib/ga-word-bank";
+import {
+  buildGaWordData,
+  isGaWordSchemaNotReadyError,
+  isGaWordStudentSafe,
+  parseGaBulkImportText,
+  planGaBulkImportCommit,
+  previewGaBulkImport,
+  toStudentSafeGaWord,
+} from "../src/lib/ga-word-bank";
 
 const approvedWord = {
   id: "ga-1",
@@ -68,4 +76,60 @@ test("Ga schema readiness helper detects missing-table errors", () => {
   assert.equal(isGaWordSchemaNotReadyError(new Error("P2021: The table `public.GaWord` does not exist in the current database.")), true);
   assert.equal(isGaWordSchemaNotReadyError(new Error("relation \"GaSource\" does not exist")), true);
   assert.equal(isGaWordSchemaNotReadyError(new Error("network timeout")), false);
+});
+
+test("bulk import preview flags missing required fields", () => {
+  const parsed = parseGaBulkImportText([
+    "englishWord,gaWord,wordType,category,level,sourcePage,reviewStatus,audioStatus,quizReady,storyReady,notes,sourceName",
+    "hello,,expression,Greetings,Foundation,7,Approved,Not Started,true,false,,Kasahorow Ga Children's Dictionary",
+  ].join("\n"));
+  const preview = previewGaBulkImport(parsed, [{ id: "source-1", sourceName: "Kasahorow Ga Children's Dictionary" }], []);
+  assert.equal(preview.totalRows, 1);
+  assert.equal(preview.validRows, 0);
+  assert.equal(preview.invalidRows, 1);
+  assert.match(preview.invalidItems[0].errors.join(" "), /gaWord is required/i);
+});
+
+test("bulk import preview rejects unsupported statuses and categories", () => {
+  const parsed = parseGaBulkImportText([
+    "englishWord,gaWord,wordType,category,level,sourcePage,reviewStatus,audioStatus,quizReady,storyReady,notes,sourceName",
+    "hello,Helo,expression,InvalidCategory,Foundation,7,Verified,Ready,true,false,,Kasahorow Ga Children's Dictionary",
+  ].join("\n"));
+  const preview = previewGaBulkImport(parsed, [{ id: "source-1", sourceName: "Kasahorow Ga Children's Dictionary" }], []);
+  assert.equal(preview.validRows, 0);
+  assert.equal(preview.invalidRows, 1);
+  assert.match(preview.invalidItems[0].errors.join(" "), /Category must be one of/i);
+});
+
+test("bulk import duplicate handling supports skip and update planning", () => {
+  const parsed = parseGaBulkImportText([
+    "englishWord,gaWord,wordType,category,level,sourcePage,reviewStatus,audioStatus,quizReady,storyReady,notes,sourceName",
+    "one,ekome,adjective,Numbers,Foundation,18,Approved,Not Started,true,false,,Kasahorow Ga Children's Dictionary",
+    "two,enyɔ,adjective,Numbers,Foundation,18,Approved,Not Started,true,false,,Kasahorow Ga Children's Dictionary",
+  ].join("\n"));
+  const preview = previewGaBulkImport(
+    parsed,
+    [{ id: "source-1", sourceName: "Kasahorow Ga Children's Dictionary" }],
+    [{ id: "existing-1", englishWord: "one", gaWord: "ekome", sourcePage: 18 }],
+  );
+  assert.equal(preview.validRows, 2);
+  assert.equal(preview.invalidRows, 0);
+  assert.equal(preview.duplicateWarnings, 1);
+
+  const skipPlan = planGaBulkImportCommit(preview.validItems, "skip");
+  assert.deepEqual(skipPlan, { creates: 1, updates: 0, skips: 1 });
+
+  const updatePlan = planGaBulkImportCommit(preview.validItems, "update");
+  assert.deepEqual(updatePlan, { creates: 1, updates: 1, skips: 0 });
+});
+
+test("imported Pending and Reviewed words remain blocked from student payloads while Approved passes", () => {
+  const pending = toStudentSafeGaWord({ ...approvedWord, id: "ga-2", reviewStatus: "Pending" });
+  const reviewed = toStudentSafeGaWord({ ...approvedWord, id: "ga-3", reviewStatus: "Reviewed" });
+  const approved = toStudentSafeGaWord({ ...approvedWord, id: "ga-4", reviewStatus: "Approved" });
+
+  assert.equal(pending, null);
+  assert.equal(reviewed, null);
+  assert.ok(approved);
+  assert.equal(approved?.id, "ga-4");
 });
