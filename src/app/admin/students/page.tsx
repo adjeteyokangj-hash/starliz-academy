@@ -116,6 +116,7 @@ export default function StudentsPage() {
           className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white placeholder:text-slate-600"
         />
         <select
+          aria-label="Filter by accuracy"
           value={accuracyFilter}
           onChange={(event) => {
             setAccuracyFilter(event.target.value);
@@ -129,6 +130,7 @@ export default function StudentsPage() {
           <option value="no-data">No data</option>
         </select>
         <select
+          aria-label="Filter by key stage"
           value={keyStageFilter}
           onChange={(event) => {
             const nextStage = event.target.value;
@@ -147,6 +149,7 @@ export default function StudentsPage() {
           {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
         </select>
         <select
+          aria-label="Filter by year group"
           value={yearGroupFilter}
           onChange={(event) => {
             const nextYear = event.target.value;
@@ -173,7 +176,7 @@ export default function StudentsPage() {
       ) : null}
       {students.length > 0 ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-left text-sm">
+          <table className="w-full min-w-275 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-800 text-xs uppercase text-slate-500">
                 <th className="px-3 py-3">Student</th>

@@ -202,7 +202,7 @@ export default function AdminSidebar() {
 
         <div ref={navRef} className="relative mt-8 min-h-0 flex-1 space-y-1 overflow-y-auto pr-2">
           {canScrollUp && (
-            <div className="sticky top-0 z-10 -mx-2 flex justify-center bg-gradient-to-b from-slate-950 to-transparent py-2">
+            <div className="sticky top-0 z-10 -mx-2 flex justify-center bg-linear-to-b from-slate-950 to-transparent py-2">
               <div className="text-xs text-slate-500">Scroll up</div>
             </div>
           )}
@@ -215,7 +215,7 @@ export default function AdminSidebar() {
                   <button
                     type="button"
                     onClick={() => toggleGroup(group.title)}
-                    aria-expanded={!collapsed}
+                    aria-expanded={!collapsed ? "true" : "false"}
                     aria-controls={groupDomId(group.title)}
                     className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.14em] transition ${
                       activeGroup ? "text-indigo-200" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"
@@ -235,7 +235,7 @@ export default function AdminSidebar() {
           </nav>
 
           {canScrollDown && (
-            <div className="sticky bottom-0 z-10 -mx-2 flex justify-center bg-gradient-to-t from-slate-950 to-transparent py-2">
+            <div className="sticky bottom-0 z-10 -mx-2 flex justify-center bg-linear-to-t from-slate-950 to-transparent py-2">
               <div className="text-xs text-slate-500">Scroll down</div>
             </div>
           )}
