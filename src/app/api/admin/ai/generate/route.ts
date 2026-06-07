@@ -45,6 +45,13 @@ import {
   type Subject,
   skillsForSubjectAndYear,
 } from "@/lib/curriculum";
+import {
+  classifyGenerationDiagnosticOutcome,
+  validateGeneratedTupleContainment,
+  validateStrictRequestTuple,
+  type DiagnosticOutcomeCode,
+  type GenerationRequestTuple,
+} from "@/lib/ai/generator-tuple-validation";
 
 const BATCH_SIZE = 12;
 const OPENAI_MODEL = "gpt-4o-mini";
@@ -95,17 +102,6 @@ type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" |
 type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuation" | "writing" | "vocabulary" | "comprehension";
 type VisualGenerationMode = "none" | "planned_only" | "generate_now";
 type ScienceDiscipline = "chemistry" | "physics" | "biology";
-type DiagnosticOutcomeCode = "provider_unavailable" | "invalid_generated_content" | "difficulty_mismatch" | "subject_contamination" | "policy_mismatch" | "save_blocked";
-
-type GenerationRequestTuple = {
-  yearGroup: string;
-  keyStage: string;
-  subject: string;
-  strand: EnglishStrand | null;
-  skillFocus: string;
-  difficulty: number;
-  itemCount: number;
-};
 
 type VisualGenerationPlan = {
   enabled: boolean;
@@ -119,37 +115,6 @@ function truncateForDiagnostics(value: string, maxLength = 1200) {
   const safe = String(value ?? "");
   if (safe.length <= maxLength) return safe;
   return `${safe.slice(0, maxLength)}... [truncated ${safe.length - maxLength} chars]`;
-}
-
-function classifyGenerationDiagnosticOutcome(input: {
-  errorCode?: string;
-  status?: number;
-  message?: string;
-  reason?: string;
-  details?: unknown;
-}): DiagnosticOutcomeCode {
-  const errorCode = String(input.errorCode ?? "").toLowerCase();
-  const reason = String(input.reason ?? "").toLowerCase();
-  const message = String(input.message ?? "").toLowerCase();
-  const detailsText = input.details && typeof input.details === "object"
-    ? JSON.stringify(input.details).toLowerCase()
-    : String(input.details ?? "").toLowerCase();
-  const combined = `${errorCode} ${reason} ${message} ${detailsText}`;
-
-  if (input.status && input.status >= 500) return "provider_unavailable";
-  if (errorCode === "model_error" || errorCode === "missing_openai_key" || combined.includes("openai") || combined.includes("provider")) {
-    return "provider_unavailable";
-  }
-  if (combined.includes("difficulty") || combined.includes("too easy") || combined.includes("too hard")) {
-    return "difficulty_mismatch";
-  }
-  if (combined.includes("contamination") || combined.includes("subject drift") || combined.includes("subject containment")) {
-    return "subject_contamination";
-  }
-  if (combined.includes("unsupported") || combined.includes("policy") || combined.includes("mapping") || combined.includes("exam board")) {
-    return "policy_mismatch";
-  }
-  return "invalid_generated_content";
 }
 
 function resolveScienceDiscipline(subject: Subject, skillFocus: string): ScienceDiscipline | null {
@@ -2172,6 +2137,36 @@ export async function POST(req: Request) {
   const safeLevel = Math.max(1, Math.min(maxLevel, Number.isFinite(level) ? level : 1));
   const safeYearGroup = normalizeYearGroup(yearGroup || ageGroup, keyStage);
   const safeKeyStage = keyStageForYearGroup(safeYearGroup);
+  const requestTuple: GenerationRequestTuple = {
+    yearGroup: safeYearGroup,
+    keyStage: safeKeyStage,
+    subject: sourceSubject,
+    strand: englishStrand,
+    skillFocus: resolvedSkillFocus,
+    difficulty: safeLevel,
+    itemCount: count,
+  };
+  const diagnosticEnvelope = (diagnosticOutcome: DiagnosticOutcomeCode) => ({
+    diagnosticOutcome,
+    requestTuple,
+  });
+  const strictTupleValidation = validateStrictRequestTuple({
+    requestTuple,
+    rawYearGroup: yearGroup,
+    rawKeyStage: keyStage,
+    sourceSubject,
+    isEnglishParent,
+  });
+  if (!strictTupleValidation.ok) {
+    return NextResponse.json({
+      success: false,
+      error: strictTupleValidation.message,
+      aiMode,
+      keySource,
+      details: strictTupleValidation.details,
+      ...diagnosticEnvelope(strictTupleValidation.diagnosticOutcome),
+    }, { status: 422 });
+  }
   const requestedStudentId = typeof body.studentId === "string" ? body.studentId.trim() : "";
   const studentGraph = requestedStudentId
     ? await buildAcademicSourceForStudent(requestedStudentId)
@@ -2239,19 +2234,6 @@ export async function POST(req: Request) {
   const curriculumFramework = selectedExamBoard.curriculumFramework || examBoardRecommendation.curriculumFramework;
   const examBoardConfidence = selectedExamBoard.examBoardConfidence;
   const examBoardReason = selectedExamBoard.examBoardReason;
-  const requestTuple: GenerationRequestTuple = {
-    yearGroup: safeYearGroup,
-    keyStage: safeKeyStage,
-    subject: sourceSubject,
-    strand: englishStrand,
-    skillFocus: resolvedSkillFocus,
-    difficulty: safeLevel,
-    itemCount: count,
-  };
-  const diagnosticEnvelope = (diagnosticOutcome: DiagnosticOutcomeCode) => ({
-    diagnosticOutcome,
-    requestTuple,
-  });
 
   const envVisualEnabled = process.env.AI_VISUAL_GENERATION_ENABLED === "1";
   const envVisualMode = (process.env.AI_VISUAL_GENERATION_DEFAULT_MODE ?? "planned_only").trim().toLowerCase();
@@ -2363,14 +2345,15 @@ export async function POST(req: Request) {
       subject: pathSubject,
       skillFocus: resolvedSkillFocus,
     });
+    const pathValidationReason = String(pathValidation.reason ?? "Invalid curriculum path.");
     const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
-      message: pathValidation.reason,
+      message: pathValidationReason,
       details: { category: "unsupported_path" },
       status: 422,
     });
     return NextResponse.json({
       success: false,
-      error: pathValidation.reason,
+      error: pathValidationReason,
       aiMode,
       keySource,
       generationMetadata: {
@@ -2401,7 +2384,7 @@ export async function POST(req: Request) {
         providerUsed: "local_fallback",
         openAiKeyFoundServerSide: false,
         fallbackReason: "subject_mapping_failure",
-        validationReason: pathValidation.reason,
+        validationReason: pathValidationReason,
         mappingStatus: "unmapped",
         subjectRoute: `${pathSubject}->${generationType}`,
         fallbackTemplate: null,
@@ -3106,6 +3089,58 @@ export async function POST(req: Request) {
       validation = validated.validation;
       generatedMetadataSnapshot = validated.generatedMetadataSnapshot;
       normalizedMetadataSnapshot = validated.normalizedMetadataSnapshot;
+    }
+
+    const tupleContainment = validateGeneratedTupleContainment({
+      requestTuple,
+      content: parsed,
+      validation,
+    });
+    if (!tupleContainment.ok) {
+      return NextResponse.json({
+        success: false,
+        aiMode,
+        keySource,
+        errorCode: "tuple_containment_failed",
+        error: tupleContainment.message,
+        message: tupleContainment.message,
+        details: {
+          ...tupleContainment.details,
+          diagnostics: {
+            ...generationDiagnostics,
+            requestTuple,
+            diagnosticOutcome: tupleContainment.diagnosticOutcome,
+          },
+        },
+        generationMetadata: buildMetadata({
+          generationSource: "mock",
+          provider: "openai",
+          model: OPENAI_MODEL,
+          fallbackReason: "tuple_containment_failed",
+          validation: { ...validation, valid: false },
+          openAiAttempted: true,
+          openAiSucceeded: true,
+        }),
+        generationType,
+        subject: sourceSubject,
+        yearGroup: safeYearGroup,
+        keyStage: safeKeyStage,
+        skillFocus: resolvedSkillFocus,
+        topic,
+        activityType,
+        strand: englishStrand,
+        generationDebug: buildGenerationDebug({
+          providerAttempted: true,
+          providerUsed: "openai",
+          openAiKeyFoundServerSide: true,
+          fallbackReason: "tuple_containment_failed",
+          validationReason: tupleContainment.message,
+          mappingStatus: "mapped",
+          fallbackTemplate: null,
+          diagnosticOutcome: tupleContainment.diagnosticOutcome,
+        }),
+        ...diagnosticEnvelope(tupleContainment.diagnosticOutcome),
+      }, { status: 422 });
     }
 
     const difficultyProfile = DIFFICULTY_PROFILE[safeLevel] ?? DIFFICULTY_PROFILE[3];

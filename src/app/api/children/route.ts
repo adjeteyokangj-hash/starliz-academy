@@ -129,6 +129,7 @@ export async function POST(request: Request) {
     const subjectPolicy = resolveSubjectSelectionPolicy({
       planName: currentPricingPlan?.name ?? subscription?.planKey ?? "free",
       childLimit: currentPricingPlan?.childLimit ?? 1,
+      yearGroup: body.yearGroup,
     });
     const selectedSubjects = applySubjectSelectionPolicy({
       selected: sanitizeSelectedSubjects(body.selectedSubjects),

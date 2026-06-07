@@ -381,8 +381,12 @@ export function autoQuickLevelFinderSubjectsForYearGroup(yearGroup: string | nul
   const normalizedYear = normalizeYearGroup(yearGroup) ?? "Year 1";
   const yearNumber = yearGroupNumber(normalizedYear);
 
-  if (yearNumber <= 6) {
+  if (yearNumber <= 2) {
     return ["maths", "reading", "spelling"];
+  }
+
+  if (yearNumber <= 6) {
+    return ["maths", "reading", "spelling", "science"];
   }
 
   return ["maths", "english", "science"];

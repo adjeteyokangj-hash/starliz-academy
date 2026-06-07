@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, FormEvent, useEffect } from 'react';
+import { useState, FormEvent, useEffect, useMemo } from 'react';
 import Button from '@/components/ui/Button';
 import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup } from '@/lib/curriculum';
+import { parentSubjectsForYearGroup } from '@/lib/subject-selection';
 
 type ChildFormData = {
   name: string;
@@ -33,22 +34,6 @@ type SubjectPolicy = {
   maxSubjects: number;
   requiredSubjectKeys: string[];
 };
-
-const SUBJECT_OPTIONS: Array<{ key: string; label: string; core: boolean }> = [
-  { key: 'english', label: 'English', core: true },
-  { key: 'maths', label: 'Maths', core: true },
-  { key: 'science', label: 'Science', core: true },
-  { key: 'history', label: 'History', core: false },
-  { key: 'geography', label: 'Geography', core: false },
-  { key: 'french', label: 'French', core: false },
-  { key: 'spanish', label: 'Spanish', core: false },
-  { key: 'german', label: 'German', core: false },
-  { key: 'mandarin', label: 'Mandarin', core: false },
-  { key: 'computing', label: 'Computing', core: false },
-  { key: 'citizenship-pshe', label: 'Citizenship / PSHE', core: false },
-  { key: 'pe-health', label: 'PE / Health Education', core: false },
-  { key: 'gcse-practice', label: 'GCSE Practice', core: false },
-];
 
 const AVATAR_OPTIONS = [
   { value: 'star',    emoji: '⭐', label: 'Star' },
@@ -162,25 +147,43 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
   const subjectLevels = ['Foundation', 'Core', 'Developing', 'Secure', 'Greater Depth'];
   const expectedKeyStage = formData.yearGroup ? keyStageForYearGroup(formData.yearGroup) : null;
   const keyStageMismatch = Boolean(expectedKeyStage && formData.keyStageLevel && expectedKeyStage !== formData.keyStageLevel);
+  const availableSubjectOptions = useMemo(
+    () => parentSubjectsForYearGroup(formData.yearGroup || null),
+    [formData.yearGroup]
+  );
+
+  function normalizeSelectionForYearGroup(selected: string[], yearGroup: string): string[] {
+    const allowedKeys = new Set<string>(parentSubjectsForYearGroup(yearGroup).map((subject) => subject.key));
+    const requiredInYear = subjectPolicy.requiredSubjectKeys.filter((key) => allowedKeys.has(key));
+    const kept = selected.filter((key) => allowedKeys.has(key));
+    const merged = Array.from(new Set([...requiredInYear, ...kept]));
+    return merged.slice(0, Math.min(subjectPolicy.maxSubjects, allowedKeys.size));
+  }
 
   useEffect(() => {
     let cancelled = false;
     async function loadPolicy() {
-      const response = await fetch('/api/parent/subject-selection-policy', { credentials: 'include' });
+      const query = formData.yearGroup ? `?yearGroup=${encodeURIComponent(formData.yearGroup)}` : '';
+      const response = await fetch(`/api/parent/subject-selection-policy${query}`, { credentials: 'include' });
       if (!response.ok || cancelled) return;
       const payload = (await response.json()) as { policy?: SubjectPolicy };
       if (!payload.policy) return;
       setSubjectPolicy(payload.policy);
       setFormData((current) => {
-        const merged = Array.from(new Set([...payload.policy!.requiredSubjectKeys, ...current.selectedSubjects]));
-        return { ...current, selectedSubjects: merged.slice(0, payload.policy!.maxSubjects) };
+        const allowedKeys = new Set<string>(parentSubjectsForYearGroup(current.yearGroup || null).map((subject) => subject.key));
+        const requiredInYear = payload.policy!.requiredSubjectKeys.filter((key) => allowedKeys.has(key));
+        const merged = Array.from(new Set([
+          ...requiredInYear,
+          ...current.selectedSubjects.filter((key) => allowedKeys.has(key)),
+        ]));
+        return { ...current, selectedSubjects: merged.slice(0, Math.min(payload.policy!.maxSubjects, allowedKeys.size)) };
       });
     }
     void loadPolicy();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [formData.yearGroup]);
 
   function getAgeRange(ageYears: number): '5-7' | '8-10' {
     return ageYears >= 8 ? '8-10' : '5-7';
@@ -307,11 +310,13 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
             value={formData.yearGroup}
             onChange={(e) => {
               const nextYear = e.target.value;
+              const nextSubjects = normalizeSelectionForYearGroup(formData.selectedSubjects, nextYear);
               setFormData({
                 ...formData,
                 yearGroup: nextYear,
                 schoolYear: nextYear,
                 keyStageLevel: nextYear ? keyStageForYearGroup(nextYear) : formData.keyStageLevel,
+                selectedSubjects: nextSubjects,
               });
             }}
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
@@ -437,10 +442,10 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           Subject selection *
         </label>
         <p className="mb-2 text-xs text-slate-400">
-          Select up to {subjectPolicy.maxSubjects} subjects for this term. English counts as one subject and includes reading, spelling, writing, grammar, vocabulary, comprehension, phonics, and speaking/listening.
+          Select up to {subjectPolicy.maxSubjects} subjects for this term. Subject availability adapts to the selected year group. English counts as one subject and includes reading, spelling, writing, grammar, vocabulary, comprehension, phonics, and speaking/listening.
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
-          {SUBJECT_OPTIONS.map((subject) => {
+          {availableSubjectOptions.map((subject) => {
             const checked = formData.selectedSubjects.includes(subject.key);
             const required = subjectPolicy.requiredSubjectKeys.includes(subject.key);
             const limitReached = !checked && formData.selectedSubjects.length >= subjectPolicy.maxSubjects;

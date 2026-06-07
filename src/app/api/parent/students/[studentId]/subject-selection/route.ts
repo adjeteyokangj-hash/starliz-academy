@@ -5,8 +5,8 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import {
   ENGLISH_STRANDS,
-  PARENT_SUBJECTS,
   applySubjectSelectionPolicy,
+  parentSubjectsForYearGroup,
   resolveSubjectSelectionPolicy,
   sanitizeSelectedSubjects,
   selectedSubjectsToFocusText,
@@ -44,6 +44,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ studentId:
     where: { id: studentId, parentId: parentScope.parentId, archived: false },
     select: {
       id: true,
+      yearGroup: true,
       studentProfile: {
         select: {
           subjectFocus: true,
@@ -68,6 +69,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ studentId:
   const policy = resolveSubjectSelectionPolicy({
     planName: currentPricingPlan?.name ?? subscription?.planKey ?? "free",
     childLimit: currentPricingPlan?.childLimit ?? 1,
+    yearGroup: child.yearGroup,
   });
 
   const profileJson = parseProfileJson(child.studentProfile?.aiLearningProfileJson ?? null);
@@ -84,7 +86,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ studentId:
     selectedSubjects: selected,
     englishStrands: ENGLISH_STRANDS,
     policy,
-    subjects: PARENT_SUBJECTS,
+    subjects: parentSubjectsForYearGroup(child.yearGroup),
   });
 }
 
@@ -100,7 +102,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ stu
   const { studentId } = await params;
   const child = await prisma.childProfile.findFirst({
     where: { id: studentId, parentId: parentScope.parentId, archived: false },
-    select: { id: true },
+    select: { id: true, yearGroup: true },
   });
   if (!child) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
@@ -123,6 +125,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ stu
   const policy = resolveSubjectSelectionPolicy({
     planName: currentPricingPlan?.name ?? subscription?.planKey ?? "free",
     childLimit: currentPricingPlan?.childLimit ?? 1,
+    yearGroup: child.yearGroup,
   });
 
   const validated = applySubjectSelectionPolicy({

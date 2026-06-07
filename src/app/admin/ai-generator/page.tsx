@@ -39,6 +39,7 @@ import {
   type ExamBoardRecommendation,
 } from "@/lib/ai/exam-board-resolver";
 import type { VisualAsset } from "@/lib/ai/visual-generation";
+import { isKnownDiagnosticOutcome } from "@/lib/ai/generator-tuple-validation";
 import { uploadMediaFile } from "@/lib/upload-client";
 import {
   adaptLegacyQueryToContract,
@@ -678,18 +679,7 @@ function formatGeneratorFailureMessage(payload: {
 }
 
 function normalizeDiagnosticOutcome(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.trim();
-  if (!normalized) return undefined;
-  const allowed = new Set([
-    "provider_unavailable",
-    "invalid_generated_content",
-    "difficulty_mismatch",
-    "subject_contamination",
-    "policy_mismatch",
-    "save_blocked",
-  ]);
-  return allowed.has(normalized) ? normalized : undefined;
+  return isKnownDiagnosticOutcome(value) ? value : undefined;
 }
 
 function recommendItemCount(input: {

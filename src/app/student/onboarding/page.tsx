@@ -197,7 +197,7 @@ export default function StudentOnboardingPage() {
         </p>
 
         <ol className="mt-5 space-y-2 text-sm text-slate-200">
-          <li>1. Year 1-6: Maths, Reading, Spelling • Year 7-11: Maths, English, Science</li>
+          <li>1. Quick Level Finder adapts subjects automatically to your year group</li>
           <li>2. Complete your Quick Level Finder</li>
           <li>3. AI builds your learning path</li>
           <li>4. Lessons unlock automatically</li>

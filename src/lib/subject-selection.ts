@@ -1,3 +1,5 @@
+import { normalizeYearGroup } from "@/lib/curriculum";
+
 export type ParentSubjectKey =
   | "english"
   | "maths"
@@ -61,6 +63,54 @@ export const PARENT_SUBJECTS: Array<{ key: ParentSubjectKey; label: string; core
   { key: "gcse-practice", label: "GCSE Practice", core: false },
 ];
 
+const RECEPTION_KS1_PARENT_SUBJECTS: ParentSubjectKey[] = ["english", "maths"];
+const KS2_PARENT_SUBJECTS: ParentSubjectKey[] = [
+  "english",
+  "maths",
+  "science",
+  "history",
+  "geography",
+  "computing",
+  "citizenship-pshe",
+  "pe-health",
+  "french",
+];
+const KS3_PARENT_SUBJECTS: ParentSubjectKey[] = [
+  "english",
+  "maths",
+  "science",
+  "history",
+  "geography",
+  "computing",
+  "citizenship-pshe",
+  "pe-health",
+  "french",
+  "spanish",
+  "german",
+  "mandarin",
+];
+const KS4_PARENT_SUBJECTS: ParentSubjectKey[] = PARENT_SUBJECTS.map((subject) => subject.key);
+
+function allowedParentSubjectKeysForYearGroup(yearGroup: string | null | undefined): ParentSubjectKey[] {
+  const normalized = normalizeYearGroup(yearGroup);
+  if (!normalized) return KS4_PARENT_SUBJECTS;
+  if (normalized === "Reception" || normalized === "Year 1" || normalized === "Year 2") {
+    return RECEPTION_KS1_PARENT_SUBJECTS;
+  }
+  if (["Year 3", "Year 4", "Year 5", "Year 6"].includes(normalized)) {
+    return KS2_PARENT_SUBJECTS;
+  }
+  if (["Year 7", "Year 8", "Year 9"].includes(normalized)) {
+    return KS3_PARENT_SUBJECTS;
+  }
+  return KS4_PARENT_SUBJECTS;
+}
+
+export function parentSubjectsForYearGroup(yearGroup: string | null | undefined): Array<{ key: ParentSubjectKey; label: string; core: boolean }> {
+  const allowedKeys = new Set<ParentSubjectKey>(allowedParentSubjectKeysForYearGroup(yearGroup));
+  return PARENT_SUBJECTS.filter((subject) => allowedKeys.has(subject.key));
+}
+
 const SUBJECT_KEY_SET = new Set<string>(PARENT_SUBJECTS.map((subject) => subject.key));
 
 function normalizePlanName(value: string | null | undefined): string {
@@ -82,13 +132,17 @@ function maxSubjectsFromPlan(planName: string | null | undefined, childLimit: nu
 export function resolveSubjectSelectionPolicy(input: {
   planName?: string | null;
   childLimit?: number | null;
+  yearGroup?: string | null;
 }): SubjectSelectionPolicy {
-  const maxSubjects = maxSubjectsFromPlan(input.planName, input.childLimit);
+  const allowedSubjectKeys = allowedParentSubjectKeysForYearGroup(input.yearGroup);
+  const maxSubjects = Math.min(maxSubjectsFromPlan(input.planName, input.childLimit), allowedSubjectKeys.length);
+  const requiredSubjectKeys: ParentSubjectKey[] = ["english", "maths"];
+  const optionalSubjectKeys = allowedSubjectKeys.filter((subject) => !requiredSubjectKeys.includes(subject));
   return {
     minSubjects: 2,
     maxSubjects,
-    requiredSubjectKeys: ["english", "maths"],
-    optionalSubjectKeys: PARENT_SUBJECTS.filter((subject) => !["english", "maths"].includes(subject.key)).map((subject) => subject.key),
+    requiredSubjectKeys,
+    optionalSubjectKeys,
     mathsCompulsory: true,
     englishCompulsory: true,
     allowMidTermChanges: true,
@@ -114,8 +168,15 @@ export function applySubjectSelectionPolicy(input: {
 }): { selected: ParentSubjectKey[]; errors: string[] } {
   const errors: string[] = [];
   const normalized = sanitizeSelectedSubjects(input.selected);
+  const allowedSet = new Set<ParentSubjectKey>([
+    ...input.policy.requiredSubjectKeys,
+    ...input.policy.optionalSubjectKeys,
+  ]);
 
-  const selected = [...normalized];
+  const selected = normalized.filter((key) => allowedSet.has(key));
+  if (selected.length < normalized.length) {
+    errors.push("Some selected subjects are not available for the chosen year group.");
+  }
   for (const required of input.policy.requiredSubjectKeys) {
     if (!selected.includes(required)) selected.unshift(required);
   }

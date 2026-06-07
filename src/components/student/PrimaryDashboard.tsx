@@ -106,7 +106,7 @@ export default function PrimaryDashboard({
                 : "Your placement check is still pending. Complete Quick Level Finder to unlock the right learning level."}
           </p>
           <ol className="mt-4 space-y-2 text-sm font-semibold text-slate-700">
-            <li>1. Year 1-6: Maths, Reading, Spelling • Year 7-11: Maths, English, Science</li>
+            <li>1. Quick Level Finder chooses the right subject mix for your year group</li>
             <li>2. Complete your Quick Level Finder</li>
             <li>3. AI builds your learning path</li>
             <li>4. Lessons unlock automatically</li>

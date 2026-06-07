@@ -3,9 +3,9 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
-import { PARENT_SUBJECTS, resolveSubjectSelectionPolicy } from "@/lib/subject-selection";
+import { parentSubjectsForYearGroup, resolveSubjectSelectionPolicy } from "@/lib/subject-selection";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
 
@@ -25,15 +25,18 @@ export async function GET() {
     legacyPlanKey: subscription?.planKey ?? null,
   });
 
+  const yearGroup = new URL(request.url).searchParams.get("yearGroup");
+
   const policy = resolveSubjectSelectionPolicy({
     planName: currentPricingPlan?.name ?? subscription?.planKey ?? "free",
     childLimit: currentPricingPlan?.childLimit ?? 1,
+    yearGroup,
   });
 
   return NextResponse.json({
     ok: true,
     policy,
-    subjects: PARENT_SUBJECTS,
+    subjects: parentSubjectsForYearGroup(yearGroup),
     plan: {
       name: currentPricingPlan?.name ?? "Free",
       key: subscription?.planKey ?? "free",

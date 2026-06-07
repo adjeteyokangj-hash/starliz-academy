@@ -15,8 +15,7 @@ import {
   shouldApplyExamBoardTag,
   type Subject,
 } from "@/lib/curriculum";
-
-type DiagnosticOutcomeCode = "provider_unavailable" | "invalid_generated_content" | "difficulty_mismatch" | "subject_contamination" | "policy_mismatch" | "save_blocked";
+import type { DiagnosticOutcomeCode } from "@/lib/ai/generator-tuple-validation";
 
 type SaveRequestTuple = {
   yearGroup: string | null;
@@ -262,7 +261,9 @@ export async function POST(req: Request) {
       yearGroup: body.yearGroup ?? null,
       keyStage: body.keyStage ?? null,
       subject: String(body.type ?? ""),
-      strand: null,
+      strand: typeof (body as Record<string, unknown>).englishStrand === "string"
+        ? String((body as Record<string, unknown>).englishStrand)
+        : null,
       skillFocus: body.skillFocus ?? "",
       difficulty: body.difficulty,
       itemCount: Array.isArray(rawItems) ? rawItems.length : rawItems ? 1 : 0,
