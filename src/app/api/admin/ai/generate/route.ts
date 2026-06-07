@@ -95,6 +95,17 @@ type PromptType = "spelling" | "maths" | "reading" | "punctuation" | "grammar" |
 type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuation" | "writing" | "vocabulary" | "comprehension";
 type VisualGenerationMode = "none" | "planned_only" | "generate_now";
 type ScienceDiscipline = "chemistry" | "physics" | "biology";
+type DiagnosticOutcomeCode = "provider_unavailable" | "invalid_generated_content" | "difficulty_mismatch" | "subject_contamination" | "policy_mismatch" | "save_blocked";
+
+type GenerationRequestTuple = {
+  yearGroup: string;
+  keyStage: string;
+  subject: string;
+  strand: EnglishStrand | null;
+  skillFocus: string;
+  difficulty: number;
+  itemCount: number;
+};
 
 type VisualGenerationPlan = {
   enabled: boolean;
@@ -108,6 +119,37 @@ function truncateForDiagnostics(value: string, maxLength = 1200) {
   const safe = String(value ?? "");
   if (safe.length <= maxLength) return safe;
   return `${safe.slice(0, maxLength)}... [truncated ${safe.length - maxLength} chars]`;
+}
+
+function classifyGenerationDiagnosticOutcome(input: {
+  errorCode?: string;
+  status?: number;
+  message?: string;
+  reason?: string;
+  details?: unknown;
+}): DiagnosticOutcomeCode {
+  const errorCode = String(input.errorCode ?? "").toLowerCase();
+  const reason = String(input.reason ?? "").toLowerCase();
+  const message = String(input.message ?? "").toLowerCase();
+  const detailsText = input.details && typeof input.details === "object"
+    ? JSON.stringify(input.details).toLowerCase()
+    : String(input.details ?? "").toLowerCase();
+  const combined = `${errorCode} ${reason} ${message} ${detailsText}`;
+
+  if (input.status && input.status >= 500) return "provider_unavailable";
+  if (errorCode === "model_error" || errorCode === "missing_openai_key" || combined.includes("openai") || combined.includes("provider")) {
+    return "provider_unavailable";
+  }
+  if (combined.includes("difficulty") || combined.includes("too easy") || combined.includes("too hard")) {
+    return "difficulty_mismatch";
+  }
+  if (combined.includes("contamination") || combined.includes("subject drift") || combined.includes("subject containment")) {
+    return "subject_contamination";
+  }
+  if (combined.includes("unsupported") || combined.includes("policy") || combined.includes("mapping") || combined.includes("exam board")) {
+    return "policy_mismatch";
+  }
+  return "invalid_generated_content";
 }
 
 function resolveScienceDiscipline(subject: Subject, skillFocus: string): ScienceDiscipline | null {
@@ -1971,6 +2013,8 @@ export async function POST(req: Request) {
         openAiAttempted: false,
         openAiSucceeded: false,
       },
+      diagnosticOutcome: "invalid_generated_content",
+      requestTuple: null,
       details: { category: "validation", stage: "request-body" },
     }, { status: 400 });
   }
@@ -1979,6 +2023,28 @@ export async function POST(req: Request) {
   const keySource = openAiConfig.keySource;
 
   const requestedSubject = (body.subject ?? body.type) as string;
+  const requestedCount = body.itemCount ?? body.numberOfItems ?? body.count;
+  const requestedLevel = body.difficulty ?? body.level;
+  const provisionalYearGroup = typeof body.targetLearningYearGroup === "string"
+    ? body.targetLearningYearGroup
+    : typeof body.yearGroup === "string"
+      ? body.yearGroup
+      : "Year 1";
+  const provisionalKeyStage = typeof body.targetLearningKeyStage === "string"
+    ? body.targetLearningKeyStage
+    : typeof body.keyStage === "string"
+      ? body.keyStage
+      : "KS1";
+  const provisionalSkillFocus = typeof body.skillFocus === "string" ? body.skillFocus : "";
+  const provisionalRequestTuple: GenerationRequestTuple = {
+    yearGroup: provisionalYearGroup,
+    keyStage: provisionalKeyStage,
+    subject: String(requestedSubject ?? ""),
+    strand: null,
+    skillFocus: provisionalSkillFocus,
+    difficulty: Math.max(1, Math.min(5, Number.isFinite(Number(requestedLevel)) ? Number(requestedLevel) : 1)),
+    itemCount: Math.max(1, Math.min(10, Number(requestedCount ?? BATCH_SIZE))),
+  };
   const normalizedSubject = normalizeSubject(String(requestedSubject ?? ""));
   if (!normalizedSubject) {
     return NextResponse.json({
@@ -1998,6 +2064,8 @@ export async function POST(req: Request) {
         openAiAttempted: false,
         openAiSucceeded: false,
       },
+      diagnosticOutcome: "policy_mismatch",
+      requestTuple: provisionalRequestTuple,
       details: {
         category: "unsupported_subject",
         supportedSubjects: Object.keys(GENERATION_CONTENT_TYPE_BY_SUBJECT),
@@ -2025,6 +2093,11 @@ export async function POST(req: Request) {
         openAiAttempted: false,
         openAiSucceeded: false,
       },
+      diagnosticOutcome: "policy_mismatch",
+      requestTuple: {
+        ...provisionalRequestTuple,
+        subject: sourceSubject,
+      },
       details: {
         category: "validation_error",
         field: "englishStrand",
@@ -2032,8 +2105,6 @@ export async function POST(req: Request) {
       },
     }, { status: 422 });
   }
-  const requestedCount = body.itemCount ?? body.numberOfItems ?? body.count;
-  const requestedLevel = body.difficulty ?? body.level;
   const rawYearGroup = typeof body.targetLearningYearGroup === "string"
     ? body.targetLearningYearGroup
     : typeof body.yearGroup === "string"
@@ -2120,6 +2191,11 @@ export async function POST(req: Request) {
 
   const allowedSubjectsForYear = aiGeneratorSubjectsForYearGroup(safeYearGroup);
   if (!allowedSubjectsForYear.includes(sourceSubject)) {
+    const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
+      message: `${sourceSubject} is not available for ${safeYearGroup}.`,
+      details: { category: "unsupported_subject_for_year" },
+      status: 422,
+    });
     return NextResponse.json({
       success: false,
       error: `${sourceSubject} is not available for ${safeYearGroup}.`,
@@ -2131,6 +2207,7 @@ export async function POST(req: Request) {
         subject: sourceSubject,
         allowedSubjects: allowedSubjectsForYear,
       },
+      ...diagnosticEnvelope(diagnosticOutcome),
     }, { status: 422 });
   }
 
@@ -2162,6 +2239,19 @@ export async function POST(req: Request) {
   const curriculumFramework = selectedExamBoard.curriculumFramework || examBoardRecommendation.curriculumFramework;
   const examBoardConfidence = selectedExamBoard.examBoardConfidence;
   const examBoardReason = selectedExamBoard.examBoardReason;
+  const requestTuple: GenerationRequestTuple = {
+    yearGroup: safeYearGroup,
+    keyStage: safeKeyStage,
+    subject: sourceSubject,
+    strand: englishStrand,
+    skillFocus: resolvedSkillFocus,
+    difficulty: safeLevel,
+    itemCount: count,
+  };
+  const diagnosticEnvelope = (diagnosticOutcome: DiagnosticOutcomeCode) => ({
+    diagnosticOutcome,
+    requestTuple,
+  });
 
   const envVisualEnabled = process.env.AI_VISUAL_GENERATION_ENABLED === "1";
   const envVisualMode = (process.env.AI_VISUAL_GENERATION_DEFAULT_MODE ?? "planned_only").trim().toLowerCase();
@@ -2198,6 +2288,11 @@ export async function POST(req: Request) {
     subject: sourceSubject,
   });
   if (examBoardRequired && !safeExamBoard) {
+    const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
+      message: "GCSE content requires an exam board.",
+      details: { category: "validation_error", field: "examBoard" },
+      status: 422,
+    });
     return NextResponse.json({
       success: false,
       error: "GCSE content requires an exam board.",
@@ -2220,6 +2315,7 @@ export async function POST(req: Request) {
         field: "examBoard",
         allowed: ["AQA", "Edexcel", "OCR", "WJEC / Eduqas", "CCEA", "General GCSE"],
       },
+      ...diagnosticEnvelope(diagnosticOutcome),
     }, { status: 422 });
   }
 
@@ -2235,6 +2331,11 @@ export async function POST(req: Request) {
   })();
   const allowedSkillsForPath = skillsForSubjectAndYear(pathSubject, safeYearGroup);
   if (resolvedSkillFocus && allowedSkillsForPath.length > 0 && !allowedSkillsForPath.includes(resolvedSkillFocus)) {
+    const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
+      message: `Skill focus \"${resolvedSkillFocus}\" is not mapped for ${pathSubject} in ${safeYearGroup}.`,
+      details: { category: "unsupported_skill_for_subject_year" },
+      status: 422,
+    });
     return NextResponse.json({
       success: false,
       error: `Skill focus \"${resolvedSkillFocus}\" is not mapped for ${pathSubject} in ${safeYearGroup}.`,
@@ -2247,6 +2348,7 @@ export async function POST(req: Request) {
         skillFocus: resolvedSkillFocus,
         allowedSkills: allowedSkillsForPath,
       },
+      ...diagnosticEnvelope(diagnosticOutcome),
     }, { status: 422 });
   }
   const pathValidation = isValidCurriculumPath({
@@ -2260,6 +2362,11 @@ export async function POST(req: Request) {
       yearGroup: safeYearGroup,
       subject: pathSubject,
       skillFocus: resolvedSkillFocus,
+    });
+    const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
+      message: pathValidation.reason,
+      details: { category: "unsupported_path" },
+      status: 422,
     });
     return NextResponse.json({
       success: false,
@@ -2306,6 +2413,8 @@ export async function POST(req: Request) {
         topic,
         activityType,
         strand: englishStrand,
+        requestTuple,
+        diagnosticOutcome,
       },
       details: {
         category: "unsupported_path",
@@ -2317,6 +2426,7 @@ export async function POST(req: Request) {
         skillFocus: resolvedSkillFocus,
         mappedTopics,
       },
+      ...diagnosticEnvelope(diagnosticOutcome),
     }, { status: 422 });
   }
 
@@ -2381,15 +2491,16 @@ export async function POST(req: Request) {
     subjectContainment?: "passed" | "failed";
     contaminatedItemsRepaired?: number;
     contaminatedItemsRejected?: number;
+    diagnosticOutcome?: DiagnosticOutcomeCode;
   }) => ({
     ...input,
     subjectRoute,
+    requestTuple,
     ...sharedGenerationFields,
   });
   console.info("[admin-ai-generate] request", {
     ...generationDiagnostics,
-    count,
-    difficulty: safeLevel,
+    requestTuple,
     topic,
   });
 
@@ -2423,6 +2534,12 @@ export async function POST(req: Request) {
     status: number;
     openAiAttempted: boolean;
   }) => {
+    const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
+      errorCode: input.code,
+      message: input.message,
+      reason: input.reason,
+      status: input.status,
+    });
     const generationMetadata = buildMetadata({
       generationSource: "mock",
       provider: "openai",
@@ -2459,7 +2576,9 @@ export async function POST(req: Request) {
         validationReason: input.message,
         mappingStatus: "mapped",
         fallbackTemplate: null,
+        diagnosticOutcome,
       }),
+      ...diagnosticEnvelope(diagnosticOutcome),
     }, { status: input.status });
   };
 
@@ -2790,7 +2909,15 @@ export async function POST(req: Request) {
     } catch (fallbackError) {
       console.error("[admin-ai-generate] non-spelling fallback failed:", fallbackError);
     }
+    const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
+      errorCode: failure.errorCode,
+      message: failure.message,
+      reason: String(failure.details.reason ?? failure.errorCode),
+      details: failure.details,
+      status: failure.status,
+    });
     return NextResponse.json({
+      ...diagnosticEnvelope(diagnosticOutcome),
       success: false,
       aiMode,
       keySource,
@@ -2825,6 +2952,7 @@ export async function POST(req: Request) {
         validationReason: failure.message,
         mappingStatus: "mapped",
         fallbackTemplate: null,
+        diagnosticOutcome,
       }),
       details: failure.details,
     }, { status: failure.status });
@@ -3180,9 +3308,20 @@ export async function POST(req: Request) {
       skillFocus: resolvedSkillFocus,
       generationType,
     });
+    const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
+      errorCode: failure.errorCode,
+      message: failure.message,
+      reason: String(failure.details.reason ?? failure.errorCode),
+      details: failure.details,
+      status: failure.status,
+    });
     console.error("[admin-ai-generate] OpenAI generation failed:", error);
     console.error("[admin-ai-generate] Error code:", failure.errorCode);
-    console.error("[admin-ai-generate] Generation diagnostics:", generationDiagnostics);
+    console.error("[admin-ai-generate] Generation diagnostics:", {
+      ...generationDiagnostics,
+      requestTuple,
+      diagnosticOutcome,
+    });
 
     await writeAuditLogSafely({
       actorUserId: session.userId,
@@ -3197,7 +3336,11 @@ export async function POST(req: Request) {
         prompt: userPrompt,
         error: failure.message,
         errorCode: failure.errorCode,
-        diagnostics: generationDiagnostics,
+        diagnostics: {
+          ...generationDiagnostics,
+          requestTuple,
+          diagnosticOutcome,
+        },
       },
     });
 
@@ -3380,6 +3523,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(
       {
+        ...diagnosticEnvelope(diagnosticOutcome),
         success: false,
         aiMode,
         keySource,
@@ -3414,6 +3558,7 @@ export async function POST(req: Request) {
           validationReason: failure.message,
           mappingStatus: "mapped",
           fallbackTemplate: null,
+          diagnosticOutcome,
         }),
         details: {
           ...failure.details,
@@ -3423,7 +3568,11 @@ export async function POST(req: Request) {
           provider: "openai",
           model: OPENAI_MODEL,
           stage: "generation",
-          diagnostics: generationDiagnostics,
+          diagnostics: {
+            ...generationDiagnostics,
+            requestTuple,
+            diagnosticOutcome,
+          },
         },
       },
       { status: failure.status },

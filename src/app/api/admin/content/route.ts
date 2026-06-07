@@ -16,6 +16,18 @@ import {
   type Subject,
 } from "@/lib/curriculum";
 
+type DiagnosticOutcomeCode = "provider_unavailable" | "invalid_generated_content" | "difficulty_mismatch" | "subject_contamination" | "policy_mismatch" | "save_blocked";
+
+type SaveRequestTuple = {
+  yearGroup: string | null;
+  keyStage: string | null;
+  subject: string;
+  strand: string | null;
+  skillFocus: string;
+  difficulty: number;
+  itemCount: number;
+};
+
 function isReadingComprehensionSkill(skillFocus: string | null | undefined): boolean {
   const normalized = String(skillFocus ?? "").trim().toLowerCase();
   return normalized === "reading comprehension" || normalized.includes("reading comprehension");
@@ -81,6 +93,23 @@ function normalizeToken(value: unknown): string {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function classifySaveDiagnosticOutcome(message: unknown): DiagnosticOutcomeCode {
+  const normalized = String(message ?? "").toLowerCase();
+  if (normalized.includes("difficulty") || normalized.includes("too easy") || normalized.includes("too hard")) {
+    return "difficulty_mismatch";
+  }
+  if (normalized.includes("contamination") || normalized.includes("subject drift") || normalized.includes("subject containment")) {
+    return "subject_contamination";
+  }
+  if (normalized.includes("unsupported") || normalized.includes("map") || normalized.includes("exam board")) {
+    return "policy_mismatch";
+  }
+  if (normalized.includes("invalid")) {
+    return "invalid_generated_content";
+  }
+  return "save_blocked";
 }
 
 function contentItemSignature(item: unknown): string {
@@ -228,20 +257,39 @@ export async function POST(req: Request) {
 
   try {
     const body = saveContentSchema.parse(await req.json());
+    const rawItems = extractGeneratedItems(body.items);
+    const requestTuple: SaveRequestTuple = {
+      yearGroup: body.yearGroup ?? null,
+      keyStage: body.keyStage ?? null,
+      subject: String(body.type ?? ""),
+      strand: null,
+      skillFocus: body.skillFocus ?? "",
+      difficulty: body.difficulty,
+      itemCount: Array.isArray(rawItems) ? rawItems.length : rawItems ? 1 : 0,
+    };
     
     const normalizedSubject = normalizeSubject(body.type);
     if (!normalizedSubject) {
       return NextResponse.json(
-        { error: `Unsupported subject type: ${body.type}` },
+        {
+          error: `Unsupported subject type: ${body.type}`,
+          diagnosticOutcome: "policy_mismatch",
+          requestTuple,
+        },
         { status: 422 },
       );
     }
+    requestTuple.subject = normalizedSubject;
 
     // Map explicit subject into legacy content type used by student routes.
     const legacyType = mapSubjectToLegacyContentType(normalizedSubject);
     if (!legacyType) {
       return NextResponse.json(
-        { error: `Unable to map subject to content type: ${body.type}` },
+        {
+          error: `Unable to map subject to content type: ${body.type}`,
+          diagnosticOutcome: "policy_mismatch",
+          requestTuple,
+        },
         { status: 422 },
       );
     }
@@ -250,7 +298,11 @@ export async function POST(req: Request) {
     
     if (body.difficulty > maxDifficulty) {
       return NextResponse.json(
-        { error: `Difficulty must be between 1 and ${maxDifficulty} for ${normalizedSubject}.` },
+        {
+          error: `Difficulty must be between 1 and ${maxDifficulty} for ${normalizedSubject}.`,
+          diagnosticOutcome: "difficulty_mismatch",
+          requestTuple,
+        },
         { status: 422 },
       );
     }
@@ -273,7 +325,11 @@ export async function POST(req: Request) {
     if (legacyType === "spelling") {
       const spellingContract = validateSpellingContentContract(contentItems);
       if (!spellingContract.ok) {
-        return NextResponse.json({ error: spellingContract.reason ?? "Invalid spelling content." }, { status: 422 });
+        return NextResponse.json({
+          error: spellingContract.reason ?? "Invalid spelling content.",
+          diagnosticOutcome: "invalid_generated_content",
+          requestTuple,
+        }, { status: 422 });
       }
     }
     const quality = validateAiContentQuality({
@@ -284,7 +340,11 @@ export async function POST(req: Request) {
       items: contentItems,
     });
     if (!quality.ok) {
-      return NextResponse.json({ error: quality.error }, { status: 422 });
+      return NextResponse.json({
+        error: quality.error,
+        diagnosticOutcome: classifySaveDiagnosticOutcome(quality.error),
+        requestTuple,
+      }, { status: 422 });
     }
 
     // ── StarLiz question formula validation ──────────────────────────────────
@@ -311,6 +371,8 @@ export async function POST(req: Request) {
             {
               error: `Question formula validation failed: ${hardErrors.join("; ")}`,
               formulaErrors: hardErrors,
+              diagnosticOutcome: "save_blocked",
+              requestTuple,
             },
             { status: 422 },
           );
@@ -364,6 +426,8 @@ export async function POST(req: Request) {
           message: "Duplicate lesson already exists in Content Library.",
           item: duplicate,
           warnings: [...warnings, ...questionFormulaWarnings],
+          diagnosticOutcome: "save_blocked",
+          requestTuple,
         }, { status: 200 });
       }
     }
@@ -451,6 +515,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ item, warnings: [...warnings, ...questionFormulaWarnings] }, { status: 201 });
   } catch (error) {
     console.error("Content save error:", error);
-    return NextResponse.json({ error: "Invalid content payload." }, { status: 400 });
+    return NextResponse.json({
+      error: "Invalid content payload.",
+      diagnosticOutcome: "save_blocked",
+      requestTuple: null,
+    }, { status: 400 });
   }
 }

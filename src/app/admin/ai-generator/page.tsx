@@ -677,6 +677,21 @@ function formatGeneratorFailureMessage(payload: {
   return rawMessage;
 }
 
+function normalizeDiagnosticOutcome(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+  const allowed = new Set([
+    "provider_unavailable",
+    "invalid_generated_content",
+    "difficulty_mismatch",
+    "subject_contamination",
+    "policy_mismatch",
+    "save_blocked",
+  ]);
+  return allowed.has(normalized) ? normalized : undefined;
+}
+
 function recommendItemCount(input: {
   yearGroup: string;
   keyStage: string;
@@ -867,6 +882,15 @@ export default function AiGeneratorPage() {
     reason?: string;
     model?: string;
     provider?: string;
+    requestTuple?: {
+      yearGroup?: string;
+      keyStage?: string;
+      subject?: string;
+      strand?: string | null;
+      skillFocus?: string;
+      difficulty?: number;
+      itemCount?: number;
+    };
   } | null>(null);
   const [generationHeartbeat, setGenerationHeartbeat] = useState<string | null>(null);
   const generateRequestIdRef = useRef(0);
@@ -1301,6 +1325,16 @@ export default function AiGeneratorPage() {
       const payload = parsed.payload as {
         success?: boolean;
         errorCode?: string;
+        diagnosticOutcome?: string;
+        requestTuple?: {
+          yearGroup?: string;
+          keyStage?: string;
+          subject?: string;
+          strand?: string | null;
+          skillFocus?: string;
+          difficulty?: number;
+          itemCount?: number;
+        };
         message?: string;
         error?: string;
         details?: unknown;
@@ -1323,14 +1357,18 @@ export default function AiGeneratorPage() {
       setGenerationPhase("validating-content");
       if (!response.ok || payload.success === false) {
         const errorMsg = formatGeneratorFailureMessage(payload);
+        const diagnosticOutcome = normalizeDiagnosticOutcome(payload.diagnosticOutcome);
         console.warn("[admin-ai-generator] preview failed", {
           status: response.status,
           errorCode: payload.errorCode ?? "generation_error",
+          diagnosticOutcome: diagnosticOutcome ?? null,
+          requestTuple: payload.requestTuple ?? null,
           details: payload.details,
         });
         setGenerationDiagnostics((current) => current ? {
           ...current,
-          reason: payload.errorCode === "model_error" ? "provider_unavailable" : "validation_failure",
+          reason: diagnosticOutcome ?? (payload.errorCode === "model_error" ? "provider_unavailable" : "validation_failure"),
+          requestTuple: payload.requestTuple,
         } : current);
         setError(errorMsg);
       } else {
@@ -1511,15 +1549,63 @@ export default function AiGeneratorPage() {
           prefillContract: prefillContractContext,
         }),
       });
-      const payload = await response.json();
+      const payload = await response.json() as {
+        error?: string;
+        duplicate?: boolean;
+        message?: string;
+        warnings?: unknown[];
+        item?: { id?: string };
+        diagnosticOutcome?: string;
+        requestTuple?: {
+          yearGroup?: string;
+          keyStage?: string;
+          subject?: string;
+          strand?: string | null;
+          skillFocus?: string;
+          difficulty?: number;
+          itemCount?: number;
+        };
+      };
       if (!response.ok) {
-        console.warn("[admin-ai-generator] save blocked", payload.error ?? "Save failed.");
+        const diagnosticOutcome = normalizeDiagnosticOutcome(payload.diagnosticOutcome) ?? "save_blocked";
+        console.warn("[admin-ai-generator] save blocked", {
+          error: payload.error ?? "Save failed.",
+          diagnosticOutcome,
+          requestTuple: payload.requestTuple ?? null,
+        });
+        setGenerationDiagnostics((current) => current ? {
+          ...current,
+          reason: diagnosticOutcome,
+          requestTuple: payload.requestTuple,
+        } : {
+          rawResponse: "",
+          parseStage: "json",
+          statusCode: response.status,
+          contentType: "application/json",
+          reason: diagnosticOutcome,
+          requestTuple: payload.requestTuple,
+        });
         setError(payload.error ?? "Save failed.");
       } else {
         const warnings = Array.isArray(payload.warnings)
           ? payload.warnings.filter((entry: unknown): entry is string => typeof entry === "string")
           : [];
         const duplicate = payload.duplicate === true;
+        if (duplicate) {
+          const diagnosticOutcome = normalizeDiagnosticOutcome(payload.diagnosticOutcome) ?? "save_blocked";
+          setGenerationDiagnostics((current) => current ? {
+            ...current,
+            reason: diagnosticOutcome,
+            requestTuple: payload.requestTuple,
+          } : {
+            rawResponse: "",
+            parseStage: "json",
+            statusCode: response.status,
+            contentType: "application/json",
+            reason: diagnosticOutcome,
+            requestTuple: payload.requestTuple,
+          });
+        }
         setMessage(
           duplicate
             ? (warnings.length
@@ -1801,9 +1887,29 @@ export default function AiGeneratorPage() {
         setError(parsed.message ?? "Regeneration failed due to malformed AI output.");
         return;
       }
-      const payload = parsed.payload as { success?: boolean; error?: string; content?: { items?: unknown[] }; meta?: { valid?: boolean } };
+      const payload = parsed.payload as {
+        success?: boolean;
+        error?: string;
+        diagnosticOutcome?: string;
+        requestTuple?: {
+          yearGroup?: string;
+          keyStage?: string;
+          subject?: string;
+          strand?: string | null;
+          skillFocus?: string;
+          difficulty?: number;
+          itemCount?: number;
+        };
+        content?: { items?: unknown[] };
+        meta?: { valid?: boolean };
+      };
       if (!response.ok || payload.success === false) {
-        setGenerationDiagnostics((current) => current ? { ...current, reason: "validation_failure" } : current);
+        const diagnosticOutcome = normalizeDiagnosticOutcome(payload.diagnosticOutcome);
+        setGenerationDiagnostics((current) => current ? {
+          ...current,
+          reason: diagnosticOutcome ?? "validation_failure",
+          requestTuple: payload.requestTuple,
+        } : current);
         setError(payload.error ?? "Regeneration failed.");
         return;
       }
@@ -2692,6 +2798,7 @@ export default function AiGeneratorPage() {
                 <li>Content-Type: {generationDiagnostics.contentType || "(none)"}</li>
                 <li>Diagnostic reason: {generationDiagnostics.reason || "none"}</li>
                 <li>Provider/model: {generationDiagnostics.provider || "openai"}/{generationDiagnostics.model || generationMeta?.model || "unknown"}</li>
+                {generationDiagnostics.requestTuple ? <li>Request tuple: {JSON.stringify(generationDiagnostics.requestTuple)}</li> : null}
               </ul>
               <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-slate-900 p-2 text-xs">{generationDiagnostics.rawResponse}</pre>
             </details>
