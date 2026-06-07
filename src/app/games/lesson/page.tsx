@@ -49,6 +49,7 @@ import {
 } from "@/lib/engines/coaching-engine";
 import { computeMasteryReady, type QuestionLearningStatus } from "@/lib/engines/mastery-engine";
 import { reviewReason } from "@/lib/engines/review-engine";
+import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
 import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
 
 type LessonItem = NormalizedLessonItem;
@@ -316,6 +317,22 @@ function buildBossChallengeItem(section: "spelling" | "math" | "reading", slot: 
 
 function heartsLabel(value: number): string {
   return Array.from({ length: 3 }, (_, index) => (index < value ? "❤️" : "🖤")).join(" ");
+}
+
+function bossHpWidthClass(value: number): string {
+  const hp = Math.max(0, Math.min(100, Math.round(value)));
+  if (hp >= 95) return "w-full";
+  if (hp >= 90) return "w-[90%]";
+  if (hp >= 80) return "w-[80%]";
+  if (hp >= 70) return "w-[70%]";
+  if (hp >= 60) return "w-[60%]";
+  if (hp >= 50) return "w-1/2";
+  if (hp >= 40) return "w-[40%]";
+  if (hp >= 30) return "w-[30%]";
+  if (hp >= 20) return "w-1/5";
+  if (hp >= 10) return "w-[10%]";
+  if (hp > 0) return "w-[5%]";
+  return "w-0";
 }
 
 const LESSON_VOICE_KEY = "lessonVoiceEnabled";
@@ -2086,7 +2103,25 @@ export default function DailyLessonGamePage() {
     const finalIncorrect = finalRecords.length - finalCorrect;
     const masteryResult = computeMasteryReady(questionStatuses, skippedQuestionKeys, questionAttemptSummary);
     const { masteryReady, unresolvedSkipped, firstTryCorrect, retryCorrect, skippedCount, finalScore } = masteryResult;
-    setLessonMasteryReady(masteryReady);
+    const requiredItemIds = lessonItems.map((lessonItem, lessonIndex) => questionStatusKey(lessonItem, lessonIndex));
+    const lessonOutcomes: Record<string, CanonicalItemOutcome> = {};
+    for (const requiredId of requiredItemIds) {
+      const status = questionStatuses[requiredId];
+      if (status === "correct" || status === "reteach_complete") {
+        lessonOutcomes[requiredId] = { state: "answered", correct: true };
+      } else if (status === "skipped_needs_reteach") {
+        lessonOutcomes[requiredId] = { state: "skipped", correct: false };
+      } else if (status === "wrong_retrying") {
+        lessonOutcomes[requiredId] = { state: "needs_review", correct: false };
+      }
+    }
+    const canonicalSession = computeCanonicalSessionMetrics({
+      requiredItemIds,
+      outcomes: lessonOutcomes,
+      approvedSkippedIds: [],
+    });
+    const canonicalMasteryReady = masteryReady && canonicalSession.canComplete;
+    setLessonMasteryReady(canonicalMasteryReady);
     const normalizedWeakSkill = weakSkills[0] ?? String(activeAssignment.skillFocus ?? "");
     const primarySkillCode = skillFocusToCode(normalizedWeakSkill)
       ?? (activeAssignment.subject === "reading"
@@ -2138,13 +2173,16 @@ export default function DailyLessonGamePage() {
       correct: finalCorrect,
       incorrect: finalIncorrect,
       attempts: finalRecords.length,
+      requiredQuestionCount: canonicalSession.totalRequired,
+      answeredCount: canonicalSession.answeredCount,
+      approvedSkippedCount: canonicalSession.approvedSkippedCount,
       weakWords,
       weakSkills,
       firstTryCorrect,
       retryCorrect,
       skippedCount,
       unresolvedSkipped,
-      masteryReady,
+      masteryReady: canonicalMasteryReady,
       intervention: interventionPayload,
           warmup: warmupResult
         ? {
@@ -2685,7 +2723,7 @@ export default function DailyLessonGamePage() {
               </button>
             </div>
           ) : lessonPhase === "boss_battle" ? (
-            <div className="mt-8 rounded-3xl border border-rose-200 bg-gradient-to-br from-rose-50 via-orange-50 to-white p-8">
+            <div className="mt-8 rounded-3xl border border-rose-200 bg-linear-to-br from-rose-50 via-orange-50 to-white p-8">
               {bossStage === "transition" ? (
                 <div className="text-center">
                   <p className="text-sm font-black uppercase tracking-[0.25em] text-rose-700">Boss Battle Activated</p>
@@ -2750,7 +2788,7 @@ export default function DailyLessonGamePage() {
                         <p className="text-sm font-black text-slate-700">Hearts: {heartsLabel(bossHeartsLeft)}</p>
                       </div>
                       <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-200">
-                        <div className="h-3 rounded-full bg-gradient-to-r from-rose-600 to-orange-400" style={{ width: `${bossHp}%` }} />
+                        <div className={`h-3 rounded-full bg-linear-to-r from-rose-600 to-orange-400 ${bossHpWidthClass(bossHp)}`} />
                       </div>
                     </div>
 

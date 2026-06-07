@@ -29,6 +29,7 @@ import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
 import { awardChildRewards } from "@/lib/child_wallet";
 import { getTutorLine } from "@/lib/tutorVoice";
 import { resolveAssignmentSessionDecision } from "@/lib/math-assignment-session";
+import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
 import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -95,6 +96,7 @@ type PersistedMathState = {
   retryPackMode?: boolean;
   retryInitialCount?: number;
   contextKey: string;
+  questionOutcomes?: Record<string, CanonicalItemOutcome>;
 };
 
 export default function MathMissionPage() {
@@ -128,6 +130,7 @@ export default function MathMissionPage() {
   const [sessionMode, setSessionMode] = useState<"standard" | "retry_pack" | "completed_base" | "completed_retry">("standard");
   const [sessionAttempts, setSessionAttempts] = useState(0);
   const [sessionStartStats, setSessionStartStats] = useState<{ stars: number; xp: number; coins: number } | null>(null);
+  const [questionOutcomes, setQuestionOutcomes] = useState<Record<string, CanonicalItemOutcome>>({});
   const [retryQueueIds, setRetryQueueIds] = useState<string[]>([]);
   const [retryInitialCount, setRetryInitialCount] = useState(0);
   const [correctSinceCheckpoint, setCorrectSinceCheckpoint] = useState(0);
@@ -143,6 +146,21 @@ export default function MathMissionPage() {
 
   const sessionComplete = sessionMode === "completed_base" || sessionMode === "completed_retry";
   const retryPackMode = sessionMode === "retry_pack";
+  const sessionQuestionTarget = retryPackMode ? Math.max(1, retryInitialCount) : MATH_SESSION_TARGET;
+  const requiredStepIds = useMemo(
+    () => Array.from({ length: sessionQuestionTarget }, (_, index) => `step-${index}`),
+    [sessionQuestionTarget],
+  );
+  const canonicalSession = useMemo(() => {
+    const approvedSkippedIds = Object.entries(questionOutcomes)
+      .filter(([, outcome]) => outcome.state === "skipped")
+      .map(([id]) => id);
+    return computeCanonicalSessionMetrics({
+      requiredItemIds: requiredStepIds,
+      outcomes: questionOutcomes,
+      approvedSkippedIds,
+    });
+  }, [questionOutcomes, requiredStepIds]);
 
   const getResumeStateKey = (childId: string) => `starliz_math_resume_${childId}`;
 
@@ -238,6 +256,7 @@ export default function MathMissionPage() {
       setSessionMode(restoredMode);
       setSessionAttempts(parsed.sessionAttempts ?? 0);
       setSessionCorrect(parsed.sessionCorrect ?? 0);
+      setQuestionOutcomes(parsed.questionOutcomes ?? {});
       setRetryInitialCount(parsed.retryInitialCount ?? 0);
       setHintLevel(0);
       setAttemptCount(0);
@@ -260,12 +279,13 @@ export default function MathMissionPage() {
       sessionComplete,
       sessionAttempts,
       sessionCorrect,
+      questionOutcomes,
       retryPackMode,
       retryInitialCount,
       contextKey: currentContextKey,
     };
     window.sessionStorage.setItem(getResumeStateKey(profile.id), JSON.stringify(payload));
-  }, [currentContextKey, currentQuestion, profile, retryInitialCount, retryPackMode, sessionAttempts, sessionComplete, sessionCorrect, sessionMode, sessionStep]);
+  }, [currentContextKey, currentQuestion, profile, questionOutcomes, retryInitialCount, retryPackMode, sessionAttempts, sessionComplete, sessionCorrect, sessionMode, sessionStep]);
 
   useEffect(() => {
     if (!profile || !sessionComplete || typeof window === "undefined") return;
@@ -286,6 +306,7 @@ export default function MathMissionPage() {
       setSessionMode(activeRetryMode ? "retry_pack" : "standard");
       setSessionAttempts(0);
       setSessionCorrect(0);
+      setQuestionOutcomes({});
       setSessionStartStats({ stars: currentProfile.stars, xp: currentProfile.xp, coins: currentProfile.coins });
       if (retryIdsOverride?.length) {
         setRetryInitialCount(retryIdsOverride.length);
@@ -389,20 +410,36 @@ export default function MathMissionPage() {
     }
   }
 
-  function advanceSession(currentProfile: ChildProfile, delayMs: number): void {
+  function advanceSession(currentProfile: ChildProfile, delayMs: number, nextOutcomes?: Record<string, CanonicalItemOutcome>): void {
+    const outcomes = nextOutcomes ?? questionOutcomes;
+    const nextCanonicalSession = computeCanonicalSessionMetrics({
+      requiredItemIds: requiredStepIds,
+      outcomes,
+      approvedSkippedIds: Object.entries(outcomes)
+        .filter(([, outcome]) => outcome.state === "skipped")
+        .map(([id]) => id),
+    });
     if (retryPackMode && retryQueueIds.length === 0) {
-      setSessionMode("completed_retry");
-      setFeedback("Retry pack complete. Great correction work. You can move to the next level or return to the dashboard.");
-      setReaction({ mood: "celebrate", message: "Retry pack complete. Excellent recovery!" });
+      if (nextCanonicalSession.canComplete) {
+        setSessionMode("completed_retry");
+        setFeedback("Retry pack complete. Great correction work. You can move to the next level or return to the dashboard.");
+        setReaction({ mood: "celebrate", message: "Retry pack complete. Excellent recovery!" });
+      } else {
+        setFeedback(`Keep going: ${nextCanonicalSession.unresolvedCount} required question${nextCanonicalSession.unresolvedCount === 1 ? "" : "s"} still unresolved.`);
+      }
       return;
     }
 
     const nextStep = sessionStep + 1;
-    if (nextStep >= MATH_SESSION_TARGET) {
-      setSessionStep(MATH_SESSION_TARGET);
-      setSessionMode("completed_base");
-      setFeedback("Session complete. Start the next session or go to dashboard.");
-      setReaction({ mood: "celebrate", message: "Session complete. Amazing focus!" });
+    if (nextStep >= sessionQuestionTarget) {
+      setSessionStep(sessionQuestionTarget);
+      if (nextCanonicalSession.canComplete) {
+        setSessionMode("completed_base");
+        setFeedback("Session complete. Start the next session or go to dashboard.");
+        setReaction({ mood: "celebrate", message: "Session complete. Amazing focus!" });
+      } else {
+        setFeedback(`Keep going: ${nextCanonicalSession.unresolvedCount} required question${nextCanonicalSession.unresolvedCount === 1 ? "" : "s"} still unresolved.`);
+      }
       return;
     }
     setSessionStep(nextStep);
@@ -452,8 +489,8 @@ export default function MathMissionPage() {
   const levelLabel = isAlgebraQuestion
     ? (isOlderLearner ? "📘 GCSE Algebra: Linear equations" : "📘 Algebra: Solving linear equations")
     : (LEVEL_LABELS[mathDifficulty] ?? LEVEL_LABELS[1]);
-  const sessionQuestionTarget = retryPackMode ? Math.max(1, retryInitialCount) : MATH_SESSION_TARGET;
   const currentQuestionNumber = Math.min(sessionStep + 1, sessionQuestionTarget);
+  const currentStepKey = `step-${Math.min(sessionStep, Math.max(0, sessionQuestionTarget - 1))}`;
   const showVisualSupport = !isAlgebraQuestion && (profile?.ageRange === "5-7" || mathDifficulty <= 2);
   const displayChoices = useMemo(() => {
     if (!question) return [] as number[];
@@ -816,7 +853,12 @@ export default function MathMissionPage() {
         setInsightMessage(insight ?? "You are on fire! Keep solving — you are getting sharper every question!");
       }
 
-      advanceSession(awardedProfile, 350);
+      const nextOutcomes: Record<string, CanonicalItemOutcome> = {
+        ...questionOutcomes,
+        [currentStepKey]: { state: "answered", correct: true },
+      };
+      setQuestionOutcomes(nextOutcomes);
+      advanceSession(awardedProfile, 350, nextOutcomes);
       return;
     }
 
@@ -945,7 +987,12 @@ export default function MathMissionPage() {
       timestamp: Date.now(),
     });
     void speakWithContext(`Not to worry — the answer was ${question.answer}. Let us keep going and try another one!`, "encouragement");
-    advanceSession(awardedProfile, 1200);
+    const nextOutcomes: Record<string, CanonicalItemOutcome> = {
+      ...questionOutcomes,
+      [currentStepKey]: { state: "answered", correct: false },
+    };
+    setQuestionOutcomes(nextOutcomes);
+    advanceSession(awardedProfile, 1200, nextOutcomes);
   }
 
   if (profileLoading) {
@@ -1231,7 +1278,12 @@ export default function MathMissionPage() {
                     className="w-full"
                     variant="secondary"
                     onClick={() => {
-                      advanceSession(profile, 0);
+                      const nextOutcomes: Record<string, CanonicalItemOutcome> = {
+                        ...questionOutcomes,
+                        [currentStepKey]: { state: "skipped", correct: false },
+                      };
+                      setQuestionOutcomes(nextOutcomes);
+                      advanceSession(profile, 0, nextOutcomes);
                     }}
                     disabled={sessionComplete}
                   >
@@ -1256,6 +1308,7 @@ export default function MathMissionPage() {
                   <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                     <p className="m-0 font-black">Session complete.</p>
                     <p className="m-0 mt-1 font-semibold">Accuracy: {sessionAccuracy}% ({sessionCorrect}/{sessionAttempts})</p>
+                    <p className="m-0 mt-1 font-semibold">Resolved: {canonicalSession.totalRequired - canonicalSession.unresolvedCount}/{canonicalSession.totalRequired} (Answered {canonicalSession.answeredCount}, Skipped {canonicalSession.skippedCount})</p>
                     <p className="m-0 mt-1 font-semibold">Rewards: +{sessionRewards.stars} stars, +{sessionRewards.xp} XP, +{sessionRewards.coins} coins</p>
                     <p className="m-0 mt-1 font-semibold">Top mastery: {mathMastery.map((entry) => `${entry.tag} (${entry.accuracy}%)`).join(", ") || "Building now"}</p>
                     <p className="m-0 mt-1 font-semibold">Next suggestion: {profile.adaptive.nextBestActivity}</p>

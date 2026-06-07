@@ -1,6 +1,10 @@
 import { ENGLISH_STRANDS } from "@/lib/subject-selection";
 import type { PlacementBand } from "@/lib/placement-lesson-selector";
 import type { ProgressionStatus, SubjectProgressionRecommendation } from "@/lib/subject-level-progression";
+import {
+  canonicalCompletionPercentage,
+  summarizeCanonicalCompletionFromStatuses,
+} from "@/lib/canonical-completion-accessor";
 
 export type CertificateType =
   | "term_completion"
@@ -264,8 +268,7 @@ function parseMetadata(raw: string | null | undefined): Record<string, unknown> 
 }
 
 function percentage(part: number, total: number): number {
-  if (!total) return 0;
-  return Math.max(0, Math.min(100, Math.round((part / total) * 100)));
+  return canonicalCompletionPercentage(part, total);
 }
 
 function clamp(value: number, min = 0, max = 100): number {
@@ -374,8 +377,9 @@ function evaluateCertificateType(input: {
     });
   }).length;
 
-  const completedAssignments = input.assignments.filter((assignment) => normalize(assignment.status) === "completed").length;
-  const totalAssignments = input.assignments.length;
+  const assignmentCompletion = summarizeCanonicalCompletionFromStatuses(input.assignments.map((assignment) => assignment.status));
+  const completedAssignments = assignmentCompletion.completed;
+  const totalAssignments = assignmentCompletion.total;
 
   const quizAttemptCount = input.attempts.length;
 

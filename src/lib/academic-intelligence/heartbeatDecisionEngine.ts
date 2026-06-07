@@ -8,6 +8,7 @@ import type {
   HeartbeatDecisionUrgency,
   HeartbeatPrimaryAction,
 } from "@/lib/academic-intelligence/types";
+import { summarizeCanonicalCatchUp } from "@/lib/canonical-completion-accessor";
 
 type DecisionInput = {
   source: Pick<AcademicSourceData, "quickLevelFinderBaseline">;
@@ -85,10 +86,12 @@ export function buildHeartbeatDecisionEngine(input: DecisionInput): HeartbeatDec
 
   const unresolvedWeakAreaCount = output.masteryMap.filter((entry) => entry.weakAreaActive).length;
   const repeatedStruggleCount = output.masteryMap.filter((entry) => entry.repeatedMistakes >= 3 || entry.hintUsageRate >= 0.6 || entry.confidenceScore < 45).length;
-  const activeCatchUpCount = output.catchUpRecommendations.filter((item) => item.status === "active" || item.status === "in_progress" || item.status === "recommended" || item.status === "scheduled").length
-    + output.catchUpTasks.filter((item) => item.status === "active" || item.status === "in_progress" || item.status === "scheduled").length;
-  const overdueCatchUpCount = output.catchUpTasks.filter((item) => item.status === "overdue").length
-    + output.catchUpRecommendations.filter((item) => item.status === "overdue").length;
+  const catchUpCompletion = summarizeCanonicalCatchUp({
+    recommendationStatuses: output.catchUpRecommendations.map((item) => item.status),
+    taskStatuses: output.catchUpTasks.map((item) => item.status),
+  });
+  const activeCatchUpCount = catchUpCompletion.active;
+  const overdueCatchUpCount = catchUpCompletion.overdue;
   const assessmentLow = output.assessmentReadiness === "not_ready" || output.assessmentReadiness === "needs_catch_up" || output.assessmentReadiness === "developing";
   const homeworkOverdueCount = output.homeworkTasks.filter((item) => item.status === "overdue").length;
   const homeworkPendingCount = output.homeworkTasks.filter((item) => item.status === "assigned" || item.status === "in_progress").length;

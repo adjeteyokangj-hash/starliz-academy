@@ -52,6 +52,7 @@ import {
   shouldCompleteSessionAtStep,
   shouldReloadSessionPlan,
 } from "@/lib/spelling-session-runtime";
+import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
 
 const LEVEL_LABELS: Record<number, string> = {
   1: "⭐ Alphabet foundation",
@@ -316,6 +317,14 @@ export default function SpellingQuestPage() {
     setCompletionSaveMessage("Saving your completed spelling challenge...");
     try {
       const totalQuestions = Math.max(1, sessionPlan?.phases.length ?? 1);
+      const requiredItemIds = Array.from({ length: totalQuestions }, (_, index) => `spelling-step-${index}`);
+      const spellingOutcomes: Record<string, CanonicalItemOutcome> = Object.fromEntries(
+        requiredItemIds.map((id) => [id, { state: "answered", correct: true }]),
+      );
+      const canonicalSession = computeCanonicalSessionMetrics({
+        requiredItemIds,
+        outcomes: spellingOutcomes,
+      });
       const completedAt = getTimestampNow();
       const startedAt = questionStartedAt || completedAt;
       const response = await fetch("/api/student/progress", {
@@ -333,6 +342,9 @@ export default function SpellingQuestPage() {
           correct: correctCount,
           incorrect: Math.max(0, totalQuestions - correctCount),
           attempts: totalQuestions,
+          requiredQuestionCount: canonicalSession.totalRequired,
+          answeredCount: canonicalSession.answeredCount,
+          approvedSkippedCount: canonicalSession.approvedSkippedCount,
           timeSpent: Math.max(0, Math.round((completedAt - startedAt) / 1000)),
           weakWords: sessionWeakWordList,
           weakSkills: sessionWeakWordList.length ? ["spelling"] : [],

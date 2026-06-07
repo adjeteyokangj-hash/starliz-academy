@@ -7,6 +7,10 @@ import type {
   MasterySummary,
   TopicSignal,
 } from "@/lib/academic-intelligence/types";
+import {
+  isCanonicalCompletedStatus,
+  isCanonicalProgressCompleted,
+} from "@/lib/canonical-completion-accessor";
 
 const REVISION_OVERDUE_DAYS = 21;
 
@@ -108,14 +112,14 @@ function buildAggregate(data: AcademicSourceData): Map<string, TopicAggregate> {
   for (const assignment of data.assignments) {
     const row = ensure(assignment);
     row.assignmentsTotal += 1;
-    if (assignment.status === "completed") row.assignmentsCompleted += 1;
+    if (isCanonicalCompletedStatus(assignment.status)) row.assignmentsCompleted += 1;
     row.lastPractisedAt = latestIso(row.lastPractisedAt, assignment.updatedAt ?? assignment.createdAt);
   }
 
   for (const progress of data.progressRecords) {
     const row = ensure(progress);
     row.lessonRecordsTotal += 1;
-    if (progress.completed) row.lessonRecordsCompleted += 1;
+    if (isCanonicalProgressCompleted(progress.completed)) row.lessonRecordsCompleted += 1;
     row.lastPractisedAt = latestIso(row.lastPractisedAt, progress.createdAt);
     if (typeof progress.score === "number") {
       row.scoreSum += progress.score;

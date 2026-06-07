@@ -6,6 +6,7 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { sendEmail } from "@/lib/email-provider";
 import { calculateConfidence, isBossUnlockEligibleV2, skillStatusFromConfidence } from "@/lib/learningEngineV2";
 import { writeLearningActivity } from "@/lib/learning-activity/writeLearningActivity";
+import { evaluateCanonicalProgressCompletion } from "@/lib/canonical-learning-state";
 
 const progressSchema = z.object({
   studentId: z.string().min(1),
@@ -25,6 +26,9 @@ const progressSchema = z.object({
   retryCorrect: z.number().int().min(0).default(0),
   skippedCount: z.number().int().min(0).default(0),
   unresolvedSkipped: z.number().int().min(0).default(0),
+  requiredQuestionCount: z.number().int().min(0).optional(),
+  answeredCount: z.number().int().min(0).optional(),
+  approvedSkippedCount: z.number().int().min(0).optional(),
   masteryReady: z.boolean().optional(),
   intervention: z.object({
     mode: z.boolean().optional(),
@@ -65,6 +69,8 @@ export async function POST(request: Request) {
     const body = progressSchema.parse(await request.json());
     const dayStart = new Date();
     dayStart.setHours(0, 0, 0, 0);
+
+    const completionGuard = evaluateCanonicalProgressCompletion(body);
 
     const child = await prisma.childProfile.findFirst({
       where: { id: body.studentId, parentId: parentScope.parentId, archived: false },
@@ -131,7 +137,7 @@ export async function POST(request: Request) {
     const xpEarned = masteryXp + (body.score === 100 ? 20 : 0);
     const coinsEarned = Math.max(1, Math.floor(body.correct / 2) + (body.incorrect === 0 ? 2 : 0));
     const starsEarned = Math.max(1, body.correct + (body.score >= 80 ? 3 : 0));
-    const streakContinued = child.progressRecords.length === 0;
+    const streakContinued = completionGuard.canComplete && child.progressRecords.length === 0;
     const masteryReady = body.masteryReady ?? bossEligibility.eligible;
 
     const record = await prisma.progressRecord.create({
@@ -145,7 +151,7 @@ export async function POST(request: Request) {
         score: body.score,
         correct: body.incorrect === 0,
         accuracy: body.score,
-        completed: true,
+        completed: completionGuard.canComplete,
         notes: JSON.stringify({
           type: body.type,
           assignmentId: body.assignmentId,
@@ -159,6 +165,11 @@ export async function POST(request: Request) {
           weakSkills: body.weakSkills,
           unresolvedSkipped: body.unresolvedSkipped,
           skippedCount: body.skippedCount,
+          requiredQuestionCount: completionGuard.totalRequired,
+          answeredCount: completionGuard.answeredCount,
+          approvedSkippedCount: completionGuard.approvedSkippedCount,
+          resolvedCount: completionGuard.resolvedCount,
+          completionDowngraded: completionGuard.downgraded,
           masteryReady,
           confidence,
           confidenceDelta,
@@ -211,10 +222,15 @@ export async function POST(request: Request) {
       },
     });
 
-    if (body.assignmentId) {
+    if (body.assignmentId && completionGuard.canComplete) {
       await prisma.assignment.updateMany({
         where: { id: body.assignmentId, studentId: body.studentId },
         data: { status: "completed", completedAt: new Date() },
+      });
+    } else if (body.assignmentId && completionGuard.downgraded) {
+      await prisma.assignment.updateMany({
+        where: { id: body.assignmentId, studentId: body.studentId, status: "assigned" },
+        data: { status: "in_progress" },
       });
     }
 
@@ -254,6 +270,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       record,
+      completion: {
+        ...completionGuard,
+      },
       rewards: { xpEarned, coinsEarned, starsEarned, streak: streakContinued ? child.streak + 1 : child.streak },
       notification,
     }, { status: 201 });

@@ -27,6 +27,7 @@ import { fetchAssignedReadingBatch, resetAssignedContentCursor } from "@/lib/ai_
 import { getTutorFeedbackPlan, speakTutorFeedback, hydrateCoachingMemoryFromServer } from "@/lib/tutor-voice";
 import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
 import { awardChildRewards } from "@/lib/child_wallet";
+import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
 import {
   getReadingHintMessage,
   getReadingHintSpeech,
@@ -229,6 +230,7 @@ type PersistedReadingState = {
   contextKey: string;
   recentQuestionIds?: string[];
   readAloudMode?: ReadAloudScoringMode;
+  questionOutcomes?: Record<string, CanonicalItemOutcome>;
 };
 
 type SpeechRecognitionEventLike = Event & {
@@ -279,6 +281,7 @@ export default function ReadingJourneyPage() {
   const [readingVoiceEnabled, setReadingVoiceEnabled] = useState(true);
   const [sessionAttempts, setSessionAttempts] = useState(0);
   const [sessionCorrect, setSessionCorrect] = useState(0);
+  const [questionOutcomes, setQuestionOutcomes] = useState<Record<string, CanonicalItemOutcome>>({});
   const [sessionStartStats, setSessionStartStats] = useState<{ stars: number; xp: number; coins: number } | null>(null);
   const [recentQuestionIds, setRecentQuestionIds] = useState<string[]>([]);
   const [isListeningToChild, setIsListeningToChild] = useState(false);
@@ -296,6 +299,17 @@ export default function ReadingJourneyPage() {
 
   const sessionComplete = sessionMode === "completed_base" || sessionMode === "completed_retry";
   const retryPackMode = sessionMode === "retry_pack";
+  const canonicalSession = useMemo(() => {
+    const requiredItemIds = sessionQuestions.map((question) => question.id);
+    const approvedSkippedIds = Object.entries(questionOutcomes)
+      .filter(([, outcome]) => outcome.state === "skipped")
+      .map(([id]) => id);
+    return computeCanonicalSessionMetrics({
+      requiredItemIds,
+      outcomes: questionOutcomes,
+      approvedSkippedIds,
+    });
+  }, [questionOutcomes, sessionQuestions]);
   const readToTutorSupported = useMemo(() => {
     if (typeof window === "undefined") return false;
     const win = window as Window & {
@@ -411,6 +425,7 @@ export default function ReadingJourneyPage() {
       setSessionMode(restoredMode);
       setSessionAttempts(parsed.sessionAttempts ?? 0);
       setSessionCorrect(parsed.sessionCorrect ?? 0);
+      setQuestionOutcomes(parsed.questionOutcomes ?? {});
       setContentSource(parsed.contentSource ?? "static");
       setHintLevel(0);
       setCoachOpen(false);
@@ -437,9 +452,10 @@ export default function ReadingJourneyPage() {
       contextKey: currentContextKey,
       recentQuestionIds,
       readAloudMode,
+      questionOutcomes,
     };
     window.sessionStorage.setItem(getResumeStateKey(profile.id), JSON.stringify(payload));
-  }, [contentSource, currentContextKey, profile, readAloudMode, recentQuestionIds, retryPackMode, sessionAttempts, sessionComplete, sessionCorrect, sessionIndex, sessionMode, sessionQuestions]);
+  }, [contentSource, currentContextKey, profile, questionOutcomes, readAloudMode, recentQuestionIds, retryPackMode, sessionAttempts, sessionComplete, sessionCorrect, sessionIndex, sessionMode, sessionQuestions]);
 
   useEffect(() => {
     if (!profile || !sessionComplete || typeof window === "undefined") return;
@@ -573,6 +589,7 @@ export default function ReadingJourneyPage() {
     setSessionMode(retryQuestions.length ? "retry_pack" : "standard");
     setSessionAttempts(0);
     setSessionCorrect(0);
+    setQuestionOutcomes({});
     setSessionStartStats({ stars: currentProfile.stars, xp: currentProfile.xp, coins: currentProfile.coins });
     setContentSource(assignedItems.length ? "assigned" : "static");
     const readingSupportMode = currentProfile.literacySupport?.mode === "reading_support";
@@ -1090,6 +1107,21 @@ export default function ReadingJourneyPage() {
       }
     }
     setFeedback(isCorrect ? `Excellent reading!${result.promotedDifficulty ? " Difficulty increased!" : ""}${result.surpriseReward.awarded ? ` ${result.surpriseReward.message}` : ""}` : "Good try. Read carefully and try another passage.");
+    const nextOutcomes: Record<string, CanonicalItemOutcome> = {
+      ...questionOutcomes,
+      [item.id]: {
+        state: "answered",
+        correct: isCorrect,
+      },
+    };
+    setQuestionOutcomes(nextOutcomes);
+    const nextCanonicalSession = computeCanonicalSessionMetrics({
+      requiredItemIds: sessionQuestions.map((question) => question.id),
+      outcomes: nextOutcomes,
+      approvedSkippedIds: Object.entries(nextOutcomes)
+        .filter(([, outcome]) => outcome.state === "skipped")
+        .map(([id]) => id),
+    });
     if (isCorrect) {
       markQuestionCompleted({
         childId: profile.id,
@@ -1100,12 +1132,16 @@ export default function ReadingJourneyPage() {
     }
 
     if (sessionIndex >= sessionQuestions.length - 1) {
-      setSessionMode(retryPackMode ? "completed_retry" : "completed_base");
-      setFeedback(
-        isCorrect
-          ? "Session complete. Continue to the next level or go to dashboard."
-          : "Session complete. Great effort today. Continue to the next level or go to dashboard."
-      );
+      if (nextCanonicalSession.canComplete) {
+        setSessionMode(retryPackMode ? "completed_retry" : "completed_base");
+        setFeedback(
+          isCorrect
+            ? "Session complete. Continue to the next level or go to dashboard."
+            : "Session complete. Great effort today. Continue to the next level or go to dashboard."
+        );
+      } else {
+        setFeedback(`Keep going: ${nextCanonicalSession.unresolvedCount} required question${nextCanonicalSession.unresolvedCount === 1 ? "" : "s"} still unresolved.`);
+      }
     } else {
       window.setTimeout(() => {
         advanceToNextQuestion();
@@ -1371,6 +1407,12 @@ export default function ReadingJourneyPage() {
                     className="w-full"
                     variant="secondary"
                     onClick={() => {
+                      if (item) {
+                        setQuestionOutcomes((current) => ({
+                          ...current,
+                          [item.id]: { state: "skipped", correct: false },
+                        }));
+                      }
                       advanceToNextQuestion();
                     }}
                     disabled={sessionComplete || sessionIndex >= sessionQuestions.length - 1}
@@ -1422,6 +1464,7 @@ export default function ReadingJourneyPage() {
                 {sessionComplete ? (
                   <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                     <p className="m-0 font-black">Session complete</p>
+                    <p className="m-0 mt-1 font-semibold">Resolved: {canonicalSession.totalRequired - canonicalSession.unresolvedCount}/{canonicalSession.totalRequired} (Answered {canonicalSession.answeredCount}, Skipped {canonicalSession.skippedCount})</p>
                     <p className="m-0 mt-1 font-semibold">Rewards: +{sessionRewards.stars} stars, +{sessionRewards.xp} XP, +{sessionRewards.coins} coins</p>
                     <p className="m-0 mt-1 font-semibold">Top mastery: {readingMastery.map((entry) => `${entry.tag} (${entry.accuracy}%)`).join(", ") || "Building now"}</p>
                     <p className="m-0 mt-1 font-semibold">Next suggestion: {profile.adaptive.nextBestActivity}</p>

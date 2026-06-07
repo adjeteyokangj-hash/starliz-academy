@@ -28,6 +28,7 @@ import {
   sanitizeSchoolWeekSettings,
   stripSchoolWeekSensitiveFields,
 } from "@/lib/academic-intelligence/schoolWeekSettings";
+import { summarizeCanonicalCatchUp } from "@/lib/canonical-completion-accessor";
 import type {
   AcademicAuditHistoryDraft,
   CoachHeartbeatSignalSummary,
@@ -61,12 +62,17 @@ function reportNotes(output: Pick<AcademicIntelligenceOutput,
   | "summary"
   | "curriculumCoverage"
   | "catchUpRecommendations"
+  | "catchUpTasks"
   | "assessmentRecommendations"
   | "homeworkTasks"
   | "gcseReadiness"
 >): AcademicReportNote[] {
-  const completedCatchUps = output.catchUpRecommendations.filter((task) => task.status === "completed").length;
-  const unresolvedCatchUps = output.catchUpRecommendations.filter((task) => task.status !== "completed" && task.status !== "waived").length;
+  const catchUpCompletion = summarizeCanonicalCatchUp({
+    recommendationStatuses: output.catchUpRecommendations.map((task) => task.status),
+    taskStatuses: output.catchUpTasks.map((task) => task.status),
+  });
+  const completedCatchUps = catchUpCompletion.completed;
+  const unresolvedCatchUps = catchUpCompletion.unresolved;
   const weakTopic = output.catchUpRecommendations[0]?.topic ?? output.curriculumCoverage.find((row) => row.coverageStatus === "gap_detected")?.topic ?? "None";
   const homeworkCompleted = output.homeworkTasks.filter((task) => task.status === "completed").length;
   const homeworkPending = output.homeworkTasks.filter((task) => task.status === "assigned" || task.status === "in_progress").length;

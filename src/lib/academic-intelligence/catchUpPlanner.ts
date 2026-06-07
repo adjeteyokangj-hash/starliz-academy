@@ -9,6 +9,7 @@ import type {
   CoverageEntry,
   MasteryMapEntry,
 } from "@/lib/academic-intelligence/types";
+import { hasStartedButNotCompleted } from "@/lib/canonical-completion-accessor";
 
 const MAX_STUDENT_TASKS = 6;
 
@@ -131,7 +132,7 @@ export function detectCatchUpTriggers(input: {
     const topic = entry.topic ?? "General";
     const skill = entry.skill ?? null;
 
-    if (entry.assignmentCompletionPct < 100 && entry.assignmentCompletionPct > 0) {
+    if (hasStartedButNotCompleted(entry.assignmentCompletionPct)) {
       triggers.push({
         triggerType: "unfinished_assignment",
         subject,
@@ -144,7 +145,7 @@ export function detectCatchUpTriggers(input: {
       });
     }
 
-    if (entry.lessonCompletionPct < 100 && entry.lessonCompletionPct > 0) {
+    if (hasStartedButNotCompleted(entry.lessonCompletionPct)) {
       triggers.push({
         triggerType: "unfinished_lesson",
         subject,
