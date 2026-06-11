@@ -165,7 +165,7 @@ function inferSubject(item: BlackBoxGeneratedItem): Subject | null {
   const text = itemEvidenceText(item);
   const signal = SUBJECT_SIGNAL_PATTERNS.find((entry) => entry.patterns.some((pattern) => pattern.test(text)))?.subject ?? null;
   const explicitFamily = explicit ? (expectedSubjectFamily(explicit) ?? explicit) : null;
-  if (signal && explicitFamily && signal !== explicitFamily) return signal;
+  if (signal && explicitFamily && signal !== explicitFamily) return explicitFamily;
   return explicitFamily ?? signal;
 }
 
