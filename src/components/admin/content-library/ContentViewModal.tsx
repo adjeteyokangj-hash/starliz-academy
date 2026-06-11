@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
 import type { ContentItem } from "./types";
 import {
   getBlackBoxBadgeTone,
@@ -31,6 +32,61 @@ type VerificationPayload = {
   blackBoxLiveTest?: unknown;
 };
 
+type GeneratedReviewItem = Record<string, unknown>;
+
+function asReviewItems(contentJson: string): GeneratedReviewItem[] {
+  try {
+    const parsed = JSON.parse(contentJson) as unknown;
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    return rows.filter((item): item is GeneratedReviewItem => Boolean(item && typeof item === "object" && !Array.isArray(item)));
+  } catch {
+    return [];
+  }
+}
+
+function textValue(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function stringArrayValue(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(textValue).filter(Boolean);
+}
+
+function firstText(item: GeneratedReviewItem, keys: string[]): string {
+  for (const key of keys) {
+    const value = textValue(item[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function answerOptionsFor(item: GeneratedReviewItem): string[] {
+  return stringArrayValue(item.choices).length
+    ? stringArrayValue(item.choices)
+    : stringArrayValue(item.options).length
+      ? stringArrayValue(item.options)
+      : stringArrayValue(item.answerOptions);
+}
+
+function labelledLines(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(textValue).filter(Boolean);
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => `${key}: ${textValue(entry)}`)
+      .filter((line) => !line.endsWith(":"));
+  }
+  const text = textValue(value);
+  return text ? [text] : [];
+}
+
+function difficultyLabel(value: number): string {
+  if (value <= 2) return "Foundation";
+  if (value <= 4) return "Core";
+  if (value <= 6) return "Secure";
+  return "Advanced";
+}
+
 export default function ContentViewModal({ open, content, onClose, onVerified }: Props) {
   if (!open || !content) return null;
   return (
@@ -58,19 +114,31 @@ function ContentViewModalBody({
   const runtime = parseBlackBoxRuntimeTest(content);
   const verification = parseBlackBoxAdminVerification(content);
   const reviewHistory = useMemo(() => parseContentReviewHistory(content), [content]);
+  const items = useMemo(() => asReviewItems(content.contentJson), [content.contentJson]);
+  const [selectedItemIndex, setSelectedItemIndex] = useState(0);
+  const [rawExpanded, setRawExpanded] = useState(false);
   const [notes, setNotes] = useState("");
   const [subject, setSubject] = useState(blackBox?.reclassificationRecommendation?.subject ?? meta.subject ?? "");
   const [strand, setStrand] = useState(blackBox?.reclassificationRecommendation?.strand ?? "");
   const [workingAction, setWorkingAction] = useState<VerificationAction | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-
-  let items: unknown[] = [];
-  try {
-    const parsed = JSON.parse(content.contentJson);
-    items = Array.isArray(parsed) ? parsed : [parsed];
-  } catch {
-    items = [];
-  }
+  const currentItem = items[selectedItemIndex] ?? null;
+  const answerOptions = currentItem ? answerOptionsFor(currentItem) : [];
+  const questionText = currentItem ? firstText(currentItem, ["question", "prompt", "word", "title"]) : "No question content available.";
+  const correctAnswer = currentItem ? firstText(currentItem, ["answer", "correctAnswer", "expectedAnswer"]) : "";
+  const explanation = currentItem ? firstText(currentItem, ["explanation", "rationale", "feedback"]) : "";
+  const hint = currentItem ? firstText(currentItem, ["hint", "sentenceContext", "support"]) : "";
+  const workedSolution = currentItem ? firstText(currentItem, ["workedSolution", "worked_solution", "solution", "method"]) : "";
+  const coachSteps = currentItem ? [
+    ...labelledLines(currentItem.coachSteps),
+    ...labelledLines(currentItem.guidedSteps),
+    ...labelledLines(currentItem.steps),
+  ] : [];
+  const passage = currentItem ? firstText(currentItem, ["passage", "text", "sourceText"]) : "";
+  const currentItemCheck = blackBox?.itemChecks?.find((check) => check.itemIndex === selectedItemIndex)
+    ?? blackBox?.itemChecks?.[selectedItemIndex]
+    ?? null;
+  const estimatedMinutes = Math.max(2, Math.ceil(items.length * 1.5));
 
   async function saveVerification(action: VerificationAction) {
     if (!content) return;
@@ -129,26 +197,125 @@ function ContentViewModalBody({
           </button>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
           <div className="space-y-4">
             <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-              <p className="text-xs font-bold text-slate-300">Generated Content ({items.length} items)</p>
-              <div className="mt-2 space-y-3">
-                {items.map((item, idx) => (
-                  <div key={idx} className="rounded-lg border border-slate-700 bg-slate-950 p-3">
-                    <p className="mb-2 text-xs font-black text-slate-300">Item {idx + 1}</p>
-                    <pre className="whitespace-pre-wrap break-words text-xs text-slate-300">{JSON.stringify(item, null, 2)}</pre>
-                  </div>
-                ))}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-indigo-200">Student-style Preview</p>
+                  <p className="mt-1 text-sm font-black text-white">Question {items.length ? selectedItemIndex + 1 : 0} of {items.length}</p>
+                  <p className="text-xs text-slate-400">{items.length} total questions | Estimated {estimatedMinutes} min | {meta.subject} | {meta.topic || "General"}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedItemIndex((current) => Math.max(0, current - 1));
+                      setRawExpanded(false);
+                    }}
+                    disabled={selectedItemIndex === 0}
+                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedItemIndex((current) => Math.min(items.length - 1, current + 1));
+                      setRawExpanded(false);
+                    }}
+                    disabled={!items.length || selectedItemIndex >= items.length - 1}
+                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             </div>
 
-            {content.prompt ? (
-              <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-                <p className="text-xs font-bold text-slate-300">Generation Prompt</p>
-                <p className="mt-2 text-xs text-slate-400">{content.prompt}</p>
+            {currentItem ? (
+              <StarLizQuestionCard
+                subjectBadge={<span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-indigo-800">{meta.subject}</span>}
+                attemptNumber={1}
+                maxAttempts={3}
+                progressLabel={`${selectedItemIndex + 1}/${items.length}`}
+                contextLabel={`${meta.keyStage ?? "All key stages"} | ${meta.yearGroup ?? "All years"} | ${meta.topic ?? "General"}`}
+                reviewNotice="Admin review preview. Answers and diagnostics are shown below the student-style card."
+                learningFocus={meta.skillFocus ?? meta.topic}
+                hint={hint || null}
+                passageSlot={passage ? (
+                  <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-5 text-slate-900">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Reading Passage</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6">{passage}</p>
+                  </div>
+                ) : null}
+                coachPanel={coachSteps.length || workedSolution ? (
+                  <div className="rounded-2xl border border-cyan-200 bg-white p-4 text-sm font-bold text-cyan-950">
+                    {coachSteps.length ? coachSteps.map((step, idx) => <p key={`${step}-${idx}`}>{idx + 1}. {step}</p>) : null}
+                    {workedSolution ? <p className="mt-2 whitespace-pre-wrap">{workedSolution}</p> : null}
+                  </div>
+                ) : null}
+                coachOpen={Boolean(coachSteps.length || workedSolution)}
+                questionPrompt={questionText}
+                answerOptions={answerOptions.length ? answerOptions : undefined}
+                disabled
+                answerValue=""
+                actionButtonLabel="Preview only"
+              />
+            ) : (
+              <div className="rounded-3xl border border-rose-500/30 bg-rose-500/10 p-6 text-sm font-bold text-rose-100">
+                This content does not contain any reviewable generated items.
               </div>
-            ) : null}
+            )}
+
+            <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+              <p className="text-xs font-bold text-slate-300">Admin Answer Review</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-200">Correct Answer</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm font-black text-white">{correctAnswer || "Not provided"}</p>
+                </div>
+                <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-300">Difficulty</p>
+                  <p className="mt-1 text-sm font-black text-white">Level {content.level} | {difficultyLabel(content.level)}</p>
+                </div>
+              </div>
+              {explanation ? (
+                <div className="mt-3 rounded-lg border border-sky-500/20 bg-sky-500/10 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-sky-200">Explanation</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-sky-50">{explanation}</p>
+                </div>
+              ) : null}
+              {workedSolution ? (
+                <div className="mt-3 rounded-lg border border-violet-500/20 bg-violet-500/10 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-violet-200">Worked Solution</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-violet-50">{workedSolution}</p>
+                </div>
+              ) : null}
+              {coachSteps.length ? (
+                <div className="mt-3 rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200">Coach Steps</p>
+                  <ol className="mt-1 list-decimal space-y-1 pl-5 text-sm font-semibold text-cyan-50">
+                    {coachSteps.map((step, idx) => <li key={`${step}-${idx}`}>{step}</li>)}
+                  </ol>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+              <button
+                type="button"
+                onClick={() => setRawExpanded((current) => !current)}
+                className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800"
+              >
+                {rawExpanded ? "Hide raw data" : "Show raw data"}
+              </button>
+              {rawExpanded && currentItem ? (
+                <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-300">
+                  {JSON.stringify(currentItem, null, 2)}
+                </pre>
+              ) : null}
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -179,18 +346,25 @@ function ContentViewModalBody({
                 ) : null}
                 {blackBox.itemChecks && blackBox.itemChecks.length > 0 ? (
                   <div>
-                    <p className="font-bold text-slate-300">Item checks</p>
+                    <p className="font-bold text-slate-300">Current item checks</p>
                     <div className="mt-2 space-y-2">
-                      {blackBox.itemChecks.map((check, idx) => (
-                        <div key={`${check.itemIndex ?? idx}-${check.score ?? "score"}`} className="rounded-lg border border-slate-700 bg-slate-950 p-2">
-                          <p className="font-bold text-slate-300">Item {typeof check.itemIndex === "number" ? check.itemIndex + 1 : idx + 1}{typeof check.score === "number" ? ` • ${check.score}/100` : ""}</p>
-                          {check.reasons && check.reasons.length > 0 ? (
+                      {currentItemCheck ? (
+                        <div className="rounded-lg border border-slate-700 bg-slate-950 p-2">
+                          <p className="font-bold text-slate-300">Item {selectedItemIndex + 1}{typeof currentItemCheck.score === "number" ? ` • ${currentItemCheck.score}/100` : ""}</p>
+                          {currentItemCheck.reasons && currentItemCheck.reasons.length > 0 ? (
                             <ul className="mt-1 list-disc space-y-1 pl-5">
-                              {check.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                              {currentItemCheck.reasons.map((reason) => <li key={reason}>{reason}</li>)}
                             </ul>
                           ) : null}
+                          {currentItemCheck.checks ? (
+                            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-800 bg-slate-900 p-2 text-[11px] text-slate-400">
+                              {JSON.stringify(currentItemCheck.checks, null, 2)}
+                            </pre>
+                          ) : null}
                         </div>
-                      ))}
+                      ) : (
+                        <p>No item-specific Black Box check is stored for this question.</p>
+                      )}
                     </div>
                   </div>
                 ) : null}
@@ -226,12 +400,17 @@ function ContentViewModalBody({
           <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
             <p className="text-xs font-bold text-slate-300">Metadata</p>
             <div className="mt-2 grid gap-2 text-xs text-slate-400">
+              <div><span className="font-bold">Subject:</span> {meta.subject}</div>
+              <div><span className="font-bold">Topic:</span> {meta.topic || "General"}</div>
+              <div><span className="font-bold">Skill Focus:</span> {meta.skillFocus || "Not tagged"}</div>
               <div><span className="font-bold">Year Group:</span> {meta.yearGroup || "All"}</div>
               <div><span className="font-bold">Key Stage:</span> {meta.keyStage || "All"}</div>
+              <div><span className="font-bold">Content Type:</span> {content.contentType}</div>
               <div><span className="font-bold">Pathway:</span> {meta.curriculumPathway || "Not tagged"}</div>
               <div><span className="font-bold">Exam Board:</span> {meta.examBoard || "Not tagged"}</div>
               <div><span className="font-bold">Age Group:</span> {meta.ageGroup || "Any"}</div>
-              <div><span className="font-bold">Level:</span> {content.level}</div>
+              <div><span className="font-bold">Level:</span> {content.level} | {difficultyLabel(content.level)}</div>
+              <div><span className="font-bold">Strand/module:</span> {strand || blackBox?.reclassificationRecommendation?.strand || "Not tagged"}</div>
               <div><span className="font-bold">Status:</span> {content.status}</div>
               <div><span className="font-bold">Used Count:</span> {content.usedCount}</div>
               <div><span className="font-bold">Valid JSON:</span> {summary.valid ? "Yes" : "No"}</div>
