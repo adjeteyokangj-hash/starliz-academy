@@ -56,6 +56,7 @@ function hasOptionsIssue(item: RuntimeItem): boolean {
   const options = item.options ?? item.choices ?? item.answerOptions;
   if (!Array.isArray(options)) return false;
   const cleaned = options.map(text).filter(Boolean);
+  if (cleaned.length === 0) return false;
   if (cleaned.length < 2) return true;
   const normalized = cleaned.map((option) => option.toLowerCase());
   return new Set(normalized).size !== normalized.length || !normalized.includes(answerFor(item).toLowerCase());

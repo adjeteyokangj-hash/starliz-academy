@@ -87,6 +87,21 @@ function difficultyLabel(value: number): string {
   return "Advanced";
 }
 
+function numericLevel(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(10, Math.round(parsed))) : fallback;
+}
+
+function withUpdatedItemLevel(item: GeneratedReviewItem, level: number): GeneratedReviewItem {
+  return {
+    ...item,
+    level,
+    difficulty: level,
+    difficultyLevel: level,
+    difficultyLabel: difficultyLabel(level),
+  };
+}
+
 export default function ContentViewModal({ open, content, onClose, onVerified }: Props) {
   if (!open || !content) return null;
   return (
@@ -121,6 +136,7 @@ function ContentViewModalBody({
   const [subject, setSubject] = useState(blackBox?.reclassificationRecommendation?.subject ?? meta.subject ?? "");
   const [strand, setStrand] = useState(blackBox?.reclassificationRecommendation?.strand ?? "");
   const [workingAction, setWorkingAction] = useState<VerificationAction | null>(null);
+  const [blackBoxRetesting, setBlackBoxRetesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const currentItem = items[selectedItemIndex] ?? null;
   const answerOptions = currentItem ? answerOptionsFor(currentItem) : [];
@@ -139,6 +155,63 @@ function ContentViewModalBody({
     ?? blackBox?.itemChecks?.[selectedItemIndex]
     ?? null;
   const estimatedMinutes = Math.max(2, Math.ceil(items.length * 1.5));
+
+  async function updateCurrentItemLevel(nextLevel: number) {
+    if (!currentItem) return;
+    setMessage(null);
+
+    const nextItems = items.map((item, index) =>
+      index === selectedItemIndex ? withUpdatedItemLevel(item, nextLevel) : item,
+    );
+
+    try {
+      const response = await fetch(`/api/admin/content/${content.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentJson: JSON.stringify(nextItems) }),
+      });
+      const payload = await response.json() as VerificationPayload;
+      if (!response.ok || !payload.item) {
+        setMessage(payload.error ?? "Item level update failed.");
+        return;
+      }
+
+      onVerified?.({
+        ...content,
+        status: payload.item.status,
+        contentJson: JSON.stringify(nextItems),
+        metadataJson: payload.item.metadataJson ?? content.metadataJson,
+      });
+      setMessage(`Item ${selectedItemIndex + 1} level updated to ${nextLevel}. Re-run Black Box to refresh the score.`);
+    } catch {
+      setMessage("Item level update request failed.");
+    }
+  }
+
+  async function rerunBlackBox() {
+    setBlackBoxRetesting(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/content/${content.id}/black-box`, {
+        method: "POST",
+      });
+      const payload = await response.json() as VerificationPayload;
+      if (!response.ok || !payload.item) {
+        setMessage(payload.error ?? "Black Box re-run failed.");
+        return;
+      }
+      onVerified?.({
+        ...content,
+        status: payload.item.status,
+        metadataJson: payload.item.metadataJson ?? content.metadataJson,
+      });
+      setMessage("Black Box test re-run completed.");
+    } catch {
+      setMessage("Black Box re-run request failed.");
+    } finally {
+      setBlackBoxRetesting(false);
+    }
+  }
 
   async function saveVerification(action: VerificationAction) {
     if (!content) return;
@@ -278,6 +351,29 @@ function ContentViewModalBody({
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-300">Difficulty</p>
                   <p className="mt-1 text-sm font-black text-white">Level {content.level} | {difficultyLabel(content.level)}</p>
                 </div>
+                <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/10 p-3 md:col-span-2">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-indigo-200">Current Item Level</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => updateCurrentItemLevel(Math.max(1, numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level) - 1))}
+                      className="rounded-lg border border-indigo-400/40 px-3 py-2 text-xs font-black text-indigo-100 hover:bg-indigo-500/10"
+                    >
+                      Demote item
+                    </button>
+                    <span className="rounded-full bg-slate-950 px-3 py-2 text-xs font-black text-white">
+                      Item level {numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level)} | {difficultyLabel(numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level))}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => updateCurrentItemLevel(Math.min(10, numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level) + 1))}
+                      className="rounded-lg border border-indigo-400/40 px-3 py-2 text-xs font-black text-indigo-100 hover:bg-indigo-500/10"
+                    >
+                      Move item up
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-indigo-100">Updates only this question. Re-run Black Box afterwards to refresh score and reasons.</p>
+                </div>
               </div>
               {explanation ? (
                 <div className="mt-3 rounded-lg border border-sky-500/20 bg-sky-500/10 p-3">
@@ -321,9 +417,19 @@ function ContentViewModalBody({
           <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-bold text-slate-300">Black Box Content Test</p>
-              <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox)}`}>
-                {blackBox ? `${blackBox.decision}${typeof blackBox.score === "number" ? ` • ${blackBox.score}/100` : ""}` : "Not tested"}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={rerunBlackBox}
+                  disabled={blackBoxRetesting}
+                  className="rounded-lg border border-indigo-400/40 px-3 py-1.5 text-xs font-black text-indigo-100 hover:bg-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {blackBoxRetesting ? "Re-running..." : "Re-run Black Box"}
+                </button>
+                <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox)}`}>
+                  {blackBox ? `${blackBox.decision}${typeof blackBox.score === "number" ? ` • ${blackBox.score}/100` : ""}` : "Not tested"}
+                </span>
+              </div>
             </div>
             {blackBox ? (
               <div className="mt-3 space-y-3 text-xs text-slate-400">
