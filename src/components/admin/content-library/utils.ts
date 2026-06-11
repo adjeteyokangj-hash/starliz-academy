@@ -143,7 +143,7 @@ export function parseBlackBoxContentTest(item: ContentItem): BlackBoxContentTest
     })
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
-  const recommendationRaw = asRecord(raw.reclassificationRecommendation);
+  const recommendationRaw = asRecord(raw.reclassificationRecommendation) ?? asRecord(raw.recommendation);
   const reclassificationRecommendation = recommendationRaw
     ? {
         subject: typeof recommendationRaw.subject === "string" ? recommendationRaw.subject : null,
