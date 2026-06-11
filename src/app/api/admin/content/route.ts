@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
+import { runContentBlackBoxTest } from "@/lib/ai/content-black-box-test";
 import { validateSpellingContentContract } from "@/lib/content-governance";
 import { resolveBlackBoxGatedSaveStatus } from "@/lib/ai/content-black-box-gate";
 import { validateQuestionBatch } from "@/lib/starliz-question-validator";
@@ -386,6 +387,36 @@ export async function POST(req: Request) {
       }
     }
 
+    const blackBoxContentTest = runContentBlackBoxTest({
+      subject: normalizedSubject,
+      strand: requestTuple.strand,
+      keyStage: body.keyStage,
+      yearGroup: body.yearGroup,
+      level: body.difficulty,
+      difficulty: body.difficulty,
+      topic: body.topic,
+      skillFocus: body.skillFocus,
+      questionType: body.itemSchema ?? generationType,
+      items: contentItems,
+    });
+    if (blackBoxContentTest.decision === "REJECT") {
+      return NextResponse.json(
+        {
+          error: "Black box content test rejected generated content.",
+          diagnosticOutcome: "invalid_generated_content",
+          requestTuple,
+          blackBoxContentTest,
+        },
+        { status: 422 },
+      );
+    }
+
+    if (blackBoxContentTest.decision !== "APPROVE") {
+      questionFormulaWarnings.push(
+        `Black box content test decision: ${blackBoxContentTest.decision}. Admin review is required before publishing.`,
+      );
+    }
+
     const shouldTagExamBoard = shouldApplyExamBoardTag({
       yearGroup: body.yearGroup,
       keyStage: body.keyStage,
@@ -477,6 +508,7 @@ export async function POST(req: Request) {
           topic: body.topic,
           qualityScore: (body.items as Record<string, unknown> | null)?.qualityScore ?? null,
           safetyStatus: (body.items as Record<string, unknown> | null)?.safetyStatus ?? null,
+          blackBoxContentTest,
           approvalStatus: body.status,
           visualSettings: body.visualSettings,
           visualAssets: (() => {
@@ -511,6 +543,12 @@ export async function POST(req: Request) {
         curriculumFramework: body.curriculumFramework,
         countryRegion: body.countryRegion,
         skillFocus: body.skillFocus,
+        blackBoxContentTest: {
+          decision: blackBoxContentTest.decision,
+          score: blackBoxContentTest.score,
+          maxScore: blackBoxContentTest.maxScore,
+          recommendation: blackBoxContentTest.recommendation ?? null,
+        },
       },
     });
 
