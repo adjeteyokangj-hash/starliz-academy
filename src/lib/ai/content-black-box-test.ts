@@ -134,6 +134,21 @@ function itemText(item: BlackBoxGeneratedItem): string {
   ].map(clean).filter(Boolean).join(" ");
 }
 
+function itemEvidenceText(item: BlackBoxGeneratedItem): string {
+  return [
+    item.topic,
+    item.skillFocus,
+    item.question,
+    item.prompt,
+    item.passage,
+    item.word,
+    item.answer,
+    item.explanation,
+    item.hint,
+    item.sentenceContext,
+  ].map(clean).filter(Boolean).join(" ");
+}
+
 function expectedSubjectFamily(subject: string): Subject | null {
   const normalized = normalizeSubject(subject);
   if (!normalized) return null;
@@ -145,12 +160,13 @@ function expectedSubjectFamily(subject: string): Subject | null {
 
 function inferSubject(item: BlackBoxGeneratedItem): Subject | null {
   const explicit = normalizeSubject(clean(item.subject || item.contentType || item.type));
-  if (explicit) return expectedSubjectFamily(explicit) ?? explicit;
   if (clean(item.word)) return "spelling";
   if (clean(item.passage)) return "reading";
-  const text = itemText(item);
-  const match = SUBJECT_SIGNAL_PATTERNS.find((entry) => entry.patterns.some((pattern) => pattern.test(text)));
-  return match?.subject ?? null;
+  const text = itemEvidenceText(item);
+  const signal = SUBJECT_SIGNAL_PATTERNS.find((entry) => entry.patterns.some((pattern) => pattern.test(text)))?.subject ?? null;
+  const explicitFamily = explicit ? (expectedSubjectFamily(explicit) ?? explicit) : null;
+  if (signal && explicitFamily && signal !== explicitFamily) return signal;
+  return explicitFamily ?? signal;
 }
 
 function inferStrand(item: BlackBoxGeneratedItem, inferredSubject: Subject | null): string | null {

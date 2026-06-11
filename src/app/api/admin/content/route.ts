@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
-import { runContentBlackBoxTest } from "@/lib/ai/content-black-box-test";
+import { runContentBlackBoxTest, type BlackBoxContentTestResult } from "@/lib/ai/content-black-box-test";
 import { validateSpellingContentContract } from "@/lib/content-governance";
 import { resolveBlackBoxGatedSaveStatus } from "@/lib/ai/content-black-box-gate";
 import { validateQuestionBatch } from "@/lib/starliz-question-validator";
@@ -28,6 +28,24 @@ type SaveRequestTuple = {
   difficulty: number;
   itemCount: number;
 };
+
+export type ContentSaveBlockPayload = {
+  error: string;
+  diagnosticOutcome: DiagnosticOutcomeCode;
+  requestTuple: SaveRequestTuple | null;
+  formulaErrors?: string[];
+  blackBoxContentTest?: BlackBoxContentTestResult;
+};
+
+export function buildContentSaveBlockPayload(input: ContentSaveBlockPayload): ContentSaveBlockPayload {
+  return {
+    error: input.error,
+    diagnosticOutcome: input.diagnosticOutcome,
+    requestTuple: input.requestTuple,
+    ...(input.formulaErrors ? { formulaErrors: input.formulaErrors } : {}),
+    ...(input.blackBoxContentTest ? { blackBoxContentTest: input.blackBoxContentTest } : {}),
+  };
+}
 
 function isReadingComprehensionSkill(skillFocus: string | null | undefined): boolean {
   const normalized = String(skillFocus ?? "").trim().toLowerCase();
@@ -325,14 +343,32 @@ export async function POST(req: Request) {
       difficulty: body.difficulty,
       topic: body.topic,
     });
+    const blackBoxContentTest = runContentBlackBoxTest({
+      subject: normalizedSubject,
+      strand: requestTuple.strand,
+      keyStage: body.keyStage,
+      yearGroup: body.yearGroup,
+      level: body.difficulty,
+      difficulty: body.difficulty,
+      topic: body.topic,
+      skillFocus: body.skillFocus,
+      questionType: body.itemSchema ?? generationType,
+      items: rawItems,
+    });
+    const blockedPayload = (input: Omit<ContentSaveBlockPayload, "requestTuple" | "blackBoxContentTest">) =>
+      buildContentSaveBlockPayload({
+        ...input,
+        requestTuple,
+        blackBoxContentTest,
+      });
+
     if (legacyType === "spelling") {
       const spellingContract = validateSpellingContentContract(contentItems);
       if (!spellingContract.ok) {
-        return NextResponse.json({
+        return NextResponse.json(blockedPayload({
           error: spellingContract.reason ?? "Invalid spelling content.",
           diagnosticOutcome: "invalid_generated_content",
-          requestTuple,
-        }, { status: 422 });
+        }), { status: 422 });
       }
     }
     const quality = validateAiContentQuality({
@@ -343,11 +379,11 @@ export async function POST(req: Request) {
       items: contentItems,
     });
     if (!quality.ok) {
-      return NextResponse.json({
-        error: quality.error,
-        diagnosticOutcome: classifySaveDiagnosticOutcome(quality.error),
-        requestTuple,
-      }, { status: 422 });
+      const qualityError = quality.error ?? "Generated content failed validation.";
+      return NextResponse.json(blockedPayload({
+        error: qualityError,
+        diagnosticOutcome: classifySaveDiagnosticOutcome(qualityError),
+      }), { status: 422 });
     }
 
     // ── StarLiz question formula validation ──────────────────────────────────
@@ -371,12 +407,11 @@ export async function POST(req: Request) {
         );
         if (hardErrors.length > 0) {
           return NextResponse.json(
-            {
+            blockedPayload({
               error: `Question formula validation failed: ${hardErrors.join("; ")}`,
               formulaErrors: hardErrors,
               diagnosticOutcome: "save_blocked",
-              requestTuple,
-            },
+            }),
             { status: 422 },
           );
         }
@@ -386,27 +421,12 @@ export async function POST(req: Request) {
         questionFormulaWarnings.push(...formulaResult.errors);
       }
     }
-
-    const blackBoxContentTest = runContentBlackBoxTest({
-      subject: normalizedSubject,
-      strand: requestTuple.strand,
-      keyStage: body.keyStage,
-      yearGroup: body.yearGroup,
-      level: body.difficulty,
-      difficulty: body.difficulty,
-      topic: body.topic,
-      skillFocus: body.skillFocus,
-      questionType: body.itemSchema ?? generationType,
-      items: contentItems,
-    });
     if (blackBoxContentTest.decision === "REJECT") {
       return NextResponse.json(
-        {
+        blockedPayload({
           error: "Black box content test rejected generated content.",
           diagnosticOutcome: "invalid_generated_content",
-          requestTuple,
-          blackBoxContentTest,
-        },
+        }),
         { status: 422 },
       );
     }

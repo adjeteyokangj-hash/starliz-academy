@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { runContentBlackBoxTest } from "../src/lib/ai/content-black-box-test";
+import { buildContentSaveBlockPayload } from "../src/app/api/admin/content/route";
 
 const baseMathContext = {
   subject: "maths",
@@ -12,6 +13,16 @@ const baseMathContext = {
   difficulty: 3,
   topic: "Fractions",
   skillFocus: "Fractions",
+};
+
+const requestTuple = {
+  yearGroup: "Year 5",
+  keyStage: "KS2",
+  subject: "maths",
+  strand: null,
+  skillFocus: "Fractions",
+  difficulty: 3,
+  itemCount: 1,
 };
 
 test("black box content test approves well-aligned generated content", () => {
@@ -44,6 +55,29 @@ test("black box content test recommends reclassification for wrong subject conte
       yearGroup: "Year 5",
       skillFocus: "Inference",
       topic: "Inference",
+      passage: "The old gate creaked as Maya stepped into the empty garden.",
+      question: "What can you infer about the garden?",
+      answer: "It feels mysterious or abandoned.",
+      explanation: "The creaking gate and empty garden create a mysterious mood.",
+      choices: ["It feels mysterious or abandoned.", "It is crowded.", "It is noisy."],
+      difficulty: 3,
+    }],
+  });
+
+  assert.equal(result.decision, "RECLASSIFY");
+  assert.equal(result.recommendation?.subject, "reading");
+  assert.match(result.reasons.join(" "), /Expected maths, detected reading/i);
+});
+
+test("black box content test detects wrong subject even after selected metadata is stamped on the item", () => {
+  const result = runContentBlackBoxTest({
+    ...baseMathContext,
+    items: [{
+      subject: "maths",
+      keyStage: "KS2",
+      yearGroup: "Year 5",
+      skillFocus: "Fractions",
+      topic: "Fractions",
       passage: "The old gate creaked as Maya stepped into the empty garden.",
       question: "What can you infer about the garden?",
       answer: "It feels mysterious or abandoned.",
@@ -229,4 +263,110 @@ test("black box content test exposes reclassify recommendation", () => {
 
   assert.equal(result.decision, "RECLASSIFY");
   assert.deepEqual(result.recommendation, { subject: "spelling", strand: "spelling" });
+});
+
+test("blocked wrong-subject save payload includes black box diagnostics", () => {
+  const blackBoxContentTest = runContentBlackBoxTest({
+    ...baseMathContext,
+    items: [{
+      subject: "maths",
+      keyStage: "KS2",
+      yearGroup: "Year 5",
+      skillFocus: "Fractions",
+      topic: "Fractions",
+      passage: "The old gate creaked as Maya stepped into the empty garden.",
+      question: "What can you infer about the garden?",
+      answer: "It feels mysterious or abandoned.",
+      explanation: "The creaking gate and empty garden create a mysterious mood.",
+    }],
+  });
+
+  const payload = buildContentSaveBlockPayload({
+    error: "Generated content did not match the selected subject.",
+    diagnosticOutcome: "save_blocked",
+    requestTuple,
+    blackBoxContentTest,
+  });
+
+  assert.equal(payload.blackBoxContentTest?.decision, "RECLASSIFY");
+  assert.match(payload.blackBoxContentTest?.reasons.join(" ") ?? "", /Expected maths, detected reading/i);
+});
+
+test("blocked missing-answer save payload includes black box diagnostics", () => {
+  const blackBoxContentTest = runContentBlackBoxTest({
+    ...baseMathContext,
+    items: [{
+      subject: "maths",
+      keyStage: "KS2",
+      yearGroup: "Year 5",
+      skillFocus: "Fractions",
+      topic: "Fractions",
+      question: "Calculate 1/2 of 80.",
+      explanation: "Divide 80 by 2.",
+      difficulty: 3,
+    }],
+  });
+
+  const payload = buildContentSaveBlockPayload({
+    error: "Generated content must include an answer.",
+    diagnosticOutcome: "save_blocked",
+    requestTuple,
+    blackBoxContentTest,
+  });
+
+  assert.equal(payload.blackBoxContentTest?.decision, "REJECT");
+  assert.match(payload.blackBoxContentTest?.reasons.join(" ") ?? "", /Missing correct answer/i);
+});
+
+test("blocked invalid-options save payload includes black box diagnostics", () => {
+  const blackBoxContentTest = runContentBlackBoxTest({
+    ...baseMathContext,
+    items: [{
+      subject: "maths",
+      keyStage: "KS2",
+      yearGroup: "Year 5",
+      skillFocus: "Fractions",
+      topic: "Fractions",
+      question: "Calculate 1/2 of 80.",
+      answer: "40",
+      explanation: "Divide 80 by 2.",
+      choices: ["30", "50", "60"],
+      difficulty: 3,
+    }],
+  });
+
+  const payload = buildContentSaveBlockPayload({
+    error: "Black box content test rejected generated content.",
+    diagnosticOutcome: "invalid_generated_content",
+    requestTuple,
+    blackBoxContentTest,
+  });
+
+  assert.equal(payload.blackBoxContentTest?.decision, "REJECT");
+  assert.match(payload.blackBoxContentTest?.reasons.join(" ") ?? "", /Correct answer is not present/i);
+});
+
+test("valid generated content can carry black box metadata without promotion", () => {
+  const blackBoxContentTest = runContentBlackBoxTest({
+    ...baseMathContext,
+    items: [{
+      subject: "maths",
+      keyStage: "KS2",
+      yearGroup: "Year 5",
+      skillFocus: "Fractions",
+      topic: "Fractions",
+      question: "Calculate 3/4 of 240 and explain the method.",
+      answer: "180",
+      explanation: "Divide 240 by 4 to get 60, then multiply by 3 to get 180.",
+      choices: ["180", "160", "120"],
+      difficulty: 3,
+    }],
+  });
+  const metadata = {
+    approvalStatus: "generated",
+    blackBoxContentTest,
+  };
+
+  assert.equal(metadata.approvalStatus, "generated");
+  assert.equal(metadata.blackBoxContentTest.decision, "APPROVE");
 });
