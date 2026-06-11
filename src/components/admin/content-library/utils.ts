@@ -11,7 +11,21 @@ import {
   yearGroupToOrdinal,
   shouldApplyExamBoardTag,
 } from "@/lib/curriculum";
-import type { BlackBoxContentDecision, BlackBoxContentTest, ContentItem, ContentMeta, ContentSummary, StudentAssignmentCandidate, StudentOption } from "./types";
+import type {
+  BlackBoxAdminVerification,
+  BlackBoxContentDecision,
+  BlackBoxContentTest,
+  BlackBoxRuntimeStatus,
+  BlackBoxRuntimeTest,
+  BlackBoxVerificationDecision,
+  ContentItem,
+  ContentMeta,
+  ContentReviewHistoryEntry,
+  ContentReviewQueueBucket,
+  ContentSummary,
+  StudentAssignmentCandidate,
+  StudentOption,
+} from "./types";
 
 export function normalizeText(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
@@ -114,6 +128,14 @@ function isBlackBoxDecision(value: unknown): value is BlackBoxContentDecision {
   return value === "APPROVE" || value === "RECLASSIFY" || value === "REJECT" || value === "NEEDS_ADMIN_REVIEW";
 }
 
+function isRuntimeStatus(value: unknown): value is BlackBoxRuntimeStatus {
+  return value === "passed" || value === "failed" || value === "needs_review" || value === "not_run";
+}
+
+function isVerificationDecision(value: unknown): value is BlackBoxVerificationDecision {
+  return value === "approve" || value === "reject" || value === "reclassify" || value === "needs_changes" || value === "send_back";
+}
+
 function asStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   return value.filter((entry): entry is string => typeof entry === "string");
@@ -208,6 +230,78 @@ export function getBlackBoxBadgeTone(result: BlackBoxContentTest | null): string
   if (result.decision === "REJECT") return "bg-rose-500/15 text-rose-200";
   return "bg-amber-500/15 text-amber-200";
 }
+
+export function parseBlackBoxRuntimeTest(item: ContentItem): BlackBoxRuntimeTest | null {
+  const metadata = parseMetadata(item);
+  const raw = asRecord(metadata.blackBoxLiveTest) ?? asRecord(metadata.blackBoxRuntimeTest);
+  if (!raw) return null;
+  const status = isRuntimeStatus(raw.status) ? raw.status : "not_run";
+  return {
+    status,
+    score: normaliseBlackBoxScore(raw),
+    reasons: asStringArray(raw.reasons),
+    simulatedAttempts: asFiniteNumber(raw.simulatedAttempts),
+    hintChecks: asStringArray(raw.hintChecks),
+    masteryChecks: asStringArray(raw.masteryChecks),
+    flowChecks: asStringArray(raw.flowChecks),
+    testedAt: typeof raw.testedAt === "string" ? raw.testedAt : null,
+  };
+}
+
+export function parseBlackBoxAdminVerification(item: ContentItem): BlackBoxAdminVerification | null {
+  const metadata = parseMetadata(item);
+  const raw = asRecord(metadata.blackBoxAdminVerification);
+  if (!raw) return null;
+  const statusRaw = typeof raw.status === "string" ? raw.status : "pending";
+  const status = statusRaw === "verified" || statusRaw === "rejected" || statusRaw === "needs_changes" ? statusRaw : "pending";
+  const reclassificationRaw = asRecord(raw.reclassification);
+  return {
+    status,
+    decision: isVerificationDecision(raw.decision) ? raw.decision : undefined,
+    notes: typeof raw.notes === "string" ? raw.notes : null,
+    verifiedAt: typeof raw.verifiedAt === "string" ? raw.verifiedAt : null,
+    verifiedBy: typeof raw.verifiedBy === "string" ? raw.verifiedBy : null,
+    reclassification: reclassificationRaw
+      ? {
+          subject: typeof reclassificationRaw.subject === "string" ? reclassificationRaw.subject : null,
+          strand: typeof reclassificationRaw.strand === "string" ? reclassificationRaw.strand : null,
+          keyStage: typeof reclassificationRaw.keyStage === "string" ? reclassificationRaw.keyStage : null,
+          yearGroup: typeof reclassificationRaw.yearGroup === "string" ? reclassificationRaw.yearGroup : null,
+          level: asFiniteNumber(reclassificationRaw.level) ?? null,
+        }
+      : null,
+  };
+}
+
+export function parseContentReviewHistory(item: ContentItem): ContentReviewHistoryEntry[] {
+  const metadata = parseMetadata(item);
+  const rawHistory = Array.isArray(metadata.reviewHistory) ? metadata.reviewHistory : [];
+  const history: ContentReviewHistoryEntry[] = [];
+  for (const entry of rawHistory) {
+    const raw = asRecord(entry);
+    if (!raw || typeof raw.action !== "string" || typeof raw.createdAt !== "string") continue;
+    history.push({
+      action: raw.action,
+      status: typeof raw.status === "string" ? raw.status : null,
+      score: asFiniteNumber(raw.score) ?? null,
+      decision: typeof raw.decision === "string" ? raw.decision : null,
+      notes: typeof raw.notes === "string" ? raw.notes : null,
+      actor: typeof raw.actor === "string" ? raw.actor : null,
+      createdAt: raw.createdAt,
+      metadata: asRecord(raw.metadata) ?? undefined,
+    });
+  }
+  return history;
+}
+
+export function getContentReviewQueueBucket(item: ContentItem): ContentReviewQueueBucket {
+  const verification = parseBlackBoxAdminVerification(item);
+  if (item.status === "published") return "published";
+  if (item.status === "approved" || verification?.decision === "approve") return "approved";
+  if (item.status === "rejected" || verification?.status === "rejected") return "rejected";
+  if (verification?.decision === "reclassify") return "reclassified";
+  return "awaiting_review";
+}
 export function getContentMeta(item: ContentItem): ContentMeta {
   const metadata = parseMetadata(item);
   const title = typeof metadata.title === "string"
@@ -285,7 +379,7 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
     };
   }
 
-  if (!["reviewed", "published"].includes(item.status)) {
+  if (!["reviewed", "approved", "published"].includes(item.status)) {
     return {
       student,
       hardEligible: false,

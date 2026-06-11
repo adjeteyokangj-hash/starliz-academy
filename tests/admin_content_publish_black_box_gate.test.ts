@@ -107,5 +107,5 @@ test("admin content publish route keeps existing status protection", async () =>
   const payload = await response.json() as { error?: string };
 
   assert.equal(response.status, 422);
-  assert.match(payload.error ?? "", /Status must be "reviewed" or "published"/i);
+  assert.match(payload.error ?? "", /Status must be "reviewed", "approved", or "published"/i);
 });

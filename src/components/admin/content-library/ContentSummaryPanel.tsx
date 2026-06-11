@@ -5,6 +5,11 @@ type Props = {
   reviewedPublished: number;
   draft: number;
   invalidJson: number;
+  awaitingReview?: number;
+  reclassified?: number;
+  rejected?: number;
+  approved?: number;
+  published?: number;
 };
 
 export default function ContentSummaryPanel(props: Props) {
@@ -13,6 +18,11 @@ export default function ContentSummaryPanel(props: Props) {
     { label: "Reviewed / Published", value: props.reviewedPublished },
     { label: "Draft", value: props.draft },
     { label: "Invalid JSON", value: props.invalidJson },
+    { label: "Awaiting review", value: props.awaitingReview ?? 0 },
+    { label: "Reclassified", value: props.reclassified ?? 0 },
+    { label: "Rejected", value: props.rejected ?? 0 },
+    { label: "Approved", value: props.approved ?? 0 },
+    { label: "Published", value: props.published ?? 0 },
   ];
 
   return (

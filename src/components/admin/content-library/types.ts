@@ -1,5 +1,7 @@
 
 export type BlackBoxContentDecision = "APPROVE" | "RECLASSIFY" | "REJECT" | "NEEDS_ADMIN_REVIEW";
+export type BlackBoxRuntimeStatus = "passed" | "failed" | "needs_review" | "not_run";
+export type BlackBoxVerificationDecision = "approve" | "reject" | "reclassify" | "needs_changes" | "send_back";
 
 export type BlackBoxContentItemCheck = {
   itemIndex?: number;
@@ -30,6 +32,45 @@ export type BlackBoxContentTest = {
     reasons?: string[];
   } | null;
 };
+
+export type BlackBoxRuntimeTest = {
+  status: BlackBoxRuntimeStatus;
+  score?: number;
+  reasons?: string[];
+  simulatedAttempts?: number;
+  hintChecks?: string[];
+  masteryChecks?: string[];
+  flowChecks?: string[];
+  testedAt?: string | null;
+};
+
+export type BlackBoxAdminVerification = {
+  status: "verified" | "rejected" | "needs_changes" | "pending";
+  decision?: BlackBoxVerificationDecision;
+  notes?: string | null;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  reclassification?: {
+    subject?: string | null;
+    strand?: string | null;
+    keyStage?: string | null;
+    yearGroup?: string | null;
+    level?: number | null;
+  } | null;
+};
+
+export type ContentReviewHistoryEntry = {
+  action: string;
+  status?: string | null;
+  score?: number | null;
+  decision?: string | null;
+  notes?: string | null;
+  actor?: string | null;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type ContentReviewQueueBucket = "awaiting_review" | "reclassified" | "rejected" | "approved" | "published";
 export type ContentItem = {
   id: string;
   contentType: string;

@@ -9,8 +9,8 @@ import ContentLibraryFilters from "@/components/admin/content-library/ContentLib
 import ContentSummaryPanel from "@/components/admin/content-library/ContentSummaryPanel";
 import ContentTopicGrid from "@/components/admin/content-library/ContentTopicGrid";
 import ContentViewModal from "@/components/admin/content-library/ContentViewModal";
-import type { AssignMode, AssignmentPayload, ContentItem, SortMode, StudentAssignmentCandidate, StudentOption, ViewMode } from "@/components/admin/content-library/types";
-import { evaluateAssignmentCandidate, getContentJsonSummary, getContentMeta, normalizeText } from "@/components/admin/content-library/utils";
+import type { AssignMode, AssignmentPayload, ContentItem, ContentReviewQueueBucket, SortMode, StudentAssignmentCandidate, StudentOption, ViewMode } from "@/components/admin/content-library/types";
+import { evaluateAssignmentCandidate, getContentJsonSummary, getContentMeta, getContentReviewQueueBucket, normalizeText, parseBlackBoxContentTest } from "@/components/admin/content-library/utils";
 import { keyStageForYearGroup } from "@/lib/curriculum";
 
 type PendingAction = { type: "single"; candidate: StudentAssignmentCandidate } | null;
@@ -23,6 +23,9 @@ type FilterState = {
   studentClass: string;
   studentParent: string;
   subjectTab: string;
+  reviewBucket: ContentReviewQueueBucket | "all";
+  minBlackBoxScore: string;
+  generatedAfter: string;
   sortMode: SortMode;
 };
 
@@ -35,6 +38,9 @@ function emptyFilters(): FilterState {
     studentClass: "",
     studentParent: "",
     subjectTab: "all",
+    reviewBucket: "awaiting_review",
+    minBlackBoxScore: "",
+    generatedAfter: "",
     sortMode: "newest",
   };
 }
@@ -48,6 +54,9 @@ function parseFiltersFromSearchParams(searchParams: ReadonlyURLSearchParams): Fi
     studentClass: searchParams.get("class") ?? "",
     studentParent: searchParams.get("parent") ?? "",
     subjectTab: searchParams.get("subject") ?? "all",
+    reviewBucket: (searchParams.get("review") as ContentReviewQueueBucket | "all" | null) ?? "awaiting_review",
+    minBlackBoxScore: searchParams.get("bbScore") ?? "",
+    generatedAfter: searchParams.get("after") ?? "",
     sortMode: (searchParams.get("sort") as SortMode | null) ?? "newest",
   };
 }
@@ -139,6 +148,9 @@ export default function ContentLibraryPage() {
     if (resolved.studentClass) params.set("class", resolved.studentClass);
     if (resolved.studentParent) params.set("parent", resolved.studentParent);
     if (resolved.subjectTab && resolved.subjectTab !== "all") params.set("subject", resolved.subjectTab);
+    if (resolved.reviewBucket && resolved.reviewBucket !== "all") params.set("review", resolved.reviewBucket);
+    if (resolved.minBlackBoxScore) params.set("bbScore", resolved.minBlackBoxScore);
+    if (resolved.generatedAfter) params.set("after", resolved.generatedAfter);
     if (resolved.sortMode !== "newest") params.set("sort", resolved.sortMode);
     const queryString = params.toString();
     router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
@@ -193,10 +205,16 @@ export default function ContentLibraryPage() {
 
     const byCurriculum = bySubject.filter((item) => {
       const meta = getContentMeta(item);
+      const blackBox = parseBlackBoxContentTest(item);
+      const minBlackBoxScore = Number(activeFilters.minBlackBoxScore);
       const matchesExamBoard = !activeFilters.examBoardFilter || meta.examBoard === activeFilters.examBoardFilter;
       const matchesYear = !activeFilters.studentYear || normalizeText(meta.yearGroup).includes(normalizeText(activeFilters.studentYear));
       const matchesKeyStage = !activeFilters.studentKeyStage || normalizeText(meta.keyStage).includes(normalizeText(activeFilters.studentKeyStage));
-      return matchesExamBoard && matchesYear && matchesKeyStage;
+      const matchesReview = activeFilters.reviewBucket === "all" || getContentReviewQueueBucket(item) === activeFilters.reviewBucket;
+      const matchesBlackBoxScore = !activeFilters.minBlackBoxScore
+        || (typeof blackBox?.score === "number" && Number.isFinite(minBlackBoxScore) && blackBox.score >= minBlackBoxScore);
+      const matchesGeneratedAfter = !activeFilters.generatedAfter || Date.parse(item.createdAt) >= Date.parse(activeFilters.generatedAfter);
+      return matchesExamBoard && matchesYear && matchesKeyStage && matchesReview && matchesBlackBoxScore && matchesGeneratedAfter;
     });
 
     return [...byCurriculum].sort((a, b) => {
@@ -230,11 +248,16 @@ export default function ContentLibraryPage() {
   );
 
   const totals = useMemo(() => {
-    const reviewedPublished = filteredItems.filter((item) => ["reviewed", "published"].includes(item.status)).length;
+    const reviewedPublished = filteredItems.filter((item) => ["reviewed", "approved", "published"].includes(item.status)).length;
     const draft = filteredItems.filter((item) => item.status === "draft").length;
     const invalidJson = filteredItems.filter((item) => !getContentJsonSummary(item.contentJson).valid).length;
-    return { reviewedPublished, draft, invalidJson };
-  }, [filteredItems]);
+    const awaitingReview = items.filter((item) => getContentReviewQueueBucket(item) === "awaiting_review").length;
+    const reclassified = items.filter((item) => getContentReviewQueueBucket(item) === "reclassified").length;
+    const rejected = items.filter((item) => getContentReviewQueueBucket(item) === "rejected").length;
+    const approved = items.filter((item) => getContentReviewQueueBucket(item) === "approved").length;
+    const published = items.filter((item) => getContentReviewQueueBucket(item) === "published").length;
+    return { reviewedPublished, draft, invalidJson, awaitingReview, reclassified, rejected, approved, published };
+  }, [filteredItems, items]);
 
   function selectContent(item: ContentItem) {
     setOperating({ id: item.id, action: "select" });
@@ -367,26 +390,10 @@ export default function ContentLibraryPage() {
     }
   }
 
-  async function handleReview(item: ContentItem) {
+  function handleReview(item: ContentItem) {
     setOperating({ id: item.id, action: "review" });
-    setMessage(null);
-    try {
-      const response = await fetch(`/api/admin/content/${item.id}/review`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const result = await response.json() as { id: string; status: string };
-      if (!response.ok) {
-        setMessage((result as { error?: string }).error ?? "Failed to mark content as reviewed");
-        return;
-      }
-      setMessage(`Content marked as reviewed. You can now assign or publish it.`);
-      setItems((current) => current.map((c) => c.id === item.id ? { ...c, status: "reviewed" } : c));
-    } catch {
-      setMessage("Review request failed");
-    } finally {
-      setOperating(null);
-    }
+    setViewModalContent(item);
+    window.setTimeout(() => setOperating(null), 180);
   }
 
   async function handleDuplicate(item: ContentItem) {
@@ -462,6 +469,12 @@ export default function ContentLibraryPage() {
     window.setTimeout(() => setOperating(null), 180);
   }
 
+  function handleVerified(updated: ContentItem) {
+    setItems((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+    setViewModalContent((current) => current?.id === updated.id ? { ...current, ...updated } : current);
+    setMessage(`Verification saved. Content is now ${updated.status}.`);
+  }
+
   return (
     <div className="space-y-6 pb-24">
       <header>
@@ -494,6 +507,66 @@ export default function ContentLibraryPage() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-indigo-200">Admin Review Queue</p>
+            <h2 className="text-lg font-black text-white">Black Box Verification</h2>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs font-black">
+            {([
+              ["all", "All"],
+              ["awaiting_review", "Awaiting"],
+              ["reclassified", "Reclassified"],
+              ["rejected", "Rejected"],
+              ["approved", "Approved"],
+              ["published", "Published"],
+            ] as Array<[ContentReviewQueueBucket | "all", string]>).map(([bucket, label]) => (
+              <button
+                key={bucket}
+                type="button"
+                onClick={() => setDraftFilters((current) => ({ ...current, reviewBucket: bucket }))}
+                className={`rounded-full px-3 py-1 ${draftFilters.reviewBucket === bucket ? "bg-indigo-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <label className="text-xs font-bold text-slate-300">
+            Min Black Box score
+            <input
+              value={draftFilters.minBlackBoxScore}
+              onChange={(event) => setDraftFilters((current) => ({ ...current, minBlackBoxScore: event.target.value }))}
+              type="number"
+              min={0}
+              max={100}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-indigo-400"
+              placeholder="0-100"
+            />
+          </label>
+          <label className="text-xs font-bold text-slate-300">
+            Generated after
+            <input
+              value={draftFilters.generatedAfter}
+              onChange={(event) => setDraftFilters((current) => ({ ...current, generatedAfter: event.target.value }))}
+              type="date"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-indigo-400"
+            />
+          </label>
+          <div className="flex items-end gap-2">
+            <button
+              type="button"
+              onClick={() => applyFilters()}
+              className="rounded-lg bg-indigo-500 px-4 py-2 text-xs font-black text-white hover:bg-indigo-400"
+            >
+              Apply Queue Filters
+            </button>
+          </div>
+        </div>
+      </section>
 
       {message ? (
         <div className="space-y-2">
@@ -542,6 +615,11 @@ export default function ContentLibraryPage() {
           reviewedPublished={totals.reviewedPublished}
           draft={totals.draft}
           invalidJson={totals.invalidJson}
+          awaitingReview={totals.awaitingReview}
+          reclassified={totals.reclassified}
+          rejected={totals.rejected}
+          approved={totals.approved}
+          published={totals.published}
         />
       </div>
 
@@ -574,6 +652,7 @@ export default function ContentLibraryPage() {
         open={viewModalContent !== null}
         content={viewModalContent}
         onClose={() => setViewModalContent(null)}
+        onVerified={handleVerified}
       />
     </div>
   );

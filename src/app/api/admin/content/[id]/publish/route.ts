@@ -63,9 +63,9 @@ export async function handleAdminContentPublishPost(
     return NextResponse.json({ error: "Content not found" }, { status: 404 });
   }
 
-  if (!["reviewed", "published"].includes(content.status)) {
+  if (!["reviewed", "approved", "published"].includes(content.status)) {
     return NextResponse.json(
-      { error: `Cannot publish content with status "${content.status}". Status must be "reviewed" or "published".` },
+      { error: `Cannot publish content with status "${content.status}". Status must be "reviewed", "approved", or "published".` },
       { status: 422 },
     );
   }

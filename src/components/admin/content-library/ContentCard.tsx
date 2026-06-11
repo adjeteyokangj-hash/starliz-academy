@@ -38,8 +38,8 @@ export default function ContentCard({
   const meta = getContentMeta(item);
   const blackBox = parseBlackBoxContentTest(item);
   const isDraftOrGenerated = ["draft", "generated"].includes(item.status);
-  const assignDisabled = !["reviewed", "published"].includes(item.status) || !summary.valid;
-  const canPublish = ["reviewed", "published"].includes(item.status);
+  const assignDisabled = !["reviewed", "approved", "published"].includes(item.status) || !summary.valid;
+  const canPublish = ["reviewed", "approved", "published"].includes(item.status);
   const assignTitle = isDraftOrGenerated
     ? "Review or publish this content before assigning."
     : !summary.valid
@@ -84,7 +84,7 @@ export default function ContentCard({
             disabled={isOperating || Boolean(assigning)}
             className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-100 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isOperating && operatingAction === "review" ? "Loading..." : "Review to assign"}
+            {isOperating && operatingAction === "review" ? "Opening..." : "Open Review"}
           </button>
         ) : (
           <button
