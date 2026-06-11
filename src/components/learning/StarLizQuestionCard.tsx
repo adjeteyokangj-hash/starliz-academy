@@ -213,7 +213,7 @@ export default function StarLizQuestionCard({
       ) : null}
 
       {/* ── Question heading ────────────────────────────────────────────── */}
-      <h2 className="mt-6 text-3xl font-black">{questionPrompt}</h2>
+      <h2 className="mt-6 text-3xl font-black text-slate-950">{questionPrompt}</h2>
 
       {/* ── Optional instruction below heading ──────────────────────────── */}
       {questionInstruction ? (

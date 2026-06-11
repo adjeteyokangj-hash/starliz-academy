@@ -258,7 +258,6 @@ function ContentViewModalBody({
                 coachOpen={Boolean(coachSteps.length || workedSolution)}
                 questionPrompt={questionText}
                 answerOptions={answerOptions.length ? answerOptions : undefined}
-                disabled
                 answerValue=""
                 actionButtonLabel="Preview only"
               />
