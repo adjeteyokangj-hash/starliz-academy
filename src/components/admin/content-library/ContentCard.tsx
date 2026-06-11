@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ContentItem } from "./types";
-import { getContentJsonSummary, getContentMeta } from "./utils";
+import { getBlackBoxBadgeTone, getContentJsonSummary, getContentMeta, parseBlackBoxContentTest } from "./utils";
 
 type Props = {
   item: ContentItem;
@@ -36,6 +36,7 @@ export default function ContentCard({
   const [showMenu, setShowMenu] = useState(false);
   const summary = getContentJsonSummary(item.contentJson);
   const meta = getContentMeta(item);
+  const blackBox = parseBlackBoxContentTest(item);
   const isDraftOrGenerated = ["draft", "generated"].includes(item.status);
   const assignDisabled = !["reviewed", "published"].includes(item.status) || !summary.valid;
   const canPublish = ["reviewed", "published"].includes(item.status);
@@ -62,6 +63,9 @@ export default function ContentCard({
             {summary.valid ? "Valid JSON" : "Invalid JSON"}
           </span>
           <span className="rounded-full bg-amber-500/15 px-2 py-1 text-xs font-black text-amber-200">{item.status}</span>
+          <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox)}`}>
+            Black Box: {blackBox ? `${blackBox.decision}${typeof blackBox.score === "number" ? ` ${blackBox.score}/100` : ""}` : "Not tested"}
+          </span>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">

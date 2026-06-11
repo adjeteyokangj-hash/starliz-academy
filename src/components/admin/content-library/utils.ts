@@ -11,7 +11,7 @@ import {
   yearGroupToOrdinal,
   shouldApplyExamBoardTag,
 } from "@/lib/curriculum";
-import type { ContentItem, ContentMeta, ContentSummary, StudentAssignmentCandidate, StudentOption } from "./types";
+import type { BlackBoxContentDecision, BlackBoxContentTest, ContentItem, ContentMeta, ContentSummary, StudentAssignmentCandidate, StudentOption } from "./types";
 
 export function normalizeText(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
@@ -109,6 +109,67 @@ export function parseMetadata(item: ContentItem): Record<string, unknown> {
   }
 }
 
+
+function isBlackBoxDecision(value: unknown): value is BlackBoxContentDecision {
+  return value === "APPROVE" || value === "RECLASSIFY" || value === "REJECT" || value === "NEEDS_ADMIN_REVIEW";
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function parseBlackBoxContentTest(item: ContentItem): BlackBoxContentTest | null {
+  const metadata = parseMetadata(item);
+  const raw = asRecord(metadata.blackBoxContentTest);
+  if (!raw || !isBlackBoxDecision(raw.decision)) return null;
+
+  const score = typeof raw.score === "number" && Number.isFinite(raw.score) ? raw.score : undefined;
+  const itemChecksRaw = Array.isArray(raw.itemChecks) ? raw.itemChecks : [];
+  const itemChecks = itemChecksRaw
+    .map((entry) => {
+      const check = asRecord(entry);
+      if (!check) return null;
+      return {
+        itemIndex: typeof check.itemIndex === "number" ? check.itemIndex : undefined,
+        score: typeof check.score === "number" && Number.isFinite(check.score) ? check.score : undefined,
+        reasons: asStringArray(check.reasons),
+        checks: asRecord(check.checks) ?? undefined,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+  const recommendationRaw = asRecord(raw.reclassificationRecommendation);
+  const reclassificationRecommendation = recommendationRaw
+    ? {
+        subject: typeof recommendationRaw.subject === "string" ? recommendationRaw.subject : null,
+        strand: typeof recommendationRaw.strand === "string" ? recommendationRaw.strand : null,
+        keyStage: typeof recommendationRaw.keyStage === "string" ? recommendationRaw.keyStage : null,
+        yearGroup: typeof recommendationRaw.yearGroup === "string" ? recommendationRaw.yearGroup : null,
+        level: typeof recommendationRaw.level === "number" && Number.isFinite(recommendationRaw.level) ? recommendationRaw.level : null,
+        reasons: asStringArray(recommendationRaw.reasons),
+      }
+    : null;
+
+  return {
+    decision: raw.decision,
+    score,
+    reasons: asStringArray(raw.reasons),
+    itemChecks,
+    reclassificationRecommendation,
+  };
+}
+
+export function getBlackBoxBadgeTone(result: BlackBoxContentTest | null): string {
+  if (!result) return "bg-slate-700/40 text-slate-300";
+  if (result.decision === "APPROVE") return "bg-emerald-500/15 text-emerald-200";
+  if (result.decision === "REJECT") return "bg-rose-500/15 text-rose-200";
+  return "bg-amber-500/15 text-amber-200";
+}
 export function getContentMeta(item: ContentItem): ContentMeta {
   const metadata = parseMetadata(item);
   const title = typeof metadata.title === "string"

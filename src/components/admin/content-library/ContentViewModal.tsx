@@ -1,7 +1,7 @@
 "use client";
 
 import type { ContentItem } from "./types";
-import { getContentJsonSummary, getContentMeta } from "./utils";
+import { getBlackBoxBadgeTone, getContentJsonSummary, getContentMeta, parseBlackBoxContentTest } from "./utils";
 
 type Props = {
   open: boolean;
@@ -14,6 +14,7 @@ export default function ContentViewModal({ open, content, onClose }: Props) {
 
   const summary = getContentJsonSummary(content.contentJson);
   const meta = getContentMeta(content);
+  const blackBox = parseBlackBoxContentTest(content);
 
   let items: unknown[] = [];
   try {
@@ -41,6 +42,54 @@ export default function ContentViewModal({ open, content, onClose }: Props) {
         </div>
 
         <div className="space-y-4">
+          <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-bold text-slate-300">Black Box Content Test</p>
+              <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox)}`}>
+                {blackBox ? `${blackBox.decision}${typeof blackBox.score === "number" ? ` • ${blackBox.score}/100` : ""}` : "Not tested"}
+              </span>
+            </div>
+            {blackBox ? (
+              <div className="mt-3 space-y-3 text-xs text-slate-400">
+                {blackBox.reasons && blackBox.reasons.length > 0 ? (
+                  <div>
+                    <p className="font-bold text-slate-300">Reasons</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5">
+                      {blackBox.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
+                {blackBox.reclassificationRecommendation ? (
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-amber-100">
+                    <p className="font-bold">Reclassification recommendation</p>
+                    <p className="mt-1">
+                      Subject: {blackBox.reclassificationRecommendation.subject ?? "N/A"} | Strand: {blackBox.reclassificationRecommendation.strand ?? "N/A"} | Key stage: {blackBox.reclassificationRecommendation.keyStage ?? "N/A"} | Year: {blackBox.reclassificationRecommendation.yearGroup ?? "N/A"} | Level: {blackBox.reclassificationRecommendation.level ?? "N/A"}
+                    </p>
+                  </div>
+                ) : null}
+                {blackBox.itemChecks && blackBox.itemChecks.length > 0 ? (
+                  <div>
+                    <p className="font-bold text-slate-300">Item checks</p>
+                    <div className="mt-2 space-y-2">
+                      {blackBox.itemChecks.map((check, idx) => (
+                        <div key={`${check.itemIndex ?? idx}-${check.score ?? "score"}`} className="rounded-lg border border-slate-700 bg-slate-950 p-2">
+                          <p className="font-bold text-slate-300">Item {typeof check.itemIndex === "number" ? check.itemIndex + 1 : idx + 1}{typeof check.score === "number" ? ` • ${check.score}/100` : ""}</p>
+                          {check.reasons && check.reasons.length > 0 ? (
+                            <ul className="mt-1 list-disc space-y-1 pl-5">
+                              {check.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                            </ul>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-slate-400">No black-box scorecard has been stored for this content yet.</p>
+            )}
+          </div>
+
           <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
             <p className="text-xs font-bold text-slate-300">Metadata</p>
             <div className="mt-2 grid gap-2 text-xs text-slate-400">

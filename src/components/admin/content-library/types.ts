@@ -1,3 +1,27 @@
+
+export type BlackBoxContentDecision = "APPROVE" | "RECLASSIFY" | "REJECT" | "NEEDS_ADMIN_REVIEW";
+
+export type BlackBoxContentItemCheck = {
+  itemIndex?: number;
+  score?: number;
+  reasons?: string[];
+  checks?: Record<string, unknown>;
+};
+
+export type BlackBoxContentTest = {
+  decision: BlackBoxContentDecision;
+  score?: number;
+  reasons?: string[];
+  itemChecks?: BlackBoxContentItemCheck[];
+  reclassificationRecommendation?: {
+    subject?: string | null;
+    strand?: string | null;
+    keyStage?: string | null;
+    yearGroup?: string | null;
+    level?: number | null;
+    reasons?: string[];
+  } | null;
+};
 export type ContentItem = {
   id: string;
   contentType: string;
