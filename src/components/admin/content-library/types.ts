@@ -4,6 +4,10 @@ export type BlackBoxContentDecision = "APPROVE" | "RECLASSIFY" | "REJECT" | "NEE
 export type BlackBoxContentItemCheck = {
   itemIndex?: number;
   score?: number;
+  maxScore?: number;
+  rawScore?: number;
+  rawMaxScore?: number;
+  passRate?: number;
   reasons?: string[];
   checks?: Record<string, unknown>;
 };
@@ -11,6 +15,10 @@ export type BlackBoxContentItemCheck = {
 export type BlackBoxContentTest = {
   decision: BlackBoxContentDecision;
   score?: number;
+  maxScore?: number;
+  rawScore?: number;
+  rawMaxScore?: number;
+  passRate?: number;
   reasons?: string[];
   itemChecks?: BlackBoxContentItemCheck[];
   reclassificationRecommendation?: {

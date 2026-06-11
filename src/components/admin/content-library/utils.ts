@@ -123,22 +123,56 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
+function asFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+function normaliseBlackBoxScore(raw: Record<string, unknown>): number | undefined {
+  const passRate = asFiniteNumber(raw.passRate);
+  if (passRate !== undefined) return clampScore(Math.round(passRate * 100));
+
+  const score = asFiniteNumber(raw.score);
+  const maxScore = asFiniteNumber(raw.maxScore);
+  if (score !== undefined && maxScore !== undefined && score > 100 && maxScore > 100) {
+    return clampScore(Math.round((score / maxScore) * 100));
+  }
+
+  return score !== undefined ? clampScore(score) : undefined;
+}
+
 export function parseBlackBoxContentTest(item: ContentItem): BlackBoxContentTest | null {
   const metadata = parseMetadata(item);
   const raw = asRecord(metadata.blackBoxContentTest);
   if (!raw || !isBlackBoxDecision(raw.decision)) return null;
 
-  const score = typeof raw.score === "number" && Number.isFinite(raw.score) ? raw.score : undefined;
-  const itemChecksRaw = Array.isArray(raw.itemChecks) ? raw.itemChecks : [];
+  const score = normaliseBlackBoxScore(raw);
+  const maxScore = asFiniteNumber(raw.maxScore);
+  const rawScore = asFiniteNumber(raw.rawScore) ?? asFiniteNumber(raw.score);
+  const rawMaxScore = asFiniteNumber(raw.rawMaxScore) ?? asFiniteNumber(raw.maxScore);
+  const passRate = asFiniteNumber(raw.passRate);
+  const itemChecksRaw = Array.isArray(raw.itemChecks)
+    ? raw.itemChecks
+    : Array.isArray(raw.itemResults)
+      ? raw.itemResults
+      : [];
   const itemChecks = itemChecksRaw
     .map((entry) => {
       const check = asRecord(entry);
       if (!check) return null;
+      const checks = asRecord(check.checks) ?? asRecord(check.dimensions) ?? undefined;
       return {
-        itemIndex: typeof check.itemIndex === "number" ? check.itemIndex : undefined,
-        score: typeof check.score === "number" && Number.isFinite(check.score) ? check.score : undefined,
+        itemIndex: asFiniteNumber(check.itemIndex) ?? asFiniteNumber(check.index),
+        score: normaliseBlackBoxScore(check),
+        maxScore: asFiniteNumber(check.maxScore),
+        rawScore: asFiniteNumber(check.rawScore) ?? asFiniteNumber(check.score),
+        rawMaxScore: asFiniteNumber(check.rawMaxScore) ?? asFiniteNumber(check.maxScore),
+        passRate: asFiniteNumber(check.passRate),
         reasons: asStringArray(check.reasons),
-        checks: asRecord(check.checks) ?? undefined,
+        checks,
       };
     })
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
@@ -158,6 +192,10 @@ export function parseBlackBoxContentTest(item: ContentItem): BlackBoxContentTest
   return {
     decision: raw.decision,
     score,
+    maxScore,
+    rawScore,
+    rawMaxScore,
+    passRate,
     reasons: asStringArray(raw.reasons),
     itemChecks,
     reclassificationRecommendation,
