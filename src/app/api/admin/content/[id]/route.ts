@@ -4,6 +4,11 @@ import { prisma } from "@/lib/db";
 import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateSpellingContentContract } from "@/lib/content-governance";
+import {
+  buildBlackBoxGateFailure,
+  hasPassedBlackBoxGate,
+  isBlackBoxGateTargetStatus,
+} from "@/lib/ai/content-black-box-gate";
 
 const patchSchema = z
   .object({
@@ -57,6 +62,54 @@ function isValidForContentType(contentType: string, parsed: unknown): boolean {
 
 type Context = { params: Promise<{ id: string }> };
 
+type PatchableContentRecord = {
+  id: string;
+  contentType: string;
+  metadataJson: string | null;
+};
+
+type PatchUpdateInput = {
+  status?: "generated" | "reviewed" | "approved" | "published" | "rejected";
+  reviewedAt?: Date;
+  approvedAt?: Date;
+  publishedAt?: Date;
+  contentJson?: string;
+};
+
+type PatchedContentRecord = {
+  id: string;
+  status: string;
+};
+
+type AdminContentPatchDeps = {
+  requireAdmin: typeof requireAdmin;
+  findContentForPatch: (id: string) => Promise<PatchableContentRecord | null>;
+  updateContent: (id: string, data: PatchUpdateInput) => Promise<PatchedContentRecord>;
+  writeAuditLog: typeof writeAuditLog;
+};
+
+async function defaultFindContentForPatch(id: string): Promise<PatchableContentRecord | null> {
+  return prisma.aIContentCache.findUnique({
+    where: { id },
+    select: { id: true, contentType: true, metadataJson: true },
+  });
+}
+
+async function defaultUpdateContent(id: string, data: PatchUpdateInput): Promise<PatchedContentRecord> {
+  return prisma.aIContentCache.update({
+    where: { id },
+    data,
+    select: { id: true, status: true },
+  });
+}
+
+const defaultPatchDeps: AdminContentPatchDeps = {
+  requireAdmin,
+  findContentForPatch: defaultFindContentForPatch,
+  updateContent: defaultUpdateContent,
+  writeAuditLog,
+};
+
 export async function GET(_request: Request, context: Context) {
   const { session, response } = await requireAdminPermission("content:approve");
   if (!session) return response;
@@ -78,8 +131,12 @@ export async function GET(_request: Request, context: Context) {
   });
 }
 
-export async function PATCH(request: Request, context: Context) {
-  const { session, response } = await requireAdmin();
+export async function handleAdminContentPatch(
+  request: Request,
+  context: Context,
+  deps: AdminContentPatchDeps = defaultPatchDeps,
+) {
+  const { session, response } = await deps.requireAdmin();
   if (!session) return response;
 
   const { id } = await context.params;
@@ -87,12 +144,13 @@ export async function PATCH(request: Request, context: Context) {
     const body = patchSchema.parse(await request.json());
     const now = new Date();
 
-    const existing = await prisma.aIContentCache.findUnique({
-      where: { id },
-      select: { id: true, contentType: true },
-    });
+    const existing = await deps.findContentForPatch(id);
     if (!existing) {
       return NextResponse.json({ error: "Content not found." }, { status: 404 });
+    }
+
+    if (body.status && isBlackBoxGateTargetStatus(body.status) && !hasPassedBlackBoxGate(existing.metadataJson)) {
+      return NextResponse.json(buildBlackBoxGateFailure(), { status: 409 });
     }
 
     let sanitizedContentJson: string | undefined;
@@ -111,19 +169,15 @@ export async function PATCH(request: Request, context: Context) {
       sanitizedContentJson = JSON.stringify(parsed);
     }
 
-    const item = await prisma.aIContentCache.update({
-      where: { id },
-      data: {
-        ...(body.status ? { status: body.status } : {}),
-        ...(body.status === "reviewed" ? { reviewedAt: now } : {}),
-        ...(body.status === "approved" ? { approvedAt: now } : {}),
-        ...(body.status === "published" ? { publishedAt: now } : {}),
-        ...(sanitizedContentJson !== undefined ? { contentJson: sanitizedContentJson } : {}),
-      },
-      select: { id: true, status: true },
+    const item = await deps.updateContent(id, {
+      ...(body.status ? { status: body.status } : {}),
+      ...(body.status === "reviewed" ? { reviewedAt: now } : {}),
+      ...(body.status === "approved" ? { approvedAt: now } : {}),
+      ...(body.status === "published" ? { publishedAt: now } : {}),
+      ...(sanitizedContentJson !== undefined ? { contentJson: sanitizedContentJson } : {}),
     });
 
-    await writeAuditLog({
+    await deps.writeAuditLog({
       actorUserId: session.userId,
       action: body.status ? `ai_content.${body.status}` : "ai_content.updated",
       entityType: "content",
@@ -135,4 +189,8 @@ export async function PATCH(request: Request, context: Context) {
   } catch {
     return NextResponse.json({ error: "Invalid content status update." }, { status: 400 });
   }
+}
+
+export async function PATCH(request: Request, context: Context) {
+  return handleAdminContentPatch(request, context);
 }

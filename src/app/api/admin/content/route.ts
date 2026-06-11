@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import { validateSpellingContentContract } from "@/lib/content-governance";
+import { resolveBlackBoxGatedSaveStatus } from "@/lib/ai/content-black-box-gate";
 import { validateQuestionBatch } from "@/lib/starliz-question-validator";
 import {
   GCSE_EXAM_BOARD_WARNING,
@@ -307,7 +308,7 @@ export async function POST(req: Request) {
         { status: 422 },
       );
     }
-    const status = body.status === "review" ? "reviewed" : body.status;
+    const status = resolveBlackBoxGatedSaveStatus(body.status);
     const contentItems = attachSelectedMetadataToItems(extractGeneratedItems(body.items), {
       subject: normalizedSubject,
       yearGroup: body.yearGroup,
