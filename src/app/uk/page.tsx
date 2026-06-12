@@ -200,7 +200,7 @@ export default async function PublicHomePage() {
       <CountryPreferenceSync countryCode="uk" />
       {/* Navigation */}
       <header className="sticky top-0 z-50 border-b border-slate-800/80 bg-[#020617]/90 px-4 sm:px-6 py-3 sm:py-4 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
+        <div className="mx-auto flex max-w-[1900px] items-center justify-between">
           <Logo variant="header" size={24} />
 
           <nav className="hidden items-center gap-5 sm:gap-7 text-xs sm:text-sm text-slate-400 md:flex">
@@ -224,7 +224,7 @@ export default async function PublicHomePage() {
           </Link>
         </div>
 
-        <details className="mx-auto mt-3 max-w-7xl md:hidden">
+        <details className="mx-auto mt-3 max-w-[1900px] md:hidden">
           <summary className="inline-flex list-none cursor-pointer items-center rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-900/70">
             Menu
           </summary>
@@ -247,7 +247,7 @@ export default async function PublicHomePage() {
       {/* Hero */}
       <section className="relative overflow-hidden px-4 sm:px-6 py-12 sm:py-24">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(59,130,246,0.15),transparent)]" />
-        <div className="mx-auto grid max-w-7xl gap-8 sm:gap-14 lg:grid-cols-2 lg:items-center">
+        <div className="mx-auto grid max-w-[1900px] gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-12">
           <div>
             <Logo variant="full" size={32} className="mb-4 sm:mb-6 sm:size-48" />
             <p className="mb-4 sm:mb-5 inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-3 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm font-semibold text-blue-300">
@@ -317,7 +317,7 @@ export default async function PublicHomePage() {
 
       {/* Trust strip */}
       <section className="border-y border-slate-800/60 bg-slate-900/30 px-4 sm:px-6 py-4 sm:py-6">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs sm:text-sm font-medium text-slate-400">
+        <div className="mx-auto flex max-w-[1900px] flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs sm:text-sm font-medium text-slate-400">
           <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Parent and child protected access</span>
           <span className="hidden sm:inline text-slate-700">|</span>
           <span className="w-full sm:w-auto text-center sm:text-left">&#10003; Consent and safeguarding support</span>
@@ -331,7 +331,7 @@ export default async function PublicHomePage() {
       </section>
 
       {/* Learning Areas */}
-      <section id="subjects" className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
+      <section id="subjects" className="mx-auto max-w-[1900px] px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
         <div className="text-center">
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Learning Pathways</h2>
           <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">Age-aware support from EYFS and Key Stage 1 through to GCSE.</p>
@@ -355,8 +355,8 @@ export default async function PublicHomePage() {
       </section>
 
       {/* Features */}
-      <section id="features" className="bg-slate-900/40 px-4 sm:px-6 py-12 sm:py-20">
-        <div className="mx-auto max-w-7xl">
+      <section id="features" className="bg-slate-900/40 px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
+        <div className="mx-auto max-w-[1900px]">
           <div className="text-center">
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Core learning features for families</h2>
             <p className="mx-auto mt-2 sm:mt-4 max-w-3xl text-sm sm:text-base text-slate-400">
@@ -364,7 +364,7 @@ export default async function PublicHomePage() {
             </p>
           </div>
 
-          <div className="mt-8 sm:mt-12 grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-8 sm:mt-12 grid gap-4 sm:gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {features.map((feature) => (
               <div key={feature.title} className="rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-6">
                 <span className="text-2xl sm:text-3xl">{feature.icon}</span>
@@ -377,7 +377,7 @@ export default async function PublicHomePage() {
       </section>
 
       {/* Portal depth */}
-      <section id="portals" className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
+      <section id="portals" className="mx-auto max-w-[1900px] px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8">
             <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-300">Parent Portal</p>
@@ -416,8 +416,8 @@ export default async function PublicHomePage() {
       </section>
 
       {/* Child learning */}
-      <section className="bg-slate-900/40 px-4 sm:px-6 py-12 sm:py-20">
-        <div className="mx-auto max-w-7xl">
+      <section className="bg-slate-900/40 px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
+        <div className="mx-auto max-w-[1900px]">
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-300">Child Learning</p>
@@ -439,7 +439,7 @@ export default async function PublicHomePage() {
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
+      <section id="how-it-works" className="mx-auto max-w-[1900px] px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
         <div className="text-center">
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">How it works</h2>
           <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">Up and running in under 5 minutes.</p>
@@ -462,8 +462,8 @@ export default async function PublicHomePage() {
       </section>
 
       {/* Platform operations */}
-      <section className="bg-gradient-to-b from-slate-900/60 to-transparent px-4 sm:px-6 py-12 sm:py-20">
-        <div className="mx-auto max-w-5xl text-center">
+      <section className="bg-gradient-to-b from-slate-900/60 to-transparent px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
+        <div className="mx-auto max-w-[1900px] text-center">
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">Built for families, schools and learning organisations</h2>
           <p className="mx-auto mt-2 sm:mt-4 max-w-2xl text-xs sm:text-sm lg:text-base text-slate-400">
             StarLiz supports the practical learning journey with learner profiles, group support, progress visibility,
@@ -485,7 +485,7 @@ export default async function PublicHomePage() {
       </section>
 
       {/* Trust */}
-      <section id="trust" className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
+      <section id="trust" className="mx-auto max-w-[1900px] px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
         <div className="rounded-2xl sm:rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8 lg:p-10">
           <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
             <div>
@@ -508,7 +508,7 @@ export default async function PublicHomePage() {
       </section>
 
       {/* Audience */}
-      <section className="mx-auto max-w-7xl px-6 py-20">
+      <section className="mx-auto max-w-[1900px] px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           <div>
             <h2 className="text-4xl font-black">Who StarLiz is for</h2>
@@ -539,7 +539,7 @@ export default async function PublicHomePage() {
       <PublicPricingSection compact initialPlans={plans} />
 
       {/* Roadmap teaser */}
-      <section className="mx-auto max-w-5xl px-6 py-20">
+      <section className="mx-auto max-w-[1900px] px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
         <div className="text-center">
           <h2 className="text-4xl font-black">What&apos;s coming next</h2>
           <p className="mt-4 text-slate-400">
@@ -547,7 +547,7 @@ export default async function PublicHomePage() {
             <Link href="/roadmap" className="text-blue-400 hover:text-blue-300">See the full roadmap &#8594;</Link>
           </p>
         </div>
-        <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-10 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {roadmapItems.map((item) => (
             <div key={item} className="rounded-2xl border border-slate-800 bg-slate-900 px-5 py-4 text-sm text-slate-300">{item}</div>
           ))}
@@ -574,42 +574,11 @@ export default async function PublicHomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 px-6 pb-10 pt-10">
-        <div className="mx-auto max-w-7xl">
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <Logo variant="full" size={28} />
-              <p className="mt-2 text-sm text-slate-400">Reception to GCSE pathway aligned learning for families, tutors and schools.</p>
-              <p className="mt-2 text-xs text-slate-500">Best viewed on the latest version of Google Chrome.</p>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-300">Product</p>
-              <ul className="mt-3 space-y-2 text-sm text-slate-500">
-                <li><Link href="/features" className="hover:text-slate-300">Features</Link></li>
-                <li><Link href="#pricing" className="hover:text-slate-300">Pricing</Link></li>
-                <li><Link href="/roadmap" className="hover:text-slate-300">Roadmap</Link></li>
-              </ul>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-300">Company</p>
-              <ul className="mt-3 space-y-2 text-sm text-slate-500">
-                <li><Link href="/about" className="hover:text-slate-300">About</Link></li>
-                <li><Link href="/contact" className="hover:text-slate-300">Contact</Link></li>
-              </ul>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-300">Legal</p>
-              <ul className="mt-3 space-y-2 text-sm text-slate-500">
-                <li><Link href="/privacy" className="hover:text-slate-300">Privacy</Link></li>
-                <li><Link href="/terms" className="hover:text-slate-300">Terms</Link></li>
-                <li><Link href="/policies" className="hover:text-slate-300">Policies</Link></li>
-              </ul>
-            </div>
-          </div>
-          <div className="mt-10 border-t border-slate-800/60 pt-6 text-center text-sm text-slate-500">
-            <p>&#169; 2026 StarLiz Academy. All rights reserved.</p>
-            <p className="mt-2 text-xs">Best experience: StarLiz Academy works best on the latest version of Google Chrome. Other modern browsers may work, but Chrome is recommended for the smoothest learning experience, voice-friendly activities and dashboard use.</p>
-          </div>
+      <footer className="border-t border-slate-200 bg-white px-3 py-1 text-slate-600 sm:px-4">
+        <div className="mx-auto flex max-w-[1900px] flex-col items-center justify-between gap-1 text-center text-[9px] font-medium leading-none sm:flex-row sm:text-left">
+          <p>&#169; 2026 StarLiz Academy. All rights reserved.</p>
+          <p>StarLiz Academy - Learn, Grow, Shine</p>
+          <p className="text-slate-500">Best viewed on the latest version of Google Chrome.</p>
         </div>
       </footer>
     </main>

@@ -36,7 +36,7 @@ export default function AdminSidebar() {
     }
   });
   const [isVisible, setIsVisible] = useState(() => {
-    if (typeof window === "undefined") return true;
+    if (typeof window === "undefined") return false;
     try {
       const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
       if (raw !== null) {
@@ -46,7 +46,7 @@ export default function AdminSidebar() {
     } catch {
       // Ignore storage read errors.
     }
-    return window.matchMedia("(min-width: 1024px)").matches;
+    return false;
   });
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -66,7 +66,6 @@ export default function AdminSidebar() {
   }, []);
 
   function toggleVisibility() {
-    if (isDesktop) return;
     const nextVisible = !isVisible;
     setIsVisible(nextVisible);
     try {
@@ -155,7 +154,7 @@ export default function AdminSidebar() {
     );
   }
 
-  const sidebarVisible = isDesktop ? true : isVisible;
+  const sidebarVisible = isVisible;
 
   return (
     <>

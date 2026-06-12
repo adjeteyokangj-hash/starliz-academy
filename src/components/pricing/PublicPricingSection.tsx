@@ -101,8 +101,8 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
   const headingSize = compact ? "text-3xl" : "text-4xl"
 
   return (
-    <section id="pricing" className="scroll-mt-28 bg-slate-900/40 px-6 py-24">
-      <div className="mx-auto max-w-6xl text-center">
+    <section id="pricing" className="scroll-mt-28 bg-slate-900/40 px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
+      <div className="mx-auto max-w-[1900px] text-center">
         <h2 className={`${headingSize} font-black`}>Simple pricing for a full learning platform.</h2>
         <p className="mx-auto mt-4 max-w-3xl text-slate-400">
           Start with a free trial. Plans support learning, parent oversight, reports, rewards, billing and secure access.
@@ -111,7 +111,7 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
           Best experience: StarLiz Academy works best on the latest version of Google Chrome. Other modern browsers may work, but Chrome is recommended for the smoothest learning experience, voice-friendly activities and dashboard use.
         </p>
 
-        <div className="mx-auto mt-8 grid max-w-5xl gap-3 text-left sm:grid-cols-2">
+        <div className="mx-auto mt-8 grid max-w-[1900px] gap-3 text-left sm:grid-cols-2">
           {familyPricingHighlights.map((highlight) => (
             <div key={highlight} className="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-300">
               <span className="mr-2 text-blue-400">✓</span>{highlight}
@@ -124,7 +124,7 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
           <p className="mt-8 text-sm text-slate-500">Pricing plans will appear here after they are configured in Admin Pricing.</p>
         ) : null}
 
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
+        <div className="mt-12 grid gap-6 md:grid-cols-3 xl:grid-cols-3">
           {visibleIndividualPlans.map((plan) => (
             <article
               key={`${plan.name}-${plan.audience}-${plan.interval}`}
@@ -176,7 +176,7 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
         </div>
       </div>
 
-      <div className="mx-auto mt-16 max-w-6xl rounded-3xl border border-slate-700 bg-slate-900/80 p-8 lg:p-10">
+      <div className="mx-auto mt-16 max-w-[1900px] rounded-3xl border border-slate-700 bg-slate-900/80 p-8 lg:p-10">
         <h3 className="text-3xl font-black text-white">Schools &amp; Organisations</h3>
         <p className="mt-3 max-w-3xl text-slate-300">
           Bring StarLiz Academy to your school, tutoring centre or learning organisation with learner management,
