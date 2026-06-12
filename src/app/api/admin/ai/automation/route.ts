@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminPermission } from "@/lib/api_guard";
-import { autoFillLowContentLibrary, generateDraftContent } from "@/lib/ai/generate-content";
+import { autoFillLowContentLibrary, detectStarterLibraryGaps, generateDraftContent } from "@/lib/ai/generate-content";
 import { detectWeakAreas } from "@/lib/ai/weakness-detector";
 import { recommendNextLesson } from "@/lib/ai/lesson-recommender";
 
 const bodySchema = z.object({
-  mode: z.enum(["autofill", "auto-fill-low-library", "generate", "weaknesses", "detect-weak-areas", "recommend", "recommend-lessons"]),
+  mode: z.enum(["autofill", "auto-fill-low-library", "library-gaps", "detect-library-gaps", "generate", "weaknesses", "detect-weak-areas", "recommend", "recommend-lessons"]),
   type: z.enum(["spelling", "math", "reading"]).optional(),
   level: z.number().int().min(1).max(5).optional(),
   topic: z.string().optional(),
@@ -20,7 +20,20 @@ export async function POST(request: Request) {
   try {
     const body = bodySchema.parse(await request.json());
     if (body.mode === "autofill" || body.mode === "auto-fill-low-library") {
-      return NextResponse.json({ created: await autoFillLowContentLibrary() });
+      const created = await autoFillLowContentLibrary();
+      const gaps = await detectStarterLibraryGaps();
+      return NextResponse.json({ created, gaps });
+    }
+    if (body.mode === "library-gaps" || body.mode === "detect-library-gaps") {
+      const gaps = await detectStarterLibraryGaps();
+      return NextResponse.json({
+        gaps,
+        summary: {
+          totalTypes: gaps.length,
+          missingTypes: gaps.filter((gap) => gap.missingCount > 0).length,
+          totalMissingCount: gaps.reduce((sum, gap) => sum + gap.missingCount, 0),
+        },
+      });
     }
     if (body.mode === "weaknesses" || body.mode === "detect-weak-areas") {
       return NextResponse.json({ weakAreas: await detectWeakAreas(body.studentId) });

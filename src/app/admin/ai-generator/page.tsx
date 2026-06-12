@@ -41,6 +41,7 @@ import {
 import type { VisualAsset } from "@/lib/ai/visual-generation";
 import { isKnownDiagnosticOutcome } from "@/lib/ai/generator-tuple-validation";
 import { uploadMediaFile } from "@/lib/upload-client";
+import { runContentBlackBoxTest } from "@/lib/ai/content-black-box-test";
 import {
   adaptLegacyQueryToContract,
   decodeUniversalPrefillContract,
@@ -76,11 +77,19 @@ type GeneratedPreview = {
   topic: string;
   status: "draft";
   safetyStatus: "passed";
-  qualityScore: number;
+  qualityScore?: number | null;
+  qualityStatus?: "pending_review" | "scored";
   voiceScript: string;
   imagePrompt: string;
   items: GeneratedPreviewItem[];
   visualAssets?: VisualAsset[];
+};
+
+type LibraryGapReport = {
+  type: string;
+  currentCount: number;
+  minimumExpectedCount: number;
+  missingCount: number;
 };
 
 function getAvailableSubjects(yearGroup: string | null | undefined): readonly Subject[] {
@@ -840,9 +849,9 @@ export default function AiGeneratorPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null);
   const [automationDebugPayload, setAutomationDebugPayload] = useState<string | null>(null);
-  const [automationLoading, setAutomationLoading] = useState<"autofill" | "weaknesses" | null>(null);
+  const [automationLoading, setAutomationLoading] = useState<"autofill" | "weaknesses" | "library-gaps" | null>(null);
   const [automationDurationMs, setAutomationDurationMs] = useState<number | null>(null);
-  const [automationRetryMode, setAutomationRetryMode] = useState<"autofill" | "weaknesses" | null>(null);
+  const [automationRetryMode, setAutomationRetryMode] = useState<"autofill" | "weaknesses" | "library-gaps" | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(
     prefillBlockingWarnings.length
       ? `Student target requires review before generation: ${prefillBlockingWarnings.join(" ")}`
@@ -886,6 +895,8 @@ export default function AiGeneratorPage() {
   const generateRequestIdRef = useRef(0);
   const regenerateRequestIdRef = useRef(0);
   const heartbeatTimerRef = useRef<number | null>(null);
+  const weakAreaActionsRef = useRef<HTMLDivElement | null>(null);
+  const previewPanelRef = useRef<HTMLDivElement | null>(null);
   const [previewContext, setPreviewContext] = useState<GenerationContext | null>(null);
   const [loadedWeakAreaId, setLoadedWeakAreaId] = useState<string | null>(resolvedPrefill.weakAreaId?.trim() || null);
   const [weakAreaFormSynced, setWeakAreaFormSynced] = useState(false);
@@ -1010,6 +1021,27 @@ export default function AiGeneratorPage() {
     source: prefillSource,
     weakAreaId: loadedWeakAreaId,
   };
+  const blackBoxDifficultyWarnings = (() => {
+    if (!generatedItemsList.length) return [];
+    const result = runContentBlackBoxTest({
+      subject: effectiveGenerationContext.subject,
+      strand: effectiveGenerationContext.englishStrand ?? null,
+      keyStage: effectiveGenerationContext.keyStage,
+      yearGroup: effectiveGenerationContext.yearGroup,
+      level: effectiveGenerationContext.difficulty,
+      difficulty: effectiveGenerationContext.difficulty,
+      topic: effectiveGenerationContext.topic,
+      skillFocus: effectiveGenerationContext.skillFocus,
+      items: generatedItemsList,
+    });
+    return result.itemResults
+      .filter((item) => item.declaredLevel - item.estimatedLevel >= 2)
+      .map((item) => ({
+        index: item.index,
+        declaredLevel: item.declaredLevel,
+        estimatedLevel: item.estimatedLevel,
+      }));
+  })();
   const previewMissingFields = findAiGeneratorPreviewMissingFields(preview, effectiveGenerationContext.subject);
   const saveBlocked = saveState.blocked || previewMissingFields.length > 0;
   const saveBlockMessage = formatAiGeneratorSaveBlockedMessage({
@@ -1032,6 +1064,14 @@ export default function AiGeneratorPage() {
   const visibleWeakAreas = weakAreaSubjectFilter === "all"
     ? weakAreasWithMatch
     : weakAreasWithMatch.filter((entry) => entry.contextMatches);
+  const hiddenWeakAreaCount = Math.max(weakAreas.length - visibleWeakAreas.length, 0);
+  const launchedWithStudentInterventionContext = Boolean(
+    hasTargetPrefill
+    || prefillSource === "weak-area"
+    || resolvedPrefill.studentId?.trim()
+    || resolvedPrefill.weakAreaId?.trim()
+  );
+  const isStudentInterventionMode = Boolean(targetStudentId || loadedWeakAreaId || launchedWithStudentInterventionContext);
   const showDeveloperDetails = process.env.NEXT_PUBLIC_ADMIN_DEBUG === "1";
   const previewBadge = generationMeta?.validation?.repaired
       ? { label: "Auto-Repaired", className: "bg-amber-500/15 text-amber-200" }
@@ -1050,6 +1090,33 @@ export default function AiGeneratorPage() {
     setLoadedWeakAreaId(null);
     setWeakAreaFormSynced(false);
   };
+
+  const scrollToWeakAreaActions = () => {
+    window.setTimeout(() => {
+      weakAreaActionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      weakAreaActionsRef.current?.focus({ preventScroll: true });
+    }, 0);
+  };
+
+  const scrollToPreviewPanel = () => {
+    window.setTimeout(() => {
+      previewPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
+  function reviewDetectedWeakAreas() {
+    if (!weakAreas.length) {
+      setAutomationMessage("Run Detect Weak Areas first.");
+      return;
+    }
+    if (weakAreaSubjectFilter !== "all" && hiddenWeakAreaCount > 0) {
+      setWeakAreaSubjectFilter("all");
+      setAutomationMessage("Showing all detected weak areas. Choose Generate Weak-Area Support on a detected weak-area card.");
+    } else {
+      setAutomationMessage("Choose Generate Weak-Area Support on a detected weak-area card.");
+    }
+    scrollToWeakAreaActions();
+  }
 
   const clearGenerationHeartbeatTimer = () => {
     if (heartbeatTimerRef.current !== null) {
@@ -1387,7 +1454,8 @@ export default function AiGeneratorPage() {
           difficulty: context.difficulty,
           status: "draft",
           safetyStatus: content?.safetyStatus ?? "passed",
-          qualityScore: content?.qualityScore ?? 80,
+          qualityScore: typeof content?.qualityScore === "number" ? content.qualityScore : null,
+          qualityStatus: content?.qualityStatus === "scored" ? "scored" : "pending_review",
           voiceScript: content?.voiceScript ?? "",
           imagePrompt: content?.imagePrompt ?? "",
           topic: context.topic,
@@ -1936,13 +2004,17 @@ export default function AiGeneratorPage() {
     }
   }
 
-  async function runAutomation(mode: "autofill" | "weaknesses") {
+  async function runAutomation(mode: "autofill" | "weaknesses" | "library-gaps") {
     const startedAt = Date.now();
     setAutomationLoading(mode);
     setAutomationRetryMode(null);
     setAutomationDurationMs(null);
     setAutomationStatus({
-      title: mode === "weaknesses" ? "Running weak area detection..." : "Running library automation...",
+      title: mode === "weaknesses"
+        ? "Running weak area detection..."
+        : mode === "library-gaps"
+          ? "Checking starter library gaps..."
+          : "Running starter library backfill...",
       lines: ["Please wait while processing."],
       ok: true,
     });
@@ -2008,7 +2080,9 @@ export default function AiGeneratorPage() {
       });
       const payload = await response.json() as {
         error?: string;
-        created?: Array<{ type: string; id: string; reused: boolean }>;
+        created?: Array<{ type: string; id: string; reused: boolean; previousCount?: number; minimumExpectedCount?: number }>;
+        gaps?: LibraryGapReport[];
+        summary?: { totalTypes: number; missingTypes: number; totalMissingCount: number };
       };
       if (!response.ok) {
         setAutomationRetryMode(mode);
@@ -2020,21 +2094,43 @@ export default function AiGeneratorPage() {
         return;
       }
 
+      if (mode === "library-gaps") {
+        const gaps = payload.gaps ?? [];
+        const missing = gaps.filter((gap) => gap.missingCount > 0);
+        setAutomationStatus({
+          title: "Starter library gap check complete",
+          lines: gaps.length
+            ? [
+                `${payload.summary?.totalMissingCount ?? missing.reduce((sum, gap) => sum + gap.missingCount, 0)} starter items missing across ${payload.summary?.missingTypes ?? missing.length} content types.`,
+                ...gaps.map((gap) => `${formatSubjectLabel(gap.type)}: ${gap.currentCount}/${gap.minimumExpectedCount} available, ${gap.missingCount} missing.`),
+                "No content was generated. Use Auto-fill Starter Library if you want to backfill starter content.",
+              ]
+            : ["No starter library content types were checked."],
+          ok: true,
+        });
+        setAutomationDebugPayload(JSON.stringify(payload, null, 2));
+        return;
+      }
+
       const created = payload.created ?? [];
       const reusedCount = created.filter((entry) => entry.reused).length;
       const freshCount = created.length - reusedCount;
       const subjectLabels = Array.from(new Set(created.map((entry) => formatSubjectLabel(entry.type))));
+      const starterCounts = (payload.gaps ?? []).map((gap) => `${formatSubjectLabel(gap.type)}: ${gap.currentCount}/${gap.minimumExpectedCount}`);
       setAutomationStatus({
-        title: "Library updated successfully",
+        title: "Starter library check complete",
         lines: freshCount > 0
           ? [
-              `${freshCount} content sets generated.`,
+              `${freshCount} starter content sets generated.`,
               `${reusedCount} existing content sets reused.`,
-              subjectLabels.length ? `${subjectLabels.join(", ")} library refreshed.` : "Library refreshed.",
+              subjectLabels.length ? `${subjectLabels.join(", ")} starter library refreshed.` : "Starter library refreshed.",
+              ...starterCounts,
             ]
           : [
-              `${reusedCount} existing content sets reused.`,
-              "No new content generation required.",
+              "Starter library already meets the minimum content target.",
+              "No new starter content was needed.",
+              "Use Detect Library Gaps to review starter coverage.",
+              ...starterCounts,
             ],
         ok: true,
       });
@@ -2149,7 +2245,23 @@ export default function AiGeneratorPage() {
     setLoadedWeakAreaId(area.id);
     setWeakAreaFormSynced(false);
     setAutomationMessage(`Generating direct intervention from detected weak-area analytics for ${area.student.name}.`);
+    console.info("[admin-ai-generator] weak-area support context", {
+      areaId: area.id,
+      areaSubject: area.subject,
+      areaSkillFocus: area.skillFocus,
+      areaYearGroup: area.yearGroup,
+      areaKeyStage: area.keyStage,
+      mappedSubject: context.subject,
+      mappedSkillFocus: context.skillFocus,
+      mappedTopic: context.topic,
+      mappedYearGroup: context.yearGroup,
+      mappedKeyStage: context.keyStage,
+      source: context.source,
+      weakAreaId: context.weakAreaId,
+    });
+    scrollToPreviewPanel();
     await generatePreview(0, context);
+    scrollToPreviewPanel();
   }
 
   return (
@@ -2807,81 +2919,113 @@ export default function AiGeneratorPage() {
       </div>
 
       <div className="space-y-6 pb-24 xl:max-h-[calc(100vh-10rem)] xl:overflow-y-auto xl:pr-1">
-      <AdminSectionCard title="AI Intervention Engine" eyebrow="Intervention analytics">
-        <div className="mb-3 grid gap-3 sm:grid-cols-3">
-          <select
-            value={weakAreaKeyStageFilter}
-            aria-label="Filter weak areas by key stage"
-            onChange={(event) => {
-              const nextStage = event.target.value;
-              setWeakAreaKeyStageFilter(nextStage);
-              if (!nextStage) {
-                setWeakAreaYearGroupFilter("");
-                return;
-              }
-              const options = yearGroupsForKeyStage(nextStage);
-              setWeakAreaYearGroupFilter((current) => options.includes(current as (typeof YEAR_GROUPS)[number]) ? current : "");
-            }}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
-            title="Filter weak areas by key stage"
-          >
-            <option value="">All key stages</option>
-            {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
-          </select>
-          <select
-            value={weakAreaYearGroupFilter}
-            aria-label="Filter weak areas by year group"
-            onChange={(event) => {
-              const nextYear = event.target.value;
-              setWeakAreaYearGroupFilter(nextYear);
-              if (nextYear) {
-                setWeakAreaKeyStageFilter(keyStageForYearGroup(nextYear));
-              }
-            }}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
-            title="Filter weak areas by year group"
-          >
-            <option value="">All year groups</option>
-            {(weakAreaKeyStageFilter ? yearGroupsForKeyStage(weakAreaKeyStageFilter) : [...YEAR_GROUPS]).map((group) => (
-              <option key={group} value={group}>{group}</option>
-            ))}
-          </select>
-          <select
-            value={weakAreaSubjectFilter}
-            aria-label="Filter weak areas by subject scope"
-            onChange={(event) => setWeakAreaSubjectFilter(event.target.value as "manual" | "all")}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
-            title="Filter weak areas by subject scope"
-          >
-            <option value="manual">Match manual form subject/year/key stage</option>
-            <option value="all">All subjects</option>
-          </select>
-        </div>
+      <AdminSectionCard title={isStudentInterventionMode ? "AI Intervention Engine" : "Content Library Tools"} eyebrow={isStudentInterventionMode ? "Student intervention mode" : "General content mode"}>
+        {isStudentInterventionMode ? (
+          <div className="mb-3 grid gap-3 sm:grid-cols-3">
+            <select
+              value={weakAreaKeyStageFilter}
+              aria-label="Filter weak areas by key stage"
+              onChange={(event) => {
+                const nextStage = event.target.value;
+                setWeakAreaKeyStageFilter(nextStage);
+                if (!nextStage) {
+                  setWeakAreaYearGroupFilter("");
+                  return;
+                }
+                const options = yearGroupsForKeyStage(nextStage);
+                setWeakAreaYearGroupFilter((current) => options.includes(current as (typeof YEAR_GROUPS)[number]) ? current : "");
+              }}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+              title="Filter weak areas by key stage"
+            >
+              <option value="">All key stages</option>
+              {KEY_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+            </select>
+            <select
+              value={weakAreaYearGroupFilter}
+              aria-label="Filter weak areas by year group"
+              onChange={(event) => {
+                const nextYear = event.target.value;
+                setWeakAreaYearGroupFilter(nextYear);
+                if (nextYear) {
+                  setWeakAreaKeyStageFilter(keyStageForYearGroup(nextYear));
+                }
+              }}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+              title="Filter weak areas by year group"
+            >
+              <option value="">All year groups</option>
+              {(weakAreaKeyStageFilter ? yearGroupsForKeyStage(weakAreaKeyStageFilter) : [...YEAR_GROUPS]).map((group) => (
+                <option key={group} value={group}>{group}</option>
+              ))}
+            </select>
+            <select
+              value={weakAreaSubjectFilter}
+              aria-label="Filter weak areas by subject scope"
+              onChange={(event) => setWeakAreaSubjectFilter(event.target.value as "manual" | "all")}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+              title="Filter weak areas by subject scope"
+            >
+              <option value="manual">Match manual form subject/year/key stage</option>
+              <option value="all">All subjects</option>
+            </select>
+          </div>
+        ) : (
+          <p className="mb-3 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-300">
+            Student weak-area interventions are available from a student profile or intervention dashboard.
+          </p>
+        )}
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => void runAutomation("autofill")}
             disabled={automationLoading !== null}
             className="rounded-xl bg-blue-500 px-4 py-3 font-black text-white disabled:opacity-60"
           >
-            {automationLoading === "autofill" ? "Running..." : "Auto-fill Low Library"}
+            {automationLoading === "autofill" ? "Running..." : "Auto-fill Starter Library"}
           </button>
-          <button
-            onClick={() => void runAutomation("weaknesses")}
-            disabled={automationLoading !== null}
-            className="rounded-xl border border-slate-700 px-4 py-3 font-black text-slate-200 disabled:opacity-60"
-          >
-            {automationLoading === "weaknesses" ? "Scanning..." : "Detect Weak Areas"}
-          </button>
+          {isStudentInterventionMode ? (
+            <button
+              onClick={() => void runAutomation("weaknesses")}
+              disabled={automationLoading !== null}
+              className="rounded-xl border border-slate-700 px-4 py-3 font-black text-slate-200 disabled:opacity-60"
+            >
+              {automationLoading === "weaknesses" ? "Scanning..." : "Detect Weak Areas"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void runAutomation("library-gaps")}
+              disabled={automationLoading !== null}
+              className="rounded-xl border border-blue-500/60 px-4 py-3 text-sm font-black text-blue-200 disabled:opacity-60"
+            >
+              {automationLoading === "library-gaps" ? "Checking..." : "Detect Library Gaps"}
+            </button>
+          )}
           <Link href="/admin/content-library" className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-black text-slate-200">View Content Library</Link>
-          <button
-            onClick={() => void runAutomation("autofill")}
-            disabled={automationLoading !== null}
-            className="rounded-xl border border-blue-500/60 px-4 py-3 text-sm font-black text-blue-200 disabled:opacity-60"
-          >
-            Generate Missing Content
-          </button>
-          <Link href="/admin/content-library" className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-black text-slate-200">View Updated Subjects</Link>
+          {isStudentInterventionMode ? (
+            <button
+              type="button"
+              onClick={reviewDetectedWeakAreas}
+              disabled={automationLoading !== null || !weakAreas.length}
+              className="rounded-xl border border-blue-500/60 px-4 py-3 text-sm font-black text-blue-200 disabled:opacity-60"
+              title={weakAreas.length ? "Review detected weak-area cards" : "Run Detect Weak Areas first."}
+            >
+              Review / Generate Weak-Area Support
+            </button>
+          ) : null}
         </div>
+        {isStudentInterventionMode && !weakAreas.length ? (
+          <p className="mt-3 text-xs font-semibold text-slate-400">Run Detect Weak Areas first.</p>
+        ) : null}
+        {isStudentInterventionMode && weakAreas.length ? (
+          <div className="mt-4 rounded-2xl border border-cyan-500/25 bg-cyan-500/10 p-3 text-sm text-cyan-100">
+            <p className="font-black">{weakAreas.length} weak areas tracked.</p>
+            <p className="mt-1">{visibleWeakAreas.length} visible with current filter.</p>
+            {hiddenWeakAreaCount > 0 ? (
+              <p className="mt-1 text-cyan-50">Switch to All subjects to review all detected weak areas.</p>
+            ) : null}
+          </div>
+        ) : null}
         {automationLoading ? <p className="mt-3 text-xs text-slate-400">Processing automation request...</p> : null}
         {automationMessage ? <p className="mt-4 text-sm text-slate-400">{automationMessage}</p> : null}
         {automationStatus ? (
@@ -2910,57 +3054,68 @@ export default function AiGeneratorPage() {
             ) : null}
           </div>
         ) : null}
-        {visibleWeakAreas.length ? (
-          <div className="mt-4 space-y-3">
-            {visibleWeakAreas.slice(0, 8).map(({ area, contextMatches }, index) => (
-              <div key={`${area.id}-${index}`} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-300">Detected Weak Area</p>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-bold text-white">Student: {area.student.name}</p>
-                    <p className="text-xs text-slate-300">Subject: {formatSubjectLabel(area.subject)}</p>
-                    <p className="text-xs text-slate-300">Weak topic: {formatFriendlyTopic(area.skillFocus)}</p>
-                    <p className="text-xs text-slate-300">Accuracy: {area.accuracy}%</p>
-                    <p className="mt-2 text-xs text-cyan-200">{toTitleCaseWords(formatSubjectLabel(area.subject))} · {toTitleCaseWords(formatFriendlyTopic(area.skillFocus))} Intervention</p>
-                    <p className="text-xs text-cyan-200">{area.accuracy}% accuracy detected</p>
-                    <p className="text-xs text-cyan-200">Targeted support recommended</p>
-                    <p className="mt-2 text-xs text-amber-200">This intervention is based on detected weak-area data, not the manual form above.</p>
-                    {!contextMatches ? (
-                      <p className="mt-2 text-xs text-rose-300">Weak-area context does not match the current manual form. Interventions here will still use the weak-area subject.</p>
-                    ) : null}
-                    {loadedWeakAreaId === area.id ? (
-                      <p className={`mt-2 text-xs ${weakAreaFormSynced ? "text-emerald-300" : "text-slate-400"}`}>
-                        {weakAreaFormSynced
-                          ? "Loaded into manual generator."
-                          : "Previously loaded into manual generator. Manual form has changed since load."}
-                      </p>
-                    ) : null}
+        {isStudentInterventionMode && weakAreas.length ? (
+          <div ref={weakAreaActionsRef} tabIndex={-1} className="mt-4 scroll-mt-24 outline-none">
+            <div className="mb-3">
+              <p className="text-sm font-black text-white">Detected Weak-Area Actions</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Use these cards to generate targeted support. Each generation updates the preview only; save it after review.
+              </p>
+            </div>
+            {visibleWeakAreas.length ? (
+              <div className="space-y-3">
+                {visibleWeakAreas.slice(0, 8).map(({ area, contextMatches }, index) => (
+                  <div key={`${area.id}-${index}`} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-300">Detected Weak Area</p>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-white">Student: {area.student.name}</p>
+                        <p className="text-xs text-slate-300">Subject: {formatSubjectLabel(area.subject)}</p>
+                        <p className="text-xs text-slate-300">Weak topic: {formatFriendlyTopic(area.skillFocus)}</p>
+                        <p className="text-xs text-slate-300">Accuracy: {area.accuracy}%</p>
+                        <p className="mt-2 text-xs text-cyan-200">{toTitleCaseWords(formatSubjectLabel(area.subject))} · {toTitleCaseWords(formatFriendlyTopic(area.skillFocus))} Intervention</p>
+                        <p className="text-xs text-cyan-200">{area.accuracy}% accuracy detected</p>
+                        <p className="text-xs text-cyan-200">Targeted support recommended</p>
+                        <p className="mt-2 text-xs text-amber-200">This intervention is based on detected weak-area data, not the manual form above.</p>
+                        {!contextMatches ? (
+                          <p className="mt-2 text-xs text-rose-300">Weak-area context does not match the current manual form. Interventions here will still use the weak-area subject.</p>
+                        ) : null}
+                        {loadedWeakAreaId === area.id ? (
+                          <p className={`mt-2 text-xs ${weakAreaFormSynced ? "text-emerald-300" : "text-slate-400"}`}>
+                            {weakAreaFormSynced
+                              ? "Loaded into manual generator."
+                              : "Previously loaded into manual generator. Manual form has changed since load."}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <button
+                        onClick={() => applyWeakArea(area)}
+                        className="rounded-xl border border-indigo-400/70 px-3 py-2 text-xs font-black text-indigo-100"
+                      >
+                        Load into generator
+                      </button>
+                      <button
+                        onClick={() => void generateInterventionFromWeakArea(area)}
+                        className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white"
+                      >
+                        Generate Weak-Area Support
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <button
-                    onClick={() => applyWeakArea(area)}
-                    className="rounded-xl border border-indigo-400/70 px-3 py-2 text-xs font-black text-indigo-100"
-                  >
-                    Load into generator
-                  </button>
-                  <button
-                    onClick={() => void generateInterventionFromWeakArea(area)}
-                    className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-black text-white"
-                  >
-                    Generate Weak-Area Support
-                  </button>
-                </div>
+                ))}
               </div>
-            ))}
+            ) : (
+              <p className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-sm text-slate-300">
+                No weak-area cards match the current manual form context. Switch intervention filter to &quot;All subjects&quot; to review every weak area.
+              </p>
+            )}
           </div>
-        ) : weakAreas.length ? (
-          <p className="mt-4 rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-sm text-slate-300">
-            No weak-area cards match the current manual form context. Switch intervention filter to &quot;All subjects&quot; to review every weak area.
-          </p>
         ) : null}
       </AdminSectionCard>
 
+      <div ref={previewPanelRef} className="scroll-mt-24">
       <AdminSectionCard title="Generated Preview" eyebrow="Review">
         {preview ? (
           <div className="space-y-4">
@@ -2975,7 +3130,14 @@ export default function AiGeneratorPage() {
               </div>
               <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Quality</p>
-                <p className="mt-2 text-2xl font-black text-emerald-300">{preview.qualityScore}%</p>
+                {typeof preview.qualityScore === "number" && preview.qualityStatus === "scored" ? (
+                  <p className="mt-2 text-2xl font-black text-emerald-300">{preview.qualityScore}%</p>
+                ) : (
+                  <>
+                    <p className="mt-2 text-lg font-black text-amber-200">Pending review</p>
+                    <p className="mt-1 text-xs text-slate-400">Not scored yet</p>
+                  </>
+                )}
               </div>
               <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Safety</p>
@@ -3012,6 +3174,19 @@ export default function AiGeneratorPage() {
                 </span>
               ) : null}
             </div>
+
+            {blackBoxDifficultyWarnings.length ? (
+              <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100">
+                <p className="font-bold">Black Box difficulty warning</p>
+                <div className="mt-2 space-y-1 text-xs sm:text-sm">
+                  {blackBoxDifficultyWarnings.slice(0, 3).map((warning) => (
+                    <p key={`${warning.index}-${warning.estimatedLevel}`}>
+                      Question {warning.index + 1}: Black Box estimated this as Level {warning.estimatedLevel}. Regenerate or apply recommendation before saving.
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
@@ -3236,6 +3411,7 @@ export default function AiGeneratorPage() {
           </div>
         )}
       </AdminSectionCard>
+      </div>
       </div>
     </div>
   );

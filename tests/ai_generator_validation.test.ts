@@ -345,6 +345,110 @@ test("Year 6 reading difficulty 5 rejects passages that are too short", () => {
   assert.match(String(result.error), /too easy|validation/i);
 });
 
+test("English grammar difficulty 5 rejects simple recall and identification prompts", () => {
+  const result = validateAiContentQuality({
+    type: "grammar",
+    subject: "english-language",
+    keyStage: "KS2",
+    yearGroup: "Year 5",
+    skillFocus: "Grammar prefixes",
+    topic: "Prefix meaning",
+    difficulty: 5,
+    items: [{
+      question: "What does the prefix re- mean in grammar?",
+      answer: "again",
+      options: ["again", "before", "under"],
+      explanation: "The prefix re- can mean again.",
+      hint: "Look at the start of the word.",
+      yearGroup: "Year 5",
+    }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.error), /too easy/i);
+});
+
+test("English grammar difficulty 5 accepts reasoning, error correction, and justification", () => {
+  const result = validateAiContentQuality({
+    type: "grammar",
+    subject: "english-language",
+    keyStage: "KS2",
+    yearGroup: "Year 5",
+    skillFocus: "Prefixes",
+    topic: "Prefix meaning",
+    difficulty: 5,
+    items: [{
+      question: "Detect and correct the prefix error in this sentence, then justify how the revised word changes the meaning in context: The team will preview the match after it has ended.",
+      answer: "Review is better because re- means again, while preview means seeing something before it happens.",
+      options: [
+        "review, because re- shows doing something again",
+        "preview, because pre- shows doing something again",
+        "subview, because sub- shows doing something before",
+      ],
+      explanation: "The context says the match has ended, so review fits. Preview would mean seeing it before it happens.",
+      hint: "Compare the time clues in the sentence with the prefix meaning.",
+      yearGroup: "Year 5",
+    }],
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("Year 4 prefixes difficulty 5 rejects applied items with one-word answers", () => {
+  const result = validateAiContentQuality({
+    type: "spelling",
+    subject: "english-language",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Prefixes",
+    topic: "Prefixes practice",
+    difficulty: 5,
+    items: [{
+      word: "recreate",
+      question: "Revise the sentence to correctly use the prefix re-: I will create a new drawing.",
+      answer: "recreate",
+      options: [
+        "I will recreate a new drawing.",
+        "I will miscreate a new drawing.",
+        "I will discreate a new drawing.",
+      ],
+      explanation: "The correct answer is recreate because re- means again.",
+      hint: "Think about the prefix meaning.",
+      sentenceContext: "To show creating something again.",
+    }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.error), /too easy|selected year and difficulty/i);
+});
+
+test("Year 4 prefixes difficulty 5 accepts full-option answers with misconception explanation", () => {
+  const result = validateAiContentQuality({
+    type: "spelling",
+    subject: "english-language",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Prefixes",
+    topic: "Prefixes practice",
+    difficulty: 5,
+    items: [{
+      word: "recreate",
+      question: "Compare the options and revise the sentence so the prefix shows doing the action again: I will create a new drawing.",
+      answer: "I will recreate a new drawing.",
+      options: [
+        "I will recreate a new drawing.",
+        "I will miscreate a new drawing.",
+        "I will precreate a new drawing.",
+      ],
+      explanation: "The correct answer is recreate because re- means again. Miscreate is a tempting distractor, but mis- suggests wrongly or badly, which does not fit the context.",
+      hint: "Compare the time clue with the prefix meaning.",
+      sentenceContext: "The sentence needs a prefix that means again.",
+    }],
+  });
+
+  assert.equal(result.ok, true);
+});
+
 test("maths difficulty calibration distinguishes easy and hard prompts", () => {
   const tooEasy = validateAiContentQuality({
     type: "maths",

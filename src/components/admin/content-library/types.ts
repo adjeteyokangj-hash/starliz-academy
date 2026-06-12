@@ -10,6 +10,15 @@ export type BlackBoxContentItemCheck = {
   rawScore?: number;
   rawMaxScore?: number;
   passRate?: number;
+  declaredLevel?: number;
+  estimatedLevel?: number;
+  recommendedLevel?: number;
+  levelDelta?: number;
+  levelRecommendation?: {
+    action: "keep" | "promote" | "demote";
+    amount: number;
+    reason: string;
+  };
   reasons?: string[];
   checks?: Record<string, unknown>;
 };

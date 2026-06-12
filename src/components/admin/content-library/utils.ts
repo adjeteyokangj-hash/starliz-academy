@@ -14,6 +14,7 @@ import {
 import type {
   BlackBoxAdminVerification,
   BlackBoxContentDecision,
+  BlackBoxContentItemCheck,
   BlackBoxContentTest,
   BlackBoxRuntimeStatus,
   BlackBoxRuntimeTest,
@@ -166,6 +167,21 @@ function normaliseBlackBoxScore(raw: Record<string, unknown>): number | undefine
   return score !== undefined ? clampScore(score) : undefined;
 }
 
+function parseLevelRecommendation(raw: Record<string, unknown>): BlackBoxContentItemCheck["levelRecommendation"] {
+  const recommendationRaw = asRecord(raw.levelRecommendation);
+  const action = typeof recommendationRaw?.action === "string" ? recommendationRaw.action : raw.levelDelta === 0 ? "keep" : Number(raw.levelDelta) > 0 ? "promote" : Number(raw.levelDelta) < 0 ? "demote" : null;
+  const amount = asFiniteNumber(recommendationRaw?.amount) ?? Math.abs(asFiniteNumber(raw.levelDelta) ?? 0);
+  const reason = typeof recommendationRaw?.reason === "string"
+    ? recommendationRaw.reason
+    : action === "promote"
+      ? `Increase question difficulty by ${amount} level${amount === 1 ? "" : "s"}.`
+      : action === "demote"
+        ? `Reduce question difficulty by ${amount} level${amount === 1 ? "" : "s"}.`
+        : "Question difficulty matches the Black Box estimate.";
+  if (action !== "keep" && action !== "promote" && action !== "demote") return undefined;
+  return { action, amount, reason };
+}
+
 export function parseBlackBoxContentTest(item: ContentItem): BlackBoxContentTest | null {
   const metadata = parseMetadata(item);
   const raw = asRecord(metadata.blackBoxContentTest);
@@ -193,6 +209,11 @@ export function parseBlackBoxContentTest(item: ContentItem): BlackBoxContentTest
         rawScore: asFiniteNumber(check.rawScore) ?? asFiniteNumber(check.score),
         rawMaxScore: asFiniteNumber(check.rawMaxScore) ?? asFiniteNumber(check.maxScore),
         passRate: asFiniteNumber(check.passRate),
+        declaredLevel: asFiniteNumber(check.declaredLevel),
+        estimatedLevel: asFiniteNumber(check.estimatedLevel),
+        recommendedLevel: asFiniteNumber(check.recommendedLevel),
+        levelDelta: asFiniteNumber(check.levelDelta),
+        levelRecommendation: parseLevelRecommendation(check),
         reasons: asStringArray(check.reasons),
         checks,
       };

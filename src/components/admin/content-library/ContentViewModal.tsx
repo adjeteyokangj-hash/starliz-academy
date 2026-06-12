@@ -155,6 +155,9 @@ function ContentViewModalBody({
     ?? blackBox?.itemChecks?.[selectedItemIndex]
     ?? null;
   const estimatedMinutes = Math.max(2, Math.ceil(items.length * 1.5));
+  const currentItemLevel = numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level);
+  const recommendedLevel = currentItemCheck?.recommendedLevel ?? currentItemCheck?.estimatedLevel ?? null;
+  const levelRecommendation = currentItemCheck?.levelRecommendation ?? null;
 
   async function updateCurrentItemLevel(nextLevel: number) {
     if (!currentItem) return;
@@ -362,11 +365,11 @@ function ContentViewModalBody({
                       Demote item
                     </button>
                     <span className="rounded-full bg-slate-950 px-3 py-2 text-xs font-black text-white">
-                      Item level {numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level)} | {difficultyLabel(numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level))}
+                      Item level {currentItemLevel} | {difficultyLabel(currentItemLevel)}
                     </span>
                     <button
                       type="button"
-                      onClick={() => updateCurrentItemLevel(Math.min(10, numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level) + 1))}
+                      onClick={() => updateCurrentItemLevel(Math.min(10, currentItemLevel + 1))}
                       className="rounded-lg border border-indigo-400/40 px-3 py-2 text-xs font-black text-indigo-100 hover:bg-indigo-500/10"
                     >
                       Move item up
@@ -456,6 +459,23 @@ function ContentViewModalBody({
                       {currentItemCheck ? (
                         <div className="rounded-lg border border-slate-700 bg-slate-950 p-2">
                           <p className="font-bold text-slate-300">Item {selectedItemIndex + 1}{typeof currentItemCheck.score === "number" ? ` • ${currentItemCheck.score}/100` : ""}</p>
+                          <div className="mt-2 rounded-lg border border-indigo-500/20 bg-indigo-500/10 p-2 text-indigo-50">
+                            <p className="font-black text-indigo-100">Difficulty recommendation</p>
+                            <div className="mt-1 grid gap-1">
+                              <p>Current: Level {currentItemCheck.declaredLevel ?? currentItemLevel} | {difficultyLabel(currentItemCheck.declaredLevel ?? currentItemLevel)}</p>
+                              <p>Black Box Estimate: Level {currentItemCheck.estimatedLevel ?? "N/A"}{typeof currentItemCheck.estimatedLevel === "number" ? ` | ${difficultyLabel(currentItemCheck.estimatedLevel)}` : ""}</p>
+                              <p>Recommendation: {levelRecommendation?.reason ?? "No item-level difficulty recommendation available."}</p>
+                            </div>
+                            {typeof recommendedLevel === "number" && recommendedLevel !== currentItemLevel ? (
+                              <button
+                                type="button"
+                                onClick={() => updateCurrentItemLevel(recommendedLevel)}
+                                className="mt-2 rounded-lg bg-indigo-500 px-3 py-2 text-xs font-black text-white hover:bg-indigo-400"
+                              >
+                                Apply Recommendation
+                              </button>
+                            ) : null}
+                          </div>
                           {currentItemCheck.reasons && currentItemCheck.reasons.length > 0 ? (
                             <ul className="mt-1 list-disc space-y-1 pl-5">
                               {currentItemCheck.reasons.map((reason) => <li key={reason}>{reason}</li>)}

@@ -194,6 +194,73 @@ test("black box content test sends too-easy content to admin review", () => {
   assert.match(result.reasons.join(" "), /too easy|too simple/i);
 });
 
+test("black box content test flags simple times-table facts as too easy for difficulty 5", () => {
+  const result = runContentBlackBoxTest({
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    level: 5,
+    difficulty: 5,
+    topic: "Times Tables",
+    skillFocus: "Multiplication facts",
+    items: [{
+      subject: "maths",
+      keyStage: "KS2",
+      yearGroup: "Year 4",
+      skillFocus: "Multiplication facts",
+      topic: "Times Tables",
+      question: "What is 6 times 4?",
+      answer: "24",
+      explanation: "6 times 4 equals 24.",
+      choices: ["24", "20", "28"],
+      difficulty: 5,
+    }],
+  });
+
+  const item = result.itemResults[0];
+  assert.equal(result.decision, "NEEDS_ADMIN_REVIEW");
+  assert.equal(item.estimatedLevel <= 3, true);
+  assert.match(result.reasons.join(" "), /too easy/i);
+});
+
+test("black box content test estimates rich applied prefix item as level 5", () => {
+  const result = runContentBlackBoxTest({
+    subject: "english-language",
+    strand: "spelling",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    level: 5,
+    difficulty: 5,
+    topic: "Prefixes practice",
+    skillFocus: "Prefixes",
+    questionType: "spelling",
+    items: [{
+      word: "recreate",
+      question: "Compare the options and revise the sentence so the prefix shows doing the action again: I will create a new drawing.",
+      answer: "I will recreate a new drawing.",
+      options: [
+        "I will recreate a new drawing.",
+        "I will miscreate a new drawing.",
+        "I will precreate a new drawing.",
+      ],
+      explanation: "The correct answer is recreate because re- means again. Miscreate is a tempting distractor, but mis- suggests wrongly or badly, which does not fit the context.",
+      hint: "Compare the time clue with the prefix meaning.",
+      sentenceContext: "The sentence needs a prefix that means again.",
+      subject: "english-language",
+      strand: "spelling",
+      yearGroup: "Year 4",
+      keyStage: "KS2",
+      difficulty: 5,
+      skillFocus: "Prefixes",
+    }],
+  });
+
+  const item = result.itemResults[0];
+  assert.equal(item.estimatedLevel, 5);
+  assert.equal(item.reasons.some((reason) => /Correct answer is not present/.test(reason)), false);
+  assert.equal(item.reasons.some((reason) => /Expected spelling, detected multiple choice/.test(reason)), false);
+});
+
 test("black box content test rejects missing answer", () => {
   const result = runContentBlackBoxTest({
     ...baseMathContext,
@@ -263,6 +330,38 @@ test("black box content test exposes reclassify recommendation", () => {
 
   assert.equal(result.decision, "RECLASSIFY");
   assert.deepEqual(result.recommendation, { subject: "spelling", strand: "spelling" });
+});
+
+test("black box content test exposes item level recommendation", () => {
+  const result = runContentBlackBoxTest({
+    subject: "maths",
+    strand: null,
+    keyStage: "KS2",
+    yearGroup: "Year 6",
+    level: 5,
+    difficulty: 5,
+    topic: "Algebra",
+    skillFocus: "Algebra",
+    items: [{
+      subject: "maths",
+      keyStage: "KS2",
+      yearGroup: "Year 6",
+      skillFocus: "Algebra",
+      topic: "Algebra",
+      difficulty: 2,
+      question: "Solve 3x + 5 = 20 and justify each inverse operation in your method.",
+      answer: "x = 5",
+      explanation: "Subtract 5 from both sides, then divide both sides by 3.",
+    }],
+  });
+
+  const item = result.itemResults[0];
+  assert.equal(item.declaredLevel, 2);
+  assert.equal(item.estimatedLevel > item.declaredLevel, true);
+  assert.equal(item.recommendedLevel, item.estimatedLevel);
+  assert.equal(item.levelDelta, item.estimatedLevel - item.declaredLevel);
+  assert.equal(item.levelRecommendation.action, "promote");
+  assert.match(item.levelRecommendation.reason, /Increase question difficulty/i);
 });
 
 test("blocked wrong-subject save payload includes black box diagnostics", () => {

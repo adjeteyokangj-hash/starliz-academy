@@ -182,6 +182,78 @@ function hasLiteracySignal(value: string) {
   return /(passage|paragraph|author|language analysis|text|sentence|infer|inference|evidence|character|theme|comprehension|extract|write|writing|reading)/i.test(value);
 }
 
+function isEnglishStructuredType(type: QualityInput["type"]) {
+  return type === "reading" || type === "writing" || type === "grammar" || type === "punctuation";
+}
+
+function hasAdvancedEnglishDemand(value: string) {
+  return /(justify|compare|revise|explain why|detect|correct|transform|analyse|analyze|evaluate|evidence|infer|inference|context|misconception|distractor|because|however|although|which option best|most effective|least effective|error|improve|rewrite|adapt|contrast|support your answer)/i.test(value);
+}
+
+function hasSimpleEnglishRecallShape(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return /^(what (does|is|are)|which word|choose the|identify the|find the|select the|pick the)\b/.test(normalized)
+    || /\bwhat does (the )?(prefix|suffix)\b/.test(normalized)
+    || /\bidentify (the )?(prefix|suffix|noun|verb|adjective|adverb|comma|apostrophe)\b/.test(normalized)
+    || /\bchoose the word with (a|the) (prefix|suffix)\b/.test(normalized);
+}
+
+function wordCount(value: string): number {
+  return value.split(/\s+/).filter(Boolean).length;
+}
+
+function normalizeAnswerOption(value: unknown) {
+  return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function spellingLevelFiveIssue(input: QualityInput, data: Record<string, unknown>, safeDifficulty: number) {
+  if (safeDifficulty < 5) return null;
+  const skill = String(input.skillFocus ?? "").toLowerCase();
+  if (!/(prefix|suffix)/i.test(skill)) return null;
+
+  const question = String(data.question ?? data.prompt ?? "").trim();
+  const answer = String(data.answer ?? "").trim();
+  const explanation = String(data.explanation ?? "").trim();
+  const hint = String(data.hint ?? "").trim();
+  const fullText = `${question} ${answer} ${explanation} ${hint}`;
+  const options = Array.isArray(data.options)
+    ? data.options.map((option) => String(option))
+    : Array.isArray(data.choices)
+      ? data.choices.map((option) => String(option))
+      : [];
+  const isAppliedQuestionShape = Boolean(question || options.length || explanation);
+  if (!isAppliedQuestionShape) return null;
+
+  if (!question || !hasAdvancedEnglishDemand(fullText)) return "level5_english_too_simple";
+  if (hasSimpleEnglishRecallShape(question) && !/\b(justify|explain why|compare|detect|correct|transform|revise)\b/i.test(question)) return "level5_english_too_simple";
+  if (options.length >= 2 && !options.map(normalizeAnswerOption).includes(normalizeAnswerOption(answer))) return "level5_answer_not_option";
+  if (options.length >= 2 && wordCount(answer) < 4) return "level5_answer_too_thin";
+  if (wordCount(explanation) < 14 || !/\b(because|therefore|whereas|instead|distractor|wrong|fails?|does not fit|misconception)\b/i.test(explanation)) return "level5_explanation_too_thin";
+  return null;
+}
+
+function englishDifficultyIssue(input: QualityInput, data: Record<string, unknown>, prompt: string, safeDifficulty: number) {
+  if (!isEnglishStructuredType(input.type) || safeDifficulty < 5) return null;
+
+  const questionText = Array.isArray(data.questions)
+    ? data.questions.map((question) => itemText(question)).join(" ")
+    : "";
+  const fullText = `${prompt} ${questionText} ${String(data.answer ?? "")} ${String(data.explanation ?? "")} ${String(data.hint ?? "")}`;
+  const candidates = [
+    prompt,
+    ...(
+      Array.isArray(data.questions)
+        ? data.questions.map((question) => String((question as Record<string, unknown>)?.question ?? (question as Record<string, unknown>)?.prompt ?? ""))
+        : []
+    ),
+  ].filter(Boolean);
+
+  const tooRecallBased = candidates.some(hasSimpleEnglishRecallShape) && !hasAdvancedEnglishDemand(fullText);
+  if (tooRecallBased) return "difficulty_too_easy";
+  if (!hasAdvancedEnglishDemand(fullText)) return "difficulty_too_easy";
+  return null;
+}
+
 function hasScienceSignal(value: string) {
   return /(science|physics|chemistry|biology|force|energy|waves?|electricity|magnetism|circuit|resistance|current|voltage|particle|atomic|atom|cells?|ecosystem|practical|equation|f\s*=\s*m\s*[x*]\s*a|mass|weight|acceleration|velocity|momentum|density|pressure|chemical\s*reaction|exothermic|endothermic|evolution|genetics|dna|radiation|nuclear|thermal|kinetic|gravitational|elastic\s*potential|newton|joule|watt|hertz|ohm|ampere|photosynthesis|osmosis|diffusion|respiration|mitosis|periodic\s*table|element|compound|mixture|reactant|product|bond|electron|proton|neutron|isotope|half.life|wave.length|frequency|amplitude|refraction|reflection|electromagnetic|acid|alkali|neutrali[sz]ation|electrolysis|ion|ionic|ph\b)/i.test(value);
 }
@@ -274,6 +346,7 @@ function createSpellingErrorMessage(code: string) {
   if (type === "homophone_pair_missing") return "This homophone item is missing its matching word pair.";
   if (type === "homophone_meaning_missing") return "This homophone item is missing a meaning difference explanation.";
   if (type === "compound_split_missing") return "This compound word item does not show two joined words.";
+  if (type.startsWith("level5_")) return "Generated spelling content was too easy for the selected year and difficulty.";
   if (type === "weak_sentence_context") return "Regenerate with stronger sentence context for each spelling word.";
   if (type === "incomplete") return `Incomplete spelling item rejected: ${word || "unknown"}`;
   return "Invalid spelling content.";
@@ -505,6 +578,12 @@ function validateSpellingItems(
       if (assessment.issues.some((entry) => entry.startsWith("skill_mismatch") || entry.includes("homophone") || entry.includes("compound"))) pushMismatch(acc, "skill");
     }
 
+    const levelFiveIssue = spellingLevelFiveIssue(input, data, safeDifficulty);
+    if (levelFiveIssue) {
+      errors.push(levelFiveIssue);
+      pushMismatch(acc, "difficulty");
+    }
+
     if (!classifySubjectMatch(input.subject, itemText(data), input.type)) {
       errors.push(`subject_mismatch:${word}`);
       pushMismatch(acc, "subject");
@@ -686,6 +765,12 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
         issues.push("difficulty_too_easy");
         pushMismatch(acc, "difficulty");
       }
+    }
+
+    const englishIssue = englishDifficultyIssue(input, data, prompt, safeDifficulty);
+    if (englishIssue) {
+      issues.push(englishIssue);
+      pushMismatch(acc, "difficulty");
     }
 
     if (!classifySubjectMatch(input.subject, itemText(data), input.type)) {

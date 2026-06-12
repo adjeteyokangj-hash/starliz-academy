@@ -251,7 +251,8 @@ type GeneratedPreview = {
   topic: string;
   status: "draft";
   safetyStatus: "passed";
-  qualityScore: number;
+  qualityScore: number | null;
+  qualityStatus: "pending_review" | "scored";
   voiceScript: string;
   imagePrompt: string;
   items: unknown[];
@@ -374,6 +375,35 @@ function normalizeYearGroup(yearGroup: string, keyStage: string) {
   return options[0] ?? "Year 1";
 }
 
+function buildEnglishDifficultyInstruction(type: PromptType, level: number, skillFocus?: string) {
+  if (!["spelling", "reading", "punctuation", "grammar", "writing"].includes(type)) return "";
+  const normalizedSkill = String(skillFocus ?? "").toLowerCase();
+  const isPrefixOrSuffix = normalizedSkill.includes("prefix") || normalizedSkill.includes("suffix");
+
+  if (level <= 1) {
+    return `
+English Difficulty 1 calibration:
+- Keep each item simple, direct, and single-skill.
+- Use short age-appropriate wording and one clear answer.
+- Avoid multi-step reasoning, dense distractors, long passages, and abstract analysis.
+- For spelling, use accessible words and direct practice of the selected pattern.`;
+  }
+
+  if (level < 5) return "";
+
+  return `
+English Difficulty 5 calibration:
+- Simple definition recall is forbidden.
+- Simple "what does prefix mean" or "what does suffix mean" questions are forbidden.
+- Single-step identification questions are forbidden, including "identify the prefix", "find the suffix", and "choose the word with a prefix".
+- Questions must require reasoning, comparison, justification, error detection, sentence transformation, multiple plausible distractors, or context analysis.
+- Difficulty 5 must be noticeably harder than Difficulty 3; do not return a Difficulty 3 item with a Difficulty 5 label.
+- Each question/prompt should include an advanced command such as justify, compare, revise, explain why, detect and correct, transform, analyse, or use evidence.
+- Multiple-choice options must be plausible distractors that test the misconception, not obvious wrong answers.
+- The answer must be a full correct response, not a single-word label.
+- Explanations must show why the correct answer is right and why at least one common distractor is wrong.${isPrefixOrSuffix ? "\n- For prefix/suffix work, make students apply the affix in context, correct an error, transform a root word, compare two plausible affixes, and justify how the affix changes meaning.\n- For multiple-choice prefix/suffix items, the answer must exactly match one full option sentence, and explanation must name the correct affix, the meaning change, and why a plausible wrong affix fails." : ""}`;
+}
+
 function buildUserPrompt(
   type: PromptType,
   subject: Subject,
@@ -419,7 +449,14 @@ Difficulty profile:
 - Difficulty label: ${difficultyProfile.difficultyLabel}
 - Cognitive demand: ${difficultyProfile.cognitiveDemand}
 - Scaffolding level: ${difficultyProfile.scaffoldingLevel}
-- Guidance: ${difficultyProfile.guidance}`;
+- Guidance: ${difficultyProfile.guidance}
+Strict difficulty ladder:
+- Level 1-2: basic recall, direct facts, one-step calculation or recognition.
+- Level 3: standard practice with one clear application step.
+- Level 4: multi-step reasoning, method explanation, connected concepts, plausible distractors.
+- Level 5: challenge/problem solving with mixed context, reasoning, distractors, and justification.
+The generated task difficulty must match Level ${safeLevel}; do not return easier items and merely label them as Level ${safeLevel}.`;
+  const englishDifficultyLines = buildEnglishDifficultyInstruction(type, safeLevel, skillFocus);
   if (subject === "punctuation") {
     return `Generate ${count} UK Year ${safeYearGroup.replace("Year ", "")} punctuation practice items.
 Selection context:
@@ -458,7 +495,7 @@ Return JSON array only using this schema:
   "yearGroup": "${safeYearGroup}",
   "skillFocus": "${skillFocus}",
   "difficulty": ${level}
-}${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
+}${difficultyLines}${englishDifficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
 
   if (type === "spelling") {
@@ -518,9 +555,13 @@ Each item must include:
 {
   "id": string,
   "word": string,
+  "question": string,
+  "answer": string,
+  "options": string[],
   "hint": string,
   "sentenceContext": string,
   "categoryHint": string,
+  "explanation": string,
   "syllables": string,
   "emoji": string,
   "spellingPattern": string,
@@ -532,7 +573,14 @@ Each item must include:
   "yearGroup": "${safeYearGroup}",
   "skillFocus": "${skillFocus || "Silent e"}",
   "difficulty": ${level}
-}${difficultyLines}${followUpInstruction}${genericRepairLine}`.trim();
+}
+For Difficulty 5 spelling/prefix/suffix items:
+- "word" is the target spelling word only.
+- "question" must ask the student to transform, detect/correct an error, compare affixes, or justify the affix choice in context.
+- "options" must be full sentence or full response options, not bare words.
+- "answer" must exactly equal the full correct option string.
+- "explanation" must include a because/therefore style justification and explain why one tempting distractor is wrong.
+${difficultyLines}${englishDifficultyLines}${followUpInstruction}${genericRepairLine}`.trim();
   }
   if (type === "maths") {
     const isGcse = safeYearGroup === "Year 10" || safeYearGroup === "Year 11" || keyStage === "KS4";
@@ -556,7 +604,12 @@ Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaf
 Skill focus: ${skillFocus || "Number bonds"}.
 Topic: ${cleanedTopic || skillFocus || "mixed arithmetic"}.
 Include answers and multiple choice options.
-Difficulty must increase appropriately for the selected year group and level.
+Difficulty ${level} is a strict requirement:
+- Level 1-2: basic recall such as direct times-table facts.
+- Level 3: standard practice with a small application step.
+- Level 4: multi-step reasoning with an explanation of method.
+- Level 5: challenge/problem solving using mixed context, distractors, reasoning, and justification.
+If topic is times tables and difficulty is 5, do not generate only simple prompts like "What is 6 times 4?". Use multi-step contexts such as missing factors, comparison, scaled quantities, arrays, inverse operations, or choosing and justifying an efficient strategy.
 Return JSON with: id, question, answer, explanation, choices, yearGroup, skillFocus, difficulty and topic.
 Do not return spelling words or reading passages.
 Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
@@ -615,7 +668,7 @@ Skill focus: ${skillFocus || "Sentence punctuation"}.
 Topic/theme: ${cleanedTopic || skillFocus || "punctuation practice"}.
 Return JSON array with: id, question, answer, options, explanation, hint, yearGroup, skillFocus, difficulty.
 Do not return spelling word lists, reading passages, or maths questions.
-Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${englishDifficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "grammar") {
     return `Generate ${count} UK grammar practice items for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -623,7 +676,7 @@ Skill focus: ${skillFocus || "Grammar accuracy"}.
 Topic/theme: ${cleanedTopic || skillFocus || "grammar practice"}.
 Return JSON array with: id, question, answer, options, explanation, hint, yearGroup, skillFocus, difficulty.
 Do not return spelling-only word lists, reading passages, or maths questions.
-Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${englishDifficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "writing") {
     return `Generate ${count} UK writing practice tasks for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -631,7 +684,7 @@ Skill focus: ${skillFocus || "Sentence composition"}.
 Topic/theme: ${cleanedTopic || skillFocus || "writing practice"}.
 Return JSON array with: id, prompt, answer, options, explanation, hint, yearGroup, skillFocus, difficulty.
 Do not return isolated spelling word lists or maths questions.
-Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${englishDifficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "reading") {
     return `Generate a short reading passage for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -661,7 +714,7 @@ Requirements:
 - Answers must quote or reference evidence from the passage where appropriate.
 - Keep GCSE Year 10/11 reading-comprehension rigor when ${safeYearGroup} is Year 10/11.
 Do not return spelling word lists or maths questions.
-Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${englishDifficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}`;
   }
   return "";
 }
@@ -916,14 +969,22 @@ function normalizePreviewItems(
     }
 
     if (generationType === "spelling" || generationType === "phonics") {
+      const question = String(data.question ?? data.prompt ?? data.word ?? "");
+      const answer = String(data.answer ?? data.correctAnswer ?? data.word ?? "");
       return withCommonFields({
         ...data,
         type: generationType,
         yearGroup: metadata.yearGroup,
         skillFocus: metadata.skillFocus,
         difficulty: metadata.difficulty,
-        prompt: String(data.word ?? ""),
-        answer: String(data.word ?? ""),
+        prompt: question,
+        question,
+        answer,
+        options: Array.isArray(data.options)
+          ? data.options.map((value) => String(value))
+          : Array.isArray(data.choices)
+            ? data.choices.map((value) => String(value))
+            : [],
         sentence: String(data.sentenceContext ?? data.sentence ?? ""),
         explanation: String(data.explanation ?? `Practise the ${data.skillFocus ?? "spelling"} pattern.`),
         hint: String(data.hint ?? "Listen carefully and think about the sounds."),
@@ -1084,7 +1145,8 @@ function buildGeneratedPreview({
     topic: safeTopic,
     status: "draft",
     safetyStatus: "passed",
-    qualityScore: Math.min(100, Math.max(70, 82 + Math.min(12, items.length))),
+    qualityScore: null,
+    qualityStatus: "pending_review",
     voiceScript: `Today we are practising ${skillFocus || subject}. Listen carefully, try your best, and use hints when you need them.`,
     imagePrompt: `Friendly UK curriculum illustration for ${yearGroup} ${subject} lesson about ${safeTopic}. Bright, safe, learner-friendly style.`,
     items,
@@ -1593,18 +1655,26 @@ function buildDeterministicGenericFallback(input: {
     return Array.from({ length: safeCount }, (_, index) => {
       const a = base + index + 6;
       const b = base + index + 3;
-      const useMultiply = input.difficulty >= 4;
-      const question = useMultiply
-        ? `${a} x ${index + 2} then subtract ${b}. Explain your method for ${baseTopic.toLowerCase()}.`
-        : `${a} + ${b} = ?`;
-      const answer = useMultiply ? (a * (index + 2)) - b : a + b;
+      const multiplier = index + 2;
+      const product = a * multiplier;
+      const adjusted = product - b;
+      const question = input.difficulty >= 5
+        ? `A class is comparing times-table strategies for ${baseTopic.toLowerCase()}. There are ${multiplier} equal groups of ${a}, then ${b} counters are removed. Evaluate which inverse operation checks the final total and justify your method.`
+        : input.difficulty >= 4
+          ? `${a} x ${multiplier} then subtract ${b}. Explain your method for ${baseTopic.toLowerCase()}.`
+          : input.difficulty >= 3
+            ? `${a} + ${b} = ? Explain one step in your method.`
+            : `${a} + ${b} = ?`;
+      const answer = input.difficulty >= 4 ? adjusted : a + b;
       return {
         id: `fallback-maths-${index + 1}`,
         type: input.subject,
         question,
         answer,
-        choices: [answer, answer + 2, Math.max(0, answer - 2)],
-        explanation: `Worked at ${difficultyLabel.toLowerCase()} for ${input.yearGroup}.`,
+        choices: [answer, answer + multiplier, Math.max(0, answer - b), product],
+        explanation: input.difficulty >= 5
+          ? `Multiply ${a} by ${multiplier} to get ${product}, subtract ${b} to get ${adjusted}, then use the inverse check ${adjusted} + ${b} = ${product}. This justifies the level 5 strategy.`
+          : `Worked at ${difficultyLabel.toLowerCase()} for ${input.yearGroup}.`,
         yearGroup: input.yearGroup,
         skillFocus: baseSkill,
         topic: baseTopic,

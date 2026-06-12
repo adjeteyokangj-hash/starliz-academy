@@ -80,3 +80,34 @@ test("content library black box parser supports recommendation fallback", () => 
   assert.equal(result?.reclassificationRecommendation?.strand, "reading");
   assert.deepEqual(result?.reclassificationRecommendation?.reasons, ["Detected reading content."]);
 });
+
+test("content library black box parser exposes item level recommendation", () => {
+  const result = parseBlackBoxContentTest(makeContentItem({
+    blackBoxContentTest: {
+      decision: "NEEDS_ADMIN_REVIEW",
+      score: 82,
+      maxScore: 100,
+      itemChecks: [{
+        itemIndex: 0,
+        score: 80,
+        declaredLevel: 2,
+        estimatedLevel: 4,
+        recommendedLevel: 4,
+        levelDelta: 2,
+        levelRecommendation: {
+          action: "promote",
+          amount: 2,
+          reason: "Increase question difficulty by 2 levels.",
+        },
+        reasons: ["Item appears too easy for the selected level."],
+      }],
+    },
+  }));
+
+  const itemCheck = result?.itemChecks?.[0];
+  assert.equal(itemCheck?.declaredLevel, 2);
+  assert.equal(itemCheck?.estimatedLevel, 4);
+  assert.equal(itemCheck?.recommendedLevel, 4);
+  assert.equal(itemCheck?.levelDelta, 2);
+  assert.equal(itemCheck?.levelRecommendation?.action, "promote");
+});

@@ -81,6 +81,11 @@ export async function POST(_request: Request, context: Context) {
       rawScore: result.score,
       rawMaxScore: result.maxScore,
       passRate: Number((result.score / result.maxScore).toFixed(3)),
+      declaredLevel: result.declaredLevel,
+      estimatedLevel: result.estimatedLevel,
+      recommendedLevel: result.recommendedLevel,
+      levelDelta: result.levelDelta,
+      levelRecommendation: result.levelRecommendation,
       reasons: result.reasons,
       checks: Object.fromEntries(result.dimensions.map((dimension) => [
         dimension.dimension,

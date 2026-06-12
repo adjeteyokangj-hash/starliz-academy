@@ -48,6 +48,15 @@ export type BlackBoxItemResult = {
   score: number;
   maxScore: number;
   decision: BlackBoxContentDecision;
+  declaredLevel: number;
+  estimatedLevel: number;
+  recommendedLevel: number;
+  levelDelta: number;
+  levelRecommendation: {
+    action: "keep" | "promote" | "demote";
+    amount: number;
+    reason: string;
+  };
   inferredSubject: string | null;
   inferredStrand: string | null;
   recommendedSubject?: string | null;
@@ -198,6 +207,14 @@ function answerText(item: BlackBoxGeneratedItem): string {
   return clean(item.answer ?? item.correctAnswer ?? item.expectedAnswer);
 }
 
+function normalizeOption(value: unknown): string {
+  return normalizeToken(value);
+}
+
+function hasAdvancedEnglishDemand(value: string): boolean {
+  return /\b(justify|compare|revise|explain why|detect|correct|transform|analyse|analyze|evaluate|evidence|infer|inference|context|misconception|distractor|because|therefore|whereas|however|error|improve|rewrite|contrast)\b/i.test(value);
+}
+
 function makeScore(dimension: BlackBoxScoreDimension, score: number, reasons: string[] = []): BlackBoxDimensionScore {
   const maxScore = DIMENSION_MAX[dimension];
   const bounded = Math.max(0, Math.min(maxScore, score));
@@ -221,11 +238,14 @@ function estimateDifficultyLevel(item: BlackBoxGeneratedItem): number {
   const answer = answerText(item);
   const passage = clean(item.passage);
   const text = `${prompt} ${answer} ${clean(item.explanation)} ${passage}`;
+  const options = answerOptions(item);
   let score = 1;
   if (wordCount(prompt) >= 12 || wordCount(answer) >= 8) score += 1;
   if (/[+\-x÷*/=]/.test(prompt) || /\b(because|explain|justify|evidence|method|compare|analyse)\b/i.test(text)) score += 1;
   if (wordCount(passage) >= 45 || /\b(ratio|algebra|photosynthesis|neutralisation|metaphor|inference|subordinate|quadratic)\b/i.test(text)) score += 1;
   if (wordCount(passage) >= 90 || /\b(evaluate|synthesise|simultaneous|electrolysis|structural effect|language technique)\b/i.test(text)) score += 1;
+  if (hasAdvancedEnglishDemand(text) && options.length >= 3 && wordCount(clean(item.explanation)) >= 14) score += 1;
+  if (options.length >= 3 && options.map(normalizeOption).includes(normalizeOption(answer)) && wordCount(answer) >= 4) score += 1;
   return Math.max(1, Math.min(5, score));
 }
 
@@ -261,6 +281,17 @@ function scoreItem(item: BlackBoxGeneratedItem, index: number, input: BlackBoxCo
   const expectedLevel = expectedDifficulty(input);
   const itemLevel = Math.max(1, Math.min(5, Math.round(Number(item.difficulty ?? item.level ?? expectedLevel))));
   const estimatedLevel = estimateDifficultyLevel(item);
+  const recommendedLevel = estimatedLevel;
+  const levelDelta = recommendedLevel - itemLevel;
+  const levelRecommendation = {
+    action: levelDelta > 0 ? "promote" as const : levelDelta < 0 ? "demote" as const : "keep" as const,
+    amount: Math.abs(levelDelta),
+    reason: levelDelta > 0
+      ? `Increase question difficulty by ${Math.abs(levelDelta)} level${Math.abs(levelDelta) === 1 ? "" : "s"}.`
+      : levelDelta < 0
+        ? `Reduce question difficulty by ${Math.abs(levelDelta)} level${Math.abs(levelDelta) === 1 ? "" : "s"}.`
+        : "Question difficulty matches the Black Box estimate.",
+  };
   const dimensions: BlackBoxDimensionScore[] = [];
   const reasons: string[] = [];
 
@@ -287,7 +318,8 @@ function scoreItem(item: BlackBoxGeneratedItem, index: number, input: BlackBoxCo
   const options = answerOptions(item);
   const expectedQuestionType = normalizeToken(input.questionType);
   const inferredQuestionType = options.length ? "multiple choice" : clean(item.passage) ? "reading response" : clean(item.word) ? "spelling word" : "free response";
-  const questionTypeOk = !expectedQuestionType || inferredQuestionType.includes(expectedQuestionType) || expectedQuestionType.includes(inferredQuestionType);
+  const appliedSpellingQuestion = expectedQuestionType.includes("spelling") && clean(item.word) && options.length > 0;
+  const questionTypeOk = !expectedQuestionType || appliedSpellingQuestion || inferredQuestionType.includes(expectedQuestionType) || expectedQuestionType.includes(inferredQuestionType);
   dimensions.push(makeScore("questionType", qText ? (questionTypeOk ? DIMENSION_MAX.questionType : 4) : 0, qText ? (questionTypeOk ? [] : [`Expected ${expectedQuestionType}, detected ${inferredQuestionType}.`]) : ["Missing question/prompt text."]));
 
   const difficultyDelta = estimatedLevel - expectedLevel;
@@ -304,11 +336,11 @@ function scoreItem(item: BlackBoxGeneratedItem, index: number, input: BlackBoxCo
   dimensions.push(makeScore("vocabularyReadability", readabilityOk ? DIMENSION_MAX.vocabularyReadability : 3, readabilityOk ? [] : [readability > expectedLevel ? "Vocabulary/readability appears too advanced." : "Vocabulary/readability appears too simple."]));
 
   if (options.length > 0) {
-    const normalizedOptions = options.map(normalizeToken);
+    const normalizedOptions = options.map(normalizeOption);
     const uniqueOptions = new Set(normalizedOptions);
     if (options.length < 2) reasons.push("Multiple-choice item has fewer than two options.");
     if (uniqueOptions.size !== options.length) reasons.push("Multiple-choice item contains duplicate options.");
-    if (!normalizedOptions.includes(normalizeToken(answer))) reasons.push("Correct answer is not present in answer options.");
+    if (!normalizedOptions.includes(normalizeOption(answer))) reasons.push("Correct answer is not present in answer options.");
   }
 
   for (const dimension of dimensions) {
@@ -335,6 +367,11 @@ function scoreItem(item: BlackBoxGeneratedItem, index: number, input: BlackBoxCo
     score,
     maxScore,
     decision,
+    declaredLevel: itemLevel,
+    estimatedLevel,
+    recommendedLevel,
+    levelDelta,
+    levelRecommendation,
     inferredSubject,
     inferredStrand,
     recommendedSubject: decision === "RECLASSIFY" ? inferredSubject : null,

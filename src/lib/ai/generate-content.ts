@@ -10,6 +10,16 @@ type GenerateInput = {
   createdBy?: string;
 };
 
+const STARTER_LIBRARY_TYPES = ["spelling", "math", "reading"] as const;
+const ACTIVE_CONTENT_STATUSES = ["draft", "reviewed", "approved", "published"] as const;
+
+export type StarterLibraryGap = {
+  type: (typeof STARTER_LIBRARY_TYPES)[number];
+  currentCount: number;
+  minimumExpectedCount: number;
+  missingCount: number;
+};
+
 function fallbackContent({ type, level, topic, count = 8 }: GenerateInput) {
   if (type === "math") {
     return Array.from({ length: count }, (_, index) => {
@@ -57,14 +67,29 @@ export async function generateDraftContent(input: GenerateInput) {
 }
 
 export async function autoFillLowContentLibrary(minPerType = 5) {
-  const types = ["spelling", "math", "reading"] as const;
   const created = [];
-  for (const type of types) {
-    const count = await prisma.aIContentCache.count({ where: { contentType: type, status: { in: ["draft", "reviewed", "approved", "published"] } } });
+  for (const type of STARTER_LIBRARY_TYPES) {
+    const count = await prisma.aIContentCache.count({ where: { contentType: type, status: { in: [...ACTIVE_CONTENT_STATUSES] } } });
     if (count < minPerType) {
       const generated = await generateDraftContent({ type, level: 1, topic: "automatic starter content", count: minPerType - count });
-      created.push({ type, id: generated.record.id, reused: generated.reused });
+      created.push({ type, id: generated.record.id, reused: generated.reused, previousCount: count, minimumExpectedCount: minPerType });
     }
   }
   return created;
+}
+
+export async function detectStarterLibraryGaps(minPerType = 5): Promise<StarterLibraryGap[]> {
+  const gaps: StarterLibraryGap[] = [];
+  for (const type of STARTER_LIBRARY_TYPES) {
+    const currentCount = await prisma.aIContentCache.count({
+      where: { contentType: type, status: { in: [...ACTIVE_CONTENT_STATUSES] } },
+    });
+    gaps.push({
+      type,
+      currentCount,
+      minimumExpectedCount: minPerType,
+      missingCount: Math.max(0, minPerType - currentCount),
+    });
+  }
+  return gaps;
 }
