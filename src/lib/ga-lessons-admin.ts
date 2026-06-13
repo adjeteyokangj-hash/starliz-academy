@@ -39,6 +39,11 @@ export type GaLessonEditorState = {
   loadedQuizQuestionIds: string[];
 };
 
+export const GA_ALPHABET_LESSON_ID = "cmqc9bbjs001iju04qhydth4z";
+export const GA_ALPHABET_LESSON_TITLE = "Ga Alphabet: A, B, D, E, Ɛ";
+export const HELLO_OBJECTIVE = "Recognise and practise hello, yes, and no.";
+export const GA_ALPHABET_EXPECTED_OBJECTIVE = "Recognise and practise the first Ga alphabet letters: A, B, D, E, and Ɛ.";
+
 export function lessonFormFromRow(lesson: GaLessonAdminRow): GaLessonFormState {
   return {
     title: lesson.title,
@@ -69,6 +74,11 @@ export function buildLessonEditorStateById(
     selectedWordIds: selectedWordIdsFromLesson(lesson),
     loadedQuizQuestionIds: lesson.quizQuestions?.map((question) => question.id) ?? [],
   };
+}
+
+export function hasUnexpectedGaAlphabetObjective(lesson: Pick<GaLessonAdminRow, "id" | "title" | "objective">): boolean {
+  if (lesson.id !== GA_ALPHABET_LESSON_ID) return false;
+  return lesson.objective.trim() === HELLO_OBJECTIVE;
 }
 
 export function mergeLessonLinkedWords(

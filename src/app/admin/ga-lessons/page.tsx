@@ -147,29 +147,10 @@ export default function AdminGaLessonsPage() {
 
   function editLesson(lesson: LessonRow) {
     const editorState = buildLessonEditorStateById(lesson.id, lessons);
-    // Temporary diagnostics for A/B editor switching verification.
-    console.info("[GaLessonEditor] clicked", {
-      lessonId: lesson.id,
-      lessonTitle: lesson.title,
-    });
     if (!editorState) {
-      console.warn("[GaLessonEditor] lesson-not-found", {
-        lessonId: lesson.id,
-      });
       setMessage("Selected lesson could not be loaded. Refresh and try again.");
       return;
     }
-    console.info("[GaLessonEditor] loaded", {
-      lessonId: editorState.lessonId,
-      lessonTitle: editorState.lessonTitle,
-      objective: editorState.form.objective,
-      wordsCount: editorState.selectedWordIds.length,
-      quizCount: editorState.loadedQuizQuestionIds.length,
-      category: editorState.form.category,
-      level: editorState.form.level,
-      packKey: editorState.form.packKey,
-      lessonOrder: editorState.form.lessonOrder,
-    });
 
     setActiveLessonId(editorState.lessonId);
     setEditingId(editorState.lessonId);
