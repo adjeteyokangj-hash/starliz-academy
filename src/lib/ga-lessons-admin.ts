@@ -17,6 +17,7 @@ export type GaLessonAdminRow = {
   lessonOrder: number;
   description?: string | null;
   words: Array<{ wordId: string; word: GaLessonAdminWord }>;
+  quizQuestions?: Array<{ id: string }>;
 };
 
 export type GaLessonFormState = {
@@ -28,6 +29,14 @@ export type GaLessonFormState = {
   publishStatus: string;
   packKey: string;
   lessonOrder: string;
+};
+
+export type GaLessonEditorState = {
+  lessonId: string;
+  lessonTitle: string;
+  form: GaLessonFormState;
+  selectedWordIds: string[];
+  loadedQuizQuestionIds: string[];
 };
 
 export function lessonFormFromRow(lesson: GaLessonAdminRow): GaLessonFormState {
@@ -45,6 +54,21 @@ export function lessonFormFromRow(lesson: GaLessonAdminRow): GaLessonFormState {
 
 export function selectedWordIdsFromLesson(lesson: GaLessonAdminRow): string[] {
   return lesson.words.map((row) => row.wordId);
+}
+
+export function buildLessonEditorStateById(
+  lessonId: string,
+  lessons: GaLessonAdminRow[],
+): GaLessonEditorState | null {
+  const lesson = lessons.find((candidate) => candidate.id === lessonId);
+  if (!lesson) return null;
+  return {
+    lessonId: lesson.id,
+    lessonTitle: lesson.title,
+    form: lessonFormFromRow(lesson),
+    selectedWordIds: selectedWordIdsFromLesson(lesson),
+    loadedQuizQuestionIds: lesson.quizQuestions?.map((question) => question.id) ?? [],
+  };
 }
 
 export function mergeLessonLinkedWords(

@@ -6,10 +6,9 @@ import { GA_LEVELS } from "@/lib/ga-word-bank";
 import { BEGINNER_PACK_1_LESSONS, GA_LESSON_STATUSES } from "@/lib/ga-lessons";
 import { GA_APPROVED_CATEGORIES } from "@/lib/ga-word-categories";
 import {
+  buildLessonEditorStateById,
   getLessonUpsertRequest,
-  lessonFormFromRow,
   mergeLessonLinkedWords,
-  selectedWordIdsFromLesson,
 } from "@/lib/ga-lessons-admin";
 
 type ApprovedWord = { id: string; englishWord: string; gaWord: string; category: string; level: string };
@@ -147,10 +146,35 @@ export default function AdminGaLessonsPage() {
   }
 
   function editLesson(lesson: LessonRow) {
-    setActiveLessonId(lesson.id);
-    setEditingId(lesson.id);
-    setForm(lessonFormFromRow(lesson));
-    setSelectedWordIds(selectedWordIdsFromLesson(lesson));
+    const editorState = buildLessonEditorStateById(lesson.id, lessons);
+    // Temporary diagnostics for A/B editor switching verification.
+    console.info("[GaLessonEditor] clicked", {
+      lessonId: lesson.id,
+      lessonTitle: lesson.title,
+    });
+    if (!editorState) {
+      console.warn("[GaLessonEditor] lesson-not-found", {
+        lessonId: lesson.id,
+      });
+      setMessage("Selected lesson could not be loaded. Refresh and try again.");
+      return;
+    }
+    console.info("[GaLessonEditor] loaded", {
+      lessonId: editorState.lessonId,
+      lessonTitle: editorState.lessonTitle,
+      objective: editorState.form.objective,
+      wordsCount: editorState.selectedWordIds.length,
+      quizCount: editorState.loadedQuizQuestionIds.length,
+      category: editorState.form.category,
+      level: editorState.form.level,
+      packKey: editorState.form.packKey,
+      lessonOrder: editorState.form.lessonOrder,
+    });
+
+    setActiveLessonId(editorState.lessonId);
+    setEditingId(editorState.lessonId);
+    setForm(editorState.form);
+    setSelectedWordIds(editorState.selectedWordIds);
     setMessage(null);
     document.getElementById("ga-lesson-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
