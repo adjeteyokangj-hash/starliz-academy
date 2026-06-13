@@ -47,6 +47,16 @@ import {
   type LessonStage,
   type QuestionAttemptSummary,
 } from "@/lib/engines/coaching-engine";
+import {
+  canBeginLesson,
+  normalizeSpellingStageForVoice,
+  readVoiceHelpPreference,
+  resolveVoiceHelpPreference,
+  shouldShowQuestionMicrophone,
+  shouldShowStartTalkingButton,
+  shouldShowVoiceWarmupPanel,
+  shouldShowWarmupMicButton,
+} from "@/lib/lesson-voice-help";
 import { computeMasteryReady, type QuestionLearningStatus } from "@/lib/engines/mastery-engine";
 import { reviewReason } from "@/lib/engines/review-engine";
 import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
@@ -543,8 +553,8 @@ export default function DailyLessonGamePage() {
   const [completed, setCompleted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(LESSON_VOICE_KEY) !== "false";
+    if (typeof window === "undefined") return false;
+    return readVoiceHelpPreference(window.localStorage.getItem(LESSON_VOICE_KEY));
   });
   const [tutorState, setTutorState] = useState<"idle" | "thinking" | "celebrate" | "try_again">("idle");
   const [voiceLine, setVoiceLine] = useState("I am ready when you are.");
@@ -829,7 +839,13 @@ export default function DailyLessonGamePage() {
 
   const practicingNow = feedbackMode === "retry" || feedbackMode === "skip_choice";
   const speechDebugEnabled = process.env.NODE_ENV === "development" && searchParams.get("debugSpeech") === "1";
-  const microphoneVisible = started && currentSection === "spelling" && !feedback && (lessonStage === "ASSESS_SPEECH" || lessonStage === "TEACH_RETRY");
+  const microphoneVisible = shouldShowQuestionMicrophone({
+    voiceEnabled,
+    started,
+    currentSection,
+    hasFeedback: Boolean(feedback),
+    lessonStage,
+  });
   const hasMultipleChoiceOptions = Boolean(currentItem && getOptions(currentItem).length > 0 && currentSection !== "spelling");
   const tutorPrompt = buildTutorPanelPrompt({
     voiceEnabled,
@@ -850,6 +866,12 @@ export default function DailyLessonGamePage() {
     () => `Hi ${childName}. I'm Star, your learning coach today. How are you feeling today? Tap the microphone and tell me how you feel.`,
     [childName],
   );
+  const showVoiceWarmupPanel = shouldShowVoiceWarmupPanel(voiceEnabled);
+  const warmupReady = Boolean(warmupResult && warmupPhase === "celebrating");
+  const canBeginCurrentLesson = canBeginLesson({
+    voiceEnabled,
+    warmupReady,
+  });
   const needsGentleStart = Boolean(warmupResult && (warmupResult.supportLevel === "extra" || warmupResult.confidence === "low"));
 
   function stopRecognition(updateState = true) {
@@ -1061,6 +1083,7 @@ export default function DailyLessonGamePage() {
 
   async function startTalkingWithStar() {
     markActivity();
+    if (!voiceEnabled) return;
     if (welcomeSpeechFinished) return;
     setWelcomeVoiceStarted(true);
     setWelcomeSpeechFinished(false);
@@ -1079,14 +1102,6 @@ export default function DailyLessonGamePage() {
     setWarmupStatus("Tap the microphone and tell me how you feel.");
     setWelcomeSpeechFinished(true);
   }
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const timer = window.setTimeout(() => {
-      void preloadTutorVoices();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
-
   useEffect(() => {
     return () => {
       stopRecognition(false);
@@ -1129,7 +1144,13 @@ export default function DailyLessonGamePage() {
         setWelcomeSpeechFinished(Boolean(saved.welcomeSpeechFinished));
         startedAtRef.current = performance.now();
         setIndex(savedIndex);
-        setLessonStage(saved.lessonStage ?? "ASSESS_SPEECH");
+        const restoredVoiceEnabled = resolveVoiceHelpPreference(window.localStorage.getItem(LESSON_VOICE_KEY), saved.voiceEnabled);
+        const restoredSection = getItemSection(activeAssignment.items[savedIndex], activeAssignment.subject || "spelling");
+        setLessonStage(normalizeSpellingStageForVoice({
+          voiceEnabled: restoredVoiceEnabled,
+          currentSection: restoredSection,
+          lessonStage: (saved.lessonStage ?? "ASSESS_SPEECH") as "ASSESS_SPEECH" | "TEACH_RETRY" | "TAP_SELECT" | "COMPLETE",
+        }));
         setAnswer(String(saved.answer ?? ""));
         setFeedback(String(saved.feedback ?? ""));
         setFeedbackMode(saved.feedbackMode ?? "none");
@@ -1166,8 +1187,7 @@ export default function DailyLessonGamePage() {
         setBossAnswer(String(saved.bossAnswer ?? ""));
         setBossQuestionMisses(saved.bossQuestionMisses && typeof saved.bossQuestionMisses === "object" ? saved.bossQuestionMisses : {});
         setBossResult(saved.bossResult ?? null);
-        const localVoiceOverride = window.localStorage.getItem(LESSON_VOICE_KEY);
-        setVoiceEnabled(localVoiceOverride === "false" ? false : (saved.voiceEnabled ?? true));
+        setVoiceEnabled(restoredVoiceEnabled);
         setVoiceLine(decodeLessonText(String(saved.tutorMessage ?? saved.lastTutorMessage ?? "I am ready when you are.")));
         setLastTutorMessage(decodeLessonText(String(saved.lastTutorMessage ?? saved.tutorMessage ?? "I am ready when you are.")));
         setRestoredMessage(buildRestoredLessonMessage());
@@ -1368,7 +1388,11 @@ export default function DailyLessonGamePage() {
     setFeedback("");
     setFeedbackMode("none");
     setAnswer("");
-    setLessonStage("ASSESS_SPEECH");
+    setLessonStage(normalizeSpellingStageForVoice({
+      voiceEnabled,
+      currentSection: getItemSection(lessonItems[nextIndex], activeAssignment?.subject ?? "spelling"),
+      lessonStage: "ASSESS_SPEECH",
+    }));
     setSpeechAttempts(0);
     setSpeechListening(false);
     setSpeechButtonState("idle");
@@ -1799,6 +1823,7 @@ export default function DailyLessonGamePage() {
 
   async function startListening() {
     markActivity();
+    if (!voiceEnabled) return;
     await unlockTutorSpeech();
     if (!currentItem || currentSection !== "spelling") return;
     if (typeof window === "undefined") return;
@@ -1910,7 +1935,7 @@ export default function DailyLessonGamePage() {
 
   async function startLesson(startedAtMs = 0) {
     markActivity();
-    if (!warmupResult) {
+    if (voiceEnabled && !warmupResult) {
       setWarmupStatus("Tell Star how you feel first.");
       return;
     }
@@ -1921,15 +1946,24 @@ export default function DailyLessonGamePage() {
     tutorEngine.dispatch({ name: "LESSON_STARTED", data: { startIndex: firstIndex, gentleStart: needsGentleStart } });
     if (firstIndex !== index) {
       goToQuestion(firstIndex);
+    } else {
+      setLessonStage(normalizeSpellingStageForVoice({
+        voiceEnabled,
+        currentSection: getItemSection(lessonItems[firstIndex], activeAssignment?.subject ?? "spelling"),
+        lessonStage,
+      }));
     }
     setTutorState("thinking");
     const line = interventionMission?.introLine
-      ?? (warmupResult ? `Great work, ${childName}. ${warmupResult.tutorReply} Let's begin your mission.` : welcomeLine);
+      ?? (voiceEnabled
+        ? (warmupResult ? `Great work, ${childName}. ${warmupResult.tutorReply} Let's begin your mission.` : welcomeLine)
+        : `Great work, ${childName}. Press begin to start.`);
     setVoiceLine(line);
   }
 
   async function startWarmupListening(startAtMs = 0) {
     markActivity();
+    if (!voiceEnabled) return;
     if (!welcomeSpeechFinished) {
       setWarmupStatus("Start talking with Star first.");
       return;
@@ -2439,7 +2473,11 @@ export default function DailyLessonGamePage() {
     if (feedbackMode === "retry") {
       clearFeedbackForRetry();
       if (interventionMission && currentSection === "spelling") {
-        setLessonStage("ASSESS_SPEECH");
+        setLessonStage(normalizeSpellingStageForVoice({
+          voiceEnabled,
+          currentSection,
+          lessonStage: "ASSESS_SPEECH",
+        }));
       }
       return;
     }
@@ -2467,7 +2505,7 @@ export default function DailyLessonGamePage() {
               }}
               className="rounded-2xl border border-slate-200 px-4 py-3 font-bold text-slate-700"
             >
-              {voiceEnabled ? "Voice on" : "Voice off"}
+              {voiceEnabled ? "Voice help on" : "Voice help off"}
             </button>
           </section>
         </main>
@@ -2509,7 +2547,7 @@ export default function DailyLessonGamePage() {
               }}
               className="rounded-2xl border border-slate-200 px-4 py-3 font-bold text-slate-700"
             >
-              {voiceEnabled ? "Voice on" : "Voice off"}
+              {voiceEnabled ? "Voice help on" : "Voice help off"}
             </button>
           </div>
         </main>
@@ -2595,11 +2633,17 @@ export default function DailyLessonGamePage() {
             <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_14rem]">
               <div className="rounded-3xl bg-slate-50 p-6">
                 <h2 className="text-3xl font-black">Hi {childName}! 👋</h2>
-                <p className="mt-3 text-slate-700">
-                  {"How are you feeling today?"}
-                </p>
-                <p className="mt-1 text-slate-700">{"Tap the microphone and tell me how you feel."}</p>
-                {lastWarmupMemory ? (
+                {showVoiceWarmupPanel ? (
+                  <>
+                    <p className="mt-3 text-slate-700">
+                      {"How are you feeling today?"}
+                    </p>
+                    <p className="mt-1 text-slate-700">{"Tap the microphone and tell me how you feel."}</p>
+                  </>
+                ) : (
+                  <p className="mt-3 text-slate-700">Press begin to start.</p>
+                )}
+                {showVoiceWarmupPanel && lastWarmupMemory ? (
                   <p className="mt-1 font-bold text-indigo-700">
                     Last time you told me you felt <span className="capitalize">{lastWarmupMemory.mood.replace(/_/g, " ")}</span>
                     {lastWarmupMemory.date === new Date().toISOString().slice(0, 10) ? " earlier today" : ` on ${new Date(lastWarmupMemory.date).toLocaleDateString("en-GB", { weekday: "long" })}`}! How are you feeling today?
@@ -2615,42 +2659,46 @@ export default function DailyLessonGamePage() {
                   </p>
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <span className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-black ${warmupPhase === "listening" ? "bg-emerald-100 text-emerald-800" : warmupPhase === "thinking" ? "bg-amber-100 text-amber-800" : warmupPhase === "responding" ? "bg-indigo-100 text-indigo-800" : warmupPhase === "celebrating" ? "bg-cyan-100 text-cyan-800" : "bg-slate-200 text-slate-700"}`}>
-                    <span className={`h-2.5 w-2.5 rounded-full ${warmupPhase === "listening" ? "animate-pulse bg-emerald-500" : warmupPhase === "thinking" ? "animate-pulse bg-amber-500" : warmupPhase === "responding" ? "animate-pulse bg-indigo-500" : warmupPhase === "celebrating" ? "animate-pulse bg-cyan-500" : "bg-slate-500"}`} />
-                    {warmupPhase === "idle" ? "Idle" : warmupPhase === "listening" ? "Listening" : warmupPhase === "thinking" ? "Thinking" : warmupPhase === "responding" ? "Responding" : "Celebrating"}
-                  </span>
-                  {!welcomeVoiceStarted ? (
-                    <button
-                      type="button"
-                      onClick={() => void startTalkingWithStar()}
-                      className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 font-black text-white shadow-md transition hover:bg-indigo-500"
-                    >
-                      Start talking with Star
-                    </button>
-                  ) : welcomeSpeechFinished ? (
-                    <button
-                      type="button"
-                      onClick={(event) => void startWarmupListening(event.timeStamp)}
-                      className="inline-flex items-center gap-2 rounded-full border border-indigo-300 bg-white px-6 py-3 font-black text-indigo-700 shadow-md transition hover:bg-indigo-50"
-                    >
-                      Tap the microphone
-                    </button>
-                  ) : null}
-                </div>
+                {showVoiceWarmupPanel ? (
+                  <>
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <span className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-black ${warmupPhase === "listening" ? "bg-emerald-100 text-emerald-800" : warmupPhase === "thinking" ? "bg-amber-100 text-amber-800" : warmupPhase === "responding" ? "bg-indigo-100 text-indigo-800" : warmupPhase === "celebrating" ? "bg-cyan-100 text-cyan-800" : "bg-slate-200 text-slate-700"}`}>
+                        <span className={`h-2.5 w-2.5 rounded-full ${warmupPhase === "listening" ? "animate-pulse bg-emerald-500" : warmupPhase === "thinking" ? "animate-pulse bg-amber-500" : warmupPhase === "responding" ? "animate-pulse bg-indigo-500" : warmupPhase === "celebrating" ? "animate-pulse bg-cyan-500" : "bg-slate-500"}`} />
+                        {warmupPhase === "idle" ? "Idle" : warmupPhase === "listening" ? "Listening" : warmupPhase === "thinking" ? "Thinking" : warmupPhase === "responding" ? "Responding" : "Celebrating"}
+                      </span>
+                      {shouldShowStartTalkingButton({ voiceEnabled, welcomeVoiceStarted }) ? (
+                        <button
+                          type="button"
+                          onClick={() => void startTalkingWithStar()}
+                          className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 font-black text-white shadow-md transition hover:bg-indigo-500"
+                        >
+                          Start talking with Star
+                        </button>
+                      ) : shouldShowWarmupMicButton({ voiceEnabled, welcomeSpeechFinished }) ? (
+                        <button
+                          type="button"
+                          onClick={(event) => void startWarmupListening(event.timeStamp)}
+                          className="inline-flex items-center gap-2 rounded-full border border-indigo-300 bg-white px-6 py-3 font-black text-indigo-700 shadow-md transition hover:bg-indigo-50"
+                        >
+                          Tap the microphone
+                        </button>
+                      ) : null}
+                    </div>
 
-                {warmupStatus ? <p className="mt-3 text-sm font-bold text-slate-600">{warmupStatus}</p> : null}
-                {!warmupResult && warmupFailedAttempts > 0 ? (
+                    {warmupStatus ? <p className="mt-3 text-sm font-bold text-slate-600">{warmupStatus}</p> : null}
+                  </>
+                ) : null}
+                {showVoiceWarmupPanel && !warmupResult && warmupFailedAttempts > 0 ? (
                   <p className="mt-2 text-sm font-bold text-amber-700">Tell Star how you feel first.</p>
                 ) : null}
-                {warmupTranscript ? (
+                {showVoiceWarmupPanel && warmupTranscript ? (
                   <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Transcription</p>
                     <p className="mt-1 text-sm text-slate-800">“{warmupTranscript}”</p>
                   </div>
                 ) : null}
 
-                {warmupResult ? (
+                {showVoiceWarmupPanel && warmupResult ? (
                   <div className="mt-3 rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-700">Adaptive Session Plan</p>
                     <p className="mt-1 text-sm font-bold text-cyan-900">
@@ -2662,7 +2710,7 @@ export default function DailyLessonGamePage() {
                   </div>
                 ) : null}
 
-                {warmupFailedAttempts >= 2 && !warmupResult ? (
+                {showVoiceWarmupPanel && warmupFailedAttempts >= 2 && !warmupResult ? (
                   <button
                     type="button"
                     onClick={() => void skipWarmup()}
@@ -2674,8 +2722,8 @@ export default function DailyLessonGamePage() {
 
                 <button
                   onClick={(event) => void startLesson(event.timeStamp)}
-                  disabled={!warmupResult || warmupPhase !== "celebrating"}
-                  className={`mt-6 rounded-2xl px-6 py-4 font-black text-white ${warmupResult && warmupPhase === "celebrating" ? "bg-indigo-600 hover:bg-indigo-500" : "cursor-not-allowed bg-slate-400"}`}
+                  disabled={!canBeginCurrentLesson}
+                  className={`mt-6 rounded-2xl px-6 py-4 font-black text-white ${canBeginCurrentLesson ? "bg-indigo-600 hover:bg-indigo-500" : "cursor-not-allowed bg-slate-400"}`}
                 >
                   Begin my lesson
                 </button>
@@ -2683,10 +2731,16 @@ export default function DailyLessonGamePage() {
               <div className="rounded-3xl bg-indigo-950 p-6 text-center text-white">
                 <TutorAvatar state={tutorState} />
                 <p className="mt-4 text-sm font-black text-indigo-100">
-                  {warmupResult ? "I understand" : welcomeSpeechFinished ? "Listening for you" : "Ready"}
+                  {!showVoiceWarmupPanel ? "Voice help is off" : warmupResult ? "I understand" : welcomeSpeechFinished ? "Listening for you" : "Ready"}
                 </p>
                 <p className="mt-2 text-sm text-indigo-100">
-                  {warmupResult ? "Click Begin my lesson when you're ready." : welcomeSpeechFinished ? "Tap the microphone and tell me how you feel." : "Start talking with Star."}
+                  {!showVoiceWarmupPanel
+                    ? "Press begin to start."
+                    : warmupResult
+                      ? "Click Begin my lesson when you're ready."
+                      : welcomeSpeechFinished
+                        ? "Tap the microphone and tell me how you feel."
+                        : "Start talking with Star."}
                 </p>
               </div>
             </div>
@@ -3031,7 +3085,7 @@ export default function DailyLessonGamePage() {
                 customAnswerArea={
                   currentSection === "spelling" ? (
                     <>
-                      {(lessonStage === "ASSESS_SPEECH" || lessonStage === "TEACH_RETRY") && (
+                      {voiceEnabled && (lessonStage === "ASSESS_SPEECH" || lessonStage === "TEACH_RETRY") && (
                         <div className="flex flex-col items-center gap-4 rounded-3xl bg-indigo-50 p-6 text-center">
                           <div className="text-[140px] font-black leading-none text-slate-950 md:text-[180px]">
                             {decodeLessonText(String(currentItem.word ?? currentItem.answer ?? ""))}

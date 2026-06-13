@@ -477,7 +477,10 @@ export default function StudentDashboardPage() {
         throw new Error("Unable to confirm active learner profile.");
       }
 
-      const summaryPayload = (await summaryRes.json()) as DashboardSummaryPayload;
+      const summaryPayload = (await summaryRes.json().catch(() => null)) as DashboardSummaryPayload | null;
+      if (!summaryPayload || typeof summaryPayload !== "object") {
+        throw new Error("Unable to read dashboard summary.");
+      }
       if (!summaryPayload.child?.id) {
         setMissingChildContext(true);
         setActiveChildId(null);
@@ -631,6 +634,11 @@ export default function StudentDashboardPage() {
           }
 
           setDeferredPanelsLoadedFor(deferredStudentId);
+        } catch {
+          if (!cancelled) {
+            setAcademicIntelligence(null);
+            setAcademicError("Unable to load Smart Catch-Up right now.");
+          }
         } finally {
           if (!cancelled) {
             setAcademicLoading(false);
