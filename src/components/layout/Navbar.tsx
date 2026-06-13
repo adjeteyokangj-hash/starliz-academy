@@ -27,6 +27,34 @@ type ActiveChildPayload = {
   } | null;
 };
 
+type PrimaryNavLink = {
+  href: string;
+  label: string;
+};
+
+export function buildPrimaryNavLinks(input: {
+  showParentAccess: boolean;
+  isStudentContext: boolean;
+  dashboardHref: string;
+  profileHref: string;
+  gaLearningHubHref: string;
+}): PrimaryNavLink[] {
+  if (input.showParentAccess) {
+    return [
+      { href: "/parent/dashboard", label: "Dashboard" },
+      { href: "/dashboard", label: "Child Dashboard" },
+      { href: "/parent/profiles?intent=parent", label: "Parent Area" },
+    ];
+  }
+
+  const links: PrimaryNavLink[] = [{ href: input.dashboardHref, label: "Dashboard" }];
+  if (input.isStudentContext) {
+    links.push({ href: input.gaLearningHubHref, label: "Ga Learning Hub" });
+  }
+  links.push({ href: input.profileHref, label: "My Profile" });
+  return links;
+}
+
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -44,7 +72,15 @@ export default function Navbar() {
   const isStudentContext = role === "student" || (!authResolved && isStudentPage);
   const dashboardHref = isStudentContext ? "/student/dashboard" : "/dashboard";
   const profileHref = isStudentContext ? "/student/profile" : "/my-profile";
+  const gaLearningHubHref = "/ga-learning-hub";
   const showParentAccess = authResolved && role === "parent";
+  const primaryNavLinks = buildPrimaryNavLinks({
+    showParentAccess,
+    isStudentContext,
+    dashboardHref,
+    profileHref,
+    gaLearningHubHref,
+  });
   const studentYearGroup = activeChild?.yearGroup ?? null;
   const studentKeyStage = activeChild?.keyStageLevel?.trim() || (studentYearGroup ? keyStageForYearGroup(studentYearGroup) : null);
   const studentAgeLabel = studentYearGroup ? ageGroupForYearGroup(studentYearGroup) : activeChild?.ageYears ? `${activeChild.ageYears}` : "-";
@@ -141,28 +177,11 @@ export default function Navbar() {
           </button>
 
           <nav className="hidden items-center gap-2 text-sm font-semibold text-slate-700 md:flex" aria-label="Primary">
-            {showParentAccess ? (
-              <>
-                <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent/dashboard">
-                  Dashboard
-                </Link>
-                <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/dashboard">
-                  Child Dashboard
-                </Link>
-                <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent/profiles?intent=parent">
-                  Parent Area
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={dashboardHref}>
-                  Dashboard
-                </Link>
-                <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={profileHref}>
-                  My Profile
-                </Link>
-              </>
-            )}
+            {primaryNavLinks.map((link) => (
+              <Link key={link.href} className="rounded-xl px-3 py-2 hover:bg-slate-100" href={link.href}>
+                {link.label}
+              </Link>
+            ))}
             <button
               type="button"
               className="rounded-xl px-3 py-2 font-bold text-rose-700 hover:bg-rose-50"
@@ -189,28 +208,11 @@ export default function Navbar() {
           className={`${mobileOpen ? "mt-3 grid" : "hidden"} gap-1 text-sm font-semibold text-slate-700 md:hidden`}
           aria-label="Primary"
         >
-          {showParentAccess ? (
-            <>
-              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent/dashboard" onClick={closeMobileMenu}>
-                Dashboard
-              </Link>
-              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/dashboard" onClick={closeMobileMenu}>
-                Child Dashboard
-              </Link>
-              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href="/parent/profiles?intent=parent" onClick={closeMobileMenu}>
-                Parent Area
-              </Link>
-            </>
-          ) : (
-            <>
-              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={dashboardHref} onClick={closeMobileMenu}>
-                Dashboard
-              </Link>
-              <Link className="rounded-xl px-3 py-2 hover:bg-slate-100" href={profileHref} onClick={closeMobileMenu}>
-                My Profile
-              </Link>
-            </>
-          )}
+          {primaryNavLinks.map((link) => (
+            <Link key={link.href} className="rounded-xl px-3 py-2 hover:bg-slate-100" href={link.href} onClick={closeMobileMenu}>
+              {link.label}
+            </Link>
+          ))}
           <button
             type="button"
             className="rounded-xl px-3 py-2 text-left font-bold text-rose-700 hover:bg-rose-50"
