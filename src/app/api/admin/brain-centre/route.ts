@@ -8,6 +8,14 @@ import {
   snapshotStatus,
   type BrainHealthStatus,
 } from "@/app/api/admin/brain-centre/_lib";
+import {
+  buildBrainIssueId,
+  type BrainIssueActionType,
+  type BrainIssueLifecycleStatus,
+  type BrainIssueSeverity,
+  type BrainIssueSource,
+  type BrainIssueType,
+} from "@/lib/brain-centre/action-map";
 import type {
   HeartbeatDecision,
   RecommendationSyncAudit,
@@ -46,6 +54,12 @@ type BrainCentreBrain = {
 };
 
 export type BrainCentreWarningRow = {
+  issueId: string;
+  issueType: BrainIssueType;
+  source: BrainIssueSource;
+  severity: BrainIssueSeverity;
+  resolutionStatus: BrainIssueLifecycleStatus;
+  resolutionAction: BrainIssueActionType;
   studentId: string;
   studentName: string;
   yearGroup: string | null;
@@ -57,6 +71,12 @@ export type BrainCentreWarningRow = {
 };
 
 export type BrainCentreMismatchRow = {
+  issueId: string;
+  issueType: BrainIssueType;
+  source: BrainIssueSource;
+  severity: BrainIssueSeverity;
+  resolutionStatus: BrainIssueLifecycleStatus;
+  resolutionAction: BrainIssueActionType;
   studentId: string;
   studentName: string;
   yearGroup: string | null;
@@ -67,10 +87,15 @@ export type BrainCentreMismatchRow = {
 };
 
 export type BrainCentreQlfIssueRow = {
+  issueId: string;
+  issueType: "qlf_complete_activity_pending" | "missing_baseline" | "stale_snapshot" | "brain_review";
+  source: BrainIssueSource;
+  severity: BrainIssueSeverity;
+  resolutionStatus: BrainIssueLifecycleStatus;
+  resolutionAction: BrainIssueActionType;
   studentId: string;
   studentName: string;
   yearGroup: string | null;
-  issueType: "qlf_complete_activity_pending" | "missing_baseline" | "stale_snapshot" | "brain_review";
   status: "warning" | "critical";
   detail: string;
   snapshotLastCalculatedAt: string | null;
@@ -138,6 +163,18 @@ function canonicalLabel(sync: RecommendationSyncAudit): string {
   return `${sync.canonicalDecision.intent}: ${target}`;
 }
 
+function qlfIssueSource(issueType: BrainCentreQlfIssueRow["issueType"]): BrainIssueSource {
+  if (issueType === "qlf_complete_activity_pending" || issueType === "missing_baseline") return "QLF";
+  if (issueType === "stale_snapshot") return "SNAPSHOT";
+  return "BRAIN_DATA";
+}
+
+function qlfIssueAction(issueType: BrainCentreQlfIssueRow["issueType"]): BrainIssueActionType {
+  if (issueType === "qlf_complete_activity_pending" || issueType === "missing_baseline") return "open_qlf_baseline";
+  if (issueType === "stale_snapshot") return "refresh_snapshot";
+  return "open_issue_detail";
+}
+
 function qlfIssuesForStudent(input: {
   student: BrainCentreStudent;
   brain: BrainCentreBrain;
@@ -145,44 +182,90 @@ function qlfIssuesForStudent(input: {
 }): BrainCentreQlfIssueRow[] {
   const rows: BrainCentreQlfIssueRow[] = [];
   if (input.brain.dataState.state === "qlf_completed_no_activity") {
+    const issueType: BrainCentreQlfIssueRow["issueType"] = "qlf_complete_activity_pending";
+    const source = qlfIssueSource(issueType);
     rows.push({
+      issueId: buildBrainIssueId({
+        studentId: input.student.id,
+        issueType,
+        source,
+      }),
+      issueType,
+      source,
+      severity: "warning",
+      resolutionStatus: "OPEN",
+      resolutionAction: qlfIssueAction(issueType),
       studentId: input.student.id,
       studentName: input.student.name,
       yearGroup: input.student.yearGroup,
-      issueType: "qlf_complete_activity_pending",
       status: "warning",
       detail: input.brain.dataState.detail,
       snapshotLastCalculatedAt: input.snapshot.lastCalculatedAt,
     });
   }
   if (!input.brain.quickLevelFinderBaseline) {
+    const issueType: BrainCentreQlfIssueRow["issueType"] = "missing_baseline";
+    const source = qlfIssueSource(issueType);
+    const severity: BrainIssueSeverity = input.brain.dataState.checklistStatus === "fail" ? "critical" : "warning";
     rows.push({
+      issueId: buildBrainIssueId({
+        studentId: input.student.id,
+        issueType,
+        source,
+      }),
+      issueType,
+      source,
+      severity,
+      resolutionStatus: "OPEN",
+      resolutionAction: qlfIssueAction(issueType),
       studentId: input.student.id,
       studentName: input.student.name,
       yearGroup: input.student.yearGroup,
-      issueType: "missing_baseline",
       status: input.brain.dataState.checklistStatus === "fail" ? "critical" : "warning",
       detail: "Quick Level Finder baseline is missing from the Brain read model.",
       snapshotLastCalculatedAt: input.snapshot.lastCalculatedAt,
     });
   }
   if (input.snapshot.status !== "fresh") {
+    const issueType: BrainCentreQlfIssueRow["issueType"] = "stale_snapshot";
+    const source = qlfIssueSource(issueType);
     rows.push({
+      issueId: buildBrainIssueId({
+        studentId: input.student.id,
+        issueType,
+        source,
+        seed: input.snapshot.status,
+      }),
+      issueType,
+      source,
+      severity: "warning",
+      resolutionStatus: "OPEN",
+      resolutionAction: qlfIssueAction(issueType),
       studentId: input.student.id,
       studentName: input.student.name,
       yearGroup: input.student.yearGroup,
-      issueType: "stale_snapshot",
       status: "warning",
       detail: input.snapshot.status === "missing" ? "Academic Intelligence snapshot is missing." : "Academic Intelligence snapshot is stale.",
       snapshotLastCalculatedAt: input.snapshot.lastCalculatedAt,
     });
   }
   if (input.brain.dataState.reviewRecommended && input.brain.dataState.state !== "qlf_completed_no_activity") {
+    const issueType: BrainCentreQlfIssueRow["issueType"] = "brain_review";
+    const source = qlfIssueSource(issueType);
     rows.push({
+      issueId: buildBrainIssueId({
+        studentId: input.student.id,
+        issueType,
+        source,
+      }),
+      issueType,
+      source,
+      severity: "warning",
+      resolutionStatus: "OPEN",
+      resolutionAction: qlfIssueAction(issueType),
       studentId: input.student.id,
       studentName: input.student.name,
       yearGroup: input.student.yearGroup,
-      issueType: "brain_review",
       status: "warning",
       detail: input.brain.dataState.detail,
       snapshotLastCalculatedAt: input.snapshot.lastCalculatedAt,
@@ -233,7 +316,19 @@ function buildBrainCentrePayload(rows: Array<{ student: BrainCentreStudent; brai
 
     if (heartbeatNeedsAdminVisibility({ heartbeatSummary: heartbeat })) {
       addDiagnostic("heartbeat_conflicts", "HEART BEAT conflicts", row.student);
+      const severity: BrainIssueSeverity = status === "critical" ? "critical" : "warning";
       heartbeatWarnings.push({
+        issueId: buildBrainIssueId({
+          studentId: row.student.id,
+          issueType: "heartbeat_warning",
+          source: "HEART_BEAT",
+          seed: `${heartbeat.primaryAction}|${heartbeat.riskLevel}|${heartbeat.urgency}`,
+        }),
+        issueType: "heartbeat_warning",
+        source: "HEART_BEAT",
+        severity,
+        resolutionStatus: "OPEN",
+        resolutionAction: "open_heartbeat_detail",
         studentId: row.student.id,
         studentName: row.student.name,
         yearGroup: row.student.yearGroup,
@@ -247,7 +342,19 @@ function buildBrainCentrePayload(rows: Array<{ student: BrainCentreStudent; brai
 
     for (const mismatch of sync.mismatches) {
       addDiagnostic("recommendation_conflicts", "Recommendation conflicts", row.student);
+      const severity: BrainIssueSeverity = status === "critical" ? "critical" : "warning";
       recommendationMismatches.push({
+        issueId: buildBrainIssueId({
+          studentId: row.student.id,
+          issueType: "recommendation_mismatch",
+          source: "RECOMMENDATION_SYNC",
+          seed: `${mismatch.engine}|${mismatch.expected}|${mismatch.actual}`,
+        }),
+        issueType: "recommendation_mismatch",
+        source: "RECOMMENDATION_SYNC",
+        severity,
+        resolutionStatus: "OPEN",
+        resolutionAction: "run_sync_audit",
         studentId: row.student.id,
         studentName: row.student.name,
         yearGroup: row.student.yearGroup,

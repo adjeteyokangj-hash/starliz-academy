@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import type { BrainCentreDetailPayload, BrainDiagnosticIssue } from "@/app/api/admin/brain-centre/[studentId]/route";
 
@@ -37,6 +37,12 @@ type DiagnosticPlaybook = {
   impact: string;
   actionLabel: string;
   action: GuidedAction | null;
+};
+
+type IssueContext = {
+  issueId: string;
+  issueType: string;
+  source: string | null;
 };
 
 function isActionKey(action: GuidedAction | null): action is ActionKey {
@@ -217,10 +223,13 @@ function DetailList({ items }: { items: string[] }) {
 
 export default function AdminBrainCentreStudentPage({ params }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const heartbeatSectionRef = useRef<HTMLElement | null>(null);
   const heartbeatInvestigationRef = useRef<HTMLElement | null>(null);
   const recommendationSectionRef = useRef<HTMLElement | null>(null);
   const evidenceSectionRef = useRef<HTMLElement | null>(null);
+  const diagnosticsSectionRef = useRef<HTMLElement | null>(null);
+  const issueContextAppliedRef = useRef<string | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
   const [payload, setPayload] = useState<BrainCentreDetailPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -228,6 +237,31 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showHeartbeatInvestigation, setShowHeartbeatInvestigation] = useState(false);
+
+  const issueContext = useMemo<IssueContext | null>(() => {
+    const issueId = searchParams.get("issueId");
+    const issueType = searchParams.get("issueType");
+    const source = searchParams.get("source");
+    if (!issueId || !issueType) return null;
+    return { issueId, issueType, source };
+  }, [searchParams]);
+
+  const issueContextMessage = useMemo(() => {
+    if (!issueContext) return null;
+    if (issueContext.issueType === "recommendation_mismatch") {
+      return `Opened mismatch issue ${issueContext.issueId}. Review current sync audit for root-cause comparison.`;
+    }
+    if (issueContext.issueType === "heartbeat_warning") {
+      return `Opened HEART BEAT issue ${issueContext.issueId}.`;
+    }
+    if (issueContext.issueType === "missing_baseline" || issueContext.issueType === "qlf_complete_activity_pending") {
+      return `Opened QLF issue ${issueContext.issueId}. Use Open QLF baseline to continue.`;
+    }
+    if (issueContext.issueType === "stale_snapshot") {
+      return `Opened snapshot issue ${issueContext.issueId}. Refresh Snapshot to verify.`;
+    }
+    return `Opened issue ${issueContext.issueId}.`;
+  }, [issueContext]);
 
   useEffect(() => {
     let cancelled = false;
@@ -283,7 +317,21 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
         const body = await response.json().catch(() => null);
         throw new Error(body?.error ?? "Action failed.");
       }
-      setMessage(`${actions.find((item) => item.key === action)?.label ?? "Action"} completed.`);
+      const body = await response.json().catch(() => null) as { result?: { recommendationSync?: { mismatches?: unknown[] } } } | null;
+      if (action === "refresh_snapshot") {
+        setMessage("Snapshot refreshed successfully.");
+      } else if (action === "rerun_recommendation_sync_audit") {
+        const mismatchCount = body?.result?.recommendationSync?.mismatches?.length ?? 0;
+        setMessage(mismatchCount > 0 ? "Mismatch confirmed: engines still disagree." : "Recommendation now aligned.");
+      } else if (action === "generate_catch_up_recommendation") {
+        setMessage("Catch-Up recommendation sync completed.");
+      } else if (action === "generate_homework_recommendation") {
+        setMessage("Homework recommendation sync completed.");
+      } else if (action === "mark_warning_reviewed") {
+        setMessage("Issue marked as reviewed.");
+      } else {
+        setMessage(`${actions.find((item) => item.key === action)?.label ?? "Action"} completed.`);
+      }
       const refreshed = await fetch(`/api/admin/brain-centre/${encodeURIComponent(studentId)}`);
       if (refreshed.ok) setPayload(await refreshed.json() as BrainCentreDetailPayload);
     } catch (err) {
@@ -312,6 +360,35 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
       heartbeatInvestigationRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
   }, []);
+
+  useEffect(() => {
+    if (!payload || !issueContext) return;
+
+    const contextKey = `${issueContext.issueId}|${issueContext.issueType}|${issueContext.source ?? ""}`;
+    if (issueContextAppliedRef.current === contextKey) return;
+    issueContextAppliedRef.current = contextKey;
+
+    if (issueContext.issueType === "recommendation_mismatch") {
+      recommendationSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (issueContext.issueType === "heartbeat_warning") {
+      heartbeatInvestigationRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      queueMicrotask(() => {
+        setShowHeartbeatInvestigation(true);
+      });
+    } else if (issueContext.issueType === "missing_baseline" || issueContext.issueType === "qlf_complete_activity_pending") {
+      diagnosticsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (issueContext.issueType === "stale_snapshot") {
+      evidenceSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      diagnosticsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    if (issueContextMessage) {
+      queueMicrotask(() => {
+        setMessage(issueContextMessage);
+      });
+    }
+  }, [issueContext, issueContextMessage, openHeartbeatInvestigationView, payload]);
 
   const runGuidedAction = async (action: GuidedAction | null) => {
     if (!payload) return;
@@ -499,7 +576,7 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
             </div>
           </div>
 
-          <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+          <section ref={diagnosticsSectionRef} className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
             <h2 className="text-sm font-bold text-white">Brain Diagnostics (Main Action Area)</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {payload.diagnostics.issues.length ? payload.diagnostics.issues.map((issue) => {
@@ -822,7 +899,19 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
                 </thead>
                 <tbody>
                   {payload.recommendationControlRoom.map((row) => (
-                    <tr key={row.engine} className="border-t border-slate-800 text-slate-300">
+                    <tr
+                      key={row.engine}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => void runGuidedAction(row.engine.toLowerCase().includes("heart") ? "open_heartbeat" : "open_recommendation")}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          void runGuidedAction(row.engine.toLowerCase().includes("heart") ? "open_heartbeat" : "open_recommendation");
+                        }
+                      }}
+                      className="cursor-pointer border-t border-slate-800 text-slate-300 transition hover:bg-slate-900/50"
+                    >
                       <td className="px-2 py-2 font-bold text-white">{row.engine}</td>
                       <td className="px-2 py-2">{row.currentRecommendation}</td>
                       <td className="px-2 py-2">{row.recommendationSource}</td>
