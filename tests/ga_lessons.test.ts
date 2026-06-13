@@ -100,6 +100,37 @@ test("Ga lesson data validates Beginner Pack 1 fields", () => {
   assert.equal(data.publishStatus, "Draft");
 });
 
+test("Ga lesson data accepts Alphabet as a valid lesson category", () => {
+  const data = buildGaLessonData({
+    title: "Alphabet letters A-C",
+    level: "Foundation",
+    category: "Alphabet",
+    objective: "Teach alphabet letters A-C.",
+    publishStatus: "Draft",
+  });
+  assert.equal(data.category, "Alphabet");
+});
+
+test("Ga lesson data uses managed category allow-list when provided", () => {
+  const data = buildGaLessonData({
+    title: "Money words",
+    level: "Foundation",
+    category: "money terms",
+    objective: "Introduce money words.",
+    publishStatus: "Draft",
+  }, { allowedCategories: ["Money Terms"] });
+
+  assert.equal(data.category, "Money Terms");
+
+  assert.throws(() => buildGaLessonData({
+    title: "Money words",
+    level: "Foundation",
+    category: "money terms",
+    objective: "Introduce money words.",
+    publishStatus: "Draft",
+  }, { allowedCategories: ["Greetings"] }), /Category must be one of/);
+});
+
 test("Ga lesson progress clamps scores safely", () => {
   assert.deepEqual(buildGaProgressData({ correctAnswers: 9, totalQuestions: 5, completed: true }), {
     status: "completed",

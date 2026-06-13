@@ -736,6 +736,23 @@ model GaSource {
   @@index([section])
 }
 
+model GaCategory {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  slug           String   @unique
+  description    String?
+  isActive       Boolean  @default(true)
+  isArchived     Boolean  @default(false)
+  usedByWordBank Boolean  @default(true)
+  usedByLessons  Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([isActive, isArchived])
+  @@index([usedByWordBank, isActive])
+  @@index([usedByLessons, isActive])
+}
+
 model GaWord {
   id           String    @id @default(cuid())
   englishWord  String

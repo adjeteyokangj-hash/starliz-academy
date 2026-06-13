@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { GA_APPROVED_CATEGORIES, normalizeGaCategory } from "@/lib/ga-word-categories";
+import { resolveGaCategoryAgainstAllowed } from "@/lib/ga-categories";
 
 export const GA_WORD_TYPES = ["noun", "verb", "adjective", "pronoun", "expression", "conjunction", "determiner"] as const;
 export const GA_CATEGORIES = GA_APPROVED_CATEGORIES;
@@ -37,6 +38,10 @@ export type GaWordInput = {
   quizReady?: boolean;
   storyReady?: boolean;
   notes?: string | null;
+};
+
+type GaWordBuildOptions = {
+  allowedCategories?: readonly string[];
 };
 
 export type GaSourceInput = {
@@ -153,6 +158,12 @@ function cleanText(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+export function isGaAlphabetLetterRowLabel(value: string): boolean {
+  const normalized = cleanText(value).replace(/\s+/g, " ");
+  const match = /^letter\s+([a-z])$/i.exec(normalized);
+  return Boolean(match);
+}
+
 function normalizeHeader(value: string): string {
   return value.replace(/\s+/g, "").trim().toLowerCase();
 }
@@ -255,6 +266,7 @@ export function previewGaBulkImport(
   parsedRows: GaBulkImportParsedRow[],
   sources: GaBulkImportSource[],
   existingWords: GaBulkImportExistingWord[],
+  options: GaWordBuildOptions = {},
 ): GaBulkImportPreview {
   const requiredFields = [
     "englishWord",
@@ -340,7 +352,7 @@ export function previewGaBulkImport(
           quizReady: quizReady ?? false,
           storyReady: storyReady ?? false,
           notes: cleanText(row.values.notes) || null,
-        });
+        }, options);
       } catch (error) {
         errors.push(error instanceof Error ? error.message : "Invalid row values.");
       }
@@ -410,10 +422,11 @@ export function planGaBulkImportCommit(items: GaBulkImportValidRow[], strategy: 
   return { creates, updates, skips };
 }
 
-export function buildGaWordData(input: GaWordInput) {
+export function buildGaWordData(input: GaWordInput, options: GaWordBuildOptions = {}) {
   const englishWord = cleanText(input.englishWord);
   const gaWord = cleanText(input.gaWord);
   const category = normalizeGaCategory(cleanText(input.category));
+  const allowedCategories = options.allowedCategories ?? GA_CATEGORIES;
   if (!englishWord) throw new Error("English word is required.");
   if (!gaWord) throw new Error("Ga word is required.");
 
@@ -421,7 +434,7 @@ export function buildGaWordData(input: GaWordInput) {
     englishWord,
     gaWord,
     wordType: assertAllowed(cleanText(input.wordType), GA_WORD_TYPES, "Word type"),
-    category: assertAllowed(category, GA_CATEGORIES, "Category"),
+    category: resolveGaCategoryAgainstAllowed(category, allowedCategories),
     level: assertAllowed(cleanText(input.level), GA_LEVELS, "Level"),
     sourceId: optionalText(input.sourceId),
     sourcePage: numberOrNull(input.sourcePage),
@@ -501,14 +514,55 @@ export async function listGaSources() {
   return prisma.gaSource.findMany({ orderBy: [{ sourceName: "asc" }, { pageNumber: "asc" }] });
 }
 
-export async function createGaWord(input: GaWordInput) {
-  const data = buildGaWordData(input);
+export async function recategorizeGaAlphabetRowsFromGrammar() {
+  const candidates = await prisma.gaWord.findMany({
+    where: {
+      category: "Grammar",
+      englishWord: {
+        startsWith: "Letter ",
+      },
+    },
+    select: {
+      id: true,
+      englishWord: true,
+    },
+  });
+
+  const targetIds = candidates
+    .filter((row) => isGaAlphabetLetterRowLabel(row.englishWord))
+    .map((row) => row.id);
+
+  if (!targetIds.length) {
+    return { inspected: candidates.length, targetCount: 0, updated: 0 };
+  }
+
+  const result = await prisma.gaWord.updateMany({
+    where: { id: { in: targetIds } },
+    data: { category: "Alphabet" },
+  });
+
+  return {
+    inspected: candidates.length,
+    targetCount: targetIds.length,
+    updated: result.count,
+  };
+}
+
+export async function createGaWord(input: GaWordInput, options: GaWordBuildOptions = {}) {
+  const data = buildGaWordData(input, options);
   return prisma.gaWord.create({ data, include: { source: true } });
 }
 
-export async function updateGaWord(id: string, input: Partial<GaWordInput>) {
+export async function updateGaWord(id: string, input: Partial<GaWordInput>, options: GaWordBuildOptions = {}) {
   const existing = await prisma.gaWord.findUnique({ where: { id } });
   if (!existing) return null;
+
+  const allowedCategories = options.allowedCategories ?? GA_CATEGORIES;
+  const currentCategory = normalizeGaCategory(existing.category);
+  const categoryAllowList = allowedCategories.some((name) => name.toLowerCase() === currentCategory.toLowerCase())
+    ? allowedCategories
+    : [...allowedCategories, currentCategory];
+
   const data = buildGaWordData({
     englishWord: input.englishWord ?? existing.englishWord,
     gaWord: input.gaWord ?? existing.gaWord,
@@ -522,7 +576,7 @@ export async function updateGaWord(id: string, input: Partial<GaWordInput>) {
     quizReady: input.quizReady ?? existing.quizReady,
     storyReady: input.storyReady ?? existing.storyReady,
     notes: input.notes === undefined ? existing.notes : input.notes,
-  });
+  }, { allowedCategories: categoryAllowList });
   return prisma.gaWord.update({ where: { id }, data, include: { source: true } });
 }
 

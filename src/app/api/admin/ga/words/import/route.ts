@@ -10,6 +10,7 @@ import {
   planGaBulkImportCommit,
   previewGaBulkImport,
 } from "@/lib/ga-word-bank";
+import { listGaCategoryNamesForContext } from "@/lib/ga-categories";
 
 const requestSchema = z.object({
   mode: z.enum(["preview", "commit"]),
@@ -31,11 +32,13 @@ export async function POST(request: Request) {
         select: { id: true, englishWord: true, gaWord: true, category: true, sourcePage: true },
       }),
     ]);
+    const allowedCategories = await listGaCategoryNamesForContext("word_bank", "all");
 
     const preview = previewGaBulkImport(
       parsedRows,
       sources.map((source) => ({ id: source.id, sourceName: source.sourceName })),
       existingWords,
+      { allowedCategories },
     );
 
     if (body.mode === "preview") {

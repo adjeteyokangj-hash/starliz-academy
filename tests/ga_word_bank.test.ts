@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildGaWordData,
+  isGaAlphabetLetterRowLabel,
   isGaWordSchemaNotReadyError,
   isGaWordStudentSafe,
   parseGaBulkImportText,
@@ -58,6 +59,26 @@ test("Ga word input rejects uncontrolled values", () => {
   }), /Word type must be one of/);
 });
 
+test("Ga word input uses managed category allow-list when provided", () => {
+  const data = buildGaWordData({
+    englishWord: "bank",
+    gaWord: "sika",
+    wordType: "noun",
+    category: "money terms",
+    level: "Foundation",
+  }, { allowedCategories: ["Money Terms"] });
+
+  assert.equal(data.category, "Money Terms");
+
+  assert.throws(() => buildGaWordData({
+    englishWord: "bank",
+    gaWord: "sika",
+    wordType: "noun",
+    category: "money terms",
+    level: "Foundation",
+  }, { allowedCategories: ["Greetings"] }), /Category must be one of/);
+});
+
 test("student-safe Ga payload only allows Approved words", () => {
   assert.equal(isGaWordStudentSafe({ reviewStatus: "Pending" }), false);
   assert.equal(toStudentSafeGaWord({ ...approvedWord, reviewStatus: "Reviewed" }), null);
@@ -70,6 +91,7 @@ test("student-safe Ga payload only allows Approved words", () => {
     level: "Foundation",
     quizReady: true,
     storyReady: false,
+    pronunciationHint: null,
   });
 });
 
@@ -102,6 +124,16 @@ test("bulk import preview rejects unsupported statuses and categories", () => {
   assert.match(preview.invalidItems[0].errors.join(" "), /Category must be one of/i);
 });
 
+test("bulk import preview accepts category Alphabet", () => {
+  const parsed = parseGaBulkImportText([
+    "englishWord,gaWord,wordType,category,level,sourcePage,reviewStatus,audioStatus,quizReady,storyReady,notes,sourceName",
+    "Letter A,A,noun,Alphabet,Foundation,1,Approved,Not Started,true,false,,Kasahorow Ga Children's Dictionary",
+  ].join("\n"));
+  const preview = previewGaBulkImport(parsed, [{ id: "source-1", sourceName: "Kasahorow Ga Children's Dictionary" }], []);
+  assert.equal(preview.validRows, 1);
+  assert.equal(preview.invalidRows, 0);
+});
+
 test("bulk import duplicate handling supports skip and update planning", () => {
   const parsed = parseGaBulkImportText([
     "englishWord,gaWord,wordType,category,level,sourcePage,reviewStatus,audioStatus,quizReady,storyReady,notes,sourceName",
@@ -128,6 +160,14 @@ test("category normalization maps loose labels to approved category set", () => 
   assert.equal(normalizeGaCategory("Object"), "Objects");
   assert.equal(normalizeGaCategory("people/family"), "People");
   assert.equal(normalizeGaCategory("transportation"), "Transport");
+  assert.equal(normalizeGaCategory("alphabet"), "Alphabet");
+});
+
+test("alphabet recategorisation label matcher only targets Letter A-Z rows", () => {
+  assert.equal(isGaAlphabetLetterRowLabel("Letter A"), true);
+  assert.equal(isGaAlphabetLetterRowLabel("letter z"), true);
+  assert.equal(isGaAlphabetLetterRowLabel("Letter AA"), false);
+  assert.equal(isGaAlphabetLetterRowLabel("Alphabet A"), false);
 });
 
 test("duplicate Ga spellings with different meanings/categories can coexist", () => {

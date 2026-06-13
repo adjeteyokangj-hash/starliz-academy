@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { updateGaLesson } from "@/lib/ga-lessons";
+import { listGaCategoryNamesForContext } from "@/lib/ga-categories";
 
 const activitySchema = z.object({
   activityType: z.string().trim().min(1),
@@ -48,7 +49,8 @@ export async function PATCH(request: Request, context: Context) {
   const { lessonId } = await context.params;
   try {
     const body = lessonSchema.parse(await request.json());
-    const lesson = await updateGaLesson(lessonId, body);
+    const allowedCategories = await listGaCategoryNamesForContext("lessons", "active");
+    const lesson = await updateGaLesson(lessonId, body, { allowedCategories });
     if (!lesson) return NextResponse.json({ error: "Ga lesson not found." }, { status: 404 });
     await writeAuditLog({
       actorUserId: session.userId,

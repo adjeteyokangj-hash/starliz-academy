@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { createGaLesson, listAdminGaLessons } from "@/lib/ga-lessons";
+import { listGaCategoryNamesForContext } from "@/lib/ga-categories";
 
 const activitySchema = z.object({
   activityType: z.string().trim().min(1),
@@ -52,7 +53,8 @@ export async function POST(request: Request) {
   if (!session) return response;
   try {
     const body = lessonSchema.parse(await request.json());
-    const lesson = await createGaLesson(body);
+    const allowedCategories = await listGaCategoryNamesForContext("lessons", "active");
+    const lesson = await createGaLesson(body, { allowedCategories });
     if (!lesson) throw new Error("Unable to create Ga lesson.");
     await writeAuditLog({
       actorUserId: session.userId,

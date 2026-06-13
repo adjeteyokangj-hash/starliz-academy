@@ -2,14 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
-import { GA_CATEGORIES, GA_LEVELS } from "@/lib/ga-word-bank";
+import { GA_LEVELS } from "@/lib/ga-word-bank";
 import { BEGINNER_PACK_1_LESSONS, GA_LESSON_STATUSES } from "@/lib/ga-lessons";
+import { GA_APPROVED_CATEGORIES } from "@/lib/ga-word-categories";
+import {
+  getLessonUpsertRequest,
+  lessonFormFromRow,
+  mergeLessonLinkedWords,
+  selectedWordIdsFromLesson,
+} from "@/lib/ga-lessons-admin";
 
 type ApprovedWord = { id: string; englishWord: string; gaWord: string; category: string; level: string };
 type LessonRow = {
   id: string;
   title: string;
   slug: string;
+  description: string | null;
   level: string;
   category: string;
   objective: string;
@@ -18,6 +26,17 @@ type LessonRow = {
   lessonOrder: number;
   words: Array<{ wordId: string; word: ApprovedWord }>;
   quizQuestions: Array<{ id: string }>;
+};
+
+type GaCategoryRow = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  isActive: boolean;
+  isArchived: boolean;
+  usedByWordBank: boolean;
+  usedByLessons: boolean;
 };
 
 const defaultForm = {
@@ -31,6 +50,8 @@ const defaultForm = {
   lessonOrder: "1",
 };
 
+const DEFAULT_FALLBACK_CATEGORIES = [...GA_APPROVED_CATEGORIES].sort((left, right) => left.localeCompare(right));
+
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "ga-lesson";
 }
@@ -38,30 +59,76 @@ function slugify(value: string): string {
 export default function AdminGaLessonsPage() {
   const [lessons, setLessons] = useState<LessonRow[]>([]);
   const [approvedWords, setApprovedWords] = useState<ApprovedWord[]>([]);
+  const [categories, setCategories] = useState<GaCategoryRow[]>([]);
   const [selectedWordIds, setSelectedWordIds] = useState<string[]>([]);
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
 
   const selectedWords = useMemo(
     () => approvedWords.filter((word) => selectedWordIds.includes(word.id)),
     [approvedWords, selectedWordIds],
   );
+  const fallbackCategories = useMemo(
+    () => DEFAULT_FALLBACK_CATEGORIES.map((name, index) => ({
+      id: `fallback-${index + 1}`,
+      name,
+      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      description: null,
+      isActive: true,
+      isArchived: false,
+      usedByWordBank: true,
+      usedByLessons: true,
+    })),
+    [],
+  );
+  const resolvedCategories = categories.length ? categories : fallbackCategories;
+  const activeLessonCategories = useMemo(
+    () => resolvedCategories
+      .filter((category) => category.usedByLessons && category.isActive && !category.isArchived)
+      .map((category) => category.name)
+      .sort((left, right) => left.localeCompare(right)),
+    [resolvedCategories],
+  );
+  const lessonFormCategoryOptions = useMemo(() => {
+    if (!form.category || activeLessonCategories.includes(form.category)) return activeLessonCategories;
+    return [...activeLessonCategories, form.category].sort((left, right) => left.localeCompare(right));
+  }, [activeLessonCategories, form.category]);
+  const categoryMap = useMemo(() => new Map(resolvedCategories.map((category) => [category.name, category])), [resolvedCategories]);
+  const selectedCategoryState = categoryMap.get(form.category) ?? null;
+  const selectedCategoryInactive = selectedCategoryState ? (!selectedCategoryState.isActive || selectedCategoryState.isArchived) : false;
 
   const load = useCallback(async () => {
-    const [lessonResponse, wordResponse] = await Promise.all([
+    const [lessonResponse, wordResponse, categoryResponse] = await Promise.all([
       fetch("/api/admin/ga/lessons"),
       fetch("/api/admin/ga/words?reviewStatus=Approved&limit=200"),
+      fetch("/api/admin/ga/categories"),
     ]);
-    if (lessonResponse.status === 401 || wordResponse.status === 401) {
+    if (lessonResponse.status === 401 || wordResponse.status === 401 || categoryResponse.status === 401) {
       window.location.replace("/admin/login?next=/admin/ga-lessons");
       return;
     }
     const lessonPayload = await lessonResponse.json().catch(() => null) as { items?: LessonRow[] } | null;
     const wordPayload = await wordResponse.json().catch(() => null) as { items?: ApprovedWord[] } | null;
-    setLessons(lessonPayload?.items ?? []);
-    setApprovedWords(wordPayload?.items ?? []);
+    const categoryPayload = await categoryResponse.json().catch(() => null) as { items?: GaCategoryRow[] } | null;
+    const lessonItems = lessonPayload?.items ?? [];
+    const approvedItems = wordPayload?.items ?? [];
+    const nextCategories = categoryPayload?.items ?? [];
+    setLessons(lessonItems);
+    setApprovedWords(mergeLessonLinkedWords(approvedItems, lessonItems));
+    setCategories(nextCategories);
+    const activeCategoryNames = nextCategories
+      .filter((category) => category.usedByLessons && category.isActive && !category.isArchived)
+      .map((category) => category.name)
+      .sort((left, right) => left.localeCompare(right));
+    setForm((current) => {
+      if (!activeCategoryNames.length) return current;
+      const knownCategoryNames = new Set(nextCategories.map((category) => category.name));
+      if (current.category && knownCategoryNames.has(current.category)) return current;
+      return { ...current, category: activeCategoryNames[0] };
+    });
   }, []);
 
   useEffect(() => {
@@ -80,19 +147,12 @@ export default function AdminGaLessonsPage() {
   }
 
   function editLesson(lesson: LessonRow) {
+    setActiveLessonId(lesson.id);
     setEditingId(lesson.id);
-    setForm({
-      title: lesson.title,
-      description: "",
-      level: lesson.level,
-      category: lesson.category,
-      objective: lesson.objective,
-      publishStatus: lesson.publishStatus,
-      packKey: lesson.packKey ?? "beginner-pack-1",
-      lessonOrder: String(lesson.lessonOrder),
-    });
-    setSelectedWordIds(lesson.words.map((row) => row.wordId));
+    setForm(lessonFormFromRow(lesson));
+    setSelectedWordIds(selectedWordIdsFromLesson(lesson));
     setMessage(null);
+    document.getElementById("ga-lesson-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function buildQuizQuestions() {
@@ -121,8 +181,9 @@ export default function AdminGaLessonsPage() {
         ] : [],
         quizQuestions: buildQuizQuestions(),
       };
-      const response = await fetch(editingId ? `/api/admin/ga/lessons/${editingId}` : "/api/admin/ga/lessons", {
-        method: editingId ? "PATCH" : "POST",
+      const request = getLessonUpsertRequest(editingId);
+      const response = await fetch(request.url, {
+        method: request.method,
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -133,6 +194,7 @@ export default function AdminGaLessonsPage() {
       }
       setMessage(editingId ? "Ga lesson updated." : "Ga lesson created.");
       setEditingId(null);
+      setActiveLessonId(null);
       setSelectedWordIds([]);
       setForm(defaultForm);
       await load();
@@ -169,15 +231,17 @@ export default function AdminGaLessonsPage() {
       {message ? <p className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-100">{message}</p> : null}
 
       <AdminSectionCard title={editingId ? "Edit Ga Lesson" : "Create Ga Lesson"} eyebrow="Approved words only">
+        <div id="ga-lesson-editor" />
         <div className="grid gap-3 md:grid-cols-3">
           <label className="text-xs font-bold uppercase text-slate-400">Title<input value={form.title} onChange={(event) => setField("title", event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
           <label className="text-xs font-bold uppercase text-slate-400">Level<select value={form.level} onChange={(event) => setField("level", event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">{GA_LEVELS.map((level) => <option key={level}>{level}</option>)}</select></label>
-          <label className="text-xs font-bold uppercase text-slate-400">Category<select value={form.category} onChange={(event) => setField("category", event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">{GA_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label>
+          <label className="text-xs font-bold uppercase text-slate-400">Category<select value={form.category} onChange={(event) => setField("category", event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">{lessonFormCategoryOptions.map((category) => <option key={category}>{category}</option>)}</select></label>
           <label className="text-xs font-bold uppercase text-slate-400">Publish status<select value={form.publishStatus} onChange={(event) => setField("publishStatus", event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">{GA_LESSON_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
           <label className="text-xs font-bold uppercase text-slate-400">Pack key<input value={form.packKey} onChange={(event) => setField("packKey", event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
           <label className="text-xs font-bold uppercase text-slate-400">Order<input value={form.lessonOrder} onChange={(event) => setField("lessonOrder", event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
           <label className="md:col-span-3 text-xs font-bold uppercase text-slate-400">Objective<textarea value={form.objective} onChange={(event) => setField("objective", event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
         </div>
+        {selectedCategoryInactive ? <p className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-100">Selected category is inactive or archived. Review category settings before saving this lesson.</p> : null}
 
         <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
           <p className="text-xs font-black uppercase text-slate-400">Approved words</p>
@@ -190,11 +254,14 @@ export default function AdminGaLessonsPage() {
               </label>
             ))}
           </div>
+          {selectedWords.length ? (
+            <p className="mt-3 text-xs text-emerald-200">Linked approved words: {selectedWords.map((word) => `${word.englishWord} (${word.gaWord})`).join(", ")}</p>
+          ) : null}
         </div>
 
         <div className="mt-4 flex gap-2">
           <button type="button" onClick={saveLesson} disabled={saving} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{editingId ? "Update lesson" : "Create lesson"}</button>
-          {editingId ? <button type="button" onClick={() => { setEditingId(null); setSelectedWordIds([]); setForm(defaultForm); }} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
+          {editingId ? <button type="button" onClick={() => { setEditingId(null); setActiveLessonId(null); setSelectedWordIds([]); setForm(defaultForm); }} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
         </div>
       </AdminSectionCard>
 
@@ -215,13 +282,15 @@ export default function AdminGaLessonsPage() {
             <thead className="uppercase text-slate-500"><tr><th className="px-2 py-2">Lesson</th><th className="px-2 py-2">Level</th><th className="px-2 py-2">Words</th><th className="px-2 py-2">Quiz</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Action</th></tr></thead>
             <tbody>
               {lessons.map((lesson) => (
-                <tr key={lesson.id} className="border-t border-slate-800 text-slate-300">
-                  <td className="px-2 py-2 font-bold text-white">{lesson.title}</td>
+                <tr key={lesson.id} className={`border-t border-slate-800 text-slate-300 ${activeLessonId === lesson.id ? "bg-emerald-500/10" : ""}`}>
+                  <td className="px-2 py-2 font-bold text-white">
+                    <button type="button" onClick={() => editLesson(lesson)} className="text-left text-cyan-200 underline-offset-2 hover:underline">{lesson.title}</button>
+                  </td>
                   <td className="px-2 py-2">{lesson.level}</td>
                   <td className="px-2 py-2">{lesson.words.length}</td>
                   <td className="px-2 py-2">{lesson.quizQuestions.length}</td>
                   <td className="px-2 py-2">{lesson.publishStatus}</td>
-                  <td className="px-2 py-2"><button type="button" onClick={() => editLesson(lesson)} className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100">Edit</button></td>
+                  <td className="px-2 py-2"><button type="button" onClick={() => editLesson(lesson)} className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100">View/Edit</button></td>
                 </tr>
               ))}
             </tbody>

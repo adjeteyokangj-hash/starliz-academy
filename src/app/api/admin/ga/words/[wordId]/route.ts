@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { updateGaWord } from "@/lib/ga-word-bank";
+import { listGaCategoryNamesForContext } from "@/lib/ga-categories";
 
 const updateSchema = z.object({
   englishWord: z.string().trim().min(1).optional(),
@@ -37,7 +38,8 @@ export async function PATCH(request: Request, context: Context) {
   const { wordId } = await context.params;
   try {
     const body = updateSchema.parse(await request.json());
-    const updated = await updateGaWord(wordId, body);
+    const allowedCategories = await listGaCategoryNamesForContext("word_bank", "active");
+    const updated = await updateGaWord(wordId, body, { allowedCategories });
     if (!updated) return NextResponse.json({ error: "Ga word not found." }, { status: 404 });
     await writeAuditLog({
       actorUserId: session.userId,

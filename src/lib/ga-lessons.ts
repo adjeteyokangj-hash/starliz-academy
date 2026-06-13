@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { GA_CATEGORIES, GA_LEVELS, toStudentSafeGaWord } from "@/lib/ga-word-bank";
 import { GA_VOICE_ACTIVITY_TYPES } from "@/lib/ga-voice";
 import { listGaPronunciationReferences, serializeGaPronunciationReference } from "@/lib/ga-audio";
+import { resolveGaCategoryAgainstAllowed } from "@/lib/ga-categories";
 
 export const GA_LESSON_STATUSES = ["Draft", "Published", "Archived"] as const;
 export const GA_ACTIVITY_TYPES = ["flashcards", "quiz", ...GA_VOICE_ACTIVITY_TYPES] as const;
@@ -95,6 +96,10 @@ export type GaLessonInput = {
   quizQuestions?: Array<{ questionType: string; wordId: string; prompt: string; options: string[]; correctAnswer: string; explanation?: string | null; sortOrder?: number | null }>;
 };
 
+type GaLessonBuildOptions = {
+  allowedCategories?: readonly string[];
+};
+
 export type GaProgressInput = {
   studentId: string;
   lessonId: string;
@@ -145,17 +150,18 @@ export function buildGaProgressData(input: Pick<GaProgressInput, "correctAnswers
   };
 }
 
-export function buildGaLessonData(input: GaLessonInput) {
+export function buildGaLessonData(input: GaLessonInput, options: GaLessonBuildOptions = {}) {
   const title = cleanText(input.title);
   if (!title) throw new Error("Lesson title is required.");
   const objective = cleanText(input.objective);
   if (!objective) throw new Error("Lesson objective is required.");
+  const allowedCategories = options.allowedCategories ?? GA_CATEGORIES;
   return {
     title,
     slug: optionalText(input.slug) ?? slugifyGaLessonTitle(title),
     description: optionalText(input.description),
     level: assertAllowed(cleanText(input.level), GA_LEVELS, "Level"),
-    category: assertAllowed(cleanText(input.category), GA_CATEGORIES, "Category"),
+    category: resolveGaCategoryAgainstAllowed(cleanText(input.category), allowedCategories),
     objective,
     packKey: optionalText(input.packKey),
     lessonOrder: Math.max(0, Math.round(input.lessonOrder ?? 0)),
@@ -263,8 +269,8 @@ async function replaceLessonChildren(lessonId: string, input: GaLessonInput) {
   ]);
 }
 
-export async function createGaLesson(input: GaLessonInput) {
-  const data = buildGaLessonData(input);
+export async function createGaLesson(input: GaLessonInput, options: GaLessonBuildOptions = {}) {
+  const data = buildGaLessonData(input, options);
   if (data.publishStatus === "Published" && !(input.wordIds ?? []).length) {
     throw new Error("Published Ga lessons require at least one Approved Ga word.");
   }
@@ -273,9 +279,13 @@ export async function createGaLesson(input: GaLessonInput) {
   return getGaLessonById(lesson.id);
 }
 
-export async function updateGaLesson(id: string, input: Partial<GaLessonInput>) {
+export async function updateGaLesson(id: string, input: Partial<GaLessonInput>, options: GaLessonBuildOptions = {}) {
   const existing = await prisma.gaLesson.findUnique({ where: { id }, include: { words: true } });
   if (!existing) return null;
+  const allowedCategories = options.allowedCategories ?? GA_CATEGORIES;
+  const categoryAllowList = allowedCategories.includes(existing.category)
+    ? allowedCategories
+    : [...allowedCategories, existing.category];
   const merged = buildGaLessonData({
     title: input.title ?? existing.title,
     slug: input.slug === undefined ? existing.slug : input.slug,
@@ -286,7 +296,7 @@ export async function updateGaLesson(id: string, input: Partial<GaLessonInput>) 
     packKey: input.packKey === undefined ? existing.packKey : input.packKey,
     lessonOrder: input.lessonOrder === undefined ? existing.lessonOrder : input.lessonOrder,
     publishStatus: input.publishStatus ?? existing.publishStatus,
-  });
+  }, { allowedCategories: categoryAllowList });
   const nextWordIds = input.wordIds ?? existing.words.map((word) => word.wordId);
   if (merged.publishStatus === "Published" && !nextWordIds.length) {
     throw new Error("Published Ga lessons require at least one Approved Ga word.");

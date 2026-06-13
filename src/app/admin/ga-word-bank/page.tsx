@@ -5,12 +5,12 @@ import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import {
   GA_BULK_IMPORT_TEMPLATE,
   GA_AUDIO_STATUSES,
-  GA_CATEGORIES,
   GA_LEVELS,
   GA_REVIEW_STATUSES,
   GA_WORD_TYPES,
   formatGaEnglishDisplayWord,
 } from "@/lib/ga-word-bank";
+import { GA_APPROVED_CATEGORIES } from "@/lib/ga-word-categories";
 
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
 
@@ -40,6 +40,20 @@ type GaWordRow = {
   storyReady: boolean;
   notes: string | null;
   source: GaSourceRow | null;
+};
+
+type GaCategoryRow = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  isActive: boolean;
+  isArchived: boolean;
+  usedByWordBank: boolean;
+  usedByLessons: boolean;
+  wordCount: number;
+  lessonCount: number;
+  source: "database" | "fallback";
 };
 
 type WordForm = {
@@ -94,6 +108,8 @@ const defaultWordForm: WordForm = {
   storyReady: false,
   notes: "",
 };
+
+const DEFAULT_FALLBACK_CATEGORIES = [...GA_APPROVED_CATEGORIES].sort((left, right) => left.localeCompare(right));
 
 const defaultFilters: Filters = {
   q: "",
@@ -182,6 +198,7 @@ function wordPayload(form: WordForm, sourceId: string | null, sourcePage: number
 }
 
 export default function GaWordBankPage() {
+  const [categories, setCategories] = useState<GaCategoryRow[]>([]);
   const [sources, setSources] = useState<GaSourceRow[]>([]);
   const [words, setWords] = useState<GaWordRow[]>([]);
   const [selectedWordIds, setSelectedWordIds] = useState<string[]>([]);
@@ -218,6 +235,42 @@ export default function GaWordBankPage() {
     () => sources.find((source) => source.sourceName.trim().toLowerCase() === sourceName.trim().toLowerCase()) ?? sources[0] ?? null,
     [sources, sourceName],
   );
+  const fallbackCategories = useMemo(
+    () => DEFAULT_FALLBACK_CATEGORIES.map((name, index) => ({
+      id: `fallback-${index + 1}`,
+      name,
+      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      description: null,
+      isActive: true,
+      isArchived: false,
+      usedByWordBank: true,
+      usedByLessons: true,
+      wordCount: 0,
+      lessonCount: 0,
+      source: "fallback" as const,
+    })),
+    [],
+  );
+  const resolvedCategories = categories.length ? categories : fallbackCategories;
+  const categoryMap = useMemo(() => new Map(resolvedCategories.map((category) => [category.name, category])), [resolvedCategories]);
+  const activeWordBankCategories = useMemo(
+    () => resolvedCategories
+      .filter((category) => category.isActive && !category.isArchived && category.usedByWordBank)
+      .map((category) => category.name)
+      .sort((left, right) => left.localeCompare(right)),
+    [resolvedCategories],
+  );
+  const filterCategoryOptions = useMemo(
+    () => [...new Set(resolvedCategories.filter((category) => category.usedByWordBank).map((category) => category.name))]
+      .sort((left, right) => left.localeCompare(right)),
+    [resolvedCategories],
+  );
+  const wordFormCategoryOptions = useMemo(() => {
+    if (!wordForm.category || activeWordBankCategories.includes(wordForm.category)) return activeWordBankCategories;
+    return [...activeWordBankCategories, wordForm.category].sort((left, right) => left.localeCompare(right));
+  }, [activeWordBankCategories, wordForm.category]);
+  const selectedCategoryState = categoryMap.get(wordForm.category) ?? null;
+  const selectedCategoryInactive = selectedCategoryState ? (!selectedCategoryState.isActive || selectedCategoryState.isArchived) : false;
 
   const focusEditForm = useCallback(() => {
     editFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -235,6 +288,27 @@ export default function GaWordBankPage() {
     }
     const payload = await response.json().catch(() => null) as { items?: GaSourceRow[] } | null;
     setSources(payload?.items ?? []);
+  }, []);
+
+  const loadCategories = useCallback(async () => {
+    const response = await fetch("/api/admin/ga/categories");
+    if (response.status === 401) {
+      window.location.replace("/admin/login?next=/admin/ga-word-bank");
+      return;
+    }
+    const payload = await response.json().catch(() => null) as { items?: GaCategoryRow[] } | null;
+    const nextCategories = payload?.items ?? [];
+    setCategories(nextCategories);
+    const activeCategoryNames = nextCategories
+      .filter((category) => category.isActive && !category.isArchived && category.usedByWordBank)
+      .map((category) => category.name)
+      .sort((left, right) => left.localeCompare(right));
+    setWordForm((current) => {
+      if (!activeCategoryNames.length) return current;
+      const knownCategoryNames = new Set(nextCategories.map((category) => category.name));
+      if (current.category && knownCategoryNames.has(current.category)) return current;
+      return { ...current, category: activeCategoryNames[0] };
+    });
   }, []);
 
   const loadWords = useCallback(async (nextFilters: Filters) => {
@@ -262,9 +336,10 @@ export default function GaWordBankPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadSources();
+      void loadCategories();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadSources]);
+  }, [loadCategories, loadSources]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -422,6 +497,22 @@ export default function GaWordBankPage() {
     }
   }
 
+  async function recategoriseAlphabetRows() {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/admin/ga/words/recategorise-alphabet", { method: "POST" });
+      const payload = await response.json().catch(() => null) as { error?: string; message?: string } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to recategorise alphabet rows.");
+        return;
+      }
+      setMessage(payload?.message ?? "Alphabet rows recategorised.");
+      await loadWords(appliedFilters);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function startEdit(row: GaWordRow) {
     setEditingId(row.id);
     setWordForm(wordFormFromRow(row));
@@ -522,7 +613,7 @@ export default function GaWordBankPage() {
           <TextField label="English word" value={wordForm.englishWord} onChange={(value) => setWordForm((form) => ({ ...form, englishWord: value }))} inputRef={englishWordInputRef} />
           <TextField label="Ga word" value={wordForm.gaWord} onChange={(value) => setWordForm((form) => ({ ...form, gaWord: value }))} />
           <SelectField label="Word type" value={wordForm.wordType} options={GA_WORD_TYPES} onChange={(value) => setWordForm((form) => ({ ...form, wordType: value }))} />
-          <SelectField label="Category" value={wordForm.category} options={GA_CATEGORIES} onChange={(value) => setWordForm((form) => ({ ...form, category: value }))} />
+          <SelectField label="Category" value={wordForm.category} options={wordFormCategoryOptions} onChange={(value) => setWordForm((form) => ({ ...form, category: value }))} />
           <SelectField label="Level" value={wordForm.level} options={GA_LEVELS} onChange={(value) => setWordForm((form) => ({ ...form, level: value }))} />
           <SelectField label="Review status" value={wordForm.reviewStatus} options={GA_REVIEW_STATUSES} onChange={(value) => setWordForm((form) => ({ ...form, reviewStatus: value }))} />
           <SelectField label="Audio status" value={wordForm.audioStatus} options={GA_AUDIO_STATUSES} onChange={(value) => setWordForm((form) => ({ ...form, audioStatus: value }))} />
@@ -532,6 +623,7 @@ export default function GaWordBankPage() {
             <TextField label="Notes" value={wordForm.notes} onChange={(value) => setWordForm((form) => ({ ...form, notes: value }))} />
           </div>
         </div>
+        {selectedCategoryInactive ? <p className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-100">Selected category is inactive or archived. Review category settings before saving this word.</p> : null}
         <div className="mt-4 flex gap-2">
           <button type="button" onClick={saveWord} disabled={saving} className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{isEditing ? "Update word" : "Add word"}</button>
           {isEditing ? <button type="button" onClick={cancelEdit} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
@@ -543,6 +635,7 @@ export default function GaWordBankPage() {
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={downloadTemplate} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">Download CSV template</button>
           <button type="button" onClick={() => { setBulkText(`${GA_BULK_IMPORT_TEMPLATE}\n`); setBulkPreview(null); }} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">Reset to template</button>
+          <button type="button" onClick={() => void recategoriseAlphabetRows()} disabled={saving} className="rounded-xl border border-emerald-600/70 px-3 py-2 text-xs font-black text-emerald-100 disabled:opacity-50">Recategorise Letter A-Z to Alphabet</button>
           <label className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">
             Upload CSV
             <input
@@ -627,7 +720,7 @@ export default function GaWordBankPage() {
         <div className="grid gap-3 md:grid-cols-4">
           <TextField label="Search" value={filters.q} onChange={(value) => setFilters((next) => ({ ...next, q: value }))} />
           <SelectField label="Review status" value={filters.reviewStatus} options={GA_REVIEW_STATUSES} onChange={(value) => setFilters((next) => ({ ...next, reviewStatus: value }))} allowAll />
-          <SelectField label="Category" value={filters.category} options={GA_CATEGORIES} onChange={(value) => setFilters((next) => ({ ...next, category: value }))} allowAll />
+          <SelectField label="Category" value={filters.category} options={filterCategoryOptions} onChange={(value) => setFilters((next) => ({ ...next, category: value }))} allowAll />
           <SelectField label="Level" value={filters.level} options={GA_LEVELS} onChange={(value) => setFilters((next) => ({ ...next, level: value }))} allowAll />
           <SelectField label="Word type" value={filters.wordType} options={GA_WORD_TYPES} onChange={(value) => setFilters((next) => ({ ...next, wordType: value }))} allowAll />
           <TextField label="Source page" value={filters.sourcePage} onChange={(value) => setFilters((next) => ({ ...next, sourcePage: value }))} />

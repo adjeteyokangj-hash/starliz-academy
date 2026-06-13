@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { createGaWord, getGaWordMetrics, isGaWordSchemaNotReadyError, listGaWords } from "@/lib/ga-word-bank";
+import { listGaCategoryNamesForContext } from "@/lib/ga-categories";
 
 const querySchema = z.object({
   q: z.string().optional(),
@@ -86,7 +87,8 @@ export async function POST(request: Request) {
 
   try {
     const body = wordSchema.parse(await request.json());
-    const created = await createGaWord(body);
+    const allowedCategories = await listGaCategoryNamesForContext("word_bank", "active");
+    const created = await createGaWord(body, { allowedCategories });
     await writeAuditLog({
       actorUserId: session.userId,
       action: "ga_word.created",
