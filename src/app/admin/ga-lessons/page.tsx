@@ -7,6 +7,7 @@ import { BEGINNER_PACK_1_LESSONS, GA_LESSON_STATUSES } from "@/lib/ga-lessons";
 import { GA_APPROVED_CATEGORIES } from "@/lib/ga-word-categories";
 import {
   buildLessonEditorStateById,
+  getLessonPublishRequest,
   getLessonUpsertRequest,
   mergeLessonLinkedWords,
 } from "@/lib/ga-lessons-admin";
@@ -208,6 +209,29 @@ export default function AdminGaLessonsPage() {
     }
   }
 
+  async function publishLesson() {
+    const request = getLessonPublishRequest(editingId);
+    if (!request || saving) return;
+    setSaving(true);
+    try {
+      const response = await fetch(request.url, {
+        method: request.method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request.body),
+      });
+      const body = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        setMessage(body?.error ?? "Unable to publish Ga lesson.");
+        return;
+      }
+      setForm((current) => ({ ...current, publishStatus: "Published" }));
+      setMessage("Ga lesson published and now visible in Ga Learning Hub.");
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function prepareBeginnerPack() {
     setSaving(true);
     try {
@@ -266,6 +290,16 @@ export default function AdminGaLessonsPage() {
 
         <div className="mt-4 flex gap-2">
           <button type="button" onClick={saveLesson} disabled={saving} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{editingId ? "Update lesson" : "Create lesson"}</button>
+          {editingId && form.publishStatus !== "Published" ? (
+            <button
+              type="button"
+              onClick={publishLesson}
+              disabled={saving}
+              className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
+            >
+              Publish lesson
+            </button>
+          ) : null}
           {editingId ? <button type="button" onClick={() => { setEditingId(null); setActiveLessonId(null); setSelectedWordIds([]); setForm(defaultForm); }} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
         </div>
       </AdminSectionCard>

@@ -79,6 +79,13 @@ test("student Ga lessons hide unpublished lessons", () => {
   assert.equal(toStudentSafeGaLesson(lessonFixture({ publishStatus: "Draft" })), null);
 });
 
+test("student Ga lessons include published lessons", () => {
+  const safe = toStudentSafeGaLesson(lessonFixture({ publishStatus: "Published" }));
+  assert.ok(safe);
+  assert.equal(safe.title, "Hello, Yes, No");
+  assert.equal(safe.objective, "Practise first Ga greetings.");
+});
+
 test("student Ga lessons expose only Approved words and quiz questions", () => {
   const safe = toStudentSafeGaLesson(lessonFixture());
   assert.ok(safe);

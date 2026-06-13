@@ -16,6 +16,13 @@ export type DashboardSmartCoachInput = {
   bestExplanationStyle?: string | null;
 };
 
+export type DashboardQuickLink = {
+  id: string;
+  title: string;
+  description: string;
+  href: string;
+};
+
 function normalize(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
 }
@@ -58,4 +65,15 @@ export function buildSmartCoachSummary(input: DashboardSmartCoachInput) {
     weakCount,
     masteredCount,
   };
+}
+
+export function buildStudentDashboardQuickLinks(): DashboardQuickLink[] {
+  return [
+    {
+      id: "ga-learning-hub",
+      title: "Ga Learning Hub",
+      description: "Learn new Ga words with friendly flashcards and mini quizzes.",
+      href: "/ga-learning-hub",
+    },
+  ];
 }

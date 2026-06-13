@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  getLessonPublishRequest,
   getLessonUpsertRequest,
   lessonFormFromRow,
   mergeLessonLinkedWords,
@@ -61,6 +62,15 @@ test("editing request targets existing lesson PATCH endpoint to avoid duplicate 
     method: "POST",
     url: "/api/admin/ga/lessons",
   });
+});
+
+test("publish action targets lesson patch endpoint with Published status", () => {
+  assert.deepEqual(getLessonPublishRequest("lesson-1"), {
+    method: "PATCH",
+    url: "/api/admin/ga/lessons/lesson-1",
+    body: { publishStatus: "Published" },
+  });
+  assert.equal(getLessonPublishRequest(null), null);
 });
 
 test("selected linked approved words are preserved when opening edit", () => {

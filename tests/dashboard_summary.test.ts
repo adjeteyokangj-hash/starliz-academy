@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAssignedWorkSummary, buildSmartCoachSummary } from "../src/lib/student-dashboard-summary";
+import { buildAssignedWorkSummary, buildSmartCoachSummary, buildStudentDashboardQuickLinks } from "../src/lib/student-dashboard-summary";
 import { deriveStudentLearningState } from "../src/lib/student-learning-state";
 
 test("dashboard summary chooses active assigned work as the next first-render activity", () => {
@@ -59,4 +59,13 @@ test("dashboard state treats completed Level Finder as placed without manual ref
   assert.equal(state.isFirstTimeStudent, false);
   assert.equal(state.hasCompletedPlacement, true);
   assert.equal(state.onboardingStage, "LEARNING");
+});
+
+test("student dashboard quick links include Ga Learning Hub card", () => {
+  const links = buildStudentDashboardQuickLinks();
+  const gaHub = links.find((item) => item.id === "ga-learning-hub");
+
+  assert.ok(gaHub);
+  assert.equal(gaHub?.title, "Ga Learning Hub");
+  assert.equal(gaHub?.href, "/ga-learning-hub");
 });

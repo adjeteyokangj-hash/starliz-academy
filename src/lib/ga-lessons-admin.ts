@@ -101,3 +101,12 @@ export function getLessonUpsertRequest(editingId: string | null): { method: "POS
   }
   return { method: "POST", url: "/api/admin/ga/lessons" };
 }
+
+export function getLessonPublishRequest(editingId: string | null): { method: "PATCH"; url: string; body: { publishStatus: "Published" } } | null {
+  if (!editingId) return null;
+  return {
+    method: "PATCH",
+    url: `/api/admin/ga/lessons/${editingId}`,
+    body: { publishStatus: "Published" },
+  };
+}
