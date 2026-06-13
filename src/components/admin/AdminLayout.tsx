@@ -8,9 +8,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="flex min-h-screen">
         <AdminSessionKeepAlive />
         <AdminSidebar />
-        <div className="min-w-0 flex-1">
+        {/* On mobile the sidebar is a fixed overlay, so main takes full width.
+            On desktop (lg+) when sidebar is visible, leave room for it via lg:pl-72. */}
+        <div className="min-w-0 flex-1 transition-all duration-300">
           <AdminHeader />
-          <main className="relative z-10 w-full px-4 pb-32 pt-8 sm:px-6 md:pb-12 md:pt-10 lg:px-8 xl:px-10 2xl:px-12">{children}</main>
+          <main className="relative z-10 w-full overflow-x-hidden px-3 pb-32 pt-8 sm:px-6 md:pb-12 md:pt-10 lg:px-8 xl:px-10 2xl:px-12">{children}</main>
         </div>
       </div>
     </div>
