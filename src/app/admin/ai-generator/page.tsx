@@ -263,6 +263,7 @@ type GenerationContext = {
   activityType?: string;
   masteryOutcome?: string;
   aiMode: AiGenerationMode;
+  gaScriptPreference?: "orthography_only" | "orthography_with_transliteration";
   targetStudentId: string | null;
   source: "manual" | "weak-area" | "student-profile";
   weakAreaId: string | null;
@@ -361,7 +362,7 @@ const GCSE_SUBJECT_GROUPS: Array<{ label: string; subjects: Subject[] }> = [
   },
   {
     label: "Languages",
-    subjects: ["gcse-french", "gcse-german", "gcse-spanish", "gcse-italian", "gcse-mandarin", "gcse-arabic", "gcse-urdu", "gcse-polish", "gcse-latin"],
+    subjects: ["gcse-french", "gcse-german", "gcse-spanish", "gcse-italian", "gcse-mandarin", "gcse-arabic", "gcse-ga", "gcse-urdu", "gcse-polish", "gcse-latin"],
   },
   {
     label: "Humanities",
@@ -392,6 +393,36 @@ function applyDefaultItemStatuses(items: GeneratedPreviewItem[]): GeneratedPrevi
   }));
 }
 
+function previewItemPromptDuplicateKey(item: GeneratedPreviewItem): string {
+  return String(item.question ?? item.prompt ?? item.sentence ?? item.targetVocabulary ?? item.word ?? "")
+    .toLowerCase()
+    .replace(/\d+(?:\.\d+)?/g, "#")
+    .replace(/[^a-z0-9#]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function previewItemMathsScenarioFamilyKey(item: GeneratedPreviewItem): string {
+  const lower = String(item.question ?? item.prompt ?? item.sentence ?? item.targetVocabulary ?? "").toLowerCase();
+  if (/\b(pack|packs|packed|packing|package|packages|packaged|packaging)\b/.test(lower) && /\b(box|boxes|bag|bags|container|containers|hold|holds|full)\b/.test(lower)) {
+    return "maths_division_packaging";
+  }
+  if (/\b(students?|teams?|groups?|sports day|without a team)\b/.test(lower) && /\b(divided|divide|left|remainder|each|equal)\b/.test(lower)) {
+    return "maths_division_grouping";
+  }
+  if (/\b(share|shared|sharing|equally|between|among)\b/.test(lower) && /\b(left|remainder|each|groups?)\b/.test(lower)) {
+    return "maths_division_sharing";
+  }
+  if (/\b(rows?|columns?|arrays?)\b/.test(lower) && /\b(each|left|remainder|divide|divided)\b/.test(lower)) {
+    return "maths_division_arrays";
+  }
+  return "";
+}
+
+function previewItemDuplicateKeys(item: GeneratedPreviewItem): string[] {
+  return [previewItemPromptDuplicateKey(item), previewItemMathsScenarioFamilyKey(item)].filter(Boolean);
+}
+
 function formatSubjectLabel(value: string): string {
   if (value === "english-language") return "English";
   const labels: Partial<Record<Subject | "math", string>> = {
@@ -412,6 +443,8 @@ function formatSubjectLabel(value: string): string {
     "gcse-italian": "GCSE Italian",
     "gcse-mandarin": "GCSE Mandarin",
     "gcse-arabic": "GCSE Arabic",
+    "ga-language": "Ga (Ghana) - Primary",
+    "gcse-ga": "GCSE Ga (Ghana)",
     "gcse-urdu": "GCSE Urdu",
     "gcse-polish": "GCSE Polish",
     "gcse-latin": "GCSE Latin",
@@ -517,6 +550,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
 
 const AI_REQUEST_TIMEOUT_MS = 180000;
 const DEFAULT_AI_MODE: AiGenerationMode = "live_openai_only";
+const DEFAULT_GA_SCRIPT_PREFERENCE: "orthography_only" | "orthography_with_transliteration" = "orthography_with_transliteration";
 const AI_MODE_OPTIONS: Array<{ value: AiGenerationMode; label: string; helper: string }> = [
   {
     value: "live_openai_only",
@@ -822,6 +856,7 @@ export default function AiGeneratorPage() {
   const [skillFocus, setSkillFocus] = useState(initialSkillFocus);
   const [difficulty, setDifficulty] = useState(resolvedPrefill.difficulty || (prefillWords ? 1 : 2));
   const [aiMode, setAiMode] = useState<AiGenerationMode>(resolvedPrefill.aiMode || DEFAULT_AI_MODE);
+  const [gaScriptPreference, setGaScriptPreference] = useState<"orthography_only" | "orthography_with_transliteration">(DEFAULT_GA_SCRIPT_PREFERENCE);
   const [items, setItems] = useState(resolvedPrefill.itemCount ?? 5);
   const [autoItemsEnabled, setAutoItemsEnabled] = useState(resolvedPrefill.itemCount === null);
   const initialCustomTopic = resolvedPrefill.topic?.trim() || (prefillWords ? `Focus practice on: ${prefillWords}` : "");
@@ -1017,6 +1052,7 @@ export default function AiGeneratorPage() {
     activityType,
     masteryOutcome,
     aiMode,
+    gaScriptPreference,
     targetStudentId,
     source: prefillSource,
     weakAreaId: loadedWeakAreaId,
@@ -1078,6 +1114,7 @@ export default function AiGeneratorPage() {
       : { label: "Valid", className: "bg-emerald-500/15 text-emerald-200" };
   const generationSourceLabel = generationDisplayLabel(generationMeta?.generationMetadata);
   const aiModeHelperText = AI_MODE_OPTIONS.find((option) => option.value === aiMode)?.helper ?? AI_MODE_OPTIONS[0].helper;
+  const isGaSubject = subject === "ga-language" || subject === "gcse-ga";
   const providerStatusBadge = generationMeta?.generationMetadata
     ? generationMeta.generationMetadata.openAiSucceeded
       ? { label: "Provider: OpenAI healthy", className: "bg-emerald-500/15 text-emerald-200" }
@@ -1188,6 +1225,7 @@ export default function AiGeneratorPage() {
       difficulty,
       itemCount: effectiveItemCount,
       aiMode,
+      gaScriptPreference,
       visualSettings: {
         enabled: visualGenerationEnabled,
         mode: visualGenerationMode,
@@ -1229,6 +1267,7 @@ export default function AiGeneratorPage() {
       activityType,
       masteryOutcome,
       aiMode,
+      gaScriptPreference,
       targetStudentId,
       source: prefillSource,
       weakAreaId: loadedWeakAreaId,
@@ -1331,6 +1370,7 @@ export default function AiGeneratorPage() {
           activityType: context.activityType,
           masteryOutcome: context.masteryOutcome,
           aiMode: context.aiMode,
+          gaScriptPreference: context.gaScriptPreference,
           aiVisualGenerationEnabled: visualGenerationEnabled,
           visualGenerationMode,
           maxVisualsPerLesson,
@@ -1427,6 +1467,16 @@ export default function AiGeneratorPage() {
           reason: diagnosticOutcome ?? (payload.errorCode === "model_error" ? "provider_unavailable" : "validation_failure"),
           requestTuple: payload.requestTuple,
         } : current);
+        setGenerationMeta({
+          model: payload.model,
+          validation: payload.meta,
+          fallback: payload.fallback,
+          providerUsed: payload.providerUsed,
+          fallbackReason: payload.fallbackReason,
+          validationReason: payload.validationReason,
+          generationMetadata: payload.generationMetadata,
+          debug: payload.generationDebug,
+        });
         setError(errorMsg);
       } else {
         if (payload.meta?.valid === false) {
@@ -1888,6 +1938,7 @@ export default function AiGeneratorPage() {
   async function regenerateItem(index: number) {
     if (loading) return;
     const requestId = ++regenerateRequestIdRef.current;
+    const regenerationNonce = ++regenerateRequestIdRef.current;
     setLoading(true);
     setError(null);
     startGenerationHeartbeat("Regenerating item");
@@ -1919,16 +1970,23 @@ export default function AiGeneratorPage() {
           skillFocus,
           ageGroup,
           difficulty,
-          numberOfItems: 1,
-          topic: `${selectedTopicTheme || skillFocus} replacement item`,
+          numberOfItems: Math.max(3, Math.min(5, preview?.items.length ?? 3)),
+          topic: selectedTopicTheme || skillFocus,
           activityType,
           masteryOutcome,
           aiMode,
+          gaScriptPreference,
           aiVisualGenerationEnabled: visualGenerationEnabled,
           visualGenerationMode,
           maxVisualsPerLesson,
           visualAllowedSubjects: effectiveVisualAllowedSubjects,
           requireVisualApproval,
+          regenerationNonce,
+          avoidPrompts: (preview?.items ?? [])
+            .filter((_, itemIndex) => itemIndex !== index)
+            .map((item) => String(item.question ?? item.prompt ?? item.sentence ?? item.targetVocabulary ?? ""))
+            .filter(Boolean)
+            .slice(0, 8),
         }),
       }, AI_REQUEST_TIMEOUT_MS);
       const parsed = await parseApiResponse<Record<string, unknown>>(response);
@@ -1971,12 +2029,23 @@ export default function AiGeneratorPage() {
         setError(payload.error ?? "Regeneration failed.");
         return;
       }
-      const replacement = payload.content?.items?.[0] as GeneratedPreviewItem | undefined;
+      const replacementCandidates = (payload.content?.items ?? []) as GeneratedPreviewItem[];
+      const existingKeys = new Set((preview?.items ?? [])
+        .filter((_, itemIndex) => itemIndex !== index)
+        .flatMap(previewItemDuplicateKeys));
+      const replacement = replacementCandidates.find((candidate) => {
+        const candidateKeys = previewItemDuplicateKeys(candidate);
+        return candidateKeys.length > 0 && candidateKeys.every((candidateKey) => !existingKeys.has(candidateKey));
+      });
       if (replacement) {
         replacePreviewItem(index, {
           ...replacement,
           status: resolvePreviewItemStatus(replacement),
         });
+        return;
+      }
+      if (replacementCandidates.length) {
+        setError("OpenAI only returned replacement items that matched existing preview items. Try regenerating again.");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "unknown";
@@ -2667,6 +2736,26 @@ export default function AiGeneratorPage() {
             </select>
             <p className="mt-2 text-xs font-medium text-slate-400">{aiModeHelperText}</p>
           </label>
+
+          {isGaSubject ? (
+            <label className="block text-sm font-bold text-slate-300">
+              Ga script preference
+              <select
+                value={gaScriptPreference}
+                onChange={(event) => {
+                  clearWeakAreaLink();
+                  setGaScriptPreference(event.target.value as "orthography_only" | "orthography_with_transliteration");
+                }}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+              >
+                <option value="orthography_with_transliteration">Orthography + transliteration help</option>
+                <option value="orthography_only">Orthography only</option>
+              </select>
+              <p className="mt-2 text-xs font-medium text-slate-400">
+                Choose learner support level for Ga outputs.
+              </p>
+            </label>
+          ) : null}
 
           <div className="rounded-2xl border border-slate-800 bg-slate-950/55 p-4">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Visual Generation Settings</p>

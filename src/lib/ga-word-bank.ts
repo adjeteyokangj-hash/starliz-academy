@@ -78,6 +78,34 @@ export type GaBulkImportExistingWord = {
   sourcePage: number | null;
 };
 
+const ENGLISH_NUMBER_WORD_TO_DIGIT: Record<string, string> = {
+  zero: "0",
+  one: "1",
+  two: "2",
+  three: "3",
+  four: "4",
+  five: "5",
+  six: "6",
+  seven: "7",
+  eight: "8",
+  nine: "9",
+  ten: "10",
+};
+
+const ENGLISH_NUMBER_DIGIT_TO_WORD: Record<string, string> = {
+  "0": "zero",
+  "1": "one",
+  "2": "two",
+  "3": "three",
+  "4": "four",
+  "5": "five",
+  "6": "six",
+  "7": "seven",
+  "8": "eight",
+  "9": "nine",
+  "10": "ten",
+};
+
 export type GaBulkImportParsedRow = {
   rowNumber: number;
   values: Record<string, string>;
@@ -409,6 +437,23 @@ export function isGaWordStudentSafe(word: { reviewStatus: string }): boolean {
   return word.reviewStatus === "Approved";
 }
 
+export function formatGaEnglishDisplayWord(
+  word: { englishWord: string; category?: string | null },
+  mode: "source" | "digit" | "letters" = "source",
+) {
+  const englishWord = cleanText(word.englishWord);
+  const category = cleanText(word.category);
+  if (category !== "Numbers") return englishWord;
+
+  const normalizedWord = englishWord.toLowerCase();
+  const asDigit = ENGLISH_NUMBER_WORD_TO_DIGIT[normalizedWord];
+  const asWord = ENGLISH_NUMBER_DIGIT_TO_WORD[englishWord];
+
+  if (mode === "digit") return asDigit ?? englishWord;
+  if (mode === "letters") return asWord ?? englishWord;
+  return englishWord;
+}
+
 export function toStudentSafeGaWord(word: {
   id: string;
   englishWord: string;
@@ -419,6 +464,7 @@ export function toStudentSafeGaWord(word: {
   quizReady: boolean;
   storyReady: boolean;
   reviewStatus: string;
+  pronunciationHint?: string | null;
 }) {
   if (!isGaWordStudentSafe(word)) return null;
   return {
@@ -430,6 +476,7 @@ export function toStudentSafeGaWord(word: {
     level: word.level,
     quizReady: word.quizReady,
     storyReady: word.storyReady,
+    pronunciationHint: word.pronunciationHint ?? null,
   };
 }
 

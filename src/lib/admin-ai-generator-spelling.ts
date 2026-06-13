@@ -28,6 +28,7 @@ type DeterministicSpellingFallbackInput = {
   topic: string;
   count: number;
   difficulty: number;
+  variantSeed?: number;
 };
 
 type FallbackSeedRow = {
@@ -307,8 +308,10 @@ function pickFallbackRows(skillFocus: string, topic: string) {
 export function buildDeterministicSpellingFallback(input: DeterministicSpellingFallbackInput) {
   const rows = pickFallbackRows(input.skillFocus, input.topic);
   const safeCount = Math.max(1, Math.min(10, input.count));
+  const safeSeed = Number.isFinite(Number(input.variantSeed)) ? Math.abs(Math.floor(Number(input.variantSeed))) : 0;
+  const offset = rows.length > 0 ? safeSeed % rows.length : 0;
   return Array.from({ length: safeCount }, (_, index) => {
-    const row = rows[index % rows.length];
+    const row = rows[(index + offset) % rows.length];
     const assessment = assessSpellingItemForDifficulty({
       word: row.word,
       sentenceContext: row.sentenceContext,
@@ -412,6 +415,7 @@ export function normalizeAdminAiGeneratorFailure(
         reason: "validation_failed",
         providerStatus,
         providerCode: providerCode || null,
+        validationMessage: message,
       },
       status: 422,
     };

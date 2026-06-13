@@ -151,8 +151,11 @@ test.describe("Retry Pack Completion", () => {
       await page.request.post("/api/consent", { data: { accepted: true, version: "1.0" } });
     }
 
-    await page.goto("/games/math");
-    await expect(page.getByPlaceholder("Type the answer")).toBeVisible();
+    await page.goto("/games/math", { waitUntil: "networkidle" });
+    // The math game needs localStorage profile state which is injected by seedClientProfileState
+    // but requires a page reload after navigation to take effect.
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.getByPlaceholder("Type the answer")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Check Answer" })).toBeVisible();
 
     // Force one weak-item entry by getting the first question wrong 3 times.

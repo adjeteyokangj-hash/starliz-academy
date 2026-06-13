@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { GA_CATEGORIES, GA_LEVELS, toStudentSafeGaWord } from "@/lib/ga-word-bank";
 import { GA_VOICE_ACTIVITY_TYPES } from "@/lib/ga-voice";
+import { listGaPronunciationReferences, serializeGaPronunciationReference } from "@/lib/ga-audio";
 
 export const GA_LESSON_STATUSES = ["Draft", "Published", "Archived"] as const;
 export const GA_ACTIVITY_TYPES = ["flashcards", "quiz", ...GA_VOICE_ACTIVITY_TYPES] as const;
@@ -55,6 +56,28 @@ type LessonLike = {
   words: LessonWordLike[];
   activities: Array<{ id: string; activityType: string; title: string; instructions: string | null; sortOrder: number }>;
   quizQuestions: QuizQuestionLike[];
+};
+
+type PronunciationReferenceLike = {
+  id: string;
+  referenceType: string;
+  sourceUrl: string;
+  sourceTitle: string | null;
+  speakerName: string | null;
+  channelName: string | null;
+  timestampStart: string | null;
+  timestampEnd: string | null;
+  linkedWordId: string | null;
+  linkedLessonId: string | null;
+  linkedLetter: string | null;
+  linkedSound: string | null;
+  linkedPhraseText: string | null;
+  pronunciationNote: string | null;
+  permissionStatus: string;
+  reviewStatus: string;
+  confidenceLevel: number | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type GaLessonInput = {
@@ -172,12 +195,28 @@ export function toStudentSafeGaLesson(lesson: LessonLike) {
     lessonOrder: lesson.lessonOrder,
     words,
     flashcards: words.map((word) => ({ wordId: word.id, englishWord: word.englishWord, gaWord: word.gaWord })),
+    pronunciationReferences: [] as PronunciationReferenceLike[],
     activities: lesson.activities
       .filter((activity) => GA_ACTIVITY_TYPES.includes(activity.activityType as typeof GA_ACTIVITY_TYPES[number]))
       .sort((left, right) => left.sortOrder - right.sortOrder)
       .map((activity) => ({ id: activity.id, activityType: activity.activityType, title: activity.title, instructions: activity.instructions })),
     quizQuestions,
   };
+}
+
+async function buildStudentPronunciationReferences(lesson: LessonLike) {
+  const references = await listGaPronunciationReferences(200);
+  const serialized = references.map(serializeGaPronunciationReference) as PronunciationReferenceLike[];
+  const wordIds = new Set(lesson.words.map((row) => row.word.id));
+
+  const lessonRefs = serialized.filter((reference) => reference.linkedLessonId === lesson.id);
+  const wordRefs = serialized.filter((reference) => reference.linkedWordId && wordIds.has(reference.linkedWordId));
+  const unique = new Map<string, PronunciationReferenceLike>();
+  for (const reference of [...lessonRefs, ...wordRefs]) {
+    unique.set(reference.id, reference);
+  }
+
+  return Array.from(unique.values()).sort((left, right) => left.createdAt.localeCompare(right.createdAt));
 }
 
 async function approvedWordsByIds(wordIds: string[]) {
@@ -291,7 +330,14 @@ export async function listStudentGaLessons() {
     },
     orderBy: [{ packKey: "asc" }, { lessonOrder: "asc" }, { title: "asc" }],
   });
-  return lessons.map(toStudentSafeGaLesson).filter((lesson) => lesson !== null);
+  return Promise.all(lessons.map(async (lesson) => {
+    const safeLesson = toStudentSafeGaLesson(lesson);
+    if (!safeLesson) return null;
+    return {
+      ...safeLesson,
+      pronunciationReferences: await buildStudentPronunciationReferences(lesson),
+    };
+  })).then((items) => items.filter((lesson) => lesson !== null));
 }
 
 export async function getStudentGaLesson(idOrSlug: string) {
@@ -303,7 +349,13 @@ export async function getStudentGaLesson(idOrSlug: string) {
       quizQuestions: { include: { word: true }, orderBy: { sortOrder: "asc" } },
     },
   });
-  return lesson ? toStudentSafeGaLesson(lesson) : null;
+  if (!lesson) return null;
+  const safeLesson = toStudentSafeGaLesson(lesson);
+  if (!safeLesson) return null;
+  return {
+    ...safeLesson,
+    pronunciationReferences: await buildStudentPronunciationReferences(lesson),
+  };
 }
 
 export async function recordGaLessonProgress(input: GaProgressInput) {

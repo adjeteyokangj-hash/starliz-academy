@@ -100,6 +100,27 @@ function createAccumulator(): ValidationAccumulator {
 type ScienceDiscipline = "chemistry" | "physics" | "biology";
 
 const COMMAND_WORDS = ["explain", "describe", "calculate", "evaluate", "compare", "justify", "analyse", "state", "outline", "predict"];
+const GA_TWI_MARKERS = [
+  "me ho",
+  "wo ho",
+  "woy3",
+  "woyɛ",
+  "yɛfrɛ",
+  "mepa wo kyɛw",
+  "mepa wo kyew",
+  "meda wo ase",
+  "medaase",
+  "maakye",
+  "maaha",
+  "mo akye",
+  "akwaaba",
+  "ete sen",
+  "ɛte sɛn",
+  "wo din de sen",
+  "wo din de sɛn",
+  "me nim",
+  "yɛ de",
+] as const;
 
 const SCIENCE_DISCIPLINE_KEYWORDS: Record<ScienceDiscipline, { allowed: string[]; forbidden: string[]; drift: ScienceDiscipline[] }> = {
   chemistry: {
@@ -174,7 +195,7 @@ function hasMathContent(value: string) {
 
 function hasMathIntent(value: string) {
   const lower = value.toLowerCase();
-  return /(calculate|solve|work out|estimate|find|equation|algebra|ratio|percentage|fraction|graph|statistics|probability|mean|median|mode|range|frequency|table|chart)/i.test(lower)
+  return /(calculate|solve|work out|estimate|find|how many|how much|left over|remainder|equal groups?|share(?:d|s|ing)?|pack(?:ed|s|ing)?|boxes?|each|altogether|total|difference|equation|algebra|ratio|percentage|fraction|graph|statistics|probability|mean|median|mode|range|frequency|table|chart)/i.test(lower)
     && (/\d/.test(lower) || /(equation|algebra|ratio|probability|statistics|mean|median|mode|range|frequency|graph|table|chart)/i.test(lower));
 }
 
@@ -204,6 +225,32 @@ function wordCount(value: string): number {
 
 function normalizeAnswerOption(value: unknown) {
   return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizePromptDuplicateKey(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\d+(?:\.\d+)?/g, "#")
+    .replace(/[^a-z0-9#]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function mathsScenarioFamilyKey(value: string) {
+  const lower = value.toLowerCase();
+  if (/\b(pack|packs|packed|packing|package|packages|packaged|packaging)\b/.test(lower) && /\b(box|boxes|bag|bags|container|containers|hold|holds|full)\b/.test(lower)) {
+    return "maths_division_packaging";
+  }
+  if (/\b(students?|teams?|groups?|sports day|without a team)\b/.test(lower) && /\b(divided|divide|left|remainder|each|equal)\b/.test(lower)) {
+    return "maths_division_grouping";
+  }
+  if (/\b(share|shared|sharing|equally|between|among)\b/.test(lower) && /\b(left|remainder|each|groups?)\b/.test(lower)) {
+    return "maths_division_sharing";
+  }
+  if (/\b(rows?|columns?|arrays?)\b/.test(lower) && /\b(each|left|remainder|divide|divided)\b/.test(lower)) {
+    return "maths_division_arrays";
+  }
+  return "";
 }
 
 function spellingLevelFiveIssue(input: QualityInput, data: Record<string, unknown>, safeDifficulty: number) {
@@ -400,6 +447,30 @@ function classifySubjectMatch(subject: string | undefined, text: string, type: Q
   }
   if (type === "reading" || type === "writing") return hasLiteracySignal(lower) || !hasMathContent(lower);
   return true;
+}
+
+function isGaLanguageSubject(subject: string | undefined) {
+  const normalized = String(subject ?? "").toLowerCase();
+  return normalized === "ga-language" || normalized === "gcse-ga";
+}
+
+function detectGaTwiMarkers(value: string): string[] {
+  const lowered = value
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[\s\p{P}]+/gu, " ")
+    .trim();
+  return GA_TWI_MARKERS.filter((marker) => {
+    const escaped = marker
+      .toLowerCase()
+      .normalize("NFKC")
+      .replace(/[\s\p{P}]+/gu, " ")
+      .trim()
+      .split(" ")
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s+");
+    return new RegExp(`(^|\\s)${escaped}(\\s|$)`, "iu").test(lowered);
+  });
 }
 
 function pushMismatch(acc: ValidationAccumulator, type: "year" | "subject" | "skill" | "difficulty") {
@@ -620,6 +691,8 @@ function validateSpellingItems(
 function validateStructuredItems(records: unknown[], input: QualityInput): { cleaned: Record<string, unknown>[]; meta: QualityMeta } {
   const acc = createAccumulator();
   const seen = new Set<string>();
+  const seenMathsShapes = new Set<string>();
+  const seenMathsScenarioFamilies = new Set<string>();
   const yearNumber = parseYearNumber(input.yearGroup);
   const safeDifficulty = Math.max(1, Math.min(5, Number.isFinite(input.difficulty) ? Number(input.difficulty) : 3));
 
@@ -633,6 +706,8 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
     const prompt = String(data.question ?? data.prompt ?? data.sentence ?? data.targetVocabulary ?? "").trim();
     const answer = data.answer;
     const key = prompt.toLowerCase();
+    const mathsShapeKey = input.type === "maths" ? normalizePromptDuplicateKey(prompt) : "";
+    const mathsFamilyKey = input.type === "maths" ? mathsScenarioFamilyKey(prompt) : "";
     const issues: string[] = [];
 
     if (!prompt && input.type !== "reading") {
@@ -642,6 +717,12 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
       issues.push("missing_answer");
     }
     if (key && seen.has(key)) {
+      issues.push(`duplicate:${prompt}`);
+    }
+    if (mathsShapeKey && seenMathsShapes.has(mathsShapeKey)) {
+      issues.push(`duplicate:${prompt}`);
+    }
+    if (mathsFamilyKey && seenMathsScenarioFamilies.has(mathsFamilyKey)) {
       issues.push(`duplicate:${prompt}`);
     }
 
@@ -662,7 +743,7 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
 
     if (input.type === "maths") {
       const mathsText = `${prompt} ${String(answer ?? "")} ${String(data.explanation ?? "")}`;
-      if (!hasMathContent(mathsText)) {
+      if (!hasMathContent(mathsText) && !hasMathIntent(mathsText)) {
         issues.push("maths_subject_mismatch");
         pushMismatch(acc, "subject");
       }
@@ -757,6 +838,20 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
       if (isReadingComprehensionSkill(input.skillFocus) && !data.passage) {
         issues.push("reading_missing_passage");
       }
+      if (isGaLanguageSubject(input.subject)) {
+        const gaText = [
+          prompt,
+          String(answer ?? ""),
+          String(data.explanation ?? ""),
+          String(data.targetVocabulary ?? ""),
+          String(data.englishMeaning ?? ""),
+        ].join(" ");
+        const twiMarkers = detectGaTwiMarkers(gaText);
+        if (twiMarkers.length) {
+          issues.push(...twiMarkers.map((marker) => `ga_twi_marker:${marker}`));
+          pushMismatch(acc, "subject");
+        }
+      }
     }
 
     if (input.type === "writing" || input.type === "grammar" || input.type === "punctuation") {
@@ -796,6 +891,8 @@ function validateStructuredItems(records: unknown[], input: QualityInput): { cle
     }
 
     seen.add(key);
+    if (mathsShapeKey) seenMathsShapes.add(mathsShapeKey);
+    if (mathsFamilyKey) seenMathsScenarioFamilies.add(mathsFamilyKey);
     acc.cleaned.push(data);
   }
 
@@ -868,6 +965,9 @@ export function validateAiContentQuality(input: QualityInput): QualityResult {
     }
     if (errors.some((entry) => entry.startsWith("science_contamination:") || entry.startsWith("science_subject_drift:"))) {
       return { ok: false, error: "Generated content drifted into another science discipline. Please regenerate.", cleanedItems: validated.cleaned, meta: validated.meta };
+    }
+    if (errors.some((entry) => entry.startsWith("ga_twi_marker:"))) {
+      return { ok: false, error: "Generated Ga content includes Twi markers and was rejected. Please regenerate with standard Accra Ga only.", cleanedItems: validated.cleaned, meta: validated.meta };
     }
     if (errors.includes("science_subject_containment_missing")) {
       return { ok: false, error: "Generated content did not stay within the selected science discipline.", cleanedItems: validated.cleaned, meta: validated.meta };

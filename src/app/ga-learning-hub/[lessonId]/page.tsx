@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { formatGaEnglishDisplayWord } from "@/lib/ga-word-bank";
 
 type Lesson = {
   id: string;
@@ -11,6 +12,17 @@ type Lesson = {
   category: string;
   objective: string;
   flashcards: Array<{ wordId: string; englishWord: string; gaWord: string }>;
+  pronunciationReferences: Array<{
+    id: string;
+    sourceTitle: string | null;
+    sourceUrl: string;
+    pronunciationNote: string | null;
+    linkedWordId: string | null;
+    linkedPhraseText: string | null;
+    linkedLessonId: string | null;
+    reviewStatus: string;
+    permissionStatus: string;
+  }>;
   quizQuestions: Array<{ id: string; prompt: string; options: string[]; correctAnswer: string; explanation: string | null }>;
 };
 
@@ -90,11 +102,35 @@ export default function GaLessonPage({ params }: Props) {
                 {lesson.flashcards.map((card) => (
                   <article key={card.wordId} className="rounded-xl border border-slate-800 bg-slate-950/80 p-4">
                     <p className="text-xs uppercase text-slate-500">English</p>
-                    <p className="text-xl font-black">{card.englishWord}</p>
+                    <p className="text-xl font-black">{formatGaEnglishDisplayWord({ englishWord: card.englishWord, category: lesson.category })}</p>
                     <p className="mt-3 text-xs uppercase text-emerald-300">Ga</p>
                     <p className="text-2xl font-black text-emerald-100">{card.gaWord}</p>
                   </article>
                 ))}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-black">Pronunciation References</h2>
+                <Link href="/ga-dictionary" className="text-sm font-bold text-emerald-300 hover:text-emerald-200">Open Ga Dictionary</Link>
+              </div>
+              <p className="mt-2 text-sm text-slate-400">Approved pronunciation and audio references linked to this lesson and its words.</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {lesson.pronunciationReferences.length ? lesson.pronunciationReferences.map((reference) => (
+                  <article key={reference.id} className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 text-sm text-slate-300">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-300">{reference.sourceTitle ?? reference.permissionStatus}</p>
+                    <p className="mt-2 font-bold text-white">{reference.pronunciationNote ?? reference.linkedPhraseText ?? "Pronunciation reference"}</p>
+                    <p className="mt-1 text-xs text-slate-400">{reference.reviewStatus} · {reference.linkedWordId ? `Word ${reference.linkedWordId}` : reference.linkedLessonId ? "Lesson-level reference" : "General reference"}</p>
+                    <a href={reference.sourceUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-xs font-bold text-emerald-300 hover:text-emerald-200">
+                      Open source reference
+                    </a>
+                  </article>
+                )) : (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 text-sm text-slate-400">
+                    No approved pronunciation references are linked yet. Open the Ga Dictionary to seed vocabulary, or add references from the Ga Voice dashboard.
+                  </div>
+                )}
               </div>
             </section>
 

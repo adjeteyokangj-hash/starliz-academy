@@ -169,6 +169,7 @@ function expectedSubjectFamily(subject: string): Subject | null {
 
 function inferSubject(item: BlackBoxGeneratedItem): Subject | null {
   const explicit = normalizeSubject(clean(item.subject || item.contentType || item.type));
+  if (explicit === "ga-language") return "ga-language";
   if (clean(item.word)) return "spelling";
   if (clean(item.passage)) return "reading";
   const text = itemEvidenceText(item);
@@ -239,9 +240,17 @@ function estimateDifficultyLevel(item: BlackBoxGeneratedItem): number {
   const passage = clean(item.passage);
   const text = `${prompt} ${answer} ${clean(item.explanation)} ${passage}`;
   const options = answerOptions(item);
+  const lowerText = text.toLowerCase();
+  const operatorMatches = prompt.match(/[+\-x÷*/=]/g) ?? [];
+  const hasMathsReasoning = /\b(because|explain|justify|method|reason|compare|difference|remainder|left over|missing step|mistake|error|correct|show your working|worked out)\b/i.test(lowerText);
+  const hasMathsContext = /\b(shared equally|altogether|boxes|groups|packed|remaining|left|each|per|total|class|shop|pencils|children|tables|bags)\b/i.test(lowerText);
+  const hasMultiStepMaths = operatorMatches.length >= 2 || /\b(after|then|before|remaining|left|difference|more than|less than)\b/i.test(prompt);
+
   let score = 1;
   if (wordCount(prompt) >= 12 || wordCount(answer) >= 8) score += 1;
   if (/[+\-x÷*/=]/.test(prompt) || /\b(because|explain|justify|evidence|method|compare|analyse)\b/i.test(text)) score += 1;
+  if (hasMathsContext && hasMathsReasoning) score += 1;
+  if (hasMultiStepMaths && hasMathsReasoning && wordCount(clean(item.explanation)) >= 8) score += 1;
   if (wordCount(passage) >= 45 || /\b(ratio|algebra|photosynthesis|neutralisation|metaphor|inference|subordinate|quadratic)\b/i.test(text)) score += 1;
   if (wordCount(passage) >= 90 || /\b(evaluate|synthesise|simultaneous|electrolysis|structural effect|language technique)\b/i.test(text)) score += 1;
   if (hasAdvancedEnglishDemand(text) && options.length >= 3 && wordCount(clean(item.explanation)) >= 14) score += 1;

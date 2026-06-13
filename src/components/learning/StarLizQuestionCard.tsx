@@ -150,6 +150,7 @@ export default function StarLizQuestionCard({
       : isFinalWrong
         ? "Try a similar question"
         : "Continue");
+    const submitDisabled = disabled || submitting || !onSubmit;
 
   return (
     <div className="rounded-3xl bg-slate-50 p-6">
@@ -297,7 +298,8 @@ export default function StarLizQuestionCard({
               </div>
               <button
                 type="button"
-                disabled={disabled || submitting}
+                disabled={submitDisabled}
+                title={!onSubmit ? "Preview only - no submission action available" : undefined}
                 onClick={onSubmit}
                 className="rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500 disabled:opacity-60"
               >

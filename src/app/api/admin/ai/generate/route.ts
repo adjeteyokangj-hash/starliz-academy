@@ -45,6 +45,8 @@ import {
   type Subject,
   skillsForSubjectAndYear,
 } from "@/lib/curriculum";
+import { GA_ALPHABET } from "@/lib/ga-alphabet";
+import { isGaWordSchemaNotReadyError, listGaWords } from "@/lib/ga-word-bank";
 import {
   classifyGenerationDiagnosticOutcome,
   validateGeneratedTupleContainment,
@@ -58,7 +60,7 @@ const OPENAI_MODEL = "gpt-4o-mini";
 const generationCache = new Map<string, { content: unknown; meta: Record<string, unknown> }>();
 const generationRateLimit = new Map<string, { count: number; resetAt: number }>();
 
-const GCSE_LANGUAGE_SUBJECTS: Subject[] = ["gcse-french", "gcse-german", "gcse-spanish"];
+const GCSE_LANGUAGE_SUBJECTS: Subject[] = ["gcse-french", "gcse-german", "gcse-spanish", "gcse-italian", "gcse-mandarin", "gcse-arabic", "gcse-ga", "gcse-urdu", "gcse-polish", "gcse-latin"];
 
 const DIFFICULTY_PROFILE: Record<number, {
   difficultyLabel: string;
@@ -103,6 +105,12 @@ type EnglishStrand = "phonics" | "spelling" | "reading" | "grammar" | "punctuati
 type VisualGenerationMode = "none" | "planned_only" | "generate_now";
 type ScienceDiscipline = "chemistry" | "physics" | "biology";
 
+type GaFallbackLexicon = {
+  alphabetUpper: string[];
+  approvedGaWords: string[];
+  approvedPairs: Array<{ englishWord: string; gaWord: string }>;
+};
+
 type VisualGenerationPlan = {
   enabled: boolean;
   mode: VisualGenerationMode;
@@ -115,6 +123,34 @@ function truncateForDiagnostics(value: string, maxLength = 1200) {
   const safe = String(value ?? "");
   if (safe.length <= maxLength) return safe;
   return `${safe.slice(0, maxLength)}... [truncated ${safe.length - maxLength} chars]`;
+}
+
+function isGaSubject(subject: Subject) {
+  return subject === "ga-language" || subject === "gcse-ga";
+}
+
+async function loadGaFallbackLexicon(subject: Subject): Promise<GaFallbackLexicon | null> {
+  if (!isGaSubject(subject)) return null;
+
+  const alphabetUpper = GA_ALPHABET.map(([upper]) => String(upper));
+  try {
+    const approvedWords = await listGaWords({ approvedOnly: true, limit: 120 });
+    const approvedPairs = approvedWords
+      .map((entry) => ({
+        englishWord: String(entry.englishWord ?? "").trim(),
+        gaWord: String(entry.gaWord ?? "").trim(),
+      }))
+      .filter((entry) => entry.englishWord.length > 0 && entry.gaWord.length > 0)
+      .slice(0, 80);
+
+    const approvedGaWords = Array.from(new Set(approvedPairs.map((entry) => entry.gaWord))).slice(0, 60);
+    return { alphabetUpper, approvedGaWords, approvedPairs };
+  } catch (error) {
+    if (!isGaWordSchemaNotReadyError(error)) {
+      console.warn("[admin-ai-generate] unable to load Ga word bank lexicon", error);
+    }
+    return { alphabetUpper, approvedGaWords: [], approvedPairs: [] };
+  }
 }
 
 function resolveScienceDiscipline(subject: Subject, skillFocus: string): ScienceDiscipline | null {
@@ -420,6 +456,8 @@ function buildUserPrompt(
   weakAreas: string[] = [],
   repairFeedback = "",
   scienceDiscipline: ScienceDiscipline | null = null,
+  avoidPrompts: string[] = [],
+  gaScriptPreference: "orthography_only" | "orthography_with_transliteration" = "orthography_with_transliteration",
 ): string {
   const skillInstruction = targetSkills.length
     ? `\nSKILL TARGETING: Focus content on these skills: ${targetSkills.join(", ")}.`
@@ -442,6 +480,9 @@ FOLLOW-UP PRACTICE:
   const difficultyProfile = DIFFICULTY_PROFILE[safeLevel] ?? DIFFICULTY_PROFILE[3];
   const genericRepairLine = repairFeedback
     ? `\nREPAIR FEEDBACK FROM VALIDATION:\n${repairFeedback}\nReplace invalid or too-easy items while keeping year, subject, skill, topic, and difficulty aligned.`
+    : "";
+  const avoidanceInstruction = avoidPrompts.length
+    ? `\nAVOID REPEATING THESE EXISTING PREVIEW QUESTIONS:\n${avoidPrompts.slice(0, 8).map((prompt, index) => `${index + 1}. ${prompt.slice(0, 260)}`).join("\n")}\nCreate genuinely different scenarios, objects, operation structures, and reasoning tasks. Do not paraphrase these questions.`
     : "";
   const difficultyLines = `
 Difficulty profile:
@@ -609,10 +650,12 @@ Difficulty ${level} is a strict requirement:
 - Level 3: standard practice with a small application step.
 - Level 4: multi-step reasoning with an explanation of method.
 - Level 5: challenge/problem solving using mixed context, distractors, reasoning, and justification.
-If topic is times tables and difficulty is 5, do not generate only simple prompts like "What is 6 times 4?". Use multi-step contexts such as missing factors, comparison, scaled quantities, arrays, inverse operations, or choosing and justifying an efficient strategy.
+If difficulty is 5 for KS1/KS2 maths, every item must require at least two of these: multi-step calculation, method explanation, justification, comparison of strategies, missing-step completion, error analysis, remainder reasoning, or deciding whether a statement is always/sometimes/never true. Do not generate ordinary one-answer word problems only. The question must ask the learner to explain, justify, compare, find the mistake, complete a missing step, or show an efficient method. The explanation must be at least two sentences and include because/therefore reasoning. If topic is times tables or division, do not generate only simple prompts like "What is 6 times 4?" or ordinary sharing problems. Use missing factors, comparison, scaled quantities, arrays, inverse operations, remainders, distractor information, or choosing and justifying an efficient strategy.
+Example of a valid difficulty-5 maths question: 'A baker uses 3 equal packs of 12 rolls and a loose tray of 7. The total was said to be 44. Evaluate which inverse operation checks the final total and justify your method.'
+Across the set, vary the context, numbers, operation structure, and reasoning task. Do not reuse the same story, object, or question template with only number changes.
 Return JSON with: id, question, answer, explanation, choices, yearGroup, skillFocus, difficulty and topic.
 Do not return spelling words or reading passages.
-Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
+Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${avoidanceInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "science") {
     const isGcse = safeYearGroup === "Year 10" || safeYearGroup === "Year 11" || keyStage === "KS4";
@@ -652,15 +695,31 @@ Prefer helpful visuals for science where appropriate (diagram, graph, table).
 Every item must include: difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "languages") {
-    const languageSubject = GCSE_LANGUAGE_SUBJECTS.includes(subject) ? subject.replace("gcse-", "").toUpperCase() : "language";
-    return `Generate ${count} GCSE ${languageSubject} tasks for ${keyStage}, ${safeYearGroup}, difficulty ${safeLevel}.
+    const isGcseLanguage = GCSE_LANGUAGE_SUBJECTS.includes(subject);
+    const languageSubject = isGcseLanguage ? subject.replace("gcse-", "").toUpperCase() : String(subject).replace(/-/g, " ");
+    const gaBandInstruction = (() => {
+      if (!(subject === "ga-language" || subject === "gcse-ga")) return "";
+      if (safeYearGroup === "Year 1" || safeYearGroup === "Year 2") {
+        return "Ga progression (Year 1-2): focus on alphabet recognition, basic pronunciation, numbers 1-20, greetings, and simple repeat-after-me sentence frames. Keep prompts short, concrete, and high-scaffold.";
+      }
+      if (safeYearGroup === "Year 3" || safeYearGroup === "Year 4") {
+        return "Ga progression (Year 3-4): focus on alphabet fluency, counting in context, simple grammar patterns, short sentence building, and beginner reading/listening tasks with clear clues.";
+      }
+      return "Ga progression (Year 5-6+): focus on conversational accuracy, short paragraph reading, translation both ways, structured speaking/writing tasks, and reduced scaffolding.";
+    })();
+    const gaDialectInstruction = subject === "ga-language" || subject === "gcse-ga"
+      ? gaScriptPreference === "orthography_only"
+        ? "Ga instruction requirements: use standard Accra Ga orthography only (no transliteration notes). Do not mix dialect variants in the same item set. Keep spelling and vocabulary consistent. Include alphabet and number teaching where relevant (letters, pronunciation cues, and counting)."
+        : "Ga instruction requirements: use standard Accra Ga orthography and learner-safe classroom phrasing. Do not mix dialect variants in the same item set. Keep spelling and vocabulary consistent. Include alphabet and number teaching where relevant (letters, pronunciation cues, and counting). Include transliteration help where useful for non-native learners."
+      : "";
+    return `Generate ${count} ${isGcseLanguage ? "GCSE" : "primary/KS3"} ${languageSubject} tasks for ${keyStage}, ${safeYearGroup}, difficulty ${safeLevel}.
 Subject: ${subject}.
 Skill focus: ${skillFocus || "Vocabulary"}.
 Topic/theme: ${cleanedTopic || skillFocus || "Identity and culture"}.
-Exam board: ${examBoard || "General GCSE"}.
+Exam board: ${isGcseLanguage ? (examBoard || "General GCSE") : "not required for this stage"}.
 Use language-specific activity modes only: vocabulary, translation, listening-style, reading comprehension, grammar, speaking prompts, writing tasks, role play, photo card, sentence building, verb conjugation, tenses, exam practice.
 Every item must include: activityMode, difficultyLevel, difficultyLabel, cognitiveDemand, scaffoldingLevel, visualRequired, visualType, visualPrompt, visualAltText.
-Do not return generic maths/science-only formats.${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
+Do not return generic maths/science-only formats.${gaDialectInstruction ? `\n${gaDialectInstruction}` : ""}${gaBandInstruction ? `\n${gaBandInstruction}` : ""}${difficultyLines}${skillInstruction}${weakInstruction}${followUpInstruction}${genericRepairLine}`;
   }
   if (type === "punctuation") {
     return `Generate ${count} UK punctuation practice items for ${keyStage}, ${safeYearGroup}, difficulty ${level}.
@@ -1547,6 +1606,7 @@ function buildValidatedSpellingFallback({
   topic,
   count,
   difficulty,
+  variantSeed,
 }: {
   keyStage: string;
   yearGroup: string;
@@ -1554,6 +1614,7 @@ function buildValidatedSpellingFallback({
   topic: string;
   count: number;
   difficulty: number;
+  variantSeed?: number;
 }) {
   const fallbackItems = buildDeterministicSpellingFallback({
     keyStage,
@@ -1562,6 +1623,7 @@ function buildValidatedSpellingFallback({
     topic,
     count,
     difficulty,
+    variantSeed,
   });
   const quality = validateAiContentQuality({
     type: "spelling",
@@ -1611,6 +1673,7 @@ function buildValidatedSpellingFallback({
 function buildDeterministicGenericFallback(input: {
   type: "spelling" | "phonics" | "maths" | "reading" | "writing" | "grammar" | "punctuation" | "languages" | "science";
   subject: Subject;
+  gaLexicon?: GaFallbackLexicon | null;
   scienceDiscipline?: ScienceDiscipline | null;
   keyStage: string;
   yearGroup: string;
@@ -1618,28 +1681,410 @@ function buildDeterministicGenericFallback(input: {
   topic: string;
   count: number;
   difficulty: number;
+  variantSeed?: number;
 }) {
   const safeCount = Math.max(1, Math.min(10, input.count));
+  const safeSeed = Number.isFinite(Number(input.variantSeed)) ? Math.abs(Math.floor(Number(input.variantSeed))) : 0;
+  const variantOffset = safeSeed % 997;
   const difficultyLabel = DIFFICULTY_PROFILE[input.difficulty]?.difficultyLabel ?? "Balanced challenge";
   const baseTopic = input.topic || input.skillFocus || "curriculum practice";
   const baseSkill = input.skillFocus || "core skill";
   const wordsByDifficulty = ["identify", "apply", "explain", "analyse", "justify"]; 
 
+  const resolveLanguageProfile = (subject: Subject) => {
+    const normalized = String(subject).toLowerCase();
+    if (normalized.includes("french")) {
+      return {
+        languageName: "French",
+        targetLanguageName: "francais",
+        activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+        prompts: [
+          "Traduis en francais: I am revising vocabulary for my exam.",
+          "Choisis la bonne forme du verbe: Nous ___ (etudier) le francais chaque soir.",
+          "Remets les mots dans l'ordre: aime / le week-end / je / lire / pendant.",
+          "Lis le texte court puis reponds en anglais: " + "\"Je m'appelle Lila et j'aime apprendre les langues.\"",
+          "Prepare une reponse orale de 2 phrases sur ce sujet: mes loisirs.",
+          "Ecris deux phrases en francais sur: l'ecole et les matieres preferees.",
+          "Associe chaque expression francaise a la bonne traduction anglaise.",
+          "Conjugue le verbe etre au present pour: nous.",
+        ],
+        modelAnswers: [
+          "Je revise le vocabulaire pour mon examen.",
+          "Nous etudions le francais chaque soir.",
+          "Je aime lire pendant le week-end.",
+          "The speaker says her name is Lila and she likes learning languages.",
+          "J'aime jouer au foot et ecouter de la musique.",
+          "J'aime les mathematiques et l'histoire. Mon professeur est tres gentil.",
+          "bonjour = hello; merci = thank you; au revoir = goodbye",
+          "nous sommes",
+        ],
+      };
+    }
+    if (normalized.includes("german")) {
+      return {
+        languageName: "German",
+        targetLanguageName: "Deutsch",
+        activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+        prompts: [
+          "Ubersetze ins Deutsche: I am revising vocabulary for my exam.",
+          "Wahle die richtige Verbform: Wir ___ (lernen) jeden Abend Deutsch.",
+          "Ordne die Worter: am / ich / Wochenende / gern / lese.",
+          "Lies den kurzen Text und antworte auf Englisch: \"Ich heisse Lila und ich lerne gern Sprachen.\"",
+          "Bereite eine kurze mundliche Antwort vor: meine Hobbys.",
+          "Schreibe zwei Satze auf Deutsch uber: Schule und Lieblingsfacher.",
+          "Ordne jede deutsche Wendung der richtigen englischen Bedeutung zu.",
+          "Konjugiere das Verb sein im Prasens fur: wir.",
+        ],
+        modelAnswers: [
+          "Ich wiederhole den Wortschatz fur meine Prufung.",
+          "Wir lernen jeden Abend Deutsch.",
+          "Ich lese am Wochenende gern.",
+          "The speaker says her name is Lila and she likes learning languages.",
+          "Ich spiele gern Fussball und hore Musik.",
+          "Ich mag Mathe und Geschichte. Mein Lehrer ist sehr nett.",
+          "hallo = hello; danke = thank you; auf Wiedersehen = goodbye",
+          "wir sind",
+        ],
+      };
+    }
+    if (normalized.includes("spanish")) {
+      return {
+        languageName: "Spanish",
+        targetLanguageName: "espanol",
+        activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+        prompts: [
+          "Traduce al espanol: I am revising vocabulary for my exam.",
+          "Elige la forma correcta: Nosotros ___ (estudiar) espanol cada tarde.",
+          "Ordena las palabras: leer / me / los fines de semana / gusta.",
+          "Lee el texto y responde en ingles: \"Me llamo Lila y me gusta aprender idiomas.\"",
+          "Prepara una respuesta oral corta sobre: mis pasatiempos.",
+          "Escribe dos frases en espanol sobre: el colegio y tus asignaturas favoritas.",
+          "Relaciona cada expresion en espanol con su significado en ingles.",
+          "Conjuga el verbo ser en presente para: nosotros.",
+        ],
+        modelAnswers: [
+          "Estoy repasando el vocabulario para mi examen.",
+          "Nosotros estudiamos espanol cada tarde.",
+          "Me gusta leer los fines de semana.",
+          "The speaker says her name is Lila and she likes learning languages.",
+          "Me gusta jugar al futbol y escuchar musica.",
+          "Me gustan las matematicas y la historia. Mi profesor es muy amable.",
+          "hola = hello; gracias = thank you; adios = goodbye",
+          "nosotros somos",
+        ],
+      };
+    }
+    if (normalized.includes("italian")) {
+      return {
+        languageName: "Italian",
+        targetLanguageName: "italiano",
+        activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+        prompts: [
+          "Traduci in italiano: I am revising vocabulary for my exam.",
+          "Scegli la forma corretta: Noi ___ (studiare) italiano ogni sera.",
+          "Metti in ordine le parole: leggere / mi / nel fine settimana / piace.",
+          "Leggi il testo breve e rispondi in inglese: \"Mi chiamo Lila e mi piace imparare le lingue.\"",
+          "Prepara una risposta orale breve su: i miei passatempi.",
+          "Scrivi due frasi in italiano su: scuola e materie preferite.",
+          "Abbina ogni espressione italiana al significato inglese corretto.",
+          "Coniuga il verbo essere al presente per: noi.",
+        ],
+        modelAnswers: [
+          "Sto ripassando il vocabolario per il mio esame.",
+          "Noi studiamo italiano ogni sera.",
+          "Mi piace leggere nel fine settimana.",
+          "The speaker says her name is Lila and she likes learning languages.",
+          "Mi piace giocare a calcio e ascoltare musica.",
+          "Mi piacciono matematica e storia. Il mio insegnante e molto gentile.",
+          "ciao = hello; grazie = thank you; arrivederci = goodbye",
+          "noi siamo",
+        ],
+      };
+    }
+    if (normalized.includes("latin")) {
+      return {
+        languageName: "Latin",
+        targetLanguageName: "Latina",
+        activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+        prompts: [
+          "Verte in Latinum: The student reads a book.",
+          "Elige formam rectam: Nos ___ (esse) discipuli diligentes.",
+          "Ordina verba: in / schola / puella / legit.",
+          "Lege textum breve et responde Anglice: \"Lilia linguas discere amat.\"",
+          "Para brevem responsionem oralem de: vita scholastica.",
+          "Scribe duas sententias Latinas de schola.",
+          "Coniunge verba Latina cum significationibus Anglicis.",
+          "Coniuga verbum esse in praesenti pro: nos.",
+        ],
+        modelAnswers: [
+          "Discipulus librum legit.",
+          "Nos sumus discipuli diligentes.",
+          "Puella in schola legit.",
+          "The text says Lilia likes learning languages.",
+          "In schola bene disco et libros lego.",
+          "Magister bonus est. Discipuli diligenter laborant.",
+          "salve = hello; gratias = thank you; vale = goodbye",
+          "nos sumus",
+        ],
+      };
+    }
+    if (normalized.includes("mandarin")) {
+      return {
+        languageName: "Mandarin Chinese",
+        targetLanguageName: "Putonghua",
+        activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+        prompts: [
+          "Translate into Mandarin (pinyin accepted): I am revising vocabulary for my exam.",
+          "Choose the correct sentence pattern in Mandarin for habitual study.",
+          "Reorder these words into a correct Mandarin sentence.",
+          "Read the short Mandarin sentence and answer in English.",
+          "Prepare a short spoken Mandarin response about hobbies.",
+          "Write two Mandarin sentences (or pinyin) about school subjects.",
+          "Match each Mandarin phrase with its English meaning.",
+          "Conjugation note: select the correct time marker and word order.",
+        ],
+        modelAnswers: [
+          "Wo zai fuxi cihui wei wo de kaoshi.",
+          "Women mei tian wan shang xuexi hanyu.",
+          "Wo zhoumo xihuan kan shu.",
+          "The text says the speaker likes learning languages.",
+          "Wo xihuan da zuqiu he ting yinyue.",
+          "Wo xihuan shuxue he lishi. Laoshi hen youhao.",
+          "ni hao = hello; xiexie = thank you; zaijian = goodbye",
+          "Use time word + subject + verb order correctly.",
+        ],
+      };
+    }
+    if (normalized.includes("arabic")) {
+      return {
+        languageName: "Arabic",
+        targetLanguageName: "al-arabiyya",
+        activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+        prompts: [
+          "Translate into Arabic (transliteration accepted): I am revising vocabulary for my exam.",
+          "Choose the correct verb form for: We study Arabic every evening.",
+          "Reorder the words to form a correct Arabic sentence.",
+          "Read the short Arabic sentence and answer in English.",
+          "Prepare a short spoken response in Arabic about hobbies.",
+          "Write two Arabic sentences (or transliteration) about school subjects.",
+          "Match each Arabic phrase to the correct English meaning.",
+          "Pick the correct present-tense form for the required pronoun.",
+        ],
+        modelAnswers: [
+          "ana uraaji'u al-mufradat li-imtihani.",
+          "nahnu nadrusu al-arabiyya kulla masa'.",
+          "uhibbu al-qira'a fi nihayat al-usbu'.",
+          "The text says the speaker likes learning languages.",
+          "uhibbu kurat al-qadam wa istima' al-musiqa.",
+          "uhibbu al-riyadiyat wa al-tarikh. muallimi latif.",
+          "marhaban = hello; shukran = thank you; ma'a as-salama = goodbye",
+          "Use the correct pronoun and present-tense verb pattern.",
+        ],
+      };
+    }
+    if (normalized === "ga-language" || normalized.includes("gcse-ga") || normalized.endsWith("-ga") || normalized === "ga") {
+      const gaBand = input.yearGroup === "Year 1" || input.yearGroup === "Year 2"
+        ? "early"
+        : input.yearGroup === "Year 3" || input.yearGroup === "Year 4"
+          ? "middle"
+          : "upper";
+      const gaAlphabetSequence = (input.gaLexicon?.alphabetUpper?.length ? input.gaLexicon.alphabetUpper : GA_ALPHABET.map(([upper]) => String(upper))).join(", ");
+      const gaWordBankExamples = (input.gaLexicon?.approvedPairs ?? [])
+        .slice(0, 6)
+        .map((entry) => `${entry.englishWord} = ${entry.gaWord}`)
+        .join("; ");
+      const gaWordBankSet = (input.gaLexicon?.approvedGaWords ?? []).slice(0, 10).join(", ");
+
+      return {
+        languageName: "Ga (Ghana)",
+        targetLanguageName: "Ga",
+        activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+        prompts: gaBand === "early"
+          ? [
+            "Teach the Ga alphabet for beginners: show the ordered core letters in standard Accra Ga orthography.",
+            "Teach Ga numbers 1-10: complete a missing-number sequence and say each number in Ga.",
+            "Translate into Ga: Good morning, teacher.",
+            "Reorder the words to make a simple Ga sentence about school.",
+            "Read a short Ga greeting phrase and answer in English.",
+            "Prepare a very short spoken Ga response about your family.",
+            "Write one or two simple Ga sentences in standard Accra Ga orthography about classroom routines.",
+            "Choose the correct pronoun/verb pairing in a basic Ga sentence.",
+          ]
+          : gaBand === "middle"
+            ? [
+              "Review Ga alphabet fluency: fill missing letters and correct order using standard Accra Ga orthography.",
+              "Teach and apply Ga numbers 1-20: complete ordered and reverse counting tasks.",
+              "Translate into Ga: My school starts in the morning.",
+              "Reorder words to create a grammatical Ga sentence with time/place words.",
+              "Read a short Ga classroom text and answer one comprehension question in English.",
+              "Prepare a short spoken Ga response about daily routine using accurate sentence order.",
+              "Write two connected Ga sentences in standard Accra Ga orthography on school and family.",
+              "Choose the correct pronoun/verb pairing in a slightly longer Ga sentence.",
+            ]
+            : [
+              "Teach advanced Ga alphabet/spelling patterns and common pronunciation pitfalls for non-native learners.",
+              "Use Ga numbers in context (dates, prices, quantities) and complete short reasoning prompts.",
+              "Translate into Ga: We are revising vocabulary and grammar for class.",
+              "Reorder words to form a complete Ga sentence with clause-level structure.",
+              "Read a short Ga paragraph and answer comprehension in English.",
+              "Prepare a structured spoken Ga response about hobbies and school life using standard Accra forms.",
+              "Write two to three accurate Ga sentences in standard Accra Ga orthography with reduced scaffolding.",
+              "Select the best pronoun/verb pairing and explain why it is grammatically correct.",
+            ],
+        modelAnswers: gaBand === "early"
+          ? [
+            `Ga alphabet core sequence: ${gaAlphabetSequence}.`,
+            "Ga numbers 1-10 sequence model: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10.",
+            "Ojekoo, osɔfo.",
+            "Mi baa sukuu.",
+            "The phrase is a simple greeting/introduction in Ga.",
+            "Mi yε [name].",
+            gaWordBankExamples
+              ? `Approved Ga word bank examples: ${gaWordBankExamples}.`
+              : "Mi baa sukuu anɔpa.",
+            "Select the option with correct pronoun and verb order for a basic sentence.",
+          ]
+          : gaBand === "middle"
+            ? [
+              `Ga alphabet fluency model: ${gaAlphabetSequence}.`,
+              "Ga numbers 1-20 sequence model: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20.",
+              "Mi baa sukuu anɔpa.",
+              "Mi yε sukuulɔ, ni mi baa sukuu anɔpa.",
+              "The text says the learner starts school in the morning and studies with classmates.",
+              "Mi yε [name]. Mi baa sukuu anɔpa.",
+              gaWordBankSet
+                ? `Approved Ga vocabulary set: ${gaWordBankSet}.`
+                : "Mi yε [name], mi lε wekurom ni. Mi suɔmɔ ga kɛ nyɛ.",
+              "Choose the sentence with correct pronoun and verb sequence.",
+            ]
+            : [
+              `Advanced Ga alphabet model: maintain consistent standard Accra Ga orthography (${gaAlphabetSequence}) and avoid mixed dialect forms.`,
+              "Ga numbers context model: apply counting to date/price/quantity examples with accurate forms.",
+              "Yɛ suɔmɔ vocabulary kɛ grammar ni hewalɛ.",
+              "Model reordered sentence with full clause structure in standard Accra Ga.",
+              "The paragraph describes school activities and hobbies in standard Ga.",
+              "Miyɛ [name]. Mi baa sukuu anɔpa, ni mi pɛ suɔmɔ ga kɛ nyɛ.",
+              gaWordBankExamples
+                ? `Model short Ga writing set using approved word bank entries: ${gaWordBankExamples}.`
+                : "Model short Ga writing set with clear sentence links and correct grammar.",
+              "Use the option with correct pronoun/verb agreement and clause flow.",
+            ],
+      };
+    }
+    if (normalized.includes("urdu")) {
+      return {
+        languageName: "Urdu",
+        targetLanguageName: "Urdu",
+        activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+        prompts: [
+          "Translate into Urdu (Roman Urdu accepted): I am revising vocabulary for my exam.",
+          "Choose the correct verb phrase for: We study Urdu every evening.",
+          "Reorder the words to make a correct Urdu sentence.",
+          "Read the short Urdu sentence and answer in English.",
+          "Prepare a short spoken Urdu response about hobbies.",
+          "Write two Urdu sentences (or Roman Urdu) about school subjects.",
+          "Match each Urdu phrase with its English meaning.",
+          "Select the correct present tense form for the pronoun.",
+        ],
+        modelAnswers: [
+          "main apne imtihan ke liye alfaaz dohra raha hoon.",
+          "hum har shaam urdu parhte hain.",
+          "mujhe haftay ke aakhir mein parhna pasand hai.",
+          "The text says the speaker likes learning languages.",
+          "mujhe football khelna aur music sunna pasand hai.",
+          "mujhe maths aur tareekh pasand hain. mera ustad bohat meherban hai.",
+          "assalam-o-alaikum = hello; shukriya = thank you; khuda hafiz = goodbye",
+          "Use correct pronoun agreement with present tense.",
+        ],
+      };
+    }
+    if (normalized.includes("polish")) {
+      return {
+        languageName: "Polish",
+        targetLanguageName: "polski",
+        activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+        prompts: [
+          "Przetlumacz na polski: I am revising vocabulary for my exam.",
+          "Wybierz poprawna forme czasownika: My ___ (uczyc sie) polskiego codziennie.",
+          "Uloz wyrazy w poprawnym szyku zdania.",
+          "Przeczytaj krotki tekst i odpowiedz po angielsku.",
+          "Przygotuj krotka wypowiedz ustna o swoich zainteresowaniach.",
+          "Napisz dwa zdania po polsku o szkole i ulubionych przedmiotach.",
+          "Dopasuj kazde wyrazenie po polsku do znaczenia po angielsku.",
+          "Wybierz poprawna forme czasu terazniejszego dla wskazanego zaimka.",
+        ],
+        modelAnswers: [
+          "Powtarzam slownictwo do mojego egzaminu.",
+          "My uczymy sie polskiego codziennie.",
+          "Lubie czytac w weekend.",
+          "The text says the speaker likes learning languages.",
+          "Lubie grac w pilke nozna i sluchac muzyki.",
+          "Lubie matematyke i historie. Moj nauczyciel jest bardzo mily.",
+          "czesc = hello; dziekuje = thank you; do widzenia = goodbye",
+          "Use proper pronoun-verb agreement in present tense.",
+        ],
+      };
+    }
+    return {
+      languageName: "Target language",
+      targetLanguageName: "target language",
+      activityModes: ["translation", "grammar", "sentence-building", "reading", "speaking", "writing", "vocabulary", "verb-conjugation"],
+      prompts: [
+        "Translate into the target language: I am revising vocabulary for my exam.",
+        "Choose the correct verb form in the target language sentence.",
+        "Reorder the words to make a correct target-language sentence.",
+        "Read the short target-language text and answer in English.",
+        "Prepare a short speaking response in the target language.",
+        "Write two connected sentences in the target language.",
+        "Match each target-language phrase to its English meaning.",
+        "Conjugate the given verb in present tense for the required pronoun.",
+      ],
+      modelAnswers: [
+        "Model target-language translation.",
+        "Model correct verb form.",
+        "Model reordered sentence.",
+        "Model reading comprehension response.",
+        "Model speaking response.",
+        "Model writing response.",
+        "Model vocabulary mapping.",
+        "Model conjugation response.",
+      ],
+    };
+  };
+
   if (input.type === "reading") {
     return Array.from({ length: safeCount }, (_, index) => {
+      const serial = index + variantOffset;
+      const slot = serial % 6;
       const verb = wordsByDifficulty[Math.min(4, Math.max(0, input.difficulty - 1))];
       const itemNumber = index + 1;
-      const passage = `${input.yearGroup} ${baseTopic} lesson text ${index + 1}. Pupils ${verb} key ideas, use evidence, and connect the ${baseSkill.toLowerCase()} focus to the wider topic.`;
+      const passageTemplates = [
+        `${input.yearGroup} learners explore ${baseTopic.toLowerCase()} and ${verb} key ideas with evidence.`,
+        `A short source about ${baseTopic.toLowerCase()} asks pupils to ${verb} how language choices support meaning.`,
+        `The class reads an extract on ${baseTopic.toLowerCase()} and must ${verb} the writer's viewpoint using quotations.`,
+        `In this ${input.yearGroup} passage, students ${verb} how structure helps present ${baseSkill.toLowerCase()}.`,
+        `This text models ${baseTopic.toLowerCase()} and asks readers to ${verb} tone, intent, and evidence.`,
+        `Pupils review a non-fiction text on ${baseTopic.toLowerCase()} and ${verb} main ideas precisely.`,
+      ];
+      const questionTemplates = [
+        `Which quotation best supports the main point in text ${itemNumber}?`,
+        `How does the writer guide the reader's understanding in this extract?`,
+        `What inference can be made about the author's viewpoint from the passage?`,
+        `How does structure help communicate the key message in this text?`,
+        `Which language choice is most effective and why?`,
+        `What evidence shows the strongest link to ${baseSkill.toLowerCase()}?`,
+      ];
+      const passage = `${passageTemplates[slot]} Text reference ${serial + 1}.`;
       return {
         id: `fallback-reading-${itemNumber}`,
         type: input.subject,
         passage,
-        question: `In text ${itemNumber}, how does the passage ${verb} ${baseSkill.toLowerCase()} in ${baseTopic.toLowerCase()}?`,
-        answer: `In text ${itemNumber}, it ${verb}s ${baseSkill.toLowerCase()} by using clear evidence from ${baseTopic.toLowerCase()}.`,
+        question: `${questionTemplates[slot]} (${baseTopic})`,
+        answer: `A strong response ${verb}s ${baseSkill.toLowerCase()} using precise evidence from the passage and links back to ${baseTopic.toLowerCase()}.`,
         options: [
-          `It ignores ${baseSkill.toLowerCase()}.`,
-          `It ${verb}s ${baseSkill.toLowerCase()} using evidence from text ${itemNumber}.`,
-          `It is unrelated to ${baseTopic.toLowerCase()}.`,
+          `It ignores ${baseSkill.toLowerCase()} and gives no evidence.`,
+          `It ${verb}s ${baseSkill.toLowerCase()} using clear evidence and explanation.`,
+          `It is unrelated to ${baseTopic.toLowerCase()} and lacks justification.`,
         ],
         explanation: `This answer matches the ${input.yearGroup} ${difficultyLabel} reading focus.`,
         yearGroup: input.yearGroup,
@@ -1652,29 +2097,189 @@ function buildDeterministicGenericFallback(input: {
 
   if (input.type === "maths") {
     const base = input.difficulty * 5;
+    const highDifficultyInstruction = input.difficulty >= 4
+      ? " Explain your method and justify your reasoning."
+      : "";
     return Array.from({ length: safeCount }, (_, index) => {
-      const a = base + index + 6;
-      const b = base + index + 3;
-      const multiplier = index + 2;
-      const product = a * multiplier;
-      const adjusted = product - b;
-      const question = input.difficulty >= 5
-        ? `A class is comparing times-table strategies for ${baseTopic.toLowerCase()}. There are ${multiplier} equal groups of ${a}, then ${b} counters are removed. Evaluate which inverse operation checks the final total and justify your method.`
-        : input.difficulty >= 4
-          ? `${a} x ${multiplier} then subtract ${b}. Explain your method for ${baseTopic.toLowerCase()}.`
-          : input.difficulty >= 3
-            ? `${a} + ${b} = ? Explain one step in your method.`
-            : `${a} + ${b} = ?`;
-      const answer = input.difficulty >= 4 ? adjusted : a + b;
+      const serial = index + variantOffset;
+      const slot = serial % 10;
+
+      if (slot === 0) {
+        const a = base + serial + 8;
+        const b = base + serial + 4;
+        const multiplier = serial + 2;
+        const answer = a * multiplier - b;
+        return {
+          id: `fallback-maths-${index + 1}`,
+          type: input.subject,
+          question: `Compute ${a} x ${multiplier} - ${b} for ${baseTopic.toLowerCase()}.${highDifficultyInstruction}`,
+          answer,
+          choices: [answer, answer + multiplier, answer - multiplier, a + multiplier + b],
+          explanation: `Use order of operations: ${a} x ${multiplier} = ${a * multiplier}, then subtract ${b} to get ${answer}.`,
+          yearGroup: input.yearGroup,
+          skillFocus: baseSkill,
+          topic: baseTopic,
+          difficulty: input.difficulty,
+        };
+      }
+
+      if (slot === 1) {
+        const red = 2 + (serial % 3);
+        const blue = 3 + (serial % 4);
+        const totalParts = red + blue;
+        const total = totalParts * (4 + serial);
+        const answer = (total / totalParts) * blue;
+        return {
+          id: `fallback-maths-${index + 1}`,
+          type: input.subject,
+          question: `The ratio of red to blue counters is ${red}:${blue} and there are ${total} counters altogether. How many blue counters are there?${highDifficultyInstruction}`,
+          answer,
+          choices: [answer, answer + red, totalParts, total - answer],
+          explanation: `Total parts = ${red} + ${blue} = ${totalParts}. One part = ${total} / ${totalParts}. Blue counters = one part x ${blue} = ${answer}.`,
+          yearGroup: input.yearGroup,
+          skillFocus: baseSkill,
+          topic: baseTopic,
+          difficulty: input.difficulty,
+        };
+      }
+
+      if (slot === 2) {
+        const startValue = 60 + serial * 5;
+        const percent = 10 + (serial % 5) * 5;
+        const answer = Number((startValue * (1 + percent / 100)).toFixed(2));
+        return {
+          id: `fallback-maths-${index + 1}`,
+          type: input.subject,
+          question: `Increase ${startValue} by ${percent}% and give the new value for ${baseTopic.toLowerCase()}.${highDifficultyInstruction}`,
+          answer,
+          choices: [answer, Number((startValue * (percent / 100)).toFixed(2)), startValue + percent, startValue - percent],
+          explanation: `${percent}% of ${startValue} is ${Number((startValue * (percent / 100)).toFixed(2))}. Add this to ${startValue} to get ${answer}.`,
+          yearGroup: input.yearGroup,
+          skillFocus: baseSkill,
+          topic: baseTopic,
+          difficulty: input.difficulty,
+        };
+      }
+
+      if (slot === 3) {
+        const x = 4 + serial;
+        const add = 7 + (serial % 5);
+        const rhs = 3 * x + add;
+        return {
+          id: `fallback-maths-${index + 1}`,
+          type: input.subject,
+          question: `Solve the equation 3x + ${add} = ${rhs}.${highDifficultyInstruction}`,
+          answer: x,
+          choices: [x, x + 1, x - 1, rhs - add],
+          explanation: `Subtract ${add} from both sides, then divide by 3. x = ${x}.`,
+          yearGroup: input.yearGroup,
+          skillFocus: baseSkill,
+          topic: baseTopic,
+          difficulty: input.difficulty,
+        };
+      }
+
+      if (slot === 4) {
+        const n1 = 8 + serial;
+        const n2 = 10 + serial;
+        const n3 = 12 + serial;
+        const n4 = 14 + serial;
+        const answer = (n1 + n2 + n3 + n4) / 4;
+        return {
+          id: `fallback-maths-${index + 1}`,
+          type: input.subject,
+          question: `Find the mean of ${n1}, ${n2}, ${n3}, and ${n4}.${highDifficultyInstruction}`,
+          answer,
+          choices: [answer, n2, n3, n4],
+          explanation: `Add the values and divide by 4. Mean = ${answer}.`,
+          yearGroup: input.yearGroup,
+          skillFocus: baseSkill,
+          topic: baseTopic,
+          difficulty: input.difficulty,
+        };
+      }
+
+      if (slot === 5) {
+        const length = 5 + serial;
+        const width = 3 + (serial % 4);
+        const answer = 2 * (length + width);
+        return {
+          id: `fallback-maths-${index + 1}`,
+          type: input.subject,
+          question: `A rectangle has length ${length} cm and width ${width} cm. Calculate the perimeter.${highDifficultyInstruction}`,
+          answer,
+          choices: [answer, length * width, 2 * length + width, length + width],
+          explanation: `Perimeter = 2 x (length + width) = 2 x (${length} + ${width}) = ${answer}.`,
+          yearGroup: input.yearGroup,
+          skillFocus: baseSkill,
+          topic: baseTopic,
+          difficulty: input.difficulty,
+        };
+      }
+
+      if (slot === 6) {
+        const total = 20 + serial;
+        const success = 5 + (serial % 6);
+        return {
+          id: `fallback-maths-${index + 1}`,
+          type: input.subject,
+          question: `A bag contains ${total} counters and ${success} are blue. What is the probability of selecting a blue counter?${highDifficultyInstruction}`,
+          answer: `${success}/${total}`,
+          choices: [`${success}/${total}`, `${total}/${success}`, `${success}/${total - success}`, `${total - success}/${total}`],
+          explanation: `Probability = favourable outcomes / total outcomes = ${success}/${total}.`,
+          yearGroup: input.yearGroup,
+          skillFocus: baseSkill,
+          topic: baseTopic,
+          difficulty: input.difficulty,
+        };
+      }
+
+      if (slot === 7) {
+        const n = 5 + serial;
+        const answer = 4 * n + 1;
+        return {
+          id: `fallback-maths-${index + 1}`,
+          type: input.subject,
+          question: `For the sequence with nth term 4n + 1, find the term when n = ${n}.${highDifficultyInstruction}`,
+          answer,
+          choices: [answer, 4 * n, 4 * n - 1, n + 1],
+          explanation: `Substitute n = ${n} into 4n + 1: 4 x ${n} + 1 = ${answer}.`,
+          yearGroup: input.yearGroup,
+          skillFocus: baseSkill,
+          topic: baseTopic,
+          difficulty: input.difficulty,
+        };
+      }
+
+      if (slot === 8) {
+        const scale = 2 + (serial % 4);
+        const original = 6 + serial;
+        const answer = original * scale;
+        return {
+          id: `fallback-maths-${index + 1}`,
+          type: input.subject,
+          question: `A map uses a scale factor of ${scale}. If a length is ${original} cm on the drawing, what is the real length in cm?${highDifficultyInstruction}`,
+          answer,
+          choices: [answer, original + scale, original - scale, scale],
+          explanation: `Multiply by the scale factor: ${original} x ${scale} = ${answer}.`,
+          yearGroup: input.yearGroup,
+          skillFocus: baseSkill,
+          topic: baseTopic,
+          difficulty: input.difficulty,
+        };
+      }
+
+      const amount = 40 + serial * 3;
+      const ratioPart = 4 + (serial % 3);
+      const unitValue = amount / ratioPart;
+      const answer = Number((unitValue * 1.5).toFixed(2));
       return {
         id: `fallback-maths-${index + 1}`,
         type: input.subject,
-        question,
+        question: `Use direct proportion: if ${ratioPart} units cost ${amount}, what is the cost of 1.5 times that number of units?${highDifficultyInstruction}`,
         answer,
-        choices: [answer, answer + multiplier, Math.max(0, answer - b), product],
-        explanation: input.difficulty >= 5
-          ? `Multiply ${a} by ${multiplier} to get ${product}, subtract ${b} to get ${adjusted}, then use the inverse check ${adjusted} + ${b} = ${product}. This justifies the level 5 strategy.`
-          : `Worked at ${difficultyLabel.toLowerCase()} for ${input.yearGroup}.`,
+        choices: [answer, unitValue, amount * 1.5, amount / 1.5],
+        explanation: `Find cost per unit first, then multiply by 1.5 x ${ratioPart}.`,
         yearGroup: input.yearGroup,
         skillFocus: baseSkill,
         topic: baseTopic,
@@ -1708,7 +2313,8 @@ function buildDeterministicGenericFallback(input: {
         ? biologyPrompts
         : physicsPrompts;
     return Array.from({ length: safeCount }, (_, index) => {
-      const question = sciencePrompts[index % sciencePrompts.length];
+      const serial = index + variantOffset;
+      const question = sciencePrompts[serial % sciencePrompts.length];
       const answer = question.includes("1200 kg")
         ? "2400 N"
         : question.includes("600 g")
@@ -1739,25 +2345,50 @@ function buildDeterministicGenericFallback(input: {
   }
 
   if (input.type === "languages") {
-    return Array.from({ length: safeCount }, (_, index) => ({
-      id: `fallback-lang-${index + 1}`,
-      type: input.subject,
-      question: `Translation task ${index + 1}: ${baseTopic} (${baseSkill}).`,
-      answer: `Provide a ${input.yearGroup} level translation using ${baseSkill.toLowerCase()}.`,
-      englishMeaning: `Practice meaning for ${baseTopic}.`,
-      targetVocabulary: `${baseTopic} vocabulary ${index + 1}`,
-      activityMode: "translation",
-      explanation: `Calibrated for ${input.yearGroup} at ${difficultyLabel.toLowerCase()}.`,
-      yearGroup: input.yearGroup,
-      skillFocus: baseSkill,
-      topic: baseTopic,
-      difficulty: input.difficulty,
-    }));
+    const profile = resolveLanguageProfile(input.subject);
+    const isGaLanguage = input.subject === "ga-language" || input.subject === "gcse-ga";
+    return Array.from({ length: safeCount }, (_, index) => {
+      const serial = index + variantOffset;
+      const slot = isGaLanguage
+        ? index === 0
+          ? 0
+          : index === 1
+            ? 1
+            : 2 + ((serial + index) % Math.max(profile.activityModes.length - 2, 1))
+        : serial % profile.activityModes.length;
+      const activityMode = profile.activityModes[slot];
+      return {
+        id: `fallback-lang-${index + 1}`,
+        type: input.subject,
+        question: `${profile.prompts[slot]} (${baseTopic})`,
+        answer: profile.modelAnswers[slot],
+        englishMeaning: `Meaning checkpoint for ${baseTopic} in ${profile.languageName}.`,
+        targetVocabulary: `${profile.targetLanguageName} ${baseTopic} set ${serial + 1}`,
+        activityMode,
+        explanation: isGaLanguage
+          ? `Calibrated for ${input.yearGroup} at ${difficultyLabel.toLowerCase()} with standard Accra Ga only (no Twi mixing).`
+          : `Calibrated for ${input.yearGroup} at ${difficultyLabel.toLowerCase()} with a ${activityMode} focus in ${profile.languageName}.`,
+        yearGroup: input.yearGroup,
+        skillFocus: baseSkill,
+        topic: baseTopic,
+        difficulty: input.difficulty,
+      };
+    });
   }
 
   const field = input.type === "writing" ? "prompt" : "question";
   return Array.from({ length: safeCount }, (_, index) => {
-    const stem = `${input.yearGroup} ${baseTopic} ${input.type} task ${index + 1}: ${wordsByDifficulty[Math.min(4, Math.max(0, input.difficulty - 1))]} ${baseSkill.toLowerCase()} clearly.`;
+    const serial = index + variantOffset;
+    const verb = wordsByDifficulty[Math.min(4, Math.max(0, input.difficulty - 1))];
+    const stemTemplates = [
+      `${input.yearGroup} ${input.type} task: ${verb} ${baseSkill.toLowerCase()} in a short response about ${baseTopic.toLowerCase()}.`,
+      `${input.yearGroup} ${input.type} correction: improve the sentence so ${baseSkill.toLowerCase()} is accurate.`,
+      `${input.yearGroup} ${input.type} challenge: choose the best option and justify your choice.`,
+      `${input.yearGroup} ${input.type} edit: revise the text to strengthen ${baseSkill.toLowerCase()} usage.`,
+      `${input.yearGroup} ${input.type} analysis: identify the error and provide the corrected form.`,
+      `${input.yearGroup} ${input.type} application: complete the prompt using precise ${baseSkill.toLowerCase()}.`,
+    ];
+    const stem = stemTemplates[serial % stemTemplates.length];
     return {
       id: `fallback-${input.type}-${index + 1}`,
       type: input.subject,
@@ -1781,6 +2412,7 @@ function buildDeterministicGenericFallback(input: {
 function buildValidatedGenericFallback(input: {
   type: "spelling" | "phonics" | "maths" | "reading" | "writing" | "grammar" | "punctuation" | "languages" | "science";
   subject: Subject;
+  gaLexicon?: GaFallbackLexicon | null;
   scienceDiscipline?: ScienceDiscipline | null;
   keyStage: string;
   yearGroup: string;
@@ -1788,6 +2420,7 @@ function buildValidatedGenericFallback(input: {
   topic: string;
   count: number;
   difficulty: number;
+  variantSeed?: number;
 }) {
   const fallbackItems = buildDeterministicGenericFallback(input);
   const quality = validateAiContentQuality({
@@ -1844,6 +2477,8 @@ async function generateValidatedStructuredContent(input: {
   activityType: string;
   masteryOutcome: string;
   scienceDiscipline: ScienceDiscipline | null;
+  gaScriptPreference?: "orthography_only" | "orthography_with_transliteration";
+  avoidPrompts?: string[];
   graphPromptContext?: string;
   graphChecks?: Parameters<typeof validateAiContentQuality>[0]["graphChecks"];
 }) {
@@ -1876,6 +2511,8 @@ async function generateValidatedStructuredContent(input: {
       input.weakAreas,
       repairFeedback,
       input.scienceDiscipline,
+      input.avoidPrompts ?? [],
+      input.gaScriptPreference ?? "orthography_with_transliteration",
     );
     promptUsed = input.graphPromptContext ? `${basePrompt}\n\nGRAPH CONTEXT:\n${input.graphPromptContext}` : basePrompt;
 
@@ -2058,6 +2695,9 @@ export async function POST(req: Request) {
   const keySource = openAiConfig.keySource;
 
   const requestedSubject = (body.subject ?? body.type) as string;
+  const gaScriptPreference: "orthography_only" | "orthography_with_transliteration" = body.gaScriptPreference === "orthography_only"
+    ? "orthography_only"
+    : "orthography_with_transliteration";
   const requestedCount = body.itemCount ?? body.numberOfItems ?? body.count;
   const requestedLevel = body.difficulty ?? body.level;
   const provisionalYearGroup = typeof body.targetLearningYearGroup === "string"
@@ -2108,6 +2748,7 @@ export async function POST(req: Request) {
     }, { status: 422 });
   }
   const sourceSubject = normalizedSubject;
+  const gaFallbackLexicon = await loadGaFallbackLexicon(sourceSubject);
   const isEnglishParent = isEnglishParentSubject(sourceSubject);
   const englishStrand = isEnglishParent ? normalizeEnglishStrand(body.englishStrand) : null;
   if (isEnglishParent && !englishStrand) {
@@ -2192,6 +2833,15 @@ export async function POST(req: Request) {
   // Skill-first targeting
   const targetSkills: string[] = Array.isArray(body.targetSkills) ? (body.targetSkills as string[]) : [];
   const weakAreas: string[] = Array.isArray(body.weakAreas) ? (body.weakAreas as string[]) : [];
+  const avoidPrompts: string[] = Array.isArray(body.avoidPrompts)
+    ? (body.avoidPrompts as unknown[])
+      .map((entry) => String(entry ?? "").trim())
+      .filter(Boolean)
+      .slice(0, 8)
+    : [];
+  const fallbackVariantSeed = Number.isFinite(Number(body.regenerationNonce))
+    ? Math.abs(Math.floor(Number(body.regenerationNonce)))
+    : 0;
   const activityType = typeof body.activityType === "string" ? body.activityType.trim() : "";
   const masteryOutcome = typeof body.masteryOutcome === "string" ? body.masteryOutcome.trim() : "";
   // If targetSkills provided, derive skillFocus label from the first one
@@ -2560,6 +3210,13 @@ export async function POST(req: Request) {
   const apiKey = openAiConfig.apiKey;
   const fallbackAllowed = isFallbackAllowed(aiMode);
 
+  console.info("[admin-ai-generate] mode", {
+    aiMode,
+    fallbackAllowed,
+    keySource,
+    hasApiKey: Boolean(apiKey),
+  });
+
   const buildMetadata = (input: {
     generationSource: "openai" | "fallback" | "repair" | "mock";
     provider: "openai" | "local";
@@ -2586,7 +3243,9 @@ export async function POST(req: Request) {
     reason: string;
     status: number;
     openAiAttempted: boolean;
+    validationMessage?: string | null;
   }) => {
+    const validationReason = input.validationMessage || input.message;
     const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
       errorCode: input.code,
       message: input.message,
@@ -2612,7 +3271,11 @@ export async function POST(req: Request) {
       generationMetadata,
       providerUsed: "openai",
       fallbackReason: input.reason,
-      validationReason: input.message,
+      validationReason,
+      details: {
+        reason: input.reason,
+        validationMessage: input.validationMessage ?? null,
+      },
       generationType,
       subject: sourceSubject,
       yearGroup: safeYearGroup,
@@ -2626,7 +3289,7 @@ export async function POST(req: Request) {
         providerUsed: "openai",
         openAiKeyFoundServerSide: keySource !== "none",
         fallbackReason: input.reason,
-        validationReason: input.message,
+        validationReason,
         mappingStatus: "mapped",
         fallbackTemplate: null,
         diagnosticOutcome,
@@ -2645,6 +3308,7 @@ export async function POST(req: Request) {
           topic,
           count,
           difficulty: safeLevel,
+          variantSeed: fallbackVariantSeed,
         });
         const preview = buildGeneratedPreview({
           subject: sourceSubject,
@@ -2712,6 +3376,7 @@ export async function POST(req: Request) {
       const fallback = buildValidatedGenericFallback({
         type: validatorType,
         subject: sourceSubject,
+        gaLexicon: gaFallbackLexicon,
         scienceDiscipline,
         keyStage: safeKeyStage,
         yearGroup: safeYearGroup,
@@ -2719,6 +3384,7 @@ export async function POST(req: Request) {
         topic,
         count,
         difficulty: safeLevel,
+        variantSeed: fallbackVariantSeed,
       });
       const preview = buildGeneratedPreview({
         subject: sourceSubject,
@@ -2781,14 +3447,53 @@ export async function POST(req: Request) {
           message: "Generated in fallback-only mode.",
         },
       });
-    } catch {
-      return buildLiveOnlyFailure({
-        code: "generation_error",
+    } catch (fallbackError) {
+      const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
+        errorCode: "fallback_generation_failed",
         message: "Fallback-only generation failed.",
         reason: "fallback_generation_failed",
         status: 500,
-        openAiAttempted: false,
       });
+      console.error("[admin-ai-generate] fallback-only generation failed:", fallbackError);
+      return NextResponse.json({
+        success: false,
+        aiMode,
+        keySource,
+        errorCode: "fallback_generation_failed",
+        message: "Fallback-only generation failed.",
+        error: "Fallback-only generation failed.",
+        providerUsed: "local_fallback",
+        fallbackReason: "fallback_generation_failed",
+        validationReason: fallbackError instanceof Error ? fallbackError.message : "fallback_generation_failed",
+        generationMetadata: buildMetadata({
+          generationSource: "mock",
+          provider: "local",
+          model: "local-fallback",
+          fallbackReason: "fallback_generation_failed",
+          validation: { valid: false, repaired: false },
+          openAiAttempted: false,
+          openAiSucceeded: false,
+        }),
+        generationType,
+        subject: sourceSubject,
+        yearGroup: safeYearGroup,
+        keyStage: safeKeyStage,
+        skillFocus: resolvedSkillFocus,
+        topic,
+        activityType,
+        strand: englishStrand,
+        generationDebug: buildGenerationDebug({
+          providerAttempted: false,
+          providerUsed: "local_fallback",
+          openAiKeyFoundServerSide: keySource !== "none",
+          fallbackReason: "fallback_generation_failed",
+          validationReason: fallbackError instanceof Error ? fallbackError.message : "fallback_generation_failed",
+          mappingStatus: "mapped",
+          fallbackTemplate: `deterministic_${validatorType}`,
+          diagnosticOutcome,
+        }),
+        ...diagnosticEnvelope(diagnosticOutcome),
+      }, { status: 500 });
     }
   }
 
@@ -2818,6 +3523,7 @@ export async function POST(req: Request) {
         topic,
         count,
         difficulty: safeLevel,
+        variantSeed: fallbackVariantSeed,
       });
       const preview = buildGeneratedPreview({
         subject: sourceSubject,
@@ -2891,6 +3597,7 @@ export async function POST(req: Request) {
       const fallback = buildValidatedGenericFallback({
         type: validatorType,
         subject: sourceSubject,
+        gaLexicon: gaFallbackLexicon,
         scienceDiscipline,
         keyStage: safeKeyStage,
         yearGroup: safeYearGroup,
@@ -2898,6 +3605,7 @@ export async function POST(req: Request) {
         topic,
         count,
         difficulty: safeLevel,
+        variantSeed: fallbackVariantSeed,
       });
       const preview = buildGeneratedPreview({
         subject: sourceSubject,
@@ -3032,7 +3740,7 @@ export async function POST(req: Request) {
     visualGenerationEnabled: visualPlan.enabled,
     maxVisuals: visualPlan.maxPerContent,
   });
-  const shouldUseCache = !(visualPlan.enabled && visualPlan.mode === "generate_now");
+  const shouldUseCache = !(visualPlan.enabled && visualPlan.mode === "generate_now") && avoidPrompts.length === 0;
   const cached = shouldUseCache ? generationCache.get(requestKey) : undefined;
   if (cached) {
     const cachedValidation = (cached.meta.validation ?? {}) as Record<string, unknown>;
@@ -3097,7 +3805,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const baseUserPrompt = buildUserPrompt(promptType, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, safeExamBoard, [], targetSkills, weakAreas, "", scienceDiscipline);
+  const baseUserPrompt = buildUserPrompt(promptType, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, safeExamBoard, [], targetSkills, weakAreas, "", scienceDiscipline, avoidPrompts, gaScriptPreference);
   const userPrompt = graphPromptContext ? `${baseUserPrompt}\n\nGRAPH CONTEXT:\n${graphPromptContext}` : baseUserPrompt;
   const systemPrompt = SYSTEM_PROMPT[promptType];
 
@@ -3151,6 +3859,8 @@ export async function POST(req: Request) {
         activityType,
         masteryOutcome,
         scienceDiscipline,
+        gaScriptPreference,
+        avoidPrompts,
         graphPromptContext,
         graphChecks,
       });
@@ -3167,6 +3877,164 @@ export async function POST(req: Request) {
       validation,
     });
     if (!tupleContainment.ok) {
+      if (fallbackAllowed) {
+        try {
+          if (generationType === "spelling") {
+            const fallback = buildValidatedSpellingFallback({
+              keyStage: safeKeyStage,
+              yearGroup: safeYearGroup,
+              skillFocus: resolvedSkillFocus || "Prefixes",
+              topic,
+              count,
+              difficulty: safeLevel,
+              variantSeed: fallbackVariantSeed,
+            });
+            const preview = buildGeneratedPreview({
+              subject: sourceSubject,
+              generationType,
+              promptType,
+              keyStage: safeKeyStage,
+              yearGroup: safeYearGroup,
+              curriculumPathway: safeCurriculumPathway,
+              examBoard: safeExamBoard,
+              skillFocus: resolvedSkillFocus,
+              difficulty: safeLevel,
+              topic,
+              content: fallback.content,
+              visualPlan,
+            });
+            const generationMetadata = buildMetadata({
+              generationSource: "fallback",
+              provider: "local",
+              model: "local-fallback",
+              fallbackReason: "tuple_containment_failed",
+              validation: fallback.validation,
+              openAiAttempted: true,
+              openAiSucceeded: false,
+            });
+            return NextResponse.json({
+              success: true,
+              aiMode,
+              keySource,
+              generationMetadata,
+              type: promptType,
+              generationType,
+              level: safeLevel,
+              topic,
+              keyStage: safeKeyStage,
+              yearGroup: safeYearGroup,
+              curriculumPathway: safeCurriculumPathway,
+              examBoard: safeExamBoard,
+              skillFocus: resolvedSkillFocus,
+              model: "local-fallback",
+              prompt: userPrompt,
+              estimatedCostPence: 0,
+              estimatedTokens: 0,
+              providerUsed: "local_fallback",
+              fallbackReason: "tuple_containment_failed",
+              validationReason: tupleContainment.message,
+              generationDebug: buildGenerationDebug({
+                providerAttempted: true,
+                providerUsed: "local_fallback",
+                openAiKeyFoundServerSide: true,
+                fallbackReason: "tuple_containment_failed",
+                validationReason: tupleContainment.message,
+                mappingStatus: "mapped",
+                fallbackTemplate: "deterministic_spelling",
+                diagnosticOutcome: tupleContainment.diagnosticOutcome,
+              }),
+              content: preview,
+              meta: fallback.validation,
+              fallback: {
+                used: true,
+                reasonCode: "tuple_containment_failed",
+                message: `${tupleContainment.message} Preview generated using the local spelling fallback.`,
+              },
+              ...diagnosticEnvelope(tupleContainment.diagnosticOutcome),
+            });
+          }
+
+          const fallback = buildValidatedGenericFallback({
+            type: validatorType,
+            subject: sourceSubject,
+            gaLexicon: gaFallbackLexicon,
+            scienceDiscipline,
+            keyStage: safeKeyStage,
+            yearGroup: safeYearGroup,
+            skillFocus: resolvedSkillFocus || "Core skill",
+            topic,
+            count,
+            difficulty: safeLevel,
+            variantSeed: fallbackVariantSeed,
+          });
+          const preview = buildGeneratedPreview({
+            subject: sourceSubject,
+            generationType,
+            promptType,
+            keyStage: safeKeyStage,
+            yearGroup: safeYearGroup,
+            curriculumPathway: safeCurriculumPathway,
+            examBoard: safeExamBoard,
+            skillFocus: resolvedSkillFocus,
+            difficulty: safeLevel,
+            topic,
+            content: fallback.content,
+            visualPlan,
+          });
+          const generationMetadata = buildMetadata({
+            generationSource: "fallback",
+            provider: "local",
+            model: "local-fallback",
+            fallbackReason: "tuple_containment_failed",
+            validation: fallback.validation,
+            openAiAttempted: true,
+            openAiSucceeded: false,
+          });
+          return NextResponse.json({
+            success: true,
+            aiMode,
+            keySource,
+            generationMetadata,
+            type: promptType,
+            generationType,
+            level: safeLevel,
+            topic,
+            keyStage: safeKeyStage,
+            yearGroup: safeYearGroup,
+            curriculumPathway: safeCurriculumPathway,
+            examBoard: safeExamBoard,
+            skillFocus: resolvedSkillFocus,
+            model: "local-fallback",
+            prompt: userPrompt,
+            estimatedCostPence: 0,
+            estimatedTokens: 0,
+            providerUsed: "local_fallback",
+            fallbackReason: "tuple_containment_failed",
+            validationReason: tupleContainment.message,
+            generationDebug: buildGenerationDebug({
+              providerAttempted: true,
+              providerUsed: "local_fallback",
+              openAiKeyFoundServerSide: true,
+              fallbackReason: "tuple_containment_failed",
+              validationReason: tupleContainment.message,
+              mappingStatus: "mapped",
+              fallbackTemplate: `deterministic_${validatorType}`,
+              diagnosticOutcome: tupleContainment.diagnosticOutcome,
+            }),
+            content: preview,
+            meta: fallback.validation,
+            fallback: {
+              used: true,
+              reasonCode: "tuple_containment_failed",
+              message: `${tupleContainment.message} Preview generated using the local calibrated fallback.`,
+            },
+            ...diagnosticEnvelope(tupleContainment.diagnosticOutcome),
+          });
+        } catch (fallbackError) {
+          console.error("[admin-ai-generate] tuple-containment fallback failed:", fallbackError);
+        }
+      }
+
       return NextResponse.json({
         success: false,
         aiMode,
@@ -3456,6 +4324,7 @@ export async function POST(req: Request) {
         reason: String(failure.details.reason ?? failure.errorCode),
         status: failure.status,
         openAiAttempted: true,
+        validationMessage: typeof failure.details.validationMessage === "string" ? failure.details.validationMessage : null,
       });
     }
 
@@ -3468,6 +4337,7 @@ export async function POST(req: Request) {
           topic,
           count,
           difficulty: safeLevel,
+          variantSeed: fallbackVariantSeed,
         });
         const preview = buildGeneratedPreview({
           subject: sourceSubject,
@@ -3546,6 +4416,7 @@ export async function POST(req: Request) {
         const fallback = buildValidatedGenericFallback({
           type: validatorType,
           subject: sourceSubject,
+          gaLexicon: gaFallbackLexicon,
           scienceDiscipline,
           keyStage: safeKeyStage,
           yearGroup: safeYearGroup,
@@ -3553,6 +4424,7 @@ export async function POST(req: Request) {
           topic,
           count,
           difficulty: safeLevel,
+          variantSeed: fallbackVariantSeed,
         });
         const preview = buildGeneratedPreview({
           subject: sourceSubject,

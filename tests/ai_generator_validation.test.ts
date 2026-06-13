@@ -475,6 +475,99 @@ test("maths difficulty calibration distinguishes easy and hard prompts", () => {
   assert.equal(stronger.ok, true);
 });
 
+test("Year 4 division word problems with remainders are recognised as maths", () => {
+  const result = validateAiContentQuality({
+    type: "maths",
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Division",
+    topic: "Division practice",
+    difficulty: 5,
+    requestedCount: 1,
+    items: [{
+      id: "Q1",
+      question: "A baker has 120 cookies and wants to pack them into boxes. Each box can hold 8 cookies. If he wants to pack all the cookies into boxes, how many boxes will he need? If he only fills some boxes completely, how many cookies will be left over? Explain your reasoning.",
+      answer: "15 boxes and 0 cookies left over.",
+      explanation: "120 divided by 8 equals 15 because 8 times 15 is 120. Therefore all cookies fit exactly, so there is no remainder left over.",
+      choices: ["15 boxes, 0 left over", "14 boxes, 8 left over", "16 boxes, 0 left over"],
+      yearGroup: "Year 4",
+      skillFocus: "Division",
+      difficulty: 5,
+      topic: "Division practice",
+    }],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.meta?.subjectMatch, true);
+});
+
+test("Year 4 division practice is a valid curriculum path", () => {
+  const result = isValidCurriculumPath({
+    yearGroup: "Year 4",
+    subject: "maths",
+    skillFocus: "Division",
+    topic: "Division practice",
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("non-maths prose with numbers is still rejected for maths", () => {
+  const result = validateAiContentQuality({
+    type: "maths",
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Division",
+    topic: "Division practice",
+    difficulty: 3,
+    items: [{
+      question: "A story has 120 cookies in a bakery window. Describe the smell and colour of the display.",
+      answer: "It smells sweet and looks golden.",
+      explanation: "This is descriptive writing, not a calculation.",
+      yearGroup: "Year 4",
+    }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.meta?.subjectMatch, false);
+});
+
+test("maths validation rejects repeated division packaging scenarios", () => {
+  const result = validateAiContentQuality({
+    type: "maths",
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 4",
+    skillFocus: "Division",
+    topic: "Division practice",
+    difficulty: 5,
+    requestedCount: 2,
+    items: [
+      {
+        id: "Q1",
+        question: "A farmer has 120 apples and wants to pack them into boxes. Each box can hold 8 apples. If he packs as many boxes as possible, how many apples will be left over? Additionally, if he decides to pack the apples into boxes of 10 instead, how many boxes will he have and how many apples will be left over? Explain your reasoning.",
+        answer: 0,
+        explanation: "120 divided by 8 equals 15 because 8 times 15 is 120. Therefore there are no apples left over.",
+        choices: [0, 1, 2, 3],
+        yearGroup: "Year 4",
+      },
+      {
+        id: "Q2",
+        question: "A baker has 240 cookies and wants to package them into bags. If each bag can hold 12 cookies, but he accidentally puts 10 cookies in each bag instead, how many cookies will be left over? Justify your method.",
+        answer: 0,
+        explanation: "240 divided by 12 equals 20 because 12 times 20 is 240. Therefore there are no cookies left over.",
+        choices: [0, 1, 2, 3],
+        yearGroup: "Year 4",
+      },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.error), /Duplicate item rejected/i);
+});
+
 test("science subject-aware validation rejects non-science content", () => {
   const result = validateAiContentQuality({
     type: "reading",
@@ -1127,11 +1220,12 @@ test("Error messages are subject-aware and not always 'spelling generator'", () 
   assert.doesNotMatch(physicsFailure.message, /spelling generator/i);
 
   const mathsFailure = normalizeAdminAiGeneratorFailure(
-    new Error("No valid maths content remained after validation."),
+    new Error("No valid maths content remained after validation. Rejections: difficulty_too_easy."),
     { subject: "maths", yearGroup: "Year 5", skillFocus: "Fractions", generationType: "maths" },
   );
   assert.match(mathsFailure.message, /maths content generator/i);
   assert.doesNotMatch(mathsFailure.message, /spelling generator/i);
+  assert.match(String(mathsFailure.details.validationMessage), /difficulty_too_easy/i);
 
   const spellingFailure = normalizeAdminAiGeneratorFailure(
     new Error("Unable to generate 5 valid Silent e items after auto-repair."),

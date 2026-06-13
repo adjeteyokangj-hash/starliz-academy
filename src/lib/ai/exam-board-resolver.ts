@@ -69,7 +69,7 @@ function normalizeFramework(value: string | null | undefined, countryRegion: str
 
 function pickGcseAlternatives(subject: Subject | null): ExamBoard[] {
   if (!subject) return ["AQA", "Edexcel", "OCR"];
-  if (subject === "gcse-french" || subject === "gcse-german" || subject === "gcse-spanish" || subject === "gcse-italian" || subject === "gcse-mandarin" || subject === "gcse-arabic" || subject === "gcse-urdu" || subject === "gcse-polish") {
+  if (subject === "gcse-french" || subject === "gcse-german" || subject === "gcse-spanish" || subject === "gcse-italian" || subject === "gcse-mandarin" || subject === "gcse-arabic" || subject === "gcse-ga" || subject === "gcse-urdu" || subject === "gcse-polish") {
     return ["AQA", "Edexcel", "WJEC / Eduqas"];
   }
   if (subject === "gcse-english" || subject === "gcse-english-language" || subject === "gcse-english-literature") {

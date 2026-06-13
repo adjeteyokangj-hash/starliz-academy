@@ -131,7 +131,7 @@ function subjectTemplates(subject: Subject | null, skillFocus: string): VisualPr
     return [];
   }
 
-  if (subject === "gcse-french" || subject === "gcse-german" || subject === "gcse-spanish" || subject === "gcse-italian" || subject === "gcse-mandarin" || subject === "gcse-arabic" || subject === "gcse-urdu" || subject === "gcse-polish") {
+  if (subject === "gcse-french" || subject === "gcse-german" || subject === "gcse-spanish" || subject === "gcse-italian" || subject === "gcse-mandarin" || subject === "gcse-arabic" || subject === "gcse-ga" || subject === "gcse-urdu" || subject === "gcse-polish") {
     return [
       { type: "worksheet_image", title: "Vocabulary card visual", brief: "Labelled vocabulary card with target words in context" },
       { type: "illustration", title: "Labelled scene visual", brief: "Everyday scene with labelled objects for language learning" },

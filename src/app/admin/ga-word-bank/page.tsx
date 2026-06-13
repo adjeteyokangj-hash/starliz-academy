@@ -9,6 +9,7 @@ import {
   GA_LEVELS,
   GA_REVIEW_STATUSES,
   GA_WORD_TYPES,
+  formatGaEnglishDisplayWord,
 } from "@/lib/ga-word-bank";
 
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
@@ -183,6 +184,7 @@ function wordPayload(form: WordForm, sourceId: string | null, sourcePage: number
 export default function GaWordBankPage() {
   const [sources, setSources] = useState<GaSourceRow[]>([]);
   const [words, setWords] = useState<GaWordRow[]>([]);
+  const [selectedWordIds, setSelectedWordIds] = useState<string[]>([]);
   const [filters, setFilters] = useState(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState(defaultFilters);
   const [wordForm, setWordForm] = useState(defaultWordForm);
@@ -209,6 +211,9 @@ export default function GaWordBankPage() {
 
   const isEditing = editingId !== null;
   const editingWord = useMemo(() => words.find((word) => word.id === editingId) ?? null, [editingId, words]);
+  const selectedWordSet = useMemo(() => new Set(selectedWordIds), [selectedWordIds]);
+  const selectedVisibleWords = useMemo(() => words.filter((word) => selectedWordSet.has(word.id)), [selectedWordSet, words]);
+  const allVisibleSelected = words.length > 0 && selectedWordIds.length === words.length;
   const activeSource = useMemo(
     () => sources.find((source) => source.sourceName.trim().toLowerCase() === sourceName.trim().toLowerCase()) ?? sources[0] ?? null,
     [sources, sourceName],
@@ -247,6 +252,7 @@ export default function GaWordBankPage() {
         return;
       }
       setWords(payload?.items ?? []);
+      setSelectedWordIds([]);
       setMetrics(payload?.metrics ?? null);
     } finally {
       setLoading(false);
@@ -429,6 +435,44 @@ export default function GaWordBankPage() {
     setMessage("Edit cancelled.");
   }
 
+  function toggleWordSelection(wordId: string) {
+    setSelectedWordIds((current) => (
+      current.includes(wordId)
+        ? current.filter((selectedId) => selectedId !== wordId)
+        : [...current, wordId]
+    ));
+  }
+
+  function toggleAllVisibleWords() {
+    setSelectedWordIds((current) => (current.length === words.length ? [] : words.map((word) => word.id)));
+  }
+
+  async function bulkReview(reviewStatus: "Approved" | "Rejected") {
+    if (!selectedVisibleWords.length) {
+      setMessage("Tick one or more words first.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch("/api/admin/ga/words/bulk-review", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ wordIds: selectedVisibleWords.map((word) => word.id), reviewStatus }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string; updatedCount?: number; missingCount?: number } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to update selected Ga words.");
+        return;
+      }
+      setMessage(`${payload?.updatedCount ?? 0} word${(payload?.updatedCount ?? 0) === 1 ? "" : "s"} ${reviewStatus === "Approved" ? "approved" : "rejected"}.` + ((payload?.missingCount ?? 0) > 0 ? ` ${payload?.missingCount} were not found.` : ""));
+      setSelectedWordIds([]);
+      await loadWords(appliedFilters);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-6 pb-24">
       <section className="rounded-3xl border border-slate-800/80 bg-linear-to-br from-emerald-500/15 via-slate-950 to-cyan-500/10 p-6 shadow-2xl shadow-slate-950/20">
@@ -599,20 +643,48 @@ export default function GaWordBankPage() {
 
       <AdminSectionCard title={`Ga Words (${words.length})`} eyebrow="Only Approved words can reach students">
         {loading ? <p className="text-sm text-slate-400">Loading Ga words...</p> : null}
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3 text-xs font-bold text-slate-300">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisibleWords} />
+            Select all visible
+          </label>
+          <span className="text-slate-500">{selectedVisibleWords.length} selected</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button type="button" onClick={() => void bulkReview("Approved")} disabled={saving || selectedVisibleWords.length === 0} className="rounded-xl bg-emerald-500 px-3 py-2 text-white disabled:opacity-50">Approve selected</button>
+            <button type="button" onClick={() => void bulkReview("Rejected")} disabled={saving || selectedVisibleWords.length === 0} className="rounded-xl bg-rose-500 px-3 py-2 text-white disabled:opacity-50">Reject selected</button>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-220 text-left text-xs">
             <thead className="uppercase text-slate-500">
-              <tr><th className="px-2 py-2">English</th><th className="px-2 py-2">Ga</th><th className="px-2 py-2">Type</th><th className="px-2 py-2">Category</th><th className="px-2 py-2">Level</th><th className="px-2 py-2">Review</th><th className="px-2 py-2">Audio</th><th className="px-2 py-2">Ready</th><th className="px-2 py-2">Action</th></tr>
+              <tr><th className="px-2 py-2">Tick</th><th className="px-2 py-2">English</th><th className="px-2 py-2">Ga</th><th className="px-2 py-2">Type</th><th className="px-2 py-2">Category</th><th className="px-2 py-2">Level</th><th className="px-2 py-2">Review</th><th className="px-2 py-2">Audio</th><th className="px-2 py-2">Ready</th><th className="px-2 py-2">Action</th></tr>
             </thead>
             <tbody>
               {words.map((word) => (
                 <tr key={word.id} className="border-t border-slate-800 text-slate-300">
-                  <td className="px-2 py-2 font-bold text-white">{word.englishWord}</td>
+                  <td className="px-2 py-2">
+                    <input type="checkbox" aria-label={`Select ${word.englishWord}`} title={`Select ${word.englishWord}`} checked={selectedWordSet.has(word.id)} onChange={() => toggleWordSelection(word.id)} />
+                  </td>
+                  <td className="px-2 py-2 font-bold text-white">{formatGaEnglishDisplayWord(word)}</td>
                   <td className="px-2 py-2 font-bold text-emerald-200">{word.gaWord}</td>
                   <td className="px-2 py-2">{word.wordType}</td>
                   <td className="px-2 py-2">{word.category}</td>
                   <td className="px-2 py-2">{word.level}</td>
-                  <td className="px-2 py-2"><span className={`rounded-full border px-2 py-1 ${word.reviewStatus === "Approved" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>{word.reviewStatus}</span></td>
+                  <td className="px-2 py-2">
+                    <span
+                      className={`rounded-full border px-2 py-1 font-bold ${
+                        word.reviewStatus === "Approved"
+                          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                          : word.reviewStatus === "Reviewed"
+                            ? "border-sky-500/40 bg-sky-500/10 text-sky-100"
+                            : word.reviewStatus === "Rejected"
+                              ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+                              : "border-slate-500/40 bg-slate-500/10 text-slate-200"
+                      }`}
+                    >
+                      {word.reviewStatus}
+                    </span>
+                  </td>
                   <td className="px-2 py-2">{word.audioStatus}</td>
                   <td className="px-2 py-2">{word.quizReady ? "Quiz" : "-"} {word.storyReady ? "Story" : ""}</td>
                   <td className="px-2 py-2"><button type="button" onClick={() => startEdit(word)} className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100">Edit</button></td>

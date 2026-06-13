@@ -218,23 +218,22 @@ test.describe("Final Targeted Smoke", () => {
         difficulty: 4,
         topic: "Electricity",
         status: "review",
-        items: {
-          subject: "science",
-          keyStage: "KS4",
-          yearGroup: "Year 11",
-          skillFocus: "Physics",
-          difficulty: 4,
-          topic: "Electricity",
-          items: [
-            {
-              id: "fallback-science-1",
-              question: "What carries current?",
-              answer: "electrons",
-              options: ["electrons", "protons", "neutrons", "ions"],
-              subject: "science",
-            },
-          ],
-        },
+        items: [
+          {
+            id: "fallback-science-1",
+            subject: "science",
+            question: "Explain why metals are good conductors of electricity in terms of particle structure.",
+            prompt: "Explain why metals are good conductors of electricity in terms of particle structure.",
+            answer: "Metals contain delocalised electrons that are free to move through the lattice, carrying charge and therefore conducting electricity.",
+            correctAnswer: "Metals contain delocalised electrons that are free to move through the lattice, carrying charge and therefore conducting electricity.",
+            explanation: "Delocalised electrons in metals are not bound to individual atoms and can drift under a potential difference, constituting an electric current.",
+            topic: "Electricity",
+            skillFocus: "Physics",
+            difficulty: 4,
+            yearGroup: "Year 11",
+            keyStage: "KS4",
+          },
+        ],
       },
     });
     expect(saveResponse.ok()).toBe(true);
@@ -364,7 +363,22 @@ test.describe("Final Targeted Smoke", () => {
         difficulty: 2,
         topic: "Electricity",
         status: "review",
-        items: [{ id: "low-difficulty", question: "Low", answer: "A", options: ["A", "B"] }],
+        items: [
+          {
+            id: "low-difficulty",
+            subject: "science",
+            question: "State the unit of electric current and describe what it measures.",
+            prompt: "State the unit of electric current and describe what it measures.",
+            answer: "The ampere (A) measures the rate of flow of electric charge past a point in a circuit.",
+            correctAnswer: "The ampere (A) measures the rate of flow of electric charge past a point in a circuit.",
+            explanation: "Current is defined as charge per unit time: I = Q/t, measured in amperes.",
+            topic: "Electricity",
+            skillFocus: "Physics",
+            difficulty: 2,
+            yearGroup: "Year 11",
+            keyStage: "KS4",
+          },
+        ],
       },
     });
     const saveHigh = await page.request.post("/api/admin/content-library", {
@@ -377,7 +391,22 @@ test.describe("Final Targeted Smoke", () => {
         difficulty: 5,
         topic: "Electricity",
         status: "review",
-        items: [{ id: "high-difficulty", question: "High", answer: "A", options: ["A", "B"] }],
+        items: [
+          {
+            id: "high-difficulty",
+            subject: "science",
+            question: "Evaluate the relationship between temperature and resistance in a filament lamp, linking your answer to ion vibration and electron flow.",
+            prompt: "Evaluate the relationship between temperature and resistance in a filament lamp, linking your answer to ion vibration and electron flow.",
+            answer: "As temperature rises, metal ions in the filament vibrate with greater amplitude, increasing the frequency of collisions with conduction electrons, which impedes their flow and increases resistance. This non-ohmic behaviour means the lamp does not obey Ohm's law.",
+            correctAnswer: "As temperature rises, metal ions in the filament vibrate with greater amplitude, increasing the frequency of collisions with conduction electrons, which impedes their flow and increases resistance. This non-ohmic behaviour means the lamp does not obey Ohm's law.",
+            explanation: "Higher ion vibration amplitude at elevated temperatures leads to more electron-ion collisions per unit time, reducing mean free path of electrons and increasing resistivity.",
+            topic: "Electricity",
+            skillFocus: "Physics",
+            difficulty: 5,
+            yearGroup: "Year 11",
+            keyStage: "KS4",
+          },
+        ],
       },
     });
 

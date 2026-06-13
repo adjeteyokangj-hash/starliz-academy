@@ -159,3 +159,26 @@ test("preview surfaces Black Box difficulty warnings before saving", () => {
   assert.equal(pageSource.includes("Black Box estimated this as Level"), true);
   assert.equal(pageSource.includes("Regenerate or apply recommendation before saving."), true);
 });
+
+test("item regeneration keeps the mapped topic instead of appending replacement suffix", () => {
+  const pageSource = readPage();
+
+  assert.equal(pageSource.includes("topic: selectedTopicTheme || skillFocus"), true);
+  assert.equal(pageSource.includes("topic: `${selectedTopicTheme || skillFocus} replacement item`"), false);
+});
+
+test("item regeneration blocks duplicate preview question templates", () => {
+  const pageSource = readPage();
+  const generateRouteSource = readSource(generateRoutePath);
+
+  assert.equal(pageSource.includes("previewItemPromptDuplicateKey"), true);
+  assert.equal(pageSource.includes("previewItemMathsScenarioFamilyKey"), true);
+  assert.equal(pageSource.includes("maths_division_packaging"), true);
+  assert.equal(pageSource.includes("avoidPrompts:"), true);
+  assert.equal(pageSource.includes("replacementCandidates.find"), true);
+  assert.equal(pageSource.includes("numberOfItems: Math.max(3, Math.min(5, preview?.items.length ?? 3))"), true);
+  assert.equal(pageSource.includes("OpenAI only returned replacement items that matched existing preview items"), true);
+  assert.equal(generateRouteSource.includes("AVOID REPEATING THESE EXISTING PREVIEW QUESTIONS"), true);
+  assert.equal(generateRouteSource.includes("avoidPrompts.length === 0"), true);
+  assert.equal(generateRouteSource.includes("Do not reuse the same story, object, or question template with only number changes."), true);
+});

@@ -379,6 +379,8 @@ export type Subject =
   | "gcse-italian"
   | "gcse-mandarin"
   | "gcse-arabic"
+  | "ga-language"
+  | "gcse-ga"
   | "gcse-urdu"
   | "gcse-polish"
   | "gcse-latin"
@@ -423,6 +425,11 @@ export function normalizeSubject(value: string | null | undefined): Subject | nu
     "gcse-french-language": "gcse-french",
     "gcse-german-language": "gcse-german",
     "gcse-spanish-language": "gcse-spanish",
+    "gcse-ga-language": "gcse-ga",
+    "gcse-ga": "gcse-ga",
+    "ghanaian-ga": "ga-language",
+    "ga-language": "ga-language",
+    ga: "ga-language",
     "gcse-combined": "gcse-combined-science",
     "gcse-rs": "gcse-religious-studies",
     "gcse-cs": "gcse-computer-science",
@@ -444,6 +451,9 @@ export function normalizeSubject(value: string | null | undefined): Subject | nu
   if (cleaned.includes("gcse") && cleaned.includes("italian")) return "gcse-italian";
   if (cleaned.includes("gcse") && cleaned.includes("mandarin")) return "gcse-mandarin";
   if (cleaned.includes("gcse") && cleaned.includes("arabic")) return "gcse-arabic";
+  if (cleaned.includes("gcse") && cleaned.includes("ga")) return "gcse-ga";
+  if (cleaned.includes("ghana") && cleaned.includes("ga")) return "ga-language";
+  if (cleaned === "ga" || cleaned.includes("ga-language")) return "ga-language";
   if (cleaned.includes("gcse") && cleaned.includes("urdu")) return "gcse-urdu";
   if (cleaned.includes("gcse") && cleaned.includes("polish")) return "gcse-polish";
   if (cleaned.includes("gcse") && cleaned.includes("latin")) return "gcse-latin";
@@ -485,6 +495,22 @@ export function normalizeSubject(value: string | null | undefined): Subject | nu
 export function mapSubjectToLegacyContentType(subject: string | null | undefined): LegacyContentType | null {
   const normalized = normalizeSubject(subject);
   if (!normalized) return null;
+  if (
+    normalized === "ga-language"
+    || normalized === "gcse-ga"
+    || normalized === "gcse-french"
+    || normalized === "gcse-german"
+    || normalized === "gcse-spanish"
+    || normalized === "gcse-italian"
+    || normalized === "gcse-mandarin"
+    || normalized === "gcse-arabic"
+    || normalized === "gcse-urdu"
+    || normalized === "gcse-polish"
+    || normalized === "gcse-latin"
+  ) {
+    // Language content is persisted through the legacy reading pathway.
+    return "reading";
+  }
   if (normalized === "spelling" || normalized === "phonics") return "spelling";
   if (normalized === "grammar") return "grammar";
   if (normalized === "punctuation") return "punctuation";
@@ -540,6 +566,8 @@ export const GENERATION_CONTENT_TYPE_BY_SUBJECT: Record<Subject, GenerationType>
   "gcse-italian": "languages",
   "gcse-mandarin": "languages",
   "gcse-arabic": "languages",
+  "ga-language": "languages",
+  "gcse-ga": "languages",
   "gcse-urdu": "languages",
   "gcse-polish": "languages",
   "gcse-latin": "languages",
@@ -564,12 +592,12 @@ export const GENERATION_CONTENT_TYPE_BY_SUBJECT: Record<Subject, GenerationType>
 // Subject availability by year group
 const SUBJECTS_BY_YEAR: Record<YearGroup, readonly Subject[]> = {
   "Reception": ["phonics", "spelling", "reading", "writing", "maths"] as const,
-  "Year 1": ["phonics", "spelling", "reading", "writing", "maths"] as const,
-  "Year 2": ["phonics", "spelling", "reading", "writing", "maths"] as const,
-  "Year 3": ["spelling", "reading", "writing", "grammar", "punctuation", "vocabulary", "maths", "times-tables", "science", "sats-practice", "11-plus-practice"] as const,
-  "Year 4": ["spelling", "reading", "writing", "grammar", "punctuation", "vocabulary", "maths", "times-tables", "science", "sats-practice", "11-plus-practice"] as const,
-  "Year 5": ["spelling", "reading", "writing", "grammar", "punctuation", "vocabulary", "maths", "times-tables", "science", "sats-practice", "11-plus-practice"] as const,
-  "Year 6": ["spelling", "reading", "writing", "grammar", "punctuation", "vocabulary", "maths", "times-tables", "science", "sats-practice", "11-plus-practice"] as const,
+  "Year 1": ["phonics", "spelling", "reading", "writing", "maths", "ga-language"] as const,
+  "Year 2": ["phonics", "spelling", "reading", "writing", "maths", "ga-language"] as const,
+  "Year 3": ["spelling", "reading", "writing", "grammar", "punctuation", "vocabulary", "maths", "times-tables", "science", "ga-language", "sats-practice", "11-plus-practice"] as const,
+  "Year 4": ["spelling", "reading", "writing", "grammar", "punctuation", "vocabulary", "maths", "times-tables", "science", "ga-language", "sats-practice", "11-plus-practice"] as const,
+  "Year 5": ["spelling", "reading", "writing", "grammar", "punctuation", "vocabulary", "maths", "times-tables", "science", "ga-language", "sats-practice", "11-plus-practice"] as const,
+  "Year 6": ["spelling", "reading", "writing", "grammar", "punctuation", "vocabulary", "maths", "times-tables", "science", "ga-language", "sats-practice", "11-plus-practice"] as const,
   "Year 7": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
   "Year 8": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
   "Year 9": ["reading", "writing", "vocabulary", "grammar", "maths", "science", "english-literature", "english-language"] as const,
@@ -589,6 +617,7 @@ const SUBJECTS_BY_YEAR: Record<YearGroup, readonly Subject[]> = {
     "gcse-italian",
     "gcse-mandarin",
     "gcse-arabic",
+    "gcse-ga",
     "gcse-urdu",
     "gcse-polish",
     "gcse-latin",
@@ -625,6 +654,7 @@ const SUBJECTS_BY_YEAR: Record<YearGroup, readonly Subject[]> = {
     "gcse-italian",
     "gcse-mandarin",
     "gcse-arabic",
+    "gcse-ga",
     "gcse-urdu",
     "gcse-polish",
     "gcse-latin",
@@ -840,6 +870,14 @@ const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
     "Year 10": ["Biology: homeostasis, reproduction", "Chemistry: bonding, reactions", "Physics: energy, forces"],
     "Year 11": ["GCSE Biology", "GCSE Chemistry", "GCSE Physics"],
   },
+  "ga-language": {
+    "Year 1": ["Ga alphabet (intro)", "Ga numbers 1-10", "Greetings", "Everyday words", "Simple classroom phrases", "Listening and repeating"],
+    "Year 2": ["Ga alphabet (practice)", "Ga numbers 1-20", "Greetings and introductions", "Family words", "Numbers and colours", "Simple questions"],
+    "Year 3": ["Ga alphabet and pronunciation", "Ga numbers and counting", "Vocabulary", "Sentence building", "Reading short phrases", "Listening comprehension"],
+    "Year 4": ["Vocabulary", "Grammar basics", "Translation", "Speaking practice", "Alphabet and spelling patterns", "Numbers in context"],
+    "Year 5": ["Vocabulary", "Grammar", "Translation", "Reading comprehension", "Speaking practice", "Writing practice", "Alphabet and spelling patterns", "Numbers in context"],
+    "Year 6": ["Vocabulary", "Grammar", "Translation", "Reading comprehension", "Speaking practice", "Writing practice", "Alphabet and spelling patterns", "Numbers in context"],
+  },
   "english-literature": {
     "Year 7": ["Poetry", "Prose", "Drama", "Literary devices"],
     "Year 8": ["Poetry analysis", "Novel study", "Playwright techniques"],
@@ -959,6 +997,10 @@ const SKILLS_BY_SUBJECT_AND_YEAR: SkillsBySubjectAndYear = {
     "Year 11": GCSE_LANGUAGE_SKILLS,
   },
   "gcse-arabic": {
+    "Year 10": GCSE_LANGUAGE_SKILLS,
+    "Year 11": GCSE_LANGUAGE_SKILLS,
+  },
+  "gcse-ga": {
     "Year 10": GCSE_LANGUAGE_SKILLS,
     "Year 11": GCSE_LANGUAGE_SKILLS,
   },
@@ -1116,7 +1158,7 @@ function generateTopicsFromSkill(skillFocus: string, subject: Subject): readonly
       generated.push("Fact fluency", "Timed drills", "Missing factors", "Inverse facts", "Speed practice");
     }
     if (skill.includes("division")) {
-      generated.push("Division fluency", "Sharing equally", "Repeated subtraction", "Division facts");
+      generated.push("Division fluency", "Division practice", "Sharing equally", "Repeated subtraction", "Division facts");
     }
     if (skill.includes("fraction")) {
       generated.push("Fraction understanding", "Equivalent fractions", "Comparing fractions", "Fraction application");

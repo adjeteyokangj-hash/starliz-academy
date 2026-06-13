@@ -24,6 +24,29 @@ export function parseAiGenerationMode(input: unknown): AiGenerationMode {
   if (AI_MODES.includes(value as AiGenerationMode)) {
     return value as AiGenerationMode;
   }
+
+  // Accept label-like and separator-variant payloads from UI clients.
+  const compact = value.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (compact === "openai_with_fallback" || compact === "open_ai_with_fallback") {
+    return "openai_with_fallback";
+  }
+  if (compact === "fallback_only" || compact === "fallback_only_testing") {
+    return "fallback_only";
+  }
+  if (compact === "live_openai_only" || compact === "live_open_ai_only") {
+    return "live_openai_only";
+  }
+
+  if (value.includes("fallback") && value.includes("openai")) {
+    return "openai_with_fallback";
+  }
+  if (value.includes("fallback") && !value.includes("openai")) {
+    return "fallback_only";
+  }
+  if (value.includes("live") && value.includes("openai")) {
+    return "live_openai_only";
+  }
+
   return "live_openai_only";
 }
 

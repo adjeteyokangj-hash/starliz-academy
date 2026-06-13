@@ -69,6 +69,14 @@ function answerOptionsFor(item: GeneratedReviewItem): string[] {
       : stringArrayValue(item.answerOptions);
 }
 
+function extractGaTwiMarkers(value: unknown): string[] {
+  const matches = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  return matches
+    .flatMap((entry) => String(entry).match(/ga_twi_marker:([^,\]\s]+)/gi) ?? [])
+    .map((entry) => entry.replace(/^ga_twi_marker:/i, "").trim())
+    .filter(Boolean);
+}
+
 function labelledLines(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(textValue).filter(Boolean);
   if (value && typeof value === "object") {
@@ -154,6 +162,10 @@ function ContentViewModalBody({
   const currentItemCheck = blackBox?.itemChecks?.find((check) => check.itemIndex === selectedItemIndex)
     ?? blackBox?.itemChecks?.[selectedItemIndex]
     ?? null;
+  const gaTwiMarkers = Array.from(new Set([
+    ...extractGaTwiMarkers(blackBox?.reasons),
+    ...extractGaTwiMarkers(currentItemCheck?.reasons),
+  ]));
   const estimatedMinutes = Math.max(2, Math.ceil(items.length * 1.5));
   const currentItemLevel = numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level);
   const recommendedLevel = currentItemCheck?.recommendedLevel ?? currentItemCheck?.estimatedLevel ?? null;
@@ -442,6 +454,12 @@ function ContentViewModalBody({
                     <ul className="mt-1 list-disc space-y-1 pl-5">
                       {blackBox.reasons.map((reason) => <li key={reason}>{reason}</li>)}
                     </ul>
+                  </div>
+                ) : null}
+                {gaTwiMarkers.length > 0 ? (
+                  <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-rose-100">
+                    <p className="font-bold">Ga language diagnostics</p>
+                    <p className="mt-1">Detected Twi markers: {gaTwiMarkers.join(", ")}</p>
                   </div>
                 ) : null}
                 {blackBox.reclassificationRecommendation ? (
