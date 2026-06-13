@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import type { BrainCentreDetailPayload, BrainDiagnosticIssue } from "@/app/api/admin/brain-centre/[studentId]/route";
+import { toBrainCentreFilterHref } from "@/lib/brain-centre/action-map";
 
 type Props = {
   params: Promise<{ studentId: string }>;
@@ -120,6 +121,15 @@ function toTitleCase(value: string): string {
     .filter(Boolean)
     .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
     .join(" ");
+}
+
+function recommendationControlRoomActionHref(row: BrainCentreDetailPayload["recommendationControlRoom"][number]): string | null {
+  if (row.syncStatus !== "mismatch") return null;
+  return toBrainCentreFilterHref({
+    tab: "all",
+    sync: "mismatch",
+    source: row.recommendationSource,
+  });
 }
 
 function friendlyRecommendationLabel(raw: string): string {
@@ -903,10 +913,22 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
                       key={row.engine}
                       role="button"
                       tabIndex={0}
-                      onClick={() => void runGuidedAction(row.engine.toLowerCase().includes("heart") ? "open_heartbeat" : "open_recommendation")}
+                      onClick={() => {
+                        const mismatchHref = recommendationControlRoomActionHref(row);
+                        if (mismatchHref) {
+                          router.push(mismatchHref);
+                          return;
+                        }
+                        void runGuidedAction(row.engine.toLowerCase().includes("heart") ? "open_heartbeat" : "open_recommendation");
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
+                          const mismatchHref = recommendationControlRoomActionHref(row);
+                          if (mismatchHref) {
+                            router.push(mismatchHref);
+                            return;
+                          }
                           void runGuidedAction(row.engine.toLowerCase().includes("heart") ? "open_heartbeat" : "open_recommendation");
                         }
                       }}

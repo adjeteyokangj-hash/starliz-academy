@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
@@ -10,7 +10,12 @@ import type {
   BrainCentreQlfIssueRow,
   BrainCentreWarningRow,
 } from "@/app/api/admin/brain-centre/route";
-import { toBrainCentreFilterHref, toIssueDetailHref } from "@/lib/brain-centre/action-map";
+import {
+  getBrainCentreSelectedMismatchSource,
+  isBrainCentreMismatchRowSelected,
+  toBrainCentreFilterHref,
+  toIssueDetailHref,
+} from "@/lib/brain-centre/action-map";
 
 type BrainCentreTab = "all" | "warnings" | "mismatches" | "qlf";
 
@@ -100,7 +105,25 @@ function HeartbeatWarnings({ rows, onOpenIssue }: { rows: BrainCentreWarningRow[
   );
 }
 
-function RecommendationMismatches({ rows, onOpenIssue }: { rows: BrainCentreMismatchRow[]; onOpenIssue: (row: BrainCentreMismatchRow) => void }) {
+function RecommendationMismatches({
+  rows,
+  onOpenIssue,
+  selectedSource,
+}: {
+  rows: BrainCentreMismatchRow[];
+  onOpenIssue: (row: BrainCentreMismatchRow) => void;
+  selectedSource: string | null;
+}) {
+  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+
+  useEffect(() => {
+    if (!selectedSource) return;
+    const selectedRow = rows.find((row) => isBrainCentreMismatchRowSelected(row, { sync: "mismatch", source: selectedSource }));
+    if (!selectedRow) return;
+    const selectedKey = `${selectedRow.studentId}-${selectedRow.mismatchingEngine}`;
+    rowRefs.current[selectedKey]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [rows, selectedSource]);
+
   if (!rows.length) return <EmptyRow label="No recommendation sync mismatches in the current sample." />;
   return (
     <div className="overflow-x-auto">
@@ -115,9 +138,15 @@ function RecommendationMismatches({ rows, onOpenIssue }: { rows: BrainCentreMism
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
+          {rows.map((row, index) => {
+            const selected = isBrainCentreMismatchRowSelected(row, { sync: "mismatch", source: selectedSource });
+            const rowKey = `${row.studentId}-${row.mismatchingEngine}`;
+            return (
             <tr
-              key={`${row.studentId}-${row.mismatchingEngine}-${index}`}
+              key={`${rowKey}-${index}`}
+              ref={(node) => {
+                rowRefs.current[rowKey] = node;
+              }}
               role="button"
               tabIndex={0}
               onClick={() => onOpenIssue(row)}
@@ -127,7 +156,7 @@ function RecommendationMismatches({ rows, onOpenIssue }: { rows: BrainCentreMism
                   onOpenIssue(row);
                 }
               }}
-              className="cursor-pointer border-b border-slate-800/70 text-slate-300 transition hover:bg-slate-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+              className={`cursor-pointer border-b text-slate-300 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${selected ? "border-amber-300/50 bg-amber-500/15 ring-1 ring-inset ring-amber-300/40" : "border-slate-800/70 hover:bg-slate-900/60"}`}
             >
               <td className="px-3 py-3">
                 <Link href={toIssueDetailHref(row)} className="font-bold text-white hover:text-blue-200">{row.studentName}</Link>
@@ -138,11 +167,13 @@ function RecommendationMismatches({ rows, onOpenIssue }: { rows: BrainCentreMism
                 <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs font-bold text-amber-100">
                   {row.mismatchingEngine}
                 </span>
+                {selected ? <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-amber-200">Selected issue</p> : null}
               </td>
               <td className="px-3 py-3 text-xs text-slate-300">{row.mismatchDetail}</td>
               <td className="px-3 py-3 text-xs text-slate-200">{row.lockAction}</td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -246,6 +277,10 @@ export default function AdminBrainCentrePage() {
   const severityFilter = searchParams.get("severity");
   const issueTypeFilter = searchParams.get("issueType");
   const statusFilter = searchParams.get("status");
+  const selectedMismatchSource = useMemo(() => getBrainCentreSelectedMismatchSource({
+    sync: searchParams.get("sync"),
+    source: searchParams.get("source"),
+  }), [searchParams]);
   const healthyOnly = statusFilter === "healthy";
 
   const filteredWarnings = useMemo(() => {
@@ -411,7 +446,7 @@ export default function AdminBrainCentrePage() {
             {(activeTab === "all" || activeTab === "mismatches") ? (
               <section>
                 <h2 className="mb-2 text-sm font-bold text-white">Recommendation Sync Mismatches</h2>
-                {healthyOnly ? <EmptyRow label="No healthy issues to show." /> : <RecommendationMismatches rows={filteredMismatches} onOpenIssue={openIssue} />}
+                {healthyOnly ? <EmptyRow label="No healthy issues to show." /> : <RecommendationMismatches rows={filteredMismatches} onOpenIssue={openIssue} selectedSource={selectedMismatchSource} />}
               </section>
             ) : null}
 

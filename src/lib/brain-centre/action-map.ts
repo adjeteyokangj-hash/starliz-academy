@@ -26,6 +26,8 @@ export type BrainIssueActionType =
   | "mark_reviewed"
   | "resolve_issue";
 
+export type BrainCentreSyncFilter = "mismatch";
+
 export type BrainIssueIdentity = {
   issueId: string;
   studentId: string;
@@ -69,13 +71,44 @@ export function toBrainCentreFilterHref(input: {
   tab?: "all" | "warnings" | "mismatches" | "qlf";
   severity?: "warning" | "critical";
   status?: "healthy" | "warning" | "critical";
+  sync?: BrainCentreSyncFilter;
+  source?: string;
   issueType?: BrainIssueType;
 }): string {
   const params = new URLSearchParams();
   if (input.tab) params.set("tab", input.tab);
   if (input.severity) params.set("severity", input.severity);
   if (input.status) params.set("status", input.status);
+  if (input.sync) params.set("sync", input.sync);
+  const normalizedSource = normalizeBrainCentreSource(input.source);
+  if (normalizedSource) params.set("source", normalizedSource);
   if (input.issueType) params.set("issueType", input.issueType);
   const query = params.toString();
   return query ? `/admin/brain-centre?${query}` : "/admin/brain-centre";
+}
+
+export function normalizeBrainCentreSource(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return normalized.length ? normalized : null;
+}
+
+export function getBrainCentreSelectedMismatchSource(input: {
+  sync?: string | null;
+  source?: string | null;
+}): string | null {
+  if (input.sync !== "mismatch") return null;
+  return normalizeBrainCentreSource(input.source);
+}
+
+export function isBrainCentreMismatchRowSelected(
+  row: Pick<BrainIssueIdentity, "issueType"> & { mismatchingEngine: string },
+  input: {
+    sync?: string | null;
+    source?: string | null;
+  },
+): boolean {
+  if (row.issueType !== "recommendation_mismatch") return false;
+  const selectedSource = getBrainCentreSelectedMismatchSource(input);
+  if (!selectedSource) return false;
+  return normalizeBrainCentreSource(row.mismatchingEngine) === selectedSource;
 }
