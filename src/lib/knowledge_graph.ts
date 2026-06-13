@@ -1,6 +1,7 @@
 import type { DictionaryWordRecord } from "@/lib/dictionary";
 import { decodeDictionaryWordRelationships } from "@/lib/dictionary_relationships";
 import { normalizeDictionaryWord } from "@/lib/dictionary";
+import { GA_LANGUAGE_PROFILE, buildLanguageGraphNodeData } from "@/lib/language-profiles";
 
 export type KnowledgeNodeType =
   | "word"
@@ -49,6 +50,13 @@ export type KnowledgeGraphNode = {
     definition?: string;
     curriculumTags?: string[];
     interventionTags?: string[];
+    languageId?: string;
+    languageName?: string;
+    locale?: string;
+    verificationStatus?: string;
+    sourceRef?: string | null;
+    specialLetters?: string[];
+    requiresVerifiedWordBank?: boolean;
   };
 };
 
@@ -210,6 +218,16 @@ export function buildKnowledgeGraph(input: BuildKnowledgeGraphInput): BuildKnowl
   };
 
   const ensureWordNode = (word: DictionaryWordRecord) => {
+    const languageNode = buildLanguageGraphNodeData(GA_LANGUAGE_PROFILE, {
+      wordId: word.id,
+      word: word.normalizedWord,
+      meaning: word.definitionChild,
+      level: word.difficulty,
+      lessonUsage: word.curriculumTags,
+      verificationStatus: word.active ? "active" : "inactive",
+      sourceRef: "ga_word_bank",
+    });
+
     ensureNode({
       id: `word:${word.id}`,
       type: "word",
@@ -225,6 +243,19 @@ export function buildKnowledgeGraph(input: BuildKnowledgeGraphInput): BuildKnowl
         definition: word.definitionChild,
         curriculumTags: word.curriculumTags,
         interventionTags: word.interventionTags,
+        languageId: typeof languageNode.languageId === "string" ? languageNode.languageId : undefined,
+        languageName: typeof languageNode.languageName === "string" ? languageNode.languageName : undefined,
+        locale: typeof languageNode.locale === "string" ? languageNode.locale : undefined,
+        verificationStatus: typeof languageNode.verificationStatus === "string" ? languageNode.verificationStatus : undefined,
+        sourceRef: typeof languageNode.sourceRef === "string" || languageNode.sourceRef === null
+          ? languageNode.sourceRef as string | null
+          : null,
+        specialLetters: Array.isArray(languageNode.specialLetters)
+          ? languageNode.specialLetters.filter((entry): entry is string => typeof entry === "string")
+          : undefined,
+        requiresVerifiedWordBank: typeof languageNode.requiresVerifiedWordBank === "boolean"
+          ? languageNode.requiresVerifiedWordBank
+          : undefined,
       },
     });
   };

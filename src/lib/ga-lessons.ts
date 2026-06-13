@@ -3,6 +3,7 @@ import { GA_CATEGORIES, GA_LEVELS, toStudentSafeGaWord } from "@/lib/ga-word-ban
 import { GA_VOICE_ACTIVITY_TYPES } from "@/lib/ga-voice";
 import { listGaPronunciationReferences, serializeGaPronunciationReference } from "@/lib/ga-audio";
 import { resolveGaCategoryAgainstAllowed } from "@/lib/ga-categories";
+import { GA_LANGUAGE_PROFILE } from "@/lib/language-profiles";
 
 export const GA_LESSON_STATUSES = ["Draft", "Published", "Archived"] as const;
 export const GA_ACTIVITY_TYPES = ["flashcards", "quiz", ...GA_VOICE_ACTIVITY_TYPES] as const;
@@ -191,6 +192,8 @@ export function toStudentSafeGaLesson(lesson: LessonLike) {
 
   return {
     id: lesson.id,
+    languageProfileId: GA_LANGUAGE_PROFILE.id,
+    requiresLanguageReadinessReview: GA_LANGUAGE_PROFILE.requiresLanguageReadinessReview,
     title: lesson.title,
     slug: lesson.slug,
     description: lesson.description,

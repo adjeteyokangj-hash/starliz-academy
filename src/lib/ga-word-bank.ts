@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/db";
 import { GA_APPROVED_CATEGORIES, normalizeGaCategory } from "@/lib/ga-word-categories";
 import { resolveGaCategoryAgainstAllowed } from "@/lib/ga-categories";
+import {
+  GA_LANGUAGE_PROFILE,
+  languageRequiresVerifiedWordBank,
+  validateWordCharacters,
+} from "@/lib/language-profiles";
 
 export const GA_WORD_TYPES = ["noun", "verb", "adjective", "pronoun", "expression", "conjunction", "determiner"] as const;
 export const GA_CATEGORIES = GA_APPROVED_CATEGORIES;
@@ -430,6 +435,12 @@ export function buildGaWordData(input: GaWordInput, options: GaWordBuildOptions 
   if (!englishWord) throw new Error("English word is required.");
   if (!gaWord) throw new Error("Ga word is required.");
 
+  const characterWarnings = validateWordCharacters(GA_LANGUAGE_PROFILE, gaWord);
+  const baseNotes = optionalText(input.notes);
+  const combinedNotes = characterWarnings.length
+    ? [baseNotes, ...characterWarnings].filter(Boolean).join(" | ")
+    : baseNotes;
+
   return {
     englishWord,
     gaWord,
@@ -442,11 +453,12 @@ export function buildGaWordData(input: GaWordInput, options: GaWordBuildOptions 
     audioStatus: assertAllowed(cleanText(input.audioStatus) || "Not Started", GA_AUDIO_STATUSES, "Audio status"),
     quizReady: input.quizReady === true,
     storyReady: input.storyReady === true,
-    notes: optionalText(input.notes),
+    notes: optionalText(combinedNotes),
   };
 }
 
 export function isGaWordStudentSafe(word: { reviewStatus: string }): boolean {
+  if (!languageRequiresVerifiedWordBank(GA_LANGUAGE_PROFILE)) return word.reviewStatus === "Approved";
   return word.reviewStatus === "Approved";
 }
 
