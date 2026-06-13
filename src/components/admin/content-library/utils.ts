@@ -291,6 +291,8 @@ export function parseBlackBoxAdminVerification(item: ContentItem): BlackBoxAdmin
           level: asFiniteNumber(reclassificationRaw.level) ?? null,
         }
       : null,
+    originalBlackBoxDecision: typeof raw.originalBlackBoxDecision === "string" ? raw.originalBlackBoxDecision : null,
+    originalBlackBoxScore: asFiniteNumber(raw.originalBlackBoxScore) ?? null,
   };
 }
 
@@ -310,6 +312,19 @@ export function parseContentReviewHistory(item: ContentItem): ContentReviewHisto
       actor: typeof raw.actor === "string" ? raw.actor : null,
       createdAt: raw.createdAt,
       metadata: asRecord(raw.metadata) ?? undefined,
+      questionIndex: asFiniteNumber(raw.questionIndex) ?? null,
+      questionPreview: typeof raw.questionPreview === "string" ? raw.questionPreview : null,
+      itemId: typeof raw.itemId === "string" ? raw.itemId : null,
+      contentId: typeof raw.contentId === "string" ? raw.contentId : null,
+      contentTitle: typeof raw.contentTitle === "string" ? raw.contentTitle : null,
+      subject: typeof raw.subject === "string" ? raw.subject : null,
+      strandTopic: typeof raw.strandTopic === "string" ? raw.strandTopic : null,
+      yearGroup: typeof raw.yearGroup === "string" ? raw.yearGroup : null,
+      keyStage: typeof raw.keyStage === "string" ? raw.keyStage : null,
+      level: asFiniteNumber(raw.level) ?? null,
+      examBoard: typeof raw.examBoard === "string" ? raw.examBoard : null,
+      blackBoxDecision: typeof raw.blackBoxDecision === "string" ? raw.blackBoxDecision : null,
+      blackBoxScore: asFiniteNumber(raw.blackBoxScore) ?? null,
     });
   }
   return history;

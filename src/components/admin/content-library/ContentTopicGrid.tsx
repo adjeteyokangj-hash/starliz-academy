@@ -14,6 +14,8 @@ type Props = {
   onArchive: (item: ContentItem) => void;
   onPublish: (item: ContentItem) => void;
   onReview: (item: ContentItem) => void;
+  /** Callback for in-card Black Box run result (Part 5) */
+  onRefreshItem?: (updated: ContentItem) => void;
   operatingAction?: "view" | "select" | "duplicate" | "archive" | "publish" | "review" | null;
   operatingId?: string | null;
   assigning?: boolean;
@@ -28,6 +30,7 @@ export default function ContentTopicGrid({
   onArchive,
   onPublish,
   onReview,
+  onRefreshItem,
   viewMode,
   operatingAction,
   operatingId,
@@ -70,6 +73,7 @@ export default function ContentTopicGrid({
                 onArchive={onArchive}
                 onPublish={onPublish}
                 onReview={onReview}
+                onRefreshItem={onRefreshItem}
                 operatingAction={operatingAction}
                 operatingId={operatingId}
                 assigning={assigning}

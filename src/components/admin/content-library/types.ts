@@ -66,6 +66,10 @@ export type BlackBoxAdminVerification = {
     yearGroup?: string | null;
     level?: number | null;
   } | null;
+  /** Original machine Black Box decision before admin review (Part 4) */
+  originalBlackBoxDecision?: string | null;
+  /** Original machine Black Box score before admin review (Part 4) */
+  originalBlackBoxScore?: number | null;
 };
 
 export type ContentReviewHistoryEntry = {
@@ -77,6 +81,32 @@ export type ContentReviewHistoryEntry = {
   actor?: string | null;
   createdAt: string;
   metadata?: Record<string, unknown>;
+  /** Which question was being reviewed when this action was taken (Part 3) */
+  questionIndex?: number | null;
+  /** Short preview of the question text at the time of review (Part 3) */
+  questionPreview?: string | null;
+  /** Stable item/question ID if available (Part 3) */
+  itemId?: string | null;
+  /** Parent content batch ID (Part 3) */
+  contentId?: string | null;
+  /** Parent content title (Part 3) */
+  contentTitle?: string | null;
+  /** Content subject at time of review (Part 3) */
+  subject?: string | null;
+  /** Strand/topic/learning focus (Part 3) */
+  strandTopic?: string | null;
+  /** Year group at time of review (Part 3) */
+  yearGroup?: string | null;
+  /** Key stage at time of review (Part 3) */
+  keyStage?: string | null;
+  /** Level/difficulty at time of review (Part 3) */
+  level?: number | null;
+  /** Exam board at time of review (Part 3) */
+  examBoard?: string | null;
+  /** Black Box machine decision at time of review (Part 3) */
+  blackBoxDecision?: string | null;
+  /** Black Box machine score at time of review (Part 3) */
+  blackBoxScore?: number | null;
 };
 
 export type ContentReviewQueueBucket = "awaiting_review" | "reclassified" | "rejected" | "approved" | "published";

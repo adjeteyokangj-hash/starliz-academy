@@ -140,7 +140,8 @@ function ContentViewModalBody({
   const items = useMemo(() => asReviewItems(content.contentJson), [content.contentJson]);
   const [selectedItemIndex, setSelectedItemIndex] = useState(0);
   const [rawExpanded, setRawExpanded] = useState(false);
-  const [notes, setNotes] = useState("");
+  /** Per-item review notes — keyed by item index (Part 2) */
+  const [itemNotes, setItemNotes] = useState<Record<number, string>>({});
   const [subject, setSubject] = useState(blackBox?.reclassificationRecommendation?.subject ?? meta.subject ?? "");
   const [strand, setStrand] = useState(blackBox?.reclassificationRecommendation?.strand ?? "");
   const [workingAction, setWorkingAction] = useState<VerificationAction | null>(null);
@@ -232,13 +233,22 @@ function ContentViewModalBody({
     if (!content) return;
     setWorkingAction(action);
     setMessage(null);
+    const currentNote = itemNotes[selectedItemIndex] ?? "";
     try {
       const response = await fetch(`/api/admin/content/${content.id}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action,
-          notes,
+          notes: currentNote,
+          // Pass item-level context for richer history (Part 3)
+          questionContext: currentItem
+            ? {
+                questionIndex: selectedItemIndex,
+                questionPreview: questionText.slice(0, 200) || undefined,
+                itemId: typeof currentItem.id === "string" ? currentItem.id : undefined,
+              }
+            : undefined,
           ...(action === "reclassify"
             ? {
                 reclassification: {
@@ -268,18 +278,18 @@ function ContentViewModalBody({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-6">
-        <div className="mb-4 flex items-start justify-between">
-          <div>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-2 sm:items-center sm:p-4">
+      <div className="w-full max-w-6xl rounded-2xl border border-slate-700 bg-slate-950 p-3 sm:p-6">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-indigo-200">Review Workspace</p>
-            <h2 className="text-xl font-black text-white">{meta.title}</h2>
+            <h2 className="truncate text-lg font-black text-white sm:text-xl">{meta.title}</h2>
             <p className="mt-1 text-xs text-slate-400">{meta.subject} | {meta.topic || "General"}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-sm font-bold text-slate-400 hover:text-white"
+            className="shrink-0 text-sm font-bold text-slate-400 hover:text-white"
           >
             ✕
           </button>
@@ -441,11 +451,26 @@ function ContentViewModalBody({
                 >
                   {blackBoxRetesting ? "Re-running..." : "Re-run Black Box"}
                 </button>
+                {/* Part 4: show admin review status separately from machine BB result */}
+                {verification?.status === "verified" || verification?.status === "rejected" ? (
+                  <span className={`rounded-full px-2 py-1 text-xs font-black ${verification.status === "verified" ? "bg-emerald-500/20 text-emerald-100" : "bg-rose-500/20 text-rose-100"}`}>
+                    Admin: {verification.decision ?? verification.status}
+                  </span>
+                ) : null}
                 <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox)}`}>
-                  {blackBox ? `${blackBox.decision}${typeof blackBox.score === "number" ? ` • ${blackBox.score}/100` : ""}` : "Not tested"}
+                  {blackBox
+                    ? `BB: ${verification?.originalBlackBoxDecision ?? blackBox.decision}${typeof (verification?.originalBlackBoxScore ?? blackBox.score) === "number" ? ` ${(verification?.originalBlackBoxScore ?? blackBox.score)}/100` : ""}`
+                    : "BB: Not tested"}
                 </span>
               </div>
             </div>
+            {/* Part 4: explain when admin has already reviewed */}
+            {verification?.status === "verified" && blackBox?.decision !== "APPROVE" ? (
+              <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-xs text-emerald-100">
+                <p className="font-black">Admin reviewed · {verification.decision ?? "approved"}</p>
+                <p className="mt-0.5 text-emerald-200/80">Original machine result: {verification.originalBlackBoxDecision ?? blackBox?.decision ?? "N/A"}{typeof (verification.originalBlackBoxScore ?? blackBox?.score) === "number" ? ` · ${verification.originalBlackBoxScore ?? blackBox?.score}/100` : ""}</p>
+              </div>
+            ) : null}
             {blackBox ? (
               <div className="mt-3 space-y-3 text-xs text-slate-400">
                 {blackBox.reasons && blackBox.reasons.length > 0 ? (
@@ -566,13 +591,14 @@ function ContentViewModalBody({
               <p>Status: {verification?.status ?? "pending"}</p>
               {verification?.notes ? <p className="mt-1">Latest notes: {verification.notes}</p> : null}
             </div>
+            {/* Part 2: per-item notes — Q1 note does not appear on Q2-Q5 */}
             <label className="mt-3 block text-xs font-bold text-slate-300">
-              Review notes
+              Review notes for Q{selectedItemIndex + 1}{items.length > 1 ? ` (of ${items.length})` : ""}
               <textarea
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
+                value={itemNotes[selectedItemIndex] ?? ""}
+                onChange={(event) => setItemNotes((prev) => ({ ...prev, [selectedItemIndex]: event.target.value }))}
                 className="mt-1 min-h-20 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-indigo-400"
-                placeholder="Add verification notes..."
+                placeholder={`Add review note for question ${selectedItemIndex + 1}...`}
               />
             </label>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -616,9 +642,39 @@ function ContentViewModalBody({
             <div className="mt-2 space-y-2 text-xs text-slate-400">
               {reviewHistory.length > 0 ? reviewHistory.slice().reverse().map((entry) => (
                 <div key={`${entry.createdAt}-${entry.action}`} className="rounded-lg border border-slate-800 bg-slate-950 p-2">
-                  <p className="font-bold text-slate-200">{entry.action} {entry.status ? `• ${entry.status}` : ""}</p>
-                  <p>{new Date(entry.createdAt).toLocaleString()} {entry.actor ? `• ${entry.actor}` : ""}</p>
-                  {entry.notes ? <p className="mt-1">{entry.notes}</p> : null}
+                  {/* Part 3: question reference + action */}
+                  <p className="font-bold text-slate-200">
+                    {entry.questionIndex !== null && entry.questionIndex !== undefined
+                      ? `Q${entry.questionIndex + 1} · `
+                      : ""}
+                    {entry.action}
+                    {entry.status ? ` · ${entry.status}` : ""}
+                  </p>
+                  {/* Part 3: question preview */}
+                  {entry.questionPreview ? (
+                    <p className="mt-1 text-slate-300 line-clamp-2">&quot;{entry.questionPreview}&quot;</p>
+                  ) : null}
+                  {/* Part 3: parent content context */}
+                  {(entry.contentTitle ?? entry.subject ?? entry.yearGroup ?? entry.keyStage) ? (
+                    <p className="mt-1 text-slate-500">
+                      {[entry.contentTitle, entry.subject, entry.yearGroup, entry.keyStage, entry.strandTopic, entry.examBoard]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  ) : null}
+                  {entry.level !== null && entry.level !== undefined ? (
+                    <p className="text-slate-500">Level {entry.level}</p>
+                  ) : null}
+                  <p>{new Date(entry.createdAt).toLocaleString()}{entry.actor ? ` · ${entry.actor}` : ""}</p>
+                  {/* Part 3: per-item note */}
+                  {entry.notes ? <p className="mt-1 rounded bg-slate-900 px-2 py-1 text-slate-300">{entry.notes}</p> : null}
+                  {/* Part 3 + 4: BB score at time of review */}
+                  {(entry.blackBoxDecision ?? entry.blackBoxScore !== null) ? (
+                    <p className="mt-0.5 text-slate-600">BB at review: {entry.blackBoxDecision ?? "?"}{typeof entry.blackBoxScore === "number" ? ` ${entry.blackBoxScore}/100` : ""}</p>
+                  ) : null}
+                  {entry.contentId ? (
+                    <p className="mt-0.5 text-slate-600 font-mono text-[10px]">Batch: {entry.contentId}</p>
+                  ) : null}
                 </div>
               )) : <p>No admin verification history yet.</p>}
             </div>

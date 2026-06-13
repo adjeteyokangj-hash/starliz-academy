@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ContentItem } from "./types";
-import { getBlackBoxBadgeTone, getContentJsonSummary, getContentMeta, parseBlackBoxContentTest } from "./utils";
+import { getBlackBoxBadgeTone, getContentJsonSummary, getContentMeta, parseBlackBoxAdminVerification, parseBlackBoxContentTest } from "./utils";
 
 type Props = {
   item: ContentItem;
@@ -13,6 +13,8 @@ type Props = {
   onArchive: (item: ContentItem) => void;
   onPublish: (item: ContentItem) => void;
   onReview: (item: ContentItem) => void;
+  /** Called with updated item data after a successful in-card Black Box run (Part 5) */
+  onRefreshItem?: (updated: ContentItem) => void;
   viewMode: "grid" | "list";
   operatingAction?: "view" | "select" | "duplicate" | "archive" | "publish" | "review" | null;
   operatingId?: string | null;
@@ -28,15 +30,19 @@ export default function ContentCard({
   onArchive,
   onPublish,
   onReview,
+  onRefreshItem,
   viewMode,
   operatingAction,
   operatingId,
   assigning,
 }: Props) {
   const [showMenu, setShowMenu] = useState(false);
+  const [runningBB, setRunningBB] = useState(false);
+  const [bbError, setBbError] = useState<string | null>(null);
   const summary = getContentJsonSummary(item.contentJson);
   const meta = getContentMeta(item);
   const blackBox = parseBlackBoxContentTest(item);
+  const verification = parseBlackBoxAdminVerification(item);
   const isDraftOrGenerated = ["draft", "generated"].includes(item.status);
   const assignDisabled = !["reviewed", "approved", "published"].includes(item.status) || !summary.valid;
   const canPublish = ["reviewed", "approved", "published"].includes(item.status);
@@ -46,6 +52,35 @@ export default function ContentCard({
       ? "Content JSON is invalid and cannot be assigned."
       : undefined;
   const isOperating = operatingId === item.id;
+
+  /** Part 5: run Black Box test directly from card */
+  async function handleRunBlackBox() {
+    setRunningBB(true);
+    setBbError(null);
+    try {
+      const response = await fetch(`/api/admin/content/${item.id}/black-box`, { method: "POST" });
+      const data = await response.json() as { item?: { id: string; status: string; metadataJson: string | null }; error?: string };
+      if (!response.ok || !data.item) {
+        setBbError(data.error ?? "Black Box test failed.");
+        return;
+      }
+      onRefreshItem?.({
+        ...item,
+        status: data.item.status,
+        metadataJson: data.item.metadataJson ?? item.metadataJson,
+      });
+    } catch {
+      setBbError("Black Box test request failed.");
+    } finally {
+      setRunningBB(false);
+    }
+  }
+
+  /** Part 4: determine display badge for BB result vs admin status */
+  const adminVerified = verification?.status === "verified" || verification?.status === "rejected";
+  const bbBadgeText = blackBox
+    ? `BB: ${blackBox.decision}${typeof blackBox.score === "number" ? ` ${blackBox.score}/100` : ""}`
+    : "BB: Not tested";
 
   return (
     <article className={`rounded-2xl border p-4 ${selected ? "border-indigo-400 bg-indigo-500/5" : "border-slate-800 bg-slate-950/45"}`}>
@@ -63,11 +98,26 @@ export default function ContentCard({
             {summary.valid ? "Valid JSON" : "Invalid JSON"}
           </span>
           <span className="rounded-full bg-amber-500/15 px-2 py-1 text-xs font-black text-amber-200">{item.status}</span>
+          {/* Part 4: show admin review status alongside (not overwriting) machine BB result */}
+          {adminVerified ? (
+            <span className={`rounded-full px-2 py-1 text-xs font-black ${verification?.status === "verified" ? "bg-emerald-500/20 text-emerald-100" : "bg-rose-500/20 text-rose-100"}`}>
+              Admin: {verification?.decision ?? verification?.status}
+            </span>
+          ) : null}
           <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox)}`}>
-            Black Box: {blackBox ? `${blackBox.decision}${typeof blackBox.score === "number" ? ` ${blackBox.score}/100` : ""}` : "Not tested"}
+            {bbBadgeText}
           </span>
+          {/* Part 5: warn when content is reviewed/published but never tested */}
+          {!blackBox && (item.status === "reviewed" || item.status === "published" || item.status === "approved") ? (
+            <span className="rounded-full bg-rose-500/15 px-2 py-1 text-xs font-black text-rose-200">
+              {item.status === "published" ? "Published before BB test" : "Reviewed before BB test"}
+            </span>
+          ) : null}
         </div>
       </div>
+      {bbError ? (
+        <p className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs font-bold text-rose-200">{bbError}</p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
@@ -77,6 +127,17 @@ export default function ContentCard({
         >
           {isOperating && operatingAction === "view" ? "Opening..." : "View"}
         </button>
+        {/* Part 5: visible Run Black Box button when not yet tested */}
+        {!blackBox ? (
+          <button
+            type="button"
+            onClick={() => void handleRunBlackBox()}
+            disabled={runningBB || isOperating || Boolean(assigning)}
+            className="rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs font-black text-indigo-100 hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60 sm:px-3"
+          >
+            {runningBB ? "Testing..." : <><span className="hidden sm:inline">Run Black Box</span><span className="sm:hidden">Test</span></>}
+          </button>
+        ) : null}
         {isDraftOrGenerated ? (
           <button
             type="button"

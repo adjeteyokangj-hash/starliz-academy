@@ -15,6 +15,12 @@ type Context = { params: Promise<{ id: string }> };
 const verificationSchema = z.object({
   action: z.enum(["approve", "reject", "reclassify", "needs_changes", "send_back"]),
   notes: z.string().trim().max(2000).optional(),
+  /** Item-level context for richer review history (Part 3) */
+  questionContext: z.object({
+    questionIndex: z.number().int().min(0).optional(),
+    questionPreview: z.string().max(300).optional(),
+    itemId: z.string().max(200).optional(),
+  }).optional(),
   reclassification: z.object({
     subject: z.string().trim().optional(),
     strand: z.string().trim().optional(),
@@ -60,6 +66,18 @@ type AdminContentVerificationDeps = {
   runRuntimeTest: typeof runContentRuntimeBlackBoxTest;
   now: () => Date;
 };
+
+/** Reads a string field from ContentMetadata safely */
+function metaString(metadata: ContentMetadata, key: string): string | null {
+  const val = metadata[key];
+  return typeof val === "string" && val.trim() ? val.trim() : null;
+}
+
+/** Reads a number field from ContentMetadata safely */
+function metaNumber(metadata: ContentMetadata, key: string): number | null {
+  const val = metadata[key];
+  return typeof val === "number" && Number.isFinite(val) ? val : null;
+}
 
 async function defaultFindContent(id: string): Promise<VerifiableContentRecord | null> {
   return prisma.aIContentCache.findUnique({
@@ -144,19 +162,36 @@ function buildNextMetadata(input: {
   runtime: ContentRuntimeBlackBoxResult;
   actor: string;
   now: Date;
+  contentId: string;
 }): ContentMetadata {
-  const { existingMetadata, body, runtime, actor, now } = input;
+  const { existingMetadata, body, runtime, actor, now, contentId } = input;
   const status = verificationStatus(body.action);
   const nextStatus = actionStatus(body.action);
   const reclassification = body.action === "reclassify" ? body.reclassification ?? null : null;
+  const bbDecision = blackBoxDecision(existingMetadata);
+  const bbScore = blackBoxScore(existingMetadata);
   const reviewEntry = {
     action: body.action,
     status: nextStatus,
-    score: blackBoxScore(existingMetadata),
-    decision: blackBoxDecision(existingMetadata),
+    score: bbScore,
+    decision: bbDecision,
     notes: body.notes ?? null,
     actor,
     createdAt: now.toISOString(),
+    // Rich item-level context (Parts 3 & 4)
+    questionIndex: body.questionContext?.questionIndex ?? null,
+    questionPreview: body.questionContext?.questionPreview ?? null,
+    itemId: body.questionContext?.itemId ?? null,
+    contentId,
+    contentTitle: metaString(existingMetadata, "title"),
+    subject: metaString(existingMetadata, "subject"),
+    strandTopic: metaString(existingMetadata, "strand"),
+    yearGroup: metaString(existingMetadata, "yearGroup"),
+    keyStage: metaString(existingMetadata, "keyStage"),
+    level: metaNumber(existingMetadata, "difficulty"),
+    examBoard: metaString(existingMetadata, "examBoard"),
+    blackBoxDecision: bbDecision,
+    blackBoxScore: bbScore,
     metadata: {
       runtimeStatus: runtime.status,
       runtimeScore: runtime.score,
@@ -181,6 +216,9 @@ function buildNextMetadata(input: {
       verifiedAt: now.toISOString(),
       verifiedBy: actor,
       reclassification,
+      // Preserve original machine BB result separately (Part 4)
+      originalBlackBoxDecision: bbDecision,
+      originalBlackBoxScore: bbScore,
     },
     reviewHistory: appendReviewHistory(existingMetadata, reviewEntry),
   });
@@ -235,6 +273,7 @@ export async function handleAdminContentVerifyPost(
     runtime,
     actor: session.userId,
     now,
+    contentId: content.id,
   });
 
   const updated = await deps.updateContent(id, {
