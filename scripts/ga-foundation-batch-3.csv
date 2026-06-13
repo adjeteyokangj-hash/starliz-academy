@@ -1,0 +1,58 @@
+englishWord,gaWord,wordType,category,level,sourcePage,reviewStatus,audioStatus,quizReady,storyReady,notes,sourceName
+good morning,Maa leebi,expression,Greetings,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+thank you,Ojekoo,expression,Greetings,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+sorry,Kafra,expression,Greetings,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+goodbye,Ko nyɔŋ,expression,Greetings,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+father,tse,noun,Family,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+son,bi nuu,noun,Family,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+daughter,bi yoo,noun,Family,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+water,nsu,noun,Food,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+food,nii,noun,Food,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+fish,ayii,noun,Food,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+rice,mɔi,noun,Food,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+egg,kpaklo,noun,Food,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+bread,burooni,noun,Food,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+orange,oransii,noun,Food,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+mango,mangoo,noun,Food,Foundation,,Reviewed,Not Started,true,true,Loanword; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+plantain,bɔdɔ,noun,Food,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+eat,di,verb,Actions,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+drink,num,verb,Actions,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+come,ba,verb,Actions,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+go,kɛ,verb,Actions,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+sit,tsu,verb,Actions,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+see,hwɛ,verb,Actions,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+write,tao,verb,Actions,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+give,ha,verb,Actions,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+like,pe,verb,Actions,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+man,nuu,noun,People,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+woman,yoo,noun,People,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+child,bi,noun,People,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+house,he,noun,Places,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+town,kɔ,noun,Places,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+road,abɔnten,noun,Places,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+book,buku,noun,School,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+pen,penii,noun,School,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+teacher,sukuulaa,noun,School,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+class,klasi,noun,School,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+car,kaa,noun,Transport,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+bus,basii,noun,Transport,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+bicycle,basayikilɔ,noun,Transport,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+boat,kokooko,noun,Transport,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+football,futbɔɔlo,noun,Sports,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+ball,bɔɔlo,noun,Sports,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+play,lɛ,verb,Sports,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+game,lɛlɛ,noun,Sports,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+hand,jaa,noun,Body,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+ear,tɛ,noun,Body,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+tooth,ya,noun,Body,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+hair,tsee,noun,Body,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+head,wɔ,noun,Body,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+love,pe,noun,Feelings,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+fear,tɔɔ,noun,Feelings,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+pain,wɛ,noun,Feelings,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+joy,adidi,noun,Feelings,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+doctor,dokita,noun,Health,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+medicine,dɔŋ,noun,Health,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+chicken,koklo,noun,Animals,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
+table,teibol,noun,Home,Foundation,,Reviewed,Not Started,true,true,Loanword from English; reviewed from Ga language reference sources,Kasahorow Ga Children's Dictionary
+chair,chɛɛ,noun,Home,Foundation,,Reviewed,Not Started,true,true,Reviewed from Ga language reference sources; page confirmation pending,Kasahorow Ga Children's Dictionary
