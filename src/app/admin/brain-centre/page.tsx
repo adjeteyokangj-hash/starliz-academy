@@ -245,33 +245,38 @@ export default function AdminBrainCentrePage() {
 
   const severityFilter = searchParams.get("severity");
   const issueTypeFilter = searchParams.get("issueType");
+  const statusFilter = searchParams.get("status");
+  const healthyOnly = statusFilter === "healthy";
 
   const filteredWarnings = useMemo(() => {
+    if (healthyOnly) return [];
     const rows = payload?.heartbeatWarnings ?? [];
     return rows.filter((row) => {
       if (severityFilter && row.severity !== severityFilter) return false;
       if (issueTypeFilter && row.issueType !== issueTypeFilter) return false;
       return true;
     });
-  }, [issueTypeFilter, payload?.heartbeatWarnings, severityFilter]);
+  }, [healthyOnly, issueTypeFilter, payload?.heartbeatWarnings, severityFilter]);
 
   const filteredMismatches = useMemo(() => {
+    if (healthyOnly) return [];
     const rows = payload?.recommendationMismatches ?? [];
     return rows.filter((row) => {
       if (severityFilter && row.severity !== severityFilter) return false;
       if (issueTypeFilter && row.issueType !== issueTypeFilter) return false;
       return true;
     });
-  }, [issueTypeFilter, payload?.recommendationMismatches, severityFilter]);
+  }, [healthyOnly, issueTypeFilter, payload?.recommendationMismatches, severityFilter]);
 
   const filteredQlfIssues = useMemo(() => {
+    if (healthyOnly) return [];
     const rows = payload?.qlfIssues ?? [];
     return rows.filter((row) => {
       if (severityFilter && row.severity !== severityFilter) return false;
       if (issueTypeFilter && row.issueType !== issueTypeFilter) return false;
       return true;
     });
-  }, [issueTypeFilter, payload?.qlfIssues, severityFilter]);
+  }, [healthyOnly, issueTypeFilter, payload?.qlfIssues, severityFilter]);
 
   const openIssue = (row: BrainCentreWarningRow | BrainCentreMismatchRow | BrainCentreQlfIssueRow) => {
     router.push(toIssueDetailHref(row));
@@ -330,7 +335,7 @@ export default function AdminBrainCentrePage() {
               </button>
               <button
                 type="button"
-                onClick={() => router.push(toBrainCentreFilterHref({ tab: "all" }))}
+                onClick={() => router.push(toBrainCentreFilterHref({ tab: "all", status: "healthy" }))}
                 className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-left"
               >
                 <p className="text-xs uppercase text-emerald-200/80">Healthy</p>
@@ -399,14 +404,14 @@ export default function AdminBrainCentrePage() {
             {(activeTab === "all" || activeTab === "warnings") ? (
               <section>
                 <h2 className="mb-2 text-sm font-bold text-white">HEART BEAT Warnings</h2>
-                <HeartbeatWarnings rows={filteredWarnings} onOpenIssue={openIssue} />
+                {healthyOnly ? <EmptyRow label="No healthy issues to show." /> : <HeartbeatWarnings rows={filteredWarnings} onOpenIssue={openIssue} />}
               </section>
             ) : null}
 
             {(activeTab === "all" || activeTab === "mismatches") ? (
               <section>
                 <h2 className="mb-2 text-sm font-bold text-white">Recommendation Sync Mismatches</h2>
-                <RecommendationMismatches rows={filteredMismatches} onOpenIssue={openIssue} />
+                {healthyOnly ? <EmptyRow label="No healthy issues to show." /> : <RecommendationMismatches rows={filteredMismatches} onOpenIssue={openIssue} />}
               </section>
             ) : null}
 
@@ -415,7 +420,7 @@ export default function AdminBrainCentrePage() {
                 <summary className="cursor-pointer list-none text-sm font-bold text-white">QLF / Brain Connection Status (expanded detail)</summary>
                 <div className="mt-3">
                 <h2 className="mb-2 text-sm font-bold text-white">QLF / Brain Connection Status</h2>
-                <QlfIssues rows={filteredQlfIssues} onOpenIssue={openIssue} />
+                {healthyOnly ? <EmptyRow label="No healthy issues to show." /> : <QlfIssues rows={filteredQlfIssues} onOpenIssue={openIssue} />}
                 </div>
               </details>
             ) : null}

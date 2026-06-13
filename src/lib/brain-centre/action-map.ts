@@ -68,11 +68,13 @@ export function toIssueDetailHref(identity: Pick<BrainIssueIdentity, "studentId"
 export function toBrainCentreFilterHref(input: {
   tab?: "all" | "warnings" | "mismatches" | "qlf";
   severity?: "warning" | "critical";
+  status?: "healthy" | "warning" | "critical";
   issueType?: BrainIssueType;
 }): string {
   const params = new URLSearchParams();
   if (input.tab) params.set("tab", input.tab);
   if (input.severity) params.set("severity", input.severity);
+  if (input.status) params.set("status", input.status);
   if (input.issueType) params.set("issueType", input.issueType);
   const query = params.toString();
   return query ? `/admin/brain-centre?${query}` : "/admin/brain-centre";
