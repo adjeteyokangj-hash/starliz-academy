@@ -50,7 +50,7 @@ export default function AdminAssignmentsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [pendingRowAction, setPendingRowAction] = useState<{ id: string; action: "reassign" | "remove" } | null>(null);
+  const [pendingRowAction, setPendingRowAction] = useState<{ id: string; action: "reassign" | "remove" | "remove_all" } | null>(null);
   const [queryFilter, setQueryFilter] = useState("");
   const [keyStageFilter, setKeyStageFilter] = useState("");
   const [yearGroupFilter, setYearGroupFilter] = useState("");
@@ -121,6 +121,34 @@ export default function AdminAssignmentsPage() {
     } else {
       setAssignments(previousAssignments);
       setMessage(payload.error ?? "Could not remove assignment.");
+    }
+    setPendingRowAction(null);
+    await loadAssignments(false);
+  }
+
+  async function removeAllAssignmentsForStudent(row: AssignmentRow) {
+    if (pendingRowAction) return;
+    if (!window.confirm(`Remove all assigned lessons and content from ${row.student.name}? Progress history will be preserved and assignments will be archived.`)) {
+      return;
+    }
+
+    const previousAssignments = assignments;
+    setPendingRowAction({ id: row.student.id, action: "remove_all" });
+    setAssignments((current) => current.filter((entry) => entry.student.id !== row.student.id));
+    setMessage(`Removing all assignments from ${row.student.name}...`);
+
+    const response = await fetch("/api/admin/assignments", {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ studentId: row.student.id }),
+    });
+    const payload = await response.json();
+    if (response.ok) {
+      setMessage(payload.message ?? `All assignments removed from ${row.student.name}.`);
+    } else {
+      setAssignments(previousAssignments);
+      setMessage(payload.error ?? "Could not remove assignments for this student.");
     }
     setPendingRowAction(null);
     await loadAssignments(false);
@@ -311,6 +339,9 @@ export default function AdminAssignmentsPage() {
               </button>
               <button type="button" disabled={pendingRowAction?.id === assignment.id} onClick={() => void removeAssignment(assignment)} className="rounded-xl bg-red-500 px-3 py-2 text-xs font-black text-white hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60">
                 {pendingRowAction?.id === assignment.id && pendingRowAction?.action === "remove" ? "Loading..." : "Remove"}
+              </button>
+              <button type="button" disabled={pendingRowAction?.id === assignment.student.id} onClick={() => void removeAllAssignmentsForStudent(assignment)} className="rounded-xl border border-red-300 px-3 py-2 text-xs font-black text-red-200 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60">
+                {pendingRowAction?.id === assignment.student.id && pendingRowAction?.action === "remove_all" ? "Removing all..." : "Remove all for student"}
               </button>
             </div>
           </div>

@@ -24,6 +24,10 @@ const assignmentSchema = z.object({
   overrideReason: z.string().trim().optional(),
 });
 
+const bulkArchiveSchema = z.object({
+  studentId: z.string().min(1),
+});
+
 const assignmentStatusSchema = z.object({
   assignmentId: z.string().min(1),
   status: z.enum(["assigned", "in_progress", "completed", "archived"]),
@@ -52,6 +56,9 @@ export async function GET(request: Request) {
   const queryFilter = searchParams.get("query")?.trim().toLowerCase() ?? "";
 
   const assignments = await prisma.assignment.findMany({
+    where: {
+      status: { not: "archived" },
+    },
     orderBy: { updatedAt: "desc" },
     take: 100,
     include: {
@@ -311,5 +318,46 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: true, assignment });
   } catch {
     return NextResponse.json({ error: "Invalid assignment status payload." }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  const { session, response } = await requireAdminPermission("students:write");
+  if (!session) return response;
+
+  try {
+    const body = bulkArchiveSchema.parse(await request.json());
+    const student = await prisma.childProfile.findUnique({
+      where: { id: body.studentId },
+      select: { id: true, name: true },
+    });
+
+    if (!student) {
+      return NextResponse.json({ error: "Student not found." }, { status: 404 });
+    }
+
+    const result = await prisma.assignment.updateMany({
+      where: {
+        studentId: body.studentId,
+        status: { not: "archived" },
+      },
+      data: { status: "archived" },
+    });
+
+    await invalidateAcademicIntelligenceSnapshot({
+      studentId: body.studentId,
+      reason: "admin_assignment_update",
+    }).catch(() => undefined);
+
+    return NextResponse.json({
+      ok: true,
+      count: result.count,
+      student,
+      message: result.count > 0
+        ? `Removed ${result.count} assignment${result.count === 1 ? "" : "s"} from ${student.name}.`
+        : `${student.name} has no active assignments to remove.`,
+    });
+  } catch {
+    return NextResponse.json({ error: "Invalid bulk removal payload." }, { status: 400 });
   }
 }

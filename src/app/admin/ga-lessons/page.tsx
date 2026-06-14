@@ -50,6 +50,7 @@ type StudentAssignmentCandidate = {
   name: string;
   yearGroup?: string | null;
   classGroup?: string | null;
+  parentEmail?: string | null;
 };
 
 type AssignmentListRow = {
@@ -63,6 +64,11 @@ type AssignmentListRow = {
   attempts: number;
   weakWords: string[];
   weakAreas: Array<{ weaknessType: string; accuracy: number }>;
+};
+
+type AssignmentDrawerState = {
+  lesson: LessonRow;
+  mode: "student" | "yearGroup";
 };
 
 const defaultForm = {
@@ -94,8 +100,9 @@ export default function AdminGaLessonsPage() {
   const [saving, setSaving] = useState(false);
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [students, setStudents] = useState<StudentAssignmentCandidate[]>([]);
-  const [assignmentTargetMode, setAssignmentTargetMode] = useState<"student" | "yearGroup">("student");
-  const [targetStudentId, setTargetStudentId] = useState<string>("");
+  const [assignmentDrawer, setAssignmentDrawer] = useState<AssignmentDrawerState | null>(null);
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [targetYearGroup, setTargetYearGroup] = useState<string>("");
   const [assigningLessonId, setAssigningLessonId] = useState<string | null>(null);
   const [assignmentBusyId, setAssignmentBusyId] = useState<string | null>(null);
@@ -135,11 +142,22 @@ export default function AdminGaLessonsPage() {
   const categoryMap = useMemo(() => new Map(resolvedCategories.map((category) => [category.name, category])), [resolvedCategories]);
   const selectedCategoryState = categoryMap.get(form.category) ?? null;
   const selectedCategoryInactive = selectedCategoryState ? (!selectedCategoryState.isActive || selectedCategoryState.isArchived) : false;
-  const selectedStudent = students.find((student) => student.id === targetStudentId) ?? null;
   const availableYearGroups = useMemo(
     () => Array.from(new Set(students.map((student) => student.yearGroup).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right)),
     [students],
   );
+  const assignmentMode = assignmentDrawer?.mode ?? "student";
+  const filteredStudents = useMemo(() => {
+    const query = assignmentSearch.trim().toLowerCase();
+    if (!query) return students;
+    return students.filter((student) => {
+      const haystack = [student.name, student.yearGroup, student.classGroup, student.parentEmail]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [assignmentSearch, students]);
   const lessonById = useMemo(() => new Map(lessons.map((lesson) => [lesson.id, lesson])), [lessons]);
   const activeLessons = useMemo(() => lessons.filter((lesson) => lesson.publishStatus !== "Archived"), [lessons]);
   const archivedLessons = useMemo(() => lessons.filter((lesson) => lesson.publishStatus === "Archived"), [lessons]);
@@ -187,10 +205,6 @@ export default function AdminGaLessonsPage() {
     setLessonAssignments(Array.isArray(assignmentPayload?.assignments) ? assignmentPayload.assignments : []);
     const studentItems = Array.isArray(studentPayload?.students) ? studentPayload.students : [];
     setStudents(studentItems);
-    setTargetStudentId((current) => {
-      if (current && studentItems.some((student) => student.id === current)) return current;
-      return studentItems[0]?.id ?? "";
-    });
     setTargetYearGroup((current) => {
       if (current && studentItems.some((student) => student.yearGroup === current)) return current;
       return studentItems.find((student) => Boolean(student.yearGroup))?.yearGroup ?? "";
@@ -331,12 +345,42 @@ export default function AdminGaLessonsPage() {
     }
   }
 
-  async function assignLesson(lesson: LessonRow) {
-    if (assignmentTargetMode === "student" && !targetStudentId) {
-      setMessage("Choose a student before assigning a lesson.");
+  function openAssignDrawer(lesson: LessonRow) {
+    setAssignmentSearch("");
+    setSelectedStudentIds([]);
+    setAssignmentDrawer({ lesson, mode: "student" });
+  }
+
+  function closeAssignDrawer() {
+    if (assigningLessonId) return;
+    setAssignmentDrawer(null);
+    setAssignmentSearch("");
+    setSelectedStudentIds([]);
+  }
+
+  function toggleStudentSelection(studentId: string) {
+    setSelectedStudentIds((current) => current.includes(studentId)
+      ? current.filter((id) => id !== studentId)
+      : [...current, studentId]);
+  }
+
+  function setAssignmentDrawerMode(mode: "student" | "yearGroup") {
+    setAssignmentDrawer((current) => current ? { ...current, mode } : current);
+    setSelectedStudentIds([]);
+  }
+
+  function getLessonAssignmentSummary(lessonId: string) {
+    return gaAssignments.filter((assignment) => assignment.lessonId === lessonId);
+  }
+
+  async function assignLessonFromDrawer() {
+    const lesson = assignmentDrawer?.lesson;
+    if (!lesson) return;
+    if (assignmentMode === "student" && !selectedStudentIds.length) {
+      setMessage("Choose at least one student before assigning a lesson.");
       return;
     }
-    if (assignmentTargetMode === "yearGroup" && !targetYearGroup) {
+    if (assignmentMode === "yearGroup" && !targetYearGroup) {
       setMessage("Choose a year group before assigning a lesson.");
       return;
     }
@@ -356,8 +400,8 @@ export default function AdminGaLessonsPage() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(
-          assignmentTargetMode === "student"
-            ? { contentId: assignmentContentPayload.contentId, studentIds: [targetStudentId] }
+          assignmentMode === "student"
+            ? { contentId: assignmentContentPayload.contentId, studentIds: selectedStudentIds }
             : { contentId: assignmentContentPayload.contentId, yearGroup: targetYearGroup },
         ),
       });
@@ -375,21 +419,23 @@ export default function AdminGaLessonsPage() {
       }
 
       if (assignPayload?.allDuplicates) {
-        if (assignmentTargetMode === "yearGroup") {
+        if (assignmentMode === "yearGroup") {
           setMessage(`This lesson is already assigned to active students in ${targetYearGroup}.`);
           return;
         }
-        setMessage(`This lesson is already assigned to ${selectedStudent?.name ?? "the selected student"}.`);
+        setMessage(`This lesson is already assigned to the selected student set.`);
         return;
       }
 
-      if (assignmentTargetMode === "yearGroup") {
+      if (assignmentMode === "yearGroup") {
         setMessage(`Assigned \"${lesson.title}\" to ${targetYearGroup}.`);
         await load();
+        closeAssignDrawer();
         return;
       }
-      setMessage(`Assigned \"${lesson.title}\" to ${selectedStudent?.name ?? "student"}.`);
+      setMessage(`Assigned \"${lesson.title}\" to ${selectedStudentIds.length} student${selectedStudentIds.length === 1 ? "" : "s"}.`);
       await load();
+      closeAssignDrawer();
     } finally {
       setAssigningLessonId(null);
     }
@@ -532,51 +578,9 @@ export default function AdminGaLessonsPage() {
 
       {message ? <p className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-100">{message}</p> : null}
 
-      <GaHubAccordionSection title="Assignment Target" eyebrow="Applies to row-level Assign actions" defaultOpen={true}>
-        {!students.length ? (
-          <p className="text-sm text-amber-200">No eligible students found for assignment.</p>
-        ) : (
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="text-xs font-bold uppercase text-slate-400">
-              Assign mode
-              <select
-                value={assignmentTargetMode}
-                onChange={(event) => setAssignmentTargetMode(event.target.value as "student" | "yearGroup")}
-                className="mt-1 w-48 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-              >
-                <option value="student">Student</option>
-                <option value="yearGroup">Year group</option>
-              </select>
-            </label>
-            <label className="text-xs font-bold uppercase text-slate-400">
-              {assignmentTargetMode === "student" ? "Student" : "Year group"}
-              {assignmentTargetMode === "student" ? (
-                <select
-                  value={targetStudentId}
-                  onChange={(event) => setTargetStudentId(event.target.value)}
-                  className="mt-1 w-72 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-                >
-                  {students.map((student) => (
-                    <option key={student.id} value={student.id}>
-                      {student.name}{student.yearGroup ? ` · ${student.yearGroup}` : ""}{student.classGroup ? ` · ${student.classGroup}` : ""}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <select
-                  value={targetYearGroup}
-                  onChange={(event) => setTargetYearGroup(event.target.value)}
-                  className="mt-1 w-56 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-                >
-                  {availableYearGroups.map((yearGroup) => (
-                    <option key={yearGroup} value={yearGroup}>{yearGroup}</option>
-                  ))}
-                </select>
-              )}
-            </label>
-            <p className="text-xs text-slate-400">Set once, then use Assign on any lesson row.</p>
-          </div>
-        )}
+      <GaHubAccordionSection title="Assignment Workflow" eyebrow="Row-level assign drawer" defaultOpen={true}>
+        <p className="text-sm text-slate-300">Click <span className="font-black text-white">Assign</span> on a lesson row to open a searchable student assignment drawer with current assignment status.</p>
+        {!students.length ? <p className="mt-2 text-sm text-amber-200">No eligible students found for assignment.</p> : null}
       </GaHubAccordionSection>
 
       <GaHubAccordionSection title={editingId ? "Edit Ga Lesson" : "Create Ga Lesson"} eyebrow="Approved words only" defaultOpen={true}>
@@ -722,10 +726,10 @@ export default function AdminGaLessonsPage() {
                         type="button"
                         disabled={
                           assigningLessonId === lesson.id
-                          || (assignmentTargetMode === "student" ? !targetStudentId : !targetYearGroup)
+                          || !students.length
                           || lesson.publishStatus !== "Published"
                         }
-                        onClick={() => void assignLesson(lesson)}
+                        onClick={() => openAssignDrawer(lesson)}
                         className="rounded-lg bg-cyan-500 px-3 py-1 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {assigningLessonId === lesson.id ? "Assigning..." : "Assign"}
@@ -845,6 +849,139 @@ export default function AdminGaLessonsPage() {
           </table>
         </div>
       </GaHubAccordionSection>
+
+      {assignmentDrawer ? (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/75">
+          <div className="h-full w-full max-w-2xl overflow-y-auto border-l border-slate-800 bg-slate-950 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">Assign Ga lesson</p>
+                <h2 className="mt-2 text-2xl font-black text-white">{assignmentDrawer.lesson.title}</h2>
+                <p className="mt-2 text-sm text-slate-300">Choose specific students or assign this published lesson to an entire year group.</p>
+              </div>
+              <button type="button" onClick={closeAssignDrawer} disabled={Boolean(assigningLessonId)} className="rounded-xl border border-slate-700 px-3 py-2 text-sm font-black text-slate-200 disabled:opacity-60">Close</button>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAssignmentDrawerMode("student")}
+                className={`rounded-xl px-4 py-2 text-sm font-black ${assignmentMode === "student" ? "bg-cyan-500 text-white" : "border border-slate-700 text-slate-200"}`}
+              >
+                Student selection
+              </button>
+              <button
+                type="button"
+                onClick={() => setAssignmentDrawerMode("yearGroup")}
+                className={`rounded-xl px-4 py-2 text-sm font-black ${assignmentMode === "yearGroup" ? "bg-cyan-500 text-white" : "border border-slate-700 text-slate-200"}`}
+              >
+                Year group
+              </button>
+            </div>
+
+            {assignmentMode === "student" ? (
+              <>
+                <div className="mt-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                  <label className="text-xs font-bold uppercase text-slate-400">
+                    Search students
+                    <input
+                      value={assignmentSearch}
+                      onChange={(event) => setAssignmentSearch(event.target.value)}
+                      placeholder="Name, year group, class, parent email"
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                    />
+                  </label>
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3 text-sm text-slate-300">
+                    <p className="font-black text-white">Selected</p>
+                    <p className="mt-1">{selectedStudentIds.length} student{selectedStudentIds.length === 1 ? "" : "s"}</p>
+                    <p className="mt-1 text-xs text-slate-400">Current assignments are marked per student below.</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 max-h-112 overflow-y-auto rounded-2xl border border-slate-800">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-slate-950 uppercase text-slate-500">
+                      <tr>
+                        <th className="px-3 py-3">Pick</th>
+                        <th className="px-3 py-3">Student</th>
+                        <th className="px-3 py-3">Year</th>
+                        <th className="px-3 py-3">Class</th>
+                        <th className="px-3 py-3">Current status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredStudents.length === 0 ? (
+                        <tr><td colSpan={5} className="px-3 py-6 text-sm text-slate-400">No students match your search.</td></tr>
+                      ) : filteredStudents.map((student) => {
+                        const existing = getLessonAssignmentSummary(assignmentDrawer.lesson.id).find((assignment) => assignment.student.id === student.id) ?? null;
+                        const checked = selectedStudentIds.includes(student.id);
+                        return (
+                          <tr key={student.id} className="border-t border-slate-800 text-slate-300">
+                            <td className="px-3 py-3 align-top">
+                              <label className="inline-flex items-center gap-2 text-slate-300">
+                                <input type="checkbox" checked={checked} onChange={() => toggleStudentSelection(student.id)} />
+                                <span className="sr-only">Select {student.name}</span>
+                              </label>
+                            </td>
+                            <td className="px-3 py-3 align-top font-bold text-white">{student.name}<div className="mt-1 text-[11px] font-normal text-slate-500">{student.parentEmail ?? "No parent email"}</div></td>
+                            <td className="px-3 py-3 align-top">{student.yearGroup ?? "-"}</td>
+                            <td className="px-3 py-3 align-top">{student.classGroup ?? "-"}</td>
+                            <td className="px-3 py-3 align-top">{existing ? `${existing.status} · ${existing.attempts} attempt${existing.attempts === 1 ? "" : "s"}` : "Not assigned"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <label className="text-xs font-bold uppercase text-slate-400">
+                  Year group
+                  <select
+                    value={targetYearGroup}
+                    onChange={(event) => setTargetYearGroup(event.target.value)}
+                    className="mt-1 w-full max-w-xs rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                  >
+                    {availableYearGroups.map((yearGroup) => (
+                      <option key={yearGroup} value={yearGroup}>{yearGroup}</option>
+                    ))}
+                  </select>
+                </label>
+                <p className="mt-3 text-sm text-slate-300">This assigns the lesson to all active students in the selected year group using the existing assignment API.</p>
+              </div>
+            )}
+
+            <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Current lesson assignments</p>
+              <div className="mt-3 space-y-2">
+                {getLessonAssignmentSummary(assignmentDrawer.lesson.id).length === 0 ? (
+                  <p className="text-sm text-slate-400">No active assignments for this lesson yet.</p>
+                ) : getLessonAssignmentSummary(assignmentDrawer.lesson.id).map((assignment) => (
+                  <div key={assignment.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 px-3 py-2 text-sm text-slate-300">
+                    <span className="font-bold text-white">{assignment.student.name}</span>
+                    <span>{assignment.student.yearGroup ?? "-"}</span>
+                    <span>{assignment.status}</span>
+                    <span>{assignment.score == null ? `Attempts ${assignment.attempts}` : `${assignment.score}%`}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={closeAssignDrawer} disabled={Boolean(assigningLessonId)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200 disabled:opacity-60">Cancel</button>
+              <button
+                type="button"
+                onClick={() => void assignLessonFromDrawer()}
+                disabled={Boolean(assigningLessonId) || (assignmentMode === "student" ? !selectedStudentIds.length : !targetYearGroup)}
+                className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {assigningLessonId === assignmentDrawer.lesson.id ? "Assigning..." : assignmentMode === "student" ? `Assign to ${selectedStudentIds.length || 0} student${selectedStudentIds.length === 1 ? "" : "s"}` : `Assign to ${targetYearGroup || "year group"}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

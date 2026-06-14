@@ -81,6 +81,12 @@ function toCanonicalCategoryName(input: string): string {
   return titleCase(cleanText(normalized));
 }
 
+function addUsageCount(map: Map<string, number>, category: string, count: number) {
+  const canonical = toCanonicalCategoryName(category);
+  if (!canonical) return;
+  map.set(canonical, (map.get(canonical) ?? 0) + count);
+}
+
 function isGaCategorySchemaNotReadyError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const normalized = message.toLowerCase();
@@ -110,7 +116,7 @@ function fallbackCategoryRows(): GaCategoryRecord[] {
   }));
 }
 
-async function categoryUsageCounts(): Promise<{
+export async function getGaCategoryUsageTotals(): Promise<{
   wordCountsByCategory: Map<string, number>;
   lessonCountsByCategory: Map<string, number>;
 }> {
@@ -119,9 +125,30 @@ async function categoryUsageCounts(): Promise<{
     prisma.gaLesson.groupBy({ by: ["category"], _count: { _all: true } }),
   ]);
 
+  const wordCountsByCategory = new Map<string, number>();
+  const lessonCountsByCategory = new Map<string, number>();
+
+  for (const row of wordUsage) {
+    addUsageCount(wordCountsByCategory, row.category, row._count._all);
+  }
+
+  for (const row of lessonUsage) {
+    addUsageCount(lessonCountsByCategory, row.category, row._count._all);
+  }
+
   return {
-    wordCountsByCategory: new Map(wordUsage.map((row) => [row.category, row._count._all])),
-    lessonCountsByCategory: new Map(lessonUsage.map((row) => [row.category, row._count._all])),
+    wordCountsByCategory,
+    lessonCountsByCategory,
+  };
+}
+
+export async function getGaCategoryUsageForName(name: string): Promise<{ wordCount: number; lessonCount: number }> {
+  const canonical = toCanonicalCategoryName(name);
+  if (!canonical) return { wordCount: 0, lessonCount: 0 };
+  const usage = await getGaCategoryUsageTotals();
+  return {
+    wordCount: usage.wordCountsByCategory.get(canonical) ?? 0,
+    lessonCount: usage.lessonCountsByCategory.get(canonical) ?? 0,
   };
 }
 
@@ -129,7 +156,7 @@ export async function listGaCategoriesAdmin(): Promise<GaCategoryRecord[]> {
   try {
     const [rows, usage] = await Promise.all([
       prisma.gaCategory.findMany({ select: CATEGORY_SELECT, orderBy: [{ isArchived: "asc" }, { name: "asc" }] }),
-      categoryUsageCounts(),
+      getGaCategoryUsageTotals(),
     ]);
 
     const byName = new Map(rows.map((row) => [row.name.toLowerCase(), row]));
@@ -157,8 +184,8 @@ export async function listGaCategoriesAdmin(): Promise<GaCategoryRecord[]> {
     return mergedRows
       .map((row) => ({
         ...row,
-        wordCount: usage.wordCountsByCategory.get(row.name) ?? 0,
-        lessonCount: usage.lessonCountsByCategory.get(row.name) ?? 0,
+        wordCount: usage.wordCountsByCategory.get(toCanonicalCategoryName(row.name)) ?? 0,
+        lessonCount: usage.lessonCountsByCategory.get(toCanonicalCategoryName(row.name)) ?? 0,
         source: row.id.startsWith("fallback-") ? "fallback" as const : "database" as const,
       }))
       .sort((left, right) => {
@@ -242,10 +269,7 @@ export async function updateGaCategory(id: string, input: GaCategoryUpdateInput)
   const isActive = input.isActive === undefined ? existing.isActive : input.isActive;
   const isArchived = input.isArchived === undefined ? existing.isArchived : input.isArchived;
 
-  const [wordCount, lessonCount] = await Promise.all([
-    prisma.gaWord.count({ where: { category: existing.name } }),
-    prisma.gaLesson.count({ where: { category: existing.name } }),
-  ]);
+  const { wordCount, lessonCount } = await getGaCategoryUsageForName(existing.name);
 
   if (!input.force && ((isArchived && !existing.isArchived) || (!isActive && existing.isActive)) && (wordCount > 0 || lessonCount > 0)) {
     throw new Error(`This category is currently in use by ${wordCount} words and ${lessonCount} lessons. Pass force=true to continue.`);

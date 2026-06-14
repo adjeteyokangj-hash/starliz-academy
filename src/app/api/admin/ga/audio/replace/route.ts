@@ -16,6 +16,8 @@ const replacementSchema = z.object({
   sourceType: z.string().trim().min(1),
   reviewStatus: z.string().trim().optional().nullable(),
   approvalStatus: z.string().trim().optional().nullable(),
+  qualityStatus: z.string().trim().optional().nullable(),
+  enhancementStatus: z.string().trim().optional().nullable(),
   confidenceLevel: z.number().int().optional().nullable(),
   pronunciationNote: z.string().trim().optional().nullable(),
   adminNotes: z.string().trim().optional().nullable(),

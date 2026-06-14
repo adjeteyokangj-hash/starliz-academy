@@ -89,6 +89,22 @@ enum GaAudioApprovalStatus {
   REPLACED
 }
 
+enum GaAudioQualityStatus {
+  UNCHECKED
+  GOOD
+  TOO_QUIET
+  TOO_LOUD
+  NEEDS_CLEANUP
+}
+
+enum GaAudioEnhancementStatus {
+  NOT_APPLIED
+  QUEUED
+  APPLIED
+  FAILED
+  BYPASSED
+}
+
 enum GaReferencePermissionStatus {
   UNKNOWN
   REFERENCE_ONLY
@@ -151,6 +167,7 @@ model User {
   gaAudioAssetsCreated            GaAudioAsset[]              @relation("GaAudioAssetCreatedBy")
   gaAudioAssetsApproved           GaAudioAsset[]              @relation("GaAudioAssetApprovedBy")
   gaAudioAssetsRejected           GaAudioAsset[]              @relation("GaAudioAssetRejectedBy")
+  gaAudioAssetsDeleted            GaAudioAsset[]              @relation("GaAudioAssetDeletedBy")
   gaPronunciationReferencesCreated GaPronunciationReference[] @relation("GaReferenceCreatedBy")
   gaPronunciationReferencesReviewed GaPronunciationReference[] @relation("GaReferenceReviewedBy")
   gaStudentRecordingReviews       GaStudentRecording[]        @relation("GaStudentRecordingReviewedBy")
@@ -900,6 +917,8 @@ model GaAudioAsset {
   sourceType        GaAudioSourceType
   reviewStatus      GaAudioReviewStatus   @default(DRAFT)
   approvalStatus    GaAudioApprovalStatus @default(PENDING)
+  qualityStatus     GaAudioQualityStatus  @default(UNCHECKED)
+  enhancementStatus GaAudioEnhancementStatus @default(NOT_APPLIED)
   confidenceLevel   Int?
   pronunciationNote String?
   adminNotes        String?
@@ -913,6 +932,9 @@ model GaAudioAsset {
   updatedAt         DateTime              @updatedAt
   approvedAt        DateTime?
   rejectedAt        DateTime?
+  deletedAt         DateTime?
+  deletedById       String?
+  deletedBy         User?                 @relation("GaAudioAssetDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
   replacedByAudioId String?
   replacedByAudio   GaAudioAsset?         @relation("GaAudioAssetReplacement", fields: [replacedByAudioId], references: [id], onDelete: SetNull)
   replacedAssets    GaAudioAsset[]        @relation("GaAudioAssetReplacement")
@@ -925,9 +947,13 @@ model GaAudioAsset {
   @@index([sourceType])
   @@index([reviewStatus])
   @@index([approvalStatus])
+  @@index([qualityStatus])
+  @@index([enhancementStatus])
   @@index([createdById])
   @@index([approvedById])
   @@index([rejectedById])
+  @@index([deletedById])
+  @@index([deletedAt])
   @@index([letterKey])
   @@index([soundKey])
 }

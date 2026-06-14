@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GaHubAccordionSection from "@/components/admin/GaHubAccordionSection";
 import { GA_CATEGORIES, GA_LEVELS } from "@/lib/ga-word-bank";
+import { GA_AUDIO_ENHANCEMENT_STATUSES, GA_AUDIO_QUALITY_STATUSES } from "@/lib/ga-voice";
 
 type VoiceMetrics = {
   totalAudioAssets: number;
@@ -45,6 +46,43 @@ type RecordingRow = {
   student: { id: string; name: string };
   word: { id: string; englishWord: string; gaWord: string } | null;
   lesson: { id: string; title: string } | null;
+};
+
+type AudioAssetVersionRow = {
+  id: string;
+  audioUrl: string;
+  reviewStatus: string;
+  approvalStatus: string;
+  qualityStatus: string;
+  enhancementStatus: string;
+  createdAt: string;
+  deletedAt: string | null;
+};
+
+type AudioAssetRow = {
+  id: string;
+  sourceType: string;
+  reviewStatus: string;
+  approvalStatus: string;
+  qualityStatus: string;
+  enhancementStatus: string;
+  pronunciationNote: string | null;
+  adminNotes: string | null;
+  audioUrl: string;
+  audioStorageKey: string | null;
+  letterKey: string | null;
+  soundKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  deletedAt: string | null;
+  word: { id: string; englishWord: string; gaWord: string; category: string } | null;
+  lesson: { id: string; title: string; slug: string } | null;
+  song: { id: string; title: string } | null;
+  currentForSong: { id: string; title: string } | null;
+  replacedByAudio: AudioAssetVersionRow | null;
+  replacedAssets: AudioAssetVersionRow[];
 };
 
 type SongRow = {
@@ -102,6 +140,37 @@ const defaultSongForm = {
   sourceType: "AI_GENERATED_SONG",
 };
 
+function suggestQualityStatus(levelPercent: number): (typeof GA_AUDIO_QUALITY_STATUSES)[number] {
+  if (levelPercent < 12) return "TOO_QUIET";
+  if (levelPercent > 85) return "TOO_LOUD";
+  return "GOOD";
+}
+
+function describeAudioTarget(asset: AudioAssetRow): string {
+  if (asset.word) return `${asset.word.englishWord} / ${asset.word.gaWord}`;
+  if (asset.letterKey) return `Letter ${asset.letterKey}`;
+  if (asset.soundKey) return `Sound ${asset.soundKey}`;
+  if (asset.lesson) return asset.lesson.title;
+  if (asset.song) return asset.song.title;
+  return asset.pronunciationNote ?? "Ga audio target";
+}
+
+function statusBadgeClass(status: string): string {
+  if (status.includes("APPROVED") || status === "GOOD" || status === "APPLIED") {
+    return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
+  }
+  if (status.includes("REJECT") || status === "FAILED" || status === "TOO_LOUD" || status === "TOO_QUIET") {
+    return "border-rose-500/40 bg-rose-500/10 text-rose-200";
+  }
+  if (status.includes("REPLACED") || status === "NEEDS_CLEANUP" || status === "BYPASSED") {
+    return "border-amber-500/40 bg-amber-500/10 text-amber-200";
+  }
+  if (status.includes("PENDING") || status === "AI_GENERATED" || status === "DRAFT" || status === "QUEUED" || status === "UNCHECKED") {
+    return "border-cyan-500/40 bg-cyan-500/10 text-cyan-200";
+  }
+  return "border-slate-600/40 bg-slate-800/40 text-slate-200";
+}
+
 function MetricCard({ label, value, hint }: { label: string; value: number; hint: string }) {
   return (
     <article className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
@@ -116,6 +185,7 @@ export default function AdminGaVoicePage() {
   const [metrics, setMetrics] = useState<VoiceMetrics>(defaultMetrics);
   const [references, setReferences] = useState<ReferenceRow[]>([]);
   const [recordings, setRecordings] = useState<RecordingRow[]>([]);
+  const [audioAssets, setAudioAssets] = useState<AudioAssetRow[]>([]);
   const [songs, setSongs] = useState<SongRow[]>([]);
   const [approvedWords, setApprovedWords] = useState<ApprovedWord[]>([]);
   const [recordingTargetMode, setRecordingTargetMode] = useState<RecordingTargetMode>("word");
@@ -129,9 +199,15 @@ export default function AdminGaVoicePage() {
   const [audioLevel, setAudioLevel] = useState(0);
   const [studioSaving, setStudioSaving] = useState(false);
   const [studioEnhancementMessage, setStudioEnhancementMessage] = useState<string | null>(null);
+  const [studioQualityStatus, setStudioQualityStatus] = useState<(typeof GA_AUDIO_QUALITY_STATUSES)[number]>("UNCHECKED");
+  const [studioEnhancementStatus, setStudioEnhancementStatus] = useState<(typeof GA_AUDIO_ENHANCEMENT_STATUSES)[number]>("NOT_APPLIED");
+  const [replacementAssetId, setReplacementAssetId] = useState<string | null>(null);
   const [selectedSongWordIds, setSelectedSongWordIds] = useState<string[]>([]);
   const [referenceForm, setReferenceForm] = useState(defaultReferenceForm);
   const [songForm, setSongForm] = useState(defaultSongForm);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [libraryReviewFilter, setLibraryReviewFilter] = useState<string>("ALL");
+  const [libraryApprovalFilter, setLibraryApprovalFilter] = useState<string>("ALL");
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -150,6 +226,44 @@ export default function AdminGaVoicePage() {
   const selectedRecordingWord = useMemo(
     () => approvedWords.find((word) => word.id === recordingWordId) ?? null,
     [approvedWords, recordingWordId],
+  );
+  const replacementAsset = useMemo(
+    () => audioAssets.find((asset) => asset.id === replacementAssetId) ?? null,
+    [audioAssets, replacementAssetId],
+  );
+  const filteredAudioAssets = useMemo(() => {
+    const query = libraryQuery.trim().toLowerCase();
+    return audioAssets.filter((asset) => {
+      if (libraryReviewFilter !== "ALL" && asset.reviewStatus !== libraryReviewFilter) return false;
+      if (libraryApprovalFilter !== "ALL" && asset.approvalStatus !== libraryApprovalFilter) return false;
+      if (!query) return true;
+      const haystack = [
+        describeAudioTarget(asset),
+        asset.sourceType,
+        asset.reviewStatus,
+        asset.approvalStatus,
+        asset.qualityStatus,
+        asset.enhancementStatus,
+        asset.word?.englishWord,
+        asset.word?.gaWord,
+        asset.lesson?.title,
+        asset.song?.title,
+        asset.letterKey,
+        asset.soundKey,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [audioAssets, libraryApprovalFilter, libraryQuery, libraryReviewFilter]);
+  const availableLibraryReviewStatuses = useMemo(
+    () => Array.from(new Set(audioAssets.map((asset) => asset.reviewStatus))).sort((left, right) => left.localeCompare(right)),
+    [audioAssets],
+  );
+  const availableLibraryApprovalStatuses = useMemo(
+    () => Array.from(new Set(audioAssets.map((asset) => asset.approvalStatus))).sort((left, right) => left.localeCompare(right)),
+    [audioAssets],
   );
   const levelPercent = Math.max(0, Math.min(100, Math.round(audioLevel * 100)));
   const levelWarning = levelPercent < 12 ? "Too quiet" : levelPercent > 85 ? "Too loud" : "Good level";
@@ -179,17 +293,19 @@ export default function AdminGaVoicePage() {
       metricsResponse,
       referenceResponse,
       recordingResponse,
+      assetResponse,
       songResponse,
       approvedWordsResponse,
     ] = await Promise.all([
       fetch("/api/admin/ga/audio", { cache: "no-store" }),
       fetch("/api/admin/ga/audio/reference", { cache: "no-store" }),
       fetch("/api/admin/ga/student-recordings?limit=100", { cache: "no-store" }),
+      fetch("/api/admin/ga/audio/assets?sourceType=ADMIN_UPLOADED&limit=150", { cache: "no-store" }),
       fetch("/api/admin/ga/songs", { cache: "no-store" }),
       fetch("/api/admin/ga/words?reviewStatus=Approved&limit=250", { cache: "no-store" }),
     ]);
 
-    const allResponses = [metricsResponse, referenceResponse, recordingResponse, songResponse, approvedWordsResponse];
+    const allResponses = [metricsResponse, referenceResponse, recordingResponse, assetResponse, songResponse, approvedWordsResponse];
     if (allResponses.some((response) => response.status === 401)) {
       window.location.replace("/admin/login?next=/admin/ga-voice");
       return;
@@ -203,12 +319,14 @@ export default function AdminGaVoicePage() {
 
     const referencePayload = await referenceResponse.json().catch(() => null) as { items?: ReferenceRow[] } | null;
     const recordingPayload = await recordingResponse.json().catch(() => null) as { items?: RecordingRow[] } | null;
+    const assetPayload = await assetResponse.json().catch(() => null) as { items?: AudioAssetRow[] } | null;
     const songPayload = await songResponse.json().catch(() => null) as { items?: SongRow[] } | null;
     const approvedWordsPayload = await approvedWordsResponse.json().catch(() => null) as { items?: ApprovedWord[] } | null;
 
     setMetrics(metricsPayload?.item ?? defaultMetrics);
     setReferences(referencePayload?.items ?? []);
     setRecordings(recordingPayload?.items ?? []);
+    setAudioAssets(assetPayload?.items ?? []);
     setSongs(songPayload?.items ?? []);
     const nextApprovedWords = approvedWordsPayload?.items ?? [];
     setApprovedWords(nextApprovedWords);
@@ -330,6 +448,13 @@ export default function AdminGaVoicePage() {
 
   function toggleSongWord(wordId: string) {
     setSelectedSongWordIds((current) => current.includes(wordId) ? current.filter((id) => id !== wordId) : [...current, wordId]);
+  }
+
+  function resetStudioWorkflow() {
+    setReplacementAssetId(null);
+    setStudioEnhancementStatus("NOT_APPLIED");
+    setStudioQualityStatus("UNCHECKED");
+    setStudioEnhancementMessage(null);
   }
 
   const clearStudioAudio = useCallback(() => {
@@ -467,22 +592,48 @@ export default function AdminGaVoicePage() {
         return;
       }
 
-      const saveResponse = await fetch("/api/admin/ga/audio", {
+      const saveResponse = await fetch(replacementAsset ? "/api/admin/ga/audio/replace" : "/api/admin/ga/audio", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          wordId: recordingTargetMode === "word" ? recordingWordId : null,
-          letterKey: recordingTargetMode === "letter" ? recordingLetter : null,
-          audioUrl: uploadPayload.publicUrl,
-          audioStorageKey: uploadPayload.objectKey ?? null,
-          sourceType: "ADMIN_UPLOADED",
-          reviewStatus: "AI_GENERATED",
-          approvalStatus: "PENDING",
-          pronunciationNote: recordingTargetMode === "word"
-            ? `Recording target: ${selectedRecordingWord?.englishWord ?? "word"} / ${selectedRecordingWord?.gaWord ?? ""}`
-            : `Recording target letter: ${recordingLetter}`,
-          adminNotes: "Enhancement not applied yet - original recording saved.",
-        }),
+        body: JSON.stringify(
+          replacementAsset
+            ? {
+              audioAssetId: replacementAsset.id,
+              notes: "Re-recorded from admin recording library.",
+              replacement: {
+                wordId: recordingTargetMode === "word" ? recordingWordId : null,
+                letterKey: recordingTargetMode === "letter" ? recordingLetter : null,
+                audioUrl: uploadPayload.publicUrl,
+                audioStorageKey: uploadPayload.objectKey ?? null,
+                sourceType: "ADMIN_UPLOADED",
+                reviewStatus: "AI_GENERATED",
+                approvalStatus: "PENDING",
+                qualityStatus: studioQualityStatus === "UNCHECKED" ? suggestQualityStatus(levelPercent) : studioQualityStatus,
+                enhancementStatus: studioEnhancementStatus,
+                pronunciationNote: recordingTargetMode === "word"
+                  ? `Recording target: ${selectedRecordingWord?.englishWord ?? "word"} / ${selectedRecordingWord?.gaWord ?? ""}`
+                  : `Recording target letter: ${recordingLetter}`,
+                adminNotes: `Re-recorded from asset ${replacementAsset.id}.`,
+              },
+            }
+            : {
+              wordId: recordingTargetMode === "word" ? recordingWordId : null,
+              letterKey: recordingTargetMode === "letter" ? recordingLetter : null,
+              audioUrl: uploadPayload.publicUrl,
+              audioStorageKey: uploadPayload.objectKey ?? null,
+              sourceType: "ADMIN_UPLOADED",
+              reviewStatus: "AI_GENERATED",
+              approvalStatus: "PENDING",
+              qualityStatus: studioQualityStatus === "UNCHECKED" ? suggestQualityStatus(levelPercent) : studioQualityStatus,
+              enhancementStatus: studioEnhancementStatus,
+              pronunciationNote: recordingTargetMode === "word"
+                ? `Recording target: ${selectedRecordingWord?.englishWord ?? "word"} / ${selectedRecordingWord?.gaWord ?? ""}`
+                : `Recording target letter: ${recordingLetter}`,
+              adminNotes: studioEnhancementStatus === "NOT_APPLIED"
+                ? "Enhancement not applied yet - original recording saved."
+                : `Enhancement status: ${studioEnhancementStatus}`,
+            },
+        ),
       });
       const savePayload = await saveResponse.json().catch(() => null) as { error?: string } | null;
       if (!saveResponse.ok) {
@@ -490,12 +641,91 @@ export default function AdminGaVoicePage() {
         return;
       }
 
-      setMessage("Recording uploaded and linked to selected target.");
+      setMessage(replacementAsset ? "Recording re-saved as a new version in the recording library." : "Recording uploaded and linked to selected target.");
       clearStudioAudio();
+      resetStudioWorkflow();
       await loadAll();
     } finally {
       setStudioSaving(false);
     }
+  }
+
+  async function approveAsset(audioAssetId: string, reviewStatus: "APPROVED_FOR_EARLY_LEARNING" | "NEEDS_NATIVE_REVIEW") {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/admin/ga/audio/approve", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ audioAssetId, reviewStatus }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to approve audio asset.");
+        return;
+      }
+      setMessage(reviewStatus === "APPROVED_FOR_EARLY_LEARNING" ? "Audio approved for early learning." : "Audio marked as needing native review.");
+      await loadAll();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function rejectAsset(audioAssetId: string) {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/admin/ga/audio/reject", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ audioAssetId, notes: "Rejected from admin recording library review." }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to reject audio asset.");
+        return;
+      }
+      setMessage("Audio asset rejected.");
+      await loadAll();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteAsset(audioAssetId: string) {
+    const confirmed = window.confirm("Delete this recording from the active admin library? Student-safe approved audio and current song audio are protected.");
+    if (!confirmed) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/admin/ga/audio/${audioAssetId}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ notes: "Deleted from admin recording library." }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to delete audio asset.");
+        return;
+      }
+      if (replacementAssetId === audioAssetId) resetStudioWorkflow();
+      setMessage("Recording removed from the active admin library.");
+      await loadAll();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function rerecordAsset(asset: AudioAssetRow) {
+    setReplacementAssetId(asset.id);
+    setStudioEnhancementStatus(asset.enhancementStatus as (typeof GA_AUDIO_ENHANCEMENT_STATUSES)[number]);
+    setStudioQualityStatus(asset.qualityStatus as (typeof GA_AUDIO_QUALITY_STATUSES)[number]);
+    setStudioEnhancementMessage(`Re-record mode: saving will create a new version and supersede asset ${asset.id}.`);
+    if (asset.word) {
+      setRecordingTargetMode("word");
+      setRecordingWordId(asset.word.id);
+    } else if (asset.letterKey) {
+      setRecordingTargetMode("letter");
+      setRecordingLetter(asset.letterKey);
+    }
+    document.getElementById("ga-voice-studio")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   useEffect(() => {
@@ -526,6 +756,13 @@ export default function AdminGaVoicePage() {
       </section>
 
       <GaHubAccordionSection title="Ga Voice Recording Studio" eyebrow="Record, review, and save to selected target" defaultOpen={true}>
+        <div id="ga-voice-studio" />
+        {replacementAsset ? (
+          <div className="mb-4 rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+            Re-recording <span className="font-black">{describeAudioTarget(replacementAsset)}</span>. Saving will create a new version and link it to the current asset.
+            <button type="button" onClick={resetStudioWorkflow} className="ml-3 rounded-lg border border-cyan-400/60 px-3 py-1 text-xs font-black text-cyan-100">Cancel re-record mode</button>
+          </div>
+        ) : null}
         <div className="grid gap-3 md:grid-cols-3">
           <label className="text-xs font-bold uppercase text-slate-400">Target type
             <select
@@ -570,6 +807,19 @@ export default function AdminGaVoicePage() {
           </div>
         </div>
 
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <label className="text-xs font-bold uppercase text-slate-400">Audio quality status
+            <select value={studioQualityStatus} onChange={(event) => setStudioQualityStatus(event.target.value as (typeof GA_AUDIO_QUALITY_STATUSES)[number])} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+              {GA_AUDIO_QUALITY_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-bold uppercase text-slate-400">Enhancement status
+            <select value={studioEnhancementStatus} onChange={(event) => setStudioEnhancementStatus(event.target.value as (typeof GA_AUDIO_ENHANCEMENT_STATUSES)[number])} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+              {GA_AUDIO_ENHANCEMENT_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </label>
+        </div>
+
         <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
           <p className="text-xs font-black uppercase text-slate-400">Input level meter</p>
           <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-900">
@@ -602,8 +852,17 @@ export default function AdminGaVoicePage() {
             />
           </label>
           <button type="button" onClick={clearStudioAudio} disabled={isRecording || (!recordingBlob && !recordingUrl)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200 disabled:opacity-50">Re-record</button>
-          <button type="button" onClick={() => setStudioEnhancementMessage("Enhancement not applied yet - original recording saved.")} className="rounded-xl border border-amber-600 px-4 py-2 text-sm font-black text-amber-100">Apply enhancement</button>
-          <button type="button" onClick={() => void saveStudioRecording()} disabled={studioSaving || isRecording || !recordingBlob} className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{studioSaving ? "Saving..." : "Save recording"}</button>
+          <button
+            type="button"
+            onClick={() => {
+              setStudioEnhancementStatus("QUEUED");
+              setStudioEnhancementMessage("Enhancement queued. Save now or upload a cleaned version as a re-record.");
+            }}
+            className="rounded-xl border border-amber-600 px-4 py-2 text-sm font-black text-amber-100"
+          >
+            Queue enhancement
+          </button>
+          <button type="button" onClick={() => void saveStudioRecording()} disabled={studioSaving || isRecording || !recordingBlob} className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{studioSaving ? "Saving..." : replacementAsset ? "Save new version" : "Save recording"}</button>
         </div>
 
         {recordingUrl ? (
@@ -616,6 +875,101 @@ export default function AdminGaVoicePage() {
         {studioEnhancementMessage ? (
           <p className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-100">{studioEnhancementMessage}</p>
         ) : null}
+      </GaHubAccordionSection>
+
+      <GaHubAccordionSection
+        title={`Recording Library (${filteredAudioAssets.length}/${audioAssets.length})`}
+        eyebrow="Admin uploaded assets"
+        defaultOpen={true}
+        helperText="Saved studio recordings, review state, playback, version history, and safe delete controls."
+      >
+        <div className="mb-4 grid gap-3 md:grid-cols-3">
+          <label className="text-xs font-bold uppercase text-slate-400">Search target or status
+            <input
+              value={libraryQuery}
+              onChange={(event) => setLibraryQuery(event.target.value)}
+              placeholder="Word, lesson, song, letter, status..."
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+            />
+          </label>
+          <label className="text-xs font-bold uppercase text-slate-400">Review status
+            <select
+              value={libraryReviewFilter}
+              onChange={(event) => setLibraryReviewFilter(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+            >
+              <option value="ALL">All</option>
+              {availableLibraryReviewStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-bold uppercase text-slate-400">Approval status
+            <select
+              value={libraryApprovalFilter}
+              onChange={(event) => setLibraryApprovalFilter(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+            >
+              <option value="ALL">All</option>
+              {availableLibraryApprovalStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-300 text-left text-xs">
+            <thead className="uppercase text-slate-500">
+              <tr>
+                <th className="px-2 py-2">Target</th>
+                <th className="px-2 py-2">Recorded</th>
+                <th className="px-2 py-2">Review</th>
+                <th className="px-2 py-2">Approval</th>
+                <th className="px-2 py-2">Quality</th>
+                <th className="px-2 py-2">Enhancement</th>
+                <th className="px-2 py-2">Playback</th>
+                <th className="px-2 py-2">Version history</th>
+                <th className="px-2 py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAudioAssets.length === 0 ? (
+                <tr><td colSpan={9} className="px-2 py-6 text-sm text-slate-400">No admin recordings saved yet.</td></tr>
+              ) : filteredAudioAssets.map((asset) => (
+                <tr key={asset.id} className="border-t border-slate-800 text-slate-300 align-top">
+                  <td className="px-2 py-3">
+                    <p className="font-bold text-white">{describeAudioTarget(asset)}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">{asset.sourceType}</p>
+                    {asset.currentForSong ? <p className="mt-1 text-[11px] font-bold text-amber-200">Current song audio: {asset.currentForSong.title}</p> : null}
+                  </td>
+                  <td className="px-2 py-3">{new Date(asset.createdAt).toLocaleString()}</td>
+                  <td className="px-2 py-3"><span className={`inline-flex rounded-full border px-2 py-1 font-bold ${statusBadgeClass(asset.reviewStatus)}`}>{asset.reviewStatus}</span></td>
+                  <td className="px-2 py-3"><span className={`inline-flex rounded-full border px-2 py-1 font-bold ${statusBadgeClass(asset.approvalStatus)}`}>{asset.approvalStatus}</span></td>
+                  <td className="px-2 py-3"><span className={`inline-flex rounded-full border px-2 py-1 font-bold ${statusBadgeClass(asset.qualityStatus)}`}>{asset.qualityStatus}</span></td>
+                  <td className="px-2 py-3"><span className={`inline-flex rounded-full border px-2 py-1 font-bold ${statusBadgeClass(asset.enhancementStatus)}`}>{asset.enhancementStatus}</span></td>
+                  <td className="px-2 py-3"><audio controls src={asset.audioUrl} className="w-56" /></td>
+                  <td className="px-2 py-3">
+                    <div className="space-y-2">
+                      {asset.replacedByAudio ? <p>Superseded by newer version from {new Date(asset.replacedByAudio.createdAt).toLocaleString()}</p> : <p>Latest visible version</p>}
+                      {asset.replacedAssets.length ? asset.replacedAssets.map((version) => (
+                        <div key={version.id} className="rounded-lg border border-slate-800 px-2 py-1 text-[11px]">
+                          <p className="font-bold text-white">Child version {version.id.slice(0, 8)}</p>
+                          <p>{new Date(version.createdAt).toLocaleString()}</p>
+                          <p>{version.reviewStatus} · {version.approvalStatus}</p>
+                        </div>
+                      )) : null}
+                    </div>
+                  </td>
+                  <td className="px-2 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void approveAsset(asset.id, "APPROVED_FOR_EARLY_LEARNING")} disabled={saving || asset.approvalStatus === "APPROVED"} className="rounded-lg border border-emerald-600 px-3 py-1 font-bold text-emerald-200 disabled:opacity-50">Approve</button>
+                      <button type="button" onClick={() => void approveAsset(asset.id, "NEEDS_NATIVE_REVIEW")} disabled={saving} className="rounded-lg border border-cyan-600 px-3 py-1 font-bold text-cyan-200 disabled:opacity-50">Needs native</button>
+                      <button type="button" onClick={() => void rejectAsset(asset.id)} disabled={saving} className="rounded-lg border border-rose-600 px-3 py-1 font-bold text-rose-200 disabled:opacity-50">Reject</button>
+                      <button type="button" onClick={() => rerecordAsset(asset)} disabled={saving} className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100 disabled:opacity-50">Re-record</button>
+                      <button type="button" onClick={() => void deleteAsset(asset.id)} disabled={saving} className="rounded-lg border border-amber-700 px-3 py-1 font-bold text-amber-100 disabled:opacity-50">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </GaHubAccordionSection>
 
       <GaHubAccordionSection

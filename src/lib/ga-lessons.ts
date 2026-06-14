@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { GA_CATEGORIES, GA_LEVELS, toStudentSafeGaWord } from "@/lib/ga-word-bank";
-import { GA_VOICE_ACTIVITY_TYPES } from "@/lib/ga-voice";
+import { GA_VOICE_ACTIVITY_TYPES, canServeGaAudioToStudent } from "@/lib/ga-voice";
 import { listGaPronunciationReferences, serializeGaPronunciationReference } from "@/lib/ga-audio";
 import { resolveGaCategoryAgainstAllowed } from "@/lib/ga-categories";
 import { GA_LANGUAGE_PROFILE } from "@/lib/language-profiles";
@@ -215,7 +215,9 @@ export function toStudentSafeGaLesson(lesson: LessonLike) {
 
 async function buildStudentPronunciationReferences(lesson: LessonLike) {
   const references = await listGaPronunciationReferences(200);
-  const serialized = references.map(serializeGaPronunciationReference) as PronunciationReferenceLike[];
+  const serialized = references
+    .map(serializeGaPronunciationReference)
+    .filter((reference) => canServeGaAudioToStudent(reference.reviewStatus)) as PronunciationReferenceLike[];
   const wordIds = new Set(lesson.words.map((row) => row.word.id));
 
   const lessonRefs = serialized.filter((reference) => reference.linkedLessonId === lesson.id);

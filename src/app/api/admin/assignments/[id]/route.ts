@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/api_guard";
+import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
 
 export async function DELETE(
   request: Request,
@@ -12,24 +13,30 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    // Verify assignment exists
     const assignment = await prisma.assignment.findUnique({
       where: { id },
-      select: { id: true, studentId: true, contentId: true },
+      select: { id: true, studentId: true, status: true },
     });
 
     if (!assignment) {
       return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
     }
 
-    // Delete the assignment
-    await prisma.assignment.delete({
-      where: { id },
-    });
+    if (assignment.status !== "archived") {
+      await prisma.assignment.update({
+        where: { id },
+        data: { status: "archived" },
+      });
+
+      await invalidateAcademicIntelligenceSnapshot({
+        studentId: assignment.studentId,
+        reason: "admin_assignment_update",
+      }).catch(() => undefined);
+    }
 
     return NextResponse.json({ ok: true, message: "Assignment removed." }, { status: 200 });
   } catch (error) {
-    console.error("Error deleting assignment:", error);
-    return NextResponse.json({ error: "Failed to delete assignment." }, { status: 500 });
+    console.error("Error archiving assignment:", error);
+    return NextResponse.json({ error: "Failed to remove assignment." }, { status: 500 });
   }
 }

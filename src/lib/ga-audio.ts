@@ -1,5 +1,13 @@
 import { prisma } from "@/lib/db";
-import { canServeGaAudioToStudent, GA_AUDIO_REVIEW_STATUSES, GA_AUDIO_SOURCE_TYPES, isReferenceOnlySourceType } from "@/lib/ga-voice";
+import {
+  canServeGaAudioToStudent,
+  GA_AUDIO_APPROVAL_STATUSES,
+  GA_AUDIO_ENHANCEMENT_STATUSES,
+  GA_AUDIO_QUALITY_STATUSES,
+  GA_AUDIO_REVIEW_STATUSES,
+  GA_AUDIO_SOURCE_TYPES,
+  isReferenceOnlySourceType,
+} from "@/lib/ga-voice";
 
 const POSITIVE_AUDIO_REVIEW_STATUSES = [
   "APPROVED_FOR_EARLY_LEARNING",
@@ -7,7 +15,6 @@ const POSITIVE_AUDIO_REVIEW_STATUSES = [
   "NATIVE_VERIFIED",
 ] as const;
 
-const AUDIO_APPROVAL_STATUSES = ["PENDING", "APPROVED", "REJECTED", "REPLACED"] as const;
 const RECORDING_REVIEW_STATUSES = ["PENDING", "REVIEWED", "NEEDS_REPEAT", "FLAGGED"] as const;
 const REFERENCE_PERMISSION_STATUSES = ["UNKNOWN", "REFERENCE_ONLY", "LICENSED"] as const;
 
@@ -23,6 +30,8 @@ export type GaAudioAssetInput = {
   sourceType: string;
   reviewStatus?: string | null;
   approvalStatus?: string | null;
+  qualityStatus?: string | null;
+  enhancementStatus?: string | null;
   confidenceLevel?: number | null;
   pronunciationNote?: string | null;
   adminNotes?: string | null;
@@ -42,6 +51,11 @@ export type GaAudioRejectInput = {
 export type GaAudioReplaceInput = {
   audioAssetId: string;
   replacement: GaAudioAssetInput;
+  notes?: string | null;
+};
+
+export type GaAudioDeleteInput = {
+  audioAssetId: string;
   notes?: string | null;
 };
 
@@ -96,6 +110,14 @@ function optionalInt(value: unknown): number | null {
   return parsed;
 }
 
+function appendAdminNote(existing: string | null | undefined, note: string | null | undefined): string | null {
+  const next = cleanText(note);
+  const current = cleanText(existing);
+  if (!next) return current || null;
+  if (!current) return next;
+  return `${current}\n${next}`;
+}
+
 function assertAllowed<T extends readonly string[]>(value: string, allowed: T, label: string): T[number] {
   if (!allowed.includes(value as T[number])) {
     throw new Error(`${label} must be one of: ${allowed.join(", ")}.`);
@@ -138,7 +160,9 @@ export function buildGaAudioAssetData(input: GaAudioAssetInput) {
   }
 
   const reviewStatus = assertAllowed(cleanText(input.reviewStatus) || "DRAFT", GA_AUDIO_REVIEW_STATUSES, "Review status");
-  const approvalStatus = assertAllowed(cleanText(input.approvalStatus) || "PENDING", AUDIO_APPROVAL_STATUSES, "Approval status");
+  const approvalStatus = assertAllowed(cleanText(input.approvalStatus) || "PENDING", GA_AUDIO_APPROVAL_STATUSES, "Approval status");
+  const qualityStatus = assertAllowed(cleanText(input.qualityStatus) || "UNCHECKED", GA_AUDIO_QUALITY_STATUSES, "Quality status");
+  const enhancementStatus = assertAllowed(cleanText(input.enhancementStatus) || "NOT_APPLIED", GA_AUDIO_ENHANCEMENT_STATUSES, "Enhancement status");
 
   return {
     wordId: optionalText(input.wordId),
@@ -152,6 +176,8 @@ export function buildGaAudioAssetData(input: GaAudioAssetInput) {
     sourceType,
     reviewStatus,
     approvalStatus,
+    qualityStatus,
+    enhancementStatus,
     confidenceLevel: optionalInt(input.confidenceLevel),
     pronunciationNote: optionalText(input.pronunciationNote),
     adminNotes: optionalText(input.adminNotes),
@@ -233,6 +259,56 @@ export async function createGaAudioAsset(input: GaAudioAssetInput, actorUserId?:
   });
 
   return getGaAudioAssetById(asset.id);
+}
+
+export async function listGaAudioAssets(limit = 100, filters?: { sourceType?: string | null; includeDeleted?: boolean }) {
+  const sourceType = optionalText(filters?.sourceType);
+  const includeDeleted = filters?.includeDeleted === true;
+
+  return prisma.gaAudioAsset.findMany({
+    where: {
+      ...(sourceType ? { sourceType: assertAllowed(sourceType, GA_AUDIO_SOURCE_TYPES, "Source type") } : {}),
+      ...(includeDeleted ? {} : { deletedAt: null }),
+    },
+    include: {
+      word: { select: { id: true, englishWord: true, gaWord: true, category: true } },
+      lesson: { select: { id: true, title: true, slug: true } },
+      song: { select: { id: true, title: true } },
+      createdBy: { select: { id: true, email: true, name: true } },
+      approvedBy: { select: { id: true, email: true, name: true } },
+      rejectedBy: { select: { id: true, email: true, name: true } },
+      deletedBy: { select: { id: true, email: true, name: true } },
+      replacedByAudio: {
+        select: {
+          id: true,
+          audioUrl: true,
+          reviewStatus: true,
+          approvalStatus: true,
+          qualityStatus: true,
+          enhancementStatus: true,
+          createdAt: true,
+          deletedAt: true,
+        },
+      },
+      replacedAssets: {
+        where: includeDeleted ? undefined : { deletedAt: null },
+        select: {
+          id: true,
+          audioUrl: true,
+          reviewStatus: true,
+          approvalStatus: true,
+          qualityStatus: true,
+          enhancementStatus: true,
+          createdAt: true,
+          deletedAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
+      currentForSong: { select: { id: true, title: true } },
+    },
+    orderBy: [{ createdAt: "desc" }],
+    take: Math.max(1, Math.min(200, limit)),
+  });
 }
 
 export async function approveGaAudioAsset(input: GaAudioApprovalInput, actorUserId?: string | null) {
@@ -370,6 +446,47 @@ export async function replaceGaAudioAsset(input: GaAudioReplaceInput, actorUserI
   });
 
   return getGaAudioAssetById(result.id);
+}
+
+export async function softDeleteGaAudioAsset(input: GaAudioDeleteInput, actorUserId?: string | null) {
+  const audioAssetId = cleanText(input.audioAssetId);
+  if (!audioAssetId) throw new Error("Audio asset id is required.");
+
+  const current = await prisma.gaAudioAsset.findUnique({
+    where: { id: audioAssetId },
+    include: {
+      currentForSong: { select: { id: true, title: true } },
+    },
+  });
+
+  if (!current) return null;
+  if (current.deletedAt) return getGaAudioAssetById(current.id);
+  if (current.currentForSong) {
+    throw new Error(`Current song audio for \"${current.currentForSong.title}\" cannot be deleted. Replace or detach it first.`);
+  }
+  if (isStudentFacingGaAudio(current.reviewStatus, current.approvalStatus)) {
+    throw new Error("Student-safe approved audio cannot be deleted directly. Replace or reject it first.");
+  }
+
+  const updated = await prisma.gaAudioAsset.update({
+    where: { id: audioAssetId },
+    data: {
+      deletedAt: new Date(),
+      deletedById: optionalText(actorUserId),
+      adminNotes: appendAdminNote(current.adminNotes, optionalText(input.notes) ?? "Soft deleted in admin recording library."),
+    },
+  });
+
+  await writeGaAudioAuditLog({
+    audioAssetId: updated.id,
+    action: "deleted",
+    oldStatus: `${current.approvalStatus}:${current.reviewStatus}`,
+    newStatus: `${updated.approvalStatus}:${updated.reviewStatus}`,
+    performedById: actorUserId,
+    notes: input.notes,
+  });
+
+  return getGaAudioAssetById(updated.id);
 }
 
 export async function createGaPronunciationReference(input: GaPronunciationReferenceInput, actorUserId?: string | null) {
@@ -633,7 +750,12 @@ export async function getGaAudioAssetById(id: string) {
       createdBy: { select: { id: true, email: true, name: true } },
       approvedBy: { select: { id: true, email: true, name: true } },
       rejectedBy: { select: { id: true, email: true, name: true } },
+      deletedBy: { select: { id: true, email: true, name: true } },
       replacedByAudio: true,
+      replacedAssets: {
+        orderBy: { createdAt: "desc" },
+      },
+      currentForSong: { select: { id: true, title: true } },
     },
   });
 }
@@ -677,17 +799,18 @@ export async function getGaAudioDashboardMetrics() {
     songsPendingApproval,
   ] = await Promise.all([
     prisma.gaAudioAsset.count(),
-    prisma.gaAudioAsset.count({ where: { sourceType: { in: ["AI_GENERATED", "AI_GENERATED_SONG"] } } }),
-    prisma.gaAudioAsset.count({ where: { approvalStatus: "APPROVED", reviewStatus: "APPROVED_FOR_EARLY_LEARNING" } }),
-    prisma.gaAudioAsset.count({ where: { approvalStatus: "APPROVED", reviewStatus: "NEEDS_NATIVE_REVIEW" } }),
-    prisma.gaAudioAsset.count({ where: { approvalStatus: "APPROVED", reviewStatus: "NATIVE_VERIFIED" } }),
-    prisma.gaAudioAsset.count({ where: { approvalStatus: "REJECTED" } }),
+    prisma.gaAudioAsset.count({ where: { deletedAt: null, sourceType: { in: ["AI_GENERATED", "AI_GENERATED_SONG"] } } }),
+    prisma.gaAudioAsset.count({ where: { deletedAt: null, approvalStatus: "APPROVED", reviewStatus: "APPROVED_FOR_EARLY_LEARNING" } }),
+    prisma.gaAudioAsset.count({ where: { deletedAt: null, approvalStatus: "APPROVED", reviewStatus: "NEEDS_NATIVE_REVIEW" } }),
+    prisma.gaAudioAsset.count({ where: { deletedAt: null, approvalStatus: "APPROVED", reviewStatus: "NATIVE_VERIFIED" } }),
+    prisma.gaAudioAsset.count({ where: { deletedAt: null, approvalStatus: "REJECTED" } }),
     prisma.gaWord.count({ where: { reviewStatus: "Approved" } }),
     prisma.gaWord.count({
       where: {
         reviewStatus: "Approved",
         audioAssets: {
           none: {
+            deletedAt: null,
             approvalStatus: "APPROVED",
             reviewStatus: { in: [...POSITIVE_AUDIO_REVIEW_STATUSES] },
           },
@@ -700,6 +823,7 @@ export async function getGaAudioDashboardMetrics() {
         publishStatus: "Published",
         audioAssets: {
           none: {
+            deletedAt: null,
             approvalStatus: "APPROVED",
             reviewStatus: { in: [...POSITIVE_AUDIO_REVIEW_STATUSES] },
           },
@@ -735,12 +859,14 @@ export function isGaAudioSchemaNotReadyError(error: unknown): boolean {
 }
 
 export function serializeGaAudioAsset<T extends { createdAt: Date; updatedAt: Date; approvedAt: Date | null; rejectedAt: Date | null }>(asset: T) {
+  const deletedAt = "deletedAt" in asset ? (asset as T & { deletedAt?: Date | null }).deletedAt ?? null : null;
   return {
     ...asset,
     createdAt: asset.createdAt.toISOString(),
     updatedAt: asset.updatedAt.toISOString(),
     approvedAt: asset.approvedAt ? asset.approvedAt.toISOString() : null,
     rejectedAt: asset.rejectedAt ? asset.rejectedAt.toISOString() : null,
+    deletedAt: deletedAt ? deletedAt.toISOString() : null,
   };
 }
 
