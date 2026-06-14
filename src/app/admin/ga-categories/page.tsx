@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import GaHubAccordionSection from "@/components/admin/GaHubAccordionSection";
 
 type CategoryRow = {
   id: string;
@@ -41,7 +41,6 @@ export default function AdminGaCategoriesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
   const editingItem = useMemo(() => items.find((item) => item.id === editingId) ?? null, [items, editingId]);
 
   const load = useCallback(async () => {
@@ -118,20 +117,47 @@ export default function AdminGaCategoriesPage() {
     }
   }
 
-  async function toggleCategory(item: CategoryRow, nextActive: boolean) {
+  async function archiveCategory(item: CategoryRow, nextArchived: boolean) {
+    const confirmationText = nextArchived
+      ? `Archive ${item.name}? Archived categories are hidden from new selections.`
+      : `Restore ${item.name} to active categories?`;
+    if (!window.confirm(confirmationText)) return;
+
     setSaving(true);
     try {
       const response = await fetch(`/api/admin/ga/categories/${item.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ isActive: nextActive, force: true }),
+        body: JSON.stringify({ isArchived: nextArchived, isActive: nextArchived ? false : true, force: true }),
       });
       const payload = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) {
-        setMessage(payload?.error ?? "Unable to update category state.");
+        setMessage(payload?.error ?? "Unable to update category archive state.");
         return;
       }
-      setMessage(nextActive ? "Category enabled." : "Category disabled.");
+      setMessage(nextArchived ? "Category archived." : "Category restored.");
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteCategory(item: CategoryRow) {
+    if (!window.confirm(`Delete ${item.name} permanently? This is only allowed when there is no word or lesson usage.`)) return;
+
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/admin/ga/categories/${item.id}`, { method: "DELETE" });
+      const payload = await response.json().catch(() => null) as { error?: string; usage?: { wordCount?: number; lessonCount?: number } } | null;
+      if (!response.ok) {
+        if (payload?.usage) {
+          setMessage(`Cannot delete category: words ${payload.usage.wordCount ?? 0}, lessons ${payload.usage.lessonCount ?? 0}.`);
+          return;
+        }
+        setMessage(payload?.error ?? "Unable to delete category.");
+        return;
+      }
+      setMessage("Category deleted permanently.");
       await load();
     } finally {
       setSaving(false);
@@ -148,7 +174,7 @@ export default function AdminGaCategoriesPage() {
 
       {message ? <p className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-100">{message}</p> : null}
 
-      <AdminSectionCard title={editingId ? "Edit Category" : "Create Category"} eyebrow="Admin-managed">
+      <GaHubAccordionSection title={editingId ? "Edit Category" : "Create Category"} eyebrow="Admin-managed" defaultOpen={true}>
         <div id="ga-category-editor" />
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-xs font-bold uppercase text-slate-400">Category name
@@ -165,9 +191,14 @@ export default function AdminGaCategoriesPage() {
           <button type="button" onClick={() => void saveCategory()} disabled={saving} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{editingId ? "Update category" : "Create category"}</button>
           {editingId ? <button type="button" onClick={resetForm} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
         </div>
-      </AdminSectionCard>
+      </GaHubAccordionSection>
 
-      <AdminSectionCard title={`Categories (${items.length})`} eyebrow="Word Bank + Lessons coverage">
+      <GaHubAccordionSection
+        title={`Categories (${items.length})`}
+        eyebrow="Word Bank + Lessons coverage"
+        defaultOpen={false}
+        helperText="Coverage table is collapsed by default for faster page scan."
+      >
         <div className="overflow-x-auto">
           <table className="w-full min-w-260 text-left text-xs">
             <thead className="uppercase text-slate-500">
@@ -201,7 +232,14 @@ export default function AdminGaCategoriesPage() {
                       {item.source === "database" ? (
                         <>
                           <button type="button" onClick={() => edit(item)} className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100">Edit</button>
-                          <button type="button" onClick={() => void toggleCategory(item, !item.isActive)} disabled={saving} className="rounded-lg border border-amber-600/70 px-3 py-1 font-bold text-amber-100 disabled:opacity-50">{item.isActive ? "Disable" : "Enable"}</button>
+                          {!item.isArchived ? (
+                            <button type="button" onClick={() => void archiveCategory(item, true)} disabled={saving} className="rounded-lg border border-amber-600/70 px-3 py-1 font-bold text-amber-100 disabled:opacity-50">Archive</button>
+                          ) : (
+                            <>
+                              <button type="button" onClick={() => void archiveCategory(item, false)} disabled={saving} className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100 disabled:opacity-50">Restore</button>
+                              <button type="button" onClick={() => void deleteCategory(item)} disabled={saving} className="rounded-lg border border-rose-600/70 px-3 py-1 font-bold text-rose-100 disabled:opacity-50">Delete</button>
+                            </>
+                          )}
                         </>
                       ) : <span className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">Fallback only</span>}
                     </div>
@@ -211,7 +249,7 @@ export default function AdminGaCategoriesPage() {
             </tbody>
           </table>
         </div>
-      </AdminSectionCard>
+      </GaHubAccordionSection>
     </div>
   );
 }

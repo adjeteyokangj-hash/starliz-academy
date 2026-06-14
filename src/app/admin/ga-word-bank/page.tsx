@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import GaHubAccordionSection from "@/components/admin/GaHubAccordionSection";
 import {
   GA_BULK_IMPORT_TEMPLATE,
   GA_AUDIO_STATUSES,
@@ -271,6 +271,15 @@ export default function GaWordBankPage() {
   }, [activeWordBankCategories, wordForm.category]);
   const selectedCategoryState = categoryMap.get(wordForm.category) ?? null;
   const selectedCategoryInactive = selectedCategoryState ? (!selectedCategoryState.isActive || selectedCategoryState.isArchived) : false;
+  const usageStats = useMemo(() => {
+    const quizReadyCount = words.filter((word) => word.quizReady).length;
+    const storyReadyCount = words.filter((word) => word.storyReady).length;
+    const approvedCount = words.filter((word) => word.reviewStatus === "Approved").length;
+    const reviewedCount = words.filter((word) => word.reviewStatus === "Reviewed").length;
+    const pendingCount = words.filter((word) => word.reviewStatus === "Pending").length;
+    const needsAudioCount = words.filter((word) => word.audioStatus !== "Approved").length;
+    return { quizReadyCount, storyReadyCount, approvedCount, reviewedCount, pendingCount, needsAudioCount };
+  }, [words]);
 
   const focusEditForm = useCallback(() => {
     editFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -583,7 +592,7 @@ export default function GaWordBankPage() {
         </section>
       ) : null}
 
-      <AdminSectionCard title="Source Library" eyebrow="Trusted references">
+      <GaHubAccordionSection title="Source Library" eyebrow="Trusted references" defaultOpen={true}>
         <div className="grid gap-3 md:grid-cols-3">
           <TextField label="Source name" value={sourceName} onChange={setSourceName} />
           <TextField label="Source year" value={sourceYear} onChange={setSourceYear} />
@@ -605,9 +614,9 @@ export default function GaWordBankPage() {
             </article>
           ))}
         </div>
-      </AdminSectionCard>
+      </GaHubAccordionSection>
 
-      <AdminSectionCard title={isEditing ? "Edit Ga Word" : "Add Ga Word"} eyebrow="Controlled vocabulary">
+      <GaHubAccordionSection title={isEditing ? "Edit Ga Word" : "Add Ga Word"} eyebrow="Controlled vocabulary" defaultOpen={false}>
         <div ref={editFormRef} className="h-0" aria-hidden="true" />
         <div className="grid gap-3 md:grid-cols-3">
           <TextField label="English word" value={wordForm.englishWord} onChange={(value) => setWordForm((form) => ({ ...form, englishWord: value }))} inputRef={englishWordInputRef} />
@@ -628,14 +637,13 @@ export default function GaWordBankPage() {
           <button type="button" onClick={saveWord} disabled={saving} className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{isEditing ? "Update word" : "Add word"}</button>
           {isEditing ? <button type="button" onClick={cancelEdit} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
         </div>
-      </AdminSectionCard>
+      </GaHubAccordionSection>
 
-      <AdminSectionCard title="Bulk Import" eyebrow="CSV/Table importer with preview safeguards">
+      <GaHubAccordionSection title="Bulk Import" eyebrow="CSV/Table importer with preview safeguards" defaultOpen={false}>
         <p className="text-xs text-slate-400">Required columns: englishWord, gaWord, wordType, category, level, sourcePage, reviewStatus, audioStatus, quizReady, storyReady and sourceId or sourceName. Pending/Reviewed rows remain hidden from student APIs.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={downloadTemplate} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">Download CSV template</button>
           <button type="button" onClick={() => { setBulkText(`${GA_BULK_IMPORT_TEMPLATE}\n`); setBulkPreview(null); }} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">Reset to template</button>
-          <button type="button" onClick={() => void recategoriseAlphabetRows()} disabled={saving} className="rounded-xl border border-emerald-600/70 px-3 py-2 text-xs font-black text-emerald-100 disabled:opacity-50">Recategorise Letter A-Z to Alphabet</button>
           <label className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">
             Upload CSV
             <input
@@ -714,9 +722,9 @@ export default function GaWordBankPage() {
             </div>
           </div>
         ) : null}
-      </AdminSectionCard>
+      </GaHubAccordionSection>
 
-      <AdminSectionCard title="Search & Filters" eyebrow="Admin-only vocabulary review">
+      <GaHubAccordionSection title="Bulk Review & Update" eyebrow="Filter and prepare working set" defaultOpen={false}>
         <div className="grid gap-3 md:grid-cols-4">
           <TextField label="Search" value={filters.q} onChange={(value) => setFilters((next) => ({ ...next, q: value }))} />
           <SelectField label="Review status" value={filters.reviewStatus} options={GA_REVIEW_STATUSES} onChange={(value) => setFilters((next) => ({ ...next, reviewStatus: value }))} allowAll />
@@ -732,11 +740,10 @@ export default function GaWordBankPage() {
           <button type="button" onClick={() => setAppliedFilters(filters)} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white">Apply filters</button>
           <button type="button" onClick={() => { setFilters(defaultFilters); setAppliedFilters(defaultFilters); }} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Reset</button>
         </div>
-      </AdminSectionCard>
+      </GaHubAccordionSection>
 
-      <AdminSectionCard title={`Ga Words (${words.length})`} eyebrow="Only Approved words can reach students">
-        {loading ? <p className="text-sm text-slate-400">Loading Ga words...</p> : null}
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3 text-xs font-bold text-slate-300">
+      <GaHubAccordionSection title="Admin Approvals & Bulk Actions" eyebrow="Selection-driven moderation" defaultOpen={false}>
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3 text-xs font-bold text-slate-300">
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisibleWords} />
             Select all visible
@@ -747,6 +754,28 @@ export default function GaWordBankPage() {
             <button type="button" onClick={() => void bulkReview("Rejected")} disabled={saving || selectedVisibleWords.length === 0} className="rounded-xl bg-rose-500 px-3 py-2 text-white disabled:opacity-50">Reject selected</button>
           </div>
         </div>
+      </GaHubAccordionSection>
+
+      <GaHubAccordionSection title="Song & Lesson Usage Stats" eyebrow="Readiness snapshot" defaultOpen={false}>
+        <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+          <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">Approved: <span className="font-black text-emerald-300">{usageStats.approvedCount}</span></p>
+          <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">Reviewed: <span className="font-black text-cyan-300">{usageStats.reviewedCount}</span></p>
+          <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">Pending: <span className="font-black text-amber-300">{usageStats.pendingCount}</span></p>
+          <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">Quiz ready: <span className="font-black text-white">{usageStats.quizReadyCount}</span></p>
+          <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">Story ready: <span className="font-black text-white">{usageStats.storyReadyCount}</span></p>
+          <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">Needs audio work: <span className="font-black text-rose-300">{usageStats.needsAudioCount}</span></p>
+        </div>
+      </GaHubAccordionSection>
+
+      <GaHubAccordionSection title="System & QC" eyebrow="Maintenance tools" defaultOpen={false}>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => void recategoriseAlphabetRows()} disabled={saving} className="rounded-xl border border-emerald-600/70 px-3 py-2 text-xs font-black text-emerald-100 disabled:opacity-50">Recategorise Letter A-Z to Alphabet</button>
+          <span className="text-xs text-slate-400">Active source: {activeSource?.sourceName ?? "No source set"}</span>
+        </div>
+      </GaHubAccordionSection>
+
+      <GaHubAccordionSection title={`Ga Word Bank Table (${words.length})`} eyebrow="Only Approved words can reach students" defaultOpen={true}>
+        {loading ? <p className="text-sm text-slate-400">Loading Ga words...</p> : null}
         <div className="overflow-x-auto">
           <table className="w-full min-w-220 text-left text-xs">
             <thead className="uppercase text-slate-500">
@@ -786,7 +815,7 @@ export default function GaWordBankPage() {
             </tbody>
           </table>
         </div>
-      </AdminSectionCard>
+      </GaHubAccordionSection>
     </div>
   );
 }

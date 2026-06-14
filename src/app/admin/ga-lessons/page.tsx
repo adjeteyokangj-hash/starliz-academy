@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import GaHubAccordionSection from "@/components/admin/GaHubAccordionSection";
 import { GA_LEVELS } from "@/lib/ga-word-bank";
 import { BEGINNER_PACK_1_LESSONS, GA_LESSON_STATUSES } from "@/lib/ga-lessons";
 import { GA_APPROVED_CATEGORIES } from "@/lib/ga-word-categories";
@@ -40,6 +40,9 @@ type GaCategoryRow = {
   isArchived: boolean;
   usedByWordBank: boolean;
   usedByLessons: boolean;
+  wordCount?: number;
+  lessonCount?: number;
+  source?: "database" | "fallback";
 };
 
 type StudentAssignmentCandidate = {
@@ -47,6 +50,19 @@ type StudentAssignmentCandidate = {
   name: string;
   yearGroup?: string | null;
   classGroup?: string | null;
+};
+
+type AssignmentListRow = {
+  id: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  student: { id: string; name: string; yearGroup?: string | null; parent?: { email?: string | null } };
+  content: { id: string; topic: string; skillFocus: string | null; contentType: string };
+  score: number | null;
+  attempts: number;
+  weakWords: string[];
+  weakAreas: Array<{ weaknessType: string; accuracy: number }>;
 };
 
 const defaultForm = {
@@ -70,6 +86,7 @@ export default function AdminGaLessonsPage() {
   const [lessons, setLessons] = useState<LessonRow[]>([]);
   const [approvedWords, setApprovedWords] = useState<ApprovedWord[]>([]);
   const [categories, setCategories] = useState<GaCategoryRow[]>([]);
+  const [lessonAssignments, setLessonAssignments] = useState<AssignmentListRow[]>([]);
   const [selectedWordIds, setSelectedWordIds] = useState<string[]>([]);
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -81,7 +98,8 @@ export default function AdminGaLessonsPage() {
   const [targetStudentId, setTargetStudentId] = useState<string>("");
   const [targetYearGroup, setTargetYearGroup] = useState<string>("");
   const [assigningLessonId, setAssigningLessonId] = useState<string | null>(null);
-
+  const [assignmentBusyId, setAssignmentBusyId] = useState<string | null>(null);
+  const [lessonActionBusyId, setLessonActionBusyId] = useState<string | null>(null);
   const selectedWords = useMemo(
     () => approvedWords.filter((word) => selectedWordIds.includes(word.id)),
     [approvedWords, selectedWordIds],
@@ -96,6 +114,9 @@ export default function AdminGaLessonsPage() {
       isArchived: false,
       usedByWordBank: true,
       usedByLessons: true,
+      wordCount: 0,
+      lessonCount: 0,
+      source: "fallback" as const,
     })),
     [],
   );
@@ -119,28 +140,51 @@ export default function AdminGaLessonsPage() {
     () => Array.from(new Set(students.map((student) => student.yearGroup).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right)),
     [students],
   );
+  const lessonById = useMemo(() => new Map(lessons.map((lesson) => [lesson.id, lesson])), [lessons]);
+  const activeLessons = useMemo(() => lessons.filter((lesson) => lesson.publishStatus !== "Archived"), [lessons]);
+  const archivedLessons = useMemo(() => lessons.filter((lesson) => lesson.publishStatus === "Archived"), [lessons]);
 
-  const load = useCallback(async () => {
-    const [lessonResponse, wordResponse, categoryResponse] = await Promise.all([
+  const gaAssignments = useMemo(() => {
+    return lessonAssignments
+      .map((assignment) => {
+        const skillFocus = assignment.content.skillFocus ?? "";
+        const lessonId = skillFocus.startsWith("ga_lesson:") ? skillFocus.replace("ga_lesson:", "") : "";
+        const lesson = lessonById.get(lessonId) ?? null;
+        return { ...assignment, lessonId, lessonTitle: lesson?.title ?? assignment.content.topic ?? "Ga lesson" };
+      })
+      .filter((assignment) => assignment.lessonId || assignment.content.contentType === "ga");
+  }, [lessonAssignments, lessonById]);
+
+  const load = useCallback(async (): Promise<LessonRow[]> => {
+    const [lessonResponse, wordResponse, categoryResponse, studentResponse, assignmentResponse] = await Promise.all([
       fetch("/api/admin/ga/lessons"),
       fetch("/api/admin/ga/words?reviewStatus=Approved&limit=200"),
       fetch("/api/admin/ga/categories"),
+      fetch("/api/admin/students?context=assignment"),
+      fetch("/api/admin/assignments?query=ga_lesson"),
     ]);
-    const studentResponse = await fetch("/api/admin/students?context=assignment");
-    if (lessonResponse.status === 401 || wordResponse.status === 401 || categoryResponse.status === 401) {
+    if (
+      lessonResponse.status === 401
+      || wordResponse.status === 401
+      || categoryResponse.status === 401
+      || studentResponse.status === 401
+      || assignmentResponse.status === 401
+    ) {
       window.location.replace("/admin/login?next=/admin/ga-lessons");
-      return;
+      return [];
     }
     const lessonPayload = await lessonResponse.json().catch(() => null) as { items?: LessonRow[] } | null;
     const wordPayload = await wordResponse.json().catch(() => null) as { items?: ApprovedWord[] } | null;
     const categoryPayload = await categoryResponse.json().catch(() => null) as { items?: GaCategoryRow[] } | null;
     const studentPayload = await studentResponse.json().catch(() => null) as { students?: StudentAssignmentCandidate[] } | null;
+    const assignmentPayload = await assignmentResponse.json().catch(() => null) as { assignments?: AssignmentListRow[] } | null;
     const lessonItems = lessonPayload?.items ?? [];
     const approvedItems = wordPayload?.items ?? [];
     const nextCategories = categoryPayload?.items ?? [];
     setLessons(lessonItems);
     setApprovedWords(mergeLessonLinkedWords(approvedItems, lessonItems));
     setCategories(nextCategories);
+    setLessonAssignments(Array.isArray(assignmentPayload?.assignments) ? assignmentPayload.assignments : []);
     const studentItems = Array.isArray(studentPayload?.students) ? studentPayload.students : [];
     setStudents(studentItems);
     setTargetStudentId((current) => {
@@ -161,6 +205,7 @@ export default function AdminGaLessonsPage() {
       if (current.category && knownCategoryNames.has(current.category)) return current;
       return { ...current, category: activeCategoryNames[0] };
     });
+    return lessonItems;
   }, []);
 
   useEffect(() => {
@@ -178,8 +223,8 @@ export default function AdminGaLessonsPage() {
     setSelectedWordIds((current) => current.includes(id) ? current.filter((wordId) => wordId !== id) : [...current, id]);
   }
 
-  function editLesson(lesson: LessonRow) {
-    const editorState = buildLessonEditorStateById(lesson.id, lessons);
+  function editLesson(lesson: LessonRow, sourceLessons: LessonRow[] = lessons) {
+    const editorState = buildLessonEditorStateById(lesson.id, sourceLessons);
     if (!editorState) {
       setMessage("Selected lesson could not be loaded. Refresh and try again.");
       return;
@@ -340,11 +385,123 @@ export default function AdminGaLessonsPage() {
 
       if (assignmentTargetMode === "yearGroup") {
         setMessage(`Assigned \"${lesson.title}\" to ${targetYearGroup}.`);
+        await load();
         return;
       }
       setMessage(`Assigned \"${lesson.title}\" to ${selectedStudent?.name ?? "student"}.`);
+      await load();
     } finally {
       setAssigningLessonId(null);
+    }
+  }
+
+  async function removeAssignment(assignmentId: string) {
+    const confirmed = window.confirm("Remove this student lesson assignment? This archives the assignment and removes it from active lists.");
+    if (!confirmed) return;
+    setAssignmentBusyId(assignmentId);
+    try {
+      const response = await fetch(`/api/admin/assignments/${assignmentId}`, { method: "DELETE" });
+      const payload = await response.json().catch(() => null) as { error?: string; message?: string } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to remove assignment.");
+        return;
+      }
+      setMessage(payload?.message ?? "Assignment removed.");
+      await load();
+    } finally {
+      setAssignmentBusyId(null);
+    }
+  }
+
+  async function runLessonLifecycleAction(lesson: LessonRow, mode: "archive" | "delete" | "restore") {
+    const confirmationText = mode === "archive"
+      ? `Archive \"${lesson.title}\"? Students cannot be assigned from archived lessons.`
+      : mode === "delete"
+        ? `Delete \"${lesson.title}\" permanently? This only succeeds when there is no assignment/progress/history.`
+        : `Restore \"${lesson.title}\" to Draft?`;
+
+    if (!window.confirm(confirmationText)) return;
+
+    setLessonActionBusyId(lesson.id);
+    try {
+      if (mode === "restore") {
+        const response = await fetch(`/api/admin/ga/lessons/${lesson.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ publishStatus: "Draft" }),
+        });
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        if (!response.ok) {
+          setMessage(payload?.error ?? "Unable to restore lesson.");
+          return;
+        }
+        setMessage("Lesson restored to draft.");
+        await load();
+        return;
+      }
+
+      const response = await fetch(`/api/admin/ga/lessons/${lesson.id}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string; message?: string; usage?: Record<string, number> } | null;
+      if (!response.ok) {
+        if (payload?.usage) {
+          setMessage(`Cannot delete lesson: assignments ${payload.usage.assignmentCount ?? 0}, progress ${payload.usage.progressCount ?? 0}, recordings ${payload.usage.recordingCount ?? 0}.`);
+          return;
+        }
+        setMessage(payload?.error ?? "Unable to update lesson lifecycle.");
+        return;
+      }
+      setMessage(payload?.message ?? (mode === "archive" ? "Lesson archived." : "Lesson deleted."));
+      await load();
+    } finally {
+      setLessonActionBusyId(null);
+    }
+  }
+
+  async function openOrCreateBeginnerPackLesson(template: typeof BEGINNER_PACK_1_LESSONS[number]) {
+    const existing = lessons.find((lesson) => lesson.slug === template.slug);
+    if (existing) {
+      editLesson(existing);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch("/api/admin/ga/lessons", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: template.title,
+          slug: template.slug,
+          description: "Beginner Pack 1 framework. Add Approved Ga words before publishing.",
+          level: template.level,
+          category: template.category,
+          objective: template.objective,
+          packKey: "beginner-pack-1",
+          lessonOrder: template.lessonOrder,
+          publishStatus: "Draft",
+          wordIds: [],
+          activities: [],
+          quizQuestions: [],
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Unable to create Beginner Pack lesson draft.");
+        return;
+      }
+      const refreshedLessons = await load();
+      const refreshedLesson = refreshedLessons.find((lesson) => lesson.slug === template.slug);
+      if (refreshedLesson) {
+        editLesson(refreshedLesson, refreshedLessons);
+      } else {
+        setMessage("Draft created. Refreshing lesson list...");
+      }
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -375,7 +532,7 @@ export default function AdminGaLessonsPage() {
 
       {message ? <p className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-100">{message}</p> : null}
 
-      <AdminSectionCard title="Assignment Target" eyebrow="Applies to row-level Assign actions">
+      <GaHubAccordionSection title="Assignment Target" eyebrow="Applies to row-level Assign actions" defaultOpen={true}>
         {!students.length ? (
           <p className="text-sm text-amber-200">No eligible students found for assignment.</p>
         ) : (
@@ -420,9 +577,9 @@ export default function AdminGaLessonsPage() {
             <p className="text-xs text-slate-400">Set once, then use Assign on any lesson row.</p>
           </div>
         )}
-      </AdminSectionCard>
+      </GaHubAccordionSection>
 
-      <AdminSectionCard title={editingId ? "Edit Ga Lesson" : "Create Ga Lesson"} eyebrow="Approved words only">
+      <GaHubAccordionSection title={editingId ? "Edit Ga Lesson" : "Create Ga Lesson"} eyebrow="Approved words only" defaultOpen={true}>
         <div id="ga-lesson-editor" />
         <div className="grid gap-3 md:grid-cols-3">
           <label className="text-xs font-bold uppercase text-slate-400">Title<input value={form.title} onChange={(event) => setField("title", event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
@@ -435,8 +592,7 @@ export default function AdminGaLessonsPage() {
         </div>
         {selectedCategoryInactive ? <p className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-100">Selected category is inactive or archived. Review category settings before saving this lesson.</p> : null}
 
-        <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-          <p className="text-xs font-black uppercase text-slate-400">Approved words</p>
+        <GaHubAccordionSection title="Approved Words" defaultOpen={true} className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
           {!approvedWords.length ? <p className="mt-2 text-sm text-amber-200">No Approved Ga words yet. Add and approve words in the Ga Word Bank before publishing lessons.</p> : null}
           <div className="mt-3 grid gap-2 md:grid-cols-3">
             {approvedWords.map((word) => (
@@ -449,7 +605,7 @@ export default function AdminGaLessonsPage() {
           {selectedWords.length ? (
             <p className="mt-3 text-xs text-emerald-200">Linked approved words: {selectedWords.map((word) => `${word.englishWord} (${word.gaWord})`).join(", ")}</p>
           ) : null}
-        </div>
+        </GaHubAccordionSection>
 
         <div className="mt-4 flex gap-2">
           <button type="button" onClick={saveLesson} disabled={saving} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{editingId ? "Update lesson" : "Create lesson"}</button>
@@ -465,25 +621,84 @@ export default function AdminGaLessonsPage() {
           ) : null}
           {editingId ? <button type="button" onClick={() => { setEditingId(null); setActiveLessonId(null); setSelectedWordIds([]); setForm(defaultForm); }} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Cancel edit</button> : null}
         </div>
-      </AdminSectionCard>
+      </GaHubAccordionSection>
 
-      <AdminSectionCard title="Beginner Pack 1 Framework" eyebrow="Drafts are safe until approved words exist">
+      <GaHubAccordionSection
+        title="Beginner Pack 1 Framework"
+        eyebrow="Drafts are safe until approved words exist"
+        defaultOpen={true}
+        helperText="Click a lesson card to open or create its draft in the editor above."
+      >
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
           {BEGINNER_PACK_1_LESSONS.map((lesson) => (
-            <article key={lesson.slug} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+            <button
+              key={lesson.slug}
+              type="button"
+              onClick={() => void openOrCreateBeginnerPackLesson(lesson)}
+              className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-left text-xs text-slate-300 transition hover:border-cyan-400/60 hover:bg-cyan-500/10"
+            >
               <p className="font-black text-white">Lesson {lesson.lessonOrder}: {lesson.title}</p>
               <p>{lesson.category} · {lesson.level}</p>
-            </article>
+              <p className="mt-2 text-[11px] font-bold text-cyan-200">Open in editor</p>
+            </button>
           ))}
         </div>
-      </AdminSectionCard>
+      </GaHubAccordionSection>
 
-      <AdminSectionCard title={`Ga Lessons (${lessons.length})`} eyebrow="Admin view">
+      <GaHubAccordionSection
+        title="Approved Categories Coverage"
+        eyebrow="Lessons + Word Bank visibility"
+        defaultOpen={true}
+        helperText="Counts help validate category/word alignment and fallback safety."
+      >
+        <div className="overflow-x-auto">
+            <table className="w-full min-w-180 text-left text-xs">
+              <thead className="uppercase text-slate-500">
+                <tr>
+                  <th className="px-2 py-2">Category</th>
+                  <th className="px-2 py-2">Slug</th>
+                  <th className="px-2 py-2">Lessons</th>
+                  <th className="px-2 py-2">Word Bank</th>
+                  <th className="px-2 py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resolvedCategories.map((category) => {
+                  const wordsInCategory = category.wordCount ?? approvedWords.filter((word) => word.category === category.name).length;
+                  const lessonsInCategory = category.lessonCount ?? lessons.filter((lesson) => lesson.category === category.name).length;
+                  const isFallback = category.source === "fallback" || category.id.startsWith("fallback-");
+                  return (
+                    <tr key={category.id} className="border-t border-slate-800 text-slate-300">
+                      <td className="px-2 py-2 font-bold text-white">{category.name}</td>
+                      <td className="px-2 py-2">{category.slug}</td>
+                      <td className="px-2 py-2">{lessonsInCategory}</td>
+                      <td className="px-2 py-2">{wordsInCategory}</td>
+                      <td className="px-2 py-2">
+                        {isFallback
+                          ? "Fallback only"
+                          : !category.isActive || category.isArchived
+                            ? "Inactive"
+                            : "Active"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+        </div>
+      </GaHubAccordionSection>
+
+      <GaHubAccordionSection
+        title={`Active Lessons (${activeLessons.length})`}
+        eyebrow="Archive before delete"
+        defaultOpen={false}
+        helperText="Large lesson table is collapsed by default. Expand to manage publish, assign, and archive actions."
+      >
         <div className="overflow-x-auto">
           <table className="w-full min-w-180 text-left text-xs">
             <thead className="uppercase text-slate-500"><tr><th className="px-2 py-2">Lesson</th><th className="px-2 py-2">Level</th><th className="px-2 py-2">Words</th><th className="px-2 py-2">Quiz</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Actions</th></tr></thead>
             <tbody>
-              {lessons.map((lesson) => (
+              {activeLessons.map((lesson) => (
                 <tr key={lesson.id} className={`border-t border-slate-800 text-slate-300 ${activeLessonId === lesson.id ? "bg-emerald-500/10" : ""}`}>
                   <td className="px-2 py-2 font-bold text-white">
                     <button type="button" onClick={() => editLesson(lesson)} className="text-left text-cyan-200 underline-offset-2 hover:underline">{lesson.title}</button>
@@ -521,6 +736,14 @@ export default function AdminGaLessonsPage() {
                       >
                         Preview as student
                       </Link>
+                      <button
+                        type="button"
+                        disabled={lessonActionBusyId === lesson.id}
+                        onClick={() => void runLessonLifecycleAction(lesson, "archive")}
+                        className="rounded-lg border border-amber-600/70 px-3 py-1 font-bold text-amber-100 disabled:opacity-60"
+                      >
+                        {lessonActionBusyId === lesson.id ? "Working..." : "Archive"}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -528,7 +751,100 @@ export default function AdminGaLessonsPage() {
             </tbody>
           </table>
         </div>
-      </AdminSectionCard>
+      </GaHubAccordionSection>
+
+      <GaHubAccordionSection
+        title={`Archived Lessons (${archivedLessons.length})`}
+        eyebrow="Delete only after archive and no usage"
+        defaultOpen={false}
+        helperText="Archived lessons cannot be assigned. Restore to Draft or delete permanently if there is no usage history."
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-180 text-left text-xs">
+            <thead className="uppercase text-slate-500"><tr><th className="px-2 py-2">Lesson</th><th className="px-2 py-2">Level</th><th className="px-2 py-2">Words</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Actions</th></tr></thead>
+            <tbody>
+              {archivedLessons.map((lesson) => (
+                <tr key={lesson.id} className="border-t border-slate-800 text-slate-300">
+                  <td className="px-2 py-2 font-bold text-white">{lesson.title}</td>
+                  <td className="px-2 py-2">{lesson.level}</td>
+                  <td className="px-2 py-2">{lesson.words.length}</td>
+                  <td className="px-2 py-2">{lesson.publishStatus}</td>
+                  <td className="px-2 py-2">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={lessonActionBusyId === lesson.id}
+                        onClick={() => void runLessonLifecycleAction(lesson, "restore")}
+                        className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100 disabled:opacity-60"
+                      >
+                        {lessonActionBusyId === lesson.id ? "Working..." : "Restore"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={lessonActionBusyId === lesson.id}
+                        onClick={() => void runLessonLifecycleAction(lesson, "delete")}
+                        className="rounded-lg border border-rose-600/70 px-3 py-1 font-bold text-rose-100 disabled:opacity-60"
+                      >
+                        {lessonActionBusyId === lesson.id ? "Working..." : "Delete permanently"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </GaHubAccordionSection>
+
+      <GaHubAccordionSection
+        title={`Lesson Assignments (${gaAssignments.length})`}
+        eyebrow="Progress, support signals, and removal"
+        defaultOpen={false}
+        helperText="Active Ga lesson assignments across all students."
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-260 text-left text-xs">
+            <thead className="uppercase text-slate-500">
+              <tr>
+                <th className="px-2 py-2">Student</th>
+                <th className="px-2 py-2">Lesson</th>
+                <th className="px-2 py-2">Status</th>
+                <th className="px-2 py-2">Progress</th>
+                <th className="px-2 py-2">Last activity</th>
+                <th className="px-2 py-2">Support signals</th>
+                <th className="px-2 py-2">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gaAssignments.length === 0 ? (
+                <tr><td colSpan={7} className="px-2 py-4 text-sm text-slate-400">No Ga lessons assigned yet.</td></tr>
+              ) : gaAssignments.map((assignment) => {
+                const weakSignalCount = assignment.weakWords.length + assignment.weakAreas.length;
+                return (
+                  <tr key={assignment.id} className="border-t border-slate-800 text-slate-300">
+                    <td className="px-2 py-2 font-bold text-white">{assignment.student.name}{assignment.student.yearGroup ? ` · ${assignment.student.yearGroup}` : ""}</td>
+                    <td className="px-2 py-2">{assignment.lessonTitle}</td>
+                    <td className="px-2 py-2">{assignment.status}</td>
+                    <td className="px-2 py-2">{assignment.score == null ? `Attempts ${assignment.attempts}` : `${assignment.score}% · Attempts ${assignment.attempts}`}</td>
+                    <td className="px-2 py-2">{new Date(assignment.updatedAt).toLocaleString()}</td>
+                    <td className="px-2 py-2">{weakSignalCount > 0 ? `${weakSignalCount} attention signal${weakSignalCount === 1 ? "" : "s"}` : "Stable"}</td>
+                    <td className="px-2 py-2">
+                      <button
+                        type="button"
+                        disabled={assignmentBusyId === assignment.id}
+                        onClick={() => void removeAssignment(assignment.id)}
+                        className="rounded-lg border border-rose-600/70 px-3 py-1 font-bold text-rose-100 disabled:opacity-60"
+                      >
+                        {assignmentBusyId === assignment.id ? "Removing..." : "Remove assignment"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </GaHubAccordionSection>
     </div>
   );
 }
