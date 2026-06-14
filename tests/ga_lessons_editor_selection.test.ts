@@ -17,6 +17,7 @@ function makeLesson(input: {
   return {
     id: input.id,
     title: input.title,
+    slug: `${input.id}-slug`,
     description: `${input.title} description`,
     level: input.level,
     category: input.category,

@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  getLessonPreviewHref,
+  getLessonPublishToggleRequest,
   getLessonPublishRequest,
   getLessonUpsertRequest,
   lessonFormFromRow,
@@ -11,6 +13,7 @@ import {
 const lessonRow = {
   id: "lesson-1",
   title: "Alphabet Lesson A-C",
+  slug: "alphabet-lesson-a-c",
   level: "Foundation",
   category: "Alphabet",
   objective: "Recognise letters A to C",
@@ -71,6 +74,22 @@ test("publish action targets lesson patch endpoint with Published status", () =>
     body: { publishStatus: "Published" },
   });
   assert.equal(getLessonPublishRequest(null), null);
+});
+
+test("row actions expose publish toggle and student preview targets", () => {
+  assert.deepEqual(getLessonPublishToggleRequest({ id: "lesson-1", publishStatus: "Draft" }), {
+    method: "PATCH",
+    url: "/api/admin/ga/lessons/lesson-1",
+    body: { publishStatus: "Published" },
+    nextStatus: "Published",
+  });
+  assert.deepEqual(getLessonPublishToggleRequest({ id: "lesson-1", publishStatus: "Published" }), {
+    method: "PATCH",
+    url: "/api/admin/ga/lessons/lesson-1",
+    body: { publishStatus: "Draft" },
+    nextStatus: "Draft",
+  });
+  assert.equal(getLessonPreviewHref(lessonRow), "/ga-learning-hub/alphabet-lesson-a-c");
 });
 
 test("selected linked approved words are preserved when opening edit", () => {

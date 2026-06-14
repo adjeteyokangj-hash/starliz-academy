@@ -704,6 +704,12 @@ export async function assignContentToStudent(input: {
 
 export function taskHrefForContentType(contentType: string, assignmentId?: string) {
   const normalized = contentType.trim().toLowerCase();
+  if (normalized === "ga") {
+    const params = new URLSearchParams();
+    if (assignmentId) params.set("assignmentId", assignmentId);
+    const query = params.toString();
+    return query ? `/ga-learning-hub?${query}` : "/ga-learning-hub";
+  }
   const readingTypes = new Set(["reading", "english-language", "english-literature", "gcse-english", "vocabulary"]);
   const lessonTypes = new Set(["lesson", "ai_daily", "daily", "science", "gcse-science", "writing", "grammar", "punctuation"]);
   const mathTypes = new Set(["math", "maths", "times-tables", "gcse-maths", "11-plus-practice", "sats-practice"]);

@@ -11,7 +11,12 @@ import {
 } from "@/lib/academic-intelligence/snapshot";
 import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from "@/lib/learning_dna";
 import { listPersistedCertificateRecordsForStudent, mergePersistedAndLegacyCertificates } from "@/lib/certificate-records";
-import { buildAssignedWorkSummary, buildSmartCoachSummary } from "@/lib/student-dashboard-summary";
+import {
+  buildActiveLanguageModules,
+  buildAssignedLanguageLessons,
+  buildAssignedWorkSummary,
+  buildSmartCoachSummary,
+} from "@/lib/student-dashboard-summary";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 import { deriveStudentLearningState, parseSelectedSubjectsFromProfileJson, parseSubjectFocus } from "@/lib/student-learning-state";
 import { selectPlacementLessons } from "@/lib/placement-lesson-selector";
@@ -344,6 +349,8 @@ export function toStudentDashboardBrainView(
     updatedAt: assignment.updatedAt,
   }));
   const assignedWork = buildAssignedWorkSummary(mappedAssignments);
+  const assignedLanguageLessons = buildAssignedLanguageLessons(mappedAssignments);
+  const activeLanguageModules = buildActiveLanguageModules(mappedAssignments);
   const skills = overrides?.skills ?? brain.source.studentSkills.slice(0, 8).map((row) => ({
     skill: row.skill,
     status: row.status,
@@ -358,6 +365,8 @@ export function toStudentDashboardBrainView(
 
   return {
     assignments: mappedAssignments,
+    activeLanguageModules,
+    assignedLanguageLessons,
     skills,
     assignedWork,
     smartCoach,

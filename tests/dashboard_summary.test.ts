@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAssignedWorkSummary, buildSmartCoachSummary, buildStudentDashboardQuickLinks } from "../src/lib/student-dashboard-summary";
+import {
+  buildActiveLanguageModules,
+  buildAssignedLanguageLessons,
+  buildAssignedWorkSummary,
+  buildSmartCoachSummary,
+} from "../src/lib/student-dashboard-summary";
 import { deriveStudentLearningState } from "../src/lib/student-learning-state";
 
 test("dashboard summary chooses active assigned work as the next first-render activity", () => {
@@ -61,11 +66,33 @@ test("dashboard state treats completed Level Finder as placed without manual ref
   assert.equal(state.onboardingStage, "LEARNING");
 });
 
-test("student dashboard quick links include Ga Learning Hub card", () => {
-  const links = buildStudentDashboardQuickLinks();
-  const gaHub = links.find((item) => item.id === "ga-learning-hub");
+test("language modules stay hidden when no active language assignments exist", () => {
+  const modules = buildActiveLanguageModules([
+    { id: "done-1", status: "completed", subject: "ga", title: "Ga greeting review", href: "/ga-learning-hub" },
+  ]);
 
-  assert.ok(gaHub);
-  assert.equal(gaHub?.title, "Ga Learning Hub");
-  assert.equal(gaHub?.href, "/ga-learning-hub");
+  assert.deepEqual(modules, []);
+});
+
+test("active Ga assignments produce Ga Learning Hub module", () => {
+  const modules = buildActiveLanguageModules([
+    { id: "ga-1", status: "assigned", subject: "ga", title: "Ga greetings", href: "/ga-learning-hub" },
+    { id: "ga-2", status: "in_progress", subject: "ga", title: "Ga numbers", href: "/ga-learning-hub" },
+  ]);
+
+  assert.equal(modules.length, 1);
+  assert.equal(modules[0]?.id, "ga-learning-hub");
+  assert.equal(modules[0]?.activeAssignments, 2);
+  assert.equal(modules[0]?.href, "/ga-learning-hub");
+});
+
+test("assigned language lesson summary supports future language subjects", () => {
+  const lessons = buildAssignedLanguageLessons([
+    { id: "ga-1", status: "assigned", subject: "ga", title: "Ga greetings", href: "/ga-learning-hub" },
+    { id: "en-1", status: "assigned", subject: "english", title: "Reading task", href: "/games/reading?assignmentId=en-1" },
+  ]);
+
+  assert.equal(lessons.length, 1);
+  assert.equal(lessons[0]?.language, "ga");
+  assert.equal(lessons[0]?.assignmentId, "ga-1");
 });

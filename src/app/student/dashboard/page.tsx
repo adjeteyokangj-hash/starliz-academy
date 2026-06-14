@@ -20,7 +20,6 @@ import {
   WEEKLY_HOMEWORK_PENDING_MESSAGE,
   WEEKLY_HOMEWORK_SUPPORT_MESSAGE,
 } from "@/lib/homework-phase1c/helpers";
-import { buildStudentDashboardQuickLinks } from "@/lib/student-dashboard-summary";
 import { isStudentCertificateCenterEnabled } from "@/lib/launch-scope";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
@@ -145,6 +144,21 @@ type DashboardSummaryPayload = {
     keyStage?: string | null;
   }) | null;
   assignments?: StudentAssignment[];
+  activeLanguageModules?: Array<{
+    id: string;
+    language: string;
+    title: string;
+    description: string;
+    href: string;
+    activeAssignments: number;
+  }>;
+  assignedLanguageLessons?: Array<{
+    assignmentId: string;
+    language: string;
+    title: string;
+    href: string | null;
+    status: string;
+  }>;
   skills?: StudentSkill[];
   error?: string;
 };
@@ -424,6 +438,7 @@ export default function StudentDashboardPage() {
   const router = useRouter();
   const certificateCenterEnabled = isStudentCertificateCenterEnabled();
   const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
+  const [activeLanguageModules, setActiveLanguageModules] = useState<NonNullable<DashboardSummaryPayload["activeLanguageModules"]>>([]);
   const [skills, setSkills] = useState<StudentSkill[]>([]);
   const [journey] = useState<DailyJourneyPayload["journey"] | null>(null);
   const [childName, setChildName] = useState("Learner");
@@ -488,6 +503,7 @@ export default function StudentDashboardPage() {
         setActiveChildId(null);
         setAcademicLoading(false);
         setAssignments([]);
+        setActiveLanguageModules([]);
         setSkills([]);
         setSessionSummary(null);
         setLearningState(null);
@@ -507,6 +523,7 @@ export default function StudentDashboardPage() {
       }
 
       setAssignments(summaryPayload.assignments ?? []);
+      setActiveLanguageModules(Array.isArray(summaryPayload.activeLanguageModules) ? summaryPayload.activeLanguageModules : []);
       setSkills(Array.isArray(summaryPayload.skills) ? summaryPayload.skills : []);
       setBossUnlocked(false);
       setBossPlayedToday(false);
@@ -981,8 +998,7 @@ export default function StudentDashboardPage() {
   const activeAssignmentCount = visibleAssignments.length;
   const certificateStatus = certificateEligibility?.summary?.status ?? null;
   const openCertificateByDefault = certificateStatus === "eligible" || certificateStatus === "issued";
-  const dashboardQuickLinks = useMemo(() => buildStudentDashboardQuickLinks(), []);
-  const gaLearningHubLink = dashboardQuickLinks.find((link) => link.id === "ga-learning-hub") ?? null;
+  const primaryLanguageModule = activeLanguageModules[0] ?? null;
   const dashboardExperience = dashboardTier === "primary"
     ? (
       <PrimaryDashboard
@@ -1212,16 +1228,19 @@ export default function StudentDashboardPage() {
               </div>
             </section>
 
-            {gaLearningHubLink ? (
+            {primaryLanguageModule ? (
               <section className="mb-6 rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Language Adventure</p>
-                <h2 className="mt-1 text-lg font-black text-slate-900">{gaLearningHubLink.title}</h2>
-                <p className="mt-1 text-sm text-slate-700">{gaLearningHubLink.description}</p>
+                <h2 className="mt-1 text-lg font-black text-slate-900">{primaryLanguageModule.title}</h2>
+                <p className="mt-1 text-sm text-slate-700">{primaryLanguageModule.description}</p>
+                <p className="mt-2 text-xs font-bold uppercase tracking-[0.08em] text-emerald-800">
+                  {primaryLanguageModule.activeAssignments} active assignment{primaryLanguageModule.activeAssignments === 1 ? "" : "s"}
+                </p>
                 <Link
-                  href={gaLearningHubLink.href}
+                  href={primaryLanguageModule.href}
                   className="mt-3 inline-flex rounded-xl bg-emerald-600 px-4 py-2 text-sm font-black text-white hover:bg-emerald-500"
                 >
-                  Open Ga Learning Hub
+                  Open {primaryLanguageModule.title}
                 </Link>
               </section>
             ) : null}

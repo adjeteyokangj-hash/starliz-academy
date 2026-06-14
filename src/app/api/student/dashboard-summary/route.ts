@@ -30,6 +30,8 @@ export async function GET(request: Request) {
       skills: [],
       today: { nextActivity: null },
       assignedWorkSummary: { total: 0, active: 0, completed: 0, nextTitle: null },
+      activeLanguageModules: [],
+      assignedLanguageLessons: [],
       catchUpSummary: { total: 0, active: 0, completed: 0, overdue: 0, highPriority: 0 },
       masterMapSummary: { totalTopics: 0, needsCatchUpCount: 0, needsRevisionCount: 0, coveredCount: 0, averageScore: 0 },
       certificateProgressSummary: { issuedCount: 0, friendlyLabel: "Keep learning" },
@@ -94,6 +96,8 @@ export async function GET(request: Request) {
       keyStage: child.studentProfile?.keyStageLevel ?? null,
     },
     assignments: dashboardBrain.assignments,
+    activeLanguageModules: dashboardBrain.activeLanguageModules,
+    assignedLanguageLessons: dashboardBrain.assignedLanguageLessons,
     skills: dashboardBrain.skills,
     today: {
       nextActivity: dashboardBrain.assignedWork.nextActivity,

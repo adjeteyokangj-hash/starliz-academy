@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import { GA_LEVELS } from "@/lib/ga-word-bank";
 import { BEGINNER_PACK_1_LESSONS, GA_LESSON_STATUSES } from "@/lib/ga-lessons";
 import { GA_APPROVED_CATEGORIES } from "@/lib/ga-word-categories";
 import {
   buildLessonEditorStateById,
+  getLessonPreviewHref,
+  getLessonPublishToggleRequest,
   getLessonPublishRequest,
   getLessonUpsertRequest,
   mergeLessonLinkedWords,
@@ -39,6 +42,13 @@ type GaCategoryRow = {
   usedByLessons: boolean;
 };
 
+type StudentAssignmentCandidate = {
+  id: string;
+  name: string;
+  yearGroup?: string | null;
+  classGroup?: string | null;
+};
+
 const defaultForm = {
   title: "Hello, Yes, No",
   description: "",
@@ -66,6 +76,11 @@ export default function AdminGaLessonsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
+  const [students, setStudents] = useState<StudentAssignmentCandidate[]>([]);
+  const [assignmentTargetMode, setAssignmentTargetMode] = useState<"student" | "yearGroup">("student");
+  const [targetStudentId, setTargetStudentId] = useState<string>("");
+  const [targetYearGroup, setTargetYearGroup] = useState<string>("");
+  const [assigningLessonId, setAssigningLessonId] = useState<string | null>(null);
 
   const selectedWords = useMemo(
     () => approvedWords.filter((word) => selectedWordIds.includes(word.id)),
@@ -99,6 +114,11 @@ export default function AdminGaLessonsPage() {
   const categoryMap = useMemo(() => new Map(resolvedCategories.map((category) => [category.name, category])), [resolvedCategories]);
   const selectedCategoryState = categoryMap.get(form.category) ?? null;
   const selectedCategoryInactive = selectedCategoryState ? (!selectedCategoryState.isActive || selectedCategoryState.isArchived) : false;
+  const selectedStudent = students.find((student) => student.id === targetStudentId) ?? null;
+  const availableYearGroups = useMemo(
+    () => Array.from(new Set(students.map((student) => student.yearGroup).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right)),
+    [students],
+  );
 
   const load = useCallback(async () => {
     const [lessonResponse, wordResponse, categoryResponse] = await Promise.all([
@@ -106,6 +126,7 @@ export default function AdminGaLessonsPage() {
       fetch("/api/admin/ga/words?reviewStatus=Approved&limit=200"),
       fetch("/api/admin/ga/categories"),
     ]);
+    const studentResponse = await fetch("/api/admin/students?context=assignment");
     if (lessonResponse.status === 401 || wordResponse.status === 401 || categoryResponse.status === 401) {
       window.location.replace("/admin/login?next=/admin/ga-lessons");
       return;
@@ -113,12 +134,23 @@ export default function AdminGaLessonsPage() {
     const lessonPayload = await lessonResponse.json().catch(() => null) as { items?: LessonRow[] } | null;
     const wordPayload = await wordResponse.json().catch(() => null) as { items?: ApprovedWord[] } | null;
     const categoryPayload = await categoryResponse.json().catch(() => null) as { items?: GaCategoryRow[] } | null;
+    const studentPayload = await studentResponse.json().catch(() => null) as { students?: StudentAssignmentCandidate[] } | null;
     const lessonItems = lessonPayload?.items ?? [];
     const approvedItems = wordPayload?.items ?? [];
     const nextCategories = categoryPayload?.items ?? [];
     setLessons(lessonItems);
     setApprovedWords(mergeLessonLinkedWords(approvedItems, lessonItems));
     setCategories(nextCategories);
+    const studentItems = Array.isArray(studentPayload?.students) ? studentPayload.students : [];
+    setStudents(studentItems);
+    setTargetStudentId((current) => {
+      if (current && studentItems.some((student) => student.id === current)) return current;
+      return studentItems[0]?.id ?? "";
+    });
+    setTargetYearGroup((current) => {
+      if (current && studentItems.some((student) => student.yearGroup === current)) return current;
+      return studentItems.find((student) => Boolean(student.yearGroup))?.yearGroup ?? "";
+    });
     const activeCategoryNames = nextCategories
       .filter((category) => category.usedByLessons && category.isActive && !category.isArchived)
       .map((category) => category.name)
@@ -232,6 +264,90 @@ export default function AdminGaLessonsPage() {
     }
   }
 
+  async function toggleLessonPublishStatus(lesson: LessonRow) {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const request = getLessonPublishToggleRequest(lesson);
+      const response = await fetch(request.url, {
+        method: request.method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request.body),
+      });
+      const body = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        setMessage(body?.error ?? "Unable to update Ga lesson publish status.");
+        return;
+      }
+      setMessage(request.nextStatus === "Published" ? "Ga lesson published." : "Ga lesson moved to draft.");
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function assignLesson(lesson: LessonRow) {
+    if (assignmentTargetMode === "student" && !targetStudentId) {
+      setMessage("Choose a student before assigning a lesson.");
+      return;
+    }
+    if (assignmentTargetMode === "yearGroup" && !targetYearGroup) {
+      setMessage("Choose a year group before assigning a lesson.");
+      return;
+    }
+    setAssigningLessonId(lesson.id);
+    try {
+      const assignmentContentResponse = await fetch(`/api/admin/ga/lessons/${lesson.id}/assignment-content`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
+      const assignmentContentPayload = await assignmentContentResponse.json().catch(() => null) as { contentId?: string; error?: string } | null;
+      if (!assignmentContentResponse.ok || !assignmentContentPayload?.contentId) {
+        setMessage(assignmentContentPayload?.error ?? "Could not prepare lesson assignment content.");
+        return;
+      }
+
+      const assignResponse = await fetch("/api/admin/assignments", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(
+          assignmentTargetMode === "student"
+            ? { contentId: assignmentContentPayload.contentId, studentIds: [targetStudentId] }
+            : { contentId: assignmentContentPayload.contentId, yearGroup: targetYearGroup },
+        ),
+      });
+      const assignPayload = await assignResponse.json().catch(() => null) as {
+        count?: number;
+        allDuplicates?: boolean;
+        blocked?: Array<{ code?: string; reason?: string }>;
+        error?: string;
+      } | null;
+
+      if (!assignResponse.ok) {
+        const reason = assignPayload?.blocked?.[0]?.reason;
+        setMessage(reason ?? assignPayload?.error ?? "Could not assign Ga lesson.");
+        return;
+      }
+
+      if (assignPayload?.allDuplicates) {
+        if (assignmentTargetMode === "yearGroup") {
+          setMessage(`This lesson is already assigned to active students in ${targetYearGroup}.`);
+          return;
+        }
+        setMessage(`This lesson is already assigned to ${selectedStudent?.name ?? "the selected student"}.`);
+        return;
+      }
+
+      if (assignmentTargetMode === "yearGroup") {
+        setMessage(`Assigned \"${lesson.title}\" to ${targetYearGroup}.`);
+        return;
+      }
+      setMessage(`Assigned \"${lesson.title}\" to ${selectedStudent?.name ?? "student"}.`);
+    } finally {
+      setAssigningLessonId(null);
+    }
+  }
+
   async function prepareBeginnerPack() {
     setSaving(true);
     try {
@@ -258,6 +374,53 @@ export default function AdminGaLessonsPage() {
       </section>
 
       {message ? <p className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-100">{message}</p> : null}
+
+      <AdminSectionCard title="Assignment Target" eyebrow="Applies to row-level Assign actions">
+        {!students.length ? (
+          <p className="text-sm text-amber-200">No eligible students found for assignment.</p>
+        ) : (
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs font-bold uppercase text-slate-400">
+              Assign mode
+              <select
+                value={assignmentTargetMode}
+                onChange={(event) => setAssignmentTargetMode(event.target.value as "student" | "yearGroup")}
+                className="mt-1 w-48 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              >
+                <option value="student">Student</option>
+                <option value="yearGroup">Year group</option>
+              </select>
+            </label>
+            <label className="text-xs font-bold uppercase text-slate-400">
+              {assignmentTargetMode === "student" ? "Student" : "Year group"}
+              {assignmentTargetMode === "student" ? (
+                <select
+                  value={targetStudentId}
+                  onChange={(event) => setTargetStudentId(event.target.value)}
+                  className="mt-1 w-72 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                >
+                  {students.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.name}{student.yearGroup ? ` · ${student.yearGroup}` : ""}{student.classGroup ? ` · ${student.classGroup}` : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value={targetYearGroup}
+                  onChange={(event) => setTargetYearGroup(event.target.value)}
+                  className="mt-1 w-56 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                >
+                  {availableYearGroups.map((yearGroup) => (
+                    <option key={yearGroup} value={yearGroup}>{yearGroup}</option>
+                  ))}
+                </select>
+              )}
+            </label>
+            <p className="text-xs text-slate-400">Set once, then use Assign on any lesson row.</p>
+          </div>
+        )}
+      </AdminSectionCard>
 
       <AdminSectionCard title={editingId ? "Edit Ga Lesson" : "Create Ga Lesson"} eyebrow="Approved words only">
         <div id="ga-lesson-editor" />
@@ -318,7 +481,7 @@ export default function AdminGaLessonsPage() {
       <AdminSectionCard title={`Ga Lessons (${lessons.length})`} eyebrow="Admin view">
         <div className="overflow-x-auto">
           <table className="w-full min-w-180 text-left text-xs">
-            <thead className="uppercase text-slate-500"><tr><th className="px-2 py-2">Lesson</th><th className="px-2 py-2">Level</th><th className="px-2 py-2">Words</th><th className="px-2 py-2">Quiz</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Action</th></tr></thead>
+            <thead className="uppercase text-slate-500"><tr><th className="px-2 py-2">Lesson</th><th className="px-2 py-2">Level</th><th className="px-2 py-2">Words</th><th className="px-2 py-2">Quiz</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">Actions</th></tr></thead>
             <tbody>
               {lessons.map((lesson) => (
                 <tr key={lesson.id} className={`border-t border-slate-800 text-slate-300 ${activeLessonId === lesson.id ? "bg-emerald-500/10" : ""}`}>
@@ -329,7 +492,37 @@ export default function AdminGaLessonsPage() {
                   <td className="px-2 py-2">{lesson.words.length}</td>
                   <td className="px-2 py-2">{lesson.quizQuestions.length}</td>
                   <td className="px-2 py-2">{lesson.publishStatus}</td>
-                  <td className="px-2 py-2"><button type="button" onClick={() => editLesson(lesson)} className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100">View/Edit</button></td>
+                  <td className="px-2 py-2">
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => editLesson(lesson)} className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100">Edit</button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void toggleLessonPublishStatus(lesson)}
+                        className="rounded-lg border border-emerald-500/60 px-3 py-1 font-bold text-emerald-200 disabled:opacity-60"
+                      >
+                        {lesson.publishStatus === "Published" ? "Unpublish" : "Publish"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          assigningLessonId === lesson.id
+                          || (assignmentTargetMode === "student" ? !targetStudentId : !targetYearGroup)
+                          || lesson.publishStatus !== "Published"
+                        }
+                        onClick={() => void assignLesson(lesson)}
+                        className="rounded-lg bg-cyan-500 px-3 py-1 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {assigningLessonId === lesson.id ? "Assigning..." : "Assign"}
+                      </button>
+                      <Link
+                        href={getLessonPreviewHref(lesson)}
+                        className="rounded-lg border border-slate-700 px-3 py-1 font-bold text-slate-100"
+                      >
+                        Preview as student
+                      </Link>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

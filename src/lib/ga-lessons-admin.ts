@@ -9,6 +9,7 @@ export type GaLessonAdminWord = {
 export type GaLessonAdminRow = {
   id: string;
   title: string;
+  slug: string;
   level: string;
   category: string;
   objective: string;
@@ -108,5 +109,24 @@ export function getLessonPublishRequest(editingId: string | null): { method: "PA
     method: "PATCH",
     url: `/api/admin/ga/lessons/${editingId}`,
     body: { publishStatus: "Published" },
+  };
+}
+
+export function getLessonPreviewHref(lesson: Pick<GaLessonAdminRow, "slug">): string {
+  return `/ga-learning-hub/${encodeURIComponent(lesson.slug)}`;
+}
+
+export function getLessonPublishToggleRequest(lesson: Pick<GaLessonAdminRow, "id" | "publishStatus">): {
+  method: "PATCH";
+  url: string;
+  body: { publishStatus: "Published" | "Draft" };
+  nextStatus: "Published" | "Draft";
+} {
+  const nextStatus = lesson.publishStatus === "Published" ? "Draft" : "Published";
+  return {
+    method: "PATCH",
+    url: `/api/admin/ga/lessons/${lesson.id}`,
+    body: { publishStatus: nextStatus },
+    nextStatus,
   };
 }
