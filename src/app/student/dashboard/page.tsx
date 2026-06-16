@@ -13,6 +13,10 @@ import SecondaryDashboard from "@/components/student/SecondaryDashboard";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import WeeklyHomeworkPanel from "@/components/student/WeeklyHomeworkPanel";
+import {
+  resolveHomeworkStartTarget,
+  resolveSchoolWeekGoTarget,
+} from "@/lib/student-dashboard-actions";
 import type { HomeworkBatchView } from "@/lib/homework-phase1b/service";
 import {
   resolveHomeworkGateMessage,
@@ -819,28 +823,28 @@ export default function StudentDashboardPage() {
     router.push("/shop");
   }
 
-  function openDetailsPanel(panelId: string): boolean {
-    const panel = document.getElementById(panelId);
-    if (!(panel instanceof HTMLDetailsElement)) return false;
-    panel.open = true;
+  function openDashboardTarget(targetId: string): boolean {
+    const panel = document.getElementById(targetId);
+    if (!panel) return false;
+    if (panel instanceof HTMLDetailsElement) panel.open = true;
     panel.scrollIntoView({ behavior: "smooth", block: "start" });
     return true;
   }
 
   function openCatchUpPanel() {
     setPanelActionMessage(null);
-    document.getElementById("smart-catch-up-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    openDashboardTarget("smart-catch-up-panel");
   }
 
   function openWeeklyHomeworkPanel() {
     setPanelActionMessage(null);
-    if (!openDetailsPanel("weekly-homework-panel")) {
+    if (!openDashboardTarget("weekly-homework-panel")) {
       setPanelActionMessage("No weekly homework ready yet.");
     }
   }
 
   function openCertificatePanel() {
-    if (openDetailsPanel("certificate-progress-panel")) {
+    if (openDashboardTarget("certificate-progress-panel")) {
       setPanelActionMessage(null);
       return;
     }
@@ -849,7 +853,14 @@ export default function StudentDashboardPage() {
 
   function openLearningMapPanel() {
     setPanelActionMessage(null);
-    openDetailsPanel("learning-map-panel");
+    openDashboardTarget("learning-map-panel");
+  }
+
+  function openTodayJourneyPanel() {
+    setPanelActionMessage(null);
+    if (!openDashboardTarget("today-journey-panel")) {
+      setPanelActionMessage("Today's learning journey is not ready yet.");
+    }
   }
 
   async function handleStudentCatchUpTaskAction(taskId: string, action: "start_task" | "complete_task" | "skip_task") {
@@ -1308,7 +1319,7 @@ export default function StudentDashboardPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        document.getElementById("weekly-homework-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        openWeeklyHomeworkPanel();
                       }}
                       className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white hover:bg-violet-500"
                     >
@@ -1536,6 +1547,7 @@ export default function StudentDashboardPage() {
                           const todaySchedule = academicIntelligence.schoolWeekModePlan?.dailySchedules?.find((item) => item.day === todayName) ?? null;
                           const nextSchedule = academicIntelligence.schoolWeekModePlan?.dailySchedules?.find((item) => item.day !== todayName && item.blocks.length > 0) ?? null;
                           const nextBlock = todaySchedule?.blocks[0] ?? nextSchedule?.blocks[0] ?? null;
+                          const nextBlockAction = resolveSchoolWeekGoTarget(nextBlock);
                           const currentMinutes = (liveNow.getHours() * 60) + liveNow.getMinutes();
                           const currentBlock = todaySchedule?.blocks.find((item) => {
                             const [startH, startM] = item.startTime.split(":").map((value) => Number(value));
@@ -1569,7 +1581,23 @@ export default function StudentDashboardPage() {
                               {nextBlock ? (
                                 <button
                                   type="button"
-                                  onClick={() => router.push(nextBlock.routeTarget ?? "/student/dashboard")}
+                                  onClick={() => {
+                                    if (nextBlockAction.kind === "route") {
+                                      router.push(nextBlockAction.href);
+                                      return;
+                                    }
+
+                                    if (nextBlockAction.kind === "scroll") {
+                                      setPanelActionMessage(nextBlockAction.message);
+                                      if (!openDashboardTarget(nextBlockAction.targetId)) {
+                                        openTodayJourneyPanel();
+                                      }
+                                      return;
+                                    }
+
+                                    setPanelActionMessage(nextBlockAction.message);
+                                    openTodayJourneyPanel();
+                                  }}
                                   className="flex w-full items-center justify-between rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-left text-xs text-slate-700 hover:bg-cyan-100"
                                 >
                                   <span>Next activity: {nextBlock.startTime} {nextBlock.title}</span>
@@ -1643,7 +1671,35 @@ export default function StudentDashboardPage() {
                                 <button
                                   type="button"
                                   disabled={homeworkPendingId === task.taskId}
-                                  onClick={() => void handleStudentHomeworkTaskAction(task.taskId, "start_homework")}
+                                  onClick={async () => {
+                                    const target = resolveHomeworkStartTarget(task);
+                                    setHomeworkPendingId(task.taskId);
+                                    setAcademicError("");
+                                    try {
+                                      const response = await fetchWithRefreshRetry("/api/student/academic-intelligence/homework-tasks", {
+                                        method: "POST",
+                                        credentials: "include",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ taskId: task.taskId, action: "start_homework" }),
+                                      });
+
+                                      if (!response.ok) {
+                                        const payload = await response.json().catch(() => null) as { error?: string } | null;
+                                        throw new Error(payload?.error ?? "Unable to update homework task.");
+                                      }
+
+                                      if (target.kind === "route") {
+                                        router.push(target.href);
+                                        return;
+                                      }
+
+                                      setPanelActionMessage(target.message);
+                                    } catch (err) {
+                                      setAcademicError(err instanceof Error ? err.message : "Unable to update homework task.");
+                                    } finally {
+                                      setHomeworkPendingId(null);
+                                    }
+                                  }}
                                   className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
                                 >
                                   Start

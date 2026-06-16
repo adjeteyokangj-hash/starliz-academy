@@ -89,7 +89,7 @@ export default function PrimaryDashboard({
       </header>
 
       {showOnboardingCta ? (
-        <section className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-sky-50 to-white p-6">
+        <section className="rounded-3xl border border-indigo-200 bg-linear-to-br from-indigo-50 via-sky-50 to-white p-6">
           <p className="text-sm font-black uppercase tracking-[0.2em] text-indigo-600">🌟 Welcome</p>
           <h2 className="mt-2 text-2xl font-black text-slate-900">
             {isFirstTimeStudent
@@ -235,7 +235,7 @@ export default function PrimaryDashboard({
       ) : null}
 
       {/* Today's Journey */}
-      <section className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-sky-50 to-white p-6">
+      <section id="today-journey-panel" className="rounded-3xl border border-indigo-200 bg-linear-to-br from-indigo-50 via-sky-50 to-white p-6">
         {!showOnboardingCta ? (
           <>
             <p className="text-sm font-black uppercase tracking-[0.2em] text-indigo-600">🌈 Today&apos;s Learning Journey</p>
@@ -365,7 +365,7 @@ export default function PrimaryDashboard({
 
       {/* Boss Battle */}
       {bossUnlocked && (
-        <section className={`rounded-3xl border p-6 ${bossPlayedToday ? "border-slate-200 bg-slate-50" : "border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50"}`}>
+        <section className={`rounded-3xl border p-6 ${bossPlayedToday ? "border-slate-200 bg-slate-50" : "border-rose-200 bg-linear-to-br from-rose-50 to-orange-50"}`}>
           <p className="text-sm font-black uppercase tracking-[0.2em] text-rose-700">👾 Boss Battle</p>
           {bossPlayedToday ? (
             <p className="mt-2 text-sm text-slate-600">You already fought the boss today. Come back tomorrow!</p>
@@ -389,7 +389,7 @@ export default function PrimaryDashboard({
       )}
 
       {/* Badge Case */}
-      <section className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 p-5">
+      <section className="rounded-3xl border border-amber-200 bg-linear-to-br from-amber-50 via-yellow-50 to-orange-50 p-5">
         <p className="text-sm font-black uppercase tracking-wide text-amber-800">🏅 Badge Case</p>
         {ownedBadges.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -405,7 +405,7 @@ export default function PrimaryDashboard({
       </section>
 
       {/* Rewards Store */}
-      <section className="rounded-3xl border border-yellow-300 bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50 p-6 shadow-sm">
+      <section className="rounded-3xl border border-yellow-300 bg-linear-to-br from-yellow-50 via-amber-50 to-orange-50 p-6 shadow-sm">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-yellow-700">🛒 Rewards Store</p>
         <p className="mt-2 font-black text-slate-800">🎁 Unlock fun rewards!</p>
         <p className="mt-1 text-sm text-slate-600">
