@@ -2,14 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GaHubAccordionSection from "@/components/admin/GaHubAccordionSection";
+import GaBulkImportResultCard from "@/components/admin/GaBulkImportResultCard";
+import GaRecategoriseResultCard from "@/components/admin/GaRecategoriseResultCard";
+import GaWordBankTableToolbar from "@/components/admin/GaWordBankTableToolbar";
 import {
   GA_BULK_IMPORT_TEMPLATE,
   GA_AUDIO_STATUSES,
+  type GaBulkImportDuplicateStrategy,
   GA_LEVELS,
   GA_REVIEW_STATUSES,
   GA_WORD_TYPES,
   formatGaEnglishDisplayWord,
 } from "@/lib/ga-word-bank";
+import {
+  clearGaWordAdminTableFilters,
+  type GaWordAdminSort,
+  type GaWordAdminTableFilters,
+} from "@/lib/ga-word-bank-admin-filters";
 import { GA_APPROVED_CATEGORIES } from "@/lib/ga-word-categories";
 
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
@@ -69,18 +78,6 @@ type WordForm = {
   notes: string;
 };
 
-type Filters = {
-  q: string;
-  reviewStatus: string;
-  category: string;
-  level: string;
-  wordType: string;
-  sourcePage: string;
-  audioStatus: string;
-  quizReady: string;
-  storyReady: string;
-};
-
 type BulkPreviewRow = {
   rowNumber: number;
   valid: boolean;
@@ -94,6 +91,23 @@ type BulkPreview = {
   invalidRows: number;
   duplicateWarnings: number;
   rows: BulkPreviewRow[];
+};
+
+type BulkCommitSummary = {
+  totalRows: number;
+  importedRows: number;
+  skippedDuplicateRows: number;
+  updatedDuplicateRows: number;
+  failedRows: number;
+  pendingReviewRows: number;
+  sourceName: string | null;
+};
+
+type RecategoriseResultSummary = {
+  inspected: number;
+  targetCount: number;
+  updated: number;
+  message?: string;
 };
 
 const defaultWordForm: WordForm = {
@@ -110,18 +124,6 @@ const defaultWordForm: WordForm = {
 };
 
 const DEFAULT_FALLBACK_CATEGORIES = [...GA_APPROVED_CATEGORIES].sort((left, right) => left.localeCompare(right));
-
-const defaultFilters: Filters = {
-  q: "",
-  reviewStatus: "",
-  category: "",
-  level: "",
-  wordType: "",
-  sourcePage: "",
-  audioStatus: "",
-  quizReady: "",
-  storyReady: "",
-};
 
 function SelectField({ label, value, options, onChange, allowAll = false }: {
   label: string;
@@ -156,10 +158,12 @@ function TextField({ label, value, onChange, placeholder = "", inputRef }: {
   );
 }
 
-function queryFromFilters(filters: Filters): string {
+function queryFromFilters(filters: GaWordAdminTableFilters): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
-    if (value.trim()) params.set(key, value.trim());
+    if (!value.trim()) continue;
+    if (key === "quickFilter" && value === "all") continue;
+    params.set(key, value.trim());
   }
   params.set("limit", "200");
   return params.toString();
@@ -202,8 +206,8 @@ export default function GaWordBankPage() {
   const [sources, setSources] = useState<GaSourceRow[]>([]);
   const [words, setWords] = useState<GaWordRow[]>([]);
   const [selectedWordIds, setSelectedWordIds] = useState<string[]>([]);
-  const [filters, setFilters] = useState(defaultFilters);
-  const [appliedFilters, setAppliedFilters] = useState(defaultFilters);
+  const [filters, setFilters] = useState<GaWordAdminTableFilters>(clearGaWordAdminTableFilters());
+  const [appliedFilters, setAppliedFilters] = useState<GaWordAdminTableFilters>(clearGaWordAdminTableFilters());
   const [wordForm, setWordForm] = useState(defaultWordForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sourceName, setSourceName] = useState("Kasahorow Ga Children's Dictionary");
@@ -219,10 +223,12 @@ export default function GaWordBankPage() {
   const [metrics, setMetrics] = useState<{ totalWords: number; approvedWords: number; pendingReview: number; audioApproved: number } | null>(null);
   const [bulkText, setBulkText] = useState(GA_BULK_IMPORT_TEMPLATE);
   const [bulkPreview, setBulkPreview] = useState<BulkPreview | null>(null);
+  const [bulkCommitSummary, setBulkCommitSummary] = useState<BulkCommitSummary | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkDuplicateStrategy, setBulkDuplicateStrategy] = useState<"skip" | "update">("skip");
+  const [bulkDuplicateStrategy, setBulkDuplicateStrategy] = useState<GaBulkImportDuplicateStrategy>("skip");
   const [pdfFileName, setPdfFileName] = useState<string>("");
   const [pdfUploading, setPdfUploading] = useState(false);
+  const [recategoriseResult, setRecategoriseResult] = useState<RecategoriseResultSummary | null>(null);
   const editFormRef = useRef<HTMLDivElement | null>(null);
   const englishWordInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -271,6 +277,31 @@ export default function GaWordBankPage() {
   }, [activeWordBankCategories, wordForm.category]);
   const selectedCategoryState = categoryMap.get(wordForm.category) ?? null;
   const selectedCategoryInactive = selectedCategoryState ? (!selectedCategoryState.isActive || selectedCategoryState.isArchived) : false;
+  const sourceFilterOptions = useMemo(() => {
+    const preferred = ["Kasahorow Ga Children's Dictionary", "NEW GA WORDS 1"];
+    const byName = new Map(sources.map((source) => [source.sourceName, source]));
+    const ordered: GaSourceRow[] = [];
+    for (const name of preferred) {
+      const match = byName.get(name);
+      if (match) ordered.push(match);
+    }
+    for (const source of sources) {
+      if (preferred.includes(source.sourceName)) continue;
+      ordered.push(source);
+    }
+    return ordered;
+  }, [sources]);
+  const sourceNameById = useMemo(() => new Map(sources.map((source) => [source.id, source.sourceName])), [sources]);
+  const sourceFilterLabel = appliedFilters.sourceId ? (sourceNameById.get(appliedFilters.sourceId) ?? appliedFilters.sourceId) : "All sources";
+  const sortLabel = useMemo(() => {
+    const mapping: Record<GaWordAdminSort, string> = {
+      newest: "Newest first",
+      oldest: "Oldest first",
+      english_asc: "English A-Z",
+      ga_asc: "Ga A-Z",
+    };
+    return mapping[appliedFilters.sort];
+  }, [appliedFilters.sort]);
   const usageStats = useMemo(() => {
     const quizReadyCount = words.filter((word) => word.quizReady).length;
     const storyReadyCount = words.filter((word) => word.storyReady).length;
@@ -320,7 +351,7 @@ export default function GaWordBankPage() {
     });
   }, []);
 
-  const loadWords = useCallback(async (nextFilters: Filters) => {
+  const loadWords = useCallback(async (nextFilters: GaWordAdminTableFilters) => {
     setLoading(true);
     try {
       const response = await fetch(`/api/admin/ga/words?${queryFromFilters(nextFilters)}`);
@@ -478,6 +509,7 @@ export default function GaWordBankPage() {
         setMessage(payload?.error ?? "Unable to preview bulk import.");
         return;
       }
+      setBulkCommitSummary(null);
       setBulkPreview(payload);
       setMessage(`Preview ready: ${payload.validRows} valid, ${payload.invalidRows} invalid.`);
     } finally {
@@ -493,11 +525,18 @@ export default function GaWordBankPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ mode: "commit", text: bulkText, duplicateStrategy: bulkDuplicateStrategy }),
       });
-      const payload = await response.json().catch(() => null) as { error?: string; created?: number; updated?: number; skipped?: number } | null;
+      const payload = await response.json().catch(() => null) as {
+        error?: string;
+        created?: number;
+        updated?: number;
+        skipped?: number;
+        summary?: BulkCommitSummary;
+      } | null;
       if (!response.ok) {
         setMessage(payload?.error ?? "Unable to import rows.");
         return;
       }
+      setBulkCommitSummary(payload?.summary ?? null);
       setMessage(`Bulk import complete. Created ${payload?.created ?? 0}, updated ${payload?.updated ?? 0}, skipped ${payload?.skipped ?? 0}.`);
       setBulkPreview(null);
       await loadWords(appliedFilters);
@@ -510,12 +549,25 @@ export default function GaWordBankPage() {
     setSaving(true);
     try {
       const response = await fetch("/api/admin/ga/words/recategorise-alphabet", { method: "POST" });
-      const payload = await response.json().catch(() => null) as { error?: string; message?: string } | null;
+      const payload = await response.json().catch(() => null) as {
+        error?: string;
+        message?: string;
+        inspected?: number;
+        targetCount?: number;
+        updated?: number;
+      } | null;
       if (!response.ok) {
         setMessage(payload?.error ?? "Unable to recategorise alphabet rows.");
         return;
       }
       setMessage(payload?.message ?? "Alphabet rows recategorised.");
+      setRecategoriseResult({
+        inspected: payload?.inspected ?? 0,
+        targetCount: payload?.targetCount ?? 0,
+        updated: payload?.updated ?? 0,
+        message: payload?.message,
+      });
+      // Preserve the active table view by reloading with currently applied controls.
       await loadWords(appliedFilters);
     } finally {
       setSaving(false);
@@ -643,7 +695,7 @@ export default function GaWordBankPage() {
         <p className="text-xs text-slate-400">Required columns: englishWord, gaWord, wordType, category, level, sourcePage, reviewStatus, audioStatus, quizReady, storyReady and sourceId or sourceName. Pending/Reviewed rows remain hidden from student APIs.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={downloadTemplate} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">Download CSV template</button>
-          <button type="button" onClick={() => { setBulkText(`${GA_BULK_IMPORT_TEMPLATE}\n`); setBulkPreview(null); }} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">Reset to template</button>
+          <button type="button" onClick={() => { setBulkText(`${GA_BULK_IMPORT_TEMPLATE}\n`); setBulkPreview(null); setBulkCommitSummary(null); }} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">Reset to template</button>
           <label className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">
             Upload CSV
             <input
@@ -672,7 +724,7 @@ export default function GaWordBankPage() {
         {pdfFileName ? <p className="mt-2 text-xs text-slate-400">Selected PDF: {pdfFileName}{pdfUploading ? " (uploading...)" : ""}</p> : null}
         <textarea
           value={bulkText}
-          onChange={(event) => { setBulkText(event.target.value); setBulkPreview(null); }}
+          onChange={(event) => { setBulkText(event.target.value); setBulkPreview(null); setBulkCommitSummary(null); }}
           rows={8}
           className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
           placeholder="Paste CSV or tab-separated rows with a header row"
@@ -681,7 +733,7 @@ export default function GaWordBankPage() {
           <button type="button" onClick={previewBulkImport} disabled={bulkLoading} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Preview import</button>
           <label className="text-xs font-bold uppercase text-slate-400">
             Duplicate strategy
-            <select value={bulkDuplicateStrategy} onChange={(event) => setBulkDuplicateStrategy(event.target.value as "skip" | "update")} className="ml-2 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white">
+            <select value={bulkDuplicateStrategy} onChange={(event) => setBulkDuplicateStrategy(event.target.value as GaBulkImportDuplicateStrategy)} className="ml-2 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white">
               <option value="skip">Skip duplicates</option>
               <option value="update">Update existing duplicates</option>
             </select>
@@ -695,6 +747,11 @@ export default function GaWordBankPage() {
             Import valid rows
           </button>
         </div>
+        <p className="mt-2 text-xs text-amber-100/90">Skip duplicates prevents duplicate words from being added. Use Update existing duplicates only when you want this CSV to replace existing word details.</p>
+
+        {bulkCommitSummary ? (
+          <GaBulkImportResultCard summary={bulkCommitSummary} duplicateStrategy={bulkDuplicateStrategy} />
+        ) : null}
 
         {bulkPreview ? (
           <div className="mt-4 space-y-3">
@@ -722,24 +779,6 @@ export default function GaWordBankPage() {
             </div>
           </div>
         ) : null}
-      </GaHubAccordionSection>
-
-      <GaHubAccordionSection title="Bulk Review & Update" eyebrow="Filter and prepare working set" defaultOpen={true}>
-        <div className="grid gap-3 md:grid-cols-4">
-          <TextField label="Search" value={filters.q} onChange={(value) => setFilters((next) => ({ ...next, q: value }))} />
-          <SelectField label="Review status" value={filters.reviewStatus} options={GA_REVIEW_STATUSES} onChange={(value) => setFilters((next) => ({ ...next, reviewStatus: value }))} allowAll />
-          <SelectField label="Category" value={filters.category} options={filterCategoryOptions} onChange={(value) => setFilters((next) => ({ ...next, category: value }))} allowAll />
-          <SelectField label="Level" value={filters.level} options={GA_LEVELS} onChange={(value) => setFilters((next) => ({ ...next, level: value }))} allowAll />
-          <SelectField label="Word type" value={filters.wordType} options={GA_WORD_TYPES} onChange={(value) => setFilters((next) => ({ ...next, wordType: value }))} allowAll />
-          <TextField label="Source page" value={filters.sourcePage} onChange={(value) => setFilters((next) => ({ ...next, sourcePage: value }))} />
-          <SelectField label="Audio status" value={filters.audioStatus} options={GA_AUDIO_STATUSES} onChange={(value) => setFilters((next) => ({ ...next, audioStatus: value }))} allowAll />
-          <SelectField label="Quiz ready" value={filters.quizReady} options={["true", "false"]} onChange={(value) => setFilters((next) => ({ ...next, quizReady: value }))} allowAll />
-          <SelectField label="Story ready" value={filters.storyReady} options={["true", "false"]} onChange={(value) => setFilters((next) => ({ ...next, storyReady: value }))} allowAll />
-        </div>
-        <div className="mt-4 flex gap-2">
-          <button type="button" onClick={() => setAppliedFilters(filters)} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white">Apply filters</button>
-          <button type="button" onClick={() => { setFilters(defaultFilters); setAppliedFilters(defaultFilters); }} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-black text-slate-200">Reset</button>
-        </div>
       </GaHubAccordionSection>
 
       <GaHubAccordionSection title="Admin Approvals & Bulk Actions" eyebrow="Selection-driven moderation" defaultOpen={true}>
@@ -772,9 +811,34 @@ export default function GaWordBankPage() {
           <button type="button" onClick={() => void recategoriseAlphabetRows()} disabled={saving} className="rounded-xl border border-emerald-600/70 px-3 py-2 text-xs font-black text-emerald-100 disabled:opacity-50">Recategorise Letter A-Z to Alphabet</button>
           <span className="text-xs text-slate-400">Active source: {activeSource?.sourceName ?? "No source set"}</span>
         </div>
+        {recategoriseResult ? <GaRecategoriseResultCard result={recategoriseResult} /> : null}
       </GaHubAccordionSection>
 
       <GaHubAccordionSection title={`Ga Word Bank Table (${words.length})`} eyebrow="Only Approved words can reach students" defaultOpen={true}>
+        <GaWordBankTableToolbar
+          filters={filters}
+          wordsCount={words.length}
+          sourceOptions={sourceFilterOptions}
+          categoryOptions={filterCategoryOptions}
+          levelOptions={[...GA_LEVELS]}
+          reviewStatusOptions={[...GA_REVIEW_STATUSES]}
+          audioStatusOptions={[...GA_AUDIO_STATUSES]}
+          wordTypeOptions={[...GA_WORD_TYPES]}
+          sourceFilterLabel={sourceFilterLabel}
+          sortLabel={sortLabel}
+          onFilterChange={setFilters}
+          onApplyFilters={() => setAppliedFilters(filters)}
+          onResetFilters={() => {
+            const reset = clearGaWordAdminTableFilters();
+            setFilters(reset);
+            setAppliedFilters(reset);
+          }}
+          onClearFilters={() => {
+            const reset = clearGaWordAdminTableFilters();
+            setFilters(reset);
+            setAppliedFilters(reset);
+          }}
+        />
         {loading ? <p className="text-sm text-slate-400">Loading Ga words...</p> : null}
         <div className="overflow-x-auto">
           <table className="w-full min-w-220 text-left text-xs">

@@ -65,10 +65,13 @@ export type GaWordFilters = {
   category?: string | null;
   level?: string | null;
   wordType?: string | null;
+  sourceId?: string | null;
   sourcePage?: number | null;
   audioStatus?: string | null;
   quizReady?: boolean | null;
   storyReady?: boolean | null;
+  sort?: "newest" | "oldest" | "english_asc" | "ga_asc";
+  recentOnly?: boolean;
   approvedOnly?: boolean;
   limit?: number | null;
 };
@@ -147,6 +150,16 @@ export type GaBulkImportPreview = {
   }[];
   validItems: GaBulkImportValidRow[];
   invalidItems: GaBulkImportInvalidRow[];
+};
+
+export type GaBulkImportCommitSummary = {
+  totalRows: number;
+  importedRows: number;
+  skippedDuplicateRows: number;
+  updatedDuplicateRows: number;
+  failedRows: number;
+  pendingReviewRows: number;
+  sourceName: string | null;
 };
 
 export function isGaWordSchemaNotReadyError(error: unknown): boolean {
@@ -427,6 +440,37 @@ export function planGaBulkImportCommit(items: GaBulkImportValidRow[], strategy: 
   return { creates, updates, skips };
 }
 
+export function buildGaBulkImportCommitSummary(
+  preview: Pick<GaBulkImportPreview, "totalRows" | "invalidRows" | "validItems">,
+  plan: { creates: number; updates: number; skips: number },
+  strategy: GaBulkImportDuplicateStrategy,
+  sourceNameById: Map<string, string> = new Map(),
+): GaBulkImportCommitSummary {
+  const appliedRows = preview.validItems.filter((item) => !item.duplicateExisting || strategy === "update");
+  const pendingReviewRows = appliedRows.filter((item) => {
+    const status = cleanText(item.data.reviewStatus).toLowerCase();
+    return status === "pending" || status === "reviewed";
+  }).length;
+
+  const uniqueSourceNames = Array.from(new Set(
+    appliedRows
+      .map((item) => item.data.sourceId)
+      .filter((sourceId): sourceId is string => Boolean(sourceId))
+      .map((sourceId) => sourceNameById.get(sourceId) ?? null)
+      .filter((name): name is string => Boolean(name)),
+  ));
+
+  return {
+    totalRows: preview.totalRows,
+    importedRows: plan.creates,
+    skippedDuplicateRows: plan.skips,
+    updatedDuplicateRows: plan.updates,
+    failedRows: preview.invalidRows,
+    pendingReviewRows,
+    sourceName: uniqueSourceNames.length === 1 ? uniqueSourceNames[0] : null,
+  };
+}
+
 export function buildGaWordData(input: GaWordInput, options: GaWordBuildOptions = {}) {
   const englishWord = cleanText(input.englishWord);
   const gaWord = cleanText(input.gaWord);
@@ -526,6 +570,45 @@ export async function listGaSources() {
   return prisma.gaSource.findMany({ orderBy: [{ sourceName: "asc" }, { pageNumber: "asc" }] });
 }
 
+/**
+ * Safely ensures a Ga source exists by name, creating it only if not found.
+ * Safe for repeated calls and admin initialization flows.
+ * Example usage: await ensureGaSourceExists("NEW GA WORDS 1")
+ * Page mapping for bulk import sourcePage field:
+ *  1 = Days
+ *  2 = Months
+ *  3 = Numbers
+ *  4 = Adjectives
+ *  5 = Colours
+ *  6 = Sizes and Shapes
+ *  7 = Verbs
+ */
+export async function ensureGaSourceExists(sourceName: string): Promise<{ id: string; sourceName: string; isNew: boolean }> {
+  const cleanName = cleanText(sourceName);
+  if (!cleanName) throw new Error("Source name is required.");
+
+  // Check if source already exists by exact normalized name match
+  const existing = await prisma.gaSource.findFirst({
+    where: {
+      sourceName: {
+        equals: cleanName,
+        mode: "insensitive",
+      },
+    },
+  });
+
+  if (existing) {
+    return { id: existing.id, sourceName: existing.sourceName, isNew: false };
+  }
+
+  // Create new source if not found
+  const created = await prisma.gaSource.create({
+    data: { sourceName: cleanName },
+  });
+
+  return { id: created.id, sourceName: created.sourceName, isNew: true };
+}
+
 export async function recategorizeGaAlphabetRowsFromGrammar() {
   const candidates = await prisma.gaWord.findMany({
     where: {
@@ -593,18 +676,37 @@ export async function updateGaWord(id: string, input: Partial<GaWordInput>, opti
 }
 
 export async function listGaWords(filters: GaWordFilters = {}) {
+  const query = buildGaWordListQuery(filters);
+  return prisma.gaWord.findMany(query);
+}
+
+export function buildGaWordListQuery(filters: GaWordFilters = {}) {
   const limit = Math.min(200, Math.max(1, Math.floor(filters.limit ?? 100)));
   const q = cleanText(filters.q);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const sort = filters.sort ?? "english_asc";
+
+  const orderBy = sort === "newest"
+    ? [{ createdAt: "desc" as const }, { englishWord: "asc" as const }]
+    : sort === "oldest"
+      ? [{ createdAt: "asc" as const }, { englishWord: "asc" as const }]
+      : sort === "ga_asc"
+        ? [{ gaWord: "asc" as const }, { englishWord: "asc" as const }]
+        : [{ englishWord: "asc" as const }, { gaWord: "asc" as const }];
+
   const where = {
     ...(filters.approvedOnly ? { reviewStatus: "Approved" } : {}),
     ...(filters.reviewStatus ? { reviewStatus: filters.reviewStatus } : {}),
     ...(filters.category ? { category: filters.category } : {}),
     ...(filters.level ? { level: filters.level } : {}),
     ...(filters.wordType ? { wordType: filters.wordType } : {}),
+    ...(filters.sourceId ? { sourceId: filters.sourceId } : {}),
     ...(filters.audioStatus ? { audioStatus: filters.audioStatus } : {}),
     ...(filters.sourcePage !== null && filters.sourcePage !== undefined ? { sourcePage: filters.sourcePage } : {}),
     ...(filters.quizReady !== null && filters.quizReady !== undefined ? { quizReady: filters.quizReady } : {}),
     ...(filters.storyReady !== null && filters.storyReady !== undefined ? { storyReady: filters.storyReady } : {}),
+    ...(filters.recentOnly ? { createdAt: { gte: startOfToday } } : {}),
     ...(q
       ? {
           OR: [
@@ -616,12 +718,12 @@ export async function listGaWords(filters: GaWordFilters = {}) {
       : {}),
   };
 
-  return prisma.gaWord.findMany({
+  return {
     where,
     include: { source: true },
-    orderBy: [{ category: "asc" }, { englishWord: "asc" }],
+    orderBy,
     take: limit,
-  });
+  };
 }
 
 export async function getGaWordMetrics() {

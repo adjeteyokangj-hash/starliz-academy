@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import {
+  buildGaBulkImportCommitSummary,
   isGaWordSchemaNotReadyError,
   listGaSources,
   parseGaBulkImportText,
@@ -64,6 +65,8 @@ export async function POST(request: Request) {
 
     const duplicateStrategy = body.duplicateStrategy ?? "skip";
     const plan = planGaBulkImportCommit(preview.validItems, duplicateStrategy);
+  const sourceNameById = new Map(sources.map((source) => [source.id, source.sourceName]));
+  const summary = buildGaBulkImportCommitSummary(preview, plan, duplicateStrategy, sourceNameById);
 
     await prisma.$transaction(async (tx) => {
       for (const item of preview.validItems) {
@@ -78,6 +81,9 @@ export async function POST(request: Request) {
         }
         await tx.gaWord.create({ data: item.data });
       }
+    }, {
+      // Bulk imports can exceed the default interactive transaction timeout.
+      timeout: 60000,
     });
 
     await writeAuditLog({
@@ -106,6 +112,7 @@ export async function POST(request: Request) {
       created: plan.creates,
       updated: plan.updates,
       skipped: plan.skips,
+      summary,
     });
   } catch (error) {
     if (isGaWordSchemaNotReadyError(error)) {

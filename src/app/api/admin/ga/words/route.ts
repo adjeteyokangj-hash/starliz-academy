@@ -11,10 +11,13 @@ const querySchema = z.object({
   category: z.string().optional(),
   level: z.string().optional(),
   wordType: z.string().optional(),
+  sourceId: z.string().optional(),
   sourcePage: z.string().optional(),
   audioStatus: z.string().optional(),
   quizReady: z.string().optional(),
   storyReady: z.string().optional(),
+  sort: z.enum(["newest", "oldest", "english_asc", "ga_asc"]).optional(),
+  quickFilter: z.enum(["all", "recent"]).optional(),
   limit: z.string().optional(),
 });
 
@@ -61,10 +64,13 @@ export async function GET(request: Request) {
       category: parsed.category,
       level: parsed.level,
       wordType: parsed.wordType,
+      sourceId: parsed.sourceId,
       sourcePage: parsed.sourcePage ? Number(parsed.sourcePage) : undefined,
       audioStatus: parsed.audioStatus,
       quizReady: parseBoolean(parsed.quizReady),
       storyReady: parseBoolean(parsed.storyReady),
+      sort: parsed.sort,
+      recentOnly: parsed.quickFilter === "recent",
       limit: parsed.limit ? Number(parsed.limit) : undefined,
     });
     const metrics = await getGaWordMetrics();

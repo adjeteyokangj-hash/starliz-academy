@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
-import { createGaSource, isGaWordSchemaNotReadyError, listGaSources } from "@/lib/ga-word-bank";
+import { createGaSource, ensureGaSourceExists, isGaWordSchemaNotReadyError, listGaSources } from "@/lib/ga-word-bank";
 
 const sourceSchema = z.object({
   sourceName: z.string().trim().min(1),
@@ -49,5 +49,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ item: serializeSource(created) }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create Ga source." }, { status: 400 });
+  }
+}
+
+export async function PUT(request: Request) {
+  const { session, response } = await requireAdmin();
+  if (!session) return response;
+
+  try {
+    const body = z.object({ sourceName: z.string().trim().min(1) }).parse(await request.json());
+    const result = await ensureGaSourceExists(body.sourceName);
+    if (result.isNew) {
+      await writeAuditLog({
+        actorUserId: session.userId,
+        action: "ga_source.created",
+        entityType: "ga_source",
+        entityId: result.id,
+        metadata: { sourceName: result.sourceName, reason: "auto_ensure" },
+      });
+    }
+    return NextResponse.json({
+      item: { id: result.id, sourceName: result.sourceName },
+      isNew: result.isNew,
+      message: result.isNew ? "Source created" : "Source already exists",
+    });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to ensure Ga source." }, { status: 400 });
   }
 }
