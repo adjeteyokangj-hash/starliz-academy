@@ -96,8 +96,8 @@ export default function GaLessonPage({ params }: Props) {
               <p className="mt-3 text-sm text-emerald-50/80">{lesson.objective}</p>
             </section>
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <h2 className="text-lg font-black">Flashcards</h2>
+            <section id="lesson-practice" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 scroll-mt-24">
+              <h2 className="text-lg font-black">Alphabet and Word Practice</h2>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
                 {lesson.flashcards.map((card) => (
                   <article key={card.wordId} className="rounded-xl border border-slate-800 bg-slate-950/80 p-4">
@@ -110,10 +110,9 @@ export default function GaLessonPage({ params }: Props) {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+            <section id="lesson-pronunciation" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 scroll-mt-24">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-black">Pronunciation References</h2>
-                <Link href="/ga-dictionary" className="text-sm font-bold text-emerald-300 hover:text-emerald-200">Open Ga Dictionary</Link>
+                <h2 className="text-lg font-black">Pronunciation Repeat</h2>
               </div>
               <p className="mt-2 text-sm text-slate-400">Approved pronunciation and audio references linked to this lesson and its words.</p>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -128,14 +127,14 @@ export default function GaLessonPage({ params }: Props) {
                   </article>
                 )) : (
                   <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 text-sm text-slate-400">
-                    No approved pronunciation references are linked yet. Open the Ga Dictionary to seed vocabulary, or add references from the Ga Voice dashboard.
+                    Pronunciation references will appear here when approved audio is linked.
                   </div>
                 )}
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <h2 className="text-lg font-black">Mini Quiz</h2>
+            <section id="lesson-quiz-progress" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 scroll-mt-24">
+              <h2 className="text-lg font-black">Quiz and Progress</h2>
               <div className="mt-3 space-y-3">
                 {lesson.quizQuestions.map((question, index) => (
                   <article key={question.id} className="rounded-xl border border-slate-800 bg-slate-950/80 p-4">

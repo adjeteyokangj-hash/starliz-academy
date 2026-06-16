@@ -145,7 +145,7 @@ export default function AdminGaLessonsPage() {
   const [targetYearGroup, setTargetYearGroup] = useState<string>("");
   const [assigningLessonId, setAssigningLessonId] = useState<string | null>(null);
   const [assignmentBusyId, setAssignmentBusyId] = useState<string | null>(null);
-  const [progressPanelAssignmentId, setProgressPanelAssignmentId] = useState<string | null>(null);
+  const [progressPanelAssignmentId, setProgressPanelAssignmentId] = useState<string | null | undefined>(undefined);
   const [lessonActionBusyId, setLessonActionBusyId] = useState<string | null>(null);
   const selectedWords = useMemo(
     () => approvedWords.filter((word) => selectedWordIds.includes(word.id)),
@@ -186,10 +186,6 @@ export default function AdminGaLessonsPage() {
     () => Array.from(new Set(students.map((student) => student.yearGroup).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right)),
     [students],
   );
-  const effectiveTargetYearGroup = useMemo(() => {
-    if (targetYearGroup && availableYearGroups.includes(targetYearGroup)) return targetYearGroup;
-    return availableYearGroups[0] ?? "";
-  }, [availableYearGroups, targetYearGroup]);
   const assignmentMode = assignmentDrawer?.mode ?? "student";
   const filteredStudents = useMemo(() => {
     const query = assignmentSearch.trim().toLowerCase();
@@ -267,13 +263,11 @@ export default function AdminGaLessonsPage() {
       .filter((assignment) => assignment.lessonId || assignment.content.contentType === "ga");
   }, [lessonAssignments, lessonById]);
 
-  const activeProgressPanelAssignmentId = useMemo(() => {
-    if (!gaAssignments.length) return null;
-    if (progressPanelAssignmentId && gaAssignments.some((assignment) => assignment.id === progressPanelAssignmentId)) {
-      return progressPanelAssignmentId;
-    }
-    return gaAssignments[0].id;
-  }, [gaAssignments, progressPanelAssignmentId]);
+  const activeProgressPanelAssignmentId = progressPanelAssignmentId === null
+    ? null
+    : gaAssignments.some((assignment) => assignment.id === progressPanelAssignmentId)
+      ? progressPanelAssignmentId
+      : gaAssignments[0]?.id ?? null;
 
   const progressPanelAssignment = useMemo(
     () => gaAssignments.find((assignment) => assignment.id === activeProgressPanelAssignmentId) ?? null,
@@ -312,6 +306,10 @@ export default function AdminGaLessonsPage() {
     setLessonAssignments(Array.isArray(assignmentPayload?.assignments) ? assignmentPayload.assignments : []);
     const studentItems = Array.isArray(studentPayload?.students) ? studentPayload.students : [];
     setStudents(studentItems);
+    setTargetYearGroup((current) => {
+      if (current && studentItems.some((student) => student.yearGroup === current)) return current;
+      return studentItems.find((student) => Boolean(student.yearGroup))?.yearGroup ?? "";
+    });
     const activeCategoryNames = nextCategories
       .filter((category) => category.usedByLessons && category.isActive && !category.isArchived)
       .map((category) => category.name)
@@ -483,7 +481,7 @@ export default function AdminGaLessonsPage() {
       setMessage("Choose at least one student before assigning a lesson.");
       return;
     }
-    if (assignmentMode === "yearGroup" && !effectiveTargetYearGroup) {
+    if (assignmentMode === "yearGroup" && !targetYearGroup) {
       setMessage("Choose a year group before assigning a lesson.");
       return;
     }
@@ -505,7 +503,7 @@ export default function AdminGaLessonsPage() {
         body: JSON.stringify(
           assignmentMode === "student"
             ? { contentId: assignmentContentPayload.contentId, studentIds: selectedStudentIds }
-            : { contentId: assignmentContentPayload.contentId, yearGroup: effectiveTargetYearGroup },
+            : { contentId: assignmentContentPayload.contentId, yearGroup: targetYearGroup },
         ),
       });
       const assignPayload = await assignResponse.json().catch(() => null) as {
@@ -523,7 +521,7 @@ export default function AdminGaLessonsPage() {
 
       if (assignPayload?.allDuplicates) {
         if (assignmentMode === "yearGroup") {
-          setMessage(`This lesson is already assigned to active students in ${effectiveTargetYearGroup}.`);
+          setMessage(`This lesson is already assigned to active students in ${targetYearGroup}.`);
           return;
         }
         setMessage(`This lesson is already assigned to the selected student set.`);
@@ -531,7 +529,7 @@ export default function AdminGaLessonsPage() {
       }
 
       if (assignmentMode === "yearGroup") {
-        setMessage(`Assigned \"${lesson.title}\" to ${effectiveTargetYearGroup}.`);
+        setMessage(`Assigned \"${lesson.title}\" to ${targetYearGroup}.`);
         await load();
         closeAssignDrawer();
         return;
@@ -1120,7 +1118,7 @@ export default function AdminGaLessonsPage() {
                 <label className="text-xs font-bold uppercase text-slate-400">
                   Year group
                   <select
-                    value={effectiveTargetYearGroup}
+                    value={targetYearGroup}
                     onChange={(event) => setTargetYearGroup(event.target.value)}
                     className="mt-1 w-full max-w-xs rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
                   >
@@ -1154,10 +1152,10 @@ export default function AdminGaLessonsPage() {
               <button
                 type="button"
                 onClick={() => void assignLessonFromDrawer()}
-                disabled={Boolean(assigningLessonId) || (assignmentMode === "student" ? !selectedStudentIds.length : !effectiveTargetYearGroup)}
+                disabled={Boolean(assigningLessonId) || (assignmentMode === "student" ? !selectedStudentIds.length : !targetYearGroup)}
                 className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {assigningLessonId === assignmentDrawer.lesson.id ? "Assigning..." : assignmentMode === "student" ? `Assign to ${selectedStudentIds.length || 0} student${selectedStudentIds.length === 1 ? "" : "s"}` : `Assign to ${effectiveTargetYearGroup || "year group"}`}
+                {assigningLessonId === assignmentDrawer.lesson.id ? "Assigning..." : assignmentMode === "student" ? `Assign to ${selectedStudentIds.length || 0} student${selectedStudentIds.length === 1 ? "" : "s"}` : `Assign to ${targetYearGroup || "year group"}`}
               </button>
             </div>
           </div>

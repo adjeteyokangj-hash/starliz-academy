@@ -9,10 +9,14 @@ type HomeworkTaskLike = {
   routeTarget?: string | null;
 };
 
+type CatchUpTaskLike = {
+  title?: string | null;
+  routeTarget?: string | null;
+};
+
 export type DashboardActionTarget =
   | { kind: "route"; href: string; label: string }
   | { kind: "scroll"; targetId: string; label: string; message: string }
-  | { kind: "top"; label: string; message: string }
   | { kind: "unavailable"; label: string; message: string };
 
 function hasUsableRouteTarget(routeTarget?: string | null): routeTarget is string {
@@ -39,9 +43,10 @@ export function resolveSchoolWeekGoTarget(block: RouteTargetLike | null | undefi
 
   if (block.activityType === "check_in") {
     return {
-      kind: "top",
+      kind: "scroll",
+      targetId: "school-week-mode-panel",
       label: "Open check-in",
-      message: "Opening today's check-in at the top of the dashboard.",
+      message: "Check-in opens here. Full check-in flow coming soon.",
     };
   }
 
@@ -64,10 +69,9 @@ export function resolveSchoolWeekGoTarget(block: RouteTargetLike | null | undefi
   }
 
   return {
-    kind: "scroll",
-    targetId: "today-journey-panel",
+    kind: "unavailable",
     label: "Unavailable",
-    message: "This activity is not linked yet. Open today's learning journey below.",
+    message: "This activity is not linked yet. Stay on this School Week card for updates.",
   };
 }
 
@@ -84,5 +88,22 @@ export function resolveHomeworkStartTarget(task: HomeworkTaskLike | null | undef
     kind: "unavailable",
     label: "Start",
     message: `Starting ${task?.title ?? "homework"} is not linked to a target yet.`,
+  };
+}
+
+export function resolveCatchUpStartTarget(task: CatchUpTaskLike | null | undefined): DashboardActionTarget {
+  if (hasUsableRouteTarget(task?.routeTarget)) {
+    return {
+      kind: "route",
+      href: task.routeTarget,
+      label: "Start",
+    };
+  }
+
+  return {
+    kind: "scroll",
+    targetId: "smart-catch-up-panel",
+    label: "Start here",
+    message: `Started ${task?.title ?? "catch-up"} in Smart Catch-Up. Full linked lesson coming soon.`,
   };
 }

@@ -14,6 +14,7 @@ import StudentContextStrip from "@/components/student/StudentContextStrip";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import WeeklyHomeworkPanel from "@/components/student/WeeklyHomeworkPanel";
 import {
+  resolveCatchUpStartTarget,
   resolveHomeworkStartTarget,
   resolveSchoolWeekGoTarget,
 } from "@/lib/student-dashboard-actions";
@@ -856,14 +857,18 @@ export default function StudentDashboardPage() {
     openDashboardTarget("learning-map-panel");
   }
 
-  function openTodayJourneyPanel() {
+  function openSchoolWeekModePanel() {
     setPanelActionMessage(null);
-    if (!openDashboardTarget("today-journey-panel")) {
-      setPanelActionMessage("Today's learning journey is not ready yet.");
+    if (!openDashboardTarget("school-week-mode-panel")) {
+      setPanelActionMessage("School Week Mode panel is not ready yet.");
     }
   }
 
-  async function handleStudentCatchUpTaskAction(taskId: string, action: "start_task" | "complete_task" | "skip_task") {
+  async function handleStudentCatchUpTaskAction(
+    taskId: string,
+    action: "start_task" | "complete_task" | "skip_task",
+    successMessage?: string,
+  ) {
     setAcademicTaskPendingId(taskId);
     setAcademicError("");
     try {
@@ -880,6 +885,14 @@ export default function StudentDashboardPage() {
       }
 
       await loadDashboard();
+      setPanelActionMessage(
+        successMessage
+          ?? (action === "start_task"
+            ? "Catch-up task started."
+            : action === "complete_task"
+              ? "Catch-up task completed."
+              : "Catch-up task skipped."),
+      );
     } catch (err) {
       setAcademicError(err instanceof Error ? err.message : "Unable to update catch-up task.");
     } finally {
@@ -1443,6 +1456,14 @@ export default function StudentDashboardPage() {
                     <div className="space-y-3">
                       {(academicIntelligence.catchUpTasks ?? []).slice(0, 5).map((task) => (
                         <div key={task.taskId} className="rounded-2xl border border-cyan-200 bg-white p-4">
+                          {(() => {
+                            const canStart = ["recommended", "scheduled", "active", "overdue"].includes(task.status);
+                            const canComplete = task.status === "in_progress";
+                            const canSkip = !["completed", "skipped", "waived"].includes(task.status);
+                            const startTarget = resolveCatchUpStartTarget(task);
+
+                            return (
+                              <>
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="font-bold text-slate-900">{task.title}</p>
                             <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
@@ -1469,35 +1490,58 @@ export default function StudentDashboardPage() {
                               Estimated time: {task.estimatedMinutes} mins
                             </p>
                             <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                disabled={academicTaskPendingId === task.taskId}
-                                onClick={() => {
-                                  void handleStudentCatchUpTaskAction(task.taskId, "start_task");
-                                  router.push(task.routeTarget ?? "/student/dashboard");
-                                }}
-                                className="rounded-xl bg-cyan-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-cyan-500 disabled:opacity-60"
-                              >
-                                Start
-                              </button>
-                              <button
-                                type="button"
-                                disabled={academicTaskPendingId === task.taskId}
-                                onClick={() => void handleStudentCatchUpTaskAction(task.taskId, "complete_task")}
-                                className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-60"
-                              >
-                                Complete
-                              </button>
-                              <button
-                                type="button"
-                                disabled={academicTaskPendingId === task.taskId}
-                                onClick={() => void handleStudentCatchUpTaskAction(task.taskId, "skip_task")}
-                                className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-500 disabled:opacity-60"
-                              >
-                                Skip
-                              </button>
+                              {canStart ? (
+                                <button
+                                  type="button"
+                                  disabled={academicTaskPendingId === task.taskId}
+                                  onClick={async () => {
+                                    const startMessage = startTarget.kind === "route"
+                                      ? `${task.title} started.`
+                                      : startTarget.message;
+                                    await handleStudentCatchUpTaskAction(task.taskId, "start_task", startMessage);
+                                    if (startTarget.kind === "route") {
+                                      router.push(startTarget.href);
+                                      return;
+                                    }
+                                    openCatchUpPanel();
+                                    setPanelActionMessage(startTarget.message);
+                                  }}
+                                  className="rounded-xl bg-cyan-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-cyan-500 disabled:opacity-60"
+                                >
+                                  {startTarget.label}
+                                </button>
+                              ) : null}
+                              {canComplete ? (
+                                <button
+                                  type="button"
+                                  disabled={academicTaskPendingId === task.taskId}
+                                  onClick={async () => {
+                                    await handleStudentCatchUpTaskAction(task.taskId, "complete_task", `${task.title} completed.`);
+                                    openCatchUpPanel();
+                                  }}
+                                  className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-60"
+                                >
+                                  Complete
+                                </button>
+                              ) : null}
+                              {canSkip ? (
+                                <button
+                                  type="button"
+                                  disabled={academicTaskPendingId === task.taskId}
+                                  onClick={async () => {
+                                    await handleStudentCatchUpTaskAction(task.taskId, "skip_task", `${task.title} skipped for now.`);
+                                    openCatchUpPanel();
+                                  }}
+                                  className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-500 disabled:opacity-60"
+                                >
+                                  Skip
+                                </button>
+                              ) : null}
                             </div>
                           </div>
+                              </>
+                            );
+                          })()}
                         </div>
                       ))}
                     </div>
@@ -1535,7 +1579,7 @@ export default function StudentDashboardPage() {
                     )}
 
                     {academicIntelligence.schoolWeekModePlan?.enabled ? (
-                      <div className="rounded-2xl border border-cyan-200 bg-white p-4">
+                      <div id="school-week-mode-panel" className="rounded-2xl border border-cyan-200 bg-white p-4">
                         <p className="text-sm font-bold text-slate-900">School Week Mode</p>
                         <p className="mt-1 text-xs text-slate-600">{academicIntelligence.schoolWeekModePlan.strategy}</p>
                         <p className="mt-1 text-xs font-semibold text-cyan-700">
@@ -1590,18 +1634,17 @@ export default function StudentDashboardPage() {
                                     if (nextBlockAction.kind === "scroll") {
                                       setPanelActionMessage(nextBlockAction.message);
                                       if (!openDashboardTarget(nextBlockAction.targetId)) {
-                                        openTodayJourneyPanel();
+                                        openSchoolWeekModePanel();
                                       }
                                       return;
                                     }
 
                                     setPanelActionMessage(nextBlockAction.message);
-                                    openTodayJourneyPanel();
                                   }}
                                   className="flex w-full items-center justify-between rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-left text-xs text-slate-700 hover:bg-cyan-100"
                                 >
                                   <span>Next activity: {nextBlock.startTime} {nextBlock.title}</span>
-                                  <span className="font-bold text-cyan-700">Go</span>
+                                  <span className="font-bold text-cyan-700">{nextBlockAction.label}</span>
                                 </button>
                               ) : null}
                               <div className="space-y-1">

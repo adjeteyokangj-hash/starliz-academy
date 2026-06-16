@@ -20,6 +20,9 @@ export default function GaLearningHubPage() {
   const [loading, setLoading] = useState(true);
   const currentLesson = lessons[0] ?? null;
   const currentLessonHref = currentLesson ? `/ga-learning-hub/${encodeURIComponent(currentLesson.slug)}` : null;
+  const currentLessonPracticeHref = currentLessonHref ? `${currentLessonHref}#lesson-practice` : null;
+  const currentLessonPronunciationHref = currentLessonHref ? `${currentLessonHref}#lesson-pronunciation` : null;
+  const currentLessonQuizHref = currentLessonHref ? `${currentLessonHref}#lesson-quiz-progress` : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -53,9 +56,9 @@ export default function GaLearningHubPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href={currentLessonHref} className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white">Open current lesson</Link>
-              <Link href={currentLessonHref} className="rounded-xl border border-emerald-300/40 px-4 py-2 text-sm font-black text-emerald-100">Alphabet / word practice</Link>
-              <Link href={currentLessonHref} className="rounded-xl border border-emerald-300/40 px-4 py-2 text-sm font-black text-emerald-100">Pronunciation repeat</Link>
-              <Link href={currentLessonHref} className="rounded-xl border border-emerald-300/40 px-4 py-2 text-sm font-black text-emerald-100">Quiz / progress</Link>
+              <Link href={currentLessonPracticeHref ?? currentLessonHref} className="rounded-xl border border-emerald-300/40 px-4 py-2 text-sm font-black text-emerald-100">Alphabet / word practice</Link>
+              <Link href={currentLessonPronunciationHref ?? currentLessonHref} className="rounded-xl border border-emerald-300/40 px-4 py-2 text-sm font-black text-emerald-100">Pronunciation repeat</Link>
+              <Link href={currentLessonQuizHref ?? currentLessonHref} className="rounded-xl border border-emerald-300/40 px-4 py-2 text-sm font-black text-emerald-100">Quiz / progress</Link>
             </div>
           </div>
         </section>

@@ -6,6 +6,7 @@ import {
   languageRequiresVerifiedWordBank,
   validateWordCharacters,
 } from "@/lib/language-profiles";
+import { isCaseInsensitiveWordDuplicate, normalizeWordForDuplicate } from "@/lib/ga-word-normalization";
 
 export const GA_WORD_TYPES = ["noun", "verb", "adjective", "pronoun", "expression", "conjunction", "determiner"] as const;
 export const GA_CATEGORIES = GA_APPROVED_CATEGORIES;
@@ -222,7 +223,26 @@ function parseImportBoolean(value: string): boolean | null {
 }
 
 function buildDuplicateKey(englishWord: string, gaWord: string, category: string, sourcePage: number | null): string {
-  return `${englishWord.trim().toLowerCase()}::${gaWord.trim().toLowerCase()}::${category.trim().toLowerCase()}::${sourcePage === null ? "null" : String(sourcePage)}`;
+  return `${normalizeWordForDuplicate(englishWord)}::${normalizeWordForDuplicate(gaWord)}::${category.trim().toLowerCase()}::${sourcePage === null ? "null" : String(sourcePage)}`;
+}
+
+async function findCaseInsensitiveDuplicateGaWord(input: { englishWord: string; gaWord: string; sourceId: string | null }, excludeId?: string) {
+  const candidates = await prisma.gaWord.findMany({
+    where: {
+      sourceId: input.sourceId,
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: {
+      id: true,
+      englishWord: true,
+      gaWord: true,
+    },
+  });
+
+  return candidates.find((item) => (
+    isCaseInsensitiveWordDuplicate(item.englishWord, input.englishWord)
+    && isCaseInsensitiveWordDuplicate(item.gaWord, input.gaWord)
+  )) ?? null;
 }
 
 function optionalText(value: unknown): string | null {
@@ -645,6 +665,14 @@ export async function recategorizeGaAlphabetRowsFromGrammar() {
 
 export async function createGaWord(input: GaWordInput, options: GaWordBuildOptions = {}) {
   const data = buildGaWordData(input, options);
+  const duplicate = await findCaseInsensitiveDuplicateGaWord({
+    englishWord: data.englishWord,
+    gaWord: data.gaWord,
+    sourceId: data.sourceId,
+  });
+  if (duplicate) {
+    throw new Error("A matching Ga word already exists for this source (case-insensitive duplicate). Update the existing record instead.");
+  }
   return prisma.gaWord.create({ data, include: { source: true } });
 }
 
@@ -672,6 +700,16 @@ export async function updateGaWord(id: string, input: Partial<GaWordInput>, opti
     storyReady: input.storyReady ?? existing.storyReady,
     notes: input.notes === undefined ? existing.notes : input.notes,
   }, { allowedCategories: categoryAllowList });
+
+  const duplicate = await findCaseInsensitiveDuplicateGaWord({
+    englishWord: data.englishWord,
+    gaWord: data.gaWord,
+    sourceId: data.sourceId,
+  }, id);
+  if (duplicate) {
+    throw new Error("A matching Ga word already exists for this source (case-insensitive duplicate). Update the existing record instead.");
+  }
+
   return prisma.gaWord.update({ where: { id }, data, include: { source: true } });
 }
 
