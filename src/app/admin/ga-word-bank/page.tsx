@@ -616,7 +616,7 @@ export default function GaWordBankPage() {
         </div>
       </GaHubAccordionSection>
 
-      <GaHubAccordionSection title={isEditing ? "Edit Ga Word" : "Add Ga Word"} eyebrow="Controlled vocabulary" defaultOpen={false}>
+      <GaHubAccordionSection title={isEditing ? "Edit Ga Word" : "Add Ga Word"} eyebrow="Controlled vocabulary" defaultOpen={true}>
         <div ref={editFormRef} className="h-0" aria-hidden="true" />
         <div className="grid gap-3 md:grid-cols-3">
           <TextField label="English word" value={wordForm.englishWord} onChange={(value) => setWordForm((form) => ({ ...form, englishWord: value }))} inputRef={englishWordInputRef} />
@@ -639,7 +639,7 @@ export default function GaWordBankPage() {
         </div>
       </GaHubAccordionSection>
 
-      <GaHubAccordionSection title="Bulk Import" eyebrow="CSV/Table importer with preview safeguards" defaultOpen={false}>
+      <GaHubAccordionSection title="Bulk Import" eyebrow="CSV/Table importer with preview safeguards" defaultOpen={true}>
         <p className="text-xs text-slate-400">Required columns: englishWord, gaWord, wordType, category, level, sourcePage, reviewStatus, audioStatus, quizReady, storyReady and sourceId or sourceName. Pending/Reviewed rows remain hidden from student APIs.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={downloadTemplate} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-100">Download CSV template</button>
@@ -724,7 +724,7 @@ export default function GaWordBankPage() {
         ) : null}
       </GaHubAccordionSection>
 
-      <GaHubAccordionSection title="Bulk Review & Update" eyebrow="Filter and prepare working set" defaultOpen={false}>
+      <GaHubAccordionSection title="Bulk Review & Update" eyebrow="Filter and prepare working set" defaultOpen={true}>
         <div className="grid gap-3 md:grid-cols-4">
           <TextField label="Search" value={filters.q} onChange={(value) => setFilters((next) => ({ ...next, q: value }))} />
           <SelectField label="Review status" value={filters.reviewStatus} options={GA_REVIEW_STATUSES} onChange={(value) => setFilters((next) => ({ ...next, reviewStatus: value }))} allowAll />
@@ -742,7 +742,7 @@ export default function GaWordBankPage() {
         </div>
       </GaHubAccordionSection>
 
-      <GaHubAccordionSection title="Admin Approvals & Bulk Actions" eyebrow="Selection-driven moderation" defaultOpen={false}>
+      <GaHubAccordionSection title="Admin Approvals & Bulk Actions" eyebrow="Selection-driven moderation" defaultOpen={true}>
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3 text-xs font-bold text-slate-300">
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisibleWords} />
@@ -756,7 +756,7 @@ export default function GaWordBankPage() {
         </div>
       </GaHubAccordionSection>
 
-      <GaHubAccordionSection title="Song & Lesson Usage Stats" eyebrow="Readiness snapshot" defaultOpen={false}>
+      <GaHubAccordionSection title="Song & Lesson Usage Stats" eyebrow="Readiness snapshot" defaultOpen={true}>
         <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
           <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">Approved: <span className="font-black text-emerald-300">{usageStats.approvedCount}</span></p>
           <p className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">Reviewed: <span className="font-black text-cyan-300">{usageStats.reviewedCount}</span></p>
@@ -767,7 +767,7 @@ export default function GaWordBankPage() {
         </div>
       </GaHubAccordionSection>
 
-      <GaHubAccordionSection title="System & QC" eyebrow="Maintenance tools" defaultOpen={false}>
+      <GaHubAccordionSection title="System & QC" eyebrow="Maintenance tools" defaultOpen={true}>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => void recategoriseAlphabetRows()} disabled={saving} className="rounded-xl border border-emerald-600/70 px-3 py-2 text-xs font-black text-emerald-100 disabled:opacity-50">Recategorise Letter A-Z to Alphabet</button>
           <span className="text-xs text-slate-400">Active source: {activeSource?.sourceName ?? "No source set"}</span>

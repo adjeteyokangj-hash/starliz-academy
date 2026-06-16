@@ -56,6 +56,7 @@ type StudentAssignmentCandidate = {
 type AssignmentListRow = {
   id: string;
   status: string;
+  completedAt: string | null;
   createdAt: string;
   updatedAt: string;
   student: { id: string; name: string; yearGroup?: string | null; parent?: { email?: string | null } };
@@ -88,6 +89,44 @@ function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "ga-lesson";
 }
 
+type AssignmentDisplayStatus = "Assigned" | "In Progress" | "Completed" | "Needs Support" | "Overdue";
+
+function toScorePercent(score: number | null, attempts: number, status: string): number {
+  if (status === "completed") return 100;
+  if (score != null) return Math.max(0, Math.min(100, score));
+  if (attempts <= 0) return 0;
+  return Math.max(5, Math.min(95, attempts * 20));
+}
+
+function formatDateLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString();
+}
+
+function buildSupportRecommendations(input: {
+  overdue: boolean;
+  attempts: number;
+  completionPercent: number;
+  weakWords: string[];
+  weakAreas: Array<{ weaknessType: string; accuracy: number }>;
+}): string[] {
+  const recommendations: string[] = [];
+  if (input.overdue) {
+    recommendations.push("Schedule a check-in and re-activate this lesson with a smaller target.");
+  }
+  if (input.weakAreas.some((area) => area.accuracy < 60)) {
+    recommendations.push("Assign targeted support content for the weakest skills before the next full lesson attempt.");
+  }
+  if (input.weakWords.length > 0) {
+    recommendations.push("Run a short flashcard review for flagged weak words before retry.");
+  }
+  if (input.attempts >= 3 && input.completionPercent < 50) {
+    recommendations.push("Reduce lesson complexity and provide guided practice for one sub-skill at a time.");
+  }
+  return recommendations;
+}
+
 export default function AdminGaLessonsPage() {
   const [lessons, setLessons] = useState<LessonRow[]>([]);
   const [approvedWords, setApprovedWords] = useState<ApprovedWord[]>([]);
@@ -106,6 +145,7 @@ export default function AdminGaLessonsPage() {
   const [targetYearGroup, setTargetYearGroup] = useState<string>("");
   const [assigningLessonId, setAssigningLessonId] = useState<string | null>(null);
   const [assignmentBusyId, setAssignmentBusyId] = useState<string | null>(null);
+  const [progressPanelAssignmentId, setProgressPanelAssignmentId] = useState<string | null>(null);
   const [lessonActionBusyId, setLessonActionBusyId] = useState<string | null>(null);
   const selectedWords = useMemo(
     () => approvedWords.filter((word) => selectedWordIds.includes(word.id)),
@@ -168,10 +208,73 @@ export default function AdminGaLessonsPage() {
         const skillFocus = assignment.content.skillFocus ?? "";
         const lessonId = skillFocus.startsWith("ga_lesson:") ? skillFocus.replace("ga_lesson:", "") : "";
         const lesson = lessonById.get(lessonId) ?? null;
-        return { ...assignment, lessonId, lessonTitle: lesson?.title ?? assignment.content.topic ?? "Ga lesson" };
+        const completionPercent = toScorePercent(assignment.score, assignment.attempts, assignment.status);
+        const started = assignment.attempts > 0 || assignment.status === "in_progress" || assignment.status === "completed" || Boolean(assignment.completedAt);
+        const completed = assignment.status === "completed" || Boolean(assignment.completedAt) || completionPercent >= 100;
+        const weakSignalCount = assignment.weakWords.length + assignment.weakAreas.length;
+        const stalled = !completed && assignment.status === "in_progress" && assignment.attempts >= 3 && completionPercent < 50;
+        const overdue = assignment.status === "overdue" || stalled;
+        const needsSupport = !overdue && !completed && weakSignalCount > 0;
+        const displayStatus: AssignmentDisplayStatus = overdue
+          ? "Overdue"
+          : needsSupport
+            ? "Needs Support"
+            : completed
+              ? "Completed"
+              : started
+                ? "In Progress"
+                : "Assigned";
+
+        const rowToneClass = displayStatus === "Completed"
+          ? "border-l-4 border-l-emerald-400 bg-emerald-500/10"
+          : displayStatus === "In Progress"
+            ? "border-l-4 border-l-sky-400 bg-sky-500/10"
+            : displayStatus === "Needs Support"
+              ? "border-l-4 border-l-amber-400 bg-amber-500/10"
+              : displayStatus === "Overdue"
+                ? "border-l-4 border-l-rose-400 bg-rose-500/10"
+                : "border-l-4 border-l-slate-500 bg-slate-800/35";
+
+        const supportSignals = weakSignalCount > 0
+          ? `${weakSignalCount} support signal${weakSignalCount === 1 ? "" : "s"}`
+          : null;
+
+        const supportRecommendations = buildSupportRecommendations({
+          overdue,
+          attempts: assignment.attempts,
+          completionPercent,
+          weakWords: assignment.weakWords,
+          weakAreas: assignment.weakAreas,
+        });
+
+        return {
+          ...assignment,
+          lessonId,
+          lessonTitle: lesson?.title ?? assignment.content.topic ?? "Ga lesson",
+          completionPercent,
+          started,
+          completed,
+          displayStatus,
+          supportSignals,
+          supportRecommendations,
+          rowToneClass,
+        };
       })
       .filter((assignment) => assignment.lessonId || assignment.content.contentType === "ga");
   }, [lessonAssignments, lessonById]);
+
+  const activeProgressPanelAssignmentId = useMemo(() => {
+    if (!gaAssignments.length) return null;
+    if (progressPanelAssignmentId && gaAssignments.some((assignment) => assignment.id === progressPanelAssignmentId)) {
+      return progressPanelAssignmentId;
+    }
+    return gaAssignments[0].id;
+  }, [gaAssignments, progressPanelAssignmentId]);
+
+  const progressPanelAssignment = useMemo(
+    () => gaAssignments.find((assignment) => assignment.id === activeProgressPanelAssignmentId) ?? null,
+    [gaAssignments, activeProgressPanelAssignmentId],
+  );
 
   const load = useCallback(async (): Promise<LessonRow[]> => {
     const [lessonResponse, wordResponse, categoryResponse, studentResponse, assignmentResponse] = await Promise.all([
@@ -179,7 +282,7 @@ export default function AdminGaLessonsPage() {
       fetch("/api/admin/ga/words?reviewStatus=Approved&limit=200"),
       fetch("/api/admin/ga/categories"),
       fetch("/api/admin/students?context=assignment"),
-      fetch("/api/admin/assignments?query=ga_lesson"),
+      fetch("/api/admin/assignments?query=ga_lesson&limit=1000"),
     ]);
     if (
       lessonResponse.status === 401
@@ -635,16 +738,20 @@ export default function AdminGaLessonsPage() {
       >
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
           {BEGINNER_PACK_1_LESSONS.map((lesson) => (
-            <button
-              key={lesson.slug}
-              type="button"
-              onClick={() => void openOrCreateBeginnerPackLesson(lesson)}
-              className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-left text-xs text-slate-300 transition hover:border-cyan-400/60 hover:bg-cyan-500/10"
-            >
+            <article key={lesson.slug} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-left text-xs text-slate-300">
               <p className="font-black text-white">Lesson {lesson.lessonOrder}: {lesson.title}</p>
               <p>{lesson.category} · {lesson.level}</p>
-              <p className="mt-2 text-[11px] font-bold text-cyan-200">Open in editor</p>
-            </button>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-bold text-cyan-200">{lessons.some((item) => item.slug === lesson.slug) ? "Editable draft exists" : "Draft not created yet"}</p>
+                <button
+                  type="button"
+                  onClick={() => void openOrCreateBeginnerPackLesson(lesson)}
+                  className="rounded-lg border border-cyan-500/60 px-2 py-1 text-[11px] font-black text-cyan-100 transition hover:bg-cyan-500/10"
+                >
+                  {lessons.some((item) => item.slug === lesson.slug) ? "Edit lesson" : "Create + edit"}
+                </button>
+              </div>
+            </article>
           ))}
         </div>
       </GaHubAccordionSection>
@@ -695,8 +802,8 @@ export default function AdminGaLessonsPage() {
       <GaHubAccordionSection
         title={`Active Lessons (${activeLessons.length})`}
         eyebrow="Archive before delete"
-        defaultOpen={false}
-        helperText="Large lesson table is collapsed by default. Expand to manage publish, assign, and archive actions."
+        defaultOpen={true}
+        helperText="Manage publish, assign, and archive actions for active lessons."
       >
         <div className="overflow-x-auto">
           <table className="w-full min-w-180 text-left text-xs">
@@ -760,7 +867,7 @@ export default function AdminGaLessonsPage() {
       <GaHubAccordionSection
         title={`Archived Lessons (${archivedLessons.length})`}
         eyebrow="Delete only after archive and no usage"
-        defaultOpen={false}
+        defaultOpen={true}
         helperText="Archived lessons cannot be assigned. Restore to Draft or delete permanently if there is no usage history."
       >
         <div className="overflow-x-auto">
@@ -803,51 +910,125 @@ export default function AdminGaLessonsPage() {
       <GaHubAccordionSection
         title={`Lesson Assignments (${gaAssignments.length})`}
         eyebrow="Progress, support signals, and removal"
-        defaultOpen={false}
+        defaultOpen={true}
         helperText="Active Ga lesson assignments across all students."
       >
         <div className="overflow-x-auto">
-          <table className="w-full min-w-260 text-left text-xs">
+          <table className="w-full min-w-7xl text-left text-xs">
             <thead className="uppercase text-slate-500">
               <tr>
                 <th className="px-2 py-2">Student</th>
+                <th className="px-2 py-2">Year</th>
                 <th className="px-2 py-2">Lesson</th>
+                <th className="px-2 py-2">Assigned date</th>
                 <th className="px-2 py-2">Status</th>
-                <th className="px-2 py-2">Progress</th>
+                <th className="px-2 py-2">Progress %</th>
+                <th className="px-2 py-2">Attempts</th>
+                <th className="px-2 py-2">Started?</th>
+                <th className="px-2 py-2">Completed?</th>
                 <th className="px-2 py-2">Last activity</th>
                 <th className="px-2 py-2">Support signals</th>
-                <th className="px-2 py-2">Action</th>
+                <th className="px-2 py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
               {gaAssignments.length === 0 ? (
-                <tr><td colSpan={7} className="px-2 py-4 text-sm text-slate-400">No Ga lessons assigned yet.</td></tr>
-              ) : gaAssignments.map((assignment) => {
-                const weakSignalCount = assignment.weakWords.length + assignment.weakAreas.length;
-                return (
-                  <tr key={assignment.id} className="border-t border-slate-800 text-slate-300">
-                    <td className="px-2 py-2 font-bold text-white">{assignment.student.name}{assignment.student.yearGroup ? ` · ${assignment.student.yearGroup}` : ""}</td>
-                    <td className="px-2 py-2">{assignment.lessonTitle}</td>
-                    <td className="px-2 py-2">{assignment.status}</td>
-                    <td className="px-2 py-2">{assignment.score == null ? `Attempts ${assignment.attempts}` : `${assignment.score}% · Attempts ${assignment.attempts}`}</td>
-                    <td className="px-2 py-2">{new Date(assignment.updatedAt).toLocaleString()}</td>
-                    <td className="px-2 py-2">{weakSignalCount > 0 ? `${weakSignalCount} attention signal${weakSignalCount === 1 ? "" : "s"}` : "Stable"}</td>
-                    <td className="px-2 py-2">
+                <tr><td colSpan={12} className="px-2 py-4 text-sm text-slate-400">No Ga lessons assigned yet.</td></tr>
+              ) : gaAssignments.map((assignment) => (
+                <tr key={assignment.id} className={`border-t border-slate-800 text-slate-200 ${assignment.rowToneClass}`}>
+                  <td className="px-2 py-2 font-bold text-white">{assignment.student.name}</td>
+                  <td className="px-2 py-2">{assignment.student.yearGroup ?? "-"}</td>
+                  <td className="px-2 py-2">{assignment.lessonTitle}</td>
+                  <td className="px-2 py-2">{formatDateLabel(assignment.createdAt)}</td>
+                  <td className="px-2 py-2 font-bold">{assignment.displayStatus}</td>
+                  <td className="px-2 py-2">{assignment.completionPercent}%</td>
+                  <td className="px-2 py-2">{assignment.attempts}</td>
+                  <td className="px-2 py-2">{assignment.started ? "Yes" : "No"}</td>
+                  <td className="px-2 py-2">{assignment.completed ? "Yes" : "No"}</td>
+                  <td className="px-2 py-2">{formatDateLabel(assignment.updatedAt)}</td>
+                  <td className="px-2 py-2">{assignment.supportSignals ?? "-"}</td>
+                  <td className="px-2 py-2">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setProgressPanelAssignmentId((current) => current === assignment.id ? null : assignment.id)}
+                        className="rounded-lg border border-cyan-500/70 px-3 py-1 font-bold text-cyan-100"
+                      >
+                        View Progress
+                      </button>
                       <button
                         type="button"
                         disabled={assignmentBusyId === assignment.id}
                         onClick={() => void removeAssignment(assignment.id)}
                         className="rounded-lg border border-rose-600/70 px-3 py-1 font-bold text-rose-100 disabled:opacity-60"
                       >
-                        {assignmentBusyId === assignment.id ? "Removing..." : "Remove assignment"}
+                        {assignmentBusyId === assignment.id ? "Removing..." : "Remove Assignment"}
                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
+
+        {progressPanelAssignment ? (
+          <div className="mt-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200">Student lesson progress</p>
+                <h3 className="mt-1 text-lg font-black text-white">{progressPanelAssignment.student.name} · {progressPanelAssignment.lessonTitle}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProgressPanelAssignmentId(null)}
+                className="rounded-lg border border-slate-700 px-3 py-1 text-xs font-black text-slate-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-sm text-slate-300"><p className="text-xs uppercase text-slate-500">Lesson assigned</p><p className="mt-1 font-bold text-white">{progressPanelAssignment.lessonTitle}</p></div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-sm text-slate-300"><p className="text-xs uppercase text-slate-500">Date assigned</p><p className="mt-1 font-bold text-white">{formatDateLabel(progressPanelAssignment.createdAt)}</p></div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-sm text-slate-300"><p className="text-xs uppercase text-slate-500">Attempts</p><p className="mt-1 font-bold text-white">{progressPanelAssignment.attempts}</p></div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-sm text-slate-300"><p className="text-xs uppercase text-slate-500">Quiz score</p><p className="mt-1 font-bold text-white">{progressPanelAssignment.score == null ? "Not scored yet" : `${progressPanelAssignment.score}%`}</p></div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-sm text-slate-300"><p className="text-xs uppercase text-slate-500">Completion %</p><p className="mt-1 font-bold text-white">{progressPanelAssignment.completionPercent}%</p></div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/55 p-3 text-sm text-slate-300"><p className="text-xs uppercase text-slate-500">Last activity</p><p className="mt-1 font-bold text-white">{formatDateLabel(progressPanelAssignment.updatedAt)}</p></div>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-amber-100">Weak areas</p>
+                {progressPanelAssignment.weakAreas.length === 0 && progressPanelAssignment.weakWords.length === 0 ? (
+                  <p className="mt-2 text-sm text-amber-50/80">No active weak-area signal yet.</p>
+                ) : (
+                  <ul className="mt-2 space-y-1 text-sm text-amber-50/90">
+                    {progressPanelAssignment.weakAreas.map((area, index) => (
+                      <li key={`${area.weaknessType}-${index}`}>{area.weaknessType} ({area.accuracy}% accuracy)</li>
+                    ))}
+                    {progressPanelAssignment.weakWords.slice(0, 5).map((word) => (
+                      <li key={word}>Word focus: {word}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-100">Support recommendations</p>
+                {progressPanelAssignment.supportRecommendations.length === 0 ? (
+                  <p className="mt-2 text-sm text-cyan-50/85">No immediate support intervention required from current signals.</p>
+                ) : (
+                  <ul className="mt-2 space-y-1 text-sm text-cyan-50/95">
+                    {progressPanelAssignment.supportRecommendations.map((recommendation) => (
+                      <li key={recommendation}>{recommendation}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </GaHubAccordionSection>
 
       {assignmentDrawer ? (

@@ -25,6 +25,22 @@ export const GA_AUDIO_APPROVAL_STATUSES = [
   "REPLACED",
 ] as const;
 
+export const GA_AUDIO_QUALITY_STATUSES = [
+  "UNCHECKED",
+  "GOOD",
+  "TOO_QUIET",
+  "TOO_LOUD",
+  "NEEDS_CLEANUP",
+] as const;
+
+export const GA_AUDIO_ENHANCEMENT_STATUSES = [
+  "NOT_APPLIED",
+  "QUEUED",
+  "APPLIED",
+  "FAILED",
+  "BYPASSED",
+] as const;
+
 export const GA_VOICE_ACTIVITY_TYPES = [
   "LISTEN_REPEAT",
   "SOUND_DRILL",

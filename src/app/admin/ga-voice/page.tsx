@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import GaHubAccordionSection from "@/components/admin/GaHubAccordionSection";
 import { GA_CATEGORIES, GA_LEVELS } from "@/lib/ga-word-bank";
 import { GA_AUDIO_ENHANCEMENT_STATUSES, GA_AUDIO_QUALITY_STATUSES } from "@/lib/ga-voice";
@@ -755,6 +756,15 @@ export default function AdminGaVoicePage() {
         <MetricCard label="Needs native review" value={metrics.needsNativeReview} hint="Usable now, future speaker review later." />
       </section>
 
+      <section className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+        <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100">Word Bank Link</p>
+        <p className="mt-2 text-sm text-cyan-50">Ga Voice targets only come from approved words in the Ga Word Bank. Add or approve words there first, then return to this studio to record.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link href="/admin/ga-word-bank" className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-white">Open Ga Word Bank</Link>
+          <Link href="/admin/ga-lessons" className="rounded-xl border border-cyan-400/60 px-4 py-2 text-sm font-black text-cyan-100">Open Ga Lessons</Link>
+        </div>
+      </section>
+
       <GaHubAccordionSection title="Ga Voice Recording Studio" eyebrow="Record, review, and save to selected target" defaultOpen={true}>
         <div id="ga-voice-studio" />
         {replacementAsset ? (
@@ -827,6 +837,12 @@ export default function AdminGaVoicePage() {
           </div>
           <p className="mt-2 text-xs text-slate-400">{levelWarning === "Too quiet" ? "Input is quiet. Move closer to the mic." : levelWarning === "Too loud" ? "Input may clip. Lower your voice or move back." : "Input level looks healthy."}</p>
         </div>
+
+        {levelWarning !== "Good level" ? (
+          <p className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-100">
+            Noise warning: {levelWarning === "Too quiet" ? "recording level is low and may be unclear." : "recording is too loud and may clip."}
+          </p>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap gap-2">
           {!isRecording ? (
@@ -975,8 +991,8 @@ export default function AdminGaVoicePage() {
       <GaHubAccordionSection
         title="Pronunciation References"
         eyebrow="Reference only, no cloning"
-        defaultOpen={false}
-        helperText="Collapsed by default. Expand to add or review pronunciation references."
+        defaultOpen={true}
+        helperText="Add or review pronunciation references without cloning external audio assets."
       >
         <div className="grid gap-3 md:grid-cols-3">
           <label className="text-xs font-bold uppercase text-slate-400">Reference type<input value={referenceForm.referenceType} onChange={(event) => setReferenceForm((form) => ({ ...form, referenceType: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
@@ -1010,8 +1026,8 @@ export default function AdminGaVoicePage() {
       <GaHubAccordionSection
         title="Song Manager"
         eyebrow="Draft, check words, approve"
-        defaultOpen={false}
-        helperText="Collapsed by default. Expand to create, review, and approve Ga songs."
+        defaultOpen={true}
+        helperText="Create, review, and approve Ga songs linked to approved words."
       >
         <div className="grid gap-3 md:grid-cols-3">
           <label className="text-xs font-bold uppercase text-slate-400">Song title<input value={songForm.title} onChange={(event) => setSongForm((form) => ({ ...form, title: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
@@ -1062,8 +1078,8 @@ export default function AdminGaVoicePage() {
       <GaHubAccordionSection
         title="Student Recording Review"
         eyebrow="Supportive feedback only"
-        defaultOpen={false}
-        helperText="Collapsed by default. Expand to review student recording submissions."
+        defaultOpen={true}
+        helperText="Review student recording submissions and provide supportive next steps."
       >
         <div className="overflow-x-auto">
           <table className="w-full min-w-220 text-left text-xs">

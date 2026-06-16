@@ -196,8 +196,8 @@ export default function AdminGaCategoriesPage() {
       <GaHubAccordionSection
         title={`Categories (${items.length})`}
         eyebrow="Word Bank + Lessons coverage"
-        defaultOpen={false}
-        helperText="Coverage table is collapsed by default for faster page scan."
+        defaultOpen={true}
+        helperText="Coverage table shows category slugs with live word/lesson counts."
       >
         <div className="overflow-x-auto">
           <table className="w-full min-w-260 text-left text-xs">

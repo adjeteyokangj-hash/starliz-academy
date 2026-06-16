@@ -54,13 +54,17 @@ export async function GET(request: Request) {
   const yearGroupFilter = searchParams.get("yearGroup")?.trim() ?? "";
   const examBoardFilter = normalizeExamBoard(searchParams.get("examBoard")?.trim() ?? null) ?? "";
   const queryFilter = searchParams.get("query")?.trim().toLowerCase() ?? "";
+  const requestedLimit = Number(searchParams.get("limit") ?? "100");
+  const takeLimit = Number.isFinite(requestedLimit)
+    ? Math.min(1000, Math.max(1, Math.trunc(requestedLimit)))
+    : 100;
 
   const assignments = await prisma.assignment.findMany({
     where: {
       status: { not: "archived" },
     },
     orderBy: { updatedAt: "desc" },
-    take: 100,
+    take: takeLimit,
     include: {
       student: { select: { id: true, name: true, yearGroup: true, parent: { select: { email: true } } } },
       content: { select: { id: true, contentType: true, topic: true, skillFocus: true, level: true, metadataJson: true } },
