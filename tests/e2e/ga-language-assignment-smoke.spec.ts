@@ -238,7 +238,7 @@ test.describe("Focused smoke: dashboard language card + admin ga assign row", ()
     await expect(page).toHaveURL(/\/ga-learning-hub/);
   });
 
-  test("admin ga lessons row assign: selector, materialisation and duplicate-safe handling", async ({ page, context }) => {
+  test("admin ga lessons row assign: drawer open, student selection, materialisation and duplicate-safe handling", async ({ page, context }) => {
     await prisma.assignment.deleteMany({ where: { studentId: CHILD_ID } });
     await prisma.aIContentCache.deleteMany({ where: { skillFocus: `ga_lesson:${lessonId}` } });
 
@@ -250,6 +250,8 @@ test.describe("Focused smoke: dashboard language card + admin ga assign row", ()
 
     await page.goto("/admin/ga-lessons", { waitUntil: "domcontentloaded" });
 
+    // Wait for the students API to resolve before any interaction — the Assign button
+    // is disabled while students === [] and only becomes enabled once this response settles.
     const studentsResponse = await page.waitForResponse((response) => (
       response.url().includes("/api/admin/students?context=assignment")
       && response.request().method() === "GET"
@@ -257,30 +259,76 @@ test.describe("Focused smoke: dashboard language card + admin ga assign row", ()
     const studentsPayload = await studentsResponse.json() as { students?: Array<{ id: string }> };
     expect(studentsPayload.students?.some((student) => student.id === CHILD_ID)).toBeTruthy();
 
-    const studentSelect = page.locator(`select:has(option:has-text("${CHILD_NAME}"))`).first();
-    await expect(studentSelect).toBeVisible();
-    await studentSelect.selectOption(CHILD_ID);
-
-    const lessonRow = page.locator("tr", { hasText: LESSON_TITLE }).first();
+    // Locate the exact lesson row by title inside main content only.
+    const lessonRow = page.locator("main").locator("tr", { hasText: LESSON_TITLE }).first();
     await expect(lessonRow).toBeVisible();
 
+    // Wait until the Assign button within this row is enabled — it is disabled while
+    // `students.length === 0` (guard in ga-lessons/page.tsx).
     const assignButton = lessonRow.getByRole("button", { name: /^Assign$/ });
-    await expect(assignButton).toBeEnabled();
+    await expect(assignButton).toBeEnabled({ timeout: 5000 });
+
+    // Open the assign drawer.
     await assignButton.click();
 
-    await expect(page.getByText(`Assigned \"${LESSON_TITLE}\" to ${CHILD_NAME}.`)).toBeVisible();
+    // Confirm the drawer is open using correct text anchors.
+    // The drawer search label reads "Search students" — NOT "Select students".
+    await expect(page.getByText("Assign Ga lesson")).toBeVisible();
+    await expect(page.getByText("Search students")).toBeVisible();
 
-    const createdContent = await prisma.aIContentCache.findFirst({
-      where: { skillFocus: `ga_lesson:${lessonId}` },
+    // Confirm the student table with checkboxes is rendered.
+    const studentCheckbox = page.getByRole("checkbox", { name: new RegExp(`Select ${CHILD_NAME}`, "i") });
+    await expect(studentCheckbox).toBeVisible();
+
+    // Screenshot the open drawer — taken while the drawer is confirmed open.
+    await page.screenshot({
+      path: "tests/fixtures/smoke-ga-lessons-assign-drawer.png",
+      fullPage: false,
+    });
+
+    // Select the smoke-test student.
+    await studentCheckbox.check();
+    await expect(page.getByText("1 student", { exact: true })).toBeVisible();
+
+    // Submit — capture the assignment-content API response to get the stable contentId.
+    const submitButton = page.getByRole("button", { name: /Assign to 1 student/ });
+    await expect(submitButton).toBeEnabled();
+
+    const [materialiseResponse] = await Promise.all([
+      page.waitForResponse(
+        (resp) => resp.url().includes("/assignment-content") && resp.request().method() === "POST",
+        { timeout: 10000 },
+      ),
+      submitButton.click(),
+    ]);
+    const materialisePayload = await materialiseResponse.json() as { contentId?: string };
+    expect(materialisePayload.contentId).toBeTruthy();
+    const contentId = materialisePayload.contentId as string;
+
+    // Confirm success message.
+    await expect(page.getByText(new RegExp(`Assigned.*${LESSON_TITLE}.*1 student`, "i"))).toBeVisible({ timeout: 10000 });
+
+    // Verify the content record was materialised with the correct type, using the
+    // ID returned directly by the API (avoids any skillFocus string-matching ambiguity).
+    const createdContent = await prisma.aIContentCache.findUnique({
+      where: { id: contentId },
       select: { id: true, contentType: true },
     });
     expect(createdContent?.contentType).toBe("ga");
 
+    // Re-open the drawer and try to assign again — should report duplicate.
+    await expect(assignButton).toBeEnabled({ timeout: 8000 });
     await assignButton.click();
-    await expect(page.getByText(`This lesson is already assigned to ${CHILD_NAME}.`)).toBeVisible();
+    await expect(page.getByText("Assign Ga lesson")).toBeVisible();
+    const checkboxAgain = page.getByRole("checkbox", { name: new RegExp(`Select ${CHILD_NAME}`, "i") });
+    await checkboxAgain.check();
+    const submitAgain = page.getByRole("button", { name: /Assign to 1 student/ });
+    await submitAgain.click();
+    await expect(page.getByText(/already assigned/i)).toBeVisible({ timeout: 10000 });
 
+    // Confirm no duplicate assignment row was created.
     const duplicateAssignments = await prisma.assignment.count({
-      where: { studentId: CHILD_ID, contentId: createdContent?.id ?? "__none__" },
+      where: { studentId: CHILD_ID, contentId },
     });
     expect(duplicateAssignments).toBe(1);
   });
