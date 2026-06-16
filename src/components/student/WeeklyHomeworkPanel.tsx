@@ -163,7 +163,7 @@ export default function WeeklyHomeworkPanel() {
 
   if (loading) {
     return (
-      <section id="weekly-homework-panel" className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
+      <section id="weekly-homework-batch" className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Weekly Homework</p>
         <div className="mt-3 space-y-3">
           <div className="h-4 w-48 animate-pulse rounded bg-violet-200" />
@@ -175,7 +175,7 @@ export default function WeeklyHomeworkPanel() {
 
   if (error) {
     return (
-      <section id="weekly-homework-panel" className="mb-6 rounded-3xl border border-rose-200 bg-rose-50/70 p-5">
+      <section id="weekly-homework-batch" className="mb-6 rounded-3xl border border-rose-200 bg-rose-50/70 p-5">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-700">Weekly Homework</p>
         <p className="mt-2 text-sm text-rose-700">{error}</p>
         <button
@@ -191,10 +191,10 @@ export default function WeeklyHomeworkPanel() {
 
   if (!batch) {
     return (
-      <section id="weekly-homework-panel" className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
+      <section id="weekly-homework-batch" className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Weekly Homework</p>
         <div className="mt-3 rounded-2xl border border-violet-200 bg-white/70 p-4 text-sm text-violet-900">
-          No homework set for this week. Check back soon.
+          No weekly homework ready yet.
         </div>
       </section>
     );
@@ -224,7 +224,7 @@ export default function WeeklyHomeworkPanel() {
   const canSubmit = isSubmittable(batch, localAnswers) && !submitting;
 
   return (
-    <section id="weekly-homework-panel" className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
+    <section id="weekly-homework-batch" className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Weekly Homework</p>
         <span

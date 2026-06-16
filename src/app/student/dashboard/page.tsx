@@ -475,6 +475,7 @@ export default function StudentDashboardPage() {
   const [bossLaunching, setBossLaunching] = useState(false);
   const [issuingCertificate, setIssuingCertificate] = useState(false);
   const [deferredPanelsLoadedFor, setDeferredPanelsLoadedFor] = useState<string | null>(null);
+  const [panelActionMessage, setPanelActionMessage] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -818,6 +819,39 @@ export default function StudentDashboardPage() {
     router.push("/shop");
   }
 
+  function openDetailsPanel(panelId: string): boolean {
+    const panel = document.getElementById(panelId);
+    if (!(panel instanceof HTMLDetailsElement)) return false;
+    panel.open = true;
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    return true;
+  }
+
+  function openCatchUpPanel() {
+    setPanelActionMessage(null);
+    document.getElementById("smart-catch-up-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function openWeeklyHomeworkPanel() {
+    setPanelActionMessage(null);
+    if (!openDetailsPanel("weekly-homework-panel")) {
+      setPanelActionMessage("No weekly homework ready yet.");
+    }
+  }
+
+  function openCertificatePanel() {
+    if (openDetailsPanel("certificate-progress-panel")) {
+      setPanelActionMessage(null);
+      return;
+    }
+    setPanelActionMessage("Certificate status is not ready yet.");
+  }
+
+  function openLearningMapPanel() {
+    setPanelActionMessage(null);
+    openDetailsPanel("learning-map-panel");
+  }
+
   async function handleStudentCatchUpTaskAction(taskId: string, action: "start_task" | "complete_task" | "skip_task") {
     setAcademicTaskPendingId(taskId);
     setAcademicError("");
@@ -995,6 +1029,7 @@ export default function StudentDashboardPage() {
   });
   const catchUpPendingCount = (academicIntelligence?.catchUpTasks ?? []).filter((task) => task.status !== "completed" && task.status !== "waived" && task.status !== "skipped").length;
   const homeworkPendingCount = (academicIntelligence?.homeworkTasks ?? []).filter((task) => task.status !== "completed" && task.status !== "waived").length;
+  const dashboardHomeworkTasks = (academicIntelligence?.homeworkTasks ?? []).slice(0, 4);
   const activeAssignmentCount = visibleAssignments.length;
   const certificateStatus = certificateEligibility?.summary?.status ?? null;
   const openCertificateByDefault = certificateStatus === "eligible" || certificateStatus === "issued";
@@ -1178,11 +1213,13 @@ export default function StudentDashboardPage() {
                   <button
                     type="button"
                     onClick={() => {
+                      // When there is a priority focus assignment, launch it directly (one-click path).
+                      // Otherwise fall back to scrolling to the catch-up panel.
                       if (focusAssignment) {
                         startAssignment(focusAssignment);
                         return;
                       }
-                      document.getElementById("smart-catch-up-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      openCatchUpPanel();
                     }}
                     className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
                   >
@@ -1190,40 +1227,45 @@ export default function StudentDashboardPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      document.getElementById("weekly-homework-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }}
+                    onClick={openWeeklyHomeworkPanel}
                     className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
                   >
                     Weekly homework
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      document.getElementById("certificate-progress-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }}
+                    onClick={openCertificatePanel}
                     className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
                   >
                     Certificate status
                   </button>
                 </div>
               </div>
+              {panelActionMessage ? (
+                <p className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                  {panelActionMessage}
+                </p>
+              ) : null}
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                   <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Assigned now</p>
                   <p className="mt-1 text-lg font-black text-slate-900">{activeAssignmentCount}</p>
+                  <p className="mt-1 text-xs text-slate-500">Your next assigned lessons and activities.</p>
                 </div>
                 <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2">
                   <p className="text-xs uppercase tracking-[0.08em] text-cyan-700">Catch-up pending</p>
                   <p className="mt-1 text-lg font-black text-cyan-900">{catchUpPendingCount}</p>
+                  <p className="mt-1 text-xs text-cyan-800">Practice for topics you need more help with.</p>
                 </div>
                 <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
                   <p className="text-xs uppercase tracking-[0.08em] text-violet-700">Homework pending</p>
                   <p className="mt-1 text-lg font-black text-violet-900">{homeworkPendingCount}</p>
+                  <p className="mt-1 text-xs text-violet-800">Homework from this week&apos;s lessons.</p>
                 </div>
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
                   <p className="text-xs uppercase tracking-[0.08em] text-amber-700">Certificate</p>
                   <p className="mt-1 text-lg font-black text-amber-900">{certificateStatus?.replaceAll("_", " ") ?? "not ready"}</p>
+                  <p className="mt-1 text-xs text-amber-800">Track when your learning evidence is ready.</p>
                 </div>
               </div>
             </section>
@@ -1328,46 +1370,48 @@ export default function StudentDashboardPage() {
               ) : (
                 <div className="mt-3 space-y-4">
                   <div className="grid gap-3 md:grid-cols-4">
-                    <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
-                      <p className="text-xs text-cyan-700">Topics covered</p>
-                      <p className="text-lg font-black text-cyan-900">{academicIntelligence.summary.coveredCount}/{academicIntelligence.summary.totalTopics}</p>
+                    <div className="rounded-2xl border border-cyan-200 bg-white p-4 md:col-span-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-700">What to practise next</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-800">
+                            {academicIntelligence.summary.coveredCount}/{academicIntelligence.summary.totalTopics} topics covered · average score {academicIntelligence.summary.averageScore}%
+                          </p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            {academicIntelligence.summary.needsCatchUpCount} catch-up topic{academicIntelligence.summary.needsCatchUpCount === 1 ? "" : "s"} and {academicIntelligence.summary.needsRevisionCount} revision topic{academicIntelligence.summary.needsRevisionCount === 1 ? "" : "s"} still need attention.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={openLearningMapPanel}
+                          className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-800 hover:bg-cyan-100"
+                        >
+                          View learning map
+                        </button>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(academicIntelligence.masteryExpansion?.priorityTopics ?? []).slice(0, 3).map((topic) => (
+                          <span key={topic} className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-800">
+                            {topic}
+                          </span>
+                        ))}
+                        {!(academicIntelligence.masteryExpansion?.priorityTopics ?? []).length ? (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                            No priority topics right now
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
                       <p className="text-xs text-cyan-700">Needs catch-up</p>
                       <p className="text-lg font-black text-cyan-900">{academicIntelligence.summary.needsCatchUpCount}</p>
-                    </div>
-                    <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
-                      <p className="text-xs text-cyan-700">Needs revision</p>
-                      <p className="text-lg font-black text-cyan-900">{academicIntelligence.summary.needsRevisionCount}</p>
-                    </div>
-                    <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
-                      <p className="text-xs text-cyan-700">Average score</p>
-                      <p className="text-lg font-black text-cyan-900">{academicIntelligence.summary.averageScore}%</p>
+                      <p className="mt-1 text-xs text-slate-600">Targeted support before moving ahead.</p>
                     </div>
                   </div>
 
-                  {academicIntelligence.masteryExpansion ? (
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
-                        <p className="text-xs text-cyan-700">Mastered topics</p>
-                        <p className="text-lg font-black text-cyan-900">{academicIntelligence.masteryExpansion.masteredTopics}</p>
-                      </div>
-                      <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
-                        <p className="text-xs text-cyan-700">Nearly secure</p>
-                        <p className="text-lg font-black text-cyan-900">{academicIntelligence.masteryExpansion.nearlySecureTopics}</p>
-                      </div>
-                      <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
-                        <p className="text-xs text-cyan-700">Priority topics</p>
-                        <p className="text-sm font-black text-cyan-900">
-                          {academicIntelligence.masteryExpansion.priorityTopics.slice(0, 3).join(", ") || "No priority topics"}
-                        </p>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <details className="rounded-2xl border border-cyan-200 bg-white p-4">
+                  <details id="learning-map-panel" className="rounded-2xl border border-cyan-200 bg-white p-4">
                     <summary className="cursor-pointer list-none text-sm font-bold text-cyan-900">
-                      Open full learning map and task planner
+                      View learning map
                     </summary>
                     <div className="mt-3 space-y-4">
                       <CurriculumMasteryMap
@@ -1546,41 +1590,6 @@ export default function StudentDashboardPage() {
                     ) : null}
                   </div>
 
-                  {academicIntelligence.homeworkTasks && academicIntelligence.homeworkTasks.length > 0 ? (
-                    <div className="rounded-2xl border border-indigo-200 bg-white p-4">
-                      <p className="text-sm font-bold text-slate-900">School Week Homework</p>
-                      <div className="mt-2 space-y-2">
-                        {academicIntelligence.homeworkTasks.slice(0, 4).map((task) => (
-                          <div key={task.taskId} className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-slate-700">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="font-semibold text-indigo-900">{task.title}</p>
-                              <span className="rounded-full bg-indigo-100 px-2 py-0.5 font-bold text-indigo-700">{task.status.replaceAll("_", " ")}</span>
-                            </div>
-                            <p className="mt-1">{task.subject ?? "General"}{task.topic ? ` - ${task.topic}` : ""} • {task.estimatedMinutes}m</p>
-                            <div className="mt-2 flex gap-2">
-                              <button
-                                type="button"
-                                disabled={homeworkPendingId === task.taskId}
-                                onClick={() => void handleStudentHomeworkTaskAction(task.taskId, "start_homework")}
-                                className="rounded-lg bg-indigo-600 px-2 py-1 font-bold text-white disabled:opacity-60"
-                              >
-                                Start
-                              </button>
-                              <button
-                                type="button"
-                                disabled={homeworkPendingId === task.taskId}
-                                onClick={() => void handleStudentHomeworkTaskAction(task.taskId, "complete_homework")}
-                                className="rounded-lg bg-emerald-600 px-2 py-1 font-bold text-white disabled:opacity-60"
-                              >
-                                Complete
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
                       <div className="rounded-2xl border border-slate-200 bg-white p-4">
                         <p className="text-sm font-bold text-slate-900">School Week Report</p>
                         <p className="mt-1 text-xs text-slate-600">
@@ -1599,8 +1608,70 @@ export default function StudentDashboardPage() {
               <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.18em] text-violet-700">
                 Weekly Homework Details (expand)
               </summary>
-              <div className="mt-3">
-                <WeeklyHomeworkPanel />
+              <div className="mt-3 space-y-4">
+                <div className="rounded-2xl border border-violet-200 bg-white/80 p-4">
+                  <p className="text-sm font-bold text-slate-900">This week&apos;s homework</p>
+                  {dashboardHomeworkTasks.length > 0 ? (
+                    <div className="mt-3 space-y-3">
+                      {dashboardHomeworkTasks.map((task) => {
+                        const dueDate = task.dueDate ? new Date(task.dueDate) : null;
+                        const dueLabel = task.status === "overdue"
+                          ? "Overdue"
+                          : dueDate && !Number.isNaN(dueDate.getTime())
+                            ? `Due ${dueDate.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+                            : "No due date";
+                        const canStart = task.status === "assigned" || task.status === "overdue";
+                        const canComplete = task.status === "in_progress";
+
+                        return (
+                          <div key={task.taskId} className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 text-sm text-slate-700">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="font-bold text-slate-900">{task.title}</p>
+                                <p className="mt-1 text-xs text-slate-600">
+                                  {task.subject ?? "General"}
+                                  {task.topic ? ` · ${task.topic}` : ""}
+                                  {` · ${task.estimatedMinutes} min`}
+                                </p>
+                              </div>
+                              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${task.status === "overdue" ? "bg-rose-100 text-rose-700" : "bg-violet-100 text-violet-700"}`}>
+                                {dueLabel}
+                              </span>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {canStart ? (
+                                <button
+                                  type="button"
+                                  disabled={homeworkPendingId === task.taskId}
+                                  onClick={() => void handleStudentHomeworkTaskAction(task.taskId, "start_homework")}
+                                  className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+                                >
+                                  Start
+                                </button>
+                              ) : null}
+                              {canComplete ? (
+                                <button
+                                  type="button"
+                                  disabled={homeworkPendingId === task.taskId}
+                                  onClick={() => void handleStudentHomeworkTaskAction(task.taskId, "complete_homework")}
+                                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+                                >
+                                  Complete
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-3 rounded-xl border border-dashed border-violet-200 bg-violet-50 px-3 py-3 text-sm text-violet-900">
+                      No weekly homework ready yet.
+                    </p>
+                  )}
+                </div>
+
+                {weeklyHomeworkGate?.homework ? <WeeklyHomeworkPanel /> : null}
               </div>
             </details>
 

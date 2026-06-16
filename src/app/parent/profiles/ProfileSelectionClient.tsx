@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import { resolveParentPinGateState } from "@/lib/parent-pin-gate";
@@ -160,10 +160,12 @@ export default function ProfileSelectionClient() {
   const [childPinModal, setChildPinModal] = useState<{ childId: string; childName: string } | null>(null);
   const [childPin, setChildPin] = useState("");
   const [childPinError, setChildPinError] = useState<string | null>(null);
+  const [childSwitchError, setChildSwitchError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [pendingProfileId, setPendingProfileId] = useState<string | "parent" | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const childSwitchInFlightRef = useRef(false);
 
   useEffect(() => {
     void (async () => {
@@ -280,14 +282,16 @@ export default function ProfileSelectionClient() {
   }
 
   async function continueAsChild(childId: string, pin?: string) {
-    if (submitting) return;
+    if (submitting || childSwitchInFlightRef.current) return;
     if (pin && !/^\d{4}$/.test(pin)) {
       setChildPinError("Enter a 4-digit PIN.");
       return;
     }
 
+    childSwitchInFlightRef.current = true;
     setSubmitting(true);
     setPendingProfileId(childId);
+    setChildSwitchError(null);
     setChildPinError(null);
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
@@ -303,21 +307,35 @@ export default function ProfileSelectionClient() {
         signal: controller.signal,
       });
 
+      const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
       if (!response.ok) {
-        const failure = (await response.json().catch(() => null)) as { error?: string } | null;
-        setChildPinError(failure?.error ?? "Could not open child profile.");
+        const message = payload?.error ?? "Could not open child profile.";
+        setChildPinError(message);
+        setChildSwitchError(message);
+        return;
+      }
+
+      if (!payload?.ok) {
+        const message = payload?.error ?? "Child switch did not complete. Please try again.";
+        setChildPinError(message);
+        setChildSwitchError(message);
         return;
       }
 
       router.replace("/student/dashboard");
     } catch (error: unknown) {
       if (isAbortError(error)) {
-        setChildPinError("Verification timed out. Please try again.");
+        const message = "Switching profile timed out. Please try again.";
+        setChildPinError(message);
+        setChildSwitchError(message);
         return;
       }
-      setChildPinError("Could not open child profile.");
+      const message = "Could not open child profile.";
+      setChildPinError(message);
+      setChildSwitchError(message);
     } finally {
       window.clearTimeout(timeoutId);
+      childSwitchInFlightRef.current = false;
       setSubmitting(false);
       setPendingProfileId(null);
     }
@@ -428,6 +446,12 @@ export default function ProfileSelectionClient() {
           </p>
         ) : null}
 
+        {childSwitchError ? (
+          <p role="alert" className="mt-4 rounded-2xl border border-rose-300/35 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-100">
+            {childSwitchError}
+          </p>
+        ) : null}
+
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <button
             type="button"
@@ -482,6 +506,7 @@ export default function ProfileSelectionClient() {
                 setPendingProfileId(child.id);
                 setChildPin("");
                 setChildPinError(null);
+                setChildSwitchError(null);
                 if (child.pinEnabled) {
                   setChildPinModal({ childId: child.id, childName: child.name });
                   return;

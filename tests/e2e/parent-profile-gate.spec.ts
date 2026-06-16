@@ -300,8 +300,7 @@ test.describe("Parent Profile Gate", () => {
     await childCard.click();
     const childEntryResponse = await childEntryResponsePromise;
     expect(childEntryResponse.ok()).toBeTruthy();
-    await page.goto("/student/dashboard");
-    await expect(page).toHaveURL(/\/(student\/dashboard|dashboard)/);
+    await expect(page).toHaveURL(/\/student\/dashboard/);
   });
 
   test("parent route stays on dashboard after session lock reset", async ({ page }) => {
