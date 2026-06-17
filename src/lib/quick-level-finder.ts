@@ -236,7 +236,11 @@ export function parseQuickLevelFinderSession(raw: string | null | undefined): Qu
   const cursorRaw = typeof value.cursor === "number" && Number.isFinite(value.cursor) ? Math.floor(value.cursor) : 0;
   const cursor = Math.max(0, Math.min(questions.length, cursorRaw));
 
-  if (!sessionId || !status || !questions.length || !selectedSubjects.length) return null;
+  // For completed sessions, only require sessionId and status
+  // For in-progress sessions, also require questions and selectedSubjects
+  const isCompleted = status === "completed";
+  if (!sessionId || !status) return null;
+  if (!isCompleted && (!questions.length || !selectedSubjects.length)) return null;
 
   return {
     sessionId,
