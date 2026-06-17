@@ -53,6 +53,7 @@ import {
   shouldReloadSessionPlan,
 } from "@/lib/spelling-session-runtime";
 import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
+import { shouldEnableStudentVoiceWorkflow } from "@/lib/lesson-voice-help";
 
 const LEVEL_LABELS: Record<number, string> = {
   1: "⭐ Alphabet foundation",
@@ -832,7 +833,7 @@ export default function SpellingQuestPage() {
     setFeedback("");
     setTutorFeedback("");
     setTutorEmotion("thinking");
-    setLessonStage("ASSESS_SPEECH");
+    setLessonStage("TAP_SELECT");
     setBuildSelection([]);
     setAlphaSelection([]);
     setQuestionStartedAt(getTimestampNow());
@@ -1053,7 +1054,8 @@ export default function SpellingQuestPage() {
   const tutorPersonality = (profile?.settings?.voiceStyle ?? "default") as TutorPersonality;
   const isLetterConversation = Boolean(targetWordText && isAlphabetWord(targetWordText) && displayMode === "listen_type");
   const isWordConversation = displayMode === "build_word";
-  const usesTutorConversation = isLetterConversation || isWordConversation;
+  const voiceHelpEnabled = shouldEnableStudentVoiceWorkflow(profile?.settings.voiceEnabled === true);
+  const usesTutorConversation = voiceHelpEnabled && (isLetterConversation || isWordConversation);
   const letterChoiceOptions = isLetterConversation && targetWordText ? generateLetterOptions([targetWordText]) : [];
   const modePromptTitle = (() => {
     if (isWordConversation) return "What word do you see on the screen?";
@@ -1331,10 +1333,10 @@ export default function SpellingQuestPage() {
       } else {
         speakTutorLine("What letter do you see on the screen?", "listening");
       }
-      setLessonStage("ASSESS_SPEECH");
+      setLessonStage(voiceHelpEnabled ? "ASSESS_SPEECH" : "TAP_SELECT");
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [isWordConversation, speakTutorLine, targetWord, usesTutorConversation]);
+  }, [isWordConversation, speakTutorLine, targetWord, usesTutorConversation, voiceHelpEnabled]);
 
   useEffect(() => {
     if (!targetWord || !usesTutorConversation) return;
@@ -1566,7 +1568,7 @@ export default function SpellingQuestPage() {
         setTutorEmotion("supporting");
         void speakWithContext(applyTutorPersonality(closeLine, tutorPersonality), "spelling_instruction");
         // Stay in ASSESS_SPEECH for clean retry — big word still shown
-        setLessonStage("ASSESS_SPEECH");
+        setLessonStage(voiceHelpEnabled ? "ASSESS_SPEECH" : "TAP_SELECT");
         return;
       }
 
@@ -1581,7 +1583,7 @@ export default function SpellingQuestPage() {
       const fullSupportLine = `${supportLine}${extraSupport}`;
       setFeedback(fullSupportLine);
       void speakWithContext(applyTutorPersonality(fullSupportLine, tutorPersonality), "spelling_instruction");
-      setLessonStage("TEACH_RETRY");
+      setLessonStage(voiceHelpEnabled ? "TEACH_RETRY" : "TAP_SELECT");
       return;
     }
 
@@ -1618,6 +1620,7 @@ export default function SpellingQuestPage() {
   }
 
   function startListening(): void {
+    if (!voiceHelpEnabled) return;
     if (typeof window === "undefined") return;
     beginStudentTurn("spelling_mic_start");
     const AnyWindow = window as unknown as {
@@ -2944,7 +2947,7 @@ export default function SpellingQuestPage() {
             </div>
           ) : null}
 
-          {(requireSpeech && !speechPassed) || (usesTutorConversation && (lessonStage === "ASSESS_SPEECH" || lessonStage === "TEACH_RETRY")) ? (
+          {voiceHelpEnabled && ((requireSpeech && !speechPassed) || (usesTutorConversation && (lessonStage === "ASSESS_SPEECH" || lessonStage === "TEACH_RETRY"))) ? (
             <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center">
               <p className="text-sm font-semibold text-emerald-800">
                 {isLetterConversation ? "What letter do you see on the screen?" : "What word do you see on the screen?"}
@@ -3190,7 +3193,7 @@ export default function SpellingQuestPage() {
             >
               Check Answer
             </Button>
-            <Button className="w-full" variant="secondary" onClick={repeatQuestion}>Repeat Question</Button>
+            {voiceHelpEnabled ? <Button className="w-full" variant="secondary" onClick={repeatQuestion}>Repeat Question</Button> : null}
             {targetWord ? <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)}>Coach</Button> : null}
             <Button className="w-full" variant="secondary" onClick={makeItEasier} disabled={helpLocked}>Make it easier</Button>
             <Button className="w-full" variant="secondary" onClick={skipWord}>Skip</Button>
@@ -3211,6 +3214,7 @@ export default function SpellingQuestPage() {
               keyStageLevel={profile?.keyStageLevel}
               skillFocus={targetWord.patterns[0] ?? undefined}
               confidenceScore={0.5}
+              voiceHelpEnabled={voiceHelpEnabled}
               onHintUsed={(newCount) => setHintLevel(newCount)}
               onClose={() => setCoachOpen(false)}
             />
@@ -3218,7 +3222,7 @@ export default function SpellingQuestPage() {
 
           {tutorFeedback ? (
             <div className="mt-3">
-              <AITutorFeedback text={tutorFeedback} />
+              <AITutorFeedback text={tutorFeedback} enabled={voiceHelpEnabled} />
             </div>
           ) : null}
 

@@ -47,6 +47,7 @@ export type SmartCoachPanelProps = {
   attemptCount?: number;
   /** 0–1 from coaching memory. Defaults to 0.5. */
   confidenceScore?: number;
+  voiceHelpEnabled?: boolean;
   /**
    * Time the student spent on the question before opening the coach, in ms.
    * Used for emotional state detection and wait-phase skip logic.
@@ -166,6 +167,7 @@ export default function SmartCoachPanel({
   coachContext,
   attemptCount = 0,
   confidenceScore = 0.5,
+  voiceHelpEnabled = true,
   responseTimeMs,
   onHintUsed,
   onClose,
@@ -389,6 +391,7 @@ export default function SmartCoachPanel({
   }
 
   async function speakWordHelp(message: string) {
+    if (!voiceHelpEnabled) return;
     await speak(message);
   }
 
@@ -522,6 +525,7 @@ export default function SmartCoachPanel({
         <div className="mt-3">
           <CoachWordHelp
             help={wordHelp}
+            voiceHelpEnabled={voiceHelpEnabled}
             onClose={onClose}
             onSpeakWord={() => void speakWordHelp(wordHelp.word ? `Let’s say the word ${wordHelp.word}.` : wordHelp.coachMessage)}
             onSpeakDefinition={() => void speakWordHelp(wordHelp.definitionChild)}

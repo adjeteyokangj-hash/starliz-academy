@@ -2605,7 +2605,7 @@ export default function DailyLessonGamePage() {
               {voiceUnavailable}
             </div>
           ) : null}
-          {voiceStatus ? (
+          {voiceEnabled && voiceStatus ? (
             <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-800">
               {voiceStatus}
             </div>

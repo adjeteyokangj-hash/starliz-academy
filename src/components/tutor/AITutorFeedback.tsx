@@ -2,7 +2,9 @@
 
 import { speakTutorFeedback } from "@/lib/tutor-voice";
 
-export default function AITutorFeedback({ text }: { text: string }) {
+export default function AITutorFeedback({ text, enabled = true }: { text: string; enabled?: boolean }) {
+  if (!enabled) return null;
+
   return (
     <button
       onClick={() => speakTutorFeedback(text)}

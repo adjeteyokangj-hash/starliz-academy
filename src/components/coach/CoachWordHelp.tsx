@@ -4,6 +4,7 @@ import CoachWordCard from "@/components/coach/CoachWordCard";
 
 type Props = {
   help: CoachWordHelpResponse;
+  voiceHelpEnabled?: boolean;
   onClose: () => void;
   onSpeakWord: () => void;
   onSpeakDefinition: () => void;
@@ -12,7 +13,7 @@ type Props = {
   onNextTry: () => void;
 };
 
-export default function CoachWordHelp({ help, onClose, onSpeakWord, onSpeakDefinition, onSpeakExample, onRepeatExplanation, onNextTry }: Props) {
+export default function CoachWordHelp({ help, voiceHelpEnabled = true, onClose, onSpeakWord, onSpeakDefinition, onSpeakExample, onRepeatExplanation, onNextTry }: Props) {
   return (
     <section className="rounded-[1.75rem] border border-cyan-200 bg-cyan-50/90 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -28,14 +29,16 @@ export default function CoachWordHelp({ help, onClose, onSpeakWord, onSpeakDefin
       <div className="mt-4 space-y-4">
         <CoachWordCard help={help} />
 
-        <CoachHintActions
-          onUnderstand={onSpeakDefinition}
-          onSayAgain={onSpeakWord}
-          onSoundItOut={onRepeatExplanation}
-          onHint={onSpeakDefinition}
-          onExample={onSpeakExample}
-          onTryAgain={onNextTry}
-        />
+        {voiceHelpEnabled ? (
+          <CoachHintActions
+            onUnderstand={onSpeakDefinition}
+            onSayAgain={onSpeakWord}
+            onSoundItOut={onRepeatExplanation}
+            onHint={onSpeakDefinition}
+            onExample={onSpeakExample}
+            onTryAgain={onNextTry}
+          />
+        ) : null}
       </div>
     </section>
   );

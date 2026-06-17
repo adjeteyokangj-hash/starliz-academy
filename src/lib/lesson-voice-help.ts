@@ -65,3 +65,7 @@ export function normalizeSpellingStageForVoice(opts: {
   }
   return opts.lessonStage;
 }
+
+export function shouldEnableStudentVoiceWorkflow(voiceEnabled: boolean): boolean {
+  return voiceEnabled;
+}

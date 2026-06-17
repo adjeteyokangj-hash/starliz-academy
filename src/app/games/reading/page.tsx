@@ -34,6 +34,7 @@ import {
   getReadingTaskInstruction,
   getTutorLine,
 } from "@/lib/tutorVoice";
+import { shouldEnableStudentVoiceWorkflow } from "@/lib/lesson-voice-help";
 import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
 
 const MIN_READING_QUESTIONS = 5;
@@ -318,7 +319,8 @@ export default function ReadingJourneyPage() {
     };
     return Boolean(win.SpeechRecognition ?? win.webkitSpeechRecognition);
   }, []);
-  const readAloudReadyToAnswer = didReadAloudThisQuestion || !thisQuestionRequiresReadAloud || !readToTutorSupported;
+  const voiceHelpEnabled = shouldEnableStudentVoiceWorkflow(readingVoiceEnabled);
+  const readAloudReadyToAnswer = didReadAloudThisQuestion || !thisQuestionRequiresReadAloud || !readToTutorSupported || !voiceHelpEnabled;
 
   const getResumeStateKey = (childId: string) => `starliz_reading_resume_${childId}`;
 
@@ -622,6 +624,11 @@ export default function ReadingJourneyPage() {
   function startReadAloudAssessment(): void {
     if (!item) return;
     if (typeof window === "undefined") return;
+    if (!voiceHelpEnabled) {
+      setFeedback("Voice help is off. Choose your answer to continue.");
+      setDidReadAloudThisQuestion(true);
+      return;
+    }
     beginStudentTurn("reading_read_aloud_start");
 
     const win = window as Window & {
@@ -854,7 +861,7 @@ export default function ReadingJourneyPage() {
     setReadAloudScore(null);
     setReadAloudTranscript("");
     setDidReadAloudThisQuestion(false);
-    const requiresReadAloud = readToTutorSupported && Math.random() < 0.5;
+    const requiresReadAloud = voiceHelpEnabled && readToTutorSupported && Math.random() < 0.5;
     const randomTarget = READ_ALOUD_TARGETS[Math.floor(Math.random() * READ_ALOUD_TARGETS.length)] ?? "answer";
     setThisQuestionRequiresReadAloud(requiresReadAloud);
     setThisQuestionReadAloudTarget(randomTarget);
@@ -867,7 +874,7 @@ export default function ReadingJourneyPage() {
     setFeedback(instruction);
     setTutorFeedback(instruction);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item?.id, sessionComplete]);
+  }, [item?.id, sessionComplete, voiceHelpEnabled]);
 
   useEffect(() => {
     if (!item || !readingVoiceEnabled) return;
@@ -1398,9 +1405,11 @@ export default function ReadingJourneyPage() {
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   <Button className="w-full" variant="secondary" onClick={() => readCurrentQuestion()} disabled={!readingVoiceEnabled}>Read aloud</Button>
-                  <Button className="w-full" variant="secondary" onClick={startReadAloudAssessment}>
-                    {isListeningToChild ? "Stop reading check" : "Read to tutor"}
-                  </Button>
+                  {voiceHelpEnabled ? (
+                    <Button className="w-full" variant="secondary" onClick={startReadAloudAssessment}>
+                      {isListeningToChild ? "Stop reading check" : "Read to tutor"}
+                    </Button>
+                  ) : null}
                   <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)}>Coach</Button>
                   <Button className="w-full" variant="secondary" onClick={makeItEasier}>Make it easier</Button>
                   <Button
@@ -1497,13 +1506,14 @@ export default function ReadingJourneyPage() {
               assignmentId={assignedAssignmentId}
               contentId={assignedContentId ?? undefined}
               confidenceScore={0.5}
+              voiceHelpEnabled={voiceHelpEnabled}
               onHintUsed={(newCount) => setHintLevel(newCount)}
               onClose={() => setCoachOpen(false)}
             />
           ) : null}
           {tutorFeedback ? (
             <div className="mt-3">
-              <AITutorFeedback text={tutorFeedback} />
+              <AITutorFeedback text={tutorFeedback} enabled={voiceHelpEnabled} />
             </div>
           ) : null}
           {reaction ? <div className="mt-3"><MascotReaction mood={reaction.mood} message={reaction.message} /></div> : null}

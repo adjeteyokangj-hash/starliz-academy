@@ -17,19 +17,20 @@ import { validateContentItem } from "@/lib/content_validator";
 import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
 import { levelFromXp, processMathAttempt } from "@/lib/progress";
 import { ChildProfile, getProfile, hydrateActiveProfileFromServer, saveProfile, resolveCoachingPace } from "@/lib/store";
-import { getVoiceReaction, speakProfileFeedback, speakWithContext } from "@/lib/voice";
+import { speakWithContext } from "@/lib/voice";
 import { isUsageLocked, trackUsage } from "@/lib/screen_time";
-import { fetchProfileHistory, getProfileHistory } from "@/lib/progress_data";
+import { fetchProfileHistory } from "@/lib/progress_data";
 import { getNextQuestionId, markQuestionCompleted } from "@/lib/question_history";
 import { recordCoachInteraction } from "@/lib/coach/session-memory";
 import { fetchAiMathQuestion, fetchAssignedMathQuestion, resetAssignedContentCursor } from "@/lib/ai_content";
 import { syncAttemptToServer } from "@/lib/server_sync";
-import { getTutorFeedbackPlan, speakTutorFeedback, hydrateCoachingMemoryFromServer } from "@/lib/tutor-voice";
+import { getTutorFeedbackPlan, hydrateCoachingMemoryFromServer } from "@/lib/tutor-voice";
 import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
 import { awardChildRewards } from "@/lib/child_wallet";
 import { getTutorLine } from "@/lib/tutorVoice";
 import { resolveAssignmentSessionDecision } from "@/lib/math-assignment-session";
 import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
+import { shouldEnableStudentVoiceWorkflow } from "@/lib/lesson-voice-help";
 import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -143,6 +144,7 @@ export default function MathMissionPage() {
   const restoreAttemptedRef = useRef(false);
   const lastAutoSelectionContextRef = useRef<string | null>(null);
   const coachPanelRef = useRef<HTMLDivElement | null>(null);
+  const voiceHelpEnabled = shouldEnableStudentVoiceWorkflow(profile?.settings.voiceEnabled === true);
 
   const sessionComplete = sessionMode === "completed_base" || sessionMode === "completed_retry";
   const retryPackMode = sessionMode === "retry_pack";
@@ -644,6 +646,7 @@ export default function MathMissionPage() {
   }
 
   function speakMathPrompt(current: NonNullable<typeof question>): void {
+    if (!voiceHelpEnabled) return;
     void speakWithContext(
       getTutorLine({
         subject: "maths",
@@ -654,12 +657,6 @@ export default function MathMissionPage() {
       "math_problem",
     );
   }
-
-  useEffect(() => {
-    if (!question) return;
-    speakMathPrompt(question);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [question]);
 
   function repeatQuestion() {
     if (!question) return;
@@ -679,7 +676,6 @@ export default function MathMissionPage() {
         setHintLevel(Math.min(hintLevel + 1, question?.hints.length ?? 3));
         setFeedback(easierPrompt);
         setReaction({ mood: "support", message: "Let us simplify first, then solve the original question." });
-        void speakWithContext(`${easierPrompt}. Then use the same steps on your main question.`, "math_hint");
         return;
       }
     }
@@ -687,7 +683,7 @@ export default function MathMissionPage() {
     setHintLevel(newLevel);
     if (newLevel >= 2) setForcedChoices(true);
     const spokenHint = question.hints[Math.min(question.hints.length, newLevel) - 1] ?? "Try breaking the problem into steps.";
-    void speakWithContext(spokenHint, "math_hint");
+    setTutorFeedback(spokenHint);
   }
 
   async function checkAnswer() {
@@ -770,10 +766,6 @@ export default function MathMissionPage() {
       setAnswer("");
 
       const nextLevel = levelFromXp(awardedProfile.xp);
-      const today = new Date().toISOString().slice(0, 10);
-      const dailyProgress = getProfileHistory(awardedProfile).filter((item) => item.ts.slice(0, 10) === today).length;
-      const rewardSuffix = result.surpriseReward.awarded ? ` ${getVoiceReaction("reward-earned")} ${result.surpriseReward.message}` : "";
-      speakProfileFeedback(awardedProfile, "correct", `Great job! ${getVoiceReaction("daily-quest")} ${dailyProgress}/${awardedProfile.dailyGoal}. ${nextLevel > prevLevel ? getVoiceReaction("level-up") : ""}${rewardSuffix}`);
       setReaction({ mood: nextLevel > prevLevel || result.surpriseReward.awarded ? "celebrate" : "happy", message: "Great job! Next one..." });
       setFeedback(`Great job! Next one...${result.promotedDifficulty ? " Difficulty increased!" : ""}${result.surpriseReward.awarded ? ` ${result.surpriseReward.message}` : ""}`);
 
@@ -822,7 +814,6 @@ export default function MathMissionPage() {
         coachingStylePreference: resolveCoachingPace("math", profile.settings.subjectCoachingStyles),
       });
       setTutorFeedback(tutorPlan.text);
-      await speakWithContext(`Great job. The answer is ${question.answer}.`, "math_hint");
       if (profile.settings.sfxEnabled) {
         playCorrectSound();
       }
@@ -888,7 +879,7 @@ export default function MathMissionPage() {
         responseTimeMs: Math.round(responseMs),
         timestamp: Date.now(),
       });
-      void speakWithContext(`Good try! Here is a clue to help you. ${clue}`, "math_hint");
+      setTutorFeedback(`Good try! Here is a clue to help you. ${clue}`);
       return;
     }
 
@@ -910,7 +901,7 @@ export default function MathMissionPage() {
         responseTimeMs: Math.round(responseMs),
         timestamp: Date.now(),
       });
-      void speakWithContext(`You are nearly there! Let me give you a bigger clue. ${clue}`, "math_hint");
+      setTutorFeedback(`You are nearly there! Let me give you a bigger clue. ${clue}`);
       return;
     }
 
@@ -973,7 +964,6 @@ export default function MathMissionPage() {
       coachingStylePreference: resolveCoachingPace("math", profile.settings.subjectCoachingStyles),
     });
     setTutorFeedback(tutorPlan.text);
-    speakTutorFeedback(tutorPlan);
     if (profile.settings.sfxEnabled) {
       playTryAgainSound();
     }
@@ -986,7 +976,7 @@ export default function MathMissionPage() {
       responseTimeMs: Math.round(responseMs),
       timestamp: Date.now(),
     });
-    void speakWithContext(`Not to worry — the answer was ${question.answer}. Let us keep going and try another one!`, "encouragement");
+    setTutorFeedback(`Not to worry - the answer was ${question.answer}. Let us keep going and try another one!`);
     const nextOutcomes: Record<string, CanonicalItemOutcome> = {
       ...questionOutcomes,
       [currentStepKey]: { state: "answered", correct: false },
@@ -1124,9 +1114,9 @@ export default function MathMissionPage() {
                         const correct = idx === explainWhyQuestion.correctIdx;
                         setExplainWhyQuestion((prev) => prev ? { ...prev, answered: true } : null);
                         if (correct) {
-                          void speakWithContext("That is exactly right! Great thinking!", "math_hint");
+                          setTutorFeedback("That is exactly right! Great thinking!");
                         } else {
-                          void speakWithContext(`Good try! The right answer is: ${explainWhyQuestion.choices[explainWhyQuestion.correctIdx]}`, "math_hint");
+                          setTutorFeedback(`Good try! The right answer is: ${explainWhyQuestion.choices[explainWhyQuestion.correctIdx]}`);
                         }
                         window.setTimeout(() => setExplainWhyQuestion(null), 2800);
                       }}
@@ -1271,7 +1261,7 @@ export default function MathMissionPage() {
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Button className="w-full" onClick={checkAnswer} disabled={sessionComplete}>Check Answer</Button>
-                  <Button className="w-full" variant="secondary" onClick={repeatQuestion}>Repeat Question</Button>
+                  {voiceHelpEnabled ? <Button className="w-full" variant="secondary" onClick={repeatQuestion}>Repeat Question</Button> : null}
                   <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)} disabled={!question}>Coach</Button>
                   <Button className="w-full" variant="secondary" onClick={makeItEasier} disabled={sessionComplete}>{isAlgebraQuestion && isOlderLearner ? "Need a scaffold" : "Make it easier"}</Button>
                   <Button
@@ -1349,6 +1339,7 @@ export default function MathMissionPage() {
                 assignmentId={assignedAssignmentId}
                 contentId={assignedContentId ?? undefined}
                 confidenceScore={0.5}
+                voiceHelpEnabled={voiceHelpEnabled}
                 onHintUsed={(newCount) => {
                   setHintLevel(newCount);
                   if (newCount >= 2) setForcedChoices(true);
@@ -1357,9 +1348,9 @@ export default function MathMissionPage() {
               />
             </div>
           ) : null}
-          {tutorFeedback ? (
+          {voiceHelpEnabled && tutorFeedback ? (
             <div className="mt-3">
-              <AITutorFeedback text={tutorFeedback} />
+              <AITutorFeedback text={tutorFeedback} enabled={voiceHelpEnabled} />
             </div>
           ) : null}
           {reaction ? <div className="mt-3"><MascotReaction mood={reaction.mood} message={reaction.message} /></div> : null}
