@@ -54,7 +54,7 @@ export default function BossBattlePage() {
     <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
       <Navbar />
       <section className="mx-auto max-w-4xl px-6 py-10">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/60">
+        <div className="rounded-4xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/60">
           {loading ? (
             <div>
               <p className="text-sm font-black uppercase tracking-[0.2em] text-rose-600">Boss Battle Activated</p>
