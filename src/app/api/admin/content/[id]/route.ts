@@ -194,11 +194,6 @@ export async function handleAdminContentPatch(
           error: `Publishing blocked: ${duplicateValidation.exactCount} exact duplicate question pair${duplicateValidation.exactCount === 1 ? "" : "s"} found.`,
         }, { status: 422 });
       }
-      if (duplicateValidation.hasHighSeverityWarning) {
-        return NextResponse.json({
-          error: "Publishing blocked: duplicate quality risk is high. Resolve near/same-pattern duplicates first.",
-        }, { status: 422 });
-      }
     }
 
     const item = await deps.updateContent(id, {

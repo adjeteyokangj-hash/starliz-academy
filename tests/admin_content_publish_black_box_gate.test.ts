@@ -189,3 +189,42 @@ test("admin content publish route blocks exact duplicate questions", async () =>
   assert.match(payload.error ?? "", /exact duplicate question pair/i);
   assert.equal(updated, false);
 });
+
+test("admin content publish route allows near duplicate warnings with successful publish", async () => {
+  let updated = false;
+
+  const response = await handleAdminContentPublishPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-1",
+      status: "reviewed",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+      }),
+      contentType: "math",
+      contentJson: JSON.stringify([
+        { prompt: "A farmer packs 24 apples into 4 boxes. How many apples per box?", answer: "6" },
+        { prompt: "A farmer shares 24 apples equally into 4 boxes. How many in each box?", answer: "6" },
+      ]),
+    }),
+    updateContentToPublished: async () => {
+      updated = true;
+      return {
+        id: "content-1",
+        status: "published",
+        publishedAt: new Date("2026-06-11T10:30:00.000Z"),
+      };
+    },
+  }));
+
+  const payload = await response.json() as {
+    status?: string;
+    duplicateWarnings?: Array<{ nearDuplicates?: number; samePatternDuplicates?: number }>;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.status, "published");
+  assert.equal(updated, true);
+  assert.equal(Array.isArray(payload.duplicateWarnings), true);
+  assert.equal((payload.duplicateWarnings ?? [])[0]?.nearDuplicates, 1);
+});

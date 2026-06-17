@@ -140,3 +140,25 @@ test("admin content patch route still allows valid contentJson edit without blac
   assert.equal(payload.item?.id, "content-1");
   assert.equal(contentUpdated, true);
 });
+
+test("admin content patch route allows published status when only near duplicate warnings exist", async () => {
+  const response = await handleAdminContentPatch(requestFor({ status: "published" }), context, deps({
+    findContentForPatch: async () => ({
+      id: "content-1",
+      contentType: "math",
+      contentJson: JSON.stringify([
+        { prompt: "A farmer packs 24 apples into 4 boxes. How many apples per box?", answer: "6" },
+        { prompt: "A farmer shares 24 apples equally into 4 boxes. How many in each box?", answer: "6" },
+      ]),
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+      }),
+    }),
+  }));
+
+  const payload = await response.json() as { item?: { status?: string } };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.item?.status, "published");
+});

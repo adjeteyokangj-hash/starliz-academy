@@ -156,6 +156,63 @@ function withUpdatedItemLevel(item: GeneratedReviewItem, level: number): Generat
   };
 }
 
+type DuplicateIssueType = "exact" | "near" | "same_pattern";
+
+type DuplicatePairIssue = {
+  pairKey: string;
+  slotIndexes: [number, number];
+  severity: DuplicateIssueType;
+  labels: DuplicateIssueType[];
+};
+
+function duplicateSeverityRank(value: DuplicateIssueType): number {
+  if (value === "exact") return 3;
+  if (value === "near") return 2;
+  return 1;
+}
+
+function buildDuplicatePairIssues(issues: Array<{ type: DuplicateIssueType; slotIndexes: [number, number] }>): DuplicatePairIssue[] {
+  const map = new Map<string, { slotIndexes: [number, number]; labels: Set<DuplicateIssueType> }>();
+  for (const issue of issues) {
+    const [left, right] = issue.slotIndexes[0] < issue.slotIndexes[1]
+      ? issue.slotIndexes
+      : [issue.slotIndexes[1], issue.slotIndexes[0]] as [number, number];
+    const key = `${left}-${right}`;
+    const current = map.get(key);
+    if (!current) {
+      map.set(key, { slotIndexes: [left, right], labels: new Set([issue.type]) });
+      continue;
+    }
+    current.labels.add(issue.type);
+  }
+
+  return Array.from(map.entries())
+    .map(([pairKey, value]) => {
+      const labels = Array.from(value.labels.values()).sort((a, b) => duplicateSeverityRank(b) - duplicateSeverityRank(a));
+      return {
+        pairKey,
+        slotIndexes: value.slotIndexes,
+        severity: labels[0] ?? "same_pattern",
+        labels,
+      };
+    })
+    .sort((left, right) => {
+      const severity = duplicateSeverityRank(right.severity) - duplicateSeverityRank(left.severity);
+      if (severity !== 0) return severity;
+      if (left.slotIndexes[0] !== right.slotIndexes[0]) return left.slotIndexes[0] - right.slotIndexes[0];
+      return left.slotIndexes[1] - right.slotIndexes[1];
+    });
+}
+
+function promptLikeText(item: GeneratedReviewItem | null | undefined): string {
+  if (!item) return "";
+  return firstText(item, ["question", "prompt", "word", "title", "passage", "text"]);
+}
+
+function normalizedPrompt(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
 export default function ContentViewModal({ open, content, onClose, onVerified }: Props) {
   if (!open || !content) return null;
   return (
@@ -211,6 +268,29 @@ function ContentViewModalBody({
     metadataJson: content.metadataJson,
     subject: meta.subject,
   }), [content.contentJson, content.contentType, content.metadataJson, meta.subject]);
+  const duplicatePairs = useMemo(() => buildDuplicatePairIssues(duplicateSummary.issues), [duplicateSummary.issues]);
+  const [pairKeepChoice, setPairKeepChoice] = useState<Record<string, number>>({});
+  const [duplicateWarningIgnored, setDuplicateWarningIgnored] = useState(false);
+  const [regeneratingDuplicateSlots, setRegeneratingDuplicateSlots] = useState(false);
+  const effectivePairKeepChoice = useMemo(() => {
+    const resolved: Record<string, number> = {};
+    for (const pair of duplicatePairs) {
+      const configured = pairKeepChoice[pair.pairKey];
+      resolved[pair.pairKey] = configured === pair.slotIndexes[0] || configured === pair.slotIndexes[1]
+        ? configured
+        : pair.slotIndexes[0];
+    }
+    return resolved;
+  }, [duplicatePairs, pairKeepChoice]);
+  const duplicateReplacementTargets = useMemo(() => {
+    const targets = new Set<number>();
+    for (const pair of duplicatePairs) {
+      const keepIndex = effectivePairKeepChoice[pair.pairKey] ?? pair.slotIndexes[0];
+      const replaceIndex = keepIndex === pair.slotIndexes[0] ? pair.slotIndexes[1] : pair.slotIndexes[0];
+      targets.add(replaceIndex);
+    }
+    return Array.from(targets.values()).sort((a, b) => a - b);
+  }, [duplicatePairs, effectivePairKeepChoice]);
   const initialSlotEditor = buildSlotEditorState(currentItem, content.contentType);
   const [slotPromptInput, setSlotPromptInput] = useState(initialSlotEditor.prompt);
   const [slotAnswerInput, setSlotAnswerInput] = useState(initialSlotEditor.answer);
@@ -344,6 +424,128 @@ function ContentViewModalBody({
     }
     nextItems[selectedItemIndex] = nextItem;
     await saveSlots(nextItems, `Slot ${selectedItemIndex + 1} saved.`);
+  }
+
+  function setKeepSlot(pairKey: string, slotIndex: number) {
+    setPairKeepChoice((current) => ({
+      ...current,
+      [pairKey]: slotIndex,
+    }));
+  }
+
+  async function regenerateDuplicateSlots() {
+    if (!duplicateReplacementTargets.length) {
+      setMessage("No duplicate slots need replacement.");
+      return;
+    }
+
+    setRegeneratingDuplicateSlots(true);
+    setMessage(null);
+    const nextItems = [...items];
+    const avoidPrompts = new Set<string>();
+    for (let index = 0; index < nextItems.length; index += 1) {
+      if (duplicateReplacementTargets.includes(index)) continue;
+      const prompt = normalizedPrompt(promptLikeText(nextItems[index]));
+      if (prompt) avoidPrompts.add(prompt);
+    }
+
+    const failedSlots: number[] = [];
+    let replacedCount = 0;
+
+    for (const slotIndex of duplicateReplacementTargets) {
+      try {
+        const response = await fetch("/api/admin/ai/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subject: meta.subject,
+            keyStage: meta.keyStage,
+            yearGroup: meta.yearGroup,
+            curriculumPathway: meta.curriculumPathway,
+            examBoard: meta.examBoard,
+            skillFocus: meta.skillFocus || meta.topic || "General",
+            topic: meta.topic || meta.skillFocus || "General",
+            difficulty: content.level,
+            numberOfItems: 4,
+            aiMode: "live_openai_only",
+            activityType: content.contentType,
+            avoidPrompts: Array.from(avoidPrompts.values()).slice(0, 10),
+          }),
+        });
+
+        const payload = await response.json() as {
+          success?: boolean;
+          error?: string;
+          content?: { items?: unknown[] };
+        };
+
+        if (!response.ok || payload.success === false) {
+          failedSlots.push(slotIndex);
+          continue;
+        }
+
+        const generatedItems = Array.isArray(payload.content?.items)
+          ? payload.content.items.filter((item): item is GeneratedReviewItem => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+          : [];
+
+        const replacement = generatedItems.find((candidate) => {
+          const prompt = normalizedPrompt(promptLikeText(candidate));
+          return Boolean(prompt) && !avoidPrompts.has(prompt);
+        }) ?? generatedItems.find((candidate) => Boolean(normalizedPrompt(promptLikeText(candidate))));
+
+        if (!replacement) {
+          failedSlots.push(slotIndex);
+          continue;
+        }
+
+        nextItems[slotIndex] = replacement;
+        const replacementPrompt = normalizedPrompt(promptLikeText(replacement));
+        if (replacementPrompt) avoidPrompts.add(replacementPrompt);
+        replacedCount += 1;
+      } catch {
+        failedSlots.push(slotIndex);
+      }
+    }
+
+    if (!replacedCount) {
+      setMessage("Could not regenerate duplicate slots. Use Replace From Library or Edit Manually.");
+      setRegeneratingDuplicateSlots(false);
+      return;
+    }
+
+    const saved = await saveSlots(
+      nextItems,
+      `Regenerated ${replacedCount} duplicate slot${replacedCount === 1 ? "" : "s"}.${failedSlots.length ? ` ${failedSlots.length} slot${failedSlots.length === 1 ? " still needs" : "s still need"} manual replacement.` : ""}`,
+    );
+
+    if (saved && failedSlots.length) {
+      selectSlot(failedSlots[0]);
+    }
+
+    setRegeneratingDuplicateSlots(false);
+  }
+
+  function replaceFromLibrary() {
+    if (!duplicateReplacementTargets.length) {
+      setMessage("No duplicate slots are marked for replacement.");
+      return;
+    }
+    selectSlot(duplicateReplacementTargets[0]);
+    setMessage(`Slot ${duplicateReplacementTargets[0] + 1} selected. Replace this slot with a library question, then save slot content.`);
+  }
+
+  function editDuplicatesManually() {
+    if (!duplicateReplacementTargets.length) {
+      setMessage("No duplicate slots are marked for manual editing.");
+      return;
+    }
+    selectSlot(duplicateReplacementTargets[0]);
+    setMessage(`Edit Slot ${duplicateReplacementTargets[0] + 1} in the editor below and click Save slot content.`);
+  }
+
+  function ignoreDuplicateWarning() {
+    setDuplicateWarningIgnored(true);
+    setMessage("Duplicate warning ignored for this review session. Exact duplicates still block publishing.");
   }
 
   async function updateCurrentItemLevel(nextLevel: number) {
@@ -515,7 +717,7 @@ function ContentViewModalBody({
                       Empty Slots: {Math.max(0, (slotSummary.totalSlots ?? 0) - (slotSummary.filledSlots ?? 0))}
                     </span>
                     <span className={`rounded-full border px-2 py-1 font-black ${duplicateSummary.duplicateSlotsCount > 0 ? "border-amber-500/40 bg-amber-500/10 text-amber-100" : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"}`}>
-                      Duplicates: {duplicateSummary.duplicateSlotsCount}
+                      Duplicates Found: {duplicatePairs.length}
                     </span>
                     <span className={`rounded-full border px-2 py-1 font-black ${slotSummary.slotValidationExempt ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-100" : slotSummary.isSessionComplete ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>
                       {slotSummary.slotValidationExempt ? "Ga exempt" : slotSummary.isSessionComplete ? "Session Complete" : "Session Incomplete"}
@@ -523,14 +725,91 @@ function ContentViewModalBody({
                   </div>
                 </div>
 
-                {duplicateSummary.hasExactDuplicates ? (
-                  <p className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs font-black text-rose-100">
-                    Exact duplicates found: {duplicateSummary.exactCount}. Publishing is blocked until duplicates are fixed.
-                  </p>
+                {duplicatePairs.length > 0 ? (
+                  <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${duplicateSummary.hasExactDuplicates ? "border-rose-500/30 bg-rose-500/10 text-rose-100" : "border-amber-500/30 bg-amber-500/10 text-amber-100"}`}>
+                    <p className="font-black">Duplicates Found: {duplicatePairs.length}</p>
+                    <div className="mt-2 space-y-1">
+                      {duplicatePairs.map((pair) => (
+                        <p key={pair.pairKey}>
+                          Slot {pair.slotIndexes[0] + 1} and Slot {pair.slotIndexes[1] + 1} are too similar.
+                        </p>
+                      ))}
+                    </div>
+                    {duplicateSummary.hasExactDuplicates ? (
+                      <p className="mt-2 font-black">Publish is blocked until exact duplicates are fixed.</p>
+                    ) : null}
+
+                    <div className="mt-3 space-y-2">
+                      {duplicatePairs.map((pair) => {
+                        const keepIndex = effectivePairKeepChoice[pair.pairKey] ?? pair.slotIndexes[0];
+                        const replaceIndex = keepIndex === pair.slotIndexes[0] ? pair.slotIndexes[1] : pair.slotIndexes[0];
+                        return (
+                          <div key={`resolve-${pair.pairKey}`} className="rounded-md border border-slate-700/80 bg-slate-950/60 p-2 text-slate-100">
+                            <p className="font-black">
+                              Keep this one / Replace the other one
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setKeepSlot(pair.pairKey, pair.slotIndexes[0])}
+                                className={`rounded-lg border px-2 py-1 font-black ${keepIndex === pair.slotIndexes[0] ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-100" : "border-slate-700 text-slate-200 hover:bg-slate-800"}`}
+                              >
+                                Keep Slot {pair.slotIndexes[0] + 1}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setKeepSlot(pair.pairKey, pair.slotIndexes[1])}
+                                className={`rounded-lg border px-2 py-1 font-black ${keepIndex === pair.slotIndexes[1] ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-100" : "border-slate-700 text-slate-200 hover:bg-slate-800"}`}
+                              >
+                                Keep Slot {pair.slotIndexes[1] + 1}
+                              </button>
+                            </div>
+                            <p className="mt-1 text-[11px] text-slate-400">Slot {replaceIndex + 1} will be replaced.</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => void regenerateDuplicateSlots()}
+                        disabled={regeneratingDuplicateSlots || duplicateReplacementTargets.length === 0}
+                        className="rounded-lg border border-indigo-400/40 bg-indigo-500/15 px-3 py-2 text-left font-black text-indigo-100 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {regeneratingDuplicateSlots ? "Regenerating..." : "Regenerate Duplicate Slots"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={replaceFromLibrary}
+                        disabled={duplicateReplacementTargets.length === 0}
+                        className="rounded-lg border border-slate-600 px-3 py-2 text-left font-black text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Replace From Library
+                      </button>
+                      <button
+                        type="button"
+                        onClick={editDuplicatesManually}
+                        disabled={duplicateReplacementTargets.length === 0}
+                        className="rounded-lg border border-slate-600 px-3 py-2 text-left font-black text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Edit Manually
+                      </button>
+                      <button
+                        type="button"
+                        onClick={ignoreDuplicateWarning}
+                        disabled={duplicateSummary.hasExactDuplicates || duplicateWarningIgnored}
+                        className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-left font-black text-amber-100 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Ignore Warning
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
-                {!duplicateSummary.hasExactDuplicates && (duplicateSummary.nearCount > 0 || duplicateSummary.samePatternCount > 0) ? (
+
+                {!duplicateSummary.hasExactDuplicates && !duplicateWarningIgnored && (duplicateSummary.nearCount > 0 || duplicateSummary.samePatternCount > 0) ? (
                   <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-black text-amber-100">
-                    Duplicate warning: near duplicates {duplicateSummary.nearCount}, same-pattern duplicates {duplicateSummary.samePatternCount}.
+                    Warning only: near duplicates {duplicateSummary.nearCount}, same-pattern duplicates {duplicateSummary.samePatternCount}. You can override and publish.
                   </p>
                 ) : null}
 
