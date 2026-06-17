@@ -23,7 +23,7 @@ import { isUsageLocked, trackUsage } from "@/lib/screen_time";
 import { fetchProfileHistory } from "@/lib/progress_data";
 import { getNextQuestionId, markQuestionCompleted } from "@/lib/question_history";
 import { recordCoachInteraction } from "@/lib/coach/session-memory";
-import { fetchAiMathQuestion, fetchAssignedMathQuestion, resetAssignedContentCursor } from "@/lib/ai_content";
+import { fetchAiMathQuestion, fetchAssignedMathBatch, fetchAssignedMathQuestion, resetAssignedContentCursor } from "@/lib/ai_content";
 import { syncAttemptToServer } from "@/lib/server_sync";
 import { getTutorFeedbackPlan, hydrateCoachingMemoryFromServer } from "@/lib/tutor-voice";
 import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
@@ -137,6 +137,7 @@ export default function MathMissionPage() {
   const [retryInitialCount, setRetryInitialCount] = useState(0);
   const [correctSinceCheckpoint, setCorrectSinceCheckpoint] = useState(0);
   const [sessionVoiceHelpEnabled, setSessionVoiceHelpEnabled] = useState(false);
+  const [assignedSessionTarget, setAssignedSessionTarget] = useState<number | null>(null);
   const [explainWhyQuestion, setExplainWhyQuestion] = useState<{
     question: string;
     choices: string[];
@@ -150,7 +151,11 @@ export default function MathMissionPage() {
 
   const sessionComplete = sessionMode === "completed_base" || sessionMode === "completed_retry";
   const retryPackMode = sessionMode === "retry_pack";
-  const sessionQuestionTarget = retryPackMode ? Math.max(1, retryInitialCount) : MATH_SESSION_TARGET;
+  const sessionQuestionTarget = retryPackMode
+    ? Math.max(1, retryInitialCount)
+    : assignmentLockedSession
+      ? Math.max(1, assignedSessionTarget ?? 1)
+      : MATH_SESSION_TARGET;
   const requiredStepIds = useMemo(
     () => Array.from({ length: sessionQuestionTarget }, (_, index) => `step-${index}`),
     [sessionQuestionTarget],
@@ -358,7 +363,7 @@ export default function MathMissionPage() {
     if (!nextQuestion) {
       const currentDifficulty = currentProfile.adaptive.mathDifficulty;
       const shouldUseEasier = sessionStep === 0;
-      const shouldUseChallenge = sessionStep === MATH_SESSION_TARGET - 1;
+      const shouldUseChallenge = sessionStep === sessionQuestionTarget - 1;
       const targetDifficulty = shouldUseEasier
         ? Math.max(1, currentDifficulty - 1)
         : shouldUseChallenge
@@ -459,12 +464,37 @@ export default function MathMissionPage() {
   }, [assignedContentId, assignedAssignmentId]);
 
   useEffect(() => {
+    let cancelled = false;
+    if (!assignmentLockedSession) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void fetchAssignedMathBatch(assignedContentId ?? "", assignedAssignmentId)
+      .then((batch) => {
+        if (cancelled) return;
+        setAssignedSessionTarget(batch?.items.length ?? 0);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAssignedSessionTarget(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assignedAssignmentId, assignedContentId, assignmentLockedSession]);
+
+  useEffect(() => {
     if (!profile || !questionPool.length) return;
+    if (assignmentLockedSession && assignedSessionTarget === null) return;
     if (currentContextKey && lastAutoSelectionContextRef.current === currentContextKey && currentQuestion) return;
     lastAutoSelectionContextRef.current = currentContextKey;
     void moveToNextQuestion(profile, true, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignedAssignmentId, assignedContentId, currentContextKey, currentQuestion, profile, questionPool]);
+  }, [assignedAssignmentId, assignedContentId, assignedSessionTarget, assignmentLockedSession, currentContextKey, currentQuestion, profile, questionPool]);
 
   const question = useMemo(() => currentQuestion, [currentQuestion]);
   const sessionRewards = useMemo(() => {

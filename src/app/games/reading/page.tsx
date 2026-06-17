@@ -12,6 +12,7 @@ import AITutorFeedback from "@/components/tutor/AITutorFeedback";
 import GameSuccessBurst from "@/components/game/GameSuccessBurst";
 import ContentMismatchFallback from "@/components/ContentMismatchFallback";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
+import VoiceHelpControls from "@/components/learning/VoiceHelpControls";
 import { getReadingPassages, type ReadingPassage } from "@/lib/adaptive";
 import { validateContentItem } from "@/lib/content_validator";
 import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
@@ -279,7 +280,7 @@ export default function ReadingJourneyPage() {
   const [rewardToast, setRewardToast] = useState<{ points: number; message: string } | null>(null);
   const [tutorFeedback, setTutorFeedback] = useState("");
   const [showSuccessBurst, setShowSuccessBurst] = useState(false);
-  const [readingVoiceEnabled, setReadingVoiceEnabled] = useState(true);
+  const [readingVoiceEnabled, setReadingVoiceEnabled] = useState(false);
   const [sessionAttempts, setSessionAttempts] = useState(0);
   const [sessionCorrect, setSessionCorrect] = useState(0);
   const [questionOutcomes, setQuestionOutcomes] = useState<Record<string, CanonicalItemOutcome>>({});
@@ -334,7 +335,6 @@ export default function ReadingJourneyPage() {
       }
       const usageUpdated = trackUsage(p, 1);
       setProfile(usageUpdated);
-      setReadingVoiceEnabled(usageUpdated.settings.voiceEnabled);
       setSessionStartStats({ stars: usageUpdated.stars, xp: usageUpdated.xp, coins: usageUpdated.coins });
       void hydrateCoachingMemoryFromServer(p.id);
       setProfileLoading(false);
@@ -876,33 +876,9 @@ export default function ReadingJourneyPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id, sessionComplete, voiceHelpEnabled]);
 
-  useEffect(() => {
-    if (!item || !readingVoiceEnabled) return;
-    if (lastAutoReadRef.current === item.id) return;
-    lastAutoReadRef.current = item.id;
-    const timer = window.setTimeout(() => {
-      readCurrentQuestion();
-    }, 450);
-    return () => window.clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item?.id, readingVoiceEnabled]);
-
-  function toggleReadingVoice(): void {
-    if (!profile) return;
-    const nextEnabled = !readingVoiceEnabled;
-    const updated: ChildProfile = {
-      ...profile,
-      settings: {
-        ...profile.settings,
-        voiceEnabled: nextEnabled,
-      },
-    };
+  function setVoiceHelpEnabled(nextEnabled: boolean): void {
     setReadingVoiceEnabled(nextEnabled);
-    setProfile(updated);
-    saveProfile(updated);
-    if (nextEnabled) {
-      window.setTimeout(() => readCurrentQuestion(true), 100);
-    } else {
+    if (!nextEnabled) {
       stopVoicePlayback();
     }
   }
@@ -1339,17 +1315,6 @@ export default function ReadingJourneyPage() {
                   {retryPackMode ? (
                     <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">Retry Pack</span>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={toggleReadingVoice}
-                    className={`rounded-full px-3 py-1 text-xs font-black transition ${
-                      readingVoiceEnabled
-                        ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    Voice {readingVoiceEnabled ? "On" : "Off"}
-                  </button>
                 </div>
 
                 <div className="mt-6 rounded-3xl bg-linear-to-br from-slate-950 to-violet-950 p-5 text-white shadow-inner">
@@ -1403,14 +1368,29 @@ export default function ReadingJourneyPage() {
                   ))}
                 </div>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                  <Button className="w-full" variant="secondary" onClick={() => readCurrentQuestion()} disabled={!readingVoiceEnabled}>Read aloud</Button>
-                  {voiceHelpEnabled ? (
-                    <Button className="w-full" variant="secondary" onClick={startReadAloudAssessment}>
-                      {isListeningToChild ? "Stop reading check" : "Read to tutor"}
-                    </Button>
-                  ) : null}
-                  <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)}>Coach</Button>
+                <div className="mt-5 grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                  <VoiceHelpControls
+                    className="relative z-10 w-full lg:col-span-2"
+                    voiceHelpEnabled={voiceHelpEnabled}
+                    onToggleVoiceHelp={setVoiceHelpEnabled}
+                    actions={[
+                      {
+                        id: "read-aloud",
+                        label: "Read aloud",
+                        onClick: () => readCurrentQuestion(true),
+                        disabled: !item || sessionComplete,
+                        variant: "secondary",
+                      },
+                      {
+                        id: "read-to-tutor",
+                        label: isListeningToChild ? "Stop reading check" : "Read to tutor",
+                        onClick: startReadAloudAssessment,
+                        disabled: !readToTutorSupported || sessionComplete,
+                        variant: "secondary",
+                      },
+                    ]}
+                  />
+                  <Button className="relative z-0 w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)}>Coach</Button>
                   <Button className="w-full" variant="secondary" onClick={makeItEasier}>Make it easier</Button>
                   <Button
                     className="w-full"

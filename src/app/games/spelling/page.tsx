@@ -12,6 +12,7 @@ import AITutorFeedback from "@/components/tutor/AITutorFeedback";
 import GameSuccessBurst from "@/components/game/GameSuccessBurst";
 import ContentMismatchFallback from "@/components/ContentMismatchFallback";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
+import VoiceHelpControls from "@/components/learning/VoiceHelpControls";
 import { SpellingWord, getSpellingWordPool, getWeightedSpellingWordId, getReviewWords, getSpellingPatternInsight } from "@/lib/adaptive";
 import { validateContentItem } from "@/lib/content_validator";
 import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
@@ -280,7 +281,7 @@ export default function SpellingQuestPage() {
   const [showBossCelebration, setShowBossCelebration] = useState(false);
   const [bossTransitionStage, setBossTransitionStage] = useState<"idle" | "unlock" | "countdown">("idle");
   const [bossCountdownValue, setBossCountdownValue] = useState<number | null>(null);
-  const [bossPromptReady, setBossPromptReady] = useState(true);
+  const [, setBossPromptReady] = useState(true);
   const [bossStats, setBossStats] = useState({ correct: 0, total: 0 });
   const [bossBonusSummary, setBossBonusSummary] = useState({ completion: 0, perfect: 0 });
   const [completionSaveStatus, setCompletionSaveStatus] = useState<CompletionSaveStatus>("idle");
@@ -297,12 +298,12 @@ export default function SpellingQuestPage() {
   const [tutorEmotion, setTutorEmotion] = useState<TutorEmotion>("idle");
   const [lessonStage, setLessonStage] = useState<LessonStage>("ASSESS_SPEECH");
   const [skillMasteryReady, setSkillMasteryReady] = useState(false);
-  const lastPromptRef = useRef<{ key: string; at: number } | null>(null);
   const bossTransitionShownRef = useRef(false);
   const [showLevelPicker, setShowLevelPicker] = useState(false);
   const [rewardToast, setRewardToast] = useState<{ points: number; message: string } | null>(null);
   const [tutorFeedback, setTutorFeedback] = useState<string>("");
   const [showSuccessBurst, setShowSuccessBurst] = useState(false);
+  const [sessionVoiceHelpEnabled, setSessionVoiceHelpEnabled] = useState(false);
   const [sessionStartStats, setSessionStartStats] = useState<{ stars: number; xp: number; coins: number } | null>(null);
   const restoreAttemptedRef = useRef(false);
   /** Track every word used this session per level; reset when pool exhausted to avoid repeats. */
@@ -1054,7 +1055,7 @@ export default function SpellingQuestPage() {
   const tutorPersonality = (profile?.settings?.voiceStyle ?? "default") as TutorPersonality;
   const isLetterConversation = Boolean(targetWordText && isAlphabetWord(targetWordText) && displayMode === "listen_type");
   const isWordConversation = displayMode === "build_word";
-  const voiceHelpEnabled = shouldEnableStudentVoiceWorkflow(profile?.settings.voiceEnabled === true);
+  const voiceHelpEnabled = shouldEnableStudentVoiceWorkflow(sessionVoiceHelpEnabled);
   const usesTutorConversation = voiceHelpEnabled && (isLetterConversation || isWordConversation);
   const letterChoiceOptions = isLetterConversation && targetWordText ? generateLetterOptions([targetWordText]) : [];
   const modePromptTitle = (() => {
@@ -1302,24 +1303,6 @@ export default function SpellingQuestPage() {
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [currentSessionStep?.phase, spellingDifficulty]);
 
-  useEffect(() => {
-    if (!targetWord) return;
-    if (usesTutorConversation) return;
-    if (displayMode === "boss_test" && !bossPromptReady) return;
-    const key = `${targetWord.id ?? targetWord.word}:${displayMode}`;
-    const now = getTimestampNow();
-    if (lastPromptRef.current && lastPromptRef.current.key === key && now - lastPromptRef.current.at < 250) {
-      return;
-    }
-    lastPromptRef.current = { key, at: now };
-    if (displayMode === "boss_test") {
-      const timer = window.setTimeout(() => speakSpellingPrompt(targetWord), 250);
-      return () => window.clearTimeout(timer);
-    }
-    speakSpellingPrompt(targetWord);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bossPromptReady, displayMode, targetWord, usesTutorConversation]);
-
   const speakTutorLine = useCallback((line: string, emotion: TutorEmotion) => {
     setTutorEmotion(emotion);
     void speakWithContext(applyTutorPersonality(line, tutorPersonality), "spelling_instruction");
@@ -1328,46 +1311,20 @@ export default function SpellingQuestPage() {
   useEffect(() => {
     if (!targetWord || !usesTutorConversation) return;
     const timer = window.setTimeout(() => {
-      if (isWordConversation) {
-        speakTutorLine("What word do you see on the screen?", "listening");
-      } else {
-        speakTutorLine("What letter do you see on the screen?", "listening");
-      }
-      setLessonStage(voiceHelpEnabled ? "ASSESS_SPEECH" : "TAP_SELECT");
-    }, 400);
+      setTutorEmotion("listening");
+      setLessonStage("ASSESS_SPEECH");
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [isWordConversation, speakTutorLine, targetWord, usesTutorConversation, voiceHelpEnabled]);
+  }, [targetWord, usesTutorConversation]);
 
   useEffect(() => {
     if (!targetWord || !usesTutorConversation) return;
     const timer = window.setTimeout(() => {
-      if (lessonStage === "ASSESS_SPEECH") {
-        if (isWordConversation) {
-          speakTutorLine("What word do you see on the screen?", "listening");
-        } else {
-          speakTutorLine("What letter do you see on the screen?", "listening");
-        }
-        return;
-      }
-      if (lessonStage === "TEACH_RETRY") {
-        if (isLetterConversation) {
-          speakTutorLine(`Good try. Look again. This is the letter ${describeVisualTarget(targetWord.word)}. Say ${targetWord.word}.`, "supporting");
-        } else {
-          speakTutorLine(`Good try. Look again. This is the word ${targetWord.word}. Say ${targetWord.word}.`, "supporting");
-        }
-        return;
-      }
-      if (lessonStage === "TAP_SELECT") {
-        if (isWordConversation) {
-          speakTutorLine("Now type the word.", "supporting");
-        } else {
-          speakTutorLine(`Now tap ${describeVisualTarget(targetWord.word)}.`, "supporting");
-        }
-        return;
-      }
-    }, 5000);
+      if (lessonStage === "TEACH_RETRY") setTutorEmotion("supporting");
+      if (lessonStage === "TAP_SELECT") setTutorEmotion("encouraging");
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [isLetterConversation, isWordConversation, speakTutorLine, targetWord, lessonStage, usesTutorConversation]);
+  }, [lessonStage, targetWord, usesTutorConversation]);
 
   async function awardCoinBonus(baseProfile: ChildProfile, bonusCoins: number, source: "recall_test" | "boss_test" | "bonus"): Promise<ChildProfile> {
     if (bonusCoins <= 0) return baseProfile;
@@ -1407,6 +1364,10 @@ export default function SpellingQuestPage() {
       }
     }
     speakSpellingPrompt(targetWord);
+  }
+
+  function setVoiceHelpEnabled(nextEnabled: boolean): void {
+    setSessionVoiceHelpEnabled(nextEnabled);
   }
 
   function makeItEasier() {
@@ -2965,11 +2926,31 @@ export default function SpellingQuestPage() {
                   onChange={(event) => setSpokenText(event.target.value)}
                 />
               </div>
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                <Button onClick={startListening}>{speechListening ? "Listening... speak now" : "🎤 Say it out loud"}</Button>
-                <Button variant="secondary" onClick={() => handleSpeechResult(spokenText, "manual")}>Check typed speech</Button>
-                <Button variant="secondary" onClick={repeatQuestion}>Repeat prompt</Button>
-              </div>
+              <VoiceHelpControls
+                className="mx-auto mt-3 max-w-md"
+                voiceHelpEnabled={voiceHelpEnabled}
+                showToggle={false}
+                actions={[
+                  {
+                    id: "say-out-loud",
+                    label: speechListening ? "Listening... speak now" : "Say it out loud",
+                    onClick: startListening,
+                    variant: "primary",
+                  },
+                  {
+                    id: "check-typed-speech",
+                    label: "Check typed speech",
+                    onClick: () => handleSpeechResult(spokenText, "manual"),
+                    variant: "secondary",
+                  },
+                  {
+                    id: "repeat-prompt",
+                    label: "Repeat prompt",
+                    onClick: repeatQuestion,
+                    variant: "secondary",
+                  },
+                ]}
+              />
               <p className="mt-2 text-xs font-bold text-slate-500">
                 {speechFallbackReason === "unsupported"
                   ? "Browser unsupported."
@@ -3193,7 +3174,20 @@ export default function SpellingQuestPage() {
             >
               Check Answer
             </Button>
-            {voiceHelpEnabled ? <Button className="w-full" variant="secondary" onClick={repeatQuestion}>Repeat Question</Button> : null}
+            <VoiceHelpControls
+              className="w-full"
+              voiceHelpEnabled={voiceHelpEnabled}
+              onToggleVoiceHelp={setVoiceHelpEnabled}
+              actions={[
+                {
+                  id: "repeat-question",
+                  label: "Repeat question",
+                  onClick: repeatQuestion,
+                  disabled: !targetWord,
+                  variant: "secondary",
+                },
+              ]}
+            />
             {targetWord ? <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)}>Coach</Button> : null}
             <Button className="w-full" variant="secondary" onClick={makeItEasier} disabled={helpLocked}>Make it easier</Button>
             <Button className="w-full" variant="secondary" onClick={skipWord}>Skip</Button>

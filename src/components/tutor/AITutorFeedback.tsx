@@ -1,16 +1,23 @@
 "use client";
 
 import { speakTutorFeedback } from "@/lib/tutor-voice";
+import VoiceHelpControls from "@/components/learning/VoiceHelpControls";
 
-export default function AITutorFeedback({ text, enabled = true }: { text: string; enabled?: boolean }) {
+export default function AITutorFeedback({ text, enabled = false }: { text: string; enabled?: boolean }) {
   if (!enabled) return null;
 
   return (
-    <button
-      onClick={() => speakTutorFeedback(text)}
-      className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
-    >
-      🔊 Hear tutor feedback
-    </button>
+    <VoiceHelpControls
+      voiceHelpEnabled={enabled}
+      showToggle={false}
+      actions={[
+        {
+          id: "hear-tutor-feedback",
+          label: "Hear tutor feedback",
+          onClick: () => speakTutorFeedback(text),
+          variant: "secondary",
+        },
+      ]}
+    />
   );
 }

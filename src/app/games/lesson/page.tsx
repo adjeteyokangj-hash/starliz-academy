@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
+import VoiceHelpControls from "@/components/learning/VoiceHelpControls";
 import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
 import { type ChildProfile, getProfile, hydrateActiveProfileFromServer } from "@/lib/store";
 import { beginStudentTurn, endStudentTurn, stopVoicePlayback } from "@/lib/voice";
@@ -50,8 +51,6 @@ import {
 import {
   canBeginLesson,
   normalizeSpellingStageForVoice,
-  readVoiceHelpPreference,
-  resolveVoiceHelpPreference,
   shouldShowQuestionMicrophone,
   shouldShowStartTalkingButton,
   shouldShowVoiceWarmupPanel,
@@ -345,7 +344,6 @@ function bossHpWidthClass(value: number): string {
   return "w-0";
 }
 
-const LESSON_VOICE_KEY = "lessonVoiceEnabled";
 const VOICE_UNAVAILABLE_MESSAGE = "Voice tutor unavailable on this device.";
 const WARMUP_READY_INSTRUCTION = "When you're ready, click Begin my lesson to start.";
 
@@ -532,7 +530,6 @@ export default function DailyLessonGamePage() {
   const speechUnlockedRef = useRef(false);
   const voicesReadyRef = useRef(false);
   const lastActivityAtRef = useRef(0);
-  const restoredReplayRef = useRef(false);
   const voiceUnlockPromiseRef = useRef<Promise<void> | null>(null);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
@@ -552,10 +549,7 @@ export default function DailyLessonGamePage() {
   const [records, setRecords] = useState<AnswerRecord[]>([]);
   const [completed, setCompleted] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return readVoiceHelpPreference(window.localStorage.getItem(LESSON_VOICE_KEY));
-  });
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [tutorState, setTutorState] = useState<"idle" | "thinking" | "celebrate" | "try_again">("idle");
   const [voiceLine, setVoiceLine] = useState("I am ready when you are.");
   const [lastTutorMessage, setLastTutorMessage] = useState("I am ready when you are.");
@@ -1081,6 +1075,17 @@ export default function DailyLessonGamePage() {
     void speakTutor(line);
   }
 
+  function setVoiceHelpEnabled(nextEnabled: boolean): void {
+    setVoiceEnabled(nextEnabled);
+    if (!nextEnabled) {
+      cancelTutorSpeech();
+      stopRecognition();
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    }
+  }
+
   async function startTalkingWithStar() {
     markActivity();
     if (!voiceEnabled) return;
@@ -1111,7 +1116,6 @@ export default function DailyLessonGamePage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(LESSON_VOICE_KEY, String(voiceEnabled));
     if (!voiceEnabled) cancelTutorSpeech();
   }, [voiceEnabled]);
 
@@ -1144,10 +1148,9 @@ export default function DailyLessonGamePage() {
         setWelcomeSpeechFinished(Boolean(saved.welcomeSpeechFinished));
         startedAtRef.current = performance.now();
         setIndex(savedIndex);
-        const restoredVoiceEnabled = resolveVoiceHelpPreference(window.localStorage.getItem(LESSON_VOICE_KEY), saved.voiceEnabled);
         const restoredSection = getItemSection(activeAssignment.items[savedIndex], activeAssignment.subject || "spelling");
         setLessonStage(normalizeSpellingStageForVoice({
-          voiceEnabled: restoredVoiceEnabled,
+          voiceEnabled: false,
           currentSection: restoredSection,
           lessonStage: (saved.lessonStage ?? "ASSESS_SPEECH") as "ASSESS_SPEECH" | "TEACH_RETRY" | "TAP_SELECT" | "COMPLETE",
         }));
@@ -1187,7 +1190,7 @@ export default function DailyLessonGamePage() {
         setBossAnswer(String(saved.bossAnswer ?? ""));
         setBossQuestionMisses(saved.bossQuestionMisses && typeof saved.bossQuestionMisses === "object" ? saved.bossQuestionMisses : {});
         setBossResult(saved.bossResult ?? null);
-        setVoiceEnabled(restoredVoiceEnabled);
+        setVoiceEnabled(false);
         setVoiceLine(decodeLessonText(String(saved.tutorMessage ?? saved.lastTutorMessage ?? "I am ready when you are.")));
         setLastTutorMessage(decodeLessonText(String(saved.lastTutorMessage ?? saved.tutorMessage ?? "I am ready when you are.")));
         setRestoredMessage(buildRestoredLessonMessage());
@@ -1269,6 +1272,7 @@ export default function DailyLessonGamePage() {
       bossAnswer,
       bossQuestionMisses,
       bossResult,
+      // eslint-disable-next-line react-hooks/purity
       timeSpentSeconds: startedAtRef.current ? Math.round((performance.now() - startedAtRef.current) / 1000) : 0,
       savedAt: new Date().toISOString(),
     };
@@ -1336,16 +1340,6 @@ export default function DailyLessonGamePage() {
     if (!assignmentId || !completed || typeof window === "undefined") return;
     window.localStorage.removeItem(lessonSessionKey(assignmentId));
   }, [assignmentId, completed]);
-
-  useEffect(() => {
-    if (!restoredMessage || restoredReplayRef.current || !started || completed || !lastTutorMessage) return;
-    restoredReplayRef.current = true;
-    const timer = window.setTimeout(() => {
-      void speakTutor(lastTutorMessage);
-    }, 450);
-    return () => window.clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completed, lastTutorMessage, restoredMessage, started]);
 
   useEffect(() => {
     if (!started || completed) return;
@@ -1724,13 +1718,6 @@ export default function DailyLessonGamePage() {
     setVoiceLine(line);
     await speakTutor(line);
   }
-
-  useEffect(() => {
-    if (!started || completed || !currentItem || !voiceEnabled) return;
-    const timer = window.setTimeout(() => { void speakCurrent(); }, 300);
-    return () => window.clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [started, completed, currentItem?.id, index, voiceEnabled, lessonStage]);
 
   async function handleSpeechAssessmentResult(transcript: string, source: "speech" | "manual" = "speech") {
     markActivity();
@@ -2491,22 +2478,10 @@ export default function DailyLessonGamePage() {
         <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
           <section className="mx-auto flex min-h-[50vh] max-w-6xl items-center justify-between gap-4 px-4 py-8">
             <p className="text-lg font-semibold text-slate-500">Loading your learning profile...</p>
-            <button
-              type="button"
-              onClick={() => {
-                const nextEnabled = !voiceEnabled;
-                setVoiceEnabled(nextEnabled);
-                if (!nextEnabled) {
-                  cancelTutorSpeech();
-                  if (typeof window !== "undefined" && window.speechSynthesis) {
-                    window.speechSynthesis.cancel();
-                  }
-                }
-              }}
-              className="rounded-2xl border border-slate-200 px-4 py-3 font-bold text-slate-700"
-            >
-              {voiceEnabled ? "Voice help on" : "Voice help off"}
-            </button>
+            <VoiceHelpControls
+              voiceHelpEnabled={voiceEnabled}
+              onToggleVoiceHelp={setVoiceHelpEnabled}
+            />
           </section>
         </main>
       </>
@@ -2533,22 +2508,10 @@ export default function DailyLessonGamePage() {
         <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
           <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-6 py-10">
             <div className="text-slate-600">Loading lesson...</div>
-            <button
-              type="button"
-              onClick={() => {
-                const nextEnabled = !voiceEnabled;
-                setVoiceEnabled(nextEnabled);
-                if (!nextEnabled) {
-                  cancelTutorSpeech();
-                  if (typeof window !== "undefined" && window.speechSynthesis) {
-                    window.speechSynthesis.cancel();
-                  }
-                }
-              }}
-              className="rounded-2xl border border-slate-200 px-4 py-3 font-bold text-slate-700"
-            >
-              {voiceEnabled ? "Voice help on" : "Voice help off"}
-            </button>
+            <VoiceHelpControls
+              voiceHelpEnabled={voiceEnabled}
+              onToggleVoiceHelp={setVoiceHelpEnabled}
+            />
           </div>
         </main>
       </>
@@ -2583,22 +2546,10 @@ export default function DailyLessonGamePage() {
               <p className="mt-1 text-sm font-black text-indigo-700">{interventionMission ? `Level ${interventionLevel} • ${decodeLessonText(String(activeAssignment.skillFocus ?? "Sound Builder Mission"))}` : lessonLabelText()}</p>
               <p className="mt-2 text-slate-600">{interventionMission ? "Voice-led repair mission with visual cues and repeat-until-correct practice." : "Spelling, maths and reading in one focused session."}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const nextEnabled = !voiceEnabled;
-                setVoiceEnabled(nextEnabled);
-                if (!nextEnabled) {
-                  cancelTutorSpeech();
-                  if (typeof window !== "undefined" && window.speechSynthesis) {
-                    window.speechSynthesis.cancel();
-                  }
-                }
-              }}
-              className="rounded-2xl border border-slate-200 px-4 py-3 font-bold text-slate-700"
-            >
-              {voiceEnabled ? "Voice on" : "Voice off"}
-            </button>
+            <VoiceHelpControls
+              voiceHelpEnabled={voiceEnabled}
+              onToggleVoiceHelp={setVoiceHelpEnabled}
+            />
           </div>
           {voiceUnavailable ? (
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
@@ -3090,20 +3041,25 @@ export default function DailyLessonGamePage() {
                           <div className="text-[140px] font-black leading-none text-slate-950 md:text-[180px]">
                             {decodeLessonText(String(currentItem.word ?? currentItem.answer ?? ""))}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => void startListening()}
-                            className="rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white hover:bg-indigo-500"
-                          >
-                            {speechButtonState === "listening" ? "Listening..." : speechButtonState === "try_again" ? "Try again" : "Say it out loud"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void speakCurrent()}
-                            className="rounded-2xl border border-slate-200 px-5 py-3 font-bold text-slate-700"
-                          >
-                            Repeat prompt
-                          </button>
+                          <VoiceHelpControls
+                            className="w-full max-w-md"
+                            voiceHelpEnabled={voiceEnabled}
+                            showToggle={false}
+                            actions={[
+                              {
+                                id: "say-out-loud",
+                                label: speechButtonState === "listening" ? "Listening..." : speechButtonState === "try_again" ? "Try again" : "Say it out loud",
+                                onClick: () => void startListening(),
+                                variant: "primary",
+                              },
+                              {
+                                id: "repeat-prompt",
+                                label: "Repeat prompt",
+                                onClick: () => void speakCurrent(),
+                                variant: "secondary",
+                              },
+                            ]}
+                          />
                           <p className="text-xs font-bold text-slate-500">Microphone ready. Click Say it out loud.</p>
                           {speechStatusMessage ? (
                             <p className="text-sm font-bold text-slate-700">{speechStatusMessage}</p>
@@ -3207,12 +3163,18 @@ export default function DailyLessonGamePage() {
                 onSubmit={() => void submitAnswer()}
                 belowAnswerSlot={
                   currentSection !== "spelling" ? (
-                    <button
-                      onClick={() => void speakCurrent()}
-                      className="rounded-2xl border border-slate-200 px-5 py-3 font-bold text-slate-700"
-                    >
-                      Repeat voice
-                    </button>
+                    <VoiceHelpControls
+                      voiceHelpEnabled={voiceEnabled}
+                      showToggle={false}
+                      actions={[
+                        {
+                          id: "repeat-prompt",
+                          label: "Repeat prompt",
+                          onClick: () => void speakCurrent(),
+                          variant: "secondary",
+                        },
+                      ]}
+                    />
                   ) : null
                 }
                 feedback={feedback || null}

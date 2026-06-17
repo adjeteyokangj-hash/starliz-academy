@@ -167,7 +167,7 @@ export default function SmartCoachPanel({
   coachContext,
   attemptCount = 0,
   confidenceScore = 0.5,
-  voiceHelpEnabled = true,
+  voiceHelpEnabled = false,
   responseTimeMs,
   onHintUsed,
   onClose,
