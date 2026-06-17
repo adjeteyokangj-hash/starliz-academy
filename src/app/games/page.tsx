@@ -52,7 +52,7 @@ export default function GamesPage() {
               className="group rounded-[1.75rem] border border-(--ring-color) bg-(--surface) p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
             >
               <div
-                className={`flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${game.accent} text-xl font-black text-white shadow-lg`}
+                className={`flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br ${game.accent} text-xl font-black text-white shadow-lg`}
               >
                 {game.icon}
               </div>
