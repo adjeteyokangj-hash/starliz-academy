@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ContentItem } from "./types";
-import { getBlackBoxBadgeLabel, getBlackBoxBadgeTone, getContentJsonSummary, getContentMeta, parseBlackBoxAdminVerification, parseBlackBoxContentTest } from "./utils";
+import { getBlackBoxBadgeLabel, getBlackBoxBadgeTone, getContentJsonSummary, getContentMeta, parseBlackBoxAdminVerification, parseBlackBoxContentTest, parseBlackBoxStaleState } from "./utils";
 
 type Props = {
   item: ContentItem;
@@ -46,10 +46,11 @@ export default function ContentCard({
   const meta = getContentMeta(item);
   const blackBox = parseBlackBoxContentTest(item);
   const verification = parseBlackBoxAdminVerification(item);
+  const staleState = parseBlackBoxStaleState(item);
   const isDraftOrGenerated = ["draft", "generated"].includes(item.status);
   const incompleteSlotCount = summary.slotValidationExempt ? 0 : (summary.missingSlots ?? 0);
   const slotIncomplete = incompleteSlotCount > 0;
-  const assignDisabled = !["reviewed", "approved", "published"].includes(item.status) || !summary.valid || slotIncomplete;
+  const assignDisabled = !["reviewed", "approved", "published"].includes(item.status) || !summary.valid || slotIncomplete || staleState.isStale;
   const canPublish = ["reviewed", "approved", "published"].includes(item.status);
   const assignTitle = isDraftOrGenerated
     ? "Review or publish this content before assigning."
@@ -57,9 +58,15 @@ export default function ContentCard({
       ? "Content JSON is invalid and cannot be assigned."
       : slotIncomplete
         ? `${incompleteSlotCount} question slots still require content.`
+      : staleState.isStale
+        ? "Black Box stale - re-run Black Box before assignment/publish."
       : undefined;
-  const publishDisabled = (item.status !== "published" && slotIncomplete) || !canPublish;
-  const publishTitle = slotIncomplete ? `${incompleteSlotCount} question slots still require content.` : undefined;
+  const publishDisabled = (item.status !== "published" && slotIncomplete) || !canPublish || staleState.isStale;
+  const publishTitle = slotIncomplete
+    ? `${incompleteSlotCount} question slots still require content.`
+    : staleState.isStale
+      ? "Black Box stale - re-run Black Box before review/publish."
+      : undefined;
   const isOperating = operatingId === item.id;
 
   /** Part 5: run Black Box test directly from card */
@@ -87,7 +94,7 @@ export default function ContentCard({
 
   /** Part 4: determine display badge for BB result vs admin status */
   const adminVerified = verification?.status === "verified" || verification?.status === "rejected";
-  const bbBadgeText = getBlackBoxBadgeLabel(blackBox, verification);
+  const bbBadgeText = getBlackBoxBadgeLabel(blackBox, verification, staleState);
 
   return (
     <article className={`rounded-2xl border p-4 ${selected ? "border-indigo-400 bg-indigo-500/5" : "border-slate-800 bg-slate-950/45"}`}>
@@ -116,9 +123,14 @@ export default function ContentCard({
               Admin: {verification?.decision ?? verification?.status}
             </span>
           ) : null}
-          <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox, verification)}`}>
+          <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox, verification, staleState)}`}>
             {bbBadgeText}
           </span>
+          {staleState.isStale ? (
+            <span className="rounded-full bg-rose-500/15 px-2 py-1 text-xs font-black text-rose-200">
+              Re-run Black Box required
+            </span>
+          ) : null}
           {/* Part 5: warn when content is reviewed/published but never tested */}
           {!blackBox && (item.status === "reviewed" || item.status === "published" || item.status === "approved") ? (
             <span className="rounded-full bg-rose-500/15 px-2 py-1 text-xs font-black text-rose-200">
@@ -145,14 +157,14 @@ export default function ContentCard({
           {isOperating && operatingAction === "view" ? "Opening..." : "View"}
         </button>
         {/* Part 5: visible Run Black Box button when not yet tested */}
-        {!blackBox ? (
+        {!blackBox || staleState.isStale ? (
           <button
             type="button"
             onClick={() => void handleRunBlackBox()}
             disabled={runningBB || isOperating || Boolean(assigning)}
             className="rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs font-black text-indigo-100 hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60 sm:px-3"
           >
-            {runningBB ? "Testing..." : <><span className="hidden sm:inline">Run Black Box</span><span className="sm:hidden">Test</span></>}
+            {runningBB ? "Testing..." : <><span className="hidden sm:inline">Re-run Black Box</span><span className="sm:hidden">Re-test</span></>}
           </button>
         ) : null}
         {isDraftOrGenerated ? (

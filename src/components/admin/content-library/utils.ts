@@ -19,6 +19,7 @@ import type {
   BlackBoxContentTest,
   BlackBoxRuntimeStatus,
   BlackBoxRuntimeTest,
+  BlackBoxStaleState,
   BlackBoxVerificationDecision,
   ContentItem,
   ContentMeta,
@@ -270,7 +271,21 @@ function blackBoxScoreLabel(result: BlackBoxContentTest | null, verification?: B
   return typeof score === "number" ? ` ${score}/100` : "";
 }
 
-export function getBlackBoxBadgeLabel(result: BlackBoxContentTest | null, verification?: BlackBoxAdminVerification | null): string {
+export function parseBlackBoxStaleState(item: ContentItem): BlackBoxStaleState {
+  const metadata = parseMetadata(item);
+  return {
+    isStale: metadata.blackBoxNeedsRerun === true,
+    reason: typeof metadata.blackBoxStaleReason === "string" ? metadata.blackBoxStaleReason : null,
+    staleAt: typeof metadata.blackBoxStaleAt === "string" ? metadata.blackBoxStaleAt : null,
+  };
+}
+
+export function getBlackBoxBadgeLabel(
+  result: BlackBoxContentTest | null,
+  verification?: BlackBoxAdminVerification | null,
+  staleState?: BlackBoxStaleState | null,
+): string {
+  if (staleState?.isStale) return "BB: STALE - Re-run required";
   if (!result) return "BB: Not tested";
 
   if (verification?.status === "verified") {
@@ -285,7 +300,12 @@ export function getBlackBoxBadgeLabel(result: BlackBoxContentTest | null, verifi
   return `BB: ${result.decision}${blackBoxScoreLabel(result, verification)}`;
 }
 
-export function getBlackBoxBadgeTone(result: BlackBoxContentTest | null, verification?: BlackBoxAdminVerification | null): string {
+export function getBlackBoxBadgeTone(
+  result: BlackBoxContentTest | null,
+  verification?: BlackBoxAdminVerification | null,
+  staleState?: BlackBoxStaleState | null,
+): string {
+  if (staleState?.isStale) return "bg-rose-500/15 text-rose-200";
   if (verification?.status === "verified") {
     if (verification.decision === "approve" || verification.decision === "reclassify") {
       return "bg-emerald-500/15 text-emerald-200";
@@ -300,7 +320,17 @@ export function getBlackBoxBadgeTone(result: BlackBoxContentTest | null, verific
 
 export function parseBlackBoxRuntimeTest(item: ContentItem): BlackBoxRuntimeTest | null {
   const metadata = parseMetadata(item);
-  const raw = asRecord(metadata.blackBoxLiveTest) ?? asRecord(metadata.blackBoxRuntimeTest);
+  const runtimeRaw = asRecord(metadata.blackBoxRuntimeTest);
+  const liveRaw = asRecord(metadata.blackBoxLiveTest);
+  const liveLooksRuntime = Boolean(
+    liveRaw && (
+      Array.isArray(liveRaw.flowChecks)
+      || Array.isArray(liveRaw.hintChecks)
+      || Array.isArray(liveRaw.masteryChecks)
+      || typeof liveRaw.simulatedAttempts === "number"
+    ),
+  );
+  const raw = runtimeRaw ?? (liveLooksRuntime ? liveRaw : null);
   if (!raw) return null;
   const status = isRuntimeStatus(raw.status) ? raw.status : "not_run";
   return {
@@ -377,6 +407,9 @@ export function parseContentReviewHistory(item: ContentItem): ContentReviewHisto
 }
 
 export function getContentReviewQueueBucket(item: ContentItem): ContentReviewQueueBucket {
+  const staleState = parseBlackBoxStaleState(item);
+  if (staleState.isStale) return "awaiting_review";
+
   const verification = parseBlackBoxAdminVerification(item);
   if (item.status === "published") return "published";
   if (item.status === "approved" || verification?.decision === "approve") return "approved";

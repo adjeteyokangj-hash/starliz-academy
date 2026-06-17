@@ -40,6 +40,16 @@ test("black box gate accepts metadata JSON string", () => {
   assert.equal(hasPassedBlackBoxGate(metadataJson), true);
 });
 
+test("black box gate fails when metadata is stale", () => {
+  const metadataJson = JSON.stringify({
+    blackBoxLiveTest: { status: "passed" },
+    blackBoxAdminVerification: { status: "verified" },
+    blackBoxNeedsRerun: true,
+  });
+
+  assert.equal(hasPassedBlackBoxGate(metadataJson), false);
+});
+
 test("black box gate target statuses are review and publish statuses only", () => {
   assert.equal(isBlackBoxGateTargetStatus("generated"), false);
   assert.equal(isBlackBoxGateTargetStatus("rejected"), false);

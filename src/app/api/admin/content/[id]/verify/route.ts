@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import {
+  isBlackBoxStale,
   mergeBlackBoxGateMetadata,
   parseContentMetadataJson,
   type ContentMetadata,
@@ -267,6 +268,13 @@ export async function handleAdminContentVerifyPost(
   const now = deps.now();
   const nextStatus = actionStatus(body.action);
   const existingMetadata = parseContentMetadataJson(content.metadataJson);
+  if (isBlackBoxStale(existingMetadata) && (body.action === "approve" || body.action === "reclassify")) {
+    return NextResponse.json({
+      error: "Black Box stale - re-run Black Box before approve/reclassify.",
+      code: "black_box_stale_requires_rerun",
+    }, { status: 409 });
+  }
+
   const metadata = buildNextMetadata({
     existingMetadata,
     body: { ...body, notes },

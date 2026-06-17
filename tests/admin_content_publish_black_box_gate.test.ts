@@ -65,6 +65,39 @@ test("admin content publish route blocks reviewed content without black box gate
   assert.equal(updated, false);
 });
 
+test("admin content publish route blocks stale black box metadata", async () => {
+  let updated = false;
+
+  const response = await handleAdminContentPublishPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-1",
+      status: "reviewed",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+        blackBoxNeedsRerun: true,
+      }),
+      contentType: "math",
+      contentJson: JSON.stringify([{ prompt: "2 + 2", answer: 4 }]),
+    }),
+    updateContentToPublished: async () => {
+      updated = true;
+      return {
+        id: "content-1",
+        status: "published",
+        publishedAt: new Date("2026-06-11T10:30:00.000Z"),
+      };
+    },
+  }));
+
+  const payload = await response.json() as { code?: string; error?: string };
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.code, "black_box_gate_required");
+  assert.match(payload.error ?? "", /Black box live testing/i);
+  assert.equal(updated, false);
+});
+
 test("admin content publish route allows publish after black box pass and admin verification", async () => {
   let updated = false;
 

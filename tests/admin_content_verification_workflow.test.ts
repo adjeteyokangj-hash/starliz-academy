@@ -147,6 +147,31 @@ test("admin verification reclassify stores override without publishing", async (
   assert.equal(metadata.blackBoxAdminVerification?.reclassification?.subject, "reading");
 });
 
+test("admin verification approve is blocked while black box is stale", async () => {
+  const response = await handleAdminContentVerifyPost(makeRequest({ action: "approve", notes: "Approve." }), context, deps({
+    findContent: async () => ({
+      id: "content-1",
+      contentType: "maths",
+      level: 3,
+      topic: "Fractions",
+      contentJson: JSON.stringify([{ question: "What is 1/2 of 10?", answer: "5" }]),
+      status: "generated",
+      skillFocus: "Fractions",
+      metadataJson: JSON.stringify({
+        blackBoxNeedsRerun: true,
+        blackBoxLiveTest: { status: "needs_review" },
+        blackBoxAdminVerification: { status: "pending" },
+      }),
+    }),
+  }));
+
+  const payload = await response.json() as { code?: string; error?: string };
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.code, "black_box_stale_requires_rerun");
+  assert.match(payload.error ?? "", /stale/i);
+});
+
 test("runtime black box simulation passes well-formed lesson content", () => {
   const result = runContentRuntimeBlackBoxTest({
     contentType: "maths",

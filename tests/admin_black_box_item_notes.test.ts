@@ -8,10 +8,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  getBlackBoxBadgeLabel,
   parseBlackBoxAdminVerification,
   parseBlackBoxContentTest,
   parseContentReviewHistory,
+  getContentReviewQueueBucket,
   getBlackBoxBadgeTone,
+  parseBlackBoxStaleState,
 } from "@/components/admin/content-library/utils";
 import type { ContentItem } from "@/components/admin/content-library/types";
 
@@ -372,6 +375,45 @@ describe("Content card Black Box button logic (Part 5)", () => {
       reclassificationRecommendation: null,
     });
     expectValue(tone).toContain("amber");
+  });
+
+  it("stale metadata forces stale BB badge and avoids current score label", () => {
+    const item = makeItem({
+      status: "approved",
+      metadataJson: makeMetadata({
+        blackBoxNeedsRerun: true,
+        blackBoxContentTest: {
+          decision: "APPROVE",
+          score: 90,
+          maxScore: 100,
+          reasons: [],
+        },
+        blackBoxAdminVerification: {
+          status: "verified",
+          decision: "approve",
+        },
+      }),
+    });
+
+    const blackBox = parseBlackBoxContentTest(item);
+    const verification = parseBlackBoxAdminVerification(item);
+    const stale = parseBlackBoxStaleState(item);
+    const label = getBlackBoxBadgeLabel(blackBox, verification, stale);
+
+    expectValue(label).toBe("BB: STALE - Re-run required");
+    expectValue(getBlackBoxBadgeTone(blackBox, verification, stale)).toContain("rose");
+  });
+
+  it("stale content bucket stays awaiting_review even when status is approved", () => {
+    const item = makeItem({
+      status: "approved",
+      metadataJson: makeMetadata({
+        blackBoxNeedsRerun: true,
+        blackBoxAdminVerification: { status: "verified", decision: "approve" },
+      }),
+    });
+
+    expectValue(getContentReviewQueueBucket(item)).toBe("awaiting_review");
   });
 
   it("reviewed/published content with null blackBox should show warning", () => {

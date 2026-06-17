@@ -61,6 +61,37 @@ test("admin content review route blocks generated content without black box gate
   assert.equal(updated, false);
 });
 
+test("admin content review route blocks stale black box metadata", async () => {
+  let updated = false;
+
+  const response = await handleAdminContentReviewPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-1",
+      status: "generated",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+        blackBoxNeedsRerun: true,
+      }),
+    }),
+    updateContentToReviewed: async () => {
+      updated = true;
+      return {
+        id: "content-1",
+        status: "reviewed",
+        reviewedAt: new Date("2026-06-11T10:00:00.000Z"),
+      };
+    },
+  }));
+
+  const payload = await response.json() as { code?: string; error?: string };
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.code, "black_box_gate_required");
+  assert.match(payload.error ?? "", /Black box live testing/i);
+  assert.equal(updated, false);
+});
+
 test("admin content review route allows review after black box pass and admin verification", async () => {
   let updated = false;
 

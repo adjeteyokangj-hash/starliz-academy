@@ -72,6 +72,12 @@ export type BlackBoxAdminVerification = {
   originalBlackBoxScore?: number | null;
 };
 
+export type BlackBoxStaleState = {
+  isStale: boolean;
+  reason?: string | null;
+  staleAt?: string | null;
+};
+
 export type ContentReviewHistoryEntry = {
   action: string;
   status?: string | null;

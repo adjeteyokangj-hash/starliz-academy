@@ -4,19 +4,41 @@ import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { runContentBlackBoxTest } from "@/lib/ai/content-black-box-test";
 import {
+  clearBlackBoxStaleMetadata,
   mergeBlackBoxGateMetadata,
   parseContentMetadataJson,
 } from "@/lib/ai/content-black-box-gate";
 
 type Context = { params: Promise<{ id: string }> };
 
-export async function POST(_request: Request, context: Context) {
-  const { session, response } = await requireAdmin();
-  if (!session) return response;
+type BlackBoxRouteContentRecord = {
+  id: string;
+  contentType: string;
+  level: number;
+  topic: string;
+  skillFocus: string | null;
+  contentJson: string;
+  metadataJson: string | null;
+  status: string;
+};
 
-  const { id } = await context.params;
+type BlackBoxRouteUpdatedRecord = {
+  id: string;
+  status: string;
+  metadataJson: string | null;
+};
 
-  const content = await prisma.aIContentCache.findUnique({
+type AdminContentBlackBoxDeps = {
+  requireAdmin: typeof requireAdmin;
+  findContent: (id: string) => Promise<BlackBoxRouteContentRecord | null>;
+  updateContentMetadata: (id: string, metadataJson: string) => Promise<BlackBoxRouteUpdatedRecord>;
+  runContentBlackBoxTest: typeof runContentBlackBoxTest;
+  writeAuditLog: typeof writeAuditLog;
+  now: () => Date;
+};
+
+async function defaultFindContent(id: string): Promise<BlackBoxRouteContentRecord | null> {
+  return prisma.aIContentCache.findUnique({
     where: { id },
     select: {
       id: true,
@@ -29,6 +51,40 @@ export async function POST(_request: Request, context: Context) {
       status: true,
     },
   });
+}
+
+async function defaultUpdateContentMetadata(id: string, metadataJson: string): Promise<BlackBoxRouteUpdatedRecord> {
+  return prisma.aIContentCache.update({
+    where: { id },
+    data: { metadataJson },
+    select: {
+      id: true,
+      status: true,
+      metadataJson: true,
+    },
+  });
+}
+
+const defaultDeps: AdminContentBlackBoxDeps = {
+  requireAdmin,
+  findContent: defaultFindContent,
+  updateContentMetadata: defaultUpdateContentMetadata,
+  runContentBlackBoxTest,
+  writeAuditLog,
+  now: () => new Date(),
+};
+
+export async function handleAdminContentBlackBoxPost(
+  _request: Request,
+  context: Context,
+  deps: AdminContentBlackBoxDeps = defaultDeps,
+) {
+  const { session, response } = await deps.requireAdmin();
+  if (!session) return response;
+
+  const { id } = await context.params;
+
+  const content = await deps.findContent(id);
 
   if (!content) {
     return NextResponse.json({ error: "Content not found." }, { status: 404 });
@@ -53,7 +109,7 @@ export async function POST(_request: Request, context: Context) {
     ? metadataQuestionType
     : null;
 
-  const blackBoxContentTest = runContentBlackBoxTest({
+  const blackBoxContentTest = deps.runContentBlackBoxTest({
     subject: String(metadata.subject ?? metadata.contentType ?? content.contentType),
     strand: typeof metadata.strand === "string" ? metadata.strand : null,
     keyStage: typeof metadata.keyStage === "string" ? metadata.keyStage : null,
@@ -66,9 +122,11 @@ export async function POST(_request: Request, context: Context) {
     items: parsedItems,
   });
 
+  const testedAt = deps.now().toISOString();
+  const score = Math.round(blackBoxContentTest.passRate * 100);
   const storedBlackBoxContentTest = {
     decision: blackBoxContentTest.decision,
-    score: Math.round(blackBoxContentTest.passRate * 100),
+    score,
     maxScore: 100,
     rawScore: blackBoxContentTest.score,
     rawMaxScore: blackBoxContentTest.maxScore,
@@ -98,28 +156,37 @@ export async function POST(_request: Request, context: Context) {
       ])),
     })),
     recommendation: blackBoxContentTest.recommendation ?? null,
-    recalculatedAt: new Date().toISOString(),
+    recalculatedAt: testedAt,
   };
 
-  const nextMetadata = mergeBlackBoxGateMetadata(metadata, {
+  const clearedStale = clearBlackBoxStaleMetadata(metadata);
+  const nextMetadata = mergeBlackBoxGateMetadata(clearedStale, {
     blackBoxContentTest: storedBlackBoxContentTest,
-    blackBoxContentRetestedAt: new Date().toISOString(),
+    blackBoxContentRetestedAt: testedAt,
     blackBoxContentRetestedBy: session.userId,
+    blackBoxLiveTest: {
+      status: blackBoxContentTest.decision === "REJECT" ? "failed" : "passed",
+      score,
+      reasons: blackBoxContentTest.reasons,
+      testedAt,
+    },
+    blackBoxRuntimeTest: {
+      status: "not_run",
+      reasons: ["Runtime simulation pending. Save admin verification to run runtime test."],
+      testedAt,
+    },
+    blackBoxAdminVerification: {
+      status: "pending",
+      decision: "needs_changes",
+      notes: "Awaiting admin verification after Black Box re-run.",
+      verifiedAt: null,
+      verifiedBy: null,
+    },
   });
 
-  const updated = await prisma.aIContentCache.update({
-    where: { id: content.id },
-    data: {
-      metadataJson: JSON.stringify(nextMetadata),
-    },
-    select: {
-      id: true,
-      status: true,
-      metadataJson: true,
-    },
-  });
+  const updated = await deps.updateContentMetadata(content.id, JSON.stringify(nextMetadata));
 
-  await writeAuditLog({
+  await deps.writeAuditLog({
     actorUserId: session.userId,
     action: "ai_content.black_box.retest",
     entityType: "AIContentCache",
@@ -134,4 +201,8 @@ export async function POST(_request: Request, context: Context) {
     item: updated,
     blackBoxContentTest: storedBlackBoxContentTest,
   });
+}
+
+export async function POST(_request: Request, context: Context) {
+  return handleAdminContentBlackBoxPost(_request, context);
 }

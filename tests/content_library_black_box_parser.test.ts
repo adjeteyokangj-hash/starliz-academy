@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { ContentItem } from "../src/components/admin/content-library/types";
-import { parseBlackBoxContentTest } from "../src/components/admin/content-library/utils";
+import { parseBlackBoxContentTest, parseBlackBoxRuntimeTest } from "../src/components/admin/content-library/utils";
 
 function makeContentItem(metadata: unknown): ContentItem {
   return {
@@ -110,4 +110,34 @@ test("content library black box parser exposes item level recommendation", () =>
   assert.equal(itemCheck?.recommendedLevel, 4);
   assert.equal(itemCheck?.levelDelta, 2);
   assert.equal(itemCheck?.levelRecommendation?.action, "promote");
+});
+
+test("runtime parser ignores content-only blackBoxLiveTest metadata", () => {
+  const result = parseBlackBoxRuntimeTest(makeContentItem({
+    blackBoxLiveTest: {
+      status: "passed",
+      score: 90,
+      reasons: ["Content test passed."],
+    },
+  }));
+
+  assert.equal(result, null);
+});
+
+test("runtime parser prefers explicit runtime metadata", () => {
+  const result = parseBlackBoxRuntimeTest(makeContentItem({
+    blackBoxLiveTest: {
+      status: "passed",
+      score: 90,
+      reasons: ["Content test passed."],
+    },
+    blackBoxRuntimeTest: {
+      status: "not_run",
+      reasons: ["Runtime simulation pending."],
+      testedAt: "2026-06-18T08:30:00.000Z",
+    },
+  }));
+
+  assert.equal(result?.status, "not_run");
+  assert.deepEqual(result?.reasons, ["Runtime simulation pending."]);
 });

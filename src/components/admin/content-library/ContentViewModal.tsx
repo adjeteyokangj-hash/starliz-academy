@@ -10,6 +10,7 @@ import {
   getContentMeta,
   parseBlackBoxAdminVerification,
   parseBlackBoxContentTest,
+  parseBlackBoxStaleState,
   parseBlackBoxRuntimeTest,
   parseContentReviewHistory,
 } from "./utils";
@@ -244,6 +245,7 @@ function ContentViewModalBody({
   const blackBox = parseBlackBoxContentTest(content);
   const runtime = parseBlackBoxRuntimeTest(content);
   const verification = parseBlackBoxAdminVerification(content);
+  const blackBoxStale = parseBlackBoxStaleState(content);
   const reviewHistory = useMemo(() => parseContentReviewHistory(content), [content]);
   const items = useMemo(() => asReviewItems(content.contentJson), [content.contentJson]);
   const [selectedItemIndex, setSelectedItemIndex] = useState(0);
@@ -1166,13 +1168,22 @@ function ContentViewModalBody({
                     Admin: {verification.decision ?? verification.status}
                   </span>
                 ) : null}
-                <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox, verification)}`}>
-                  {getBlackBoxBadgeLabel(blackBox, verification)}
+                <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox, verification, blackBoxStale)}`}>
+                  {getBlackBoxBadgeLabel(blackBox, verification, blackBoxStale)}
                 </span>
               </div>
             </div>
+            {blackBoxStale.isStale ? (
+              <div className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 text-xs text-rose-100">
+                <p className="font-black">Black Box stale - content changed</p>
+                <p className="mt-0.5">Action required: Re-run Black Box before review/publish.</p>
+                {typeof blackBox?.score === "number" ? (
+                  <p className="mt-0.5 text-rose-200/90">Previous result: {blackBox.score}/100</p>
+                ) : null}
+              </div>
+            ) : null}
             {/* Part 4: explain when admin has already reviewed */}
-            {verification?.status === "verified" && blackBox?.decision !== "APPROVE" ? (
+            {verification?.status === "verified" && blackBox?.decision !== "APPROVE" && !blackBoxStale.isStale ? (
               <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-xs text-emerald-100">
                 <p className="font-black">Admin reviewed · {verification.decision ?? "approved"}</p>
                 <p className="mt-0.5 text-emerald-200/80">Original machine result: {verification.originalBlackBoxDecision ?? blackBox?.decision ?? "N/A"}{typeof (verification.originalBlackBoxScore ?? blackBox?.score) === "number" ? ` · ${verification.originalBlackBoxScore ?? blackBox?.score}/100` : ""}</p>
@@ -1337,13 +1348,18 @@ function ContentViewModalBody({
                   key={action}
                   type="button"
                   onClick={() => void saveVerification(action)}
-                  disabled={workingAction !== null}
+                  disabled={workingAction !== null || (blackBoxStale.isStale && (action === "approve" || action === "reclassify"))}
                   className={`rounded-lg px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
                 >
                   {workingAction === action ? "Saving..." : label}
                 </button>
               ))}
             </div>
+            {blackBoxStale.isStale ? (
+              <p className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-black text-rose-100">
+                Approve/Reclassify disabled until Black Box is re-run on the latest content.
+              </p>
+            ) : null}
           </div>
 
           <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">

@@ -21,6 +21,24 @@ function statusFrom(value: unknown): string {
   return typeof status === "string" ? status.trim().toLowerCase() : "";
 }
 
+function boolFrom(value: unknown): boolean {
+  return value === true;
+}
+
+export function isBlackBoxStale(metadata: unknown): boolean {
+  const parsed = parseContentMetadataJson(metadata);
+  return boolFrom(parsed.blackBoxNeedsRerun);
+}
+
+export function clearBlackBoxStaleMetadata(existingMetadata: unknown): ContentMetadata {
+  return {
+    ...parseContentMetadataJson(existingMetadata),
+    blackBoxNeedsRerun: false,
+    blackBoxStaleReason: null,
+    blackBoxStaleAt: null,
+  };
+}
+
 export function parseContentMetadataJson(raw: unknown): ContentMetadata {
   if (isRecord(raw)) return raw;
 
@@ -42,6 +60,7 @@ export function isBlackBoxGateTargetStatus(status: unknown): status is BlackBoxG
 
 export function hasPassedBlackBoxGate(metadata: unknown): boolean {
   const parsed = parseContentMetadataJson(metadata);
+  if (isBlackBoxStale(parsed)) return false;
   return (
     statusFrom(parsed.blackBoxLiveTest) === "passed" &&
     statusFrom(parsed.blackBoxAdminVerification) === "verified"
