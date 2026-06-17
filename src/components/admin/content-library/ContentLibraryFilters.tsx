@@ -1,7 +1,7 @@
 "use client";
 
 import { EXAM_BOARDS, KEY_STAGES, YEAR_GROUPS } from "@/lib/curriculum";
-import type { SortMode, ViewMode } from "./types";
+import type { ContentReviewQueueBucket, SortMode, ViewMode } from "./types";
 
 type Props = {
   query: string;
@@ -23,6 +23,8 @@ type Props = {
   onParentChange: (value: string) => void;
   subject: string;
   onSubjectChange: (value: string) => void;
+  reviewBucket: ContentReviewQueueBucket | "all";
+  onReviewBucketChange: (value: ContentReviewQueueBucket | "all") => void;
   sortMode: SortMode;
   onSortModeChange: (value: SortMode) => void;
   viewMode: ViewMode;
@@ -46,7 +48,7 @@ export default function ContentLibraryFilters(props: Props) {
           </button>
         ))}
       </div>
-      <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-9">
+      <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-10">
         <input
           value={props.query}
           onChange={(event) => props.onQueryChange(event.target.value)}
@@ -78,6 +80,18 @@ export default function ContentLibraryFilters(props: Props) {
         <select value={props.parent} onChange={(event) => props.onParentChange(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100">
           <option value="">Parent: all</option>
           {props.parents.map((value) => <option key={value} value={value}>{value}</option>)}
+        </select>
+        <select
+          value={props.reviewBucket}
+          onChange={(event) => props.onReviewBucketChange(event.target.value as ContentReviewQueueBucket | "all")}
+          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100"
+        >
+          <option value="all">Review status: all</option>
+          <option value="awaiting_review">Awaiting review</option>
+          <option value="approved">Approved</option>
+          <option value="published">Published</option>
+          <option value="reclassified">Reclassified</option>
+          <option value="rejected">Rejected</option>
         </select>
         <select value={props.sortMode} onChange={(event) => props.onSortModeChange(event.target.value as SortMode)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100">
           <option value="newest">Newest</option>

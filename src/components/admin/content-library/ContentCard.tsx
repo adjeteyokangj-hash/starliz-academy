@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ContentItem } from "./types";
-import { getBlackBoxBadgeTone, getContentJsonSummary, getContentMeta, parseBlackBoxAdminVerification, parseBlackBoxContentTest } from "./utils";
+import { getBlackBoxBadgeLabel, getBlackBoxBadgeTone, getContentJsonSummary, getContentMeta, parseBlackBoxAdminVerification, parseBlackBoxContentTest } from "./utils";
 
 type Props = {
   item: ContentItem;
@@ -78,9 +78,7 @@ export default function ContentCard({
 
   /** Part 4: determine display badge for BB result vs admin status */
   const adminVerified = verification?.status === "verified" || verification?.status === "rejected";
-  const bbBadgeText = blackBox
-    ? `BB: ${blackBox.decision}${typeof blackBox.score === "number" ? ` ${blackBox.score}/100` : ""}`
-    : "BB: Not tested";
+  const bbBadgeText = getBlackBoxBadgeLabel(blackBox, verification);
 
   return (
     <article className={`rounded-2xl border p-4 ${selected ? "border-indigo-400 bg-indigo-500/5" : "border-slate-800 bg-slate-950/45"}`}>
@@ -104,7 +102,7 @@ export default function ContentCard({
               Admin: {verification?.decision ?? verification?.status}
             </span>
           ) : null}
-          <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox)}`}>
+          <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox, verification)}`}>
             {bbBadgeText}
           </span>
           {/* Part 5: warn when content is reviewed/published but never tested */}

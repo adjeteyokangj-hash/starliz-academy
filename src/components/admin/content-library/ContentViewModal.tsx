@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
 import type { ContentItem } from "./types";
 import {
+  getBlackBoxBadgeLabel,
   getBlackBoxBadgeTone,
   getContentJsonSummary,
   getContentMeta,
@@ -457,10 +458,8 @@ function ContentViewModalBody({
                     Admin: {verification.decision ?? verification.status}
                   </span>
                 ) : null}
-                <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox)}`}>
-                  {blackBox
-                    ? `BB: ${verification?.originalBlackBoxDecision ?? blackBox.decision}${typeof (verification?.originalBlackBoxScore ?? blackBox.score) === "number" ? ` ${(verification?.originalBlackBoxScore ?? blackBox.score)}/100` : ""}`
-                    : "BB: Not tested"}
+                <span className={`rounded-full px-2 py-1 text-xs font-black ${getBlackBoxBadgeTone(blackBox, verification)}`}>
+                  {getBlackBoxBadgeLabel(blackBox, verification)}
                 </span>
               </div>
             </div>

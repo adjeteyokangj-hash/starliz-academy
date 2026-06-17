@@ -245,7 +245,33 @@ export function parseBlackBoxContentTest(item: ContentItem): BlackBoxContentTest
   };
 }
 
-export function getBlackBoxBadgeTone(result: BlackBoxContentTest | null): string {
+function blackBoxScoreLabel(result: BlackBoxContentTest | null, verification?: BlackBoxAdminVerification | null): string {
+  const score = verification?.originalBlackBoxScore ?? result?.score;
+  return typeof score === "number" ? ` ${score}/100` : "";
+}
+
+export function getBlackBoxBadgeLabel(result: BlackBoxContentTest | null, verification?: BlackBoxAdminVerification | null): string {
+  if (!result) return "BB: Not tested";
+
+  if (verification?.status === "verified") {
+    if (verification.decision === "approve") return `BB: APPROVED (ADMIN)${blackBoxScoreLabel(result, verification)}`;
+    if (verification.decision === "reclassify") return `BB: RECLASSIFIED (ADMIN)${blackBoxScoreLabel(result, verification)}`;
+  }
+
+  if (verification?.status === "rejected") {
+    return `BB: REJECTED (ADMIN)${blackBoxScoreLabel(result, verification)}`;
+  }
+
+  return `BB: ${result.decision}${blackBoxScoreLabel(result, verification)}`;
+}
+
+export function getBlackBoxBadgeTone(result: BlackBoxContentTest | null, verification?: BlackBoxAdminVerification | null): string {
+  if (verification?.status === "verified") {
+    if (verification.decision === "approve" || verification.decision === "reclassify") {
+      return "bg-emerald-500/15 text-emerald-200";
+    }
+  }
+  if (verification?.status === "rejected") return "bg-rose-500/15 text-rose-200";
   if (!result) return "bg-slate-700/40 text-slate-300";
   if (result.decision === "APPROVE") return "bg-emerald-500/15 text-emerald-200";
   if (result.decision === "REJECT") return "bg-rose-500/15 text-rose-200";

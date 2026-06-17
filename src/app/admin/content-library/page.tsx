@@ -502,6 +502,8 @@ export default function ContentLibraryPage() {
         onParentChange={(value) => setDraftFilters((current) => ({ ...current, studentParent: value }))}
         subject={draftFilters.subjectTab}
         onSubjectChange={(value) => setDraftFilters((current) => ({ ...current, subjectTab: value }))}
+        reviewBucket={draftFilters.reviewBucket}
+        onReviewBucketChange={(value) => setDraftFilters((current) => ({ ...current, reviewBucket: value }))}
         sortMode={draftFilters.sortMode}
         onSortModeChange={(value) => setDraftFilters((current) => ({ ...current, sortMode: value }))}
         viewMode={viewMode}
