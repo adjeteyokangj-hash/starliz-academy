@@ -12,6 +12,7 @@ import AITutorFeedback from "@/components/tutor/AITutorFeedback";
 import GameSuccessBurst from "@/components/game/GameSuccessBurst";
 import ContentMismatchFallback from "@/components/ContentMismatchFallback";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
+import VoiceHelpControls from "@/components/learning/VoiceHelpControls";
 import { MathQuestion, getMathQuestions, getWeightedMathQuestions, getMathInsight } from "@/lib/adaptive";
 import { validateContentItem } from "@/lib/content_validator";
 import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
@@ -135,6 +136,7 @@ export default function MathMissionPage() {
   const [retryQueueIds, setRetryQueueIds] = useState<string[]>([]);
   const [retryInitialCount, setRetryInitialCount] = useState(0);
   const [correctSinceCheckpoint, setCorrectSinceCheckpoint] = useState(0);
+  const [sessionVoiceHelpEnabled, setSessionVoiceHelpEnabled] = useState(false);
   const [explainWhyQuestion, setExplainWhyQuestion] = useState<{
     question: string;
     choices: string[];
@@ -144,7 +146,7 @@ export default function MathMissionPage() {
   const restoreAttemptedRef = useRef(false);
   const lastAutoSelectionContextRef = useRef<string | null>(null);
   const coachPanelRef = useRef<HTMLDivElement | null>(null);
-  const voiceHelpEnabled = shouldEnableStudentVoiceWorkflow(profile?.settings.voiceEnabled === true);
+  const voiceHelpEnabled = shouldEnableStudentVoiceWorkflow(sessionVoiceHelpEnabled);
 
   const sessionComplete = sessionMode === "completed_base" || sessionMode === "completed_retry";
   const retryPackMode = sessionMode === "retry_pack";
@@ -661,6 +663,10 @@ export default function MathMissionPage() {
   function repeatQuestion() {
     if (!question) return;
     speakMathPrompt(question);
+  }
+
+  function setVoiceHelpEnabled(nextEnabled: boolean) {
+    setSessionVoiceHelpEnabled(nextEnabled);
   }
 
   useEffect(() => {
@@ -1261,7 +1267,18 @@ export default function MathMissionPage() {
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Button className="w-full" onClick={checkAnswer} disabled={sessionComplete}>Check Answer</Button>
-                  {voiceHelpEnabled ? <Button className="w-full" variant="secondary" onClick={repeatQuestion}>Repeat Question</Button> : null}
+                  <VoiceHelpControls
+                    className="w-full"
+                    voiceHelpEnabled={voiceHelpEnabled}
+                    onToggleVoiceHelp={setVoiceHelpEnabled}
+                    actions={[{
+                      id: "read-question",
+                      label: "Read question",
+                      onClick: repeatQuestion,
+                      disabled: !question,
+                      variant: "secondary",
+                    }]}
+                  />
                   <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)} disabled={!question}>Coach</Button>
                   <Button className="w-full" variant="secondary" onClick={makeItEasier} disabled={sessionComplete}>{isAlgebraQuestion && isOlderLearner ? "Need a scaffold" : "Make it easier"}</Button>
                   <Button
