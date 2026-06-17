@@ -170,6 +170,45 @@ type SchoolWeekSettingsPayload = {
   parentAdminNotes?: string | null;
 };
 
+type DashboardAssignmentItem = {
+  id: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  content: {
+    id: string;
+    contentType: string;
+    topic: string;
+    skillFocus: string | null;
+    level: number;
+  };
+};
+
+type DashboardCatchUpTaskItem = {
+  taskId: string;
+  title: string;
+  subject: string;
+  topic?: string | null;
+  status: string;
+  priority: string;
+  dueDate?: string | null;
+};
+
+type DashboardHomeworkTaskItem = {
+  taskId: string;
+  title: string;
+  subject?: string | null;
+  topic?: string | null;
+  status: string;
+  dueDate?: string | null;
+};
+
+type DashboardContentPayload = {
+  assignments: DashboardAssignmentItem[];
+  catchUpTasks: DashboardCatchUpTaskItem[];
+  homeworkTasks: DashboardHomeworkTaskItem[];
+};
+
 type ChecklistStatus = "pass" | "warning" | "fail";
 
 type ChecklistItem = {
@@ -323,6 +362,11 @@ export default function StudentDetailPage() {
   const [progressionError, setProgressionError] = useState<string | null>(null);
   const [progressionActionPendingId, setProgressionActionPendingId] = useState<string | null>(null);
   const [progressionActionMessage, setProgressionActionMessage] = useState<string | null>(null);
+  const [dashboardContent, setDashboardContent] = useState<DashboardContentPayload | null>(null);
+  const [dashboardContentLoading, setDashboardContentLoading] = useState(true);
+  const [dashboardContentError, setDashboardContentError] = useState<string | null>(null);
+  const [dashboardContentMessage, setDashboardContentMessage] = useState<string | null>(null);
+  const [dashboardContentBusyKey, setDashboardContentBusyKey] = useState<string | null>(null);
 
   async function loadStudent() {
     const response = await fetch(`/api/admin/students/${params.id}`);
@@ -393,6 +437,46 @@ export default function StudentDetailPage() {
     const payload = (await response.json()) as AdminProgressionPayload;
     setProgression(payload);
     setProgressionLoading(false);
+  }
+
+  async function loadDashboardContent() {
+    setDashboardContentLoading(true);
+    setDashboardContentError(null);
+    const response = await fetch(`/api/admin/students/${params.id}/dashboard-content`);
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      setDashboardContent(null);
+      setDashboardContentError(payload?.error ?? "Unable to load removable dashboard content.");
+      setDashboardContentLoading(false);
+      return;
+    }
+    const payload = (await response.json()) as DashboardContentPayload;
+    setDashboardContent(payload);
+    setDashboardContentLoading(false);
+  }
+
+  async function removeDashboardContent(input: {
+    contentType: "assignment" | "catch_up" | "homework";
+    itemId: string;
+    label: string;
+  }) {
+    setDashboardContentMessage(null);
+    setDashboardContentBusyKey(`${input.contentType}:${input.itemId}`);
+    const response = await fetch(`/api/admin/students/${params.id}/dashboard-content`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contentType: input.contentType, itemId: input.itemId }),
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (!response.ok) {
+      setDashboardContentMessage(payload?.error ?? "Unable to remove dashboard content.");
+      setDashboardContentBusyKey(null);
+      return;
+    }
+    setDashboardContentMessage(`Removed ${input.label} from this learner dashboard.`);
+    await loadDashboardContent();
+    await loadAcademicIntelligence();
+    setDashboardContentBusyKey(null);
   }
 
   async function applySubjectLevelRecommendation(input: {
@@ -466,6 +550,7 @@ export default function StudentDetailPage() {
     void loadSchoolWeekSettings();
     void loadQuickLevelFinderControl();
     void loadProgressionRecommendations();
+    void loadDashboardContent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
@@ -926,6 +1011,129 @@ export default function StudentDetailPage() {
             </div>
           )}
           </div>
+        </AdminSectionCard>
+
+        <AdminSectionCard title="Dashboard Content Removal" eyebrow="Remove stuck learner items">
+          <p className="text-sm text-slate-300">
+            Remove content that is still visible on the learner dashboard. This works for assigned content, Smart Catch-Up tasks, and homework tasks.
+          </p>
+          {dashboardContentMessage ? (
+            <p className="mt-3 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
+              {dashboardContentMessage}
+            </p>
+          ) : null}
+
+          {dashboardContentLoading ? (
+            <p className="mt-3 text-sm text-slate-400">Loading dashboard content...</p>
+          ) : dashboardContentError ? (
+            <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-100">
+              <p>{dashboardContentError}</p>
+              <button
+                type="button"
+                onClick={() => void loadDashboardContent()}
+                className="mt-2 rounded-lg bg-rose-500 px-3 py-1 text-xs font-bold text-white"
+              >
+                Retry
+              </button>
+            </div>
+          ) : !dashboardContent ? (
+            <p className="mt-3 text-sm text-slate-400">No dashboard content found.</p>
+          ) : (
+            <div className="mt-3 grid gap-4 xl:grid-cols-3">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3">
+                <p className="text-sm font-bold text-white">Assignments ({dashboardContent.assignments.length})</p>
+                <div className="mt-2 space-y-2">
+                  {dashboardContent.assignments.length === 0 ? (
+                    <p className="text-xs text-slate-400">No active assignments.</p>
+                  ) : (
+                    dashboardContent.assignments.slice(0, 12).map((item) => {
+                      const busyKey = `assignment:${item.id}`;
+                      return (
+                        <div key={item.id} className="rounded-xl border border-slate-800 bg-slate-900/40 p-2 text-xs text-slate-200">
+                          <p className="font-semibold text-white">{item.content.contentType} - {item.content.topic}</p>
+                          <p className="mt-0.5 text-slate-400">{item.content.skillFocus ?? "No skill focus"} • Level {item.content.level}</p>
+                          <button
+                            type="button"
+                            disabled={dashboardContentBusyKey === busyKey}
+                            onClick={() => void removeDashboardContent({
+                              contentType: "assignment",
+                              itemId: item.id,
+                              label: "assignment",
+                            })}
+                            className="mt-2 rounded-lg bg-rose-500 px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-60"
+                          >
+                            {dashboardContentBusyKey === busyKey ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3">
+                <p className="text-sm font-bold text-white">Catch-Up Tasks ({dashboardContent.catchUpTasks.length})</p>
+                <div className="mt-2 space-y-2">
+                  {dashboardContent.catchUpTasks.length === 0 ? (
+                    <p className="text-xs text-slate-400">No catch-up tasks.</p>
+                  ) : (
+                    dashboardContent.catchUpTasks.slice(0, 12).map((item) => {
+                      const busyKey = `catch_up:${item.taskId}`;
+                      return (
+                        <div key={item.taskId} className="rounded-xl border border-slate-800 bg-slate-900/40 p-2 text-xs text-slate-200">
+                          <p className="font-semibold text-white">{item.title}</p>
+                          <p className="mt-0.5 text-slate-400">{item.subject}{item.topic ? ` • ${item.topic}` : ""} • {item.status.replaceAll("_", " ")}</p>
+                          <button
+                            type="button"
+                            disabled={dashboardContentBusyKey === busyKey}
+                            onClick={() => void removeDashboardContent({
+                              contentType: "catch_up",
+                              itemId: item.taskId,
+                              label: "catch-up task",
+                            })}
+                            className="mt-2 rounded-lg bg-rose-500 px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-60"
+                          >
+                            {dashboardContentBusyKey === busyKey ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-3">
+                <p className="text-sm font-bold text-white">Homework Tasks ({dashboardContent.homeworkTasks.length})</p>
+                <div className="mt-2 space-y-2">
+                  {dashboardContent.homeworkTasks.length === 0 ? (
+                    <p className="text-xs text-slate-400">No homework tasks.</p>
+                  ) : (
+                    dashboardContent.homeworkTasks.slice(0, 12).map((item) => {
+                      const busyKey = `homework:${item.taskId}`;
+                      return (
+                        <div key={item.taskId} className="rounded-xl border border-slate-800 bg-slate-900/40 p-2 text-xs text-slate-200">
+                          <p className="font-semibold text-white">{item.title}</p>
+                          <p className="mt-0.5 text-slate-400">{item.subject ?? "General"}{item.topic ? ` • ${item.topic}` : ""} • {item.status.replaceAll("_", " ")}</p>
+                          <button
+                            type="button"
+                            disabled={dashboardContentBusyKey === busyKey}
+                            onClick={() => void removeDashboardContent({
+                              contentType: "homework",
+                              itemId: item.taskId,
+                              label: "homework task",
+                            })}
+                            className="mt-2 rounded-lg bg-rose-500 px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-60"
+                          >
+                            {dashboardContentBusyKey === busyKey ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </AdminSectionCard>
 
         <AdminSectionCard title="Academic Intelligence" eyebrow="Smart Catch-Up & Exam Readiness">

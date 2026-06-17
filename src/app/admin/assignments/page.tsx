@@ -37,6 +37,40 @@ type AssignmentRow = {
   weakWords: string[];
 };
 
+type DashboardCleanupAssignment = {
+  id: string;
+  status: string;
+  content: {
+    id: string;
+    contentType: string;
+    topic: string;
+    skillFocus: string | null;
+    level: number;
+  };
+};
+
+type DashboardCleanupCatchUpTask = {
+  taskId: string;
+  title: string;
+  subject: string;
+  topic?: string | null;
+  status: string;
+};
+
+type DashboardCleanupHomeworkTask = {
+  taskId: string;
+  title: string;
+  subject?: string | null;
+  topic?: string | null;
+  status: string;
+};
+
+type DashboardCleanupPayload = {
+  assignments: DashboardCleanupAssignment[];
+  catchUpTasks: DashboardCleanupCatchUpTask[];
+  homeworkTasks: DashboardCleanupHomeworkTask[];
+};
+
 function levelCapForSubject(subject: string): number {
   const normalized = subject.trim().toLowerCase();
   if (normalized === "reading" || normalized === "lesson" || normalized === "ai_daily" || normalized === "daily") {
@@ -55,6 +89,11 @@ export default function AdminAssignmentsPage() {
   const [keyStageFilter, setKeyStageFilter] = useState("");
   const [yearGroupFilter, setYearGroupFilter] = useState("");
   const [examBoardFilter, setExamBoardFilter] = useState("");
+  const [cleanupStudent, setCleanupStudent] = useState<{ id: string; name: string } | null>(null);
+  const [cleanupData, setCleanupData] = useState<DashboardCleanupPayload | null>(null);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
+  const [cleanupBusyKey, setCleanupBusyKey] = useState<string | null>(null);
 
   const loadAssignments = useCallback(async (showLoading = true) => {
     if (showLoading) {
@@ -152,6 +191,60 @@ export default function AdminAssignmentsPage() {
     }
     setPendingRowAction(null);
     await loadAssignments(false);
+  }
+
+  async function loadStudentDashboardCleanup(studentId: string, studentName: string) {
+    setCleanupStudent({ id: studentId, name: studentName });
+    setCleanupData(null);
+    setCleanupError(null);
+    setCleanupLoading(true);
+
+    const response = await fetch(`/api/admin/students/${studentId}/dashboard-content`, {
+      credentials: "include",
+    });
+    const payload = await response.json().catch(() => null) as (DashboardCleanupPayload & { error?: string }) | null;
+    if (!response.ok) {
+      setCleanupError(payload?.error ?? "Unable to load dashboard cleanup data.");
+      setCleanupLoading(false);
+      return;
+    }
+
+    setCleanupData({
+      assignments: payload?.assignments ?? [],
+      catchUpTasks: payload?.catchUpTasks ?? [],
+      homeworkTasks: payload?.homeworkTasks ?? [],
+    });
+    setCleanupLoading(false);
+  }
+
+  async function removeStudentDashboardItem(input: {
+    contentType: "assignment" | "catch_up" | "homework";
+    itemId: string;
+    label: string;
+  }) {
+    if (!cleanupStudent) return;
+    const busyKey = `${input.contentType}:${input.itemId}`;
+    setCleanupBusyKey(busyKey);
+    setMessage(`Removing ${input.label} from ${cleanupStudent.name}...`);
+
+    const response = await fetch(`/api/admin/students/${cleanupStudent.id}/dashboard-content`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contentType: input.contentType, itemId: input.itemId }),
+    });
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+
+    if (!response.ok) {
+      setMessage(payload?.error ?? "Unable to remove dashboard item.");
+      setCleanupBusyKey(null);
+      return;
+    }
+
+    setMessage(`Removed ${input.label} from ${cleanupStudent.name}.`);
+    await loadStudentDashboardCleanup(cleanupStudent.id, cleanupStudent.name);
+    await loadAssignments(false);
+    setCleanupBusyKey(null);
   }
 
   return (
@@ -256,6 +349,120 @@ export default function AdminAssignmentsPage() {
       </div>
 
       <div className="grid gap-4">
+        {cleanupStudent ? (
+          <div className="rounded-3xl border border-cyan-700/50 bg-cyan-950/30 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">Dashboard cleanup</p>
+                <p className="mt-1 text-sm text-cyan-100">Manage all dashboard items for {cleanupStudent.name}.</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadStudentDashboardCleanup(cleanupStudent.id, cleanupStudent.name)}
+                  disabled={cleanupLoading}
+                  className="rounded-xl border border-cyan-400/40 px-3 py-2 text-xs font-black text-cyan-100 hover:bg-cyan-800/40 disabled:opacity-60"
+                >
+                  {cleanupLoading ? "Refreshing..." : "Refresh cleanup"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCleanupStudent(null);
+                    setCleanupData(null);
+                    setCleanupError(null);
+                  }}
+                  className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {cleanupLoading ? (
+              <p className="mt-3 text-sm text-cyan-100">Loading cleanup data...</p>
+            ) : cleanupError ? (
+              <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{cleanupError}</p>
+            ) : cleanupData ? (
+              <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                <div className="rounded-2xl border border-cyan-500/20 bg-slate-900/60 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.12em] text-cyan-200">Assignments ({cleanupData.assignments.length})</p>
+                  <div className="mt-2 space-y-2">
+                    {cleanupData.assignments.length === 0 ? (
+                      <p className="text-xs text-slate-400">No active assignments.</p>
+                    ) : cleanupData.assignments.slice(0, 10).map((item) => {
+                      const busyKey = `assignment:${item.id}`;
+                      return (
+                        <div key={item.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-xs text-slate-200">
+                          <p className="font-semibold text-white">{item.content.contentType} - {item.content.topic}</p>
+                          <button
+                            type="button"
+                            disabled={cleanupBusyKey === busyKey}
+                            onClick={() => void removeStudentDashboardItem({ contentType: "assignment", itemId: item.id, label: "assignment" })}
+                            className="mt-2 rounded-lg bg-red-500 px-2 py-1 text-[11px] font-black text-white disabled:opacity-60"
+                          >
+                            {cleanupBusyKey === busyKey ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-cyan-500/20 bg-slate-900/60 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.12em] text-cyan-200">Catch-up tasks ({cleanupData.catchUpTasks.length})</p>
+                  <div className="mt-2 space-y-2">
+                    {cleanupData.catchUpTasks.length === 0 ? (
+                      <p className="text-xs text-slate-400">No catch-up tasks.</p>
+                    ) : cleanupData.catchUpTasks.slice(0, 10).map((item) => {
+                      const busyKey = `catch_up:${item.taskId}`;
+                      return (
+                        <div key={item.taskId} className="rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-xs text-slate-200">
+                          <p className="font-semibold text-white">{item.title}</p>
+                          <p className="mt-0.5 text-slate-400">{item.subject}{item.topic ? ` • ${item.topic}` : ""}</p>
+                          <button
+                            type="button"
+                            disabled={cleanupBusyKey === busyKey}
+                            onClick={() => void removeStudentDashboardItem({ contentType: "catch_up", itemId: item.taskId, label: "catch-up task" })}
+                            className="mt-2 rounded-lg bg-red-500 px-2 py-1 text-[11px] font-black text-white disabled:opacity-60"
+                          >
+                            {cleanupBusyKey === busyKey ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-cyan-500/20 bg-slate-900/60 p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.12em] text-cyan-200">Homework tasks ({cleanupData.homeworkTasks.length})</p>
+                  <div className="mt-2 space-y-2">
+                    {cleanupData.homeworkTasks.length === 0 ? (
+                      <p className="text-xs text-slate-400">No homework tasks.</p>
+                    ) : cleanupData.homeworkTasks.slice(0, 10).map((item) => {
+                      const busyKey = `homework:${item.taskId}`;
+                      return (
+                        <div key={item.taskId} className="rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-xs text-slate-200">
+                          <p className="font-semibold text-white">{item.title}</p>
+                          <p className="mt-0.5 text-slate-400">{item.subject ?? "General"}{item.topic ? ` • ${item.topic}` : ""}</p>
+                          <button
+                            type="button"
+                            disabled={cleanupBusyKey === busyKey}
+                            onClick={() => void removeStudentDashboardItem({ contentType: "homework", itemId: item.taskId, label: "homework task" })}
+                            className="mt-2 rounded-lg bg-red-500 px-2 py-1 text-[11px] font-black text-white disabled:opacity-60"
+                          >
+                            {cleanupBusyKey === busyKey ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {filteredAssignments.map((assignment) => (
           <div
             key={assignment.id}
@@ -342,6 +549,13 @@ export default function AdminAssignmentsPage() {
               </button>
               <button type="button" disabled={pendingRowAction?.id === assignment.student.id} onClick={() => void removeAllAssignmentsForStudent(assignment)} className="rounded-xl border border-red-300 px-3 py-2 text-xs font-black text-red-200 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60">
                 {pendingRowAction?.id === assignment.student.id && pendingRowAction?.action === "remove_all" ? "Removing all..." : "Remove all for student"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadStudentDashboardCleanup(assignment.student.id, assignment.student.name)}
+                className="rounded-xl border border-cyan-400/40 px-3 py-2 text-xs font-black text-cyan-200 hover:bg-cyan-500/10"
+              >
+                Dashboard cleanup
               </button>
             </div>
           </div>
