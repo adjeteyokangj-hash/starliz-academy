@@ -15,6 +15,7 @@ import {
 } from "./utils";
 import { analyzeContentSessionSlots, getIncompleteSlotsReason, isQuestionSlotFilled } from "@/lib/session-slot-validation";
 import { analyzeSessionSlotDuplicates, primaryDuplicateFlag } from "@/lib/session-slot-duplicates";
+import { buildMissingSlotGenerationRequest, mergeGeneratedIntoEmptySlots, summarizeSessionSlots } from "@/lib/session-slot-recovery";
 
 type Props = {
   open: boolean;
@@ -272,6 +273,7 @@ function ContentViewModalBody({
   const [pairKeepChoice, setPairKeepChoice] = useState<Record<string, number>>({});
   const [duplicateWarningIgnored, setDuplicateWarningIgnored] = useState(false);
   const [regeneratingDuplicateSlots, setRegeneratingDuplicateSlots] = useState(false);
+  const [generatingMissingSlots, setGeneratingMissingSlots] = useState(false);
   const effectivePairKeepChoice = useMemo(() => {
     const resolved: Record<string, number> = {};
     for (const pair of duplicatePairs) {
@@ -291,6 +293,7 @@ function ContentViewModalBody({
     }
     return Array.from(targets.values()).sort((a, b) => a - b);
   }, [duplicatePairs, effectivePairKeepChoice]);
+  const missingSlotIndexes = useMemo(() => summarizeSessionSlots(items).emptySlotIndexes, [items]);
   const initialSlotEditor = buildSlotEditorState(currentItem, content.contentType);
   const [slotPromptInput, setSlotPromptInput] = useState(initialSlotEditor.prompt);
   const [slotAnswerInput, setSlotAnswerInput] = useState(initialSlotEditor.answer);
@@ -424,6 +427,105 @@ function ContentViewModalBody({
     }
     nextItems[selectedItemIndex] = nextItem;
     await saveSlots(nextItems, `Slot ${selectedItemIndex + 1} saved.`);
+  }
+
+  async function generateMissingSlots() {
+    if (!missingSlotIndexes.length) {
+      setMessage("No missing slots found.");
+      return;
+    }
+
+    setGeneratingMissingSlots(true);
+    setMessage(null);
+
+    try {
+      const avoidPrompts = items
+        .filter((slot) => isQuestionSlotFilled(slot))
+        .map((slot) => normalizedPrompt(promptLikeText(slot)))
+        .filter(Boolean);
+
+      const requestBody = buildMissingSlotGenerationRequest({
+        context: {
+          subject: meta.subject,
+          keyStage: meta.keyStage,
+          yearGroup: meta.yearGroup,
+          ageGroup: meta.ageGroup,
+          examBoard: meta.examBoard,
+          level: content.level,
+          topic: meta.topic,
+          skillFocus: meta.skillFocus,
+          curriculumPathway: meta.curriculumPathway,
+          module: strand || null,
+          contentType: content.contentType,
+          avoidPrompts,
+        },
+        missingSlots: missingSlotIndexes.length,
+      });
+
+      const response = await fetch("/api/admin/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+
+      const payload = await response.json() as {
+        success?: boolean;
+        error?: string;
+        content?: { items?: unknown[] };
+      };
+
+      if (!response.ok || payload.success === false) {
+        setMessage(payload.error ?? "Missing slot generation failed.");
+        return;
+      }
+
+      const generatedItems = Array.isArray(payload.content?.items)
+        ? payload.content.items.filter((entry): entry is GeneratedReviewItem => Boolean(entry && typeof entry === "object" && !Array.isArray(entry)))
+        : [];
+
+      const merged = mergeGeneratedIntoEmptySlots({
+        existingItems: items,
+        generatedItems,
+      });
+
+      if (!merged.replacedCount) {
+        setMessage("No valid generated items were returned for empty slots. Try again or create manually.");
+        return;
+      }
+
+      const saved = await saveSlots(
+        merged.mergedItems,
+        merged.summary.missingSlots === 0
+          ? `Generated ${merged.replacedCount} missing slot${merged.replacedCount === 1 ? "" : "s"}. Filled Slots: ${merged.summary.filledSlots}/${merged.summary.totalSlots}. Empty Slots: ${merged.summary.missingSlots}. Black Box must be re-run before review/publish.`
+          : `Generated ${merged.replacedCount} missing slot${merged.replacedCount === 1 ? "" : "s"}. ${merged.summary.missingSlots} slot${merged.summary.missingSlots === 1 ? " remains" : "s remain"} empty.`,
+      );
+
+      if (saved && merged.summary.emptySlotIndexes.length > 0) {
+        selectSlot(merged.summary.emptySlotIndexes[0]);
+      }
+    } catch {
+      setMessage("Missing slot generation request failed.");
+    } finally {
+      setGeneratingMissingSlots(false);
+    }
+  }
+
+  function fillMissingFromLibrary() {
+    if (!missingSlotIndexes.length) {
+      setMessage("No missing slots found.");
+      return;
+    }
+    selectSlot(missingSlotIndexes[0]);
+    setMessage(`Slot ${missingSlotIndexes[0] + 1} selected. Fill this slot from library content and save.`);
+  }
+
+  function createMissingManually() {
+    if (!missingSlotIndexes.length) {
+      setMessage("No missing slots found.");
+      return;
+    }
+    selectSlot(missingSlotIndexes[0]);
+    setMessage(`Slot ${missingSlotIndexes[0] + 1} selected. Create content manually and click Save slot content.`);
   }
 
   function setKeepSlot(pairKey: string, slotIndex: number) {
@@ -814,9 +916,35 @@ function ContentViewModalBody({
                 ) : null}
 
                 {!slotSummary.slotValidationExempt && !slotSummary.isSessionComplete ? (
-                  <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-black text-amber-100">
-                    {getIncompleteSlotsReason(slotSummary.missingSlots)}
-                  </p>
+                  <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-2 text-xs font-black text-amber-100">
+                    <p>{getIncompleteSlotsReason(slotSummary.missingSlots)}</p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                      <button
+                        type="button"
+                        onClick={() => void generateMissingSlots()}
+                        disabled={generatingMissingSlots || slotSummary.missingSlots <= 0}
+                        className="rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-2 text-left text-xs font-black text-amber-50 hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {generatingMissingSlots ? "Generating..." : "Generate Missing Slots"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={fillMissingFromLibrary}
+                        disabled={slotSummary.missingSlots <= 0}
+                        className="rounded-lg border border-slate-600 px-3 py-2 text-left text-xs font-black text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Fill From Library
+                      </button>
+                      <button
+                        type="button"
+                        onClick={createMissingManually}
+                        disabled={slotSummary.missingSlots <= 0}
+                        className="rounded-lg border border-slate-600 px-3 py-2 text-left text-xs font-black text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Create Manually
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
 
                 <div className="mt-3 flex flex-wrap items-end gap-2">

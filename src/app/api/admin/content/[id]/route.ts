@@ -8,6 +8,8 @@ import {
   buildBlackBoxGateFailure,
   hasPassedBlackBoxGate,
   isBlackBoxGateTargetStatus,
+  mergeBlackBoxGateMetadata,
+  parseContentMetadataJson,
 } from "@/lib/ai/content-black-box-gate";
 import { analyzeContentSessionSlots, getIncompleteSlotsReason, isQuestionSlotFilled } from "@/lib/session-slot-validation";
 import { analyzeSessionSlotDuplicates } from "@/lib/session-slot-duplicates";
@@ -79,11 +81,13 @@ type PatchUpdateInput = {
   approvedAt?: Date;
   publishedAt?: Date;
   contentJson?: string;
+  metadataJson?: string;
 };
 
 type PatchedContentRecord = {
   id: string;
   status: string;
+  metadataJson?: string | null;
 };
 
 type AdminContentPatchDeps = {
@@ -104,7 +108,7 @@ async function defaultUpdateContent(id: string, data: PatchUpdateInput): Promise
   return prisma.aIContentCache.update({
     where: { id },
     data,
-    select: { id: true, status: true },
+    select: { id: true, status: true, metadataJson: true },
   });
 }
 
@@ -154,10 +158,6 @@ export async function handleAdminContentPatch(
       return NextResponse.json({ error: "Content not found." }, { status: 404 });
     }
 
-    if (body.status && isBlackBoxGateTargetStatus(body.status) && !hasPassedBlackBoxGate(existing.metadataJson)) {
-      return NextResponse.json(buildBlackBoxGateFailure(), { status: 409 });
-    }
-
     let sanitizedContentJson: string | undefined;
     if (body.contentJson !== undefined) {
       let parsed: unknown;
@@ -172,6 +172,37 @@ export async function handleAdminContentPatch(
       }
 
       sanitizedContentJson = JSON.stringify(parsed);
+    }
+
+    const contentChanged = sanitizedContentJson !== undefined && sanitizedContentJson !== existing.contentJson;
+    const blackBoxMarkedStaleMetadata = contentChanged
+      ? JSON.stringify(mergeBlackBoxGateMetadata(parseContentMetadataJson(existing.metadataJson), {
+          blackBoxLiveTest: {
+            status: "needs_review",
+            testedAt: now.toISOString(),
+            reasons: ["Content changed. Re-run Black Box before review/publish."],
+          },
+          blackBoxRuntimeTest: {
+            status: "needs_review",
+            testedAt: now.toISOString(),
+            reasons: ["Content changed. Re-run Black Box before review/publish."],
+          },
+          blackBoxAdminVerification: {
+            status: "pending",
+            decision: "needs_changes",
+            notes: "Content changed after prior verification. Re-run Black Box and verify again.",
+            verifiedAt: null,
+            verifiedBy: null,
+          },
+          blackBoxNeedsRerun: true,
+          blackBoxStaleReason: "content_updated",
+          blackBoxStaleAt: now.toISOString(),
+        }))
+      : undefined;
+
+    const gateMetadata = blackBoxMarkedStaleMetadata ?? existing.metadataJson;
+    if (body.status && isBlackBoxGateTargetStatus(body.status) && !hasPassedBlackBoxGate(gateMetadata)) {
+      return NextResponse.json(buildBlackBoxGateFailure(), { status: 409 });
     }
 
     if (body.status === "published") {
@@ -202,6 +233,7 @@ export async function handleAdminContentPatch(
       ...(body.status === "approved" ? { approvedAt: now } : {}),
       ...(body.status === "published" ? { publishedAt: now } : {}),
       ...(sanitizedContentJson !== undefined ? { contentJson: sanitizedContentJson } : {}),
+      ...(blackBoxMarkedStaleMetadata !== undefined ? { metadataJson: blackBoxMarkedStaleMetadata } : {}),
     });
 
     await deps.writeAuditLog({

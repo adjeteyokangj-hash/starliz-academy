@@ -141,6 +141,40 @@ test("admin content patch route still allows valid contentJson edit without blac
   assert.equal(contentUpdated, true);
 });
 
+test("admin content patch route marks black box stale when content changes", async () => {
+  let updatedMetadataJson: string | undefined;
+
+  const response = await handleAdminContentPatch(
+    requestFor({ contentJson: JSON.stringify([{ prompt: "What is 3 + 3?", answer: 6 }]) }),
+    context,
+    deps({
+      findContentForPatch: async () => ({
+        id: "content-1",
+        contentType: "math",
+        contentJson: JSON.stringify([{ prompt: "What is 2 + 2?", answer: "4" }]),
+        metadataJson: JSON.stringify({
+          blackBoxLiveTest: { status: "passed" },
+          blackBoxAdminVerification: { status: "verified" },
+        }),
+      }),
+      updateContent: async (_id, data) => {
+        updatedMetadataJson = data.metadataJson;
+        return { id: "content-1", status: data.status ?? "generated" };
+      },
+    }),
+  );
+
+  const payload = await response.json() as { item?: { id?: string } };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.item?.id, "content-1");
+  assert.equal(typeof updatedMetadataJson, "string");
+  const metadata = JSON.parse(updatedMetadataJson ?? "{}") as Record<string, unknown>;
+  assert.equal((metadata.blackBoxLiveTest as { status?: string }).status, "needs_review");
+  assert.equal((metadata.blackBoxAdminVerification as { status?: string }).status, "pending");
+  assert.equal(metadata.blackBoxNeedsRerun, true);
+});
+
 test("admin content patch route allows published status when only near duplicate warnings exist", async () => {
   const response = await handleAdminContentPatch(requestFor({ status: "published" }), context, deps({
     findContentForPatch: async () => ({
