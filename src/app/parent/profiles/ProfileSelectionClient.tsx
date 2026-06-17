@@ -135,7 +135,7 @@ function ChildAvatarOrb({ index }: { index: number }) {
   const variant = variants[index % variants.length];
 
   return (
-    <div className={`relative flex h-20 w-20 items-center justify-center rounded-full border border-white/15 bg-gradient-to-br ${variant} shadow-[0_0_35px_rgba(99,102,241,0.25)]`}>
+    <div className={`relative flex h-20 w-20 items-center justify-center rounded-full border border-white/15 bg-linear-to-br ${variant} shadow-[0_0_35px_rgba(99,102,241,0.25)]`}>
       <div className="absolute inset-3 rounded-full border border-white/20 bg-slate-950/50" />
       <svg viewBox="0 0 24 24" aria-hidden="true" className="relative z-10 h-9 w-9 text-white/90">
         <path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8L12 2z" fill="currentColor" />
@@ -343,8 +343,8 @@ export default function ProfileSelectionClient() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#1b2359_0%,_#070b24_42%,_#030512_100%)] px-4 text-white">
-        <section className="w-full max-w-6xl rounded-[2rem] border border-white/10 bg-slate-950/45 p-5 shadow-[0_24px_80px_rgba(2,6,23,0.72)] backdrop-blur md:p-8">
+      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#1b2359_0%,#070b24_42%,#030512_100%)] px-4 text-white">
+        <section className="w-full max-w-6xl rounded-4xl border border-white/10 bg-slate-950/45 p-5 shadow-[0_24px_80px_rgba(2,6,23,0.72)] backdrop-blur md:p-8">
           <div className="h-12 w-40 animate-pulse rounded-2xl bg-white/10" />
           <div className="mt-7 h-6 w-48 animate-pulse rounded-xl bg-white/10" />
           <div className="mt-3 h-12 w-3/4 animate-pulse rounded-xl bg-white/10" />
@@ -365,7 +365,7 @@ export default function ProfileSelectionClient() {
 
   if (!payload || error) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#1b2359_0%,_#070b24_42%,_#030512_100%)] px-4">
+      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#1b2359_0%,#070b24_42%,#030512_100%)] px-4">
         <div className="w-full max-w-md rounded-2xl border border-rose-300/40 bg-rose-950/30 p-5 text-sm text-rose-100">
           {error ?? "Could not load profile selection."}
         </div>
@@ -374,7 +374,7 @@ export default function ProfileSelectionClient() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_#161a4b_0%,_#090d2a_38%,_#030513_100%)] px-4 py-6 text-white sm:px-6 sm:py-10">
+    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#161a4b_0%,#090d2a_38%,#030513_100%)] px-4 py-6 text-white sm:px-6 sm:py-10">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {starPositions.map((position, index) => (
           <span
@@ -382,13 +382,13 @@ export default function ProfileSelectionClient() {
             className={`absolute ${position} h-1.5 w-1.5 rounded-full bg-white/80 shadow-[0_0_12px_rgba(255,255,255,0.9)] ${index % 3 === 0 ? "animate-pulse" : ""}`}
           />
         ))}
-        <div className="absolute right-[-14rem] top-[-4rem] h-[24rem] w-[24rem] rounded-full border border-indigo-300/20 bg-[radial-gradient(circle_at_35%_35%,_rgba(168,85,247,0.18),_rgba(59,130,246,0.12)_45%,_rgba(4,8,26,0.95)_72%)] shadow-[0_0_120px_rgba(99,102,241,0.25)] sm:right-[-10rem] sm:h-[34rem] sm:w-[34rem]" />
-        <div className="absolute right-[8%] top-[12%] h-28 w-28 rounded-full bg-[radial-gradient(circle,_rgba(255,255,255,0.95),_rgba(192,132,252,0.5)_30%,_rgba(59,130,246,0.08)_70%,_transparent_100%)] blur-sm sm:h-40 sm:w-40" />
+        <div className="absolute -right-56 -top-16 h-96 w-96 rounded-full border border-indigo-300/20 bg-[radial-gradient(circle_at_35%_35%,rgba(168,85,247,0.18),rgba(59,130,246,0.12)_45%,rgba(4,8,26,0.95)_72%)] shadow-[0_0_120px_rgba(99,102,241,0.25)] sm:-right-40 sm:h-136 sm:w-136" />
+        <div className="absolute right-[8%] top-[12%] h-28 w-28 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.95),rgba(192,132,252,0.5)_30%,rgba(59,130,246,0.08)_70%,transparent_100%)] blur-sm sm:h-40 sm:w-40" />
         <div className="absolute bottom-[13%] right-[8%] h-32 w-56 rounded-full border border-violet-300/20" />
         <div className="absolute bottom-[11%] right-[6%] h-24 w-48 rounded-full border border-cyan-300/10" />
       </div>
 
-      <section className="relative mx-auto max-w-6xl rounded-[2rem] border border-white/10 bg-slate-950/45 p-5 shadow-[0_24px_80px_rgba(2,6,23,0.72)] backdrop-blur md:p-8">
+      <section className="relative mx-auto max-w-6xl rounded-4xl border border-white/10 bg-slate-950/45 p-5 shadow-[0_24px_80px_rgba(2,6,23,0.72)] backdrop-blur md:p-8">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <Image
@@ -397,7 +397,7 @@ export default function ProfileSelectionClient() {
               width={170}
               height={72}
               priority
-              className="h-auto w-[130px] object-contain sm:w-[170px]"
+              className="h-auto w-32.5 object-contain sm:w-42.5"
             />
           </div>
           <button
@@ -416,7 +416,7 @@ export default function ProfileSelectionClient() {
         <div className="mt-8 max-w-3xl">
           <p className="text-lg font-semibold text-violet-300">Welcome back!</p>
           <h1 className="mt-2 text-4xl font-black tracking-tight text-white sm:text-5xl">
-            Who is using <span className="bg-gradient-to-r from-sky-400 via-indigo-300 to-fuchsia-400 bg-clip-text text-transparent">StarLiz</span> Academy?
+            Who is using <span className="bg-linear-to-r from-sky-400 via-indigo-300 to-fuchsia-400 bg-clip-text text-transparent">StarLiz</span> Academy?
           </h1>
           <p className="mt-4 text-lg text-slate-300">Choose a profile to continue your learning journey.</p>
         </div>
@@ -425,7 +425,7 @@ export default function ProfileSelectionClient() {
           {featurePills.map((pill) => (
             <div
               key={pill.title}
-              className={`rounded-2xl border border-white/10 bg-gradient-to-br ${pill.accent} p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]`}
+              className={`rounded-2xl border border-white/10 bg-linear-to-br ${pill.accent} p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]`}
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/55">

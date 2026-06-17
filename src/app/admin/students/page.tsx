@@ -5,6 +5,7 @@ import Link from "next/link";
 import AdminEmptyState from "@/components/admin/AdminEmptyState";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup, yearGroupsForKeyStage } from "@/lib/curriculum";
+import { formatStudentId, studentIdMatchesQuery } from "@/lib/student-id";
 
 type Student = {
   id: string;
@@ -84,7 +85,8 @@ export default function StudentsPage() {
     const matchesSearch =
       student.name.toLowerCase().includes(query) ||
       student.parentEmail.toLowerCase().includes(query) ||
-      (student.parentName ?? "").toLowerCase().includes(query);
+      (student.parentName ?? "").toLowerCase().includes(query) ||
+      studentIdMatchesQuery(student.id, search);
     const matchesAccuracy =
       accuracyFilter === "all" ||
       (accuracyFilter === "no-data" && student.accuracy === null) ||
@@ -112,7 +114,7 @@ export default function StudentsPage() {
             setSearch(event.target.value);
             setPage(1);
           }}
-          placeholder="Search students or parent email"
+          placeholder="Search name, parent email, or student ID"
           className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white placeholder:text-slate-600"
         />
         <select
@@ -205,6 +207,9 @@ export default function StudentsPage() {
                           🚨 {student.frustrationCount}
                         </span>
                       ) : null}
+                    </span>
+                    <span className="mt-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      {formatStudentId(student.id)}
                     </span>
                   </td>
                   <td className="px-3 py-3">{student.parentName ?? student.parentEmail}</td>

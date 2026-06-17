@@ -9,6 +9,7 @@ import type {
 } from "@/lib/academic-intelligence/types";
 
 const TASK_ENTITY_TYPE = "academic_homework_task";
+const ADMIN_HIDDEN_NOTE = "__admin_removed__";
 
 type PersistedHomeworkMetadata = {
   taskId: string;
@@ -115,7 +116,7 @@ function nextDateForDay(day: SchoolWeekday): Date {
   return next;
 }
 
-export async function listHomeworkTasks(studentId: string): Promise<HomeworkTaskRecord[]> {
+export async function listHomeworkTasks(studentId: string, options?: { includeHidden?: boolean }): Promise<HomeworkTaskRecord[]> {
   const rows = await prisma.auditLog.findMany({
     where: {
       entityType: TASK_ENTITY_TYPE,
@@ -134,9 +135,15 @@ export async function listHomeworkTasks(studentId: string): Promise<HomeworkTask
   });
 
   const latest = new Map<string, HomeworkTaskRecord>();
+  const hiddenTaskIds = new Set<string>();
   for (const row of rows) {
     const parsed = toTaskRecord(row);
     if (!parsed) continue;
+    if (!options?.includeHidden && parsed.note === ADMIN_HIDDEN_NOTE) {
+      hiddenTaskIds.add(parsed.taskId);
+      continue;
+    }
+    if (!options?.includeHidden && hiddenTaskIds.has(parsed.taskId)) continue;
     if (!latest.has(parsed.taskId)) latest.set(parsed.taskId, parsed);
   }
 
@@ -152,7 +159,7 @@ export async function syncHomeworkTasks(input: {
   schoolWeekModePlan: SchoolWeekModePlan;
   actorUserId?: string;
 }): Promise<HomeworkTaskRecord[]> {
-  const existing = await listHomeworkTasks(input.studentId);
+  const existing = await listHomeworkTasks(input.studentId, { includeHidden: true });
   const existingByBlock = new Map(existing.map((task) => [task.blockId, task]));
 
   for (const day of input.schoolWeekModePlan.dailySchedules) {
@@ -204,7 +211,7 @@ export async function applyHomeworkTaskAction(input: {
   dueDate?: string | null;
   note?: string | null;
 }): Promise<HomeworkTaskRecord | null> {
-  const tasks = await listHomeworkTasks(input.studentId);
+  const tasks = await listHomeworkTasks(input.studentId, { includeHidden: true });
   const existing = tasks.find((task) => task.taskId === input.taskId);
   if (!existing) return null;
 
@@ -242,6 +249,6 @@ export async function applyHomeworkTaskAction(input: {
     metadata,
   });
 
-  const updated = await listHomeworkTasks(input.studentId);
+  const updated = await listHomeworkTasks(input.studentId, { includeHidden: true });
   return updated.find((task) => task.taskId === existing.taskId) ?? null;
 }

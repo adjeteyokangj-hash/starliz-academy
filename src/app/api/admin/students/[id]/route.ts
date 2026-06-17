@@ -63,6 +63,7 @@ export async function GET(_request: Request, context: Context) {
   if (!session) return response;
 
   const { id } = await context.params;
+  const brainPromise = getStudentLearningBrain(id);
   const student = await prisma.childProfile.findUnique({
     where: { id },
     include: {
@@ -81,7 +82,7 @@ export async function GET(_request: Request, context: Context) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const brain = await getStudentLearningBrain(student.id, { includeCoachSignals: true });
+  const brain = await brainPromise;
   const total = brain
     ? brain.evidenceSummary.attempts.total + brain.evidenceSummary.progress.total
     : student.attempts.length || student.progressRecords.length;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/layout/Navbar";
 import { SKILL_MAP } from "@/lib/skills";
@@ -27,6 +27,7 @@ import {
 } from "@/lib/homework-phase1c/helpers";
 import { isStudentCertificateCenterEnabled } from "@/lib/launch-scope";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
+import { formatStudentId } from "@/lib/student-id";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 import type { CoverageEntry, LearningTwinProfile } from "@/lib/academic-intelligence/types";
 
@@ -441,6 +442,8 @@ function buildInterventionPath(input: {
 
 export default function StudentDashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedStudentId = searchParams.get("studentId")?.trim() || null;
   const certificateCenterEnabled = isStudentCertificateCenterEnabled();
   const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
   const [activeLanguageModules, setActiveLanguageModules] = useState<NonNullable<DashboardSummaryPayload["activeLanguageModules"]>>([]);
@@ -487,10 +490,21 @@ export default function StudentDashboardPage() {
     setError("");
     setMissingChildContext(false);
     setAuthRequired(false);
+    setAcademicIntelligence(null);
+    setSessionSummary(null);
+    setLearningState(null);
+    setProgression(null);
+    setWeeklyHomeworkGate(null);
+    setPanelActionMessage(null);
     try {
       const forceDashboardRefresh = typeof window !== "undefined"
         && new URLSearchParams(window.location.search).get("refresh") === "1";
-      const summaryRes = await fetch(`/api/student/dashboard-summary${forceDashboardRefresh ? "?refresh=1" : ""}`, { credentials: "include" });
+      const summaryParam = requestedStudentId
+        ? `studentId=${encodeURIComponent(requestedStudentId)}`
+        : "";
+      const refreshParam = forceDashboardRefresh ? "refresh=1" : "";
+      const summaryQuery = [summaryParam, refreshParam].filter(Boolean).join("&");
+      const summaryRes = await fetch(`/api/student/dashboard-summary${summaryQuery ? `?${summaryQuery}` : ""}`, { credentials: "include" });
       if (summaryRes.status === 401) {
         setAuthRequired(true);
         setError("Your session expired. Please sign in again.");
@@ -564,7 +578,7 @@ export default function StudentDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [requestedStudentId]);
 
   useEffect(() => {
     if (loading || !activeChildId) return;
@@ -710,8 +724,10 @@ export default function StudentDashboardPage() {
   }, [activeChildId, loading]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadDashboard();
+    const timer = window.setTimeout(() => {
+      void loadDashboard();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadDashboard]);
 
   useEffect(() => {
@@ -1218,6 +1234,21 @@ export default function StudentDashboardPage() {
                 curriculum="National Curriculum UK"
                 className="mb-6"
               />
+            ) : null}
+            {activeChildId ? (
+              <div className="mb-6 flex flex-wrap items-center gap-3">
+                <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-700">
+                  Student ID: <span className="ml-2 font-black text-slate-900">{formatStudentId(activeChildId)}</span>
+                </div>
+                {requestedStudentId ? (
+                  <Link
+                    href={`/admin/students/${encodeURIComponent(requestedStudentId)}`}
+                    className="inline-flex rounded-2xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    Return to Admin Portal
+                  </Link>
+                ) : null}
+              </div>
             ) : null}
 
             {dashboardExperience ? (

@@ -191,22 +191,25 @@ export async function getStudentLearningBrain(studentId: string, options: BrainO
   const source = await buildAcademicSourceForStudent(studentId);
   if (!source) return null;
 
-  const [profile, existingCatchUpTasks, existingHomeworkTasks, coachHeartbeatSignals] = await Promise.all([
+  const [profile, existingCatchUpTasks, allCatchUpTasks, existingHomeworkTasks, coachHeartbeatSignals] = await Promise.all([
     prisma.studentProfile.findUnique({
       where: { childId: studentId },
       select: { aiLearningProfileJson: true },
     }),
     listCatchUpTasks(studentId),
+    listCatchUpTasks(studentId, { includeHidden: true }),
     listHomeworkTasks(studentId),
     options.includeCoachSignals ? getCoachHeartbeatSignals(studentId) : Promise.resolve(null),
   ]);
 
   let output = buildAcademicIntelligence(source, {
     existingCatchUpTasks,
+    allCatchUpTasks,
     existingHomeworkTasks,
     coachHeartbeatSignals,
   });
   let catchUpTasks = existingCatchUpTasks;
+  let catchUpTasksIncludingHidden = allCatchUpTasks;
   let homeworkTasks = existingHomeworkTasks;
 
   if (options.syncTasks) {
@@ -223,8 +226,10 @@ export async function getStudentLearningBrain(studentId: string, options: BrainO
         actorUserId: options.actorUserId,
       }),
     ]);
+    catchUpTasksIncludingHidden = await listCatchUpTasks(studentId, { includeHidden: true });
     output = buildAcademicIntelligence(source, {
       existingCatchUpTasks: catchUpTasks,
+      allCatchUpTasks: catchUpTasksIncludingHidden,
       existingHomeworkTasks: homeworkTasks,
       coachHeartbeatSignals,
     });
@@ -263,6 +268,7 @@ export async function getStudentLearningBrainForDashboard(studentId: string, opt
     prisma.assignment.findMany({
       where: {
         studentId,
+        status: { not: "archived" },
         content: {
           NOT: {
             createdBy: "auto_lesson_engine",

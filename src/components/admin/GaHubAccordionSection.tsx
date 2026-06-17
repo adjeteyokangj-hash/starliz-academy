@@ -38,7 +38,6 @@ export default function GaHubAccordionSection({
             type="button"
             onClick={() => setIsOpen((current) => !current)}
             className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-1 text-[11px] font-black uppercase tracking-wide text-slate-200"
-            aria-expanded={isOpen}
             aria-controls={panelId}
             id={triggerId}
           >

@@ -145,7 +145,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -200,6 +200,7 @@ export default function AdminUsersPage() {
                   value={formData.roleId}
                   onChange={e => setFormData({ ...formData, roleId: e.target.value })}
                   className="bg-slate-600 border border-slate-500 rounded px-4 py-2 text-white"
+                  aria-label="Admin role"
                   required
                 >
                   <option value="">Select Role</option>
@@ -249,6 +250,7 @@ export default function AdminUsersPage() {
                             value={admin.roleId}
                             onChange={e => handleUpdateRole(admin.id, e.target.value)}
                             className="bg-slate-600 border border-slate-500 rounded px-2 py-1 text-white text-sm"
+                            aria-label={`Update role for ${admin.name || admin.email}`}
                             onBlur={() => setEditingRole(null)}
                             autoFocus
                           >

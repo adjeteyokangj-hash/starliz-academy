@@ -11,6 +11,7 @@ import type {
 } from "@/lib/academic-intelligence/types";
 
 const TASK_ENTITY_TYPE = "academic_catch_up_task";
+const ADMIN_HIDDEN_NOTE = "__admin_removed__";
 
 type PersistedCatchUpTaskMetadata = {
   taskId: string;
@@ -153,7 +154,7 @@ function dayByRecommendationId(plan: SchoolWeekModePlan): Map<string, "Monday" |
   return map;
 }
 
-export async function listCatchUpTasks(studentId: string): Promise<CatchUpTaskRecord[]> {
+export async function listCatchUpTasks(studentId: string, options?: { includeHidden?: boolean }): Promise<CatchUpTaskRecord[]> {
   const rows = await prisma.auditLog.findMany({
     where: {
       entityType: TASK_ENTITY_TYPE,
@@ -172,9 +173,15 @@ export async function listCatchUpTasks(studentId: string): Promise<CatchUpTaskRe
   });
 
   const latest = new Map<string, CatchUpTaskRecord>();
+  const hiddenTaskIds = new Set<string>();
   for (const row of rows) {
     const parsed = toTaskRecord(row);
     if (!parsed) continue;
+    if (!options?.includeHidden && parsed.note === ADMIN_HIDDEN_NOTE) {
+      hiddenTaskIds.add(parsed.taskId);
+      continue;
+    }
+    if (!options?.includeHidden && hiddenTaskIds.has(parsed.taskId)) continue;
     if (!latest.has(parsed.taskId)) latest.set(parsed.taskId, parsed);
   }
 
@@ -194,7 +201,7 @@ export async function syncCatchUpTasks(input: {
   schoolWeekModePlan: SchoolWeekModePlan;
   actorUserId?: string;
 }): Promise<CatchUpTaskRecord[]> {
-  const existing = await listCatchUpTasks(input.studentId);
+  const existing = await listCatchUpTasks(input.studentId, { includeHidden: true });
   const existingByRecommendation = new Map(existing.map((task) => [task.recommendationId, task]));
   const dayIndex = dayByRecommendationId(input.schoolWeekModePlan);
 
@@ -253,7 +260,7 @@ export async function applyCatchUpTaskAction(input: {
   scheduledDay?: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | null;
   note?: string | null;
 }): Promise<CatchUpTaskRecord | null> {
-  const tasks = await listCatchUpTasks(input.studentId);
+  const tasks = await listCatchUpTasks(input.studentId, { includeHidden: true });
   const existing = tasks.find((task) => task.taskId === input.taskId);
   if (!existing) return null;
 
@@ -297,7 +304,7 @@ export async function applyCatchUpTaskAction(input: {
     metadata,
   });
 
-  const updated = await listCatchUpTasks(input.studentId);
+  const updated = await listCatchUpTasks(input.studentId, { includeHidden: true });
   return updated.find((task) => task.taskId === existing.taskId) ?? null;
 }
 

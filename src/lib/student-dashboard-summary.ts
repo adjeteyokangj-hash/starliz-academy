@@ -64,12 +64,12 @@ function languageFromAssignment(assignment: DashboardSummaryAssignment): string 
 }
 
 export function buildAssignedWorkSummary(assignments: DashboardSummaryAssignment[]) {
-  const active = assignments.filter((assignment) => assignment.status !== "completed");
+  const active = assignments.filter((assignment) => isAssignmentActive(assignment.status));
   const next = active[0] ?? assignments[0] ?? null;
   return {
     total: assignments.length,
     active: active.length,
-    completed: assignments.filter((assignment) => assignment.status === "completed").length,
+    completed: assignments.filter((assignment) => normalize(assignment.status) === "completed").length,
     nextTitle: next?.title ?? null,
     nextActivity: next
       ? {

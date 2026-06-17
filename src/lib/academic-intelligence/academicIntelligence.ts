@@ -46,6 +46,15 @@ import type {
   SchoolWeekday,
 } from "@/lib/academic-intelligence/types";
 
+const ADMIN_HIDDEN_NOTE = "__admin_removed__";
+
+function catchUpTopicKey(subject: string | null | undefined, topic: string | null | undefined): string {
+  return [
+    (subject ?? "general").toLowerCase().trim(),
+    (topic ?? "").toLowerCase().trim(),
+  ].filter(Boolean).join("|");
+}
+
 export function defaultReviewActions(): ParentAdminReviewAction[] {
   return [
     { action: "approve_catch_up", label: "Approve catch-up", persistenceSupported: true, message: "Schedules task for this week." },
@@ -134,14 +143,37 @@ function nextActions(output: Pick<AcademicIntelligenceOutput, "catchUpRecommenda
   return actions;
 }
 
-function buildMasteryExpansionSummary(output: Pick<AcademicIntelligenceOutput, "masteryMap">): MasteryExpansionSummary {
-  const needsCatchUpTopics = output.masteryMap.filter((row) => row.masteryStatus === "needs_catch_up").length;
+function buildMasteryExpansionSummary(
+  output: Pick<AcademicIntelligenceOutput, "masteryMap" | "catchUpTasks">,
+  existingCatchUpTasks?: CatchUpTaskRecord[],
+): MasteryExpansionSummary {
+  // Extract topics that have been explicitly removed/waived by admin
+  // Check both output.catchUpTasks and existingCatchUpTasks
+  const allTasks = [...(output.catchUpTasks ?? []), ...(existingCatchUpTasks ?? [])];
+  const hiddenTopicKeys = new Set<string>();
+  for (const task of allTasks) {
+    if (task.note === ADMIN_HIDDEN_NOTE) {
+      const topicKey = catchUpTopicKey(task.subject, task.topic);
+      if (topicKey) hiddenTopicKeys.add(topicKey);
+    }
+  }
+
+  // Build topic key for comparison
+  const makeTopicKey = (row: Pick<typeof output.masteryMap[0], "subject" | "topic">) => catchUpTopicKey(row.subject, row.topic);
+
+  // Count needs_catch_up topics, excluding admin-removed ones
+  const needsCatchUpTopics = output.masteryMap
+    .filter((row) => row.masteryStatus === "needs_catch_up" && !hiddenTopicKeys.has(makeTopicKey(row)))
+    .length;
+
   const nearlySecureTopics = output.masteryMap.filter((row) => row.masteryStatus === "nearly_secure").length;
   const masteredTopics = output.masteryMap.filter((row) => row.masteryStatus === "mastered").length;
   const overdueRevisionTopics = output.masteryMap.filter((row) => row.revisionOverdue || row.masteryStatus === "needs_revision").length;
   const highConfidenceTopics = output.masteryMap.filter((row) => row.confidenceScore >= 80).length;
+
+  // Filter priority topics to exclude admin-removed ones
   const priorityTopics = output.masteryMap
-    .filter((row) => row.masteryStatus === "needs_catch_up" || row.masteryStatus === "needs_revision")
+    .filter((row) => (row.masteryStatus === "needs_catch_up" || row.masteryStatus === "needs_revision") && !hiddenTopicKeys.has(makeTopicKey(row)))
     .slice(0, 6)
     .map((row) => row.topic ?? row.skill ?? row.subject ?? "General topic");
 
@@ -427,6 +459,7 @@ export function buildAcademicIntelligence(
   data: AcademicSourceData,
   options?: {
     existingCatchUpTasks?: CatchUpTaskRecord[];
+    allCatchUpTasks?: CatchUpTaskRecord[];
     existingHomeworkTasks?: HomeworkTaskRecord[];
     coachHeartbeatSignals?: CoachHeartbeatSignalSummary | null;
     graphBuilder?: typeof buildCurriculumIntelligenceGraph;
@@ -435,6 +468,7 @@ export function buildAcademicIntelligence(
   const generatedAt = data.generatedAt ?? new Date().toISOString();
   const masteryBuilt = buildMasteryMap(data);
   const existingTasks = options?.existingCatchUpTasks ?? [];
+  const allKnownCatchUpTasks = options?.allCatchUpTasks ?? existingTasks;
   const existingHomeworkTasks = options?.existingHomeworkTasks ?? [];
 
   const triggers = detectCatchUpTriggers({
@@ -450,11 +484,25 @@ export function buildAcademicIntelligence(
   });
 
   const allTriggers = [...triggers, ...assessmentBuilt.assessmentLinkedCatchUpTriggers];
+  const hiddenRecommendationIds = new Set(
+    allKnownCatchUpTasks
+      .filter((task) => task.note === ADMIN_HIDDEN_NOTE)
+      .map((task) => task.recommendationId),
+  );
+  const hiddenTopicKeys = new Set(
+    allKnownCatchUpTasks
+      .filter((task) => task.note === ADMIN_HIDDEN_NOTE)
+      .map((task) => catchUpTopicKey(task.subject, task.topic)),
+  );
+
   const catchUpRecommendations = buildCatchUpRecommendations({
     triggers: allTriggers,
     existingStatuses: buildTaskStatusMap(existingTasks),
     existingDueDates: buildTaskDueDateMap(existingTasks),
-  });
+  }).filter((recommendation) => (
+    !hiddenRecommendationIds.has(recommendation.id)
+    && !hiddenTopicKeys.has(catchUpTopicKey(recommendation.subject, recommendation.topic))
+  ));
 
   const output: AcademicIntelligenceOutput = {
     studentId: data.studentId,
@@ -635,7 +683,9 @@ export function buildAcademicIntelligence(
   };
 
   output.reportNotes = reportNotes(output);
-  output.masteryExpansion = buildMasteryExpansionSummary(output);
+  output.masteryExpansion = buildMasteryExpansionSummary(output, allKnownCatchUpTasks);
+  // Update the summary to reflect admin-removed topics by using the filtered count from masteryExpansion
+  output.summary.needsCatchUpCount = output.masteryExpansion.needsCatchUpTopics;
   output.schoolWeekModePlan = buildSchoolWeekModePlan({ output, settings: data.schoolWeekSettings });
   output.catchUpTasks = output.catchUpTasks.length
     ? output.catchUpTasks

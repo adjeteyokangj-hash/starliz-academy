@@ -82,6 +82,7 @@ export async function GET(request: Request) {
       const assignment = await prisma.assignment.findFirst({
         where: {
           id: assignmentId,
+          status: { not: "archived" },
           ...(requestedStudentId ? { studentId: requestedStudentId } : {}),
           student: { parentId: parentScope.parentId },
         },
@@ -188,6 +189,7 @@ export async function GET(request: Request) {
       where: {
         studentId,
         student: { parentId: parentScope.parentId },
+        status: { not: "archived" },
         content: {
           NOT: {
             createdBy: "auto_lesson_engine",

@@ -23,23 +23,28 @@ export async function GET(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
 
-  const parentScope = await resolveParentScope(session);
-  if (!parentScope) {
-    return NextResponse.json({
-      ok: true,
-      ...legacySessionSummaryMetadata,
-      summary: {
-        learningConfidence: "Not enough data yet",
-        engagementLevel: "Not enough data yet",
-        speechConfidence: "Not enough data yet",
-        frustrationSignals: "Not enough data yet",
-        dominantMood: "unknown",
-      },
-    });
+  const requestedStudentId = new URL(request.url).searchParams.get("studentId")?.trim();
+  const isAdminPreview = session.role === "admin" && Boolean(requestedStudentId);
+
+  let parentScope: Awaited<ReturnType<typeof resolveParentScope>> = null;
+  if (!isAdminPreview) {
+    parentScope = await resolveParentScope(session);
+    if (!parentScope) {
+      return NextResponse.json({
+        ok: true,
+        ...legacySessionSummaryMetadata,
+        summary: {
+          learningConfidence: "Not enough data yet",
+          engagementLevel: "Not enough data yet",
+          speechConfidence: "Not enough data yet",
+          frustrationSignals: "Not enough data yet",
+          dominantMood: "unknown",
+        },
+      });
+    }
   }
 
-  const requestedStudentId = new URL(request.url).searchParams.get("studentId")?.trim();
-  const activeChildId = requestedStudentId || await resolveParentActiveChildId(parentScope.parentId);
+  const activeChildId = requestedStudentId || (parentScope ? await resolveParentActiveChildId(parentScope.parentId) : null);
   if (!activeChildId) {
     return NextResponse.json({
       ok: true,
@@ -55,7 +60,9 @@ export async function GET(request: Request) {
   }
 
   const ownedChild = await prisma.childProfile.findFirst({
-    where: { id: activeChildId, parentId: parentScope.parentId, archived: false },
+    where: isAdminPreview
+      ? { id: activeChildId, archived: false }
+      : { id: activeChildId, parentId: parentScope!.parentId, archived: false },
     select: { id: true },
   });
   if (!ownedChild) {

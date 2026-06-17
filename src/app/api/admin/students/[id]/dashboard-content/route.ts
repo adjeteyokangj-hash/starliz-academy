@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/api_guard";
+import { applyCatchUpTaskAction } from "@/lib/academic-intelligence/catchUpTasks";
+import { applyHomeworkTaskAction } from "@/lib/academic-intelligence/homeworkTasks";
 import { listCatchUpTasks } from "@/lib/academic-intelligence/catchUpTasks";
 import { listHomeworkTasks } from "@/lib/academic-intelligence/homeworkTasks";
 import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
@@ -16,6 +18,8 @@ type RemovalRequest = {
   contentType?: "assignment" | "catch_up" | "homework";
   itemId?: string;
 };
+
+const ADMIN_HIDDEN_NOTE = "__admin_removed__";
 
 function normalizeId(value: string | undefined): string {
   return value?.trim() ?? "";
@@ -126,33 +130,29 @@ export async function DELETE(request: Request, context: RouteContext) {
   }
 
   if (contentType === "catch_up") {
-    const result = await prisma.auditLog.deleteMany({
-      where: {
-        entityType: "academic_catch_up_task",
-        entityId: itemId,
-        metadataJson: {
-          contains: `\"studentId\":\"${studentId}\"`,
-        },
-      },
+    const task = await applyCatchUpTaskAction({
+      studentId,
+      taskId: itemId,
+      action: "waive_catch_up",
+      actorUserId: session.userId,
+      note: ADMIN_HIDDEN_NOTE,
     });
 
-    if (result.count === 0) {
+    if (!task) {
       return NextResponse.json({ error: "Catch-up task not found for this student." }, { status: 404 });
     }
   }
 
   if (contentType === "homework") {
-    const result = await prisma.auditLog.deleteMany({
-      where: {
-        entityType: "academic_homework_task",
-        entityId: itemId,
-        metadataJson: {
-          contains: `\"studentId\":\"${studentId}\"`,
-        },
-      },
+    const task = await applyHomeworkTaskAction({
+      studentId,
+      taskId: itemId,
+      action: "waive_homework",
+      actorUserId: session.userId,
+      note: ADMIN_HIDDEN_NOTE,
     });
 
-    if (result.count === 0) {
+    if (!task) {
       return NextResponse.json({ error: "Homework task not found for this student." }, { status: 404 });
     }
   }

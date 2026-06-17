@@ -11,6 +11,7 @@ import { mapHeartbeatActionButton, toHeartbeatDecisionViewModel } from "@/lib/ac
 import type { CoachHeartbeatSignalSummary, CoverageEntry, HeartbeatDecision, SchoolWeekday } from "@/lib/academic-intelligence/types";
 import { keyStageForYearGroup } from "@/lib/curriculum";
 import type { UniversalAiPrefillContract } from "@/lib/ai-prefill-contract";
+import { formatStudentId } from "@/lib/student-id";
 
 type StudentDetail = {
   id: string;
@@ -1017,6 +1018,17 @@ export default function StudentDetailPage() {
           <p className="text-sm text-slate-300">
             Remove content that is still visible on the learner dashboard. This works for assigned content, Smart Catch-Up tasks, and homework tasks.
           </p>
+          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+            Student ID: <span className="text-slate-200">{formatStudentId(params.id)}</span>
+          </p>
+          <div className="mt-3">
+            <Link
+              href={`/student/dashboard?studentId=${encodeURIComponent(params.id)}`}
+              className="inline-flex rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-100"
+            >
+              Open this learner dashboard
+            </Link>
+          </div>
           {dashboardContentMessage ? (
             <p className="mt-3 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
               {dashboardContentMessage}

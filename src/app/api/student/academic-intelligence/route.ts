@@ -9,14 +9,21 @@ export async function GET(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
 
-  const parentScope = await resolveParentScope(session);
-  if (!parentScope) {
-    return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
-  }
-
   const params = new URL(request.url).searchParams;
   const includeSync = params.get("includeSync") === "1";
-  const studentId = params.get("studentId") ?? await resolveParentActiveChildId(parentScope.parentId);
+  const requestedStudentId = params.get("studentId")?.trim() || null;
+  const isAdminPreview = session.role === "admin" && Boolean(requestedStudentId);
+
+  let parentScope: Awaited<ReturnType<typeof resolveParentScope>> = null;
+  if (!isAdminPreview) {
+    parentScope = await resolveParentScope(session);
+    if (!parentScope) {
+      return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
+    }
+  }
+
+  const studentId = requestedStudentId
+    ?? (parentScope ? await resolveParentActiveChildId(parentScope.parentId) : null);
   if (!studentId) {
     return NextResponse.json({
       studentId: "",
@@ -44,7 +51,9 @@ export async function GET(request: Request) {
   }
 
   const ownedChild = await prisma.childProfile.findFirst({
-    where: { id: studentId, parentId: parentScope.parentId },
+    where: isAdminPreview
+      ? { id: studentId, archived: false }
+      : { id: studentId, parentId: parentScope!.parentId },
     select: { id: true },
   });
   if (!ownedChild) {
