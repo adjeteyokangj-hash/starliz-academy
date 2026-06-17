@@ -132,7 +132,7 @@ function ChildAvatarOrb({ index }: { index: number }) {
     "from-cyan-400/50 via-emerald-500/30 to-transparent",
     "from-amber-300/40 via-orange-500/20 to-transparent",
   ];
-  const variant = variants[index % variants.length];
+  const variant = variants[index % variants.length] ?? variants[0];
 
   return (
     <div className={`relative flex h-20 w-20 items-center justify-center rounded-full border border-white/15 bg-linear-to-br ${variant} shadow-[0_0_35px_rgba(99,102,241,0.25)]`}>

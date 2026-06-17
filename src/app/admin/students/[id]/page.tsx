@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
@@ -369,7 +369,7 @@ export default function StudentDetailPage() {
   const [dashboardContentMessage, setDashboardContentMessage] = useState<string | null>(null);
   const [dashboardContentBusyKey, setDashboardContentBusyKey] = useState<string | null>(null);
 
-  async function loadStudent() {
+  const loadStudent = useCallback(async () => {
     const response = await fetch(`/api/admin/students/${params.id}`);
     if (!response.ok) {
       setStudent(null);
@@ -383,9 +383,9 @@ export default function StudentDetailPage() {
     setStudent(nextStudent);
     setQuickLevelFinderCompleted(nextStudent?.quickLevelFinder?.completed === true);
     setQuickLevelFinderResponses(nextStudent?.quickLevelFinder?.responseCount ?? 0);
-  }
+  }, [params.id]);
 
-  async function loadAcademicIntelligence() {
+  const loadAcademicIntelligence = useCallback(async () => {
     await Promise.resolve();
     setAcademicLoading(true);
     setAcademicError(null);
@@ -400,9 +400,9 @@ export default function StudentDetailPage() {
     const payload = (await response.json()) as AdminAcademicIntelligencePayload;
     setAcademicIntelligence(payload);
     setAcademicLoading(false);
-  }
+  }, [params.id]);
 
-  async function loadSchoolWeekSettings() {
+  const loadSchoolWeekSettings = useCallback(async () => {
     const response = await fetch(`/api/admin/students/${params.id}/school-week-settings`);
     if (!response.ok) {
       setSchoolWeekSettings(defaultSchoolWeekSettings);
@@ -410,9 +410,9 @@ export default function StudentDetailPage() {
     }
     const payload = (await response.json()) as { settings?: SchoolWeekSettingsPayload };
     setSchoolWeekSettings(payload.settings ?? defaultSchoolWeekSettings);
-  }
+  }, [params.id]);
 
-  async function loadQuickLevelFinderControl() {
+  const loadQuickLevelFinderControl = useCallback(async () => {
     const response = await fetch(`/api/admin/students/${params.id}/quick-level-finder/retest`);
     if (!response.ok) {
       setQuickLevelFinderRetestEnabled(false);
@@ -422,9 +422,9 @@ export default function StudentDetailPage() {
       retestEnabled?: boolean;
     };
     setQuickLevelFinderRetestEnabled(payload.retestEnabled === true);
-  }
+  }, [params.id]);
 
-  async function loadProgressionRecommendations() {
+  const loadProgressionRecommendations = useCallback(async () => {
     setProgressionLoading(true);
     setProgressionError(null);
     const response = await fetch(`/api/admin/students/${params.id}/progression-recommendations`);
@@ -438,9 +438,9 @@ export default function StudentDetailPage() {
     const payload = (await response.json()) as AdminProgressionPayload;
     setProgression(payload);
     setProgressionLoading(false);
-  }
+  }, [params.id]);
 
-  async function loadDashboardContent() {
+  const loadDashboardContent = useCallback(async () => {
     setDashboardContentLoading(true);
     setDashboardContentError(null);
     const response = await fetch(`/api/admin/students/${params.id}/dashboard-content`);
@@ -454,7 +454,7 @@ export default function StudentDetailPage() {
     const payload = (await response.json()) as DashboardContentPayload;
     setDashboardContent(payload);
     setDashboardContentLoading(false);
-  }
+  }, [params.id]);
 
   async function removeDashboardContent(input: {
     contentType: "assignment" | "catch_up" | "homework";
@@ -545,15 +545,17 @@ export default function StudentDetailPage() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadStudent();
-    void loadAcademicIntelligence();
-    void loadSchoolWeekSettings();
-    void loadQuickLevelFinderControl();
-    void loadProgressionRecommendations();
-    void loadDashboardContent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id]);
+    void (async () => {
+      await Promise.all([
+        loadStudent(),
+        loadAcademicIntelligence(),
+        loadSchoolWeekSettings(),
+        loadQuickLevelFinderControl(),
+        loadProgressionRecommendations(),
+        loadDashboardContent(),
+      ]);
+    })();
+  }, [loadAcademicIntelligence, loadDashboardContent, loadProgressionRecommendations, loadQuickLevelFinderControl, loadSchoolWeekSettings, loadStudent]);
 
   useEffect(() => {
     if (!student || !isStudentFocusTarget(focus)) return;
