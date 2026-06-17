@@ -14,6 +14,7 @@ import {
   parseContentReviewHistory,
 } from "./utils";
 import { analyzeContentSessionSlots, getIncompleteSlotsReason, isQuestionSlotFilled } from "@/lib/session-slot-validation";
+import { analyzeSessionSlotDuplicates, primaryDuplicateFlag } from "@/lib/session-slot-duplicates";
 
 type Props = {
   open: boolean;
@@ -199,6 +200,12 @@ function ContentViewModalBody({
   const [slotCountInput, setSlotCountInput] = useState("");
   const currentItem = items[selectedItemIndex] ?? null;
   const slotSummary = useMemo(() => analyzeContentSessionSlots({
+    contentJson: content.contentJson,
+    contentType: content.contentType,
+    metadataJson: content.metadataJson,
+    subject: meta.subject,
+  }), [content.contentJson, content.contentType, content.metadataJson, meta.subject]);
+  const duplicateSummary = useMemo(() => analyzeSessionSlotDuplicates({
     contentJson: content.contentJson,
     contentType: content.contentType,
     metadataJson: content.metadataJson,
@@ -504,11 +511,28 @@ function ContentViewModalBody({
                     <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 font-black text-slate-200">
                       Filled Slots: {slotSummary.filledSlots}/{slotSummary.totalSlots}
                     </span>
+                    <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 font-black text-slate-200">
+                      Empty Slots: {Math.max(0, (slotSummary.totalSlots ?? 0) - (slotSummary.filledSlots ?? 0))}
+                    </span>
+                    <span className={`rounded-full border px-2 py-1 font-black ${duplicateSummary.duplicateSlotsCount > 0 ? "border-amber-500/40 bg-amber-500/10 text-amber-100" : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"}`}>
+                      Duplicates: {duplicateSummary.duplicateSlotsCount}
+                    </span>
                     <span className={`rounded-full border px-2 py-1 font-black ${slotSummary.slotValidationExempt ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-100" : slotSummary.isSessionComplete ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>
                       {slotSummary.slotValidationExempt ? "Ga exempt" : slotSummary.isSessionComplete ? "Session Complete" : "Session Incomplete"}
                     </span>
                   </div>
                 </div>
+
+                {duplicateSummary.hasExactDuplicates ? (
+                  <p className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs font-black text-rose-100">
+                    Exact duplicates found: {duplicateSummary.exactCount}. Publishing is blocked until duplicates are fixed.
+                  </p>
+                ) : null}
+                {!duplicateSummary.hasExactDuplicates && (duplicateSummary.nearCount > 0 || duplicateSummary.samePatternCount > 0) ? (
+                  <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-black text-amber-100">
+                    Duplicate warning: near duplicates {duplicateSummary.nearCount}, same-pattern duplicates {duplicateSummary.samePatternCount}.
+                  </p>
+                ) : null}
 
                 {!slotSummary.slotValidationExempt && !slotSummary.isSessionComplete ? (
                   <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-black text-amber-100">
@@ -541,14 +565,22 @@ function ContentViewModalBody({
                   {items.map((slot, index) => {
                     const filled = isQuestionSlotFilled(slot);
                     const selectedSlot = index === selectedItemIndex;
+                    const primaryFlag = primaryDuplicateFlag(duplicateSummary.slotFlags[index]);
+                    const flagLabel = primaryFlag === "exact"
+                      ? "Duplicate"
+                      : primaryFlag === "near"
+                        ? "Near duplicate"
+                        : primaryFlag === "same_pattern"
+                          ? "Same pattern"
+                          : null;
                     return (
                       <button
                         key={`slot-${index}`}
                         type="button"
                         onClick={() => selectSlot(index)}
-                        className={`rounded-full border px-2 py-1 text-xs font-black ${selectedSlot ? "border-indigo-400 bg-indigo-500/20 text-indigo-100" : filled ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}
+                        className={`rounded-full border px-2 py-1 text-xs font-black ${selectedSlot ? "border-indigo-400 bg-indigo-500/20 text-indigo-100" : primaryFlag === "exact" ? "border-rose-500/50 bg-rose-500/10 text-rose-100" : primaryFlag ? "border-amber-500/40 bg-amber-500/10 text-amber-100" : filled ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}
                       >
-                        Slot {index + 1} {filled ? "Filled" : "Empty"}
+                        Slot {index + 1} {flagLabel ?? (filled ? "Filled" : "Empty")}
                       </button>
                     );
                   })}

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { buildBlackBoxGateFailure, hasPassedBlackBoxGate } from "@/lib/ai/content-black-box-gate";
 import { analyzeContentSessionSlots, getIncompleteSlotsReason } from "@/lib/session-slot-validation";
+import { analyzeSessionSlotDuplicates } from "@/lib/session-slot-duplicates";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -87,12 +88,35 @@ export async function handleAdminContentPublishPost(
     return NextResponse.json({ error: getIncompleteSlotsReason(slotValidation.missingSlots) }, { status: 422 });
   }
 
+  const duplicateValidation = analyzeSessionSlotDuplicates({
+    contentJson: content.contentJson,
+    contentType: content.contentType,
+    metadataJson: content.metadataJson,
+  });
+  if (duplicateValidation.hasExactDuplicates) {
+    return NextResponse.json({
+      error: `Publishing blocked: ${duplicateValidation.exactCount} exact duplicate question pair${duplicateValidation.exactCount === 1 ? "" : "s"} found.`,
+    }, { status: 422 });
+  }
+  if (duplicateValidation.hasHighSeverityWarning) {
+    return NextResponse.json({
+      error: "Publishing blocked: duplicate quality risk is high. Resolve near/same-pattern duplicates first.",
+    }, { status: 422 });
+  }
+
   const updated = await deps.updateContentToPublished(id);
 
   return NextResponse.json({
     id: updated.id,
     status: updated.status,
     publishedAt: updated.publishedAt?.toISOString(),
+    duplicateWarnings: duplicateValidation.nearCount + duplicateValidation.samePatternCount > 0
+      ? [{
+          nearDuplicates: duplicateValidation.nearCount,
+          samePatternDuplicates: duplicateValidation.samePatternCount,
+          duplicateSlots: duplicateValidation.duplicateSlotsCount,
+        }]
+      : [],
   });
 }
 

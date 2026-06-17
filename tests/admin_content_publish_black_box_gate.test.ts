@@ -155,3 +155,37 @@ test("admin content publish route blocks incomplete academic slots", async () =>
   assert.equal(payload.error, "1 question slots still require content.");
   assert.equal(updated, false);
 });
+
+test("admin content publish route blocks exact duplicate questions", async () => {
+  let updated = false;
+
+  const response = await handleAdminContentPublishPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-1",
+      status: "reviewed",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+      }),
+      contentType: "math",
+      contentJson: JSON.stringify([
+        { prompt: "What is 18 divided by 3?", answer: "6" },
+        { prompt: "What is 18 divided by 3?", answer: "6" },
+      ]),
+    }),
+    updateContentToPublished: async () => {
+      updated = true;
+      return {
+        id: "content-1",
+        status: "published",
+        publishedAt: new Date("2026-06-11T10:30:00.000Z"),
+      };
+    },
+  }));
+
+  const payload = await response.json() as { error?: string };
+
+  assert.equal(response.status, 422);
+  assert.match(payload.error ?? "", /exact duplicate question pair/i);
+  assert.equal(updated, false);
+});

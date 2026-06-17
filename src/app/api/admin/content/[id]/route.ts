@@ -10,6 +10,7 @@ import {
   isBlackBoxGateTargetStatus,
 } from "@/lib/ai/content-black-box-gate";
 import { analyzeContentSessionSlots, getIncompleteSlotsReason, isQuestionSlotFilled } from "@/lib/session-slot-validation";
+import { analyzeSessionSlotDuplicates } from "@/lib/session-slot-duplicates";
 
 const patchSchema = z
   .object({
@@ -181,6 +182,22 @@ export async function handleAdminContentPatch(
       });
       if (!slotValidation.isSessionComplete) {
         return NextResponse.json({ error: getIncompleteSlotsReason(slotValidation.missingSlots) }, { status: 422 });
+      }
+
+      const duplicateValidation = analyzeSessionSlotDuplicates({
+        contentJson: sanitizedContentJson ?? existing.contentJson,
+        contentType: existing.contentType,
+        metadataJson: existing.metadataJson,
+      });
+      if (duplicateValidation.hasExactDuplicates) {
+        return NextResponse.json({
+          error: `Publishing blocked: ${duplicateValidation.exactCount} exact duplicate question pair${duplicateValidation.exactCount === 1 ? "" : "s"} found.`,
+        }, { status: 422 });
+      }
+      if (duplicateValidation.hasHighSeverityWarning) {
+        return NextResponse.json({
+          error: "Publishing blocked: duplicate quality risk is high. Resolve near/same-pattern duplicates first.",
+        }, { status: 422 });
       }
     }
 
