@@ -25,6 +25,7 @@ import {
   parseTargetLearningEvidenceFromMetadata,
   yearGroupFromLearningLevel,
 } from "@/lib/curriculum-level-targets";
+import { analyzeContentSessionSlots, getIncompleteSlotsReason } from "@/lib/session-slot-validation";
 
 export class SchoolLicenceAccessError extends Error {
   reason: SchoolLicenceBlockedReason;
@@ -393,6 +394,21 @@ export async function getAssignmentSafetyAndRecommendation(input: {
 
   if (!isValidContentJson(content.contentJson)) {
     return { safe: false, reason: "Content is not valid JSON and cannot be assigned.", meta };
+  }
+
+  const slotValidation = analyzeContentSessionSlots({
+    contentJson: content.contentJson,
+    contentType: content.contentType,
+    metadataJson: content.metadataJson,
+    subject: parsedMeta.subject,
+  });
+
+  if (!slotValidation.isSessionComplete) {
+    return {
+      safe: false,
+      reason: getIncompleteSlotsReason(slotValidation.missingSlots),
+      meta,
+    };
   }
 
   if (contentLegacyType === "spelling") {

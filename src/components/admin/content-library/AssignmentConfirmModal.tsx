@@ -15,7 +15,11 @@ type Props = {
 export default function AssignmentConfirmModal({ open, content, candidate, onClose, onConfirm, confirming }: Props) {
   if (!open || !content || !candidate) return null;
   const meta = getContentMeta(content);
-  const summary = getContentJsonSummary(content.contentJson);
+  const summary = getContentJsonSummary(content.contentJson, {
+    contentType: content.contentType,
+    metadataJson: content.metadataJson,
+    subject: meta.subject,
+  });
   const weakAreas = (candidate.student.weakPatterns ?? []).join(", ") || "None detected";
 
   return (

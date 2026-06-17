@@ -39,18 +39,27 @@ export default function ContentCard({
   const [showMenu, setShowMenu] = useState(false);
   const [runningBB, setRunningBB] = useState(false);
   const [bbError, setBbError] = useState<string | null>(null);
-  const summary = getContentJsonSummary(item.contentJson);
+  const summary = getContentJsonSummary(item.contentJson, {
+    contentType: item.contentType,
+    metadataJson: item.metadataJson,
+  });
   const meta = getContentMeta(item);
   const blackBox = parseBlackBoxContentTest(item);
   const verification = parseBlackBoxAdminVerification(item);
   const isDraftOrGenerated = ["draft", "generated"].includes(item.status);
-  const assignDisabled = !["reviewed", "approved", "published"].includes(item.status) || !summary.valid;
+  const incompleteSlotCount = summary.slotValidationExempt ? 0 : (summary.missingSlots ?? 0);
+  const slotIncomplete = incompleteSlotCount > 0;
+  const assignDisabled = !["reviewed", "approved", "published"].includes(item.status) || !summary.valid || slotIncomplete;
   const canPublish = ["reviewed", "approved", "published"].includes(item.status);
   const assignTitle = isDraftOrGenerated
     ? "Review or publish this content before assigning."
     : !summary.valid
       ? "Content JSON is invalid and cannot be assigned."
+      : slotIncomplete
+        ? `${incompleteSlotCount} question slots still require content.`
       : undefined;
+  const publishDisabled = (item.status !== "published" && slotIncomplete) || !canPublish;
+  const publishTitle = slotIncomplete ? `${incompleteSlotCount} question slots still require content.` : undefined;
   const isOperating = operatingId === item.id;
 
   /** Part 5: run Black Box test directly from card */
@@ -89,6 +98,11 @@ export default function ContentCard({
           <p className="text-xs text-slate-500">{meta.yearGroup || "All years"} | {meta.keyStage || "All key stages"} | {meta.ageGroup || "Any age"}</p>
           <p className="text-xs text-slate-500">Pathway: {meta.curriculumPathway ? meta.curriculumPathway.toUpperCase() : "N/A"} | Exam board: {meta.examBoard ?? "None"}</p>
           <p className="text-xs text-slate-500">Level {item.level} | Used {item.usedCount}x | {summary.itemCount} item(s)</p>
+          {summary.totalSlots ? (
+            <p className="text-xs text-slate-500">
+              Filled Slots: {summary.filledSlots ?? 0}/{summary.totalSlots} {summary.slotValidationExempt ? "(Ga exempt)" : ""}
+            </p>
+          ) : null}
           <p className="mt-2 line-clamp-2 text-xs text-slate-400">{summary.preview}</p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -109,6 +123,11 @@ export default function ContentCard({
           {!blackBox && (item.status === "reviewed" || item.status === "published" || item.status === "approved") ? (
             <span className="rounded-full bg-rose-500/15 px-2 py-1 text-xs font-black text-rose-200">
               {item.status === "published" ? "Published before BB test" : "Reviewed before BB test"}
+            </span>
+          ) : null}
+          {slotIncomplete ? (
+            <span className="rounded-full bg-amber-500/15 px-2 py-1 text-xs font-black text-amber-200">
+              {incompleteSlotCount} slot{incompleteSlotCount === 1 ? "" : "s"} incomplete
             </span>
           ) : null}
         </div>
@@ -193,7 +212,8 @@ export default function ContentCard({
                   onPublish(item);
                   setShowMenu(false);
                 }}
-                disabled={!canPublish || isOperating || Boolean(assigning)}
+                disabled={publishDisabled || isOperating || Boolean(assigning)}
+                title={publishTitle}
                 className="block w-full px-4 py-2 text-left text-xs font-black text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800"
               >
                 {isOperating && operatingAction === "publish" ? "Loading..." : item.status === "published" ? "Unpublish" : "Publish"}

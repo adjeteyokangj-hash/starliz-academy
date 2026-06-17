@@ -34,9 +34,15 @@ export default function AssignmentPanel(props: Props) {
   }
 
   const meta = getContentMeta(props.selectedContent);
-  const summary = getContentJsonSummary(props.selectedContent.contentJson);
+  const summary = getContentJsonSummary(props.selectedContent.contentJson, {
+    contentType: props.selectedContent.contentType,
+    metadataJson: props.selectedContent.metadataJson,
+    subject: meta.subject,
+  });
   const hasEligibleStudents = props.recommended.length > 0 || props.eligibleManual.length > 0;
   const isDraftOrGenerated = ["draft", "generated"].includes(props.selectedContent.status);
+  const incompleteSlotCount = summary.slotValidationExempt ? 0 : (summary.missingSlots ?? 0);
+  const sessionIncomplete = incompleteSlotCount > 0;
 
   if (isDraftOrGenerated) {
     return (
@@ -48,6 +54,21 @@ export default function AssignmentPanel(props: Props) {
         </p>
         <p className="mt-2 text-xs text-amber-300/70">
           Use the <strong>Review to assign</strong> button on the content card to mark it as reviewed, then you can assign it.
+        </p>
+      </section>
+    );
+  }
+
+  if (sessionIncomplete) {
+    return (
+      <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm">
+        <h3 className="font-black text-amber-100">Session is incomplete</h3>
+        <p className="mt-1 text-amber-200/80">
+          <strong>{meta.title}</strong> cannot be assigned yet.
+        </p>
+        <p className="mt-2 text-xs font-black text-amber-100">{incompleteSlotCount} question slots still require content.</p>
+        <p className="mt-2 text-xs text-amber-300/70">
+          Filled Slots: {summary.filledSlots ?? 0}/{summary.totalSlots ?? summary.itemCount}
         </p>
       </section>
     );

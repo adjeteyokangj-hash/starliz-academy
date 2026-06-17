@@ -13,6 +13,7 @@ import {
   parseBlackBoxRuntimeTest,
   parseContentReviewHistory,
 } from "./utils";
+import { analyzeContentSessionSlots, getIncompleteSlotsReason, isQuestionSlotFilled } from "@/lib/session-slot-validation";
 
 type Props = {
   open: boolean;
@@ -101,6 +102,49 @@ function numericLevel(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) ? Math.max(1, Math.min(10, Math.round(parsed))) : fallback;
 }
 
+function questionFieldKeyFor(contentType: string, item: GeneratedReviewItem | null): string {
+  if (item) {
+    for (const key of ["question", "prompt", "word", "title"]) {
+      if (typeof item[key] === "string") return key;
+    }
+  }
+  if (contentType === "math") return "prompt";
+  if (contentType === "spelling") return "word";
+  return "question";
+}
+
+function answerFieldKeyFor(contentType: string, item: GeneratedReviewItem | null): string {
+  if (item) {
+    for (const key of ["answer", "correctAnswer", "expectedAnswer"]) {
+      if (typeof item[key] === "string" || typeof item[key] === "number") return key;
+    }
+  }
+  if (contentType === "reading") return "answer";
+  return "answer";
+}
+
+function buildSlotEditorState(item: GeneratedReviewItem | null, contentType: string): {
+  prompt: string;
+  answer: string;
+  choices: string;
+} {
+  if (!item) {
+    return { prompt: "", answer: "", choices: "" };
+  }
+
+  const questionKey = questionFieldKeyFor(contentType, item);
+  const answerKey = answerFieldKeyFor(contentType, item);
+  const existingChoices = Array.isArray(item.choices)
+    ? (item.choices as unknown[]).map((entry) => String(entry).trim()).filter(Boolean)
+    : [];
+
+  return {
+    prompt: String(item[questionKey] ?? ""),
+    answer: String(item[answerKey] ?? ""),
+    choices: existingChoices.join(", "),
+  };
+}
+
 function withUpdatedItemLevel(item: GeneratedReviewItem, level: number): GeneratedReviewItem {
   return {
     ...item,
@@ -132,8 +176,12 @@ function ContentViewModalBody({
   onClose: () => void;
   onVerified?: (item: ContentItem) => void;
 }) {
-  const summary = getContentJsonSummary(content.contentJson);
   const meta = getContentMeta(content);
+  const summaryWithContext = getContentJsonSummary(content.contentJson, {
+    contentType: content.contentType,
+    metadataJson: content.metadataJson,
+    subject: meta.subject,
+  });
   const blackBox = parseBlackBoxContentTest(content);
   const runtime = parseBlackBoxRuntimeTest(content);
   const verification = parseBlackBoxAdminVerification(content);
@@ -148,7 +196,19 @@ function ContentViewModalBody({
   const [workingAction, setWorkingAction] = useState<VerificationAction | null>(null);
   const [blackBoxRetesting, setBlackBoxRetesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [slotCountInput, setSlotCountInput] = useState("");
   const currentItem = items[selectedItemIndex] ?? null;
+  const slotSummary = useMemo(() => analyzeContentSessionSlots({
+    contentJson: content.contentJson,
+    contentType: content.contentType,
+    metadataJson: content.metadataJson,
+    subject: meta.subject,
+  }), [content.contentJson, content.contentType, content.metadataJson, meta.subject]);
+  const initialSlotEditor = buildSlotEditorState(currentItem, content.contentType);
+  const [slotPromptInput, setSlotPromptInput] = useState(initialSlotEditor.prompt);
+  const [slotAnswerInput, setSlotAnswerInput] = useState(initialSlotEditor.answer);
+  const [slotChoicesInput, setSlotChoicesInput] = useState(initialSlotEditor.choices);
+  const slotCountValue = slotCountInput || String(Math.max(1, items.length || 1));
   const answerOptions = currentItem ? answerOptionsFor(currentItem) : [];
   const questionText = currentItem ? firstText(currentItem, ["question", "prompt", "word", "title"]) : "No question content available.";
   const correctAnswer = currentItem ? firstText(currentItem, ["answer", "correctAnswer", "expectedAnswer"]) : "";
@@ -172,6 +232,112 @@ function ContentViewModalBody({
   const currentItemLevel = numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level);
   const recommendedLevel = currentItemCheck?.recommendedLevel ?? currentItemCheck?.estimatedLevel ?? null;
   const levelRecommendation = currentItemCheck?.levelRecommendation ?? null;
+
+  function hydrateSlotEditor(index: number, sourceItems: GeneratedReviewItem[] = items) {
+    const nextCurrentItem = sourceItems[index] ?? null;
+    const nextEditor = buildSlotEditorState(nextCurrentItem, content.contentType);
+    setSlotPromptInput(nextEditor.prompt);
+    setSlotAnswerInput(nextEditor.answer);
+    setSlotChoicesInput(nextEditor.choices);
+  }
+
+  function selectSlot(index: number) {
+    setSelectedItemIndex(index);
+    hydrateSlotEditor(index);
+  }
+
+  async function saveSlots(nextItems: GeneratedReviewItem[], successMessage: string) {
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/content/${content.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentJson: JSON.stringify(nextItems) }),
+      });
+      const payload = await response.json() as VerificationPayload;
+      if (!response.ok || !payload.item) {
+        setMessage(payload.error ?? "Could not save slot updates.");
+        return false;
+      }
+
+      onVerified?.({
+        ...content,
+        status: payload.item.status,
+        contentJson: JSON.stringify(nextItems),
+        metadataJson: payload.item.metadataJson ?? content.metadataJson,
+      });
+      const safeIndex = Math.min(selectedItemIndex, Math.max(0, nextItems.length - 1));
+      setSelectedItemIndex(safeIndex);
+      hydrateSlotEditor(safeIndex, nextItems);
+      setSlotCountInput("");
+      setMessage(successMessage);
+      return true;
+    } catch {
+      setMessage("Slot update request failed.");
+      return false;
+    }
+  }
+
+  async function applySlotCount() {
+    const parsed = Number(slotCountValue);
+    const nextCount = Number.isFinite(parsed) ? Math.max(1, Math.min(60, Math.trunc(parsed))) : items.length;
+    if (nextCount === items.length) return;
+    const nextItems = [...items];
+    if (nextCount > nextItems.length) {
+      while (nextItems.length < nextCount) {
+        nextItems.push({});
+      }
+    } else {
+      nextItems.length = nextCount;
+    }
+    const saved = await saveSlots(nextItems, `Slot count updated to ${nextCount}.`);
+    if (saved && selectedItemIndex >= nextCount) {
+      const nextIndex = Math.max(0, nextCount - 1);
+      setSelectedItemIndex(nextIndex);
+      hydrateSlotEditor(nextIndex, nextItems);
+    }
+  }
+
+  async function clearSelectedSlot() {
+    if (!items.length) return;
+    const nextItems = [...items];
+    nextItems[selectedItemIndex] = {};
+    const saved = await saveSlots(nextItems, `Slot ${selectedItemIndex + 1} cleared.`);
+    if (saved) {
+      setSlotPromptInput("");
+      setSlotAnswerInput("");
+      setSlotChoicesInput("");
+    }
+  }
+
+  async function saveSelectedSlot() {
+    if (!items.length) return;
+    const prompt = slotPromptInput.trim();
+    if (!prompt) {
+      setMessage("Question/prompt is required to fill this slot.");
+      return;
+    }
+    const nextItems = [...items];
+    const existing = (nextItems[selectedItemIndex] ?? {}) as GeneratedReviewItem;
+    const questionKey = questionFieldKeyFor(content.contentType, existing);
+    const answerKey = answerFieldKeyFor(content.contentType, existing);
+    const nextItem: GeneratedReviewItem = {
+      ...existing,
+      [questionKey]: prompt,
+    };
+    if (slotAnswerInput.trim()) {
+      nextItem[answerKey] = slotAnswerInput.trim();
+    }
+    const parsedChoices = slotChoicesInput
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (parsedChoices.length) {
+      nextItem.choices = parsedChoices;
+    }
+    nextItems[selectedItemIndex] = nextItem;
+    await saveSlots(nextItems, `Slot ${selectedItemIndex + 1} saved.`);
+  }
 
   async function updateCurrentItemLevel(nextLevel: number) {
     if (!currentItem) return;
@@ -309,7 +475,7 @@ function ContentViewModalBody({
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedItemIndex((current) => Math.max(0, current - 1));
+                      selectSlot(Math.max(0, selectedItemIndex - 1));
                       setRawExpanded(false);
                     }}
                     disabled={selectedItemIndex === 0}
@@ -320,7 +486,7 @@ function ContentViewModalBody({
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedItemIndex((current) => Math.min(items.length - 1, current + 1));
+                      selectSlot(Math.min(items.length - 1, selectedItemIndex + 1));
                       setRawExpanded(false);
                     }}
                     disabled={!items.length || selectedItemIndex >= items.length - 1}
@@ -329,6 +495,109 @@ function ContentViewModalBody({
                     Next
                   </button>
                 </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-200">Session Slot Builder</p>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 font-black text-slate-200">
+                      Filled Slots: {slotSummary.filledSlots}/{slotSummary.totalSlots}
+                    </span>
+                    <span className={`rounded-full border px-2 py-1 font-black ${slotSummary.slotValidationExempt ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-100" : slotSummary.isSessionComplete ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>
+                      {slotSummary.slotValidationExempt ? "Ga exempt" : slotSummary.isSessionComplete ? "Session Complete" : "Session Incomplete"}
+                    </span>
+                  </div>
+                </div>
+
+                {!slotSummary.slotValidationExempt && !slotSummary.isSessionComplete ? (
+                  <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-black text-amber-100">
+                    {getIncompleteSlotsReason(slotSummary.missingSlots)}
+                  </p>
+                ) : null}
+
+                <div className="mt-3 flex flex-wrap items-end gap-2">
+                  <label className="text-xs text-slate-300">
+                    Slot count
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={slotCountValue}
+                      onChange={(event) => setSlotCountInput(event.target.value)}
+                      className="mt-1 w-24 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-white"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void applySlotCount()}
+                    className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-black text-slate-100 hover:bg-slate-800"
+                  >
+                    Apply slot count
+                  </button>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {items.map((slot, index) => {
+                    const filled = isQuestionSlotFilled(slot);
+                    const selectedSlot = index === selectedItemIndex;
+                    return (
+                      <button
+                        key={`slot-${index}`}
+                        type="button"
+                        onClick={() => selectSlot(index)}
+                        className={`rounded-full border px-2 py-1 text-xs font-black ${selectedSlot ? "border-indigo-400 bg-indigo-500/20 text-indigo-100" : filled ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}
+                      >
+                        Slot {index + 1} {filled ? "Filled" : "Empty"}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {items.length ? (
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    <label className="text-xs font-bold text-slate-300 md:col-span-2">
+                      Question / Prompt
+                      <textarea
+                        value={slotPromptInput}
+                        onChange={(event) => setSlotPromptInput(event.target.value)}
+                        className="mt-1 min-h-16 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white"
+                      />
+                    </label>
+                    <label className="text-xs font-bold text-slate-300">
+                      Answer
+                      <input
+                        value={slotAnswerInput}
+                        onChange={(event) => setSlotAnswerInput(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white"
+                      />
+                    </label>
+                    <label className="text-xs font-bold text-slate-300">
+                      Choices (comma-separated)
+                      <input
+                        value={slotChoicesInput}
+                        onChange={(event) => setSlotChoicesInput(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white"
+                      />
+                    </label>
+                    <div className="md:col-span-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void saveSelectedSlot()}
+                        className="rounded-lg bg-indigo-500 px-3 py-2 text-xs font-black text-white hover:bg-indigo-400"
+                      >
+                        Save slot content
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void clearSelectedSlot()}
+                        className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-black text-rose-100 hover:bg-rose-500/20"
+                      >
+                        Clear slot
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -580,7 +849,9 @@ function ContentViewModalBody({
               <div><span className="font-bold">Strand/module:</span> {strand || blackBox?.reclassificationRecommendation?.strand || "Not tagged"}</div>
               <div><span className="font-bold">Status:</span> {content.status}</div>
               <div><span className="font-bold">Used Count:</span> {content.usedCount}</div>
-              <div><span className="font-bold">Valid JSON:</span> {summary.valid ? "Yes" : "No"}</div>
+              <div><span className="font-bold">Valid JSON:</span> {summaryWithContext.valid ? "Yes" : "No"}</div>
+              <div><span className="font-bold">Filled Slots:</span> {summaryWithContext.filledSlots ?? 0}/{summaryWithContext.totalSlots ?? summaryWithContext.itemCount}</div>
+              <div><span className="font-bold">Session:</span> {summaryWithContext.slotValidationExempt ? "Ga exempt" : summaryWithContext.isSessionComplete ? "Complete" : "Incomplete"}</div>
             </div>
           </div>
 

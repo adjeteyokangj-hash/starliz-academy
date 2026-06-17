@@ -9,6 +9,7 @@ import {
   hasPassedBlackBoxGate,
   isBlackBoxGateTargetStatus,
 } from "@/lib/ai/content-black-box-gate";
+import { analyzeContentSessionSlots, getIncompleteSlotsReason, isQuestionSlotFilled } from "@/lib/session-slot-validation";
 
 const patchSchema = z
   .object({
@@ -32,14 +33,16 @@ function toItems(parsed: unknown): Record<string, unknown>[] {
 function isValidForContentType(contentType: string, parsed: unknown): boolean {
   const items = toItems(parsed);
   if (!items.length) return false;
+  const filledItems = items.filter((item) => isQuestionSlotFilled(item));
 
   if (contentType === "spelling") {
-    const contract = validateSpellingContentContract(items);
+    if (!filledItems.length) return true;
+    const contract = validateSpellingContentContract(filledItems);
     return contract.ok;
   }
 
   if (contentType === "math") {
-    return items.every((item) => {
+    return filledItems.every((item) => {
       const prompt = typeof item.prompt === "string" ? item.prompt : typeof item.question === "string" ? item.question : "";
       const answer = item.answer;
       return prompt.trim().length > 0 && (typeof answer === "number" || (typeof answer === "string" && answer.trim().length > 0));
@@ -47,7 +50,7 @@ function isValidForContentType(contentType: string, parsed: unknown): boolean {
   }
 
   if (contentType === "reading") {
-    return items.every((item) =>
+    return filledItems.every((item) =>
       typeof item.passage === "string"
       && item.passage.trim().length > 0
       && typeof item.question === "string"
@@ -66,6 +69,7 @@ type PatchableContentRecord = {
   id: string;
   contentType: string;
   metadataJson: string | null;
+  contentJson: string;
 };
 
 type PatchUpdateInput = {
@@ -91,7 +95,7 @@ type AdminContentPatchDeps = {
 async function defaultFindContentForPatch(id: string): Promise<PatchableContentRecord | null> {
   return prisma.aIContentCache.findUnique({
     where: { id },
-    select: { id: true, contentType: true, metadataJson: true },
+    select: { id: true, contentType: true, metadataJson: true, contentJson: true },
   });
 }
 
@@ -167,6 +171,17 @@ export async function handleAdminContentPatch(
       }
 
       sanitizedContentJson = JSON.stringify(parsed);
+    }
+
+    if (body.status === "published") {
+      const slotValidation = analyzeContentSessionSlots({
+        contentJson: sanitizedContentJson ?? existing.contentJson,
+        contentType: existing.contentType,
+        metadataJson: existing.metadataJson,
+      });
+      if (!slotValidation.isSessionComplete) {
+        return NextResponse.json({ error: getIncompleteSlotsReason(slotValidation.missingSlots) }, { status: 422 });
+      }
     }
 
     const item = await deps.updateContent(id, {

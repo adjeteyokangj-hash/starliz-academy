@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/api_guard";
 import { buildBlackBoxGateFailure, hasPassedBlackBoxGate } from "@/lib/ai/content-black-box-gate";
+import { analyzeContentSessionSlots, getIncompleteSlotsReason } from "@/lib/session-slot-validation";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -9,6 +10,8 @@ type PublishableContentRecord = {
   id: string;
   status: string;
   metadataJson: string | null;
+  contentType: string;
+  contentJson: string;
 };
 
 type PublishedContentRecord = {
@@ -26,7 +29,7 @@ type AdminContentPublishDeps = {
 async function defaultFindContent(id: string): Promise<PublishableContentRecord | null> {
   return prisma.aIContentCache.findUnique({
     where: { id },
-    select: { id: true, status: true, metadataJson: true },
+    select: { id: true, status: true, metadataJson: true, contentType: true, contentJson: true },
   });
 }
 
@@ -72,6 +75,16 @@ export async function handleAdminContentPublishPost(
 
   if (!hasPassedBlackBoxGate(content.metadataJson)) {
     return NextResponse.json(buildBlackBoxGateFailure(), { status: 409 });
+  }
+
+  const slotValidation = analyzeContentSessionSlots({
+    contentJson: content.contentJson,
+    contentType: content.contentType,
+    metadataJson: content.metadataJson,
+  });
+
+  if (!slotValidation.isSessionComplete) {
+    return NextResponse.json({ error: getIncompleteSlotsReason(slotValidation.missingSlots) }, { status: 422 });
   }
 
   const updated = await deps.updateContentToPublished(id);

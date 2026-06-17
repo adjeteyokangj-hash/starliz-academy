@@ -450,8 +450,9 @@ export default function ContentLibraryPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
+      const payload = await response.json() as { error?: string };
       if (!response.ok) {
-        setMessage("Failed to publish content");
+        setMessage(payload.error ?? "Failed to publish content");
         return;
       }
       setMessage("Content published");

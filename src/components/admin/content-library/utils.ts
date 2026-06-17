@@ -11,6 +11,7 @@ import {
   yearGroupToOrdinal,
   shouldApplyExamBoardTag,
 } from "@/lib/curriculum";
+import { analyzeContentSessionSlots, getIncompleteSlotsReason } from "@/lib/session-slot-validation";
 import type {
   BlackBoxAdminVerification,
   BlackBoxContentDecision,
@@ -91,15 +92,29 @@ function placementSupportsAssignment(input: {
   return false;
 }
 
-export function getContentJsonSummary(contentJson: string): ContentSummary {
+export function getContentJsonSummary(
+  contentJson: string,
+  context?: { contentType?: string | null; metadataJson?: string | null; subject?: string | null },
+): ContentSummary {
   try {
     const parsed = JSON.parse(contentJson) as unknown;
+    const slotValidation = analyzeContentSessionSlots({
+      contentJson,
+      contentType: context?.contentType,
+      metadataJson: context?.metadataJson,
+      subject: context?.subject,
+    });
     if (Array.isArray(parsed)) {
       const first = parsed[0] as Record<string, unknown> | undefined;
       return {
         valid: true,
         itemCount: parsed.length,
         preview: first ? JSON.stringify(first) : "[]",
+        totalSlots: slotValidation.totalSlots,
+        filledSlots: slotValidation.filledSlots,
+        missingSlots: slotValidation.missingSlots,
+        isSessionComplete: slotValidation.isSessionComplete,
+        slotValidationExempt: slotValidation.slotValidationExempt,
       };
     }
     if (parsed && typeof parsed === "object") {
@@ -107,6 +122,11 @@ export function getContentJsonSummary(contentJson: string): ContentSummary {
         valid: true,
         itemCount: 1,
         preview: JSON.stringify(parsed),
+        totalSlots: slotValidation.totalSlots,
+        filledSlots: slotValidation.filledSlots,
+        missingSlots: slotValidation.missingSlots,
+        isSessionComplete: slotValidation.isSessionComplete,
+        slotValidationExempt: slotValidation.slotValidationExempt,
       };
     }
     return { valid: false, itemCount: 0, preview: "Invalid JSON shape" };
@@ -404,7 +424,10 @@ export function getContentMeta(item: ContentItem): ContentMeta {
 }
 
 export function evaluateAssignmentCandidate(item: ContentItem, student: StudentOption, localDuplicates: Set<string>, adminOverride = false): StudentAssignmentCandidate {
-  const summary = getContentJsonSummary(item.contentJson);
+  const summary = getContentJsonSummary(item.contentJson, {
+    contentType: item.contentType,
+    metadataJson: item.metadataJson,
+  });
   const meta = getContentMeta(item);
   const studentYear = normalizeYearGroup(student.yearGroup ?? null);
   const studentKeyStage = normalizeKeyStage(student.keyStageLevel) ?? (studentYear ? keyStageForYearGroup(studentYear) : null);
@@ -482,6 +505,20 @@ export function evaluateAssignmentCandidate(item: ContentItem, student: StudentO
       recommendationScore: 0,
     };
   }
+
+  if (!summary.slotValidationExempt && (summary.missingSlots ?? 0) > 0) {
+    return {
+      student,
+      hardEligible: false,
+      hardBlockReason: getIncompleteSlotsReason(summary.missingSlots ?? 0),
+      warningReason: null,
+      recommendationLevel: "eligible_manual",
+      recommendationReason: "Blocked by hard safety checks.",
+      matchedWeakAreas: [],
+      recommendationScore: 0,
+    };
+  }
+
   const contentYearRange = parseYearGroupRange(meta.yearGroup)
     ?? parseYearGroupRange(meta.keyStage)
     ?? parseYearGroupRange(meta.ageGroup)

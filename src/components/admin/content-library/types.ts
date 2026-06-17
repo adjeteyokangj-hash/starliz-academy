@@ -150,6 +150,11 @@ export type ContentSummary = {
   valid: boolean;
   itemCount: number;
   preview: string;
+  totalSlots?: number;
+  filledSlots?: number;
+  missingSlots?: number;
+  isSessionComplete?: boolean;
+  slotValidationExempt?: boolean;
 };
 
 export type ContentMeta = {

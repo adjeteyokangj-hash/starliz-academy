@@ -24,6 +24,7 @@ function deps(overrides: Partial<PatchDeps> = {}): PatchDeps {
     findContentForPatch: async () => ({
       id: "content-1",
       contentType: "math",
+      contentJson: JSON.stringify([{ prompt: "What is 2 + 2?", answer: "4" }]),
       metadataJson: null,
     }),
     updateContent: async (_id, data) => ({
@@ -100,6 +101,7 @@ test("admin content patch route allows reviewed status after black box pass and 
     findContentForPatch: async () => ({
       id: "content-1",
       contentType: "math",
+      contentJson: JSON.stringify([{ prompt: "What is 2 + 2?", answer: "4" }]),
       metadataJson: JSON.stringify({
         blackBoxLiveTest: { status: "passed" },
         blackBoxAdminVerification: { status: "verified" },
