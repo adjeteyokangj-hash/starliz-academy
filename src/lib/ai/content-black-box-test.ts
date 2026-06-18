@@ -71,6 +71,12 @@ export type BlackBoxContentTestResult = {
   maxScore: number;
   passRate: number;
   reasons: string[];
+  scoreCap?: {
+    capPercent: number;
+    reason: string;
+    warningItemCount: number;
+    totalItemCount: number;
+  };
   recommendation?: {
     subject?: string;
     strand?: string;
@@ -398,14 +404,86 @@ function aggregateDecision(results: BlackBoxItemResult[]): BlackBoxContentDecisi
   return "APPROVE";
 }
 
+function hasLevelQualityWarning(result: BlackBoxItemResult): boolean {
+  return result.reasons.some((reason) => (
+    /Declared level .* does not match expected/i.test(reason)
+    || /Item appears too (easy|hard) for the selected level/i.test(reason)
+    || /Vocabulary\/readability appears too (simple|advanced)/i.test(reason)
+    || /Answer is too thin for the selected level/i.test(reason)
+  ));
+}
+
+function scoreCapForResults(input: {
+  itemResults: BlackBoxItemResult[];
+  decision: BlackBoxContentDecision;
+  score: number;
+  maxScore: number;
+}): {
+  score: number;
+  scoreCap?: {
+    capPercent: number;
+    reason: string;
+    warningItemCount: number;
+    totalItemCount: number;
+  };
+} {
+  const totalItemCount = input.itemResults.length;
+  if (!totalItemCount) {
+    return { score: input.score };
+  }
+
+  const warningItemCount = input.itemResults.filter(hasLevelQualityWarning).length;
+  const warningRate = warningItemCount / totalItemCount;
+
+  let capPercent: number | null = null;
+  let reason = "";
+
+  if (input.itemResults.some((result) => result.decision === "REJECT") || input.decision === "REJECT") {
+    capPercent = 59;
+    reason = "Score capped at 59 because at least one item was rejected.";
+  } else if (warningRate >= 0.5) {
+    capPercent = 74;
+    reason = `Score capped at 74 because ${warningItemCount}/${totalItemCount} items show level/difficulty/readability/answer-depth warnings.`;
+  } else if (warningRate >= 0.3) {
+    capPercent = 81;
+    reason = `Score capped at 81 because ${warningItemCount}/${totalItemCount} items show level/difficulty/readability/answer-depth warnings.`;
+  }
+
+  if (capPercent === null) {
+    return { score: input.score };
+  }
+
+  const cappedScore = Math.min(input.score, Math.floor((input.maxScore * capPercent) / 100));
+  return {
+    score: cappedScore,
+    scoreCap: {
+      capPercent,
+      reason,
+      warningItemCount,
+      totalItemCount,
+    },
+  };
+}
+
 export function runContentBlackBoxTest(input: BlackBoxContentTestInput): BlackBoxContentTestResult {
   const items = asItems(input.items);
   const itemResults = items.map((item, index) => scoreItem(item, index, input));
-  const score = itemResults.reduce((sum, result) => sum + result.score, 0);
+  const rawScore = itemResults.reduce((sum, result) => sum + result.score, 0);
   const maxScore = itemResults.reduce((sum, result) => sum + result.maxScore, 0) || 1;
   const decision = aggregateDecision(itemResults);
   const reasons = itemResults.flatMap((result) => result.reasons.map((reason) => `Item ${result.index + 1}: ${reason}`));
   if (!items.length) reasons.push("No generated content items were provided.");
+
+  const capped = scoreCapForResults({
+    itemResults,
+    decision,
+    score: rawScore,
+    maxScore,
+  });
+  const score = capped.score;
+  if (capped.scoreCap) {
+    reasons.push(capped.scoreCap.reason);
+  }
 
   const reclassify = itemResults.find((result) => result.decision === "RECLASSIFY");
 
@@ -415,6 +493,7 @@ export function runContentBlackBoxTest(input: BlackBoxContentTestInput): BlackBo
     maxScore,
     passRate: Number((score / maxScore).toFixed(3)),
     reasons: Array.from(new Set(reasons)),
+    ...(capped.scoreCap ? { scoreCap: capped.scoreCap } : {}),
     recommendation: reclassify
       ? {
           ...(reclassify.recommendedSubject ? { subject: reclassify.recommendedSubject } : {}),

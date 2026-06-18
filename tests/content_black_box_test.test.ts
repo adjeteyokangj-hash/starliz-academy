@@ -469,3 +469,158 @@ test("valid generated content can carry black box metadata without promotion", (
   assert.equal(metadata.approvalStatus, "generated");
   assert.equal(metadata.blackBoxContentTest.decision, "APPROVE");
 });
+
+test("black box calibration caps displayed score at 74 when 50%+ items have level-quality warnings", () => {
+  const result = runContentBlackBoxTest({
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 6",
+    level: 5,
+    difficulty: 5,
+    topic: "Problem solving",
+    skillFocus: "Problem solving",
+    items: Array.from({ length: 10 }, (_, index) => ({
+      subject: "maths",
+      keyStage: "KS2",
+      yearGroup: "Year 6",
+      topic: "Problem solving",
+      skillFocus: "Problem solving",
+      difficulty: 5,
+      question: `What is ${index + 2} + 2?`,
+      answer: String(index + 4),
+      explanation: "Add the two numbers.",
+      choices: [String(index + 4), String(index + 3), String(index + 5)],
+    })),
+  });
+
+  assert.equal(result.decision, "NEEDS_ADMIN_REVIEW");
+  assert.equal(result.passRate <= 0.74, true);
+  assert.equal(result.scoreCap?.capPercent, 74);
+  assert.match(result.reasons.join(" "), /Score capped at 74/i);
+});
+
+test("black box calibration caps displayed score at 81 when 30%+ items have level-quality warnings", () => {
+  const easierItems = Array.from({ length: 3 }, (_, index) => ({
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 5",
+    topic: "Fractions",
+    skillFocus: "Fractions",
+    difficulty: 3,
+    question: `What is ${index + 2} + 2?`,
+    answer: String(index + 4),
+    explanation: "Add the two numbers.",
+    choices: [String(index + 4), String(index + 3), String(index + 5)],
+  }));
+
+  const alignedItems = Array.from({ length: 7 }, (_, index) => ({
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 5",
+    topic: "Fractions",
+    skillFocus: "Fractions",
+    difficulty: 3,
+    question: `A tank is 3/5 full with ${150 + (index * 10)} litres. What is the total capacity? Show your reasoning.`,
+    answer: `${250 + (index * 50)} litres`,
+    explanation: "If 3/5 is known, divide by 3 to find 1/5, then multiply by 5 to find the full amount.",
+    choices: [`${250 + (index * 50)} litres`, `${240 + (index * 50)} litres`, `${260 + (index * 50)} litres`],
+  }));
+
+  const result = runContentBlackBoxTest({
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 5",
+    level: 3,
+    difficulty: 3,
+    topic: "Fractions",
+    skillFocus: "Fractions",
+    items: [...easierItems, ...alignedItems],
+  });
+
+  assert.equal(result.passRate <= 0.81, true);
+  assert.equal(result.scoreCap?.capPercent, 81);
+  assert.match(result.reasons.join(" "), /Score capped at 81/i);
+});
+
+test("black box calibration caps displayed score at 59 when any item is rejected", () => {
+  const result = runContentBlackBoxTest({
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 5",
+    level: 3,
+    difficulty: 3,
+    topic: "Fractions",
+    skillFocus: "Fractions",
+    items: [
+      {
+        subject: "maths",
+        keyStage: "KS2",
+        yearGroup: "Year 5",
+        topic: "Fractions",
+        skillFocus: "Fractions",
+        question: "Calculate 1/2 of 80.",
+        explanation: "Divide by 2.",
+        difficulty: 3,
+      },
+      {
+        subject: "maths",
+        keyStage: "KS2",
+        yearGroup: "Year 5",
+        topic: "Fractions",
+        skillFocus: "Fractions",
+        question: "Calculate 3/4 of 240 and explain the method.",
+        answer: "180",
+        explanation: "Divide 240 by 4 to get 60, then multiply by 3 to get 180.",
+        choices: ["180", "160", "120"],
+        difficulty: 3,
+      },
+    ],
+  });
+
+  assert.equal(result.decision, "REJECT");
+  assert.equal(result.passRate <= 0.59, true);
+  assert.equal(result.scoreCap?.capPercent, 59);
+  assert.match(result.reasons.join(" "), /Score capped at 59/i);
+});
+
+test("black box calibration keeps clean aligned content scoring high", () => {
+  const result = runContentBlackBoxTest({
+    subject: "maths",
+    keyStage: "KS2",
+    yearGroup: "Year 5",
+    level: 3,
+    difficulty: 3,
+    topic: "Fractions",
+    skillFocus: "Fractions",
+    items: [
+      {
+        subject: "maths",
+        keyStage: "KS2",
+        yearGroup: "Year 5",
+        skillFocus: "Fractions",
+        topic: "Fractions",
+        question: "Calculate 3/4 of 240 and explain the method.",
+        answer: "180",
+        explanation: "Divide 240 by 4 to get 60, then multiply by 3 to get 180.",
+        choices: ["180", "160", "120"],
+        difficulty: 3,
+      },
+      {
+        subject: "maths",
+        keyStage: "KS2",
+        yearGroup: "Year 5",
+        skillFocus: "Fractions",
+        topic: "Fractions",
+        question: "A tank is 3/5 full with 150 litres. What is the total capacity? Show your reasoning.",
+        answer: "250 litres",
+        explanation: "If 3/5 is 150, then 1/5 is 50 and 5/5 is 250.",
+        choices: ["200 litres", "250 litres", "300 litres"],
+        difficulty: 3,
+      },
+    ],
+  });
+
+  assert.equal(result.decision, "APPROVE");
+  assert.equal(result.passRate >= 0.9, true);
+  assert.equal(result.scoreCap, undefined);
+});
