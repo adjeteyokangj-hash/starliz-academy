@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev --webpack",
     "prebuild": "npm run test:curriculum-coverage && npm run audit:ai-curriculum",
     "build": "prisma generate && next build",
     "start": "next start",

@@ -506,7 +506,7 @@ function ContentViewModalBody({
         .map((slot) => normalizedPrompt(promptLikeText(slot)))
         .filter(Boolean);
 
-      const plan = buildMissingSlotRecoveryPlan({ missingSlots: missingSlotIndexes.length });
+      const plan = buildMissingSlotRecoveryPlan({ missingSlots: missingSlotIndexes.length, contentType: content.contentType });
       const attempts: MissingSlotRecoveryAttempt[] = [];
       const generatedItems: GeneratedReviewItem[] = [];
       const passFailures: string[] = [];

@@ -193,12 +193,77 @@ function candidatePoolSize(missingSlots: number): number {
   return Math.max(missingSlots * 8, 40);
 }
 
-export function buildMissingSlotRecoveryPlan(input: { missingSlots: number }): MissingSlotRecoveryPlan {
+function resolveQuestionStylesForContentType(contentType: string): {
+  exact: string[];
+  alternative: string[];
+  variants: string[];
+} {
+  const ct = String(contentType ?? "").toLowerCase();
+
+  if (ct === "spelling" || ct === "phonics") {
+    return {
+      exact: ["word_recall", "fill_in_the_blank", "dictation", "pattern_match"],
+      alternative: ["sentence_context", "word_sort", "odd_one_out", "error_correction"],
+      variants: ["apply_rule", "analogy", "choose_correct_spelling", "review"],
+    };
+  }
+
+  if (ct === "grammar" || ct === "punctuation") {
+    return {
+      exact: ["sentence_correction", "choose_correct", "fill_in_the_blank", "identify_error"],
+      alternative: ["rewrite_sentence", "multiple_choice", "word_order", "error_spotting"],
+      variants: ["apply_rule", "reasoning", "challenge", "review"],
+    };
+  }
+
+  if (ct === "reading" || ct === "vocabulary" || ct === "comprehension") {
+    return {
+      exact: ["comprehension", "vocabulary_in_context", "true_false", "match_definition"],
+      alternative: ["inference", "multiple_choice", "summarise", "sequence"],
+      variants: ["author_purpose", "compare_contrast", "reasoning", "review"],
+    };
+  }
+
+  if (ct === "writing") {
+    return {
+      exact: ["sentence_construction", "expand_sentence", "rewrite", "word_choice"],
+      alternative: ["descriptive", "narrative_prompt", "error_correction", "structure_task"],
+      variants: ["apply_technique", "challenge", "reasoning", "review"],
+    };
+  }
+
+  if (ct === "science") {
+    return {
+      exact: ["recall", "label_diagram", "multiple_choice", "true_false"],
+      alternative: ["explain", "apply_knowledge", "compare", "reasoning"],
+      variants: ["error_spotting", "challenge", "extended_answer", "review"],
+    };
+  }
+
+  if (ct === "languages") {
+    return {
+      exact: ["vocabulary", "translation", "fill_in_the_blank", "sentence_building"],
+      alternative: ["role_play", "grammar_in_context", "listening_style", "multiple_choice"],
+      variants: ["writing_task", "error_correction", "challenge", "review"],
+    };
+  }
+
+  // Default: maths / general
+  return {
+    exact: ["direct_calculation", "missing_number", "complete_equation", "inverse_multiplication"],
+    alternative: ["word_problem", "multi_step", "reasoning", "table_completion", "real_world", "choose_factor"],
+    variants: ["error_spotting", "challenge", "review", "mixed"],
+  };
+}
+
+export function buildMissingSlotRecoveryPlan(input: { missingSlots: number; contentType?: string }): MissingSlotRecoveryPlan {
   const targetSlots = Math.max(1, input.missingSlots);
   const internalCandidateTarget = candidatePoolSize(targetSlots);
   const passOne = Math.max(targetSlots * 2, Math.round(internalCandidateTarget * 0.35));
   const passTwo = Math.max(targetSlots * 2, Math.round(internalCandidateTarget * 0.4));
   const passThree = Math.max(targetSlots, internalCandidateTarget - passOne - passTwo);
+
+  const styles = resolveQuestionStylesForContentType(input.contentType ?? "");
 
   return {
     targetSlots,
@@ -208,19 +273,19 @@ export function buildMissingSlotRecoveryPlan(input: { missingSlots: number }): M
         id: "exact",
         label: "Pass 1: exact-match generation",
         candidateCount: passOne,
-        questionStyles: ["direct_calculation", "missing_number", "complete_equation", "inverse_multiplication"],
+        questionStyles: styles.exact,
       },
       {
         id: "alternative",
         label: "Pass 2: alternative structures",
         candidateCount: passTwo,
-        questionStyles: ["word_problem", "multi_step", "reasoning", "table_completion", "real_world", "choose_factor"],
+        questionStyles: styles.alternative,
       },
       {
         id: "same_level_variants",
         label: "Pass 3: same-level complexity variants",
         candidateCount: passThree,
-        questionStyles: ["error_spotting", "challenge", "review", "mixed"],
+        questionStyles: styles.variants,
       },
     ],
   };
