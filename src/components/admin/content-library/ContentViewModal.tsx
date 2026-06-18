@@ -16,7 +16,15 @@ import {
 } from "./utils";
 import { analyzeContentSessionSlots, getIncompleteSlotsReason, isQuestionSlotFilled } from "@/lib/session-slot-validation";
 import { analyzeSessionSlotDuplicates, primaryDuplicateFlag } from "@/lib/session-slot-duplicates";
-import { buildMissingSlotGenerationRequest, mergeGeneratedIntoEmptySlots, summarizeSessionSlots } from "@/lib/session-slot-recovery";
+import {
+  buildMissingSlotGenerationRequest,
+  buildMissingSlotRecoveryPlan,
+  formatMissingSlotRecoveryDiagnostics,
+  mergeGeneratedIntoEmptySlots,
+  selectBestMissingSlotCandidates,
+  summarizeSessionSlots,
+  type MissingSlotRecoveryAttempt,
+} from "@/lib/session-slot-recovery";
 
 type Props = {
   open: boolean;
@@ -495,60 +503,101 @@ function ContentViewModalBody({
         .map((slot) => normalizedPrompt(promptLikeText(slot)))
         .filter(Boolean);
 
-      const requestBody = buildMissingSlotGenerationRequest({
-        context: {
-          subject: meta.subject,
-          keyStage: meta.keyStage,
-          yearGroup: meta.yearGroup,
-          ageGroup: meta.ageGroup,
-          examBoard: meta.examBoard,
-          level: content.level,
-          topic: meta.topic,
-          skillFocus: meta.skillFocus,
-          curriculumPathway: meta.curriculumPathway,
-          module: strand || null,
-          contentType: content.contentType,
-          avoidPrompts,
-        },
-        missingSlots: missingSlotIndexes.length,
-      });
+      const plan = buildMissingSlotRecoveryPlan({ missingSlots: missingSlotIndexes.length });
+      const attempts: MissingSlotRecoveryAttempt[] = [];
+      const generatedItems: GeneratedReviewItem[] = [];
 
-      const response = await fetch("/api/admin/ai/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
+      for (const pass of plan.passes) {
+        if (generatedItems.length >= plan.internalCandidateTarget) break;
 
-      const payload = await response.json() as {
-        success?: boolean;
-        error?: string;
-        content?: { items?: unknown[] };
-      };
+        const requestBody = buildMissingSlotGenerationRequest({
+          context: {
+            subject: meta.subject,
+            keyStage: meta.keyStage,
+            yearGroup: meta.yearGroup,
+            ageGroup: meta.ageGroup,
+            examBoard: meta.examBoard,
+            level: content.level,
+            topic: meta.topic,
+            skillFocus: meta.skillFocus,
+            curriculumPathway: meta.curriculumPathway,
+            module: strand || null,
+            contentType: content.contentType,
+            avoidPrompts,
+          },
+          missingSlots: missingSlotIndexes.length,
+          candidatePoolSize: pass.candidateCount,
+          questionStyles: pass.questionStyles,
+          passId: pass.id,
+          passLabel: pass.label,
+        });
 
-      if (!response.ok || payload.success === false) {
-        setMessage(payload.error ?? "Missing slot generation failed.");
-        return;
+        const response = await fetch("/api/admin/ai/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+
+        const payload = await response.json() as {
+          success?: boolean;
+          error?: string;
+          content?: { items?: unknown[] };
+        };
+
+        if (!response.ok || payload.success === false) {
+          setMessage(payload.error ?? "Missing slot generation failed.");
+          return;
+        }
+
+        const passItems = Array.isArray(payload.content?.items)
+          ? payload.content.items.filter((entry): entry is GeneratedReviewItem => Boolean(entry && typeof entry === "object" && !Array.isArray(entry)))
+          : [];
+
+        attempts.push({
+          passId: pass.id,
+          passLabel: pass.label,
+          requestedCandidates: pass.candidateCount,
+          generatedCandidates: passItems.length,
+        });
+
+        generatedItems.push(...passItems);
       }
 
-      const generatedItems = Array.isArray(payload.content?.items)
-        ? payload.content.items.filter((entry): entry is GeneratedReviewItem => Boolean(entry && typeof entry === "object" && !Array.isArray(entry)))
-        : [];
+      const selection = selectBestMissingSlotCandidates({
+        existingItems: items,
+        generatedItems,
+        missingSlots: missingSlotIndexes.length,
+        targetLevel: content.level,
+        topic: meta.topic,
+        skillFocus: meta.skillFocus,
+      });
 
       const merged = mergeGeneratedIntoEmptySlots({
         existingItems: items,
-        generatedItems,
+        generatedItems: selection.selectedItems,
       });
 
       if (!merged.replacedCount) {
-        setMessage("No valid generated items were returned for empty slots. Try again or create manually.");
+        const diagnosticsMessage = formatMissingSlotRecoveryDiagnostics({
+          attempts,
+          selection: selection.diagnostics,
+          mergedSummary: merged.summary,
+        });
+        setMessage(`${diagnosticsMessage}\nNo valid generated items were returned for empty slots. Try again or create manually.`);
         return;
       }
 
+      const diagnosticsMessage = formatMissingSlotRecoveryDiagnostics({
+        attempts,
+        selection: selection.diagnostics,
+        mergedSummary: merged.summary,
+      });
+
       const saved = await saveSlots(
         merged.mergedItems,
-        merged.summary.missingSlots === 0
+        `${diagnosticsMessage}\n${merged.summary.missingSlots === 0
           ? `Generated ${merged.replacedCount} missing slot${merged.replacedCount === 1 ? "" : "s"}. Filled Slots: ${merged.summary.filledSlots}/${merged.summary.totalSlots}. Empty Slots: ${merged.summary.missingSlots}. Black Box must be re-run before review/publish.`
-          : `Generated ${merged.replacedCount} missing slot${merged.replacedCount === 1 ? "" : "s"}. ${merged.summary.missingSlots} slot${merged.summary.missingSlots === 1 ? " remains" : "s remain"} empty.`,
+          : `Generated ${merged.replacedCount} missing slot${merged.replacedCount === 1 ? "" : "s"}. ${merged.summary.missingSlots} slot${merged.summary.missingSlots === 1 ? " remains" : "s remain"} empty.`}`,
       );
 
       if (saved && merged.summary.emptySlotIndexes.length > 0) {

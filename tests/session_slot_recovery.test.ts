@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildMissingSlotRecoveryPlan,
   buildMissingSlotGenerationRequest,
+  formatMissingSlotRecoveryDiagnostics,
   mergeGeneratedIntoEmptySlots,
+  selectBestMissingSlotCandidates,
   summarizeSessionSlots,
 } from "../src/lib/session-slot-recovery";
 
@@ -68,4 +71,142 @@ test("generation request uses missing slot count and lesson metadata", () => {
   assert.equal(request.numberOfItems, 5);
   assert.equal(request.lessonFormat, "math");
   assert.equal(request.questionStyle, "same_lesson_session_format");
+});
+
+test("missing slot recovery plan generates larger internal candidate pool", () => {
+  const oneMissing = buildMissingSlotRecoveryPlan({ missingSlots: 1 });
+  const fiveMissing = buildMissingSlotRecoveryPlan({ missingSlots: 5 });
+
+  assert.equal(oneMissing.targetSlots, 1);
+  assert.equal(oneMissing.internalCandidateTarget >= 8, true);
+  assert.equal(fiveMissing.targetSlots, 5);
+  assert.equal(fiveMissing.internalCandidateTarget >= 30, true);
+  assert.equal(fiveMissing.passes.length, 3);
+});
+
+test("generation request can request more candidates than missing slots", () => {
+  const request = buildMissingSlotGenerationRequest({
+    context: {
+      subject: "math",
+      level: 5,
+      contentType: "math",
+    },
+    missingSlots: 1,
+    candidatePoolSize: 10,
+    questionStyles: ["direct_calculation", "word_problem"],
+    passId: "alternative",
+    passLabel: "Pass 2",
+  });
+
+  assert.equal(request.numberOfItems, 10);
+  assert.deepEqual(request.questionStyles, ["direct_calculation", "word_problem"]);
+  assert.equal(request.generationPassId, "alternative");
+});
+
+test("candidate selection filters duplicates and preserves same-level preference", () => {
+  const existingItems = [
+    { question: "6 x ? = 42", answer: "7", difficulty: 5, topic: "Missing Factors", skillFocus: "Missing Factors" },
+    { question: "What is 8 x 7?", answer: "56", difficulty: 5, topic: "Missing Factors", skillFocus: "Missing Factors" },
+    {},
+    {},
+  ] as Array<Record<string, unknown>>;
+
+  const generatedItems = [
+    { question: "6 x ? = 42", answer: "7", difficulty: 5, topic: "Missing Factors", skillFocus: "Missing Factors" },
+    { question: "A school has 42 chairs in 6 equal rows. How many chairs in each row?", answer: "7", difficulty: 5, topic: "Missing Factors", skillFocus: "Missing Factors" },
+    { question: "Find the missing number: ? x 7 = 42", answer: "6", difficulty: 5, topic: "Missing Factors", skillFocus: "Missing Factors" },
+    { question: "Find the missing number: ? x 7 = 42", answer: "6", difficulty: 5, topic: "Missing Factors", skillFocus: "Missing Factors" },
+    { question: "What is 12 + 6?", answer: "18", difficulty: 3, topic: "Addition", skillFocus: "Addition" },
+  ] as Array<Record<string, unknown>>;
+
+  const selection = selectBestMissingSlotCandidates({
+    existingItems,
+    generatedItems,
+    missingSlots: 2,
+    targetLevel: 5,
+    topic: "Missing Factors",
+    skillFocus: "Missing Factors",
+  });
+
+  assert.equal(selection.selectedItems.length, 2);
+  assert.equal(selection.diagnostics.duplicatesRemoved >= 1, true);
+  assert.equal(selection.diagnostics.levelMismatchRemoved >= 1, true);
+  assert.equal(
+    selection.diagnostics.duplicatesRemoved
+      + selection.diagnostics.nearDuplicatesRemoved
+      + selection.diagnostics.samePatternRemoved >= 2,
+    true,
+  );
+  assert.equal(
+    selection.selectedItems.every((item) => Number(item.difficulty ?? item.level) === 5),
+    true,
+  );
+  assert.equal(selection.diagnostics.exhausted, false);
+});
+
+test("merge keeps final student-facing slot count unchanged", () => {
+  const existing = [
+    { question: "Keep slot 1", answer: "1" },
+    { question: "Keep slot 2", answer: "2" },
+    {},
+  ] as Array<Record<string, unknown>>;
+
+  const selection = selectBestMissingSlotCandidates({
+    existingItems: existing,
+    generatedItems: [
+      { question: "Fill slot 3", answer: "3", difficulty: 5, topic: "Missing Factors", skillFocus: "Missing Factors" },
+      { question: "Extra candidate", answer: "4", difficulty: 5, topic: "Missing Factors", skillFocus: "Missing Factors" },
+    ],
+    missingSlots: 1,
+    targetLevel: 5,
+    topic: "Missing Factors",
+    skillFocus: "Missing Factors",
+  });
+
+  const merged = mergeGeneratedIntoEmptySlots({
+    existingItems: existing,
+    generatedItems: selection.selectedItems,
+  });
+
+  assert.equal(merged.mergedItems.length, existing.length);
+  assert.equal(merged.summary.totalSlots, existing.length);
+  assert.equal(merged.mergedItems[0].question, "Keep slot 1");
+  assert.equal(merged.mergedItems[1].question, "Keep slot 2");
+});
+
+test("recovery diagnostics includes counters and exhaustion guidance", () => {
+  const diagnostics = formatMissingSlotRecoveryDiagnostics({
+    attempts: [
+      {
+        passId: "exact",
+        passLabel: "Pass 1: exact-match generation",
+        requestedCandidates: 4,
+        generatedCandidates: 2,
+      },
+    ],
+    selection: {
+      targetSlots: 1,
+      candidatesGenerated: 2,
+      acceptedCandidates: 0,
+      duplicatesRemoved: 1,
+      nearDuplicatesRemoved: 1,
+      samePatternRemoved: 0,
+      levelMismatchRemoved: 0,
+      topicMismatchRemoved: 0,
+      styleDiversity: {},
+      exhausted: true,
+    },
+    mergedSummary: {
+      totalSlots: 10,
+      filledSlots: 9,
+      missingSlots: 1,
+      filledSlotIndexes: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      emptySlotIndexes: [9],
+    },
+  });
+
+  assert.match(diagnostics, /Missing Slot Recovery/i);
+  assert.match(diagnostics, /Duplicates removed: 1/i);
+  assert.match(diagnostics, /Generation exhausted/i);
+  assert.match(diagnostics, /Suggestions:/i);
 });
