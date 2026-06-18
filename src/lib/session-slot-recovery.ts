@@ -400,6 +400,41 @@ export function selectBestMissingSlotCandidates(input: {
     selectedPatterns.add(signature);
   }
 
+  // If strict tuple/topic-level filtering is too aggressive, allow a relaxed pass
+  // so we can still recover empty slots with valid, non-duplicate items.
+  if (filtered.length < targetSlots && candidates.length > 0) {
+    for (const candidate of candidates) {
+      if (filtered.includes(candidate)) continue;
+
+      const normalizedPrompt = normalizeText(promptLikeText(candidate));
+      const promptTokens = tokenize(promptLikeText(candidate));
+      const signature = patternSignature(candidate);
+
+      if (normalizedPrompt && (existingPrompts.includes(normalizedPrompt) || selectedPrompts.includes(normalizedPrompt))) {
+        continue;
+      }
+
+      const nearSimilarityWithExisting = existingPromptTokens.some((tokens) => jaccard(tokens, promptTokens) >= 0.92);
+      const nearSimilarityWithSelected = selectedPromptTokens.some((tokens) => jaccard(tokens, promptTokens) >= 0.92);
+      if (nearSimilarityWithExisting || nearSimilarityWithSelected) {
+        continue;
+      }
+
+      if (existingPatterns.has(signature) || selectedPatterns.has(signature)) {
+        continue;
+      }
+
+      filtered.push(candidate);
+      selectedPrompts.push(normalizedPrompt);
+      selectedPromptTokens.push(promptTokens);
+      selectedPatterns.add(signature);
+
+      if (filtered.length >= targetSlots * 2) {
+        break;
+      }
+    }
+  }
+
   const selectedItems: Array<Record<string, unknown>> = [];
   const styleDiversity: Record<string, number> = {};
   const pool = [...filtered];

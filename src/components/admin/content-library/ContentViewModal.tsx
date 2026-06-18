@@ -509,6 +509,7 @@ function ContentViewModalBody({
       const plan = buildMissingSlotRecoveryPlan({ missingSlots: missingSlotIndexes.length });
       const attempts: MissingSlotRecoveryAttempt[] = [];
       const generatedItems: GeneratedReviewItem[] = [];
+      const passFailures: string[] = [];
 
       for (const pass of plan.passes) {
         if (generatedItems.length >= plan.internalCandidateTarget) break;
@@ -535,26 +536,54 @@ function ContentViewModalBody({
           passLabel: pass.label,
         });
 
-        const response = await fetch("/api/admin/ai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
-        });
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 30000);
 
-        const payload = await response.json() as {
-          success?: boolean;
-          error?: string;
-          content?: { items?: unknown[] };
-        };
+        let passItems: GeneratedReviewItem[] = [];
 
-        if (!response.ok || payload.success === false) {
-          setMessage(payload.error ?? "Missing slot generation failed.");
-          return;
+        try {
+          const response = await fetch("/api/admin/ai/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
+          });
+
+          const raw = await response.text();
+          let payload: {
+            success?: boolean;
+            error?: string;
+            content?: { items?: unknown[] };
+          } | null = null;
+          if (raw) {
+            try {
+              payload = JSON.parse(raw) as {
+                success?: boolean;
+                error?: string;
+                content?: { items?: unknown[] };
+              };
+            } catch {
+              payload = null;
+            }
+          }
+
+          if (!response.ok || payload?.success === false) {
+            const fallbackMessage = raw && !raw.trim().startsWith("<") ? raw : null;
+            passFailures.push(payload?.error ?? fallbackMessage ?? `Pass failed (${response.status}).`);
+          } else {
+            passItems = Array.isArray(payload?.content?.items)
+              ? payload.content.items.filter((entry): entry is GeneratedReviewItem => Boolean(entry && typeof entry === "object" && !Array.isArray(entry)))
+              : [];
+          }
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            passFailures.push("Generation request timed out for this pass.");
+          } else {
+            passFailures.push(error instanceof Error ? error.message : "Generation request failed for this pass.");
+          }
+        } finally {
+          window.clearTimeout(timeoutId);
         }
-
-        const passItems = Array.isArray(payload.content?.items)
-          ? payload.content.items.filter((entry): entry is GeneratedReviewItem => Boolean(entry && typeof entry === "object" && !Array.isArray(entry)))
-          : [];
 
         attempts.push({
           passId: pass.id,
@@ -586,7 +615,10 @@ function ContentViewModalBody({
           selection: selection.diagnostics,
           mergedSummary: merged.summary,
         });
-        setMessage(`${diagnosticsMessage}\nNo valid generated items were returned for empty slots. Try again or create manually.`);
+        const failureSuffix = passFailures.length
+          ? `\nGeneration errors: ${passFailures.slice(0, 2).join(" | ")}`
+          : "";
+        setMessage(`${diagnosticsMessage}\nNo valid generated items were returned for empty slots. Try again or create manually.${failureSuffix}`);
         return;
       }
 
@@ -606,8 +638,8 @@ function ContentViewModalBody({
       if (saved && merged.summary.emptySlotIndexes.length > 0) {
         selectSlot(merged.summary.emptySlotIndexes[0]);
       }
-    } catch {
-      setMessage("Missing slot generation request failed.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Missing slot generation request failed.");
     } finally {
       setGeneratingMissingSlots(false);
     }
