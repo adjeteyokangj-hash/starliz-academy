@@ -2916,6 +2916,52 @@ Subject drift: ${(diagnostics?.detectedSubjectDrift ?? []).join(", ") || "none"}
 Regenerate ONLY replacement items. Keep the same JSON schema, command words, mark-scheme style answers, and strict discipline containment.`;
   }
 
+  if (acceptedItems.length > 0) {
+    const partial = validateAiContentQuality({
+      type: input.validatorType,
+      subject: input.subject,
+      topic: input.topic,
+      keyStage: input.keyStage,
+      yearGroup: input.yearGroup,
+      skillFocus: input.skillFocus,
+      difficulty: input.level,
+      requestedCount: acceptedItems.length,
+      graphChecks: input.graphChecks,
+      items: acceptedItems,
+      mode: "repair",
+    });
+
+    if (Array.isArray(partial.cleanedItems) && partial.cleanedItems.length > 0) {
+      const finalParsed = partial.cleanedItems.slice(0, input.count);
+      const isPartialGeneration = finalParsed.length < input.count;
+      normalizedMetadataSnapshot = pickMetadataSnapshot(Array.isArray(finalParsed) ? finalParsed[0] : finalParsed);
+      return {
+        content: finalParsed,
+        prompt: promptUsed,
+        validation: {
+          ...(partial.meta as Record<string, unknown>),
+          aiGenerated: true,
+          regeneratedAfterValidation: true,
+          fallbackUsed: false,
+          regeneratedCount,
+          partialGeneration: isPartialGeneration,
+          requestedCount: input.count,
+          finalCount: finalParsed.length,
+          missingCount: Math.max(0, input.count - finalParsed.length),
+          repairDiagnostics: providerDiagnostics,
+          validationDiagnostics: partial.meta?.diagnostics,
+          rawOpenAiResponse: providerDiagnostics[providerDiagnostics.length - 1] ?? null,
+          subjectContainment: partial.meta?.diagnostics?.contaminationDetected ? "failed" : "passed",
+          contaminatedItemsRepaired: partial.meta?.diagnostics?.repairedItemsCount ?? 0,
+          contaminatedItemsRejected: partial.meta?.diagnostics?.rejectedItemsCount ?? 0,
+          scienceDiscipline: input.scienceDiscipline,
+        },
+        generatedMetadataSnapshot,
+        normalizedMetadataSnapshot,
+      };
+    }
+  }
+
   const latestPreview = providerDiagnostics.length > 0
     ? String(providerDiagnostics[providerDiagnostics.length - 1]?.contentPreview ?? "")
     : "";
@@ -3320,26 +3366,46 @@ export async function POST(req: Request) {
     return englishStrandToSubject(englishStrand);
   })();
   const allowedSkillsForPath = skillsForSubjectAndYear(pathSubject, safeYearGroup);
-  if (resolvedSkillFocus && allowedSkillsForPath.length > 0 && !allowedSkillsForPath.includes(resolvedSkillFocus)) {
-    const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
-      message: `Skill focus \"${resolvedSkillFocus}\" is not mapped for ${pathSubject} in ${safeYearGroup}.`,
-      details: { category: "unsupported_skill_for_subject_year" },
-      status: 422,
+  const normalizeMappingLabel = (value: string) => value.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const normalizedRequestedSkill = normalizeMappingLabel(resolvedSkillFocus);
+  const hasExactSkillMapping = allowedSkillsForPath.includes(resolvedSkillFocus);
+  const hasLooseSkillMapping = normalizedRequestedSkill.length > 0
+    && allowedSkillsForPath.some((skill) => {
+      const normalizedSkill = normalizeMappingLabel(skill);
+      return normalizedSkill === normalizedRequestedSkill
+        || normalizedSkill.includes(normalizedRequestedSkill)
+        || normalizedRequestedSkill.includes(normalizedSkill);
     });
-    return NextResponse.json({
-      success: false,
-      error: `Skill focus \"${resolvedSkillFocus}\" is not mapped for ${pathSubject} in ${safeYearGroup}.`,
+  if (resolvedSkillFocus && allowedSkillsForPath.length > 0 && !hasExactSkillMapping && !hasLooseSkillMapping) {
+    if (aiMode === "fallback_only") {
+      const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
+        message: `Skill focus \"${resolvedSkillFocus}\" is not mapped for ${pathSubject} in ${safeYearGroup}.`,
+        details: { category: "unsupported_skill_for_subject_year" },
+        status: 422,
+      });
+      return NextResponse.json({
+        success: false,
+        error: `Skill focus \"${resolvedSkillFocus}\" is not mapped for ${pathSubject} in ${safeYearGroup}.`,
+        aiMode,
+        keySource,
+        details: {
+          category: "unsupported_skill_for_subject_year",
+          yearGroup: safeYearGroup,
+          subject: pathSubject,
+          skillFocus: resolvedSkillFocus,
+          allowedSkills: allowedSkillsForPath,
+        },
+        ...diagnosticEnvelope(diagnosticOutcome),
+      }, { status: 422 });
+    }
+
+    console.warn("[admin-ai-generate] proceeding with relaxed skill mapping", {
+      yearGroup: safeYearGroup,
+      subject: pathSubject,
+      skillFocus: resolvedSkillFocus,
+      allowedSkills: allowedSkillsForPath,
       aiMode,
-      keySource,
-      details: {
-        category: "unsupported_skill_for_subject_year",
-        yearGroup: safeYearGroup,
-        subject: pathSubject,
-        skillFocus: resolvedSkillFocus,
-        allowedSkills: allowedSkillsForPath,
-      },
-      ...diagnosticEnvelope(diagnosticOutcome),
-    }, { status: 422 });
+    });
   }
   const pathValidation = isValidCurriculumPath({
     yearGroup: safeYearGroup,
@@ -3353,6 +3419,17 @@ export async function POST(req: Request) {
       subject: pathSubject,
       skillFocus: resolvedSkillFocus,
     });
+    // Keep live generation available even when topic mapping is not exact.
+    // Fallback-only mode remains strict for deterministic template routing.
+    if (aiMode !== "fallback_only") {
+      console.warn("[admin-ai-generate] proceeding with relaxed topic mapping", {
+        yearGroup: safeYearGroup,
+        subject: pathSubject,
+        skillFocus: resolvedSkillFocus,
+        topic,
+        mappedTopics,
+      });
+    } else {
     const pathValidationReason = String(pathValidation.reason ?? "Invalid curriculum path.");
     const diagnosticOutcome = classifyGenerationDiagnosticOutcome({
       message: pathValidationReason,
@@ -3419,6 +3496,7 @@ export async function POST(req: Request) {
       },
       ...diagnosticEnvelope(diagnosticOutcome),
     }, { status: 422 });
+    }
   }
 
   const generationDiagnostics = {

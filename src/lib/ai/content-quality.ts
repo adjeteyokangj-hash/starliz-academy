@@ -305,7 +305,7 @@ function englishDifficultyIssue(input: QualityInput, data: Record<string, unknow
 }
 
 function hasScienceSignal(value: string) {
-  return /(science|physics|chemistry|biology|force|energy|waves?|electricity|magnetism|circuit|resistance|current|voltage|particle|atomic|atom|cells?|ecosystem|practical|equation|f\s*=\s*m\s*[x*]\s*a|mass|weight|acceleration|velocity|momentum|density|pressure|chemical\s*reaction|exothermic|endothermic|evolution|genetics|dna|radiation|nuclear|thermal|kinetic|gravitational|elastic\s*potential|newton|joule|watt|hertz|ohm|ampere|photosynthesis|osmosis|diffusion|respiration|mitosis|periodic\s*table|element|compound|mixture|reactant|product|bond|electron|proton|neutron|isotope|half.life|wave.length|frequency|amplitude|refraction|reflection|electromagnetic|acid|alkali|neutrali[sz]ation|electrolysis|ion|ionic|ph\b)/i.test(value);
+  return /(science|physics|chemistry|biology|force|energy|waves?|electricity|magnet(?:s|ic|ism)?|circuit|resistance|current|voltage|particle|atomic|atom|cells?|ecosystem|practical|equation|f\s*=\s*m\s*[x*]\s*a|mass|weight|acceleration|velocity|momentum|density|pressure|chemical\s*reaction|exothermic|endothermic|evolution|genetics|dna|radiation|nuclear|thermal|kinetic|gravitational|elastic\s*potential|newton|joule|watt|hertz|ohm|ampere|photosynthesis|osmosis|diffusion|respiration|mitosis|periodic\s*table|element|compound|mixture|reactant|product|bond|electron|proton|neutron|isotope|half.life|wave.length|frequency|amplitude|refraction|reflection|electromagnetic|acid|alkali|neutrali[sz]ation|electrolysis|ion|ionic|ph\b)/i.test(value);
 }
 
 function isMathOnlyContent(value: string) {
@@ -624,6 +624,36 @@ function curriculumQualityFailureMessage(result: CurriculumQualityResult): strin
   if (issue.includes("poor_passage_quality")) return "Reading passage quality is too weak for assignment.";
   if (issue.includes("placeholder_style_content")) return "Fallback content contains placeholder-style wording.";
   return "Generated content failed curriculum-quality validation.";
+}
+
+function isHardCurriculumBlockingIssue(issue: string): boolean {
+  const normalized = String(issue ?? "").toLowerCase();
+
+  if (normalized.includes("placeholder_style_content")) return true;
+  if (normalized.includes("missing_passage")) return true;
+  if (normalized.includes("missing_question")) return true;
+  if (normalized.includes("missing_answer")) return true;
+  if (normalized.includes("question_answer_incomplete")) return true;
+  if (normalized.includes("subject_fit_missing")) return true;
+  if (normalized.includes("subject_drift")) return true;
+  if (normalized.includes("subject_containment")) return true;
+  if (normalized.includes("subject_contamination")) return true;
+  if (normalized.includes("science_maths_only")) return true;
+  if (normalized.includes("ga_twi_marker")) return true;
+
+  if (normalized.includes("gcse_maths_compute_only")) return true;
+  if (normalized.includes("gcse_maths_weak_command_word_usage")) return true;
+  if (normalized.includes("gcse_maths_topic_depth_missing")) return true;
+  if (normalized.includes("gcse_english_weak_command_word_usage")) return true;
+  if (normalized.includes("gcse_english_literary_or_language_focus_missing")) return true;
+
+  return false;
+}
+
+function canSoftenCurriculumBlocking(input: QualityInput, cleanedCount: number, curriculumQuality: CurriculumQualityResult): boolean {
+  if (input.mode !== "repair") return false;
+  if (cleanedCount <= 0) return false;
+  return curriculumQuality.blockingIssues.every((issue) => !isHardCurriculumBlockingIssue(issue));
 }
 
 function validateSpellingItems(
@@ -962,14 +992,22 @@ export function validateAiContentQuality(input: QualityInput): QualityResult {
   if (input.type === "spelling" || input.type === "phonics") {
     const validated = validateSpellingItems(records, input);
     const curriculumQuality = evaluateCurriculumQuality(input, validated.cleaned.length ? validated.cleaned : records);
-    const meta = attachCurriculumQuality(validated.meta, curriculumQuality);
+    let meta = attachCurriculumQuality(validated.meta, curriculumQuality);
     if (!curriculumQuality.passed) {
-      return {
-        ok: false,
-        error: curriculumQualityFailureMessage(curriculumQuality),
-        cleanedItems: validated.cleaned,
-        meta,
-      };
+      if (canSoftenCurriculumBlocking(input, validated.cleaned.length, curriculumQuality)) {
+        const softenedWarnings = curriculumQuality.blockingIssues.map((issue) => `softened_curriculum_issue:${issue}`);
+        meta = {
+          ...meta,
+          warnings: Array.from(new Set([...(meta.warnings ?? []), ...softenedWarnings])),
+        };
+      } else {
+        return {
+          ok: false,
+          error: curriculumQualityFailureMessage(curriculumQuality),
+          cleanedItems: validated.cleaned,
+          meta,
+        };
+      }
     }
     if (input.mode === "repair") {
       if (!validated.cleaned.length) {
@@ -998,15 +1036,23 @@ export function validateAiContentQuality(input: QualityInput): QualityResult {
 
   const validated = validateStructuredItems(records, input);
   const curriculumQuality = evaluateCurriculumQuality(input, validated.cleaned.length ? validated.cleaned : records);
-  const meta = attachCurriculumQuality(validated.meta, curriculumQuality);
+  let meta = attachCurriculumQuality(validated.meta, curriculumQuality);
 
   if (!curriculumQuality.passed) {
-    return {
-      ok: false,
-      error: curriculumQualityFailureMessage(curriculumQuality),
-      cleanedItems: validated.cleaned,
-      meta,
-    };
+    if (canSoftenCurriculumBlocking(input, validated.cleaned.length, curriculumQuality)) {
+      const softenedWarnings = curriculumQuality.blockingIssues.map((issue) => `softened_curriculum_issue:${issue}`);
+      meta = {
+        ...meta,
+        warnings: Array.from(new Set([...(meta.warnings ?? []), ...softenedWarnings])),
+      };
+    } else {
+      return {
+        ok: false,
+        error: curriculumQualityFailureMessage(curriculumQuality),
+        cleanedItems: validated.cleaned,
+        meta,
+      };
+    }
   }
 
   if (input.mode === "repair") {
