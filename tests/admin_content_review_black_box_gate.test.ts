@@ -228,3 +228,33 @@ test("admin content review route allows review when no global duplicates exist",
   assert.equal(payload.status, "reviewed");
   assert.equal(updated, true);
 });
+
+test("admin content review route returns curriculum quality warnings from Black Box metadata", async () => {
+  const response = await handleAdminContentReviewPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-quality-warning",
+      status: "generated",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+        blackBoxContentTest: {
+          decision: "NEEDS_ADMIN_REVIEW",
+          reasons: ["Item 1: Curriculum quality warning: shallow_maths_prompt"],
+          itemChecks: [
+            { reasons: ["Curriculum quality warning: vague_explanation"] },
+          ],
+        },
+      }),
+      contentJson: JSON.stringify([
+        { prompt: "A shop has 18 pencils and sells 7. How many remain?", answer: "11" },
+      ]),
+    }),
+  }));
+
+  const payload = await response.json() as { status?: string; curriculumQualityWarnings?: string[] };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.status, "reviewed");
+  assert.ok(payload.curriculumQualityWarnings?.includes("Item 1: Curriculum quality warning: shallow_maths_prompt"));
+  assert.ok(payload.curriculumQualityWarnings?.includes("Curriculum quality warning: vague_explanation"));
+});

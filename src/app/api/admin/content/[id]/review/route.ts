@@ -70,6 +70,28 @@ const defaultDeps: AdminContentReviewDeps = {
   updateContentToReviewed: defaultUpdateContentToReviewed,
 };
 
+function curriculumQualityWarningsFromMetadata(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const metadata = JSON.parse(raw) as Record<string, unknown>;
+    const blackBox = metadata.blackBoxContentTest as Record<string, unknown> | undefined;
+    const reasons = Array.isArray(blackBox?.reasons) ? blackBox.reasons : [];
+    const itemChecks = Array.isArray(blackBox?.itemChecks) ? blackBox.itemChecks : [];
+    return Array.from(new Set([
+      ...reasons.filter((reason): reason is string => typeof reason === "string" && /curriculum quality/i.test(reason)),
+      ...itemChecks.flatMap((check) => {
+        if (!check || typeof check !== "object") return [];
+        const checkReasons = (check as Record<string, unknown>).reasons;
+        return Array.isArray(checkReasons)
+          ? checkReasons.filter((reason): reason is string => typeof reason === "string" && /curriculum quality/i.test(reason))
+          : [];
+      }),
+    ]));
+  } catch {
+    return [];
+  }
+}
+
 export async function handleAdminContentReviewPost(
   _request: Request,
   context: Context,
@@ -129,6 +151,7 @@ export async function handleAdminContentReviewPost(
     id: updated.id,
     status: updated.status,
     reviewedAt: updated.reviewedAt?.toISOString(),
+    curriculumQualityWarnings: curriculumQualityWarningsFromMetadata(content.metadataJson),
   });
 }
 

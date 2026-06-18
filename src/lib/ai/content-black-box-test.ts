@@ -5,6 +5,7 @@ import {
   normalizeYearGroup,
   type Subject,
 } from "@/lib/curriculum";
+import { validateCurriculumContentQuality, type CurriculumQualityResult } from "@/lib/curriculum-quality";
 
 export type BlackBoxContentDecision = "APPROVE" | "RECLASSIFY" | "REJECT" | "NEEDS_ADMIN_REVIEW";
 
@@ -63,6 +64,7 @@ export type BlackBoxItemResult = {
   recommendedStrand?: string | null;
   dimensions: BlackBoxDimensionScore[];
   reasons: string[];
+  curriculumQuality?: CurriculumQualityResult;
 };
 
 export type BlackBoxContentTestResult = {
@@ -309,6 +311,23 @@ function scoreItem(item: BlackBoxGeneratedItem, index: number, input: BlackBoxCo
   };
   const dimensions: BlackBoxDimensionScore[] = [];
   const reasons: string[] = [];
+  const curriculumQuality = validateCurriculumContentQuality({
+    subject: input.subject,
+    type: expectedSubjectFamily(input.subject) === "maths" ? "maths"
+      : expectedSubjectFamily(input.subject) === "science" ? "science"
+        : expectedSubjectFamily(input.subject) === "reading" ? "reading"
+          : expectedSubjectFamily(input.subject) === "grammar" ? "grammar"
+            : expectedSubjectFamily(input.subject) === "punctuation" ? "punctuation"
+              : expectedSubjectFamily(input.subject) === "writing" ? "writing"
+                : expectedSubjectFamily(input.subject) === "spelling" ? "spelling"
+                  : undefined,
+    keyStage: input.keyStage,
+    yearGroup: input.yearGroup,
+    skillFocus: input.skillFocus,
+    topic: input.topic,
+    difficulty: input.difficulty ?? input.level,
+    item,
+  });
 
   const subjectOk = compatibleSubjects(expectedSubject, inferredSubject);
   dimensions.push(makeScore("subject", subjectOk ? DIMENSION_MAX.subject : 0, subjectOk ? [] : [`Expected ${expectedSubject ?? input.subject}, detected ${inferredSubject ?? "unknown"}.`]));
@@ -361,11 +380,14 @@ function scoreItem(item: BlackBoxGeneratedItem, index: number, input: BlackBoxCo
   for (const dimension of dimensions) {
     reasons.push(...dimension.reasons);
   }
+  reasons.push(...curriculumQuality.blockingIssues.map((issue) => `Curriculum quality block: ${issue}`));
+  reasons.push(...curriculumQuality.warnings.map((warning) => `Curriculum quality warning: ${warning}`));
 
-  const score = dimensions.reduce((sum, entry) => sum + entry.score, 0);
+  const dimensionScore = dimensions.reduce((sum, entry) => sum + entry.score, 0);
   const maxScore = dimensions.reduce((sum, entry) => sum + entry.maxScore, 0);
+  const score = Math.max(0, Math.min(dimensionScore, Math.round(dimensionScore * (curriculumQuality.score / 100))));
   let decision: BlackBoxContentDecision = "APPROVE";
-  if (!answerOk || !qText || reasons.some((reason) => /options|Correct answer is not present/.test(reason))) {
+  if (!answerOk || !qText || reasons.some((reason) => /options|Correct answer is not present/.test(reason)) || curriculumQuality.blockingIssues.length > 0) {
     decision = "REJECT";
   } else if (!subjectOk && inferredSubject) {
     decision = "RECLASSIFY";
@@ -373,7 +395,7 @@ function scoreItem(item: BlackBoxGeneratedItem, index: number, input: BlackBoxCo
     decision = "REJECT";
   } else if (!strandOk && inferredStrand) {
     decision = "RECLASSIFY";
-  } else if (score / maxScore < 0.82 || !difficultyOk || !readabilityOk || !topicOk) {
+  } else if (score / maxScore < 0.82 || !difficultyOk || !readabilityOk || !topicOk || curriculumQuality.warnings.length > 0) {
     decision = "NEEDS_ADMIN_REVIEW";
   }
 
@@ -393,6 +415,7 @@ function scoreItem(item: BlackBoxGeneratedItem, index: number, input: BlackBoxCo
     recommendedStrand: decision === "RECLASSIFY" ? inferredStrand : null,
     dimensions,
     reasons: Array.from(new Set(reasons)),
+    curriculumQuality,
   };
 }
 
@@ -410,6 +433,8 @@ function hasLevelQualityWarning(result: BlackBoxItemResult): boolean {
     || /Item appears too (easy|hard) for the selected level/i.test(reason)
     || /Vocabulary\/readability appears too (simple|advanced)/i.test(reason)
     || /Answer is too thin for the selected level/i.test(reason)
+    || /Curriculum quality warning/i.test(reason)
+    || /Curriculum quality block/i.test(reason)
   ));
 }
 

@@ -1,5 +1,6 @@
 import { KEY_STAGES, phonicsStageFromSkillFocus, type PhonicsStage } from "@/lib/curriculum";
 import { assessSpellingItemForDifficulty } from "@/lib/admin-ai-generator-spelling";
+import { validateCurriculumContentQuality, type CurriculumQualityResult } from "@/lib/curriculum-quality";
 
 type QualityInput = {
   type: "spelling" | "phonics" | "punctuation" | "grammar" | "writing" | "reading" | "maths" | "languages" | "science";
@@ -35,6 +36,8 @@ type QualityMeta = {
   skillTopicMatch: boolean;
   difficultyMatch: boolean;
   graphChecks?: QualityInput["graphChecks"];
+  curriculumQuality?: CurriculumQualityResult;
+  warnings?: string[];
   diagnostics: {
     validationStepFailed: boolean;
     missingFields: number;
@@ -582,6 +585,47 @@ function buildMeta(input: {
   };
 }
 
+function evaluateCurriculumQuality(input: QualityInput, items: unknown): CurriculumQualityResult {
+  return validateCurriculumContentQuality({
+    type: input.type,
+    subject: input.subject,
+    keyStage: input.keyStage,
+    yearGroup: input.yearGroup,
+    skillFocus: input.skillFocus,
+    topic: input.topic,
+    difficulty: input.difficulty,
+    items,
+  });
+}
+
+function attachCurriculumQuality(meta: QualityMeta, curriculumQuality: CurriculumQualityResult): QualityMeta {
+  return {
+    ...meta,
+    curriculumQuality,
+    warnings: Array.from(new Set([
+      ...(meta.warnings ?? []),
+      ...curriculumQuality.warnings,
+    ])),
+    diagnostics: {
+      ...meta.diagnostics,
+      rejectionReasons: Array.from(new Set([
+        ...meta.diagnostics.rejectionReasons,
+        ...curriculumQuality.blockingIssues,
+      ])).slice(0, 24),
+    },
+  };
+}
+
+function curriculumQualityFailureMessage(result: CurriculumQualityResult): string {
+  const issue = result.blockingIssues[0] ?? "curriculum_quality_failed";
+  if (issue.includes("gcse_maths_compute_only")) return "GCSE maths questions must not be compute-only.";
+  if (issue.includes("weak_distractors")) return "Generated content has weak answer distractors.";
+  if (issue.includes("poor_question_answer_alignment")) return "Reading question answers must be supported by evidence in the passage.";
+  if (issue.includes("poor_passage_quality")) return "Reading passage quality is too weak for assignment.";
+  if (issue.includes("placeholder_style_content")) return "Fallback content contains placeholder-style wording.";
+  return "Generated content failed curriculum-quality validation.";
+}
+
 function validateSpellingItems(
   records: unknown[],
   input: QualityInput,
@@ -917,32 +961,53 @@ export function validateAiContentQuality(input: QualityInput): QualityResult {
 
   if (input.type === "spelling" || input.type === "phonics") {
     const validated = validateSpellingItems(records, input);
+    const curriculumQuality = evaluateCurriculumQuality(input, validated.cleaned.length ? validated.cleaned : records);
+    const meta = attachCurriculumQuality(validated.meta, curriculumQuality);
+    if (!curriculumQuality.passed) {
+      return {
+        ok: false,
+        error: curriculumQualityFailureMessage(curriculumQuality),
+        cleanedItems: validated.cleaned,
+        meta,
+      };
+    }
     if (input.mode === "repair") {
       if (!validated.cleaned.length) {
         const label = input.type === "phonics" ? "phonics" : "spelling";
         return {
           ok: false,
           error: `No valid ${label} content remained after validation.`,
-          meta: validated.meta,
+          meta,
         };
       }
-      return { ok: true, cleanedItems: validated.cleaned, meta: validated.meta };
+      return { ok: true, cleanedItems: validated.cleaned, meta };
     }
 
-    if (validated.meta.errors.length > 0) {
-      const firstError = validated.meta.errors.find((value) => value.includes(":"));
+    if (meta.errors.length > 0) {
+      const firstError = meta.errors.find((value) => value.includes(":"));
       return {
         ok: false,
-        error: createSpellingErrorMessage(firstError ?? validated.meta.errors[0] ?? "invalid"),
+        error: createSpellingErrorMessage(firstError ?? meta.errors[0] ?? "invalid"),
         cleanedItems: validated.cleaned,
-        meta: validated.meta,
+        meta,
       };
     }
 
-    return { ok: true, cleanedItems: validated.cleaned, meta: validated.meta };
+    return { ok: true, cleanedItems: validated.cleaned, meta };
   }
 
   const validated = validateStructuredItems(records, input);
+  const curriculumQuality = evaluateCurriculumQuality(input, validated.cleaned.length ? validated.cleaned : records);
+  const meta = attachCurriculumQuality(validated.meta, curriculumQuality);
+
+  if (!curriculumQuality.passed) {
+    return {
+      ok: false,
+      error: curriculumQualityFailureMessage(curriculumQuality),
+      cleanedItems: validated.cleaned,
+      meta,
+    };
+  }
 
   if (input.mode === "repair") {
     if (!validated.cleaned.length) {
@@ -950,45 +1015,45 @@ export function validateAiContentQuality(input: QualityInput): QualityResult {
         ok: false,
         error: `No valid ${input.type} content remained after validation.`,
         cleanedItems: validated.cleaned,
-        meta: validated.meta,
+        meta,
       };
     }
-    return { ok: true, cleanedItems: validated.cleaned, meta: validated.meta };
+    return { ok: true, cleanedItems: validated.cleaned, meta };
   }
 
-  if (validated.meta.errors.length > 0) {
-    const errors = validated.meta.errors;
-    if (errors.includes("reading_missing_passage")) return { ok: false, error: "Reading output must include a passage.", cleanedItems: validated.cleaned, meta: validated.meta };
-    if (errors.includes("reading_missing_questions")) return { ok: false, error: "Reading output must include questions.", cleanedItems: validated.cleaned, meta: validated.meta };
+  if (meta.errors.length > 0) {
+    const errors = meta.errors;
+    if (errors.includes("reading_missing_passage")) return { ok: false, error: "Reading output must include a passage.", cleanedItems: validated.cleaned, meta };
+    if (errors.includes("reading_missing_questions")) return { ok: false, error: "Reading output must include questions.", cleanedItems: validated.cleaned, meta };
     if (errors.includes("science_maths_only")) {
-      return { ok: false, error: "Generated content did not match GCSE Physics. Please regenerate.", cleanedItems: validated.cleaned, meta: validated.meta };
+      return { ok: false, error: "Generated content did not match GCSE Physics. Please regenerate.", cleanedItems: validated.cleaned, meta };
     }
     if (errors.some((entry) => entry.startsWith("science_contamination:") || entry.startsWith("science_subject_drift:"))) {
-      return { ok: false, error: "Generated content drifted into another science discipline. Please regenerate.", cleanedItems: validated.cleaned, meta: validated.meta };
+      return { ok: false, error: "Generated content drifted into another science discipline. Please regenerate.", cleanedItems: validated.cleaned, meta };
     }
     if (errors.some((entry) => entry.startsWith("ga_twi_marker:"))) {
-      return { ok: false, error: "Generated Ga content includes Twi markers and was rejected. Please regenerate with standard Accra Ga only.", cleanedItems: validated.cleaned, meta: validated.meta };
+      return { ok: false, error: "Generated Ga content includes Twi markers and was rejected. Please regenerate with standard Accra Ga only.", cleanedItems: validated.cleaned, meta };
     }
     if (errors.includes("science_subject_containment_missing")) {
-      return { ok: false, error: "Generated content did not stay within the selected science discipline.", cleanedItems: validated.cleaned, meta: validated.meta };
+      return { ok: false, error: "Generated content did not stay within the selected science discipline.", cleanedItems: validated.cleaned, meta };
     }
     if (errors.includes("science_weak_command_word")) {
-      return { ok: false, error: "Generated science questions must use GCSE command words.", cleanedItems: validated.cleaned, meta: validated.meta };
+      return { ok: false, error: "Generated science questions must use GCSE command words.", cleanedItems: validated.cleaned, meta };
     }
     if (errors.includes("science_answer_mismatch")) {
-      return { ok: false, error: "Generated science answers must use mark-scheme style scientific reasoning.", cleanedItems: validated.cleaned, meta: validated.meta };
+      return { ok: false, error: "Generated science answers must use mark-scheme style scientific reasoning.", cleanedItems: validated.cleaned, meta };
     }
     if (errors.some((entry) => entry.includes("subject_mismatch") || entry.includes("maths_subject_mismatch") || entry.includes("language_subject_mismatch") || entry.includes("science_subject_mismatch"))) {
-      return { ok: false, error: "Generated content did not match the selected subject.", cleanedItems: validated.cleaned, meta: validated.meta };
+      return { ok: false, error: "Generated content did not match the selected subject.", cleanedItems: validated.cleaned, meta };
     }
-    if (errors.includes("missing_prompt")) return { ok: false, error: "Generated content must include a prompt or question.", cleanedItems: validated.cleaned, meta: validated.meta };
-    if (errors.includes("missing_answer")) return { ok: false, error: "Generated content must include an answer.", cleanedItems: validated.cleaned, meta: validated.meta };
-    if (errors.includes("difficulty_too_easy")) return { ok: false, error: "Generated content was too easy for the selected year and difficulty.", cleanedItems: validated.cleaned, meta: validated.meta };
-    if (errors.some((entry) => entry.includes("skill_topic_mismatch"))) return { ok: false, error: "Generated content did not match the selected skill focus/topic.", cleanedItems: validated.cleaned, meta: validated.meta };
+    if (errors.includes("missing_prompt")) return { ok: false, error: "Generated content must include a prompt or question.", cleanedItems: validated.cleaned, meta };
+    if (errors.includes("missing_answer")) return { ok: false, error: "Generated content must include an answer.", cleanedItems: validated.cleaned, meta };
+    if (errors.includes("difficulty_too_easy")) return { ok: false, error: "Generated content was too easy for the selected year and difficulty.", cleanedItems: validated.cleaned, meta };
+    if (errors.some((entry) => entry.includes("skill_topic_mismatch"))) return { ok: false, error: "Generated content did not match the selected skill focus/topic.", cleanedItems: validated.cleaned, meta };
     const first = errors[0] ?? "validation_failed";
-    if (first.includes("duplicate:")) return { ok: false, error: `Duplicate item rejected: ${first.replace("duplicate:", "")}`, cleanedItems: validated.cleaned, meta: validated.meta };
-    return { ok: false, error: "Generated content failed validation.", cleanedItems: validated.cleaned, meta: validated.meta };
+    if (first.includes("duplicate:")) return { ok: false, error: `Duplicate item rejected: ${first.replace("duplicate:", "")}`, cleanedItems: validated.cleaned, meta };
+    return { ok: false, error: "Generated content failed validation.", cleanedItems: validated.cleaned, meta };
   }
 
-  return { ok: true, cleanedItems: validated.cleaned, meta: validated.meta };
+  return { ok: true, cleanedItems: validated.cleaned, meta };
 }

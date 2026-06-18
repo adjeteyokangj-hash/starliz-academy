@@ -385,6 +385,7 @@ export async function POST(req: Request) {
         diagnosticOutcome: classifySaveDiagnosticOutcome(qualityError),
       }), { status: 422 });
     }
+    const curriculumQualityWarnings = quality.meta?.curriculumQuality?.warnings ?? [];
 
     // ── StarLiz question formula validation ──────────────────────────────────
     // Applied to maths/reading/science question-style content.
@@ -527,6 +528,8 @@ export async function POST(req: Request) {
           difficulty: body.difficulty,
           topic: body.topic,
           qualityScore: (body.items as Record<string, unknown> | null)?.qualityScore ?? null,
+          curriculumQuality: quality.meta?.curriculumQuality ?? null,
+          curriculumQualityWarnings,
           safetyStatus: (body.items as Record<string, unknown> | null)?.safetyStatus ?? null,
           blackBoxContentTest,
           approvalStatus: body.status,
@@ -571,17 +574,19 @@ export async function POST(req: Request) {
           rawMaxScore: blackBoxContentTest.maxScore,
           passRate: blackBoxContentTest.passRate,
           reasons: blackBoxContentTest.reasons,
+          curriculumQuality: quality.meta?.curriculumQuality ?? null,
           itemChecks: blackBoxContentTest.itemResults.map((result) => ({
             itemIndex: result.index,
             score: Math.round((result.score / Math.max(1, result.maxScore)) * 100),
             reasons: result.reasons,
+            curriculumQuality: result.curriculumQuality ?? null,
           })),
           recommendation: blackBoxContentTest.recommendation ?? null,
         },
       },
     });
 
-    return NextResponse.json({ item, warnings: [...warnings, ...questionFormulaWarnings] }, { status: 201 });
+    return NextResponse.json({ item, warnings: [...warnings, ...questionFormulaWarnings, ...curriculumQualityWarnings] }, { status: 201 });
   } catch (error) {
     console.error("Content save error:", error);
     return NextResponse.json({

@@ -391,3 +391,34 @@ test("admin content publish route blocks near duplicate against published conten
   assert.match(payload.error ?? "", /global duplicate/i);
   assert.equal(updated, false);
 });
+
+test("admin content publish route returns curriculum quality warnings from Black Box metadata", async () => {
+  const response = await handleAdminContentPublishPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-quality-warning",
+      status: "reviewed",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+        blackBoxContentTest: {
+          decision: "NEEDS_ADMIN_REVIEW",
+          reasons: ["Item 1: Curriculum quality warning: maths_reasoning_demand_weak"],
+          itemChecks: [
+            { reasons: ["Curriculum quality warning: answer_option_length_giveaway"] },
+          ],
+        },
+      }),
+      contentType: "math",
+      contentJson: JSON.stringify([
+        { prompt: "A shop has 18 pencils and sells 7. How many remain?", answer: "11" },
+      ]),
+    }),
+  }));
+
+  const payload = await response.json() as { status?: string; curriculumQualityWarnings?: string[] };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.status, "published");
+  assert.ok(payload.curriculumQualityWarnings?.includes("Item 1: Curriculum quality warning: maths_reasoning_demand_weak"));
+  assert.ok(payload.curriculumQualityWarnings?.includes("Curriculum quality warning: answer_option_length_giveaway"));
+});
