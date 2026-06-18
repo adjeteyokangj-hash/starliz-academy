@@ -18,7 +18,9 @@ function isTransientDbSaturationError(error: unknown): boolean {
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const session = await readSessionFromCookie();
   if (!session) {
-    redirect("/admin/login?next=/admin");
+    // Middleware handles admin route protection. Returning children here prevents
+    // a self-redirect loop for /admin/login and avoids unnecessary DB access.
+    return <>{children}</>;
   }
 
   let user: { role: string; adminProfile: { active: boolean } | null } | null = null;
