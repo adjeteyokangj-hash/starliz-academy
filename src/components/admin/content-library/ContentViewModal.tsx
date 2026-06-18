@@ -323,7 +323,10 @@ function ContentViewModalBody({
     metadataJson: content.metadataJson,
     subject: meta.subject,
   }), [content.contentJson, content.contentType, content.metadataJson, meta.subject]);
+  const globalDuplicateSummary = content.globalDuplicateSummary ?? null;
   const duplicatePairs = useMemo(() => buildDuplicatePairIssues(duplicateSummary.issues), [duplicateSummary.issues]);
+  const hasGlobalDuplicates = Boolean(globalDuplicateSummary?.hasDuplicates);
+  const totalDuplicateCount = globalDuplicateSummary?.duplicateCount ?? duplicatePairs.length;
   const [pairKeepChoice, setPairKeepChoice] = useState<Record<string, number>>({});
   const [duplicateWarningIgnored, setDuplicateWarningIgnored] = useState(false);
   const [regeneratingDuplicateSlots, setRegeneratingDuplicateSlots] = useState(false);
@@ -918,8 +921,8 @@ function ContentViewModalBody({
                     <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 font-black text-slate-200">
                       Empty Slots: {Math.max(0, (slotSummary.totalSlots ?? 0) - (slotSummary.filledSlots ?? 0))}
                     </span>
-                    <span className={`rounded-full border px-2 py-1 font-black ${duplicateSummary.duplicateSlotsCount > 0 ? "border-amber-500/40 bg-amber-500/10 text-amber-100" : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"}`}>
-                      Duplicates Found: {duplicatePairs.length}
+                    <span className={`rounded-full border px-2 py-1 font-black ${totalDuplicateCount > 0 ? "border-amber-500/40 bg-amber-500/10 text-amber-100" : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"}`}>
+                      Duplicates Found: {totalDuplicateCount}
                     </span>
                     <span className={`rounded-full border px-2 py-1 font-black ${slotSummary.slotValidationExempt ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-100" : slotSummary.isSessionComplete ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>
                       {slotSummary.slotValidationExempt ? "Ga exempt" : slotSummary.isSessionComplete ? "Session Complete" : "Session Incomplete"}
@@ -927,18 +930,32 @@ function ContentViewModalBody({
                   </div>
                 </div>
 
-                {duplicatePairs.length > 0 ? (
-                  <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${duplicateSummary.hasExactDuplicates ? "border-rose-500/30 bg-rose-500/10 text-rose-100" : "border-amber-500/30 bg-amber-500/10 text-amber-100"}`}>
-                    <p className="font-black">Duplicates Found: {duplicatePairs.length}</p>
-                    <div className="mt-2 space-y-1">
-                      {duplicatePairs.map((pair) => (
-                        <p key={pair.pairKey}>
-                          Slot {pair.slotIndexes[0] + 1} and Slot {pair.slotIndexes[1] + 1} are too similar.
-                        </p>
-                      ))}
-                    </div>
-                    {duplicateSummary.hasExactDuplicates ? (
-                      <p className="mt-2 font-black">Publish is blocked until exact duplicates are fixed.</p>
+                {duplicatePairs.length > 0 || hasGlobalDuplicates ? (
+                  <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${duplicateSummary.hasExactDuplicates || hasGlobalDuplicates ? "border-rose-500/30 bg-rose-500/10 text-rose-100" : "border-amber-500/30 bg-amber-500/10 text-amber-100"}`}>
+                    <p className="font-black">Duplicates Found: {totalDuplicateCount}</p>
+                    {hasGlobalDuplicates ? (
+                      <div className="mt-2 space-y-1">
+                        {globalDuplicateSummary?.matches.slice(0, 5).map((match) => (
+                          <p key={`${match.currentSlotId}-${match.matchedQuestionId}-${match.matchedContentId}`}>
+                            {match.duplicateType} found against {match.sourceStatus} content (score {Math.round(match.similarity * 100)}%).
+                          </p>
+                        ))}
+                        {globalDuplicateSummary && globalDuplicateSummary.matches.length > 5 ? (
+                          <p>And {globalDuplicateSummary.matches.length - 5} more global duplicate match{globalDuplicateSummary.matches.length - 5 === 1 ? "" : "es"}.</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {duplicatePairs.length > 0 ? (
+                      <div className="mt-2 space-y-1">
+                        {duplicatePairs.map((pair) => (
+                          <p key={pair.pairKey}>
+                            Slot {pair.slotIndexes[0] + 1} and Slot {pair.slotIndexes[1] + 1} are too similar.
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                    {duplicateSummary.hasExactDuplicates || hasGlobalDuplicates ? (
+                      <p className="mt-2 font-black">Publish is blocked until duplicates are replaced or edited.</p>
                     ) : null}
 
                     <div className="mt-3 space-y-2">
@@ -979,7 +996,7 @@ function ContentViewModalBody({
                         disabled={regeneratingDuplicateSlots || duplicateReplacementTargets.length === 0}
                         className="rounded-lg border border-indigo-400/40 bg-indigo-500/15 px-3 py-2 text-left font-black text-indigo-100 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {regeneratingDuplicateSlots ? "Regenerating..." : "Regenerate Duplicate Slots"}
+                        {regeneratingDuplicateSlots ? "Finding replacement..." : "Find replacement / Generate fallback question"}
                       </button>
                       <button
                         type="button"
@@ -1000,7 +1017,7 @@ function ContentViewModalBody({
                       <button
                         type="button"
                         onClick={ignoreDuplicateWarning}
-                        disabled={duplicateSummary.hasExactDuplicates || duplicateWarningIgnored}
+                        disabled={duplicateSummary.hasExactDuplicates || duplicateWarningIgnored || hasGlobalDuplicates}
                         className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-left font-black text-amber-100 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Ignore Warning

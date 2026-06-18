@@ -18,7 +18,9 @@ function deps(overrides: Partial<ReviewDeps> = {}): ReviewDeps {
       id: "content-1",
       status: "generated",
       metadataJson: null,
+      contentJson: JSON.stringify([{ prompt: "What is 2 + 2?", answer: "4" }]),
     }),
+    findHistoricalContent: async () => [],
     updateContentToReviewed: async () => ({
       id: "content-1",
       status: "reviewed",
@@ -73,6 +75,7 @@ test("admin content review route blocks stale black box metadata", async () => {
         blackBoxAdminVerification: { status: "verified" },
         blackBoxNeedsRerun: true,
       }),
+      contentJson: JSON.stringify([{ prompt: "What is 2 + 2?", answer: "4" }]),
     }),
     updateContentToReviewed: async () => {
       updated = true;
@@ -103,6 +106,7 @@ test("admin content review route allows review after black box pass and admin ve
         blackBoxLiveTest: { status: "passed" },
         blackBoxAdminVerification: { status: "verified" },
       }),
+      contentJson: JSON.stringify([{ prompt: "What is 2 + 2?", answer: "4" }]),
     }),
     updateContentToReviewed: async () => {
       updated = true;
@@ -132,6 +136,7 @@ test("admin content review route keeps existing status protection", async () => 
         blackBoxLiveTest: { status: "passed" },
         blackBoxAdminVerification: { status: "verified" },
       }),
+      contentJson: JSON.stringify([{ prompt: "What is 2 + 2?", answer: "4" }]),
     }),
   }));
 
@@ -139,4 +144,87 @@ test("admin content review route keeps existing status protection", async () => 
 
   assert.equal(response.status, 422);
   assert.match(payload.error ?? "", /does not need review/i);
+});
+
+test("admin content review route blocks when global duplicates exist", async () => {
+  let updated = false;
+
+  const response = await handleAdminContentReviewPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-2",
+      status: "generated",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+      }),
+      contentJson: JSON.stringify([
+        { prompt: "What is 9 multiplied by 3?", answer: "27" },
+      ]),
+    }),
+    findHistoricalContent: async () => [
+      {
+        id: "published-content-1",
+        status: "published",
+        contentJson: JSON.stringify([
+          { prompt: "What is 9 multiplied by 3?", answer: "27" },
+        ]),
+      },
+    ],
+    updateContentToReviewed: async () => {
+      updated = true;
+      return {
+        id: "content-2",
+        status: "reviewed",
+        reviewedAt: new Date("2026-06-11T10:00:00.000Z"),
+      };
+    },
+  }));
+
+  const payload = await response.json() as { error?: string; duplicateMatches?: unknown[] };
+
+  assert.equal(response.status, 422);
+  assert.match(payload.error ?? "", /global duplicate/i);
+  assert.ok(Array.isArray(payload.duplicateMatches));
+  assert.equal(updated, false);
+});
+
+test("admin content review route allows review when no global duplicates exist", async () => {
+  let updated = false;
+
+  const response = await handleAdminContentReviewPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-3",
+      status: "generated",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+      }),
+      contentJson: JSON.stringify([
+        { prompt: "What is the capital of France?", answer: "Paris" },
+      ]),
+    }),
+    findHistoricalContent: async () => [
+      {
+        id: "old-content-1",
+        status: "published",
+        contentJson: JSON.stringify([
+          { prompt: "What is the capital of Germany?", answer: "Berlin" },
+        ]),
+      },
+    ],
+    updateContentToReviewed: async () => {
+      updated = true;
+      return {
+        id: "content-3",
+        status: "reviewed",
+        reviewedAt: new Date("2026-06-11T10:00:00.000Z"),
+      };
+    },
+  }));
+
+  const payload = await response.json() as { id?: string; status?: string };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.status, "reviewed");
+  assert.equal(updated, true);
 });

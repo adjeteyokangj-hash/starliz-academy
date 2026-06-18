@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
+import { prisma } from "@/lib/db";
 import { getOpenAiApiKeyWithSource } from "@/lib/api-key-config";
 import {
   buildGenerationMetadata,
@@ -409,6 +410,73 @@ function normalizeYearGroup(yearGroup: string, keyStage: string) {
   if (normalized) return normalized;
   const options = yearGroupsForKeyStage(keyStage);
   return options[0] ?? "Year 1";
+}
+
+function promptLikeTextFromRow(item: Record<string, unknown>): string {
+  for (const key of ["question", "prompt", "word", "title", "passage", "text", "sentenceContext"] as const) {
+    const value = String(item[key] ?? "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+async function collectStudentExposureAvoidPrompts(studentId: string): Promise<string[]> {
+  if (!studentId) return [];
+
+  const [historyRows, assignmentRows] = await Promise.all([
+    prisma.questionHistory.findMany({
+      where: { childId: studentId },
+      orderBy: { createdAt: "desc" },
+      take: 160,
+      select: { questionId: true },
+    }),
+    prisma.assignment.findMany({
+      where: { studentId },
+      orderBy: { updatedAt: "desc" },
+      take: 80,
+      select: {
+        content: {
+          select: {
+            contentJson: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  if (!historyRows.length || !assignmentRows.length) return [];
+
+  const seenQuestionIds = new Set(
+    historyRows
+      .map((row) => String(row.questionId ?? "").trim())
+      .filter(Boolean),
+  );
+
+  const prompts: string[] = [];
+  const seenPrompts = new Set<string>();
+
+  for (const assignment of assignmentRows) {
+    try {
+      const parsed = JSON.parse(String(assignment.content.contentJson ?? "[]")) as unknown;
+      const rows = Array.isArray(parsed) ? parsed : [parsed];
+      for (const row of rows) {
+        if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+        const item = row as Record<string, unknown>;
+        const id = String(item.id ?? "").trim();
+        if (!id || !seenQuestionIds.has(id)) continue;
+        const prompt = promptLikeTextFromRow(item);
+        const normalized = prompt.toLowerCase().replace(/\s+/g, " ").trim();
+        if (!normalized || seenPrompts.has(normalized)) continue;
+        seenPrompts.add(normalized);
+        prompts.push(prompt);
+        if (prompts.length >= 12) return prompts;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return prompts;
 }
 
 function buildEnglishDifficultyInstruction(type: PromptType, level: number, skillFocus?: string) {
@@ -1580,7 +1648,7 @@ async function generateValidatedSpellingContent({
       repaired: errors.size > 0 || fixesApplied.size > 0,
       aiGenerated: true,
       regeneratedAfterValidation,
-      fallbackUsed: false,
+      fallbackUsed: "none",
       errors: Array.from(errors),
       fixesApplied: [
         ...Array.from(fixesApplied),
@@ -1591,6 +1659,12 @@ async function generateValidatedSpellingContent({
       regeneratedCount,
       requestedCount: count,
       finalCount: count,
+      filledSlots: count,
+      emptySlots: 0,
+      duplicateRejectedCount: 0,
+      weakRejectedCount: errors.size,
+      generatedQuestions: count,
+      adminWarnings: [],
       yearLevelMatch: true,
       subjectMatch: true,
       skillTopicMatch: true,
@@ -1655,13 +1729,19 @@ function buildValidatedSpellingFallback({
       repaired: false,
       aiGenerated: false,
       regeneratedAfterValidation: false,
-      fallbackUsed: true,
+      fallbackUsed: "local_template",
       errors: [],
       fixesApplied: [],
       removedWords: [],
       regeneratedCount: 0,
       requestedCount: count,
       finalCount: count,
+      filledSlots: count,
+      emptySlots: 0,
+      duplicateRejectedCount: 0,
+      weakRejectedCount: 0,
+      generatedQuestions: count,
+      adminWarnings: count < 1 ? ["Not enough unique questions available. Add or edit slot content manually."] : [],
       yearLevelMatch: true,
       subjectMatch: true,
       skillTopicMatch: true,
@@ -2096,195 +2176,220 @@ function buildDeterministicGenericFallback(input: {
   }
 
   if (input.type === "maths") {
-    const base = input.difficulty * 5;
     const highDifficultyInstruction = input.difficulty >= 4
       ? " Explain your method and justify your reasoning."
       : "";
+    const normalizedStage = `${input.keyStage} ${input.yearGroup} ${input.subject}`.toLowerCase();
+    const isGcseMaths = normalizedStage.includes("gcse") || normalizedStage.includes("ks4") || normalizedStage.includes("year 10") || normalizedStage.includes("year 11");
+    const isKs3Maths = normalizedStage.includes("ks3") || normalizedStage.includes("year 7") || normalizedStage.includes("year 8") || normalizedStage.includes("year 9");
+    const isKs1Maths = normalizedStage.includes("ks1") || normalizedStage.includes("year 1") || normalizedStage.includes("year 2");
     return Array.from({ length: safeCount }, (_, index) => {
       const serial = index + variantOffset;
       const slot = serial % 10;
 
-      if (slot === 0) {
-        const a = base + serial + 8;
-        const b = base + serial + 4;
-        const multiplier = serial + 2;
-        const answer = a * multiplier - b;
-        return {
-          id: `fallback-maths-${index + 1}`,
-          type: input.subject,
-          question: `Compute ${a} x ${multiplier} - ${b} for ${baseTopic.toLowerCase()}.${highDifficultyInstruction}`,
-          answer,
-          choices: [answer, answer + multiplier, answer - multiplier, a + multiplier + b],
-          explanation: `Use order of operations: ${a} x ${multiplier} = ${a * multiplier}, then subtract ${b} to get ${answer}.`,
-          yearGroup: input.yearGroup,
-          skillFocus: baseSkill,
-          topic: baseTopic,
-          difficulty: input.difficulty,
-        };
-      }
-
-      if (slot === 1) {
-        const red = 2 + (serial % 3);
-        const blue = 3 + (serial % 4);
-        const totalParts = red + blue;
-        const total = totalParts * (4 + serial);
-        const answer = (total / totalParts) * blue;
-        return {
-          id: `fallback-maths-${index + 1}`,
-          type: input.subject,
-          question: `The ratio of red to blue counters is ${red}:${blue} and there are ${total} counters altogether. How many blue counters are there?${highDifficultyInstruction}`,
-          answer,
-          choices: [answer, answer + red, totalParts, total - answer],
-          explanation: `Total parts = ${red} + ${blue} = ${totalParts}. One part = ${total} / ${totalParts}. Blue counters = one part x ${blue} = ${answer}.`,
-          yearGroup: input.yearGroup,
-          skillFocus: baseSkill,
-          topic: baseTopic,
-          difficulty: input.difficulty,
-        };
-      }
-
-      if (slot === 2) {
-        const startValue = 60 + serial * 5;
-        const percent = 10 + (serial % 5) * 5;
-        const answer = Number((startValue * (1 + percent / 100)).toFixed(2));
-        return {
-          id: `fallback-maths-${index + 1}`,
-          type: input.subject,
-          question: `Increase ${startValue} by ${percent}% and give the new value for ${baseTopic.toLowerCase()}.${highDifficultyInstruction}`,
-          answer,
-          choices: [answer, Number((startValue * (percent / 100)).toFixed(2)), startValue + percent, startValue - percent],
-          explanation: `${percent}% of ${startValue} is ${Number((startValue * (percent / 100)).toFixed(2))}. Add this to ${startValue} to get ${answer}.`,
-          yearGroup: input.yearGroup,
-          skillFocus: baseSkill,
-          topic: baseTopic,
-          difficulty: input.difficulty,
-        };
-      }
-
-      if (slot === 3) {
-        const x = 4 + serial;
-        const add = 7 + (serial % 5);
-        const rhs = 3 * x + add;
-        return {
-          id: `fallback-maths-${index + 1}`,
-          type: input.subject,
-          question: `Solve the equation 3x + ${add} = ${rhs}.${highDifficultyInstruction}`,
-          answer: x,
-          choices: [x, x + 1, x - 1, rhs - add],
-          explanation: `Subtract ${add} from both sides, then divide by 3. x = ${x}.`,
-          yearGroup: input.yearGroup,
-          skillFocus: baseSkill,
-          topic: baseTopic,
-          difficulty: input.difficulty,
-        };
-      }
-
-      if (slot === 4) {
-        const n1 = 8 + serial;
-        const n2 = 10 + serial;
-        const n3 = 12 + serial;
-        const n4 = 14 + serial;
-        const answer = (n1 + n2 + n3 + n4) / 4;
-        return {
-          id: `fallback-maths-${index + 1}`,
-          type: input.subject,
-          question: `Find the mean of ${n1}, ${n2}, ${n3}, and ${n4}.${highDifficultyInstruction}`,
-          answer,
-          choices: [answer, n2, n3, n4],
-          explanation: `Add the values and divide by 4. Mean = ${answer}.`,
-          yearGroup: input.yearGroup,
-          skillFocus: baseSkill,
-          topic: baseTopic,
-          difficulty: input.difficulty,
-        };
-      }
-
-      if (slot === 5) {
-        const length = 5 + serial;
-        const width = 3 + (serial % 4);
-        const answer = 2 * (length + width);
-        return {
-          id: `fallback-maths-${index + 1}`,
-          type: input.subject,
-          question: `A rectangle has length ${length} cm and width ${width} cm. Calculate the perimeter.${highDifficultyInstruction}`,
-          answer,
-          choices: [answer, length * width, 2 * length + width, length + width],
-          explanation: `Perimeter = 2 x (length + width) = 2 x (${length} + ${width}) = ${answer}.`,
-          yearGroup: input.yearGroup,
-          skillFocus: baseSkill,
-          topic: baseTopic,
-          difficulty: input.difficulty,
-        };
-      }
-
-      if (slot === 6) {
-        const total = 20 + serial;
-        const success = 5 + (serial % 6);
-        return {
-          id: `fallback-maths-${index + 1}`,
-          type: input.subject,
-          question: `A bag contains ${total} counters and ${success} are blue. What is the probability of selecting a blue counter?${highDifficultyInstruction}`,
-          answer: `${success}/${total}`,
-          choices: [`${success}/${total}`, `${total}/${success}`, `${success}/${total - success}`, `${total - success}/${total}`],
-          explanation: `Probability = favourable outcomes / total outcomes = ${success}/${total}.`,
-          yearGroup: input.yearGroup,
-          skillFocus: baseSkill,
-          topic: baseTopic,
-          difficulty: input.difficulty,
-        };
-      }
-
-      if (slot === 7) {
-        const n = 5 + serial;
-        const answer = 4 * n + 1;
-        return {
-          id: `fallback-maths-${index + 1}`,
-          type: input.subject,
-          question: `For the sequence with nth term 4n + 1, find the term when n = ${n}.${highDifficultyInstruction}`,
-          answer,
-          choices: [answer, 4 * n, 4 * n - 1, n + 1],
-          explanation: `Substitute n = ${n} into 4n + 1: 4 x ${n} + 1 = ${answer}.`,
-          yearGroup: input.yearGroup,
-          skillFocus: baseSkill,
-          topic: baseTopic,
-          difficulty: input.difficulty,
-        };
-      }
-
-      if (slot === 8) {
-        const scale = 2 + (serial % 4);
-        const original = 6 + serial;
-        const answer = original * scale;
-        return {
-          id: `fallback-maths-${index + 1}`,
-          type: input.subject,
-          question: `A map uses a scale factor of ${scale}. If a length is ${original} cm on the drawing, what is the real length in cm?${highDifficultyInstruction}`,
-          answer,
-          choices: [answer, original + scale, original - scale, scale],
-          explanation: `Multiply by the scale factor: ${original} x ${scale} = ${answer}.`,
-          yearGroup: input.yearGroup,
-          skillFocus: baseSkill,
-          topic: baseTopic,
-          difficulty: input.difficulty,
-        };
-      }
-
-      const amount = 40 + serial * 3;
-      const ratioPart = 4 + (serial % 3);
-      const unitValue = amount / ratioPart;
-      const answer = Number((unitValue * 1.5).toFixed(2));
-      return {
+      const makeMathsItem = (question: string, answer: string | number, choices: Array<string | number>, explanation: string) => ({
         id: `fallback-maths-${index + 1}`,
         type: input.subject,
-        question: `Use direct proportion: if ${ratioPart} units cost ${amount}, what is the cost of 1.5 times that number of units?${highDifficultyInstruction}`,
+        question,
         answer,
-        choices: [answer, unitValue, amount * 1.5, amount / 1.5],
-        explanation: `Find cost per unit first, then multiply by 1.5 x ${ratioPart}.`,
+        choices,
+        explanation,
         yearGroup: input.yearGroup,
         skillFocus: baseSkill,
         topic: baseTopic,
         difficulty: input.difficulty,
-      };
+      });
+
+      if (isGcseMaths) {
+        if (slot === 0) {
+          const x = 4 + (serial % 6);
+          const c = 5 + (serial % 4);
+          const rhs = 2 * x + c;
+          return makeMathsItem(`Solve 2x + ${c} = ${rhs}. State the inverse operations used.${highDifficultyInstruction}`, x, [x, x + 1, x - 1, rhs - c], `Subtract ${c} from both sides to get 2x = ${2 * x}, then divide by 2. x = ${x}.`);
+        }
+        if (slot === 1) {
+          const a = 2 + (serial % 4);
+          const b = 3 + (serial % 5);
+          const total = (a + b) * (6 + (serial % 5));
+          const answer = (total / (a + b)) * b;
+          return makeMathsItem(`A quantity is shared in the ratio ${a}:${b}. The total is ${total}. Calculate the larger share and explain your unit-part method.${highDifficultyInstruction}`, answer, [answer, total - answer, a + b, total / b], `There are ${a + b} parts. One part is ${total} / ${a + b}, so the larger share is ${b} parts = ${answer}.`);
+        }
+        if (slot === 2) {
+          const original = 80 + serial * 4;
+          const multiplier = 1.15;
+          const answer = Number((original * multiplier).toFixed(2));
+          return makeMathsItem(`A value of ${original} is increased by 15%. Calculate the new value using a decimal multiplier.${highDifficultyInstruction}`, answer, [answer, original + 15, Number((original * 0.15).toFixed(2)), original - 15], `An increase of 15% uses multiplier 1.15. ${original} x 1.15 = ${answer}.`);
+        }
+        if (slot === 3) {
+          const n = 6 + (serial % 8);
+          const answer = 3 * n - 2;
+          return makeMathsItem(`The nth term of a linear sequence is 3n - 2. Find term ${n} and describe the rule in words.${highDifficultyInstruction}`, answer, [answer, 3 * n, answer + 2, n - 2], `Substitute n = ${n}: 3 x ${n} - 2 = ${answer}. The sequence increases by 3 each term.`);
+        }
+        if (slot === 4) {
+          const radius = 4 + (serial % 5);
+          const answer = Number((Math.PI * radius * radius).toFixed(1));
+          return makeMathsItem(`Calculate the area of a circle with radius ${radius} cm. Give your answer to 1 decimal place.${highDifficultyInstruction}`, answer, [answer, Number((2 * Math.PI * radius).toFixed(1)), radius * radius, Number((Math.PI * radius).toFixed(1))], `Use A = pi r squared. ${radius} squared = ${radius * radius}, so the area is about ${answer} square cm.`);
+        }
+        if (slot === 5) {
+          const adjacent = 8 + (serial % 5);
+          const opposite = 6 + (serial % 4);
+          const answer = Number((Math.atan(opposite / adjacent) * 180 / Math.PI).toFixed(1));
+          return makeMathsItem(`In a right-angled triangle, the opposite side is ${opposite} cm and the adjacent side is ${adjacent} cm. Calculate the angle using tan.${highDifficultyInstruction}`, `${answer} degrees`, [`${answer} degrees`, `${Number((opposite / adjacent).toFixed(2))} degrees`, `${opposite + adjacent} degrees`, `${Math.abs(adjacent - opposite)} degrees`], `Use tan(theta) = opposite / adjacent = ${opposite}/${adjacent}. theta = tan^-1(${opposite}/${adjacent}) = ${answer} degrees.`);
+        }
+        if (slot === 6) {
+          const wins = 7 + (serial % 5);
+          const total = 20 + (serial % 6);
+          return makeMathsItem(`A team wins ${wins} of ${total} matches. Estimate the probability of a win from relative frequency and comment on reliability.${highDifficultyInstruction}`, `${wins}/${total}`, [`${wins}/${total}`, `${total}/${wins}`, `${total - wins}/${total}`, `${wins}/${total - wins}`], `Relative frequency is wins divided by trials, ${wins}/${total}. More matches would make the estimate more reliable.`);
+        }
+        if (slot === 7) {
+          const x = 2 + (serial % 4);
+          const y = 3 + (serial % 5);
+          const sum = x + y;
+          const diff = x - y;
+          return makeMathsItem(`Solve the simultaneous equations x + y = ${sum} and x - y = ${diff}.${highDifficultyInstruction}`, `x = ${x}, y = ${y}`, [`x = ${x}, y = ${y}`, `x = ${y}, y = ${x}`, `x = ${sum}, y = ${diff}`, `x = ${diff}, y = ${sum}`], `Add the equations to get 2x = ${sum + diff}, so x = ${x}. Substitute into x + y = ${sum} to get y = ${y}.`);
+        }
+        if (slot === 8) {
+          const lower = 20 + (serial % 4) * 5;
+          const upper = lower + 5;
+          return makeMathsItem(`A cumulative frequency graph shows ${lower} pupils below a score of 40 and ${upper} below a score of 50. How many pupils scored from 40 up to 50?${highDifficultyInstruction}`, upper - lower, [upper - lower, upper, lower, upper + lower], `Subtract cumulative frequencies: ${upper} - ${lower} = ${upper - lower}.`);
+        }
+        const a = 2 + (serial % 4);
+        const b = 5 + (serial % 5);
+        return makeMathsItem(`Factorise ${a}x + ${a * b}. Then explain how the common factor is identified.${highDifficultyInstruction}`, `${a}(x + ${b})`, [`${a}(x + ${b})`, `${a}(x - ${b})`, `x(${a} + ${b})`, `${a * b}(x + 1)`], `Both terms share a factor of ${a}, so ${a}x + ${a * b} = ${a}(x + ${b}).`);
+      }
+
+      if (isKs3Maths) {
+        if (slot === 0) {
+          const x = 5 + (serial % 7);
+          const rhs = 4 * x - 3;
+          return makeMathsItem(`Solve 4x - 3 = ${rhs} and check your answer by substitution.${highDifficultyInstruction}`, x, [x, x + 1, x - 1, rhs], `Add 3, then divide by 4: x = ${x}. Substitution gives ${4 * x} - 3 = ${rhs}.`);
+        }
+        if (slot === 1) {
+          const term = 4 + (serial % 6);
+          const answer = 5 * term + 2;
+          return makeMathsItem(`The rule for a sequence is 5n + 2. Find term ${term} and explain what the 5 represents.${highDifficultyInstruction}`, answer, [answer, 5 * term, term + 7, answer - 2], `Substitute n = ${term}. The 5 is the common difference between consecutive terms.`);
+        }
+        if (slot === 2) {
+          const part = 3 + (serial % 4);
+          const totalParts = 8;
+          const amount = totalParts * (6 + (serial % 5));
+          const answer = (amount / totalParts) * part;
+          return makeMathsItem(`Share ${amount} in the ratio ${part}:${totalParts - part}. Find the first share.${highDifficultyInstruction}`, answer, [answer, amount - answer, part * amount, totalParts], `There are ${totalParts} parts. One part is ${amount / totalParts}; ${part} parts are ${answer}.`);
+        }
+        if (slot === 3) {
+          const values = [7 + serial, 9 + serial, 11 + serial, 13 + serial];
+          const answer = values.reduce((sum, value) => sum + value, 0) / values.length;
+          return makeMathsItem(`Find the mean of ${values.join(", ")} and say why the mean is useful for comparing data sets.${highDifficultyInstruction}`, answer, [answer, values[1], values[2], values[3]], `Add the values and divide by 4. The mean balances the data into one representative value.`);
+        }
+        if (slot === 4) {
+          const percent = 20 + (serial % 4) * 5;
+          const value = 60 + serial * 3;
+          const answer = Number((value * percent / 100).toFixed(2));
+          return makeMathsItem(`Find ${percent}% of ${value}. Show the decimal multiplier you used.${highDifficultyInstruction}`, answer, [answer, value + percent, value - percent, percent], `${percent}% = ${percent / 100}. ${value} x ${percent / 100} = ${answer}.`);
+        }
+        if (slot === 5) {
+          const length = 8 + (serial % 6);
+          const width = 4 + (serial % 5);
+          const answer = length * width;
+          return makeMathsItem(`A rectangle is ${length} cm by ${width} cm. Calculate its area and explain the difference between area and perimeter.${highDifficultyInstruction}`, answer, [answer, 2 * (length + width), length + width, length - width], `Area counts square centimetres inside the shape: ${length} x ${width} = ${answer}. Perimeter is the distance around it.`);
+        }
+        if (slot === 6) {
+          const blue = 4 + (serial % 5);
+          const total = 15 + (serial % 6);
+          return makeMathsItem(`A bag has ${blue} blue counters out of ${total}. Write the probability of blue and of not blue.${highDifficultyInstruction}`, `${blue}/${total} and ${total - blue}/${total}`, [`${blue}/${total} and ${total - blue}/${total}`, `${total}/${blue} and ${blue}/${total}`, `${total - blue}/${total} and ${blue}/${total}`, `${blue}/${total - blue} and ${total}/${blue}`], `Probability of blue is ${blue}/${total}. Not blue is the remaining ${total - blue} counters out of ${total}.`);
+        }
+        if (slot === 7) {
+          const scale = 3 + (serial % 4);
+          const drawing = 5 + (serial % 6);
+          const answer = scale * drawing;
+          return makeMathsItem(`A scale drawing uses scale factor ${scale}. A side is ${drawing} cm on the drawing. Find the real length.${highDifficultyInstruction}`, answer, [answer, scale + drawing, drawing - scale, scale], `Multiply by the scale factor: ${drawing} x ${scale} = ${answer}.`);
+        }
+        if (slot === 8) {
+          const numerator = 2 + (serial % 3);
+          const denominator = 5 + (serial % 4);
+          const multiplier = 3;
+          return makeMathsItem(`Write an equivalent fraction to ${numerator}/${denominator} by multiplying numerator and denominator by ${multiplier}.${highDifficultyInstruction}`, `${numerator * multiplier}/${denominator * multiplier}`, [`${numerator * multiplier}/${denominator * multiplier}`, `${numerator + multiplier}/${denominator + multiplier}`, `${denominator * multiplier}/${numerator * multiplier}`, `${numerator}/${denominator * multiplier}`], `Equivalent fractions multiply both numerator and denominator by the same value.`);
+        }
+        const value = 30 + serial;
+        return makeMathsItem(`Round ${value}.678 to 1 decimal place and explain which digit decides the rounding.${highDifficultyInstruction}`, `${value}.7`, [`${value}.7`, `${value}.6`, `${value + 1}.0`, `${value}.68`], `The hundredths digit is 7, so the tenths digit rounds up.`);
+      }
+
+      if (isKs1Maths) {
+        const first = 8 + (serial % 8);
+        const second = 3 + (serial % 5);
+        if (slot % 3 === 0) {
+          const answer = first + second;
+          return makeMathsItem(`There are ${first} shells and ${second} more shells are found. How many shells are there altogether?`, answer, [answer, first, second, answer - 1], `Add the two groups: ${first} + ${second} = ${answer}.`);
+        }
+        if (slot % 3 === 1) {
+          const answer = first - second;
+          return makeMathsItem(`${first} birds are on a fence. ${second} fly away. How many birds are left?`, answer, [answer, first + second, second, answer + 1], `Subtract the birds that fly away: ${first} - ${second} = ${answer}.`);
+        }
+        const groups = 2 + (serial % 3);
+        const each = 3 + (serial % 4);
+        const answer = groups * each;
+        return makeMathsItem(`Draw or imagine ${groups} equal groups with ${each} in each group. How many are there in total?`, answer, [answer, groups + each, each - groups, answer + each], `Equal groups can be counted by repeated addition: ${each} + ${each}${groups > 2 ? ` + ${each}` : ""} = ${answer}.`);
+      }
+
+      if (slot === 0) {
+        const packs = 3 + (serial % 4);
+        const each = 6 + (serial % 5);
+        const extra = 4 + (serial % 4);
+        const answer = packs * each + extra;
+        return makeMathsItem(`A class has ${packs} trays with ${each} pencils on each tray, plus ${extra} spare pencils. How many pencils are there altogether?${highDifficultyInstruction}`, answer, [answer, packs + each + extra, packs * each, answer - extra], `Multiply equal groups first, then add the extras: ${packs} x ${each} + ${extra} = ${answer}.`);
+      }
+      if (slot === 1) {
+        const groups = 4 + (serial % 5);
+        const total = groups * (5 + (serial % 5));
+        const answer = total / groups;
+        return makeMathsItem(`${total} counters are shared equally into ${groups} groups. How many counters are in each group, and which multiplication fact checks it?${highDifficultyInstruction}`, answer, [answer, total - groups, total + groups, groups], `${total} divided by ${groups} = ${answer}. Check with ${answer} x ${groups} = ${total}.`);
+      }
+      if (slot === 2) {
+        const numerator = 1 + (serial % 3);
+        const denominator = 4 + (serial % 5);
+        const total = denominator * (3 + (serial % 4));
+        const answer = (total / denominator) * numerator;
+        return makeMathsItem(`Find ${numerator}/${denominator} of ${total}. Use equal parts to explain your answer.${highDifficultyInstruction}`, answer, [answer, total / denominator, total - answer, denominator * numerator], `Divide ${total} into ${denominator} equal parts, then take ${numerator} part(s): ${answer}.`);
+      }
+      if (slot === 3) {
+        const length = 5 + (serial % 6);
+        const width = 3 + (serial % 5);
+        const answer = 2 * (length + width);
+        return makeMathsItem(`A rectangle is ${length} cm long and ${width} cm wide. Find the perimeter by adding all four sides.${highDifficultyInstruction}`, answer, [answer, length * width, length + width, 2 * length + width], `Perimeter is the distance around: ${length} + ${width} + ${length} + ${width} = ${answer}.`);
+      }
+      if (slot === 4) {
+        const start = 120 + serial * 3;
+        const jump = 10;
+        const answer = start + jump * 3;
+        return makeMathsItem(`Continue the sequence ${start}, ${start + jump}, ${start + jump * 2}, __. What is the rule?${highDifficultyInstruction}`, answer, [answer, start + 3, start + jump * 2, start - jump], `The rule is add ${jump}. The next term is ${answer}.`);
+      }
+      if (slot === 5) {
+        const pounds = 2 + (serial % 5);
+        const pence = 35 + (serial % 5) * 5;
+        const answer = pounds * 100 + pence;
+        return makeMathsItem(`Write GBP ${pounds}.${String(pence).padStart(2, "0")} in pence and explain the place value.${highDifficultyInstruction}`, answer, [answer, pounds + pence, pounds * pence, answer + 100], `Each pound is 100 pence, so ${pounds} pounds is ${pounds * 100} pence. Add ${pence} pence to get ${answer}.`);
+      }
+      if (slot === 6) {
+        const left = 12 + (serial % 7);
+        const right = 8 + (serial % 6);
+        return makeMathsItem(`Compare ${left} x 4 and ${right} x 5. Which is larger, and by how much?${highDifficultyInstruction}`, `${left * 4 > right * 5 ? `${left} x 4` : `${right} x 5`} by ${Math.abs(left * 4 - right * 5)}`, [`${left * 4 > right * 5 ? `${left} x 4` : `${right} x 5`} by ${Math.abs(left * 4 - right * 5)}`, `${left} x 4 by ${left}`, `${right} x 5 by ${right}`, "They are equal"], `Calculate both products, then compare: ${left * 4} and ${right * 5}.`);
+      }
+      if (slot === 7) {
+        const missing = 4 + (serial % 7);
+        const factor = 6;
+        const product = missing * factor;
+        return makeMathsItem(`Complete the equation: __ x ${factor} = ${product}. Explain the inverse operation.${highDifficultyInstruction}`, missing, [missing, product - factor, product + factor, factor], `Use division as the inverse of multiplication: ${product} divided by ${factor} = ${missing}.`);
+      }
+      if (slot === 8) {
+        const litre = 4 + (serial % 4);
+        const area = litre * (5 + (serial % 5));
+        const answer = area / litre;
+        return makeMathsItem(`One litre of paint covers ${litre} square metres. How many litres are needed for ${area} square metres?${highDifficultyInstruction}`, answer, [answer, area + litre, area - litre, litre], `Divide the total area by the coverage per litre: ${area} / ${litre} = ${answer}.`);
+      }
+      const rows = 3 + (serial % 4);
+      const columns = 5 + (serial % 5);
+      const answer = rows * columns;
+      return makeMathsItem(`An array has ${rows} rows and ${columns} columns. Write the multiplication and division facts it shows.${highDifficultyInstruction}`, `${rows} x ${columns} = ${answer}; ${answer} / ${rows} = ${columns}`, [`${rows} x ${columns} = ${answer}; ${answer} / ${rows} = ${columns}`, `${rows} + ${columns} = ${rows + columns}`, `${answer} x ${rows} = ${columns}`, `${columns} - ${rows} = ${columns - rows}`], `Arrays show related facts: rows x columns gives the total, and division reverses it.`);
     });
   }
 
@@ -2376,30 +2481,203 @@ function buildDeterministicGenericFallback(input: {
     });
   }
 
-  const field = input.type === "writing" ? "prompt" : "question";
-  return Array.from({ length: safeCount }, (_, index) => {
-    const serial = index + variantOffset;
-    const verb = wordsByDifficulty[Math.min(4, Math.max(0, input.difficulty - 1))];
-    const stemTemplates = [
-      `${input.yearGroup} ${input.type} task: ${verb} ${baseSkill.toLowerCase()} in a short response about ${baseTopic.toLowerCase()}.`,
-      `${input.yearGroup} ${input.type} correction: improve the sentence so ${baseSkill.toLowerCase()} is accurate.`,
-      `${input.yearGroup} ${input.type} challenge: choose the best option and justify your choice.`,
-      `${input.yearGroup} ${input.type} edit: revise the text to strengthen ${baseSkill.toLowerCase()} usage.`,
-      `${input.yearGroup} ${input.type} analysis: identify the error and provide the corrected form.`,
-      `${input.yearGroup} ${input.type} application: complete the prompt using precise ${baseSkill.toLowerCase()}.`,
+  if (input.type === "phonics") {
+    const phonicsRows = [
+      { word: "ship", hint: "Use the /sh/ digraph at the start.", sentence: "The ___ sailed across the bay.", stage: "Phase 3" },
+      { word: "train", hint: "Listen for the long /ai/ sound.", sentence: "We caught the ___ to school.", stage: "Phase 5" },
+      { word: "clap", hint: "Blend the consonant cluster /cl/.", sentence: "Please ___ for the class reader.", stage: "Phase 4" },
+      { word: "make", hint: "Use the split digraph a-e.", sentence: "Can you ___ a model bridge?", stage: "Phase 5" },
+      { word: "light", hint: "Find the trigraph that makes /igh/.", sentence: "Turn on the hall ___.", stage: "Phase 5" },
+      { word: "jump", hint: "Blend each sound in order.", sentence: "The rabbit can ___ over logs.", stage: "Phase 3" },
     ];
-    const stem = stemTemplates[serial % stemTemplates.length];
+    return Array.from({ length: safeCount }, (_, index) => {
+      const serial = index + variantOffset;
+      const row = phonicsRows[serial % phonicsRows.length];
+      return {
+        id: `fallback-phonics-${index + 1}`,
+        type: input.subject,
+        word: row.word,
+        hint: row.hint,
+        sentenceContext: row.sentence,
+        categoryHint: `${baseSkill} | ${baseTopic}`,
+        syllables: row.word,
+        emoji: "\ud83d\udcd6",
+        yearGroup: input.yearGroup,
+        skillFocus: baseSkill,
+        phonicsStage: row.stage,
+        difficulty: input.difficulty,
+      };
+    });
+  }
+
+  if (input.type === "grammar") {
+    const grammarRows = [
+      {
+        question: "Choose the sentence that uses the past perfect tense correctly.",
+        options: [
+          "By the time we arrived, the play had started.",
+          "By the time we arrived, the play has started.",
+          "By the time we arrived, the play start.",
+        ],
+        answer: "By the time we arrived, the play had started.",
+        explanation: "Past perfect uses 'had + past participle' for the earlier past action.",
+      },
+      {
+        question: "Rewrite the sentence with correct subject-verb agreement: The list of books are on my desk.",
+        options: [
+          "The list of books is on my desk.",
+          "The list of books are on my desk.",
+          "The list of books were on my desk.",
+        ],
+        answer: "The list of books is on my desk.",
+        explanation: "The subject is 'list' (singular), so the verb must be 'is'.",
+      },
+      {
+        question: "Select the sentence with a correctly placed relative clause.",
+        options: [
+          "The pupil, who revised every night, improved quickly.",
+          "The pupil who revised, every night improved quickly.",
+          "The pupil who revised every night improved, quickly.",
+        ],
+        answer: "The pupil, who revised every night, improved quickly.",
+        explanation: "Parenthetical relative clauses are separated by commas.",
+      },
+    ];
+    return Array.from({ length: safeCount }, (_, index) => {
+      const serial = index + variantOffset;
+      const row = grammarRows[serial % grammarRows.length];
+      return {
+        id: `fallback-grammar-${index + 1}`,
+        type: input.subject,
+        question: `${row.question} (${baseTopic})`,
+        answer: row.answer,
+        options: row.options,
+        explanation: row.explanation,
+        hint: `Check ${baseSkill.toLowerCase()} rules before selecting.`,
+        yearGroup: input.yearGroup,
+        skillFocus: baseSkill,
+        topic: baseTopic,
+        difficulty: input.difficulty,
+      };
+    });
+  }
+
+  if (input.type === "punctuation") {
+    const punctuationRows = [
+      {
+        question: "Choose the sentence with commas used correctly in a list.",
+        options: [
+          "For lunch we packed apples, bananas, and bread rolls.",
+          "For lunch, we packed apples bananas and, bread rolls.",
+          "For lunch we packed, apples bananas and bread rolls.",
+        ],
+        answer: "For lunch we packed apples, bananas, and bread rolls.",
+        explanation: "Commas separate list items clearly.",
+      },
+      {
+        question: "Insert the apostrophe correctly: The teachers lounge was quiet.",
+        options: [
+          "The teacher's lounge was quiet.",
+          "The teachers lounge was quiet.",
+          "The teachers' lounge was quiet.",
+        ],
+        answer: "The teachers' lounge was quiet.",
+        explanation: "Plural possession for more than one teacher uses teachers'.",
+      },
+      {
+        question: "Select the sentence with correct direct speech punctuation.",
+        options: [
+          "\"I will finish my homework,\" said Amina.",
+          "\"I will finish my homework\" said, Amina.",
+          "I will finish my homework,\" said Amina.",
+        ],
+        answer: "\"I will finish my homework,\" said Amina.",
+        explanation: "Speech marks and comma placement follow standard direct speech conventions.",
+      },
+    ];
+    return Array.from({ length: safeCount }, (_, index) => {
+      const serial = index + variantOffset;
+      const row = punctuationRows[serial % punctuationRows.length];
+      return {
+        id: `fallback-punctuation-${index + 1}`,
+        type: input.subject,
+        question: `${row.question} (${baseTopic})`,
+        answer: row.answer,
+        options: row.options,
+        explanation: row.explanation,
+        hint: `Focus on ${baseSkill.toLowerCase()} in this sentence.`,
+        yearGroup: input.yearGroup,
+        skillFocus: baseSkill,
+        topic: baseTopic,
+        difficulty: input.difficulty,
+      };
+    });
+  }
+
+  if (input.type === "writing") {
+    const writingRows = [
+      {
+        prompt: "Write a short paragraph explaining how your class can reduce waste at school.",
+        answer: "A strong answer uses a clear topic sentence, two practical actions, and a concluding sentence.",
+        options: [
+          "Include at least one persuasive connective (for example, therefore).",
+          "Use only one sentence.",
+          "Avoid giving any examples.",
+        ],
+      },
+      {
+        prompt: "Rewrite the draft so it uses precise verbs and varied sentence openings.",
+        answer: "A strong rewrite replaces weak verbs and varies sentence starters while keeping meaning clear.",
+        options: [
+          "Replace generic verbs like 'went' with specific verbs.",
+          "Repeat the same sentence starter each time.",
+          "Remove punctuation for speed.",
+        ],
+      },
+      {
+        prompt: "Write a balanced response: should homework be shorter on weekends?",
+        answer: "A balanced response gives one argument for and one against before a justified conclusion.",
+        options: [
+          "Use evidence and connectives to compare viewpoints.",
+          "Give only one side with no conclusion.",
+          "Use unrelated examples.",
+        ],
+      },
+    ];
+    return Array.from({ length: safeCount }, (_, index) => {
+      const serial = index + variantOffset;
+      const row = writingRows[serial % writingRows.length];
+      return {
+        id: `fallback-writing-${index + 1}`,
+        type: input.subject,
+        prompt: `${row.prompt} (${baseTopic})`,
+        answer: row.answer,
+        options: row.options,
+        explanation: `Model writing guidance for ${input.yearGroup} using ${baseSkill.toLowerCase()} at ${difficultyLabel.toLowerCase()}.`,
+        hint: `Plan, draft, and check success criteria linked to ${baseSkill.toLowerCase()}.`,
+        yearGroup: input.yearGroup,
+        skillFocus: baseSkill,
+        topic: baseTopic,
+        difficulty: input.difficulty,
+      };
+    });
+  }
+
+  return Array.from({ length: safeCount }, (_, index) => {
+    const verb = wordsByDifficulty[Math.min(4, Math.max(0, input.difficulty - 1))];
+    const question = `${input.yearGroup} ${input.type} application: ${verb} ${baseSkill.toLowerCase()} in context (${baseTopic.toLowerCase()}).`;
+    const answer = `A high-quality response ${verb}s the key idea, uses accurate terminology, and links directly to ${baseTopic.toLowerCase()}.`;
     return {
       id: `fallback-${input.type}-${index + 1}`,
       type: input.subject,
-      [field]: stem,
-      answer: `Model response for ${baseSkill} in ${baseTopic}.`,
+      question,
+      answer,
       options: [
-        "Option A",
-        "Option B",
-        "Option C",
+        answer,
+        `A response that mentions ${baseTopic.toLowerCase()} but lacks precision.`,
+        "A response that is off-topic and unsupported.",
       ],
-      explanation: `This item is aligned to ${input.yearGroup}, ${baseSkill}, and difficulty ${input.difficulty}/5.`,
+      explanation: `This fallback item is curriculum-aligned for ${input.yearGroup} and ${baseSkill}.`,
       hint: `Use ${baseSkill.toLowerCase()} accurately in ${baseTopic.toLowerCase()}.`,
       yearGroup: input.yearGroup,
       skillFocus: baseSkill,
@@ -2448,9 +2726,15 @@ function buildValidatedGenericFallback(input: {
       repaired: false,
       aiGenerated: false,
       regeneratedAfterValidation: false,
-      fallbackUsed: true,
+      fallbackUsed: "local_template",
       requestedCount: input.count,
       finalCount: input.count,
+      filledSlots: input.count,
+      emptySlots: 0,
+      duplicateRejectedCount: 0,
+      weakRejectedCount: 0,
+      generatedQuestions: input.count,
+      adminWarnings: [],
     },
   };
 }
@@ -2888,6 +3172,10 @@ export async function POST(req: Request) {
     }, { status: 422 });
   }
   const requestedStudentId = typeof body.studentId === "string" ? body.studentId.trim() : "";
+  const exposureAvoidPrompts = requestedStudentId
+    ? await collectStudentExposureAvoidPrompts(requestedStudentId)
+    : [];
+  const effectiveAvoidPrompts = Array.from(new Set([...avoidPrompts, ...exposureAvoidPrompts])).slice(0, 12);
   const studentGraph = requestedStudentId
     ? await buildAcademicSourceForStudent(requestedStudentId)
       .then((source) => source ? buildAcademicIntelligence(source).curriculumIntelligenceGraph : null)
@@ -3805,14 +4093,14 @@ export async function POST(req: Request) {
     });
   }
 
-  const baseUserPrompt = buildUserPrompt(promptType, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, safeExamBoard, [], targetSkills, weakAreas, "", scienceDiscipline, avoidPrompts, gaScriptPreference);
+  const baseUserPrompt = buildUserPrompt(promptType, sourceSubject, safeLevel, topic, ageGroup, count, safeKeyStage, safeYearGroup, resolvedSkillFocus, safeExamBoard, [], targetSkills, weakAreas, "", scienceDiscipline, effectiveAvoidPrompts, gaScriptPreference);
   const userPrompt = graphPromptContext ? `${baseUserPrompt}\n\nGRAPH CONTEXT:\n${graphPromptContext}` : baseUserPrompt;
   const systemPrompt = SYSTEM_PROMPT[promptType];
 
   try {
     let parsed: unknown;
     let promptUsed = userPrompt;
-    let validation: Record<string, unknown> = { valid: true, repaired: false, errors: [], fixesApplied: [], removedWords: [], regeneratedCount: 0, requestedCount: count, finalCount: count };
+    let validation: Record<string, unknown> = { valid: true, repaired: false, errors: [], fixesApplied: [], removedWords: [], regeneratedCount: 0, requestedCount: count, finalCount: count, filledSlots: count, emptySlots: 0, duplicateRejectedCount: 0, weakRejectedCount: 0, generatedQuestions: count, adminWarnings: [], fallbackUsed: "none" };
     let generatedMetadataSnapshot: Record<string, unknown> | null = null;
     let normalizedMetadataSnapshot: Record<string, unknown> | null = null;
 
@@ -3860,7 +4148,7 @@ export async function POST(req: Request) {
         masteryOutcome,
         scienceDiscipline,
         gaScriptPreference,
-        avoidPrompts,
+        avoidPrompts: effectiveAvoidPrompts,
         graphPromptContext,
         graphChecks,
       });

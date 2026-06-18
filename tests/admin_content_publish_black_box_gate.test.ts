@@ -23,6 +23,7 @@ function deps(overrides: Partial<PublishDeps> = {}): PublishDeps {
         { prompt: "2 + 2", answer: 4 },
       ]),
     }),
+    findHistoricalContent: async () => [],
     updateContentToPublished: async () => ({
       id: "content-1",
       status: "published",
@@ -260,4 +261,133 @@ test("admin content publish route allows near duplicate warnings with successful
   assert.equal(updated, true);
   assert.equal(Array.isArray(payload.duplicateWarnings), true);
   assert.equal((payload.duplicateWarnings ?? [])[0]?.nearDuplicates, 1);
+});
+
+test("admin content publish route blocks when global duplicates exist in historical content", async () => {
+  let updated = false;
+
+  const response = await handleAdminContentPublishPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-1",
+      status: "reviewed",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+      }),
+      contentType: "math",
+      contentJson: JSON.stringify([
+        { prompt: "What is 12 divided by 4?", answer: "3" },
+        { prompt: "What is 15 plus 7?", answer: "22" },
+      ]),
+    }),
+    findHistoricalContent: async () => [
+      {
+        id: "old-content-1",
+        status: "published",
+        contentJson: JSON.stringify([
+          { prompt: "What is 12 divided by 4?", answer: "3" },
+        ]),
+      },
+    ],
+    updateContentToPublished: async () => {
+      updated = true;
+      return {
+        id: "content-1",
+        status: "published",
+        publishedAt: new Date("2026-06-11T10:30:00.000Z"),
+      };
+    },
+  }));
+
+  const payload = await response.json() as { error?: string; duplicateMatches?: unknown[] };
+
+  assert.equal(response.status, 422);
+  assert.match(payload.error ?? "", /global duplicate/i);
+  assert.ok(Array.isArray(payload.duplicateMatches), "duplicateMatches should be present");
+  assert.equal(updated, false);
+});
+
+test("admin content publish route allows publish when historical questions are different", async () => {
+  let updated = false;
+
+  const response = await handleAdminContentPublishPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-1",
+      status: "reviewed",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+      }),
+      contentType: "math",
+      contentJson: JSON.stringify([
+        { prompt: "What is 8 plus 5?", answer: "13" },
+        { prompt: "Solve: 7 times 3", answer: "21" },
+      ]),
+    }),
+    findHistoricalContent: async () => [
+      {
+        id: "old-content-1",
+        status: "published",
+        contentJson: JSON.stringify([
+          { prompt: "A baker has 48 cupcakes and sells 19. How many remain?", answer: "29" },
+        ]),
+      },
+    ],
+    updateContentToPublished: async () => {
+      updated = true;
+      return {
+        id: "content-1",
+        status: "published",
+        publishedAt: new Date("2026-06-11T10:30:00.000Z"),
+      };
+    },
+  }));
+
+  const payload = await response.json() as { id?: string; status?: string };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.status, "published");
+  assert.equal(updated, true);
+});
+
+test("admin content publish route blocks near duplicate against published content", async () => {
+  let updated = false;
+
+  const response = await handleAdminContentPublishPost(request, context, deps({
+    findContent: async () => ({
+      id: "content-2",
+      status: "reviewed",
+      metadataJson: JSON.stringify({
+        blackBoxLiveTest: { status: "passed" },
+        blackBoxAdminVerification: { status: "verified" },
+      }),
+      contentType: "math",
+      contentJson: JSON.stringify([
+        { prompt: "A baker uses 36 eggs to make 6 cakes. How many eggs per cake?", answer: "6" },
+      ]),
+    }),
+    findHistoricalContent: async () => [
+      {
+        id: "published-content-1",
+        status: "published",
+        contentJson: JSON.stringify([
+          { prompt: "A baker uses 36 eggs to bake 6 cakes. How many eggs does each cake need?", answer: "6" },
+        ]),
+      },
+    ],
+    updateContentToPublished: async () => {
+      updated = true;
+      return {
+        id: "content-2",
+        status: "published",
+        publishedAt: new Date("2026-06-11T10:30:00.000Z"),
+      };
+    },
+  }));
+
+  const payload = await response.json() as { error?: string; duplicateMatches?: unknown[] };
+
+  assert.equal(response.status, 422);
+  assert.match(payload.error ?? "", /global duplicate/i);
+  assert.equal(updated, false);
 });

@@ -78,12 +78,35 @@ type AssignmentSafetyMeta = {
   schoolId: string | null;
   warningReason?: string | null;
   warningFlags?: string[];
+  exposureClassification?: ExposureClassification;
+  exposureRisk?: "none" | "low" | "medium" | "high";
+  exposureSeenQuestionCount?: number;
+  exposureTotalQuestionCount?: number;
+  exposureSeenQuestionIds?: string[];
 };
 
 type AssignmentRecommendation = {
   level: "recommended" | "eligible_manual";
   reason: string;
   matchedWeakAreas: string[];
+};
+
+export type ExposureClassification =
+  | "first_exposure"
+  | "revision"
+  | "catch_up"
+  | "mastery_check"
+  | "spaced_repetition"
+  | "exam_practice";
+
+export type QuestionExposureIntelligence = {
+  classification: ExposureClassification;
+  risk: "none" | "low" | "medium" | "high";
+  seenQuestionCount: number;
+  totalQuestionCount: number;
+  seenQuestionIds: string[];
+  warningReason: string | null;
+  warningFlags: string[];
 };
 
 function parseContentMetadata(raw: string | null | undefined): {
@@ -137,6 +160,144 @@ function isValidContentJson(contentJson: string): boolean {
   } catch {
     return false;
   }
+}
+
+function extractQuestionIdsFromContent(contentJson: string): string[] {
+  try {
+    const parsed = JSON.parse(contentJson) as unknown;
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    const ids = rows
+      .filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object" && !Array.isArray(row)))
+      .map((row) => String(row.id ?? "").trim())
+      .filter(Boolean);
+    return Array.from(new Set(ids));
+  } catch {
+    return [];
+  }
+}
+
+function classifyExposureIntent(input: {
+  seenCount: number;
+  totalCount: number;
+  contentSubject: string;
+  contentType: string | null;
+  topic: string | null;
+  skillFocus: string | null;
+  yearGroup: string | null;
+  keyStage: string | null;
+  lowerLevelRemediation: boolean;
+}): ExposureClassification {
+  if (input.seenCount <= 0) return "first_exposure";
+
+  const text = normalizeText([
+    input.contentSubject,
+    input.contentType,
+    input.topic,
+    input.skillFocus,
+    input.yearGroup,
+    input.keyStage,
+  ].filter(Boolean).join(" "));
+
+  if (input.lowerLevelRemediation || /\b(catch[-\s]?up|recovery|intervention|remediation)\b/.test(text)) {
+    return "catch_up";
+  }
+  if (/\b(mastery|checkpoint|check)\b/.test(text)) return "mastery_check";
+  if (/\b(spaced|retrieval|recall)\b/.test(text)) return "spaced_repetition";
+  if (/\b(gcse|exam|paper|mock|aqa|edexcel|ocr|sats|11[-\s]?plus)\b/.test(text)) return "exam_practice";
+  return "revision";
+}
+
+function exposureRiskFor(seenCount: number, totalCount: number): "none" | "low" | "medium" | "high" {
+  if (seenCount <= 0 || totalCount <= 0) return "none";
+  const ratio = seenCount / totalCount;
+  if (ratio >= 0.75) return "high";
+  if (ratio >= 0.35) return "medium";
+  return "low";
+}
+
+export function buildQuestionExposureIntelligence(input: {
+  seenIds: string[];
+  totalQuestionCount: number;
+  contentSubject: string;
+  contentType: string | null;
+  topic: string | null;
+  skillFocus: string | null;
+  yearGroup: string | null;
+  keyStage: string | null;
+  lowerLevelRemediation: boolean;
+}): QuestionExposureIntelligence {
+  const classification = classifyExposureIntent({
+    seenCount: input.seenIds.length,
+    totalCount: input.totalQuestionCount,
+    contentSubject: input.contentSubject,
+    contentType: input.contentType,
+    topic: input.topic,
+    skillFocus: input.skillFocus,
+    yearGroup: input.yearGroup,
+    keyStage: input.keyStage,
+    lowerLevelRemediation: input.lowerLevelRemediation,
+  });
+  const risk = exposureRiskFor(input.seenIds.length, input.totalQuestionCount);
+  const warningFlags = input.seenIds.length > 0
+    ? [
+      "question_history_exposure",
+      `exposure_${classification}`,
+      `exposure_risk_${risk}`,
+    ]
+    : [];
+
+  if (input.seenIds.length === 0) {
+    return {
+      classification,
+      risk,
+      seenQuestionCount: 0,
+      totalQuestionCount: input.totalQuestionCount,
+      seenQuestionIds: [],
+      warningReason: null,
+      warningFlags,
+    };
+  }
+
+  const preview = input.seenIds.slice(0, 5).join(", ");
+  const suffix = input.seenIds.length > 5 ? ", ..." : "";
+  return {
+    classification,
+    risk,
+    seenQuestionCount: input.seenIds.length,
+    totalQuestionCount: input.totalQuestionCount,
+    seenQuestionIds: input.seenIds.slice(0, 20),
+    warningReason: `Exposure warning: ${input.seenIds.length}/${input.totalQuestionCount} question${input.totalQuestionCount === 1 ? "" : "s"} previously seen (${preview}${suffix}). Intent classified as ${classification}; assignment remains allowed.`,
+    warningFlags,
+  };
+}
+
+function applyExposureWarning(input: {
+  meta: AssignmentSafetyMeta;
+  seenIds: string[];
+  totalQuestionCount: number;
+  classification: ExposureClassification;
+  risk: "none" | "low" | "medium" | "high";
+}) {
+  input.meta.exposureClassification = input.classification;
+  input.meta.exposureRisk = input.risk;
+  input.meta.exposureSeenQuestionCount = input.seenIds.length;
+  input.meta.exposureTotalQuestionCount = input.totalQuestionCount;
+  input.meta.exposureSeenQuestionIds = input.seenIds.slice(0, 20);
+
+  if (input.seenIds.length === 0) return;
+
+  const preview = input.seenIds.slice(0, 5).join(", ");
+  const suffix = input.seenIds.length > 5 ? ", ..." : "";
+  const exposureReason = `Exposure warning: ${input.seenIds.length}/${input.totalQuestionCount} question${input.totalQuestionCount === 1 ? "" : "s"} previously seen (${preview}${suffix}). Intent classified as ${input.classification}; assignment remains allowed.`;
+  input.meta.warningReason = input.meta.warningReason
+    ? `${input.meta.warningReason} ${exposureReason}`
+    : exposureReason;
+  input.meta.warningFlags = Array.from(new Set([
+    ...(input.meta.warningFlags ?? []),
+    "question_history_exposure",
+    `exposure_${input.classification}`,
+    `exposure_risk_${input.risk}`,
+  ]));
 }
 
 function deriveLearningDnaWeakSignals(aiLearningProfileJson: string | null | undefined): string[] {
@@ -411,6 +572,19 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     };
   }
 
+  const contentQuestionIds = extractQuestionIdsFromContent(content.contentJson);
+  const seenQuestionIds = contentQuestionIds.length > 0
+    ? (await prisma.questionHistory.findMany({
+      where: {
+        childId: student.id,
+        questionId: { in: contentQuestionIds },
+      },
+      select: {
+        questionId: true,
+      },
+    })).map((entry) => entry.questionId)
+    : [];
+
   if (contentLegacyType === "spelling") {
     let parsedContent: unknown = [];
     try {
@@ -545,6 +719,24 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     meta.warningReason = placementWarning;
     meta.warningFlags = Array.from(new Set([...(meta.warningFlags ?? []), "dob_age_mismatch"]));
   }
+
+  applyExposureWarning({
+    meta,
+    seenIds: seenQuestionIds,
+    totalQuestionCount: contentQuestionIds.length,
+    classification: classifyExposureIntent({
+      seenCount: seenQuestionIds.length,
+      totalCount: contentQuestionIds.length,
+      contentSubject,
+      contentType: content.contentType,
+      topic: meta.topic,
+      skillFocus: meta.skillFocus,
+      yearGroup: normalizedContentYearGroup,
+      keyStage: normalizedContentKeyStage,
+      lowerLevelRemediation,
+    }),
+    risk: exposureRiskFor(seenQuestionIds.length, contentQuestionIds.length),
+  });
 
   const studentSubjectFocus = normalizeText(student.studentProfile?.subjectFocus);
   const learningDnaSignals = deriveLearningDnaWeakSignals(student.studentProfile?.aiLearningProfileJson ?? null);
@@ -707,6 +899,11 @@ export async function assignContentToStudent(input: {
       matchedWeakAreas: safety.recommendation.matchedWeakAreas,
       assignmentWarning: safety.meta.warningReason ?? null,
       assignmentWarningFlags: safety.meta.warningFlags ?? [],
+      exposureClassification: safety.meta.exposureClassification ?? "first_exposure",
+      exposureRisk: safety.meta.exposureRisk ?? "none",
+      exposureSeenQuestionCount: safety.meta.exposureSeenQuestionCount ?? 0,
+      exposureTotalQuestionCount: safety.meta.exposureTotalQuestionCount ?? 0,
+      exposureSeenQuestionIds: safety.meta.exposureSeenQuestionIds ?? [],
     },
   });
 
@@ -715,7 +912,15 @@ export async function assignContentToStudent(input: {
     reason: "admin_assignment_update",
   }).catch(() => undefined);
 
-  return assignment;
+  return {
+    ...assignment,
+    assignmentWarning: safety.meta.warningReason ?? null,
+    assignmentWarningFlags: safety.meta.warningFlags ?? [],
+    exposureClassification: safety.meta.exposureClassification ?? "first_exposure",
+    exposureRisk: safety.meta.exposureRisk ?? "none",
+    exposureSeenQuestionCount: safety.meta.exposureSeenQuestionCount ?? 0,
+    exposureTotalQuestionCount: safety.meta.exposureTotalQuestionCount ?? 0,
+  };
 }
 
 export function taskHrefForContentType(contentType: string, assignmentId?: string) {

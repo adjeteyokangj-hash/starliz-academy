@@ -24,6 +24,7 @@ import { evaluateAssignmentCandidate } from "../src/components/admin/content-lib
 import type { ContentItem, StudentOption } from "../src/components/admin/content-library/types";
 import {
   assignmentMismatchWarningFlags,
+  buildQuestionExposureIntelligence,
   placementSupportsAssignment,
   taskHrefForContentType,
 } from "../src/lib/assignments";
@@ -413,4 +414,72 @@ test("supported lower-level remediation warning flags include year mismatch", ()
   });
 
   assert.deepEqual(flags, ["year_mismatch", "lower_level_remediation"]);
+});
+
+test("QuestionHistory exposure returns warning metadata and does not imply hard block", () => {
+  const exposure = buildQuestionExposureIntelligence({
+    seenIds: ["q-1", "q-2"],
+    totalQuestionCount: 5,
+    contentSubject: "maths",
+    contentType: "maths",
+    topic: "Fractions revision",
+    skillFocus: "Equivalent fractions",
+    yearGroup: "Year 5",
+    keyStage: "KS2",
+    lowerLevelRemediation: false,
+  });
+
+  assert.equal(exposure.classification, "revision");
+  assert.equal(exposure.risk, "medium");
+  assert.equal(exposure.seenQuestionCount, 2);
+  assert.equal(exposure.totalQuestionCount, 5);
+  assert.match(exposure.warningReason ?? "", /assignment remains allowed/i);
+  assert.ok(exposure.warningFlags.includes("question_history_exposure"));
+  assert.ok(exposure.warningFlags.includes("exposure_revision"));
+});
+
+test("first exposure has no warning flags", () => {
+  const exposure = buildQuestionExposureIntelligence({
+    seenIds: [],
+    totalQuestionCount: 6,
+    contentSubject: "reading",
+    contentType: "reading",
+    topic: "Inference",
+    skillFocus: "Retrieval",
+    yearGroup: "Year 4",
+    keyStage: "KS2",
+    lowerLevelRemediation: false,
+  });
+
+  assert.equal(exposure.classification, "first_exposure");
+  assert.equal(exposure.risk, "none");
+  assert.equal(exposure.warningReason, null);
+  assert.deepEqual(exposure.warningFlags, []);
+});
+
+test("QuestionHistory exposure intents remain allowed for catch-up, mastery, spaced repetition and exam practice", () => {
+  const scenarios = [
+    { topic: "Priority catch-up fractions", skillFocus: "Recovery practice", yearGroup: "Year 5", keyStage: "KS2", lowerLevelRemediation: true, expected: "catch_up" },
+    { topic: "Mastery checkpoint", skillFocus: "Multiplication mastery check", yearGroup: "Year 4", keyStage: "KS2", lowerLevelRemediation: false, expected: "mastery_check" },
+    { topic: "Spaced retrieval", skillFocus: "Recall of number bonds", yearGroup: "Year 3", keyStage: "KS2", lowerLevelRemediation: false, expected: "spaced_repetition" },
+    { topic: "GCSE mock paper practice", skillFocus: "Exam practice", yearGroup: "Year 11", keyStage: "KS4", lowerLevelRemediation: false, expected: "exam_practice" },
+  ] as const;
+
+  for (const scenario of scenarios) {
+    const exposure = buildQuestionExposureIntelligence({
+      seenIds: ["q-seen"],
+      totalQuestionCount: 8,
+      contentSubject: "maths",
+      contentType: "maths",
+      topic: scenario.topic,
+      skillFocus: scenario.skillFocus,
+      yearGroup: scenario.yearGroup,
+      keyStage: scenario.keyStage,
+      lowerLevelRemediation: scenario.lowerLevelRemediation,
+    });
+
+    assert.equal(exposure.classification, scenario.expected);
+    assert.match(exposure.warningReason ?? "", /assignment remains allowed/i);
+    assert.ok(exposure.warningFlags.includes(`exposure_${scenario.expected}`));
+  }
 });

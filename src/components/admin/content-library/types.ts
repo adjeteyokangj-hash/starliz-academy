@@ -138,6 +138,24 @@ export type ContentItem = {
   yearGroup?: string | null;
   skillFocus?: string | null;
   metadataJson?: string | null;
+  globalDuplicateSummary?: {
+    duplicateCount: number;
+    exactCount: number;
+    nearCount: number;
+    sameAnswerCount: number;
+    samePromptDifferentChoicesCount: number;
+    hasDuplicates: boolean;
+    matches: Array<{
+      currentSlotId: string;
+      currentContentId: string | null;
+      matchedContentId: string;
+      matchedQuestionId: string;
+      matchedSlotIndex: number;
+      similarity: number;
+      duplicateType: string;
+      sourceStatus: string;
+    }>;
+  } | null;
 };
 
 export type StudentOption = {

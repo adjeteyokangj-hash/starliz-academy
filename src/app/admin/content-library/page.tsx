@@ -86,15 +86,18 @@ export default function ContentLibraryPage() {
   const [overrideAssigning, setOverrideAssigning] = useState(false);
 
   const fetchData = useCallback(async () => {
-    const [contentRes, studentsRes] = await Promise.all([
+    const [contentRes, studentsRes, governanceRes] = await Promise.all([
       fetch("/api/admin/content"),
       fetch("/api/admin/students?context=assignment"),
+      fetch("/api/admin/content/governance"),
     ]);
     const contentPayload = await contentRes.json() as { items?: ContentItem[] };
     const studentsPayload = await studentsRes.json() as { students?: StudentOption[] };
+    const governancePayload = await governanceRes.json() as { questionDuplicateSummaries?: Record<string, ContentItem["globalDuplicateSummary"]> };
     return {
       items: contentPayload.items ?? [],
       students: studentsPayload.students ?? [],
+      questionDuplicateSummaries: governancePayload.questionDuplicateSummaries ?? {},
     };
   }, []);
 
@@ -102,12 +105,22 @@ export default function ContentLibraryPage() {
     setLoading(true);
     try {
       const data = await fetchData();
-      setItems(data.items);
+      setItems(data.items.map((item) => ({
+        ...item,
+        globalDuplicateSummary: data.questionDuplicateSummaries?.[item.id] ?? null,
+      })));
       setStudents(data.students);
     } finally {
       setLoading(false);
     }
   }, [fetchData]);
+
+  const refreshDuplicateSummaryForContent = useCallback(async (contentId: string) => {
+    const response = await fetch(`/api/admin/content/governance?contentId=${encodeURIComponent(contentId)}`);
+    if (!response.ok) return null;
+    const payload = await response.json() as { questionDuplicateSummary?: ContentItem["globalDuplicateSummary"] };
+    return payload.questionDuplicateSummary ?? null;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,7 +129,10 @@ export default function ContentLibraryPage() {
         if (cancelled) return;
         queueMicrotask(() => {
           if (cancelled) return;
-          setItems(data.items);
+          setItems(data.items.map((item) => ({
+            ...item,
+            globalDuplicateSummary: data.questionDuplicateSummaries?.[item.id] ?? null,
+          })));
           setStudents(data.students);
         });
       })
@@ -474,6 +490,12 @@ export default function ContentLibraryPage() {
     setItems((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
     setViewModalContent((current) => current?.id === updated.id ? { ...current, ...updated } : current);
     setMessage(`Verification saved. Content is now ${updated.status}.`);
+
+    void refreshDuplicateSummaryForContent(updated.id).then((summary) => {
+      if (!summary) return;
+      setItems((current) => current.map((item) => item.id === updated.id ? { ...item, globalDuplicateSummary: summary } : item));
+      setViewModalContent((current) => current?.id === updated.id ? { ...current, globalDuplicateSummary: summary } : current);
+    });
   }
 
   return (

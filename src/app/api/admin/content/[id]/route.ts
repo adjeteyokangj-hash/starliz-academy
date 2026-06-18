@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai/content-black-box-gate";
 import { analyzeContentSessionSlots, getIncompleteSlotsReason, isQuestionSlotFilled } from "@/lib/session-slot-validation";
 import { analyzeSessionSlotDuplicates } from "@/lib/session-slot-duplicates";
+import { summarizeQuestionDuplicatesForContent } from "@/lib/question-duplicate-detection";
 
 const patchSchema = z
   .object({
@@ -71,6 +72,8 @@ type Context = { params: Promise<{ id: string }> };
 type PatchableContentRecord = {
   id: string;
   contentType: string;
+  keyStage?: string | null;
+  yearGroup?: string | null;
   metadataJson: string | null;
   contentJson: string;
 };
@@ -100,7 +103,7 @@ type AdminContentPatchDeps = {
 async function defaultFindContentForPatch(id: string): Promise<PatchableContentRecord | null> {
   return prisma.aIContentCache.findUnique({
     where: { id },
-    select: { id: true, contentType: true, metadataJson: true, contentJson: true },
+    select: { id: true, contentType: true, keyStage: true, yearGroup: true, metadataJson: true, contentJson: true },
   });
 }
 
@@ -223,6 +226,35 @@ export async function handleAdminContentPatch(
       if (duplicateValidation.hasExactDuplicates) {
         return NextResponse.json({
           error: `Publishing blocked: ${duplicateValidation.exactCount} exact duplicate question pair${duplicateValidation.exactCount === 1 ? "" : "s"} found.`,
+        }, { status: 422 });
+      }
+
+      const allRecords = await prisma.aIContentCache.findMany({
+        select: { id: true, status: true, contentType: true, keyStage: true, yearGroup: true, contentJson: true },
+        orderBy: { createdAt: "asc" },
+      });
+      const globalDuplicateValidation = summarizeQuestionDuplicatesForContent({
+        contentId: existing.id,
+        contentStatus: body.status,
+        contentSubject: existing.contentType,
+        contentYearGroup: existing.yearGroup,
+        contentKeyStage: existing.keyStage,
+        contentJson: sanitizedContentJson ?? existing.contentJson,
+        historicalRecords: allRecords
+          .filter((record) => record.id !== id)
+          .map((record) => ({
+            contentId: record.id,
+            contentStatus: record.status,
+            contentSubject: record.contentType,
+            contentYearGroup: record.yearGroup,
+            contentKeyStage: record.keyStage,
+            contentJson: record.contentJson,
+          })),
+      });
+      if (globalDuplicateValidation.hasDuplicates) {
+        return NextResponse.json({
+          error: "Publishing blocked: global duplicate questions remain. Replace or edit the duplicate slots before publishing.",
+          duplicateMatches: globalDuplicateValidation.matches,
         }, { status: 422 });
       }
     }
