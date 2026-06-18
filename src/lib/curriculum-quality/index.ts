@@ -169,7 +169,7 @@ function hasGcseCommandWord(value: string): boolean {
 }
 
 function hasMathsSignal(value: string): boolean {
-  return /(\d+\s*[+\-x÷*/]\s*\d+|\bequation\b|\bfraction\b|\bdecimal\b|\bratio\b|\bpercentage\b|\bprobability\b|\balgebra\b|\bperimeter\b|\barea\b|\bmean\b|\bmedian\b|\bsequence\b|\bscale\b|\bgraph\b|\bangle\b|\btriangle\b|\bmultiplication\b|\bmultiply\b|\bdivision\b|\bdivide\b|\bremainder\b|\bshare(?:d|s|ing)?\b|\bequal\s+groups?\b|\btimes\s+tables?\b)/i.test(value);
+  return /(\d+\s*[+\-x÷*/]\s*\d+|\bequation\b|\bfraction\b|\bdecimal\b|\bratio\b|\bpercentage\b|\bprobability\b|\balgebra\b|\bperimeter\b|\barea\b|\bmean\b|\bmedian\b|\bsequence\b|\bscale\b|\bgraph\b|\bangle\b|\btriangle\b|\bmultiplication\b|\bmultiply(?:ing|ied)?\b|\bdivision\b|\bdivide(?:d|s|ing)?\b|\bremainder\b|\bshare(?:d|s|ing)?\b|\bequal\s+groups?\b|\btimes\s+tables?\b|\bhow\s+many\b|\baltogether\b|\btotal\b|\beach\b|\brows?\b|\bgroups?\b)/i.test(value);
 }
 
 function isComputeOnlyMaths(prompt: string): boolean {

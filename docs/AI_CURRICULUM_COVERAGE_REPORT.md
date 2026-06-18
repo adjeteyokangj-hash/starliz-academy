@@ -1,12 +1,12 @@
 # AI Curriculum Coverage Report
 
-- Total paths: 910
-- Fully wired: 910
+- Total paths: 976
+- Fully wired: 976
 - Partially wired: 0
 - Fallback only: 0
 - Missing: 0
 
-## Fully Wired (910)
+## Fully Wired (976)
 - Reception | EYFS | age 4–5 | phonics | Sound recognition | topics=10 | notes: Using auto-generated skill-specific topics
 - Reception | EYFS | age 4–5 | phonics | Phase 2 phonics | topics=13 | notes: Using auto-generated skill-specific topics
 - Reception | EYFS | age 4–5 | phonics | Phase 3 phonics | topics=13 | notes: Using auto-generated skill-specific topics
@@ -43,6 +43,12 @@
 - Year 1 | KS1 | age 5–6 | maths | Adding | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 1 | KS1 | age 5–6 | maths | Subtracting | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 1 | KS1 | age 5–6 | maths | Place value (to 20) | topics=14 | notes: Using auto-generated skill-specific topics
+- Year 1 | KS1 | age 5–6 | ga-language | Ga alphabet (intro) | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 1 | KS1 | age 5–6 | ga-language | Ga numbers 1-10 | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 1 | KS1 | age 5–6 | ga-language | Greetings | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 1 | KS1 | age 5–6 | ga-language | Everyday words | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 1 | KS1 | age 5–6 | ga-language | Simple classroom phrases | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 1 | KS1 | age 5–6 | ga-language | Listening and repeating | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 2 | KS1 | age 6–7 | phonics | Phase 5 alternative sounds | topics=13 | notes: Using auto-generated skill-specific topics
 - Year 2 | KS1 | age 6–7 | phonics | Alternative graphemes | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 2 | KS1 | age 6–7 | phonics | Digraphs | topics=10 | notes: Using auto-generated skill-specific topics
@@ -63,6 +69,12 @@
 - Year 2 | KS1 | age 6–7 | maths | Addition and subtraction | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 2 | KS1 | age 6–7 | maths | Number bonds | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 2 | KS1 | age 6–7 | maths | Representing numbers | topics=14 | notes: Using auto-generated skill-specific topics
+- Year 2 | KS1 | age 6–7 | ga-language | Ga alphabet (practice) | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 2 | KS1 | age 6–7 | ga-language | Ga numbers 1-20 | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 2 | KS1 | age 6–7 | ga-language | Greetings and introductions | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 2 | KS1 | age 6–7 | ga-language | Family words | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 2 | KS1 | age 6–7 | ga-language | Numbers and colours | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 2 | KS1 | age 6–7 | ga-language | Simple questions | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | spelling | Silent e | topics=13 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | spelling | Prefixes | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | spelling | Suffixes | topics=14 | notes: Using auto-generated skill-specific topics
@@ -87,7 +99,7 @@
 - Year 3 | KS2 | age 7–8 | vocabulary | High frequency words | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | vocabulary | Synonyms | topics=12 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | vocabulary | Opposites | topics=10 | notes: Using auto-generated skill-specific topics
-- Year 3 | KS2 | age 7–8 | maths | Multiplication and division | topics=19 | notes: Using auto-generated skill-specific topics
+- Year 3 | KS2 | age 7–8 | maths | Multiplication and division | topics=20 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | maths | Fractions (1/2 and 1/4) | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | maths | Place value | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | maths | Money | topics=10 | notes: Using auto-generated skill-specific topics
@@ -98,6 +110,12 @@
 - Year 3 | KS2 | age 7–8 | science | Animals and habitats | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | science | Plants | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | science | Rocks and soils | topics=10 | notes: Using auto-generated skill-specific topics
+- Year 3 | KS2 | age 7–8 | ga-language | Ga alphabet and pronunciation | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 3 | KS2 | age 7–8 | ga-language | Ga numbers and counting | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 3 | KS2 | age 7–8 | ga-language | Vocabulary | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 3 | KS2 | age 7–8 | ga-language | Sentence building | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 3 | KS2 | age 7–8 | ga-language | Reading short phrases | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 3 | KS2 | age 7–8 | ga-language | Listening comprehension | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | sats-practice | Reasoning | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | sats-practice | Problem solving | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 3 | KS2 | age 7–8 | sats-practice | Times tables | topics=15 | notes: Using auto-generated skill-specific topics
@@ -140,6 +158,12 @@
 - Year 4 | KS2 | age 8–9 | science | States of matter | topics=13 | notes: Using auto-generated skill-specific topics
 - Year 4 | KS2 | age 8–9 | science | Sound | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 4 | KS2 | age 8–9 | science | Electrical circuits | topics=14 | notes: Using auto-generated skill-specific topics
+- Year 4 | KS2 | age 8–9 | ga-language | Vocabulary | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 4 | KS2 | age 8–9 | ga-language | Grammar basics | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 4 | KS2 | age 8–9 | ga-language | Translation | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 4 | KS2 | age 8–9 | ga-language | Speaking practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 4 | KS2 | age 8–9 | ga-language | Alphabet and spelling patterns | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 4 | KS2 | age 8–9 | ga-language | Numbers in context | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 4 | KS2 | age 8–9 | sats-practice | Multi-step problems | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 4 | KS2 | age 8–9 | sats-practice | Reasoning | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 4 | KS2 | age 8–9 | sats-practice | Reading fluency | topics=10 | notes: Using auto-generated skill-specific topics
@@ -171,7 +195,7 @@
 - Year 5 | KS2 | age 9–10 | maths | Fractions | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 5 | KS2 | age 9–10 | maths | Decimals | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 5 | KS2 | age 9–10 | maths | Percentages | topics=13 | notes: Using auto-generated skill-specific topics
-- Year 5 | KS2 | age 9–10 | maths | Multiplication and division | topics=19 | notes: Using auto-generated skill-specific topics
+- Year 5 | KS2 | age 9–10 | maths | Multiplication and division | topics=20 | notes: Using auto-generated skill-specific topics
 - Year 5 | KS2 | age 9–10 | times-tables | Times table consolidation | topics=15 | notes: Using auto-generated skill-specific topics
 - Year 5 | KS2 | age 9–10 | times-tables | Divisibility | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 5 | KS2 | age 9–10 | times-tables | Factor pairs | topics=10 | notes: Using auto-generated skill-specific topics
@@ -179,6 +203,14 @@
 - Year 5 | KS2 | age 9–10 | science | Forces | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 5 | KS2 | age 9–10 | science | Earth and space | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 5 | KS2 | age 9–10 | science | Properties of materials | topics=10 | notes: Using auto-generated skill-specific topics
+- Year 5 | KS2 | age 9–10 | ga-language | Vocabulary | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 5 | KS2 | age 9–10 | ga-language | Grammar | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 5 | KS2 | age 9–10 | ga-language | Translation | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 5 | KS2 | age 9–10 | ga-language | Reading comprehension | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 5 | KS2 | age 9–10 | ga-language | Speaking practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 5 | KS2 | age 9–10 | ga-language | Writing practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 5 | KS2 | age 9–10 | ga-language | Alphabet and spelling patterns | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 5 | KS2 | age 9–10 | ga-language | Numbers in context | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 5 | KS2 | age 9–10 | sats-practice | Challenging problems | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 5 | KS2 | age 9–10 | sats-practice | Reasoning | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 5 | KS2 | age 9–10 | sats-practice | Inference | topics=10 | notes: Using auto-generated skill-specific topics
@@ -216,6 +248,14 @@
 - Year 6 | KS2 | age 10–11 | science | Forces | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 6 | KS2 | age 10–11 | science | Light | topics=13 | notes: Using auto-generated skill-specific topics
 - Year 6 | KS2 | age 10–11 | science | Evolution and inheritance | topics=10 | notes: Using auto-generated skill-specific topics
+- Year 6 | KS2 | age 10–11 | ga-language | Vocabulary | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 6 | KS2 | age 10–11 | ga-language | Grammar | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 6 | KS2 | age 10–11 | ga-language | Translation | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 6 | KS2 | age 10–11 | ga-language | Reading comprehension | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 6 | KS2 | age 10–11 | ga-language | Speaking practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 6 | KS2 | age 10–11 | ga-language | Writing practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 6 | KS2 | age 10–11 | ga-language | Alphabet and spelling patterns | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 6 | KS2 | age 10–11 | ga-language | Numbers in context | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 6 | KS2 | age 10–11 | sats-practice | Mock SATs | topics=10 | notes: Using auto-generated skill-specific topics
 - Year 6 | KS2 | age 10–11 | sats-practice | Reasoning | topics=14 | notes: Using auto-generated skill-specific topics
 - Year 6 | KS2 | age 10–11 | sats-practice | Comprehension | topics=10 | notes: Using auto-generated skill-specific topics
@@ -476,6 +516,19 @@
 - Year 10 | KS4 | age 14–15 | gcse-arabic | Verb conjugation | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 10 | KS4 | age 14–15 | gcse-arabic | Tenses | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 10 | KS4 | age 14–15 | gcse-arabic | Exam practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Vocabulary | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Grammar | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Translation | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Reading comprehension | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Listening comprehension | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Speaking practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Writing practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Role play | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Photo card | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Sentence building | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Verb conjugation | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Tenses | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 10 | KS4 | age 14–15 | gcse-ga | Exam practice | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 10 | KS4 | age 14–15 | gcse-urdu | Vocabulary | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 10 | KS4 | age 14–15 | gcse-urdu | Grammar | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 10 | KS4 | age 14–15 | gcse-urdu | Translation | topics=5 | notes: Using auto-generated skill-specific topics
@@ -782,6 +835,19 @@
 - Year 11 | KS4 | age 15–16 | gcse-arabic | Verb conjugation | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 11 | KS4 | age 15–16 | gcse-arabic | Tenses | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 11 | KS4 | age 15–16 | gcse-arabic | Exam practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Vocabulary | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Grammar | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Translation | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Reading comprehension | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Listening comprehension | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Speaking practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Writing practice | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Role play | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Photo card | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Sentence building | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Verb conjugation | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Tenses | topics=5 | notes: Using auto-generated skill-specific topics
+- Year 11 | KS4 | age 15–16 | gcse-ga | Exam practice | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 11 | KS4 | age 15–16 | gcse-urdu | Vocabulary | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 11 | KS4 | age 15–16 | gcse-urdu | Grammar | topics=5 | notes: Using auto-generated skill-specific topics
 - Year 11 | KS4 | age 15–16 | gcse-urdu | Translation | topics=5 | notes: Using auto-generated skill-specific topics
