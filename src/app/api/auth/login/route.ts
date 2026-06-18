@@ -20,15 +20,6 @@ const bodySchema = z.object({
   password: z.string().min(1),
 });
 
-function isLocalHostRequest(request: Request): boolean {
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ?? "";
-  const hostHeader = (forwardedHost || request.headers.get("host") || "").trim();
-  const hostWithoutPort = hostHeader.startsWith("[")
-    ? hostHeader.slice(1).split("]")[0]
-    : hostHeader.split(":")[0];
-  return hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1" || hostWithoutPort === "::1";
-}
-
 export async function POST(request: Request) {
   try {
     const ip = getRequestIp(request);
@@ -49,18 +40,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
     }
 
-    const devFallbackEnabled = String(process.env.STARLIZ_ENABLE_DEV_ADMIN_FALLBACK ?? "").trim().toLowerCase() === "true";
-    const configuredDevAdminEmail = (process.env.STARLIZ_DEV_ADMIN_EMAIL ?? "").trim().toLowerCase();
-    const useDevAdminPasswordBypass = (
-      process.env.NODE_ENV === "development"
-      && devFallbackEnabled
-      && isLocalHostRequest(request)
-      && user.role === "admin"
-      && configuredDevAdminEmail.length > 0
-      && user.email.toLowerCase() === configuredDevAdminEmail
-    );
-
-    const valid = useDevAdminPasswordBypass ? true : await verifyPassword(body.password, user.passwordHash);
+    const valid = await verifyPassword(body.password, user.passwordHash);
     if (!valid) {
       const teacherLink = await prisma.schoolTeacher.findFirst({
         where: { userId: user.id },
