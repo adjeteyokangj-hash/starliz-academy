@@ -82,6 +82,50 @@ function extractGaTwiMarkers(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function isLevelQualityWarningReason(reason: string): boolean {
+  return (
+    /Declared level .* does not match expected/i.test(reason)
+    || /Item appears too (easy|hard) for the selected level/i.test(reason)
+    || /Vocabulary\/readability appears too (simple|advanced)/i.test(reason)
+    || /Answer is too thin for the selected level/i.test(reason)
+  );
+}
+
+function buildLevelQualityWarningSummary(input: {
+  itemChecks: Array<{ itemIndex?: number; reasons?: string[] }>;
+  itemCount: number;
+  scoreCap?: { warningItemCount?: number; totalItemCount?: number; reason: string; capPercent: number };
+}): {
+  flaggedItemCount: number;
+  totalItemCount: number;
+  flaggedItemIds: number[];
+} | null {
+  const flaggedFromChecks = input.itemChecks
+    .map((check, fallbackIndex) => {
+      const reasons = Array.isArray(check.reasons) ? check.reasons : [];
+      if (!reasons.some(isLevelQualityWarningReason)) return null;
+      const zeroBasedIndex = typeof check.itemIndex === "number" ? check.itemIndex : fallbackIndex;
+      return zeroBasedIndex + 1;
+    })
+    .filter((id): id is number => typeof id === "number" && Number.isFinite(id));
+
+  const flaggedItemIds = Array.from(new Set(flaggedFromChecks)).sort((left, right) => left - right);
+  const inferredTotal = input.itemCount > 0 ? input.itemCount : input.itemChecks.length;
+  const totalItemCount = typeof input.scoreCap?.totalItemCount === "number"
+    ? input.scoreCap.totalItemCount
+    : inferredTotal;
+  const flaggedItemCount = typeof input.scoreCap?.warningItemCount === "number"
+    ? input.scoreCap.warningItemCount
+    : flaggedItemIds.length;
+
+  if (totalItemCount <= 0 || flaggedItemCount <= 0) return null;
+  return {
+    flaggedItemCount,
+    totalItemCount,
+    flaggedItemIds,
+  };
+}
+
 function labelledLines(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(textValue).filter(Boolean);
   if (value && typeof value === "object") {
@@ -324,6 +368,11 @@ function ContentViewModalBody({
   const currentItemLevel = numericLevel(currentItem?.difficulty ?? currentItem?.level, content.level);
   const recommendedLevel = currentItemCheck?.recommendedLevel ?? currentItemCheck?.estimatedLevel ?? null;
   const levelRecommendation = currentItemCheck?.levelRecommendation ?? null;
+  const levelQualityWarningSummary = buildLevelQualityWarningSummary({
+    itemChecks: blackBox?.itemChecks ?? [],
+    itemCount: items.length,
+    scoreCap: blackBox?.scoreCap,
+  });
 
   function hydrateSlotEditor(index: number, sourceItems: GeneratedReviewItem[] = items) {
     const nextCurrentItem = sourceItems[index] ?? null;
@@ -1197,6 +1246,24 @@ function ContentViewModalBody({
                     <ul className="mt-1 list-disc space-y-1 pl-5">
                       {blackBox.reasons.map((reason) => <li key={reason}>{reason}</li>)}
                     </ul>
+                  </div>
+                ) : null}
+                {levelQualityWarningSummary ? (
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-amber-100">
+                    <p className="font-bold">Level-quality warning summary</p>
+                    <p className="mt-1">
+                      {levelQualityWarningSummary.flaggedItemCount} of {levelQualityWarningSummary.totalItemCount} items flagged.
+                    </p>
+                    {levelQualityWarningSummary.flaggedItemIds.length > 0 ? (
+                      <p className="mt-1 text-amber-200/90">
+                        Item IDs: {levelQualityWarningSummary.flaggedItemIds.join(", ")}
+                      </p>
+                    ) : null}
+                    {blackBox.scoreCap ? (
+                      <p className="mt-1 text-amber-200/90">
+                        Score cap: {blackBox.scoreCap.capPercent}/100. {blackBox.scoreCap.reason}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
                 {gaTwiMarkers.length > 0 ? (

@@ -48,6 +48,27 @@ test("content library black box parser keeps new normalised score shape", () => 
   assert.equal(result?.maxScore, 100);
 });
 
+test("content library black box parser exposes score cap diagnostics", () => {
+  const result = parseBlackBoxContentTest(makeContentItem({
+    blackBoxContentTest: {
+      decision: "NEEDS_ADMIN_REVIEW",
+      score: 74,
+      maxScore: 100,
+      scoreCap: {
+        capPercent: 74,
+        reason: "Score capped at 74 because 7/10 items show level/difficulty/readability/answer-depth warnings.",
+        warningItemCount: 7,
+        totalItemCount: 10,
+      },
+    },
+  }));
+
+  assert.equal(result?.scoreCap?.capPercent, 74);
+  assert.equal(result?.scoreCap?.warningItemCount, 7);
+  assert.equal(result?.scoreCap?.totalItemCount, 10);
+  assert.match(result?.scoreCap?.reason ?? "", /Score capped at 74/i);
+});
+
 test("content library black box parser prefers pass rate score shape", () => {
   const result = parseBlackBoxContentTest(makeContentItem({
     blackBoxContentTest: {

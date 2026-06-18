@@ -213,6 +213,17 @@ export function parseBlackBoxContentTest(item: ContentItem): BlackBoxContentTest
   const rawScore = asFiniteNumber(raw.rawScore) ?? asFiniteNumber(raw.score);
   const rawMaxScore = asFiniteNumber(raw.rawMaxScore) ?? asFiniteNumber(raw.maxScore);
   const passRate = asFiniteNumber(raw.passRate);
+  const scoreCapRaw = asRecord(raw.scoreCap);
+  const scoreCapPercent = asFiniteNumber(scoreCapRaw?.capPercent);
+  const scoreCapReason = typeof scoreCapRaw?.reason === "string" ? scoreCapRaw.reason : "";
+  const scoreCap = typeof scoreCapPercent === "number" && scoreCapReason
+    ? {
+        capPercent: scoreCapPercent,
+        reason: scoreCapReason,
+        warningItemCount: asFiniteNumber(scoreCapRaw?.warningItemCount),
+        totalItemCount: asFiniteNumber(scoreCapRaw?.totalItemCount),
+      }
+    : undefined;
   const itemChecksRaw = Array.isArray(raw.itemChecks)
     ? raw.itemChecks
     : Array.isArray(raw.itemResults)
@@ -261,6 +272,7 @@ export function parseBlackBoxContentTest(item: ContentItem): BlackBoxContentTest
     rawMaxScore,
     passRate,
     reasons: asStringArray(raw.reasons),
+    scoreCap,
     itemChecks,
     reclassificationRecommendation,
   };

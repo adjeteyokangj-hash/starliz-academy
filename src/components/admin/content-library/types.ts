@@ -31,6 +31,12 @@ export type BlackBoxContentTest = {
   rawMaxScore?: number;
   passRate?: number;
   reasons?: string[];
+  scoreCap?: {
+    capPercent: number;
+    reason: string;
+    warningItemCount?: number;
+    totalItemCount?: number;
+  };
   itemChecks?: BlackBoxContentItemCheck[];
   reclassificationRecommendation?: {
     subject?: string | null;
