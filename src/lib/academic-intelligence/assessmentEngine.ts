@@ -243,6 +243,13 @@ export function buildAssessmentRecommendations(input: {
     confidenceScore: 0,
   }) && (row.coverageStatus === "gap_detected" || row.coverageStatus === "not_covered"));
 
+  const mockEvidenceCount = input.masteryMap.length > 0
+    ? input.masteryMap.filter((entry) => isGcseEntry(entry) && normalize(entry.subject).includes("mock")).length
+    : 0;
+  const examLikeEvidenceCount = input.masteryMap.length > 0
+    ? input.masteryMap.filter((entry) => isGcseEntry(entry) && (entry.masteryStatus === "mastered" || entry.masteryStatus === "nearly_secure" || entry.revisionOverdue)).length
+    : 0;
+
   const gcseRecommendationCount = recommendations.filter((item) => Boolean(item.gcseMode)).length;
   const gcseReadiness: GcseReadiness | null = gcseRecommendationCount > 0 || gcseCoverageGaps.length > 0
     ? {
@@ -255,6 +262,27 @@ export function buildAssessmentRecommendations(input: {
         markSchemeReadiness: overallReadiness === "ready" ? "secure" : overallReadiness === "nearly_ready" ? "developing" : "low",
         modelAnswerReadiness: overallReadiness === "ready" ? "secure" : overallReadiness === "nearly_ready" ? "developing" : "low",
         improveMyAnswerRecommended: recommendations.some((item) => item.assessmentType === "improve_my_answer" || item.gcseMode?.improveMyAnswer),
+        evidenceStrength: mockEvidenceCount > 0 || examLikeEvidenceCount >= 3 ? "strong" : examLikeEvidenceCount >= 1 ? "moderate" : "low",
+        weakGcseAreas: input.masteryMap
+          .filter((entry) => isGcseEntry(entry) && (entry.weakAreaActive || entry.masteryStatus === "needs_catch_up" || entry.masteryStatus === "needs_revision"))
+          .map((entry) => entry.topic ?? entry.skill ?? entry.subject)
+          .filter((value): value is string => Boolean(value)),
+        mockEvidenceCount,
+        examLikeEvidenceCount,
+        calibrationConfidence: clampScore(
+          (overallReadiness === "ready" ? 45 : overallReadiness === "nearly_ready" ? 30 : 15)
+            + Math.min(25, examLikeEvidenceCount * 8)
+            + Math.min(20, mockEvidenceCount * 10)
+            - Math.min(25, gcseCoverageGaps.length * 4)
+            - Math.min(20, recommendations.filter((item) => item.readinessStatus === "needs_catch_up" || item.readinessStatus === "not_ready").length * 3),
+        ),
+        calibrationNotes: [
+          mockEvidenceCount > 0 ? `${mockEvidenceCount} mock-style evidence row(s) available.` : "No mock/exam-like evidence is available yet.",
+          gcseCoverageGaps.length > 0 ? `${gcseCoverageGaps.length} GCSE coverage gap(s) remain.` : "No GCSE coverage gaps detected.",
+          recommendations.some((item) => item.readinessStatus === "needs_catch_up" || item.readinessStatus === "not_ready")
+            ? "GCSE readiness remains low-confidence because weak foundations are still active."
+            : "GCSE readiness is supported by the current assessment evidence.",
+        ],
       }
     : null;
 

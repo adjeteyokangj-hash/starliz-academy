@@ -273,6 +273,9 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
     return `Opened issue ${issueContext.issueId}.`;
   }, [issueContext]);
 
+  const academicSummary = payload?.academicSummary ?? null;
+  const gcseCalibrationConfidence = academicSummary?.gcseCalibration?.calibrationConfidence ?? null;
+
   useEffect(() => {
     let cancelled = false;
     params.then((resolved) => {
@@ -565,6 +568,34 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
               {mainButtonLabel}
             </button>
           </section>
+
+          {academicSummary ? (
+            <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+              <h2 className="text-sm font-bold text-white">Academic Evidence</h2>
+              <div className="mt-3 grid gap-3 xl:grid-cols-4">
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                  <p className="text-[11px] uppercase text-slate-500">Mastery gate</p>
+                  <p className="mt-1 text-sm font-black text-white">{academicSummary.masteryEvidenceGate.status.replaceAll("_", " ")}</p>
+                  <p className="text-xs text-slate-400">{academicSummary.masteryEvidenceGate.gateReasons.length} reason(s)</p>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                  <p className="text-[11px] uppercase text-slate-500">Weak revisit</p>
+                  <p className="mt-1 text-sm font-black text-white">{academicSummary.weakAreaRevisitEffectiveness.status.replaceAll("_", " ")}</p>
+                  <p className="text-xs text-slate-400">Relapse risk: {academicSummary.weakAreaRevisitEffectiveness.relapseRisk}</p>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                  <p className="text-[11px] uppercase text-slate-500">HEART BEAT accuracy</p>
+                  <p className="mt-1 text-sm font-black text-white">{academicSummary.recommendationQualityAudit.aligned ? "Aligned" : "Needs review"}</p>
+                  <p className="text-xs text-slate-400">Confidence {academicSummary.recommendationQualityAudit.confidence}%</p>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                  <p className="text-[11px] uppercase text-slate-500">GCSE calibration</p>
+                  <p className="mt-1 text-sm font-black text-white">{gcseCalibrationConfidence === null ? "Low confidence" : `${gcseCalibrationConfidence}% confidence`}</p>
+                  <p className="text-xs text-slate-400">{academicSummary.gcseCalibration?.evidenceStrength ?? "low"} evidence</p>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           <div className="grid gap-3 lg:grid-cols-4">
             <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
@@ -971,6 +1002,10 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
               <h2 className="text-sm font-bold text-white">Academic Intelligence</h2>
               <p className="mt-2 text-xs text-slate-300">Assessment readiness: {payload.academicSummary.assessmentReadiness}</p>
               <p className="mt-1 text-xs text-slate-300">Exam readiness: {payload.academicSummary.examReadiness.band}</p>
+              <p className="mt-1 text-xs text-slate-300">
+                Curriculum denominator coverage: {payload.academicSummary.denominatorCoverage.coveredTopics}/{payload.academicSummary.denominatorCoverage.expectedTopics} ({payload.academicSummary.denominatorCoverage.coveragePercent}%)
+              </p>
+              <p className="mt-1 text-xs text-slate-300">Missing expected topics: {payload.academicSummary.denominatorCoverage.missingTopics}</p>
               <p className="mt-1 text-xs text-slate-300">Next: {payload.academicSummary.nextRecommendedActions[0] ?? "-"}</p>
             </section>
           </div>

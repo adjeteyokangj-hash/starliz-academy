@@ -215,6 +215,26 @@ type StudentAcademicIntelligencePayload = {
     needsRevisionCount: number;
     coveredCount: number;
     averageScore: number;
+    denominatorCoverage?: {
+      expectedTopics: number;
+      coveredTopics: number;
+      missingTopics: number;
+      coveragePercent: number;
+      overIndexedTopics: string[];
+      underCoveredTopics: string[];
+      bySubject: Array<{
+        subject: string;
+        keyStage: string | null;
+        yearGroup: string | null;
+        curriculumLevel: "foundation" | "core" | "advanced";
+        expectedTopics: string[];
+        coveredTopics: string[];
+        missingTopics: string[];
+        coveragePercent: number;
+        overIndexedTopics: string[];
+        underCoveredTopics: string[];
+      }>;
+    };
   };
   curriculumCoverage?: CoverageEntry[];
   masteryExpansion?: {
@@ -1430,7 +1450,10 @@ export default function StudentDashboardPage() {
                         <div>
                           <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-700">What to practise next</p>
                           <p className="mt-1 text-sm font-semibold text-slate-800">
-                            {academicIntelligence.summary.coveredCount}/{academicIntelligence.summary.totalTopics} topics covered · average score {academicIntelligence.summary.averageScore}%
+                            {academicIntelligence.summary.coveredCount}/{academicIntelligence.summary.totalTopics} active topics covered · average score {academicIntelligence.summary.averageScore}%
+                          </p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            Curriculum denominator: {academicIntelligence.summary.denominatorCoverage?.coveredTopics ?? 0}/{academicIntelligence.summary.denominatorCoverage?.expectedTopics ?? 0} expected topics ({academicIntelligence.summary.denominatorCoverage?.coveragePercent ?? 0}%). Missing {academicIntelligence.summary.denominatorCoverage?.missingTopics ?? 0} topics.
                           </p>
                           <p className="mt-1 text-xs text-slate-600">
                             {academicIntelligence.summary.needsCatchUpCount} catch-up topic{academicIntelligence.summary.needsCatchUpCount === 1 ? "" : "s"} and {academicIntelligence.summary.needsRevisionCount} revision topic{academicIntelligence.summary.needsRevisionCount === 1 ? "" : "s"} still need attention.

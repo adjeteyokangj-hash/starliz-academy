@@ -95,6 +95,124 @@ test("low score produces needs_catch_up", () => {
   assert.equal(result.masteryMap[0]?.masteryStatus, "needs_catch_up");
 });
 
+test("curriculum denominator reports accurate coverage percentage", () => {
+  const source = baseSource({
+    yearGroup: "Year 5",
+    keyStage: "KS2",
+    attempts: [
+      {
+        id: "at-fractions",
+        subject: "math",
+        topic: "Fractions",
+        skill: "equivalent_fractions",
+        correct: true,
+        hintsUsed: 0,
+        createdAt: new Date().toISOString(),
+        score: 90,
+      },
+      {
+        id: "at-times",
+        subject: "math",
+        topic: "Multiplication",
+        skill: "times_tables",
+        correct: true,
+        hintsUsed: 0,
+        createdAt: new Date().toISOString(),
+        score: 88,
+      },
+    ],
+  });
+
+  const result = buildMasteryMap(source);
+  const mathCoverage = result.summary.denominatorCoverage.bySubject.find((entry) => entry.subject === "math");
+  assert.ok(mathCoverage);
+  const expectedPercent = Math.round((mathCoverage!.coveredTopics.length / mathCoverage!.expectedTopics.length) * 100);
+  assert.equal(mathCoverage!.coveragePercent, expectedPercent);
+});
+
+test("curriculum denominator detects missing topics", () => {
+  const source = baseSource({
+    yearGroup: "Year 5",
+    keyStage: "KS2",
+    attempts: [
+      {
+        id: "at-fractions",
+        subject: "math",
+        topic: "Fractions",
+        skill: "equivalent_fractions",
+        correct: true,
+        hintsUsed: 0,
+        createdAt: new Date().toISOString(),
+        score: 92,
+      },
+    ],
+  });
+
+  const result = buildMasteryMap(source);
+  const mathCoverage = result.summary.denominatorCoverage.bySubject.find((entry) => entry.subject === "math");
+  assert.ok(mathCoverage);
+  assert.ok(mathCoverage!.missingTopics.includes("Decimals and percentages"));
+});
+
+test("curriculum denominator detects over-indexed topics", () => {
+  const source = baseSource({
+    yearGroup: "Year 5",
+    keyStage: "KS2",
+    attempts: [
+      ...Array.from({ length: 24 }).map((_, index) => ({
+        id: `at-over-${index}`,
+        subject: "math",
+        topic: "Multiplication",
+        skill: "times_tables",
+        correct: true,
+        hintsUsed: 0,
+        createdAt: new Date().toISOString(),
+        score: 90,
+      })),
+      {
+        id: "at-fractions",
+        subject: "math",
+        topic: "Fractions",
+        skill: "equivalent_fractions",
+        correct: true,
+        hintsUsed: 0,
+        createdAt: new Date().toISOString(),
+        score: 84,
+      },
+    ],
+  });
+
+  const result = buildMasteryMap(source);
+  const mathCoverage = result.summary.denominatorCoverage.bySubject.find((entry) => entry.subject === "math");
+  assert.ok(mathCoverage);
+  assert.ok(mathCoverage!.overIndexedTopics.includes("Multiplication and division"));
+});
+
+test("curriculum denominator detects under-covered topics", () => {
+  const source = baseSource({
+    yearGroup: "Year 5",
+    keyStage: "KS2",
+    attempts: [
+      {
+        id: "at-fractions-weak",
+        subject: "math",
+        topic: "Fractions",
+        skill: "equivalent_fractions",
+        correct: false,
+        hintsUsed: 2,
+        createdAt: new Date().toISOString(),
+        score: 32,
+      },
+    ],
+  });
+
+  const result = buildMasteryMap(source);
+  const mathCoverage = result.summary.denominatorCoverage.bySubject.find((entry) => entry.subject === "math");
+  assert.ok(mathCoverage);
+  assert.ok(mathCoverage!.underCoveredTopics.includes("Fractions"));
+  assert.ok(mathCoverage!.underCoveredTopics.includes("Decimals and percentages"));
+});
+
 test("recommendation sync warns when homework drifts from HEART BEAT catch-up", () => {
   const now = new Date().toISOString();
   const source = withCompletedQlf(baseSource({

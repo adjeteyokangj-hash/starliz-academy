@@ -64,10 +64,16 @@ export type BrainCentreDetailPayload = {
   qlfBaseline: StudentLearningBrain["quickLevelFinderBaseline"];
   academicSummary: {
     mastery: StudentLearningBrain["academicIntelligence"]["summary"];
+    denominatorCoverage: StudentLearningBrain["academicIntelligence"]["summary"]["denominatorCoverage"];
+    masteryEvidenceGate: StudentLearningBrain["academicIntelligence"]["masteryEvidenceGate"];
+    weakAreaRevisitEffectiveness: StudentLearningBrain["academicIntelligence"]["weakAreaRevisitEffectiveness"];
+    recommendationQualityAudit: StudentLearningBrain["academicIntelligence"]["recommendationQualityAudit"];
+    learningTwinAttribution: StudentLearningBrain["academicIntelligence"]["learningTwinAttribution"];
     masteryExpansion: StudentLearningBrain["academicIntelligence"]["masteryExpansion"];
     nextRecommendedActions: string[];
     assessmentReadiness: string;
     examReadiness: StudentLearningBrain["academicIntelligence"]["examReadinessProfile"];
+    gcseCalibration: StudentLearningBrain["academicIntelligence"]["gcseCalibration"];
   };
   evidenceChain: Array<{
     stage: string;
@@ -518,10 +524,16 @@ function buildDetailPayload(
     qlfBaseline: brain.quickLevelFinderBaseline,
     academicSummary: {
       mastery: brain.academicIntelligence.summary,
+      denominatorCoverage: brain.academicIntelligence.summary.denominatorCoverage,
+      masteryEvidenceGate: brain.academicIntelligence.masteryEvidenceGate,
+      weakAreaRevisitEffectiveness: brain.academicIntelligence.weakAreaRevisitEffectiveness,
+      recommendationQualityAudit: brain.academicIntelligence.recommendationQualityAudit,
+      learningTwinAttribution: brain.academicIntelligence.learningTwinAttribution,
       masteryExpansion: brain.academicIntelligence.masteryExpansion,
       nextRecommendedActions: brain.academicIntelligence.nextRecommendedActions,
       assessmentReadiness: brain.academicIntelligence.assessmentReadiness,
       examReadiness: brain.academicIntelligence.examReadinessProfile,
+      gcseCalibration: brain.academicIntelligence.gcseCalibration,
     },
     evidenceChain: buildEvidenceChain(brain, snapshot),
     diagnostics: { status, score, issues },

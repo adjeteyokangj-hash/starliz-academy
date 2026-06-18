@@ -24,6 +24,13 @@ import { buildAcademicOrchestration } from "@/lib/academic-intelligence/orchestr
 import { buildCoachTutorOrchestrationAudit } from "@/lib/academic-intelligence/coachOrchestrationAudit";
 import { buildRecommendationSyncAudit } from "@/lib/academic-intelligence/recommendationSync";
 import {
+  buildGcseCalibrationMetadata,
+  buildLearningTwinAttribution,
+  buildMasteryEvidenceGate,
+  buildRecommendationQualityAudit,
+  buildWeakAreaRevisitEffectiveness,
+} from "@/lib/academic-intelligence/phaseMetrics";
+import {
   DEFAULT_SCHOOL_WEEK_SETTINGS,
   sanitizeSchoolWeekSettings,
   stripSchoolWeekSensitiveFields,
@@ -157,8 +164,6 @@ function buildMasteryExpansionSummary(
       if (topicKey) hiddenTopicKeys.add(topicKey);
     }
   }
-
-  // Build topic key for comparison
   const makeTopicKey = (row: Pick<typeof output.masteryMap[0], "subject" | "topic">) => catchUpTopicKey(row.subject, row.topic);
 
   // Count needs_catch_up topics, excluding admin-removed ones
@@ -482,6 +487,15 @@ export function buildAcademicIntelligence(
     coverageMap: masteryBuilt.curriculumCoverage,
     catchUpTriggers: triggers,
   });
+  const masteryEvidenceGate = buildMasteryEvidenceGate({
+    source: data,
+    summary: masteryBuilt.summary,
+    masteryMap: masteryBuilt.masteryMap,
+  });
+  const weakAreaRevisitEffectiveness = buildWeakAreaRevisitEffectiveness({
+    source: data,
+    masteryMap: masteryBuilt.masteryMap,
+  });
 
   const allTriggers = [...triggers, ...assessmentBuilt.assessmentLinkedCatchUpTriggers];
   const hiddenRecommendationIds = new Set(
@@ -507,6 +521,26 @@ export function buildAcademicIntelligence(
   const output: AcademicIntelligenceOutput = {
     studentId: data.studentId,
     summary: masteryBuilt.summary,
+    masteryEvidenceGate,
+    weakAreaRevisitEffectiveness,
+    recommendationQualityAudit: {
+      recommendedAction: "review_placement",
+      expectedOutcome: "Improve confidence in the next learning decision.",
+      actualSignal: null,
+      confidence: 0,
+      risk: "high",
+      aligned: false,
+      evidenceLevel: "low",
+      note: "Awaiting recommendation accuracy computation.",
+    },
+    learningTwinAttribution: {
+      preferredExplanationStyle: "step_by_step_explanation",
+      supportingEvidence: [],
+      outcomeTrend: "insufficient_data",
+      confidence: 0,
+      moreDataNeeded: true,
+      note: "Awaiting learning twin attribution computation.",
+    },
     heartbeatDecision: {
       primaryAction: "review_placement",
       confidenceScore: 0,
@@ -591,6 +625,7 @@ export function buildAcademicIntelligence(
     assessmentReadiness: assessmentBuilt.readinessStatus,
     examReadinessProfile: assessmentBuilt.examReadinessProfile,
     gcseReadiness: assessmentBuilt.gcseReadiness,
+    gcseCalibration: null,
     schoolWeekModePlan: {
       enabled: false,
       strategy: "",
@@ -761,6 +796,33 @@ export function buildAcademicIntelligence(
     progressRecords: data.progressRecords,
   });
   output.recommendationSync = buildRecommendationSyncAudit(output);
+  output.learningTwinAttribution = buildLearningTwinAttribution({
+    source: data,
+    summary: output.summary,
+    learningTwin: output.learningTwin,
+  });
+  output.masteryEvidenceGate = buildMasteryEvidenceGate({
+    source: data,
+    summary: output.summary,
+    masteryMap: output.masteryMap,
+  });
+  output.weakAreaRevisitEffectiveness = buildWeakAreaRevisitEffectiveness({
+    source: data,
+    masteryMap: output.masteryMap,
+  });
+  output.recommendationQualityAudit = buildRecommendationQualityAudit({
+    output,
+    masteryGate: output.masteryEvidenceGate,
+    weakAreaRevisit: output.weakAreaRevisitEffectiveness,
+  });
+  output.gcseCalibration = output.gcseReadiness
+    ? buildGcseCalibrationMetadata({
+        source: data,
+        masteryMap: output.masteryMap,
+        assessmentReadiness: output.assessmentReadiness,
+        gcseReadiness: output.gcseReadiness,
+      })
+    : null;
   output.auditHistoryDraft = buildAuditDrafts(output);
 
   return output;
@@ -770,6 +832,10 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   AcademicIntelligenceOutput,
   | "studentId"
   | "summary"
+  | "masteryEvidenceGate"
+  | "weakAreaRevisitEffectiveness"
+  | "recommendationQualityAudit"
+  | "learningTwinAttribution"
   | "heartbeatDecision"
   | "orchestration"
   | "coachTutorAudit"
@@ -782,6 +848,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   | "homeworkTasks"
   | "assessmentRecommendations"
   | "examReadinessProfile"
+  | "gcseCalibration"
   | "schoolWeekModePlan"
   | "nextRecommendedActions"
   | "curriculumIntelligenceGraph"
@@ -790,6 +857,10 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
   return {
     studentId: output.studentId,
     summary: output.summary,
+    masteryEvidenceGate: output.masteryEvidenceGate,
+    weakAreaRevisitEffectiveness: output.weakAreaRevisitEffectiveness,
+    recommendationQualityAudit: output.recommendationQualityAudit,
+    learningTwinAttribution: output.learningTwinAttribution,
     heartbeatDecision: output.heartbeatDecision,
     orchestration: output.orchestration,
     coachTutorAudit: output.coachTutorAudit,
@@ -808,6 +879,7 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
       reason: item.reason,
     })),
     examReadinessProfile: output.examReadinessProfile,
+    gcseCalibration: output.gcseCalibration,
     schoolWeekModePlan: output.schoolWeekModePlan,
     nextRecommendedActions: output.nextRecommendedActions,
     curriculumIntelligenceGraph: buildStudentSafeGraph(output.curriculumIntelligenceGraph),

@@ -7,6 +7,7 @@ import type {
   MasterySummary,
   TopicSignal,
 } from "@/lib/academic-intelligence/types";
+import { buildCurriculumDenominatorCoverage } from "@/lib/academic-intelligence/curriculumDenominator";
 import {
   isCanonicalCompletedStatus,
   isCanonicalProgressCompleted,
@@ -378,6 +379,11 @@ export function buildMasteryMap(data: AcademicSourceData): {
     needsRevisionCount: byStatus.needs_revision,
     coveredCount: curriculumCoverage.filter((entry) => entry.coverageStatus === "covered").length,
     averageScore: scoredTopics > 0 ? Math.round(scoreTotal / scoredTopics) : 0,
+    denominatorCoverage: buildCurriculumDenominatorCoverage({
+      data,
+      masteryMap,
+      curriculumCoverage,
+    }),
   };
 
   return { masteryMap, curriculumCoverage, summary };

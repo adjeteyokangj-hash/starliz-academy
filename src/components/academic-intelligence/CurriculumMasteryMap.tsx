@@ -9,6 +9,14 @@ type MasterySummaryView = {
   needsRevisionCount: number;
   coveredCount: number;
   averageScore: number;
+  denominatorCoverage?: {
+    expectedTopics: number;
+    coveredTopics: number;
+    missingTopics: number;
+    coveragePercent: number;
+    overIndexedTopics: string[];
+    underCoveredTopics: string[];
+  };
 };
 
 type CurriculumMasteryMapProps = {
@@ -171,6 +179,7 @@ export default function CurriculumMasteryMap({
   const nearlySecureCount = countByMasteryStatus(filteredRows, "nearly_secure");
   const catchUpCount = filteredRows.filter((row) => row.masteryStatus === "needs_catch_up").length;
   const averageScore = summary.averageScore;
+  const denominator = summary.denominatorCoverage;
   const subjectOptions = Array.from(new Set(rows.map((row) => row.subject || "General"))).sort((left, right) => subjectLabel(left).localeCompare(subjectLabel(right)));
 
   return (
@@ -205,6 +214,27 @@ export default function CurriculumMasteryMap({
           </div>
         </div>
       </div>
+
+      {denominator ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-4">
+          <div className={`rounded-2xl border px-3 py-2 ${styles.panel}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wide ${styles.eyebrow}`}>Expected topics</p>
+            <p className={`mt-1 text-lg font-black ${styles.title}`}>{denominator.expectedTopics}</p>
+          </div>
+          <div className={`rounded-2xl border px-3 py-2 ${styles.panel}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wide ${styles.eyebrow}`}>Covered topics</p>
+            <p className={`mt-1 text-lg font-black ${styles.title}`}>{denominator.coveredTopics}</p>
+          </div>
+          <div className={`rounded-2xl border px-3 py-2 ${styles.panel}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wide ${styles.eyebrow}`}>Coverage %</p>
+            <p className={`mt-1 text-lg font-black ${styles.title}`}>{denominator.coveragePercent}%</p>
+          </div>
+          <div className={`rounded-2xl border px-3 py-2 ${styles.panel}`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wide ${styles.eyebrow}`}>Missing topics</p>
+            <p className={`mt-1 text-lg font-black ${styles.title}`}>{denominator.missingTopics}</p>
+          </div>
+        </div>
+      ) : null}
 
       {filteredRows.length > 0 ? (
         <>

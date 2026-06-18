@@ -86,6 +86,7 @@ export function buildHeartbeatDecisionEngine(input: DecisionInput): HeartbeatDec
 
   const unresolvedWeakAreaCount = output.masteryMap.filter((entry) => entry.weakAreaActive).length;
   const repeatedStruggleCount = output.masteryMap.filter((entry) => entry.repeatedMistakes >= 3 || entry.hintUsageRate >= 0.6 || entry.confidenceScore < 45).length;
+  const denominator = output.summary.denominatorCoverage;
   const catchUpCompletion = summarizeCanonicalCatchUp({
     recommendationStatuses: output.catchUpRecommendations.map((item) => item.status),
     taskStatuses: output.catchUpTasks.map((item) => item.status),
@@ -173,6 +174,7 @@ export function buildHeartbeatDecisionEngine(input: DecisionInput): HeartbeatDec
 
   evidence.push(`QLF baseline: ${qlfComplete ? "completed" : "not completed"}`);
   evidence.push(`Mastery summary: catch-up ${output.summary.needsCatchUpCount}, revision ${output.summary.needsRevisionCount}, average ${output.summary.averageScore}%`);
+  evidence.push(`Curriculum denominator coverage: ${denominator.coveragePercent}% (${denominator.coveredTopics}/${denominator.expectedTopics} expected topics)`);
   evidence.push(`Weak-area signals: ${unresolvedWeakAreaCount}`);
   evidence.push(`Catch-up active/overdue: ${activeCatchUpCount}/${overdueCatchUpCount}`);
   evidence.push(`Assessment readiness: ${output.assessmentReadiness}`);
@@ -185,6 +187,12 @@ export function buildHeartbeatDecisionEngine(input: DecisionInput): HeartbeatDec
   }
   if (output.unresolvedAcademicGaps.length > 0) {
     blockers.push(...output.unresolvedAcademicGaps.slice(0, 2));
+  }
+  if (denominator.missingTopics > 0) {
+    reasons.push(`${denominator.missingTopics} expected curriculum topic${denominator.missingTopics === 1 ? " is" : "s are"} still uncovered.`);
+  }
+  if (denominator.overIndexedTopics.length > 0) {
+    reasons.push("Practice appears over-indexed on a small set of topics while coverage gaps remain.");
   }
 
   if (coachHeartbeatSignals && coachHeartbeatSignals.totalCoachSignals > 0) {
@@ -220,7 +228,7 @@ export function buildHeartbeatDecisionEngine(input: DecisionInput): HeartbeatDec
     coachEvidence.push(`Coach tutor-support signals: ${coachHeartbeatSignals.needsLiveTutorSupportCount}`);
   }
 
-  const uniqueReasons = [...new Set(reasons)].slice(0, 5);
+  const uniqueReasons = [...new Set(reasons)].slice(0, 8);
   const uniqueBlockers = [...new Set(blockers)].slice(0, 5);
   const uniqueEvidence = [...new Set([...coachEvidence, ...evidence])].slice(0, 8);
 

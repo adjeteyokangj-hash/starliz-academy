@@ -327,6 +327,31 @@ export type CoverageEntry = TopicSignal & {
   recommendedNextStep: string;
 };
 
+export type CurriculumLevel = "foundation" | "core" | "advanced";
+
+export type CurriculumDenominatorSubjectCoverage = {
+  subject: string;
+  keyStage: string | null;
+  yearGroup: string | null;
+  curriculumLevel: CurriculumLevel;
+  expectedTopics: string[];
+  coveredTopics: string[];
+  missingTopics: string[];
+  coveragePercent: number;
+  overIndexedTopics: string[];
+  underCoveredTopics: string[];
+};
+
+export type CurriculumDenominatorCoverage = {
+  expectedTopics: number;
+  coveredTopics: number;
+  missingTopics: number;
+  coveragePercent: number;
+  overIndexedTopics: string[];
+  underCoveredTopics: string[];
+  bySubject: CurriculumDenominatorSubjectCoverage[];
+};
+
 export type MasterySummary = {
   totalTopics: number;
   byStatus: Record<MasteryStatus, number>;
@@ -334,6 +359,86 @@ export type MasterySummary = {
   needsRevisionCount: number;
   coveredCount: number;
   averageScore: number;
+  denominatorCoverage: CurriculumDenominatorCoverage;
+};
+
+export type MasteryEvidenceGateReason =
+  | "insufficient_coverage"
+  | "insufficient_evidence"
+  | "retention_not_proven"
+  | "weak_areas_still_active";
+
+export type MasteryEvidenceGate = {
+  status: "blocked" | "needs_review" | "passed";
+  allowedToProgress: boolean;
+  confidenceScore: number;
+  gateReasons: MasteryEvidenceGateReason[];
+  reasonDetails: string[];
+  evidence: {
+    denominatorCoveragePercent: number;
+    minimumAttempts: number;
+    multipleSessions: number;
+    retentionCheck: "proven" | "not_proven" | "more_data_needed";
+    weakAreasActive: boolean;
+    weakAreaCount: number;
+    confidenceScore: number;
+  };
+};
+
+export type WeakAreaRevisitWindowStatus = "not_proven" | "stable" | "improving" | "declining" | "more_data_needed";
+
+export type WeakAreaRevisitTopicEffectiveness = {
+  topicKey: string;
+  subject: string;
+  topic: string | null;
+  beforeScore: number | null;
+  afterScore: number | null;
+  improvement: number | null;
+  relapseRisk: "low" | "medium" | "high";
+  revisit7DayStatus: WeakAreaRevisitWindowStatus;
+  revisit14DayStatus: WeakAreaRevisitWindowStatus;
+  revisit21DayStatus: WeakAreaRevisitWindowStatus;
+  evidence: string[];
+  recommendation: string;
+};
+
+export type WeakAreaRevisitEffectiveness = {
+  status: "insufficient_data" | "stable" | "improving" | "mixed" | "declining";
+  moreDataNeeded: boolean;
+  relapseRisk: "low" | "medium" | "high";
+  summary: string;
+  topics: WeakAreaRevisitTopicEffectiveness[];
+};
+
+export type RecommendationQualityAudit = {
+  recommendedAction: HeartbeatPrimaryAction;
+  expectedOutcome: string;
+  actualSignal: string | null;
+  confidence: number;
+  risk: HeartbeatDecisionRisk;
+  aligned: boolean;
+  evidenceLevel: "low" | "medium" | "high";
+  note: string;
+};
+
+export type LearningTwinAttribution = {
+  preferredExplanationStyle: ExplanationStyleSignalType;
+  supportingEvidence: string[];
+  outcomeTrend: "improving" | "mixed" | "declining" | "insufficient_data";
+  confidence: number;
+  moreDataNeeded: boolean;
+  note: string;
+};
+
+export type GcseCalibrationMetadata = {
+  readinessBand: AssessmentReadinessStatus;
+  evidenceStrength: "low" | "moderate" | "strong";
+  coverageGaps: number;
+  weakGcseAreas: string[];
+  mockEvidenceCount: number;
+  examLikeEvidenceCount: number;
+  calibrationConfidence: number;
+  calibrationNotes: string[];
 };
 
 export type CatchUpTrigger = TopicSignal & {
@@ -387,6 +492,12 @@ export type GcseReadiness = {
   markSchemeReadiness: "low" | "developing" | "secure";
   modelAnswerReadiness: "low" | "developing" | "secure";
   improveMyAnswerRecommended: boolean;
+  evidenceStrength: "low" | "moderate" | "strong";
+  weakGcseAreas: string[];
+  mockEvidenceCount: number;
+  examLikeEvidenceCount: number;
+  calibrationConfidence: number;
+  calibrationNotes: string[];
 };
 
 export type ExamReadinessProfile = {
@@ -960,6 +1071,10 @@ export type CurriculumIntelligenceGraph = {
 export type AcademicIntelligenceOutput = {
   studentId: string;
   summary: MasterySummary;
+  masteryEvidenceGate: MasteryEvidenceGate;
+  weakAreaRevisitEffectiveness: WeakAreaRevisitEffectiveness;
+  recommendationQualityAudit: RecommendationQualityAudit;
+  learningTwinAttribution: LearningTwinAttribution;
   heartbeatDecision: HeartbeatDecision;
   orchestration: AcademicOrchestration;
   coachTutorAudit: CoachTutorOrchestrationAudit;
@@ -977,6 +1092,7 @@ export type AcademicIntelligenceOutput = {
   assessmentReadiness: AssessmentReadinessStatus;
   examReadinessProfile: ExamReadinessProfile;
   gcseReadiness: GcseReadiness | null;
+  gcseCalibration: GcseCalibrationMetadata | null;
   schoolWeekModePlan: SchoolWeekModePlan;
   reviewActions: ParentAdminReviewAction[];
   reportNotes: AcademicReportNote[];
