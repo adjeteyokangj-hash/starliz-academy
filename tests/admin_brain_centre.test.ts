@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   handleAdminBrainCentreGet,
   type BrainCentrePayload,
-} from "../src/app/api/admin/brain-centre/route";
+} from "../src/app/api/admin/brain-centre/route-helpers";
 import {
   handleAdminBrainCentreStudentGet,
   type BrainCentreDetailPayload,

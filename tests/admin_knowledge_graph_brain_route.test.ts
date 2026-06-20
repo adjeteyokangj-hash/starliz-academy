@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleAdminKnowledgeGraphGet } from "../src/app/api/admin/knowledge-graph/route";
+import { handleAdminKnowledgeGraphGet } from "../src/app/api/admin/knowledge-graph/route-helpers";
 
 type KnowledgeGraphDeps = NonNullable<Parameters<typeof handleAdminKnowledgeGraphGet>[1]>;
 

@@ -408,7 +408,7 @@ function buildBrainCentrePayload(rows: Array<{ student: BrainCentreStudent; brai
   };
 }
 
-async function handleAdminBrainCentreGet(request: Request, deps: BrainCentreDeps = {
+export async function handleAdminBrainCentreGet(request: Request, deps: BrainCentreDeps = {
   requireAdmin,
   findStudents: (limit) => prisma.childProfile.findMany({
     where: { archived: false },

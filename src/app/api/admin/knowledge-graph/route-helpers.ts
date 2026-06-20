@@ -150,7 +150,7 @@ export async function GET(request: Request) {
   return handleAdminKnowledgeGraphGet(request);
 }
 
-async function handleAdminKnowledgeGraphGet(request: Request, deps: AdminKnowledgeGraphDeps = defaultDeps) {
+export async function handleAdminKnowledgeGraphGet(request: Request, deps: AdminKnowledgeGraphDeps = defaultDeps) {
   const { session, response } = await deps.requireAdmin();
   if (!session) return response;
 
@@ -450,7 +450,7 @@ export async function POST(request: Request) {
   return handleAdminKnowledgeGraphPost(request);
 }
 
-async function handleAdminKnowledgeGraphPost(request: Request, deps: AdminKnowledgeGraphDeps = defaultDeps) {
+export async function handleAdminKnowledgeGraphPost(request: Request, deps: AdminKnowledgeGraphDeps = defaultDeps) {
   const { session, response } = await deps.requireAdmin();
   if (!session) return response;
 
