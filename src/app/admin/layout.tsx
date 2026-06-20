@@ -20,6 +20,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
   if (!session) {
     // Middleware handles admin route protection. Returning children here prevents
     // a self-redirect loop for /admin/login and avoids unnecessary DB access.
+    // Note: If middleware is bypassed and !session on non-login pages, that's a middleware issue.
     return <>{children}</>;
   }
 
@@ -44,7 +45,10 @@ export default async function Layout({ children }: { children: React.ReactNode }
   }
 
   if (!user || user.role !== "admin" || user.adminProfile?.active === false) {
-    redirect("/dashboard");
+    // User not found, not an admin, or deactivated: redirect to login page.
+    // When a stale session token refers to a deleted/deactivated user, this provides
+    // a logout option instead of rendering a blank page with no nav or logout button.
+    redirect("/admin/login");
   }
 
   return <AdminLayout>{children}</AdminLayout>;
