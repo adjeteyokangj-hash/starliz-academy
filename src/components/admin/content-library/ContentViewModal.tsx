@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
 import type { ContentItem } from "./types";
+import BlackBoxRepairPanel from "./BlackBoxRepairPanel";
 import {
   getBlackBoxBadgeLabel,
   getBlackBoxBadgeTone,
@@ -178,13 +179,23 @@ function answerFieldKeyFor(contentType: string, item: GeneratedReviewItem | null
   return "answer";
 }
 
+function explanationFieldKeyFor(item: GeneratedReviewItem | null): string {
+  if (item) {
+    for (const key of ["explanation", "rationale", "feedback"]) {
+      if (typeof item[key] === "string") return key;
+    }
+  }
+  return "explanation";
+}
+
 function buildSlotEditorState(item: GeneratedReviewItem | null, contentType: string): {
   prompt: string;
   answer: string;
   choices: string;
+  explanation: string;
 } {
   if (!item) {
-    return { prompt: "", answer: "", choices: "" };
+    return { prompt: "", answer: "", choices: "", explanation: "" };
   }
 
   const questionKey = questionFieldKeyFor(contentType, item);
@@ -197,6 +208,7 @@ function buildSlotEditorState(item: GeneratedReviewItem | null, contentType: str
     prompt: String(item[questionKey] ?? ""),
     answer: String(item[answerKey] ?? ""),
     choices: existingChoices.join(", "),
+    explanation: firstText(item, ["explanation", "rationale", "feedback"]),
   };
 }
 
@@ -331,6 +343,7 @@ function ContentViewModalBody({
   const [duplicateWarningIgnored, setDuplicateWarningIgnored] = useState(false);
   const [regeneratingDuplicateSlots, setRegeneratingDuplicateSlots] = useState(false);
   const [generatingMissingSlots, setGeneratingMissingSlots] = useState(false);
+  const [repairingItem, setRepairingItem] = useState(false);
   const effectivePairKeepChoice = useMemo(() => {
     const resolved: Record<string, number> = {};
     for (const pair of duplicatePairs) {
@@ -355,11 +368,15 @@ function ContentViewModalBody({
   const [slotPromptInput, setSlotPromptInput] = useState(initialSlotEditor.prompt);
   const [slotAnswerInput, setSlotAnswerInput] = useState(initialSlotEditor.answer);
   const [slotChoicesInput, setSlotChoicesInput] = useState(initialSlotEditor.choices);
+  const [explanationInput, setExplanationInput] = useState(initialSlotEditor.explanation);
   const slotCountValue = slotCountInput || String(Math.max(1, items.length || 1));
   const answerOptions = currentItem ? answerOptionsFor(currentItem) : [];
   const questionText = currentItem ? firstText(currentItem, ["question", "prompt", "word", "title"]) : "No question content available.";
   const correctAnswer = currentItem ? firstText(currentItem, ["answer", "correctAnswer", "expectedAnswer"]) : "";
   const explanation = currentItem ? firstText(currentItem, ["explanation", "rationale", "feedback"]) : "";
+  const normalizedPersistedExplanation = explanation.trim();
+  const normalizedEditedExplanation = explanationInput.trim();
+  const explanationHasUnsavedChanges = normalizedEditedExplanation !== normalizedPersistedExplanation;
   const hint = currentItem ? firstText(currentItem, ["hint", "sentenceContext", "support"]) : "";
   const workedSolution = currentItem ? firstText(currentItem, ["workedSolution", "worked_solution", "solution", "method"]) : "";
   const coachSteps = currentItem ? [
@@ -391,6 +408,7 @@ function ContentViewModalBody({
     setSlotPromptInput(nextEditor.prompt);
     setSlotAnswerInput(nextEditor.answer);
     setSlotChoicesInput(nextEditor.choices);
+    setExplanationInput(nextEditor.explanation);
   }
 
   function selectSlot(index: number) {
@@ -459,6 +477,7 @@ function ContentViewModalBody({
       setSlotPromptInput("");
       setSlotAnswerInput("");
       setSlotChoicesInput("");
+      setExplanationInput("");
     }
   }
 
@@ -473,6 +492,7 @@ function ContentViewModalBody({
     const existing = (nextItems[selectedItemIndex] ?? {}) as GeneratedReviewItem;
     const questionKey = questionFieldKeyFor(content.contentType, existing);
     const answerKey = answerFieldKeyFor(content.contentType, existing);
+    const explanationKey = explanationFieldKeyFor(existing);
     const nextItem: GeneratedReviewItem = {
       ...existing,
       [questionKey]: prompt,
@@ -487,8 +507,27 @@ function ContentViewModalBody({
     if (parsedChoices.length) {
       nextItem.choices = parsedChoices;
     }
+    if (explanationInput.trim()) {
+      nextItem[explanationKey] = explanationInput.trim();
+    }
     nextItems[selectedItemIndex] = nextItem;
     await saveSlots(nextItems, `Slot ${selectedItemIndex + 1} saved.`);
+  }
+
+  async function saveCurrentExplanation() {
+    if (!currentItem) return;
+    setMessage(null);
+
+    const nextItems = items.map((item, index) => {
+      if (index !== selectedItemIndex) return item;
+      const explanationKey = explanationFieldKeyFor(item);
+      return {
+        ...item,
+        [explanationKey]: explanationInput.trim(),
+      };
+    });
+
+    await saveSlots(nextItems, `Explanation updated for item ${selectedItemIndex + 1}.`);
   }
 
   async function generateMissingSlots() {
@@ -814,6 +853,51 @@ function ContentViewModalBody({
       setMessage(`Item ${selectedItemIndex + 1} level updated to ${nextLevel}. Re-run Black Box to refresh the score.`);
     } catch {
       setMessage("Item level update request failed.");
+    }
+  }
+
+  async function handleRepairApplied(repairResult: {
+    success: boolean;
+    actionType: string;
+    after: Record<string, unknown>;
+    message: string;
+  }) {
+    if (!repairResult.success || !currentItem) return;
+
+    try {
+      setRepairingItem(true);
+      const updatedItems = [...items];
+      updatedItems[selectedItemIndex] = {
+        ...currentItem,
+        ...repairResult.after,
+      };
+
+      const response = await fetch(`/api/admin/content/${content.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contentJson: JSON.stringify(updatedItems),
+          metadataJson: content.metadataJson,
+        }),
+      });
+
+      const payload = await response.json() as VerificationPayload;
+      if (!response.ok || !payload.item) {
+        setMessage(payload.error ?? "Repair save failed.");
+        return;
+      }
+
+      onVerified?.({
+        ...content,
+        contentJson: JSON.stringify(updatedItems),
+        metadataJson: payload.item.metadataJson ?? content.metadataJson,
+      });
+      setMessage(repairResult.message);
+      await rerunBlackBox();
+    } catch {
+      setMessage("Repair request failed.");
+    } finally {
+      setRepairingItem(false);
     }
   }
 
@@ -1258,10 +1342,35 @@ function ContentViewModalBody({
                   <p className="mt-2 text-xs text-indigo-100">Updates only this question. Re-run Black Box afterwards to refresh score and reasons.</p>
                 </div>
               </div>
-              {explanation ? (
+              {currentItem ? (
                 <div className="mt-3 rounded-lg border border-sky-500/20 bg-sky-500/10 p-3">
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-sky-200">Explanation</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-sky-50">{explanation}</p>
+                  <textarea
+                    value={explanationInput}
+                    onChange={(event) => setExplanationInput(event.target.value)}
+                    rows={4}
+                    className="mt-1 w-full rounded-lg border border-sky-400/30 bg-slate-950 px-3 py-2 text-sm font-semibold text-sky-50"
+                    placeholder="Add or edit explanation..."
+                  />
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {explanationHasUnsavedChanges ? (
+                      <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-amber-100">
+                        Unsaved changes
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-100">
+                        Saved
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void saveCurrentExplanation()}
+                      disabled={!explanationHasUnsavedChanges}
+                      className="rounded-lg border border-sky-400/40 px-3 py-2 text-xs font-black text-sky-100 hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Save explanation
+                    </button>
+                  </div>
                 </div>
               ) : null}
               {workedSolution ? (
@@ -1406,6 +1515,20 @@ function ContentViewModalBody({
                             <ul className="mt-1 list-disc space-y-1 pl-5">
                               {currentItemCheck.reasons.map((reason) => <li key={reason}>{reason}</li>)}
                             </ul>
+                          ) : null}
+                          {currentItemCheck.reasons && currentItemCheck.reasons.length > 0 ? (
+                            <div className="mt-3">
+                              <BlackBoxRepairPanel
+                                currentItem={currentItem}
+                                itemIndex={selectedItemIndex}
+                                currentItemLevel={currentItemLevel}
+                                correctAnswer={slotAnswerInput}
+                                topic={meta.topic || ""}
+                                reasons={currentItemCheck.reasons}
+                                onRepair={handleRepairApplied}
+                                disabled={repairingItem}
+                              />
+                            </div>
                           ) : null}
                           {currentItemCheck.checks ? (
                             <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-800 bg-slate-900 p-2 text-[11px] text-slate-400">
