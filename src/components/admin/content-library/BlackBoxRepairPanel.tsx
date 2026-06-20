@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type {
   RepairActionType,
   RepairResult,
@@ -44,31 +44,33 @@ export default function BlackBoxRepairPanel({
 }: Props) {
   const [preview, setPreview] = useState<RepairPreview | null>(null);
 
-  const issueGroups = (() => {
+  const issueGroups = useMemo(() => {
     const grouped: Record<string, string[]> = {};
     for (const reason of reasons ?? []) {
-      if (reason.includes("Correct answer is not present")) {
+      const normalizedReason = String(reason).toLowerCase();
+
+      if (normalizedReason.includes("correct answer is not present")) {
         grouped.fix_choices = grouped.fix_choices || [];
         grouped.fix_choices.push(reason);
-      } else if (reason.includes("duplicate")) {
+      } else if (normalizedReason.includes("duplicate")) {
         grouped.fix_choices = grouped.fix_choices || [];
         grouped.fix_choices.push(reason);
-      } else if (reason.includes("readability appears too")) {
+      } else if (/readability appears too (simple|advanced)/i.test(reason)) {
         grouped.improve_readability = grouped.improve_readability || [];
         grouped.improve_readability.push(reason);
-      } else if (reason.includes("too (easy|hard) for")) {
+      } else if (/too (easy|hard) for/i.test(reason) || /declared level .* does not match expected/i.test(reason)) {
         grouped.increase_difficulty = grouped.increase_difficulty || [];
         grouped.increase_difficulty.push(reason);
-      } else if (reason.includes("thin") || reason.includes("depth")) {
+      } else if (normalizedReason.includes("thin") || normalizedReason.includes("depth")) {
         grouped.strengthen_explanation = grouped.strengthen_explanation || [];
         grouped.strengthen_explanation.push(reason);
-      } else if (reason.includes("topic") || reason.includes("match")) {
+      } else if (normalizedReason.includes("topic") || normalizedReason.includes("match")) {
         grouped.fix_topic_match = grouped.fix_topic_match || [];
         grouped.fix_topic_match.push(reason);
       }
     }
     return grouped;
-  })();
+  }, [reasons]);
 
   if (!currentItem || !reasons || !reasons.length) {
     return null;

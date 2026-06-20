@@ -388,6 +388,10 @@ function ContentViewModalBody({
   const currentItemCheck = blackBox?.itemChecks?.find((check) => check.itemIndex === selectedItemIndex)
     ?? blackBox?.itemChecks?.[selectedItemIndex]
     ?? null;
+  const itemRepairReasons = currentItemCheck?.reasons?.filter(Boolean) ?? [];
+  const fallbackRepairReasons = blackBox?.reasons?.filter(Boolean) ?? [];
+  const repairReasons = itemRepairReasons.length > 0 ? itemRepairReasons : fallbackRepairReasons;
+  const shouldRenderRepairPanel = Boolean(currentItem && repairReasons.length > 0);
   const gaTwiMarkers = Array.from(new Set([
     ...extractGaTwiMarkers(blackBox?.reasons),
     ...extractGaTwiMarkers(currentItemCheck?.reasons),
@@ -1455,6 +1459,23 @@ function ContentViewModalBody({
                     </ul>
                   </div>
                 ) : null}
+                {shouldRenderRepairPanel ? (
+                  <div>
+                    <p className="font-bold text-slate-300">Targeted Repair Actions</p>
+                    <div className="mt-2">
+                      <BlackBoxRepairPanel
+                        currentItem={currentItem}
+                        itemIndex={selectedItemIndex}
+                        currentItemLevel={currentItemLevel}
+                        correctAnswer={slotAnswerInput}
+                        topic={meta.topic || ""}
+                        reasons={repairReasons}
+                        onRepair={handleRepairApplied}
+                        disabled={repairingItem}
+                      />
+                    </div>
+                  </div>
+                ) : null}
                 {levelQualityWarningSummary ? (
                   <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-amber-100">
                     <p className="font-bold">Level-quality warning summary</p>
@@ -1515,20 +1536,6 @@ function ContentViewModalBody({
                             <ul className="mt-1 list-disc space-y-1 pl-5">
                               {currentItemCheck.reasons.map((reason) => <li key={reason}>{reason}</li>)}
                             </ul>
-                          ) : null}
-                          {currentItemCheck.reasons && currentItemCheck.reasons.length > 0 ? (
-                            <div className="mt-3">
-                              <BlackBoxRepairPanel
-                                currentItem={currentItem}
-                                itemIndex={selectedItemIndex}
-                                currentItemLevel={currentItemLevel}
-                                correctAnswer={slotAnswerInput}
-                                topic={meta.topic || ""}
-                                reasons={currentItemCheck.reasons}
-                                onRepair={handleRepairApplied}
-                                disabled={repairingItem}
-                              />
-                            </div>
                           ) : null}
                           {currentItemCheck.checks ? (
                             <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-800 bg-slate-900 p-2 text-[11px] text-slate-400">
