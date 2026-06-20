@@ -37,7 +37,7 @@ export type ContentSaveBlockPayload = {
   blackBoxContentTest?: BlackBoxContentTestResult;
 };
 
-export function buildContentSaveBlockPayload(input: ContentSaveBlockPayload): ContentSaveBlockPayload {
+function buildContentSaveBlockPayload(input: ContentSaveBlockPayload): ContentSaveBlockPayload {
   return {
     error: input.error,
     diagnosticOutcome: input.diagnosticOutcome,

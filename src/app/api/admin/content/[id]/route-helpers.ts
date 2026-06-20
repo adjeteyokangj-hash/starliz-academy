@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
+import { requireAdmin } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateSpellingContentContract } from "@/lib/content-governance";
 import {
@@ -122,28 +122,9 @@ const defaultPatchDeps: AdminContentPatchDeps = {
   writeAuditLog,
 };
 
-export async function GET(_request: Request, context: Context) {
-  const { session, response } = await requireAdminPermission("content:approve");
-  if (!session) return response;
+export type { Context, AdminContentPatchDeps, PatchUpdateInput };
 
-  const { id } = await context.params;
-  const item = await prisma.aIContentCache.findUnique({ where: { id } });
-  if (!item) {
-    return NextResponse.json({ error: "Content not found." }, { status: 404 });
-  }
-
-  return NextResponse.json({
-    item: {
-      ...item,
-      createdAt: item.createdAt.toISOString(),
-      reviewedAt: item.reviewedAt?.toISOString() ?? null,
-      approvedAt: item.approvedAt?.toISOString() ?? null,
-      publishedAt: item.publishedAt?.toISOString() ?? null,
-    },
-  });
-}
-
-async function handleAdminContentPatch(
+export async function handleAdminContentPatch(
   request: Request,
   context: Context,
   deps: AdminContentPatchDeps = defaultPatchDeps,
@@ -218,15 +199,13 @@ async function handleAdminContentPatch(
         return NextResponse.json({ error: getIncompleteSlotsReason(slotValidation.missingSlots) }, { status: 422 });
       }
 
-      const duplicateValidation = analyzeSessionSlotDuplicates({
+      const duplicateSummary = analyzeSessionSlotDuplicates({
         contentJson: sanitizedContentJson ?? existing.contentJson,
         contentType: existing.contentType,
         metadataJson: existing.metadataJson,
       });
-      if (duplicateValidation.hasExactDuplicates) {
-        return NextResponse.json({
-          error: `Publishing blocked: ${duplicateValidation.exactCount} exact duplicate question pair${duplicateValidation.exactCount === 1 ? "" : "s"} found.`,
-        }, { status: 422 });
+      if (duplicateSummary.hasExactDuplicates) {
+        return NextResponse.json({ error: "Duplicate content detected." }, { status: 409 });
       }
 
       const allRecords = await prisma.aIContentCache.findMany({
@@ -259,29 +238,33 @@ async function handleAdminContentPatch(
       }
     }
 
-    const item = await deps.updateContent(id, {
-      ...(body.status ? { status: body.status } : {}),
-      ...(body.status === "reviewed" ? { reviewedAt: now } : {}),
-      ...(body.status === "approved" ? { approvedAt: now } : {}),
-      ...(body.status === "published" ? { publishedAt: now } : {}),
+    const updated = await deps.updateContent(id, {
+      status: body.status,
+      reviewedAt: body.status === "reviewed" ? now : undefined,
+      approvedAt: body.status === "approved" ? now : undefined,
+      publishedAt: body.status === "published" ? now : undefined,
       ...(sanitizedContentJson !== undefined ? { contentJson: sanitizedContentJson } : {}),
-      ...(blackBoxMarkedStaleMetadata !== undefined ? { metadataJson: blackBoxMarkedStaleMetadata } : {}),
+      ...(blackBoxMarkedStaleMetadata ? { metadataJson: blackBoxMarkedStaleMetadata } : {}),
     });
 
     await deps.writeAuditLog({
       actorUserId: session.userId,
-      action: body.status ? `ai_content.${body.status}` : "ai_content.updated",
-      entityType: "content",
-      entityId: item.id,
-      metadata: { status: item.status, contentUpdated: sanitizedContentJson !== undefined },
+      action: "ai_content.patch",
+      entityType: "AIContentCache",
+      entityId: id,
+      metadata: { status: body.status ?? null },
     });
 
-    return NextResponse.json({ item });
-  } catch {
-    return NextResponse.json({ error: "Invalid content status update." }, { status: 400 });
-  }
-}
+    return NextResponse.json({ item: updated });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.issues[0]?.message ?? "Invalid payload." }, { status: 400 });
+    }
 
-export async function PATCH(request: Request, context: Context) {
-  return handleAdminContentPatch(request, context);
+    if (error instanceof Error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ error: "Unexpected error." }, { status: 500 });
+  }
 }

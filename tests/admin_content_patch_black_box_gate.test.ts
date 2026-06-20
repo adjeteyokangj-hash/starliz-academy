@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleAdminContentPatch } from "../src/app/api/admin/content/[id]/route";
+import { handleAdminContentPatch } from "../src/app/api/admin/content/[id]/route-helpers";
 
 type PatchDeps = NonNullable<Parameters<typeof handleAdminContentPatch>[2]>;
 

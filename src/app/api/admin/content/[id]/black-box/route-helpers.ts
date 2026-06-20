@@ -74,7 +74,9 @@ const defaultDeps: AdminContentBlackBoxDeps = {
   now: () => new Date(),
 };
 
-async function handleAdminContentBlackBoxPost(
+export type { Context, AdminContentBlackBoxDeps };
+
+export async function handleAdminContentBlackBoxPost(
   _request: Request,
   context: Context,
   deps: AdminContentBlackBoxDeps = defaultDeps,
@@ -83,7 +85,6 @@ async function handleAdminContentBlackBoxPost(
   if (!session) return response;
 
   const { id } = await context.params;
-
   const content = await deps.findContent(id);
 
   if (!content) {
@@ -201,8 +202,4 @@ async function handleAdminContentBlackBoxPost(
     item: updated,
     blackBoxContentTest: storedBlackBoxContentTest,
   });
-}
-
-export async function POST(_request: Request, context: Context) {
-  return handleAdminContentBlackBoxPost(_request, context);
 }

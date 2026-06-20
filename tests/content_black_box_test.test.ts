@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { runContentBlackBoxTest } from "../src/lib/ai/content-black-box-test";
-import { buildContentSaveBlockPayload } from "../src/app/api/admin/content/route";
+import { buildContentSaveBlockPayload } from "../src/app/api/admin/content/route-helpers";
 
 const baseMathContext = {
   subject: "maths",

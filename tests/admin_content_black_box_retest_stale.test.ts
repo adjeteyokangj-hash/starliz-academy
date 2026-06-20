@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleAdminContentBlackBoxPost } from "../src/app/api/admin/content/[id]/black-box/route";
+import { handleAdminContentBlackBoxPost } from "../src/app/api/admin/content/[id]/black-box/route-helpers";
 
 type BlackBoxDeps = NonNullable<Parameters<typeof handleAdminContentBlackBoxPost>[2]>;
 
