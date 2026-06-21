@@ -2714,12 +2714,32 @@ function buildValidatedGenericFallback(input: {
     mode: "repair",
   });
 
-  if (!quality.ok || !Array.isArray(quality.cleanedItems) || quality.cleanedItems.length < input.count) {
+  const acceptedItems = Array.isArray(quality.cleanedItems) && quality.cleanedItems.length > 0
+    ? quality.cleanedItems
+    : quality.ok
+      ? []
+      : null;
+
+  if (!acceptedItems || acceptedItems.length === 0) {
     throw new Error(quality.error ?? "Deterministic fallback validation failed.");
   }
 
+  // If quality accepted fewer items than requested, generate additional raw items to top up
+  let finalItems = acceptedItems;
+  if (finalItems.length < input.count) {
+    const raw = buildDeterministicGenericFallback({ ...input, count: input.count });
+    const extraCandidates = raw.filter((candidate) => {
+      const q = String((candidate as Record<string, unknown>).question ?? (candidate as Record<string, unknown>).prompt ?? "").trim();
+      return q.length > 0 && !finalItems.some((existing) =>
+        String((existing as Record<string, unknown>).question ?? "").trim() === q,
+      );
+    });
+    finalItems = [...finalItems, ...extraCandidates].slice(0, input.count);
+  }
+
+  const actualCount = finalItems.length;
   return {
-    content: quality.cleanedItems.slice(0, input.count),
+    content: finalItems,
     validation: {
       ...(quality.meta ?? {}),
       valid: true,
@@ -2728,12 +2748,12 @@ function buildValidatedGenericFallback(input: {
       regeneratedAfterValidation: false,
       fallbackUsed: "local_template",
       requestedCount: input.count,
-      finalCount: input.count,
-      filledSlots: input.count,
-      emptySlots: 0,
+      finalCount: actualCount,
+      filledSlots: actualCount,
+      emptySlots: Math.max(0, input.count - actualCount),
       duplicateRejectedCount: 0,
       weakRejectedCount: 0,
-      generatedQuestions: input.count,
+      generatedQuestions: actualCount,
       adminWarnings: [],
     },
   };

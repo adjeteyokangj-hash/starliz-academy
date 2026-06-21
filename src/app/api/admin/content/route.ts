@@ -216,6 +216,7 @@ export async function GET(req: Request) {
 
   const items = await prisma.aIContentCache.findMany({
     where: {
+      status: { not: "archived" },
       ...(contentType ? { contentType } : {}),
       ...(level !== undefined ? { level } : {}),
       ...(keyStage ? { keyStage } : {}),
