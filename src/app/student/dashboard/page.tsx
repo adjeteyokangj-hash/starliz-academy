@@ -11,12 +11,9 @@ import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
 import PrimaryDashboard from "@/components/student/PrimaryDashboard";
 import SecondaryDashboard from "@/components/student/SecondaryDashboard";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
-import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
 import WeeklyHomeworkPanel from "@/components/student/WeeklyHomeworkPanel";
 import {
-  resolveCatchUpStartTarget,
   resolveHomeworkStartTarget,
-  resolveSchoolWeekGoTarget,
 } from "@/lib/student-dashboard-actions";
 import type { HomeworkBatchView } from "@/lib/homework-phase1b/service";
 import {
@@ -28,6 +25,7 @@ import {
 import { isStudentCertificateCenterEnabled } from "@/lib/launch-scope";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import { formatStudentId } from "@/lib/student-id";
+import { resolveRecoverySeverityChips } from "@/lib/recovery-task-severity";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 import type { CoverageEntry, LearningTwinProfile } from "@/lib/academic-intelligence/types";
 
@@ -263,7 +261,9 @@ type StudentAcademicIntelligencePayload = {
     title: string;
     subject: string;
     topic?: string | null;
+    skill?: string | null;
     status: "recommended" | "scheduled" | "active" | "in_progress" | "completed" | "skipped" | "waived" | "overdue";
+    priority?: "high" | "medium" | "low";
     estimatedMinutes: number;
     dueDate?: string | null;
     scheduledDay?: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | null;
@@ -493,7 +493,6 @@ export default function StudentDashboardPage() {
   const [academicTaskPendingId, setAcademicTaskPendingId] = useState<string | null>(null);
   const [homeworkPendingId, setHomeworkPendingId] = useState<string | null>(null);
   const [weeklyHomeworkGate, setWeeklyHomeworkGate] = useState<WeeklyHomeworkGatePayload | null>(null);
-  const [liveNow, setLiveNow] = useState(() => new Date());
   const [error, setError] = useState("");
   const [missingChildContext, setMissingChildContext] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
@@ -684,7 +683,7 @@ export default function StudentDashboardPage() {
             }
           } else {
             setAcademicIntelligence(null);
-            setAcademicError("Unable to load Smart Catch-Up right now.");
+            setAcademicError("Unable to load Recovery Path right now.");
           }
 
           if (ownedResponse.ok) {
@@ -696,7 +695,7 @@ export default function StudentDashboardPage() {
         } catch {
           if (!cancelled) {
             setAcademicIntelligence(null);
-            setAcademicError("Unable to load Smart Catch-Up right now.");
+            setAcademicError("Unable to load Recovery Path right now.");
           }
         } finally {
           if (!cancelled) {
@@ -757,11 +756,6 @@ export default function StudentDashboardPage() {
     router.prefetch("/games/math");
     router.prefetch("/games/reading");
   }, [router]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setLiveNow(new Date()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   // Reset "stuck" loading states when the user navigates back to this page
   useEffect(() => {
@@ -870,7 +864,7 @@ export default function StudentDashboardPage() {
 
   function openCatchUpPanel() {
     setPanelActionMessage(null);
-    openDashboardTarget("smart-catch-up-panel");
+    router.push("/student/recovery-path");
   }
 
   function openWeeklyHomeworkPanel() {
@@ -886,18 +880,6 @@ export default function StudentDashboardPage() {
       return;
     }
     setPanelActionMessage("Certificate status is not ready yet.");
-  }
-
-  function openLearningMapPanel() {
-    setPanelActionMessage(null);
-    openDashboardTarget("learning-map-panel");
-  }
-
-  function openSchoolWeekModePanel() {
-    setPanelActionMessage(null);
-    if (!openDashboardTarget("school-week-mode-panel")) {
-      setPanelActionMessage("School Week Mode panel is not ready yet.");
-    }
   }
 
   async function handleStudentCatchUpTaskAction(
@@ -1088,8 +1070,25 @@ export default function StudentDashboardPage() {
     reason: weeklyHomeworkGate?.reason,
   });
   const catchUpPendingCount = (academicIntelligence?.catchUpTasks ?? []).filter((task) => task.status !== "completed" && task.status !== "waived" && task.status !== "skipped").length;
+  const catchUpTotalCount = academicIntelligence?.catchUpTasks?.length ?? 0;
+  const catchUpCompletedCount = (academicIntelligence?.catchUpTasks ?? []).filter((task) => task.status === "completed").length;
+  const catchUpCompletionPercent = catchUpTotalCount > 0
+    ? Math.round((catchUpCompletedCount / catchUpTotalCount) * 100)
+    : 0;
+  const recoveryRingCircumference = 2 * Math.PI * 16;
+  const recoveryRingDashOffset = recoveryRingCircumference * (1 - catchUpCompletionPercent / 100);
   const homeworkPendingCount = (academicIntelligence?.homeworkTasks ?? []).filter((task) => task.status !== "completed" && task.status !== "waived").length;
   const dashboardHomeworkTasks = (academicIntelligence?.homeworkTasks ?? []).slice(0, 4);
+  const pendingRecoveryTasks = (academicIntelligence?.catchUpTasks ?? []).filter((task) => !["completed", "waived", "skipped"].includes(task.status));
+  const recoveryReasonByRecommendationId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of academicIntelligence?.catchUpRecommendations ?? []) {
+      map.set(row.id, row.studentFriendlyReason ?? row.reason ?? "Targeted recovery task from your learning map.");
+    }
+    return map;
+  }, [academicIntelligence?.catchUpRecommendations]);
+  const recoveryPreviewTasks = pendingRecoveryTasks.slice(0, 2);
+  const hiddenRecoveryCount = Math.max(0, pendingRecoveryTasks.length - recoveryPreviewTasks.length);
   const activeAssignmentCount = visibleAssignments.length;
   const certificateStatus = certificateEligibility?.summary?.status ?? null;
   const openCertificateByDefault = certificateStatus === "eligible" || certificateStatus === "issued";
@@ -1289,7 +1288,7 @@ export default function StudentDashboardPage() {
                     type="button"
                     onClick={() => {
                       // When there is a priority focus assignment, launch it directly (one-click path).
-                      // Otherwise fall back to scrolling to the catch-up panel.
+                      // Otherwise continue via the Recovery Path page.
                       if (focusAssignment) {
                         startAssignment(focusAssignment);
                         return;
@@ -1298,7 +1297,7 @@ export default function StudentDashboardPage() {
                     }}
                     className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
                   >
-                    {focusAssignment ? "Start next lesson" : "Open catch-up"}
+                    {focusAssignment ? "Start next lesson" : "Continue recovery path"}
                   </button>
                   <button
                     type="button"
@@ -1328,9 +1327,30 @@ export default function StudentDashboardPage() {
                   <p className="mt-1 text-xs text-slate-500">Your next assigned lessons and activities.</p>
                 </div>
                 <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2">
-                  <p className="text-xs uppercase tracking-[0.08em] text-cyan-700">Catch-up pending</p>
-                  <p className="mt-1 text-lg font-black text-cyan-900">{catchUpPendingCount}</p>
-                  <p className="mt-1 text-xs text-cyan-800">Practice for topics you need more help with.</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.08em] text-cyan-700">Recovery pending</p>
+                      <p className="mt-1 text-lg font-black text-cyan-900">{catchUpPendingCount}</p>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <svg viewBox="0 0 40 40" className="h-10 w-10" aria-label="Recovery progress">
+                        <circle cx="20" cy="20" r="16" className="fill-none stroke-cyan-100" strokeWidth="4" />
+                        <circle
+                          cx="20"
+                          cy="20"
+                          r="16"
+                          className="fill-none stroke-cyan-600"
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                          strokeDasharray={recoveryRingCircumference}
+                          strokeDashoffset={recoveryRingDashOffset}
+                          transform="rotate(-90 20 20)"
+                        />
+                      </svg>
+                      <span className="text-[10px] font-bold text-cyan-800">{catchUpCompletionPercent}%</span>
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-cyan-800">Targeted support for topics where you need more confidence.</p>
                 </div>
                 <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
                   <p className="text-xs uppercase tracking-[0.08em] text-violet-700">Homework pending</p>
@@ -1392,11 +1412,11 @@ export default function StudentDashboardPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        document.getElementById("smart-catch-up-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        router.push("/student/recovery-path");
                       }}
                       className="rounded-xl border border-violet-200 bg-white px-4 py-2 text-sm font-bold text-violet-700 hover:bg-violet-100"
                     >
-                      Support tools
+                      Recovery path
                     </button>
                   </div>
                 </div>
@@ -1413,19 +1433,44 @@ export default function StudentDashboardPage() {
               </div>
             ) : null}
 
-            <section id="smart-catch-up-panel" className="mb-6 rounded-3xl border border-cyan-200 bg-cyan-50/70 p-5">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-700">Smart Catch-Up</p>
+            <section id="recovery-path-panel" className="mb-6 rounded-3xl border border-cyan-200 bg-cyan-50/70 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-700">Recovery Path</p>
+                  <h2 className="mt-1 text-lg font-black text-slate-900">Focused support in one place</h2>
+                  <p className="mt-1 text-sm text-cyan-900">Finish your top recovery actions here, then continue to the full Recovery Path for everything else.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/student/recovery-path")}
+                    className="rounded-xl bg-cyan-700 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-600"
+                  >
+                    Continue Recovery Path
+                  </button>
+                  {learningState?.coachUnlocked ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push("/student/recovery-path?view=coach")}
+                      className="rounded-xl border border-cyan-200 bg-white px-4 py-2 text-sm font-bold text-cyan-800 hover:bg-cyan-100"
+                    >
+                      Ask Coach first
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
               {learningState?.isFirstTimeStudent ? (
                 <div className="mt-3 rounded-2xl border border-cyan-200 bg-white/70 p-4 text-sm text-cyan-900">
-                  Smart Catch-Up unlocks after your Quick Level Finder and first learning activities.
+                  Recovery Path unlocks after your Quick Level Finder and first learning activities.
                 </div>
               ) : null}
+
               {academicLoading ? (
-                <div className="mt-3 space-y-3">
-                  <p className="text-sm font-semibold text-cyan-800">Loading Smart Catch-Up...</p>
-                  <div className="h-4 w-52 animate-pulse rounded bg-cyan-200" />
-                  <div className="h-16 animate-pulse rounded-2xl bg-cyan-100" />
-                  <div className="h-16 animate-pulse rounded-2xl bg-cyan-100" />
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm font-semibold text-cyan-800">Loading Recovery Path...</p>
+                  <div className="h-12 animate-pulse rounded-2xl bg-cyan-100" />
+                  <div className="h-12 animate-pulse rounded-2xl bg-cyan-100" />
                 </div>
               ) : academicError ? (
                 <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
@@ -1438,293 +1483,46 @@ export default function StudentDashboardPage() {
                     Retry
                   </button>
                 </div>
-              ) : !academicIntelligence || learningState?.isFirstTimeStudent ? (
-                <div className="mt-3 rounded-2xl border border-cyan-200 bg-white/70 p-4 text-sm text-cyan-900">
-                  Complete more lessons to build your learning map.
+              ) : recoveryPreviewTasks.length === 0 ? (
+                <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                  <p className="font-semibold">No recovery tasks pending right now.</p>
+                  <p className="mt-1">You are on track. Keep going.</p>
                 </div>
               ) : (
-                <div className="mt-3 space-y-4">
-                  <div className="grid gap-3 md:grid-cols-4">
-                    <div className="rounded-2xl border border-cyan-200 bg-white p-4 md:col-span-3">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-700">What to practise next</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-800">
-                            {academicIntelligence.summary.coveredCount}/{academicIntelligence.summary.totalTopics} active topics covered · average score {academicIntelligence.summary.averageScore}%
-                          </p>
-                          <p className="mt-1 text-xs text-slate-600">
-                            Curriculum denominator: {academicIntelligence.summary.denominatorCoverage?.coveredTopics ?? 0}/{academicIntelligence.summary.denominatorCoverage?.expectedTopics ?? 0} expected topics ({academicIntelligence.summary.denominatorCoverage?.coveragePercent ?? 0}%). Missing {academicIntelligence.summary.denominatorCoverage?.missingTopics ?? 0} topics.
-                          </p>
-                          <p className="mt-1 text-xs text-slate-600">
-                            {academicIntelligence.summary.needsCatchUpCount} catch-up topic{academicIntelligence.summary.needsCatchUpCount === 1 ? "" : "s"} and {academicIntelligence.summary.needsRevisionCount} revision topic{academicIntelligence.summary.needsRevisionCount === 1 ? "" : "s"} still need attention.
-                          </p>
+                <div className="mt-3 space-y-3">
+                  {recoveryPreviewTasks.map((task) => {
+                    const reason = recoveryReasonByRecommendationId.get(task.recommendationId) ?? "Targeted recovery task from your learning map.";
+                    const severityChips = resolveRecoverySeverityChips({
+                      status: task.status,
+                      reason,
+                      priority: task.priority,
+                      dueDate: task.dueDate,
+                    });
+                    return (
+                      <div key={task.taskId} className="rounded-2xl border border-cyan-200 bg-white p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-bold text-slate-900">{task.title}</p>
+                          <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-bold text-cyan-700">
+                            {task.status.replaceAll("_", " ")}
+                          </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={openLearningMapPanel}
-                          className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-800 hover:bg-cyan-100"
-                        >
-                          View learning map
-                        </button>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {(academicIntelligence.masteryExpansion?.priorityTopics ?? []).slice(0, 3).map((topic) => (
-                          <span key={topic} className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-800">
-                            {topic}
-                          </span>
-                        ))}
-                        {!(academicIntelligence.masteryExpansion?.priorityTopics ?? []).length ? (
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                            No priority topics right now
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="rounded-2xl border border-cyan-200 bg-white px-3 py-2">
-                      <p className="text-xs text-cyan-700">Needs catch-up</p>
-                      <p className="text-lg font-black text-cyan-900">{academicIntelligence.summary.needsCatchUpCount}</p>
-                      <p className="mt-1 text-xs text-slate-600">Targeted support before moving ahead.</p>
-                    </div>
-                  </div>
-
-                  <details id="learning-map-panel" className="rounded-2xl border border-cyan-200 bg-white p-4">
-                    <summary className="cursor-pointer list-none text-sm font-bold text-cyan-900">
-                      View learning map
-                    </summary>
-                    <div className="mt-3 space-y-4">
-                      <CurriculumMasteryMap
-                        variant="light"
-                        title="Curriculum Mastery Map"
-                        subtitle="Subjects, levels, and topic status across the learner's curriculum."
-                        eyebrow="Mastery map"
-                        summary={academicIntelligence.summary}
-                        rows={academicIntelligence.curriculumCoverage ?? []}
-                      />
-
-                  {((academicIntelligence.catchUpTasks ?? []).length === 0 && academicIntelligence.catchUpRecommendations.length === 0) ? (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                      <p className="font-semibold">No catch-up needed right now.</p>
-                      <p className="mt-1">You are on track. Keep going.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {(academicIntelligence.catchUpTasks ?? []).slice(0, 5).map((task) => (
-                        <div key={task.taskId} className="rounded-2xl border border-cyan-200 bg-white p-4">
-                          {(() => {
-                            const canStart = ["recommended", "scheduled", "active", "overdue"].includes(task.status);
-                            const canComplete = task.status === "in_progress";
-                            const canSkip = !["completed", "skipped", "waived"].includes(task.status);
-                            const startTarget = resolveCatchUpStartTarget(task);
-
-                            return (
-                              <>
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="font-bold text-slate-900">{task.title}</p>
-                            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                              task.status === "completed"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : task.status === "active" || task.status === "in_progress" || task.status === "scheduled"
-                                  ? "bg-cyan-100 text-cyan-700"
-                                  : task.status === "overdue"
-                                    ? "bg-rose-100 text-rose-700"
-                                    : "bg-amber-100 text-amber-700"
-                            }`}>
-                              {task.status.replaceAll("_", " ")}
+                        <p className="mt-1 text-xs uppercase tracking-[0.08em] text-slate-500">
+                          {task.subject} {task.topic ? `• ${task.topic}` : ""} • {task.estimatedMinutes} min
+                        </p>
+                        <p className="mt-2 text-sm text-slate-700">{reason}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {severityChips.map((chip) => (
+                            <span key={chip.key} className={`rounded-full px-2 py-0.5 text-xs font-bold ${chip.className}`}>
+                              {chip.label}
                             </span>
-                          </div>
-                          <p className="mt-1 text-xs uppercase tracking-[0.08em] text-slate-500">
-                            {task.subject} {task.topic ? `• ${task.topic}` : ""}
-                          </p>
-                          <p className="mt-2 text-sm text-slate-700">
-                            {academicIntelligence.catchUpRecommendations.find((row) => row.id === task.recommendationId)?.studentFriendlyReason ?? "Targeted recovery task from your learning map."}
-                          </p>
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs font-semibold text-slate-500">
-                              {task.scheduledDay ? `${task.scheduledDay} plan • ` : ""}
-                              Estimated time: {task.estimatedMinutes} mins
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {canStart ? (
-                                <button
-                                  type="button"
-                                  disabled={academicTaskPendingId === task.taskId}
-                                  onClick={async () => {
-                                    const startMessage = startTarget.kind === "route"
-                                      ? `${task.title} started.`
-                                      : startTarget.message;
-                                    await handleStudentCatchUpTaskAction(task.taskId, "start_task", startMessage);
-                                    if (startTarget.kind === "route") {
-                                      router.push(startTarget.href);
-                                      return;
-                                    }
-                                    openCatchUpPanel();
-                                    setPanelActionMessage(startTarget.message);
-                                  }}
-                                  className="rounded-xl bg-cyan-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-cyan-500 disabled:opacity-60"
-                                >
-                                  {startTarget.label}
-                                </button>
-                              ) : null}
-                              {canComplete ? (
-                                <button
-                                  type="button"
-                                  disabled={academicTaskPendingId === task.taskId}
-                                  onClick={async () => {
-                                    await handleStudentCatchUpTaskAction(task.taskId, "complete_task", `${task.title} completed.`);
-                                    openCatchUpPanel();
-                                  }}
-                                  className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-60"
-                                >
-                                  Complete
-                                </button>
-                              ) : null}
-                              {canSkip ? (
-                                <button
-                                  type="button"
-                                  disabled={academicTaskPendingId === task.taskId}
-                                  onClick={async () => {
-                                    await handleStudentCatchUpTaskAction(task.taskId, "skip_task", `${task.title} skipped for now.`);
-                                    openCatchUpPanel();
-                                  }}
-                                  className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-500 disabled:opacity-60"
-                                >
-                                  Skip
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                              </>
-                            );
-                          })()}
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    {academicIntelligence.examReadinessProfile ? (
-                      <div className="rounded-2xl border border-cyan-200 bg-white p-4">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-bold text-slate-900">AI Exam Readiness</p>
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                            academicIntelligence.examReadinessProfile.band === "ready"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : academicIntelligence.examReadinessProfile.band === "nearly_ready"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-rose-100 text-rose-700"
-                          }`}>
-                            {academicIntelligence.examReadinessProfile.band.replaceAll("_", " ")}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm font-black text-cyan-900">{academicIntelligence.examReadinessProfile.score}%</p>
-                        <p className="mt-1 text-sm text-slate-700">{academicIntelligence.examReadinessProfile.headline}</p>
-                        {academicIntelligence.examReadinessProfile.recommendedActions.length > 0 ? (
-                          <ul className="mt-2 space-y-1 text-xs text-slate-600">
-                            {academicIntelligence.examReadinessProfile.recommendedActions.slice(0, 2).map((item) => (
-                              <li key={item}>• {item}</li>
-                            ))}
-                          </ul>
-                        ) : null}
                       </div>
-                    ) : (
-                      <div className="rounded-2xl border border-cyan-200 bg-white p-4">
-                        <p className="text-sm text-cyan-900">No assessment due right now.</p>
-                      </div>
-                    )}
-
-                    {academicIntelligence.schoolWeekModePlan?.enabled ? (
-                      <div id="school-week-mode-panel" className="rounded-2xl border border-cyan-200 bg-white p-4">
-                        <p className="text-sm font-bold text-slate-900">School Week Mode</p>
-                        <p className="mt-1 text-xs text-slate-600">{academicIntelligence.schoolWeekModePlan.strategy}</p>
-                        <p className="mt-1 text-xs font-semibold text-cyan-700">
-                          Weekly load: {academicIntelligence.schoolWeekModePlan.totalEstimatedMinutes} mins
-                        </p>
-                        {(() => {
-                          const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-                          const todayName = weekdayNames[liveNow.getDay()];
-                          const todaySchedule = academicIntelligence.schoolWeekModePlan?.dailySchedules?.find((item) => item.day === todayName) ?? null;
-                          const nextSchedule = academicIntelligence.schoolWeekModePlan?.dailySchedules?.find((item) => item.day !== todayName && item.blocks.length > 0) ?? null;
-                          const nextBlock = todaySchedule?.blocks[0] ?? nextSchedule?.blocks[0] ?? null;
-                          const nextBlockAction = resolveSchoolWeekGoTarget(nextBlock);
-                          const currentMinutes = (liveNow.getHours() * 60) + liveNow.getMinutes();
-                          const currentBlock = todaySchedule?.blocks.find((item) => {
-                            const [startH, startM] = item.startTime.split(":").map((value) => Number(value));
-                            const [endH, endM] = item.endTime.split(":").map((value) => Number(value));
-                            const start = (startH * 60) + startM;
-                            const end = (endH * 60) + endM;
-                            return currentMinutes >= start && currentMinutes < end;
-                          }) ?? null;
-                          const minutesRemaining = currentBlock
-                            ? Math.max(0, ((Number(currentBlock.endTime.split(":")[0]) * 60) + Number(currentBlock.endTime.split(":")[1])) - currentMinutes)
-                            : 0;
-
-                          return (
-                            <div className="mt-2 space-y-2">
-                              {currentBlock ? (
-                                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                                  <p className="font-semibold">Current block: {currentBlock.title}</p>
-                                  <p className="mt-1">{minutesRemaining} minute{minutesRemaining === 1 ? "" : "s"} remaining ({currentBlock.startTime} - {currentBlock.endTime})</p>
-                                </div>
-                              ) : null}
-                              <div className="rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-xs text-slate-700">
-                                <p className="font-semibold text-cyan-800">Today&apos;s learning plan</p>
-                                {todaySchedule?.blocks?.length ? (
-                                  <p className="mt-1">
-                                    {todaySchedule.blocks.slice(0, 2).map((item) => `${item.startTime} ${item.title}`).join(" • ")}
-                                  </p>
-                                ) : (
-                                  <p className="mt-1">No timed blocks today. Keep up with revision and rest.</p>
-                                )}
-                              </div>
-                              {nextBlock ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (nextBlockAction.kind === "route") {
-                                      router.push(nextBlockAction.href);
-                                      return;
-                                    }
-
-                                    if (nextBlockAction.kind === "scroll") {
-                                      setPanelActionMessage(nextBlockAction.message);
-                                      if (!openDashboardTarget(nextBlockAction.targetId)) {
-                                        openSchoolWeekModePanel();
-                                      }
-                                      return;
-                                    }
-
-                                    setPanelActionMessage(nextBlockAction.message);
-                                  }}
-                                  className="flex w-full items-center justify-between rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-left text-xs text-slate-700 hover:bg-cyan-100"
-                                >
-                                  <span>Next activity: {nextBlock.startTime} {nextBlock.title}</span>
-                                  <span className="font-bold text-cyan-700">{nextBlockAction.label}</span>
-                                </button>
-                              ) : null}
-                              <div className="space-y-1">
-                                {academicIntelligence.schoolWeekModePlan.days.slice(0, 2).map((day) => (
-                                  <p key={`${day.day}-${day.focus}`} className="text-xs text-slate-600">
-                                    {day.day}: {day.focus} ({day.estimatedMinutes}m)
-                                  </p>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    ) : null}
-                  </div>
-
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <p className="text-sm font-bold text-slate-900">School Week Report</p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          Catch-up completed: {(academicIntelligence.catchUpTasks ?? []).filter((task) => task.status === "completed").length} •
-                          Homework completed: {(academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "completed").length} •
-                          Overdue items: {(academicIntelligence.catchUpTasks ?? []).filter((task) => task.status === "overdue").length + (academicIntelligence.homeworkTasks ?? []).filter((task) => task.status === "overdue").length}
-                        </p>
-                      </div>
-                    </div>
-                  </details>
+                    );
+                  })}
+                  {hiddenRecoveryCount > 0 ? (
+                    <p className="text-xs font-semibold text-cyan-800">+{hiddenRecoveryCount} more inside Recovery Path.</p>
+                  ) : null}
                 </div>
               )}
             </section>

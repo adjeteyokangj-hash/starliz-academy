@@ -11,6 +11,9 @@ type HomeworkTaskLike = {
 
 type CatchUpTaskLike = {
   title?: string | null;
+  subject?: string | null;
+  topic?: string | null;
+  skill?: string | null;
   routeTarget?: string | null;
 };
 
@@ -22,6 +25,35 @@ export type DashboardActionTarget =
 function hasUsableRouteTarget(routeTarget?: string | null): routeTarget is string {
   const cleaned = routeTarget?.trim();
   return Boolean(cleaned) && cleaned !== "/student/dashboard";
+}
+
+function inferredCatchUpRouteTarget(task: CatchUpTaskLike | null | undefined): string | null {
+  const subject = (task?.subject ?? "").toLowerCase().trim();
+  const topic = task?.topic?.trim();
+  const skill = task?.skill?.trim();
+
+  const params = new URLSearchParams({ recovery: "1" });
+  if (topic) params.set("topic", topic);
+  if (skill) params.set("skill", skill);
+
+  if (subject.includes("math")) {
+    return `/games/math?${params.toString()}`;
+  }
+
+  if (subject.includes("english") || subject.includes("reading") || subject.includes("literacy") || subject.includes("phonics")) {
+    return `/games/reading?${params.toString()}`;
+  }
+
+  if (subject.includes("spelling") || subject.includes("vocabulary")) {
+    return `/games/spelling?${params.toString()}`;
+  }
+
+  if (subject) {
+    params.set("subject", subject);
+    return `/student/daily-journey?${params.toString()}`;
+  }
+
+  return null;
 }
 
 export function resolveSchoolWeekGoTarget(block: RouteTargetLike | null | undefined): DashboardActionTarget {
@@ -52,10 +84,9 @@ export function resolveSchoolWeekGoTarget(block: RouteTargetLike | null | undefi
 
   if (block.activityType === "catch_up") {
     return {
-      kind: "scroll",
-      targetId: "smart-catch-up-panel",
-      label: "Open catch-up",
-      message: `Opening catch-up for ${block.title ?? "this activity"}.`,
+      kind: "route",
+      href: "/student/recovery-path",
+      label: "Open recovery path",
     };
   }
 
@@ -100,10 +131,18 @@ export function resolveCatchUpStartTarget(task: CatchUpTaskLike | null | undefin
     };
   }
 
+  const inferredRoute = inferredCatchUpRouteTarget(task);
+  if (inferredRoute) {
+    return {
+      kind: "route",
+      href: inferredRoute,
+      label: "Start practice",
+    };
+  }
+
   return {
-    kind: "scroll",
-    targetId: "smart-catch-up-panel",
-    label: "Start here",
-    message: `Started ${task?.title ?? "catch-up"} in Smart Catch-Up. Full linked lesson coming soon.`,
+    kind: "unavailable",
+    label: "Waiting for recovery activity",
+    message: `A direct activity for ${task?.title ?? "this recovery task"} is not linked yet.`,
   };
 }
