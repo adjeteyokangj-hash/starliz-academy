@@ -583,6 +583,99 @@ test("existing catch-up task status is respected in recommendation output", () =
   assert.ok(output.catchUpTasks.some((item) => item.status === "scheduled"));
 });
 
+test("active weak area regenerates recommendation even when historical admin-removed catch-up exists", () => {
+  const now = new Date().toISOString();
+  const source = baseSource({
+    weakAreas: [
+      {
+        id: "weak-fractions",
+        subject: "math",
+        topic: "Fractions",
+        skill: "equivalent_fractions",
+        status: "active",
+        accuracy: 38,
+        attemptsCount: 4,
+        lastDetectedAt: now,
+      },
+    ],
+  });
+
+  const hiddenOldTask: CatchUpTaskRecord = {
+    taskId: "catch-up-old-hidden",
+    studentId: "student-1",
+    recommendationId: "low-attempt-score-math-fractions-equivalent-fractions",
+    title: "Fractions catch-up",
+    subject: "math",
+    topic: "Fractions",
+    skill: "equivalent_fractions",
+    status: "waived",
+    priority: "high",
+    estimatedMinutes: 15,
+    dueDate: null,
+    scheduledDay: null,
+    routeTarget: "/student/dashboard",
+    sourceTrigger: "low_attempt_score",
+    note: "__admin_removed__",
+    metadata: undefined,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const output = buildAcademicIntelligence(source, {
+    allCatchUpTasks: [hiddenOldTask],
+  });
+
+  assert.ok(output.catchUpRecommendations.some((item) => item.topic === "Fractions"));
+  assert.ok(output.catchUpTasks.some((item) => item.topic === "Fractions" && item.note !== "__admin_removed__"));
+});
+
+test("without active weak area, admin-removed catch-up stays suppressed and does not reappear", () => {
+  const now = new Date().toISOString();
+  const source = baseSource({
+    attempts: [
+      {
+        id: "attempt-fractions-hidden-1",
+        subject: "math",
+        topic: "Fractions",
+        skill: "equivalent_fractions",
+        correct: false,
+        hintsUsed: 2,
+        createdAt: now,
+        score: 28,
+      },
+    ],
+    weakAreas: [],
+  });
+
+  const hiddenOldTask: CatchUpTaskRecord = {
+    taskId: "catch-up-old-hidden-no-weak",
+    studentId: "student-1",
+    recommendationId: "low-attempt-score-math-fractions-equivalent-fractions",
+    title: "Fractions catch-up",
+    subject: "math",
+    topic: "Fractions",
+    skill: "equivalent_fractions",
+    status: "waived",
+    priority: "high",
+    estimatedMinutes: 15,
+    dueDate: null,
+    scheduledDay: null,
+    routeTarget: "/student/dashboard",
+    sourceTrigger: "low_attempt_score",
+    note: "__admin_removed__",
+    metadata: undefined,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const output = buildAcademicIntelligence(source, {
+    allCatchUpTasks: [hiddenOldTask],
+  });
+
+  assert.ok(output.catchUpRecommendations.every((item) => item.topic !== "Fractions"));
+  assert.equal(output.masteryExpansion.needsCatchUpTopics, 0);
+});
+
 test("fallback catch-up tasks are generated when no persisted tasks exist", () => {
   const output = buildAcademicIntelligence(baseSource({
     attempts: [{

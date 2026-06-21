@@ -62,6 +62,13 @@ function catchUpTopicKey(subject: string | null | undefined, topic: string | nul
   ].filter(Boolean).join("|");
 }
 
+function catchUpSkillKey(subject: string | null | undefined, skill: string | null | undefined): string {
+  return [
+    (subject ?? "general").toLowerCase().trim(),
+    (skill ?? "").toLowerCase().trim(),
+  ].filter(Boolean).join("|");
+}
+
 export function defaultReviewActions(): ParentAdminReviewAction[] {
   return [
     { action: "approve_catch_up", label: "Approve catch-up", persistenceSupported: true, message: "Schedules task for this week." },
@@ -158,17 +165,25 @@ function buildMasteryExpansionSummary(
   // Check both output.catchUpTasks and existingCatchUpTasks
   const allTasks = [...(output.catchUpTasks ?? []), ...(existingCatchUpTasks ?? [])];
   const hiddenTopicKeys = new Set<string>();
+  const hiddenSkillKeys = new Set<string>();
   for (const task of allTasks) {
     if (task.note === ADMIN_HIDDEN_NOTE) {
       const topicKey = catchUpTopicKey(task.subject, task.topic);
       if (topicKey) hiddenTopicKeys.add(topicKey);
+      const skillKey = catchUpSkillKey(task.subject, task.skill);
+      if (skillKey) hiddenSkillKeys.add(skillKey);
     }
   }
-  const makeTopicKey = (row: Pick<typeof output.masteryMap[0], "subject" | "topic">) => catchUpTopicKey(row.subject, row.topic);
+  const isHiddenWithoutActiveWeakArea = (row: Pick<typeof output.masteryMap[0], "subject" | "topic" | "skill" | "weakAreaActive">) => {
+    if (row.weakAreaActive) return false;
+    const topicHidden = hiddenTopicKeys.has(catchUpTopicKey(row.subject, row.topic));
+    const skillHidden = hiddenSkillKeys.has(catchUpSkillKey(row.subject, row.skill));
+    return topicHidden || skillHidden;
+  };
 
   // Count needs_catch_up topics, excluding admin-removed ones
   const needsCatchUpTopics = output.masteryMap
-    .filter((row) => row.masteryStatus === "needs_catch_up" && !hiddenTopicKeys.has(makeTopicKey(row)))
+    .filter((row) => row.masteryStatus === "needs_catch_up" && !isHiddenWithoutActiveWeakArea(row))
     .length;
 
   const nearlySecureTopics = output.masteryMap.filter((row) => row.masteryStatus === "nearly_secure").length;
@@ -178,7 +193,7 @@ function buildMasteryExpansionSummary(
 
   // Filter priority topics to exclude admin-removed ones
   const priorityTopics = output.masteryMap
-    .filter((row) => (row.masteryStatus === "needs_catch_up" || row.masteryStatus === "needs_revision") && !hiddenTopicKeys.has(makeTopicKey(row)))
+    .filter((row) => (row.masteryStatus === "needs_catch_up" || row.masteryStatus === "needs_revision") && !isHiddenWithoutActiveWeakArea(row))
     .slice(0, 6)
     .map((row) => row.topic ?? row.skill ?? row.subject ?? "General topic");
 
@@ -498,6 +513,16 @@ export function buildAcademicIntelligence(
   });
 
   const allTriggers = [...triggers, ...assessmentBuilt.assessmentLinkedCatchUpTriggers];
+  const activeWeakAreaTopicKeys = new Set(
+    masteryBuilt.masteryMap
+      .filter((row) => row.weakAreaActive)
+      .map((row) => catchUpTopicKey(row.subject, row.topic)),
+  );
+  const activeWeakAreaSkillKeys = new Set(
+    masteryBuilt.masteryMap
+      .filter((row) => row.weakAreaActive)
+      .map((row) => catchUpSkillKey(row.subject, row.skill)),
+  );
   const hiddenRecommendationIds = new Set(
     allKnownCatchUpTasks
       .filter((task) => task.note === ADMIN_HIDDEN_NOTE)
@@ -508,15 +533,34 @@ export function buildAcademicIntelligence(
       .filter((task) => task.note === ADMIN_HIDDEN_NOTE)
       .map((task) => catchUpTopicKey(task.subject, task.topic)),
   );
+  const hiddenSkillKeys = new Set(
+    allKnownCatchUpTasks
+      .filter((task) => task.note === ADMIN_HIDDEN_NOTE)
+      .map((task) => catchUpSkillKey(task.subject, task.skill)),
+  );
+
+  const hasActiveWeakAreaForRecommendation = (recommendation: {
+    subject: string;
+    topic?: string | null;
+    skill?: string | null;
+  }) => {
+    const topicKey = catchUpTopicKey(recommendation.subject, recommendation.topic);
+    const skillKey = catchUpSkillKey(recommendation.subject, recommendation.skill);
+    return activeWeakAreaTopicKeys.has(topicKey) || activeWeakAreaSkillKeys.has(skillKey);
+  };
 
   const catchUpRecommendations = buildCatchUpRecommendations({
     triggers: allTriggers,
     existingStatuses: buildTaskStatusMap(existingTasks),
     existingDueDates: buildTaskDueDateMap(existingTasks),
-  }).filter((recommendation) => (
-    !hiddenRecommendationIds.has(recommendation.id)
-    && !hiddenTopicKeys.has(catchUpTopicKey(recommendation.subject, recommendation.topic))
-  ));
+  }).filter((recommendation) => {
+    if (hasActiveWeakAreaForRecommendation(recommendation)) return true;
+    return (
+      !hiddenRecommendationIds.has(recommendation.id)
+      && !hiddenTopicKeys.has(catchUpTopicKey(recommendation.subject, recommendation.topic))
+      && !hiddenSkillKeys.has(catchUpSkillKey(recommendation.subject, recommendation.skill))
+    );
+  });
 
   const output: AcademicIntelligenceOutput = {
     studentId: data.studentId,
