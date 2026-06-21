@@ -2,24 +2,19 @@
 
 import { useMemo, useState } from "react";
 import type {
-  RepairActionType,
   RepairResult,
 } from "@/lib/ai/content-repair";
 import {
-  repairMissingCorrectAnswer,
-  repairDuplicateChoices,
-  improveReadability,
-  strengthenExplanation,
-  increaseDifficulty,
-  fixTopicMatch,
-  isSafeRepair,
+  inferBlackBoxIssueType,
+  runIssueSpecificRepair,
+  runIssueSpecificRepairsForItem,
 } from "@/lib/ai/content-repair";
 
 type Props = {
   currentItem: Record<string, unknown> | null;
   itemIndex: number;
-  currentItemLevel: number;
-  correctAnswer: string;
+  selectedLevel: number;
+  selectedYearGroup: string;
   topic: string;
   reasons: string[] | undefined;
   onRepair?: (result: RepairResult) => void;
@@ -27,111 +22,88 @@ type Props = {
 };
 
 type RepairPreview = {
-  action: RepairActionType;
+  title: string;
+  reasons: string[];
   result: RepairResult;
-  isApproved: boolean;
 };
 
 export default function BlackBoxRepairPanel({
   currentItem,
   itemIndex,
-  currentItemLevel,
-  correctAnswer,
+  selectedLevel,
+  selectedYearGroup,
   topic,
   reasons,
   onRepair,
   disabled,
 }: Props) {
   const [preview, setPreview] = useState<RepairPreview | null>(null);
+  const [panelMessage, setPanelMessage] = useState<string | null>(null);
 
-  const issueGroups = useMemo(() => {
-    const grouped: Record<string, string[]> = {};
-    for (const reason of reasons ?? []) {
-      const normalizedReason = String(reason).toLowerCase();
-
-      if (normalizedReason.includes("correct answer is not present")) {
-        grouped.fix_choices = grouped.fix_choices || [];
-        grouped.fix_choices.push(reason);
-      } else if (normalizedReason.includes("duplicate")) {
-        grouped.fix_choices = grouped.fix_choices || [];
-        grouped.fix_choices.push(reason);
-      } else if (/readability appears too (simple|advanced)/i.test(reason)) {
-        grouped.improve_readability = grouped.improve_readability || [];
-        grouped.improve_readability.push(reason);
-      } else if (/too (easy|hard) for/i.test(reason) || /declared level .* does not match expected/i.test(reason)) {
-        grouped.increase_difficulty = grouped.increase_difficulty || [];
-        grouped.increase_difficulty.push(reason);
-      } else if (normalizedReason.includes("thin") || normalizedReason.includes("depth")) {
-        grouped.strengthen_explanation = grouped.strengthen_explanation || [];
-        grouped.strengthen_explanation.push(reason);
-      } else if (normalizedReason.includes("topic") || normalizedReason.includes("match")) {
-        grouped.fix_topic_match = grouped.fix_topic_match || [];
-        grouped.fix_topic_match.push(reason);
-      }
-    }
-    return grouped;
+  const normalizedReasons = useMemo(() => {
+    return (reasons ?? []).filter(Boolean);
   }, [reasons]);
 
   if (!currentItem || !reasons || !reasons.length) {
     return null;
   }
 
-  async function handleRepair(actionType: RepairActionType) {
+  async function handleFixIssue(issueText: string) {
     if (disabled || !currentItem) return;
+    setPanelMessage(null);
 
-    let result: RepairResult | null = null;
+    const result = runIssueSpecificRepair({
+      item: { ...currentItem, index: itemIndex },
+      itemIndex,
+      issueText,
+      selectedLevel,
+      selectedYearGroup,
+      topic,
+    });
 
-    try {
-      if (actionType === "fix_choices") {
-        const hasCorrectAnswer = Array.isArray(currentItem.choices)
-          ? (currentItem.choices as unknown[]).some((c) =>
-              String(c).toLowerCase().trim() === correctAnswer.toLowerCase().trim()
-            )
-          : false;
-
-        if (!hasCorrectAnswer && correctAnswer) {
-          result = repairMissingCorrectAnswer({
-            item: { ...currentItem, index: itemIndex },
-            correctAnswer,
-          });
-        } else {
-          result = repairDuplicateChoices({
-            item: { ...currentItem, index: itemIndex },
-          });
-        }
-      } else if (actionType === "improve_readability") {
-        result = improveReadability({
-          item: { ...currentItem, index: itemIndex },
-          targetLevel: currentItemLevel,
-        });
-      } else if (actionType === "strengthen_explanation") {
-        result = strengthenExplanation({
-          item: { ...currentItem, index: itemIndex },
-        });
-      } else if (actionType === "increase_difficulty") {
-        const recommendedLevel = Math.min(10, currentItemLevel + 2);
-        result = increaseDifficulty({
-          item: { ...currentItem, index: itemIndex },
-          currentLevel: currentItemLevel,
-          targetLevel: recommendedLevel,
-        });
-      } else if (actionType === "fix_topic_match" && topic) {
-        result = fixTopicMatch({
-          item: { ...currentItem, index: itemIndex },
-          targetTopic: topic,
-        });
-      }
-
-      if (result) {
-        setPreview({
-          action: actionType,
-          result,
-          isApproved: isSafeRepair(actionType), // Auto-approve safe repairs
-        });
-      }
-    } catch (err) {
-      console.error(`Repair ${actionType} failed:`, err);
+    if (!result.success) {
+      setPanelMessage(result.message);
+      return;
     }
+
+    setPreview({
+      title: `Fix Issue: ${inferBlackBoxIssueType(issueText).replace(/_/g, " ")}`,
+      reasons: [issueText],
+      result,
+    });
+  }
+
+  async function handleFixAllForItem() {
+    if (disabled || !currentItem || !normalizedReasons.length) return;
+    setPanelMessage(null);
+
+    const batch = runIssueSpecificRepairsForItem({
+      item: { ...currentItem, index: itemIndex },
+      itemIndex,
+      issues: normalizedReasons,
+      selectedLevel,
+      selectedYearGroup,
+      topic,
+    });
+
+    if (!batch.applied.length) {
+      setPanelMessage("No deterministic fixes were available for this item.");
+      return;
+    }
+
+    setPreview({
+      title: `Fix All Issues for Item ${itemIndex + 1}`,
+      reasons: batch.applied.map((entry) => entry.issueText),
+      result: {
+        success: true,
+        itemIndex,
+        actionType: batch.applied[0]?.actionType ?? "fix_topic_match",
+        before: batch.before,
+        after: batch.after,
+        message: `Prepared ${batch.applied.length} fix${batch.applied.length === 1 ? "" : "es"} for item ${itemIndex + 1}.`,
+        confidence: "needs_review",
+      },
+    });
   }
 
   function approveRepair() {
@@ -144,8 +116,13 @@ export default function BlackBoxRepairPanel({
     return (
       <div className="rounded-lg border border-amber-400/20 bg-amber-500/5 p-4">
         <p className="text-xs font-black uppercase tracking-[0.12em] text-amber-100">
-          Repair Preview
+          {preview.title}
         </p>
+        <div className="mt-2 space-y-1 text-xs text-amber-50">
+          {preview.reasons.map((reason) => (
+            <p key={reason}>Issue: {reason}</p>
+          ))}
+        </div>
         <div className="mt-3 grid gap-2 md:grid-cols-2">
           <div>
             <p className="text-[10px] font-black uppercase text-amber-200">Before</p>
@@ -182,26 +159,37 @@ export default function BlackBoxRepairPanel({
   return (
     <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3">
       <p className="text-[11px] font-black uppercase tracking-[0.12em] text-indigo-100">
-        Available Fixes
+        Issue-Specific Fixes
       </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {(Object.entries(issueGroups) as Array<[RepairActionType, string[]]>).map(
-          ([actionType]) => (
-            <button
-              key={actionType}
-              onClick={() => handleRepair(actionType)}
-              disabled={disabled}
-              className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide ${
-                isSafeRepair(actionType)
-                  ? "border border-emerald-400/40 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
-                  : "border border-amber-400/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
-              }`}
-            >
-              {actionType.replace(/_/g, " ")}
-            </button>
-          )
-        )}
+      <div className="mt-2 space-y-2">
+        {normalizedReasons.map((reason) => (
+          <div key={reason} className="rounded-lg border border-slate-700/80 bg-slate-950/60 p-2">
+            <p className="text-xs text-slate-200">{reason}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="rounded border border-indigo-400/40 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-indigo-100">
+                {inferBlackBoxIssueType(reason).replace(/_/g, " ")}
+              </span>
+              <button
+                onClick={() => handleFixIssue(reason)}
+                disabled={disabled}
+                className="rounded border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
+              >
+                Fix Issue
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          onClick={() => void handleFixAllForItem()}
+          disabled={disabled || normalizedReasons.length === 0}
+          className="rounded border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+        >
+          Fix All Issues for This Item
+        </button>
+      </div>
+      {panelMessage ? <p className="mt-2 text-xs text-amber-100">{panelMessage}</p> : null}
     </div>
   );
 }

@@ -7,8 +7,13 @@ export type RepairActionType =
   | "fix_choices"           // Inject correct answer, generate distractors
   | "improve_readability"   // Rewrite for simpler vocabulary
   | "increase_difficulty"   // Add reasoning steps, complexity
+  | "decrease_difficulty"   // Reduce complexity and language demand
   | "strengthen_explanation"// Deepen or clarify explanation
   | "fix_topic_match"       // Rewrite to match declared topic
+  | "fix_subject_fit"       // Ensure item structure fits subject expectations
+  | "repair_missing_prompt" // Add missing question/prompt text
+  | "repair_missing_answer" // Add missing answer text
+  | "repair_missing_passage"// Add missing reading passage
   | "fix_answer_depth";     // Expand thin answers
 
 export type RepairConfidence = "safe" | "needs_review" | "risky";
@@ -32,6 +37,58 @@ export type RepairResult = {
   message: string;
   confidence: RepairConfidence;
 };
+
+export type BlackBoxIssueType =
+  | "missing_question_prompt"
+  | "missing_correct_answer"
+  | "duplicate_options"
+  | "reading_missing_passage"
+  | "reading_missing_question"
+  | "reading_missing_answer"
+  | "reading_subject_mismatch"
+  | "item_too_easy"
+  | "item_too_hard"
+  | "answer_too_thin"
+  | "readability_too_simple"
+  | "readability_too_advanced"
+  | "difficulty_mismatch"
+  | "unsupported";
+
+export type IssueSpecificRepairResult = RepairResult & {
+  issueText: string;
+  issueType: BlackBoxIssueType;
+};
+
+export type BlackBoxRepairActionKind = "local" | "quality" | "unknown";
+
+const LOCAL_REPAIR_PATTERNS = [
+  /missing question\/prompt/i,
+  /missing correct answer/i,
+  /missing explanation/i,
+  /missing reading passage/i,
+  /wrong\/missing metadata/i,
+  /duplicate options/i,
+  /formatting/i,
+  /structure/i,
+  /invalid json/i,
+];
+
+const QUALITY_REPAIR_PATTERNS = [
+  /item too easy/i,
+  /item too hard/i,
+  /answer is too thin/i,
+  /vocabulary\/readability appears too simple/i,
+  /vocabulary\/readability appears too advanced/i,
+  /weak assessment value/i,
+  /poor question quality/i,
+  /weak distractors/i,
+  /question does not assess target skill/i,
+  /does not assess target skill/i,
+];
+
+function matchesAnyPattern(input: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(input));
+}
 
 /**
  * Deterministic repair handlers for specific Black Box issues
@@ -369,6 +426,154 @@ export function fixTopicMatch(input: {
   };
 }
 
+function repairMissingQuestionPrompt(input: {
+  item: Record<string, unknown>;
+  targetTopic: string;
+  selectedYearGroup: string;
+}): RepairResult {
+  const { item, targetTopic, selectedYearGroup } = input;
+  const question = String(item.question || item.prompt || "").trim();
+  if (question) {
+    return {
+      success: false,
+      itemIndex: item.index as number || 0,
+      actionType: "repair_missing_prompt",
+      before: item,
+      after: item,
+      message: "Question/prompt text already exists.",
+      confidence: "safe",
+    };
+  }
+
+  const passage = String(item.passage || "").trim();
+  const topicLabel = targetTopic || "the topic";
+  const generatedQuestion = passage
+    ? `Based on the passage, what is one key idea about ${topicLabel}? Use evidence.`
+    : `For ${selectedYearGroup || "this year group"}, answer this ${topicLabel} question and explain your reasoning.`;
+
+  const after = {
+    ...item,
+    question: generatedQuestion,
+    prompt: generatedQuestion,
+  };
+
+  return {
+    success: true,
+    itemIndex: item.index as number || 0,
+    actionType: "repair_missing_prompt",
+    before: item,
+    after,
+    message: "Added missing question/prompt text.",
+    confidence: "needs_review",
+  };
+}
+
+function repairMissingAnswerText(input: {
+  item: Record<string, unknown>;
+}): RepairResult {
+  const { item } = input;
+  const currentAnswer = String(item.answer || item.correctAnswer || "").trim();
+  if (currentAnswer) {
+    return {
+      success: false,
+      itemIndex: item.index as number || 0,
+      actionType: "repair_missing_answer",
+      before: item,
+      after: item,
+      message: "Answer text already exists.",
+      confidence: "safe",
+    };
+  }
+
+  const choices = Array.isArray(item.choices) ? (item.choices as unknown[]).map((entry) => String(entry).trim()).filter(Boolean) : [];
+  const fallbackAnswer = choices[0] || "Answer with evidence from the item content.";
+  const after = {
+    ...item,
+    answer: fallbackAnswer,
+  };
+
+  return {
+    success: true,
+    itemIndex: item.index as number || 0,
+    actionType: "repair_missing_answer",
+    before: item,
+    after,
+    message: "Added missing answer text.",
+    confidence: "needs_review",
+  };
+}
+
+function repairMissingReadingPassage(input: {
+  item: Record<string, unknown>;
+  targetTopic: string;
+}): RepairResult {
+  const { item, targetTopic } = input;
+  const passage = String(item.passage || "").trim();
+  if (passage) {
+    return {
+      success: false,
+      itemIndex: item.index as number || 0,
+      actionType: "repair_missing_passage",
+      before: item,
+      after: item,
+      message: "Reading passage already exists.",
+      confidence: "safe",
+    };
+  }
+
+  const topicLabel = targetTopic || "the lesson topic";
+  const generatedPassage = [
+    `In a class discussion about ${topicLabel}, pupils compared two ideas and explained their thinking.`,
+    "They used details from what they read to support each point clearly.",
+    "The teacher asked everyone to quote one piece of evidence before giving a final answer.",
+  ].join(" ");
+
+  const after = {
+    ...item,
+    passage: generatedPassage,
+  };
+
+  return {
+    success: true,
+    itemIndex: item.index as number || 0,
+    actionType: "repair_missing_passage",
+    before: item,
+    after,
+    message: "Added missing reading passage scaffold.",
+    confidence: "needs_review",
+  };
+}
+
+function decreaseDifficulty(input: {
+  item: Record<string, unknown>;
+  selectedLevel: number;
+}): RepairResult {
+  const { item, selectedLevel } = input;
+  const question = String(item.question || item.prompt || "").trim();
+  const simplifiedQuestion = question
+    .replace(/\s*Explain your reasoning\.?/gi, "")
+    .replace(/\s*Show all your workings?\.?/gi, "")
+    .trim();
+
+  const after = {
+    ...item,
+    question: simplifiedQuestion || question,
+    prompt: item.prompt ? (simplifiedQuestion || question) : item.prompt,
+    level: Math.max(1, selectedLevel),
+    difficulty: Math.max(1, selectedLevel),
+  };
+
+  return {
+    success: true,
+    itemIndex: item.index as number || 0,
+    actionType: "decrease_difficulty",
+    before: item,
+    after,
+    message: `Reduced question complexity for level ${Math.max(1, selectedLevel)}.`,
+    confidence: "needs_review",
+  };
+}
+
 /**
  * Determine if a repair is "safe" to apply without admin review
  */
@@ -397,4 +602,372 @@ export function classifyRepairsForBatch(
   }
 
   return { safe, needsReview };
+}
+
+export function inferBlackBoxIssueType(reason: string): BlackBoxIssueType {
+  const normalized = String(reason).toLowerCase();
+
+  if (normalized.includes("missing question/prompt text")) return "missing_question_prompt";
+  if (
+    normalized.includes("missing correct answer")
+    || normalized.includes("correct answer is not present in answer options")
+    || normalized.includes("correct answer is not present")
+  ) {
+    return "missing_correct_answer";
+  }
+  if (
+    normalized.includes("multiple-choice item contains duplicate options")
+    || normalized.includes("duplicate options")
+    || normalized.includes("weak_distractors_duplicate_options")
+  ) {
+    return "duplicate_options";
+  }
+  if (normalized.includes("reading_missing_passage")) return "reading_missing_passage";
+  if (normalized.includes("reading_missing_question")) return "reading_missing_question";
+  if (normalized.includes("reading_missing_answer")) return "reading_missing_answer";
+  if (normalized.includes("expected reading") && normalized.includes("detected")) return "reading_subject_mismatch";
+
+  if (normalized.includes("too easy")) return "item_too_easy";
+  if (normalized.includes("too hard")) return "item_too_hard";
+  if (normalized.includes("answer is too thin")) return "answer_too_thin";
+  if (normalized.includes("readability appears too simple") || normalized.includes("vocabulary/readability appears too simple")) {
+    return "readability_too_simple";
+  }
+  if (normalized.includes("readability appears too advanced") || normalized.includes("vocabulary/readability appears too advanced")) {
+    return "readability_too_advanced";
+  }
+  if (normalized.includes("declared level") && normalized.includes("does not match expected")) {
+    return "difficulty_mismatch";
+  }
+
+  return "unsupported";
+}
+
+export function getBlackBoxRepairActionKind(reason: string): BlackBoxRepairActionKind {
+  const normalized = String(reason).toLowerCase();
+  const issueType = inferBlackBoxIssueType(reason);
+
+  if (matchesAnyPattern(normalized, LOCAL_REPAIR_PATTERNS)) return "local";
+  if (matchesAnyPattern(normalized, QUALITY_REPAIR_PATTERNS)) return "quality";
+
+  if (
+    issueType === "missing_question_prompt"
+    || issueType === "missing_correct_answer"
+    || issueType === "duplicate_options"
+    || issueType === "reading_missing_passage"
+    || issueType === "reading_missing_question"
+    || issueType === "reading_missing_answer"
+    || issueType === "reading_subject_mismatch"
+  ) {
+    return "local";
+  }
+
+  if (
+    issueType === "item_too_easy"
+    || issueType === "item_too_hard"
+    || issueType === "answer_too_thin"
+    || issueType === "readability_too_simple"
+    || issueType === "readability_too_advanced"
+    || issueType === "difficulty_mismatch"
+  ) {
+    return "quality";
+  }
+
+  return "unknown";
+}
+
+export function isBlackBoxQuickRepairIssue(reason: string): boolean {
+  return getBlackBoxRepairActionKind(reason) === "local";
+}
+
+export function isBlackBoxRegenerationIssue(reason: string): boolean {
+  return getBlackBoxRepairActionKind(reason) === "quality";
+}
+
+function targetLevelForIssue(input: {
+  currentLevel: number;
+  selectedLevel: number;
+  issueType: BlackBoxIssueType;
+}): number {
+  if (input.issueType === "item_too_easy") {
+    return Math.max(input.selectedLevel, input.currentLevel + 1);
+  }
+  if (input.issueType === "item_too_hard") {
+    return Math.max(1, Math.min(input.selectedLevel, input.currentLevel - 1));
+  }
+  return Math.max(1, input.selectedLevel);
+}
+
+export function runIssueSpecificRepair(input: {
+  item: Record<string, unknown>;
+  itemIndex: number;
+  issueText: string;
+  selectedLevel: number;
+  selectedYearGroup: string;
+  topic: string;
+}): IssueSpecificRepairResult {
+  const issueType = inferBlackBoxIssueType(input.issueText);
+  const itemWithIndex: Record<string, unknown> = {
+    ...input.item,
+    index: input.itemIndex,
+  };
+  const currentLevel = Number.isFinite(Number(itemWithIndex.level ?? itemWithIndex.difficulty))
+    ? Math.max(1, Math.min(10, Math.round(Number(itemWithIndex.level ?? itemWithIndex.difficulty))))
+    : Math.max(1, input.selectedLevel);
+
+  if (issueType === "missing_question_prompt" || issueType === "reading_missing_question") {
+    const result = repairMissingQuestionPrompt({
+      item: itemWithIndex,
+      targetTopic: input.topic,
+      selectedYearGroup: input.selectedYearGroup,
+    });
+    return {
+      ...result,
+      issueText: input.issueText,
+      issueType,
+    };
+  }
+
+  if (issueType === "missing_correct_answer") {
+    const currentAnswer = String(itemWithIndex.answer ?? itemWithIndex.correctAnswer ?? "").trim();
+    if (!currentAnswer) {
+      // No answer at all — add a placeholder answer first
+      const placeholderResult = repairMissingAnswerText({ item: itemWithIndex });
+      return { ...placeholderResult, issueText: input.issueText, issueType };
+    }
+    // Always force-inject the answer into choices so BB's stricter check passes
+    const existingChoices: string[] = Array.isArray(itemWithIndex.choices)
+      ? (itemWithIndex.choices as unknown[]).map((c) => String(c).trim()).filter(Boolean)
+      : [];
+    const answerLower = currentAnswer.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+    const alreadyPresent = existingChoices.some(
+      (c) => c.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim() === answerLower,
+    );
+    // Build new choices: answer at index 0, then remaining non-matching choices
+    const otherChoices = alreadyPresent
+      ? existingChoices.filter(
+          (c) => c.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim() !== answerLower,
+        )
+      : existingChoices;
+    const newChoices = [currentAnswer, ...otherChoices].slice(0, 4);
+    const after: Record<string, unknown> = { ...itemWithIndex, choices: newChoices };
+    return {
+      success: true,
+      itemIndex: input.itemIndex,
+      actionType: "fix_choices" as RepairActionType,
+      before: itemWithIndex,
+      after,
+      message: alreadyPresent
+        ? `Re-positioned correct answer to choices[0] for Black Box compliance (${newChoices.length} options).`
+        : `Injected correct answer into choices. Now has ${newChoices.length} options.`,
+      confidence: "safe" as RepairConfidence,
+      issueText: input.issueText,
+      issueType,
+    };
+  }
+
+  if (issueType === "reading_missing_answer") {
+    const result = repairMissingAnswerText({ item: itemWithIndex });
+    return {
+      ...result,
+      issueText: input.issueText,
+      issueType,
+    };
+  }
+
+  if (issueType === "duplicate_options") {
+    const result = repairDuplicateChoices({ item: itemWithIndex });
+    return {
+      ...result,
+      issueText: input.issueText,
+      issueType,
+    };
+  }
+
+  if (issueType === "reading_missing_passage") {
+    const result = repairMissingReadingPassage({
+      item: itemWithIndex,
+      targetTopic: input.topic,
+    });
+    return {
+      ...result,
+      issueText: input.issueText,
+      issueType,
+    };
+  }
+
+  if (issueType === "reading_subject_mismatch") {
+    const withPassage = repairMissingReadingPassage({
+      item: itemWithIndex,
+      targetTopic: input.topic,
+    });
+    const withQuestion = repairMissingQuestionPrompt({
+      item: withPassage.success ? withPassage.after : itemWithIndex,
+      targetTopic: input.topic,
+      selectedYearGroup: input.selectedYearGroup,
+    });
+    const withAnswer = repairMissingAnswerText({
+      item: withQuestion.success ? withQuestion.after : (withPassage.success ? withPassage.after : itemWithIndex),
+    });
+
+    const after = {
+      ...(withAnswer.success ? withAnswer.after : (withQuestion.success ? withQuestion.after : (withPassage.success ? withPassage.after : itemWithIndex))),
+      subject: "english-language",
+      contentType: "reading",
+      strand: "reading",
+    };
+
+    return {
+      success: true,
+      itemIndex: input.itemIndex,
+      actionType: "fix_subject_fit",
+      before: itemWithIndex,
+      after,
+      message: "Aligned item to reading structure (passage, question, answer, and subject metadata).",
+      confidence: "needs_review",
+      issueText: input.issueText,
+      issueType,
+    };
+  }
+
+  if (issueType === "item_too_easy" || issueType === "difficulty_mismatch") {
+    const targetLevel = targetLevelForIssue({
+      currentLevel,
+      selectedLevel: input.selectedLevel,
+      issueType,
+    });
+    const result = increaseDifficulty({
+      item: itemWithIndex,
+      currentLevel,
+      targetLevel,
+    });
+    return {
+      ...result,
+      issueText: input.issueText,
+      issueType,
+    };
+  }
+
+  if (issueType === "item_too_hard") {
+    const result = decreaseDifficulty({
+      item: itemWithIndex,
+      selectedLevel: targetLevelForIssue({
+        currentLevel,
+        selectedLevel: input.selectedLevel,
+        issueType,
+      }),
+    });
+    return {
+      ...result,
+      issueText: input.issueText,
+      issueType,
+    };
+  }
+
+  if (issueType === "answer_too_thin") {
+    const seeded = repairMissingAnswerText({ item: itemWithIndex });
+    const baseForExplanation = seeded.success ? seeded.after : itemWithIndex;
+    const result = strengthenExplanation({ item: baseForExplanation });
+    const after = result.success
+      ? result.after
+      : seeded.success
+        ? seeded.after
+        : itemWithIndex;
+    return {
+      ...result,
+      success: result.success || seeded.success,
+      before: itemWithIndex,
+      after,
+      message: result.success
+        ? result.message
+        : seeded.success
+          ? "Added missing answer text to enable explanation repair."
+          : result.message,
+      issueText: input.issueText,
+      issueType,
+    };
+  }
+
+  if (issueType === "readability_too_simple" || issueType === "readability_too_advanced") {
+    const seeded = repairMissingQuestionPrompt({
+      item: itemWithIndex,
+      targetTopic: input.topic,
+      selectedYearGroup: input.selectedYearGroup,
+    });
+    const baseForReadability = seeded.success ? seeded.after : itemWithIndex;
+    const result = improveReadability({
+      item: baseForReadability,
+      targetLevel: Math.max(1, input.selectedLevel),
+    });
+    const after = result.success
+      ? result.after
+      : seeded.success
+        ? seeded.after
+        : itemWithIndex;
+    return {
+      ...result,
+      success: result.success || seeded.success,
+      before: itemWithIndex,
+      after,
+      message: result.success
+        ? result.message
+        : seeded.success
+          ? "Added missing question/prompt text to enable readability repair."
+          : result.message,
+      issueText: input.issueText,
+      issueType,
+    };
+  }
+
+  return {
+    success: false,
+    itemIndex: input.itemIndex,
+    actionType: "fix_topic_match",
+    before: itemWithIndex,
+    after: itemWithIndex,
+    message: `No deterministic fix is configured for this issue yet (year ${input.selectedYearGroup || "N/A"}).`,
+    confidence: "needs_review",
+    issueText: input.issueText,
+    issueType,
+  };
+}
+
+export function runIssueSpecificRepairsForItem(input: {
+  item: Record<string, unknown>;
+  itemIndex: number;
+  issues: string[];
+  selectedLevel: number;
+  selectedYearGroup: string;
+  topic: string;
+}): {
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  applied: IssueSpecificRepairResult[];
+} {
+  let working = { ...input.item, index: input.itemIndex } as Record<string, unknown>;
+  const applied: IssueSpecificRepairResult[] = [];
+
+  for (const issue of input.issues) {
+    const result = runIssueSpecificRepair({
+      item: working,
+      itemIndex: input.itemIndex,
+      issueText: issue,
+      selectedLevel: input.selectedLevel,
+      selectedYearGroup: input.selectedYearGroup,
+      topic: input.topic,
+    });
+    if (!result.success) continue;
+    working = {
+      ...working,
+      ...result.after,
+      index: input.itemIndex,
+    };
+    applied.push(result);
+  }
+
+  return {
+    before: { ...input.item, index: input.itemIndex },
+    after: working,
+    applied,
+  };
 }

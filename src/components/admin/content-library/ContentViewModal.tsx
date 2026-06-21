@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
 import type { ContentItem } from "./types";
 import BlackBoxRepairPanel from "./BlackBoxRepairPanel";
@@ -15,6 +15,7 @@ import {
   parseBlackBoxRuntimeTest,
   parseContentReviewHistory,
 } from "./utils";
+import { generationDisplayLabel, type AiGenerationMode } from "@/lib/admin-ai-generation-meta";
 import { analyzeContentSessionSlots, getIncompleteSlotsReason, isQuestionSlotFilled } from "@/lib/session-slot-validation";
 import { analyzeSessionSlotDuplicates, primaryDuplicateFlag } from "@/lib/session-slot-duplicates";
 import {
@@ -22,10 +23,13 @@ import {
   buildMissingSlotRecoveryPlan,
   formatMissingSlotRecoveryDiagnostics,
   mergeGeneratedIntoEmptySlots,
+  resolveAdminGenerationSubjectContext,
   selectBestMissingSlotCandidates,
   summarizeSessionSlots,
   type MissingSlotRecoveryAttempt,
 } from "@/lib/session-slot-recovery";
+import { getBlackBoxRepairActionKind, runIssueSpecificRepairsForItem } from "@/lib/ai/content-repair";
+import type { ContentReviewHistoryEntry } from "./types";
 
 type Props = {
   open: boolean;
@@ -44,6 +48,22 @@ type VerificationPayload = {
   };
   error?: string;
   blackBoxLiveTest?: unknown;
+};
+
+type GenerationPayload = {
+  success?: boolean;
+  error?: string;
+  content?: { items?: unknown[] };
+  generationMetadata?: {
+    generationSource?: "openai" | "fallback" | "repair" | "mock";
+    usedFallback?: boolean;
+    fallbackReason?: string | null;
+  };
+  fallback?: {
+    used?: boolean;
+    reasonCode?: string;
+    message?: string;
+  };
 };
 
 type GeneratedReviewItem = Record<string, unknown>;
@@ -231,6 +251,24 @@ type DuplicatePairIssue = {
   labels: DuplicateIssueType[];
 };
 
+type GlobalDuplicateSlotIssue = {
+  pairKey: string;
+  currentSlotId: string;
+  currentSlotIndex: number;
+  matchedQuestionId: string;
+  matchedSlotIndex: number;
+  matchedContentId: string;
+  duplicateType: string;
+  sourceStatus: string;
+  similarity: number;
+};
+
+type BlackBoxBatchFixPreview = {
+  updatedItems: GeneratedReviewItem[];
+  changedIndexes: number[];
+  details: string[];
+};
+
 function duplicateSeverityRank(value: DuplicateIssueType): number {
   if (value === "exact") return 3;
   if (value === "near") return 2;
@@ -279,6 +317,58 @@ function normalizedPrompt(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function parseReasonItemIndex(reason: string): number | null {
+  const match = /item\s+(\d+)\s*:/i.exec(reason);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed - 1;
+}
+
+const CONTENT_LIBRARY_AI_MODE_OPTIONS: Array<{
+  value: AiGenerationMode;
+  label: string;
+  helper: string;
+}> = [
+  {
+    value: "live_openai_only",
+    label: "Live OpenAI only",
+    helper: "Fail clearly if OpenAI fails.",
+  },
+  {
+    value: "openai_with_fallback",
+    label: "OpenAI with fallback",
+    helper: "Try OpenAI first, then use fallback if needed.",
+  },
+  {
+    value: "fallback_only",
+    label: "Fallback only",
+    helper: "Do not call OpenAI.",
+  },
+];
+
+function aiModeLabel(mode: AiGenerationMode): string {
+  return CONTENT_LIBRARY_AI_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? mode;
+}
+
+function isGeneratedItem(value: unknown): value is GeneratedReviewItem {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function hasRegenerationContext(metaSubject: string, metaYearGroup: string | null | undefined, contentLevel: number, metaTopic: string | null | undefined, metaSkillFocus: string | null | undefined): boolean {
+  return Boolean(metaSubject && metaYearGroup && Number.isFinite(contentLevel) && (metaTopic || metaSkillFocus));
+}
+
+function generationSourceLabelFromPayload(payload: GenerationPayload | null | undefined): string | null {
+  const source = payload?.generationMetadata?.generationSource;
+  const label = source ? generationDisplayLabel({ generationSource: source }) : null;
+  if (label) return label;
+  if (payload?.generationMetadata?.usedFallback || payload?.fallback?.used) {
+    return "Generated using fallback";
+  }
+  return null;
+}
+
 export default function ContentViewModal({ open, content, onClose, onVerified }: Props) {
   if (!open || !content) return null;
   return (
@@ -314,6 +404,8 @@ function ContentViewModalBody({
   const items = useMemo(() => asReviewItems(content.contentJson), [content.contentJson]);
   const [selectedItemIndex, setSelectedItemIndex] = useState(0);
   const [rawExpanded, setRawExpanded] = useState(false);
+  const [selectedApprovalSlots, setSelectedApprovalSlots] = useState<number[]>([]);
+  const [highlightedSlots, setHighlightedSlots] = useState<number[]>([]);
   /** Per-item review notes — keyed by item index (Part 2) */
   const [itemNotes, setItemNotes] = useState<Record<number, string>>({});
   const [subject, setSubject] = useState(blackBox?.reclassificationRecommendation?.subject ?? meta.subject ?? "");
@@ -323,6 +415,29 @@ function ContentViewModalBody({
   const [message, setMessage] = useState<string | null>(null);
   const [slotCountInput, setSlotCountInput] = useState("");
   const currentItem = items[selectedItemIndex] ?? null;
+  const approvalProgress = useMemo(() => {
+    const latestByIndex = new Map<number, ContentReviewHistoryEntry>();
+    const sortedHistory = [...reviewHistory].sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+    for (const entry of sortedHistory) {
+      if (typeof entry.questionIndex !== "number") continue;
+      latestByIndex.set(entry.questionIndex, entry);
+    }
+
+    const approvedSlotIndexes = Array.from(latestByIndex.entries())
+      .filter(([, entry]) => entry.action === "approve")
+      .map(([index]) => index)
+      .sort((left, right) => left - right);
+    const approvedCount = approvedSlotIndexes.length;
+    const totalSlots = items.filter((entry) => isQuestionSlotFilled(entry)).length || items.length;
+
+    return {
+      approvedSlotIndexes,
+      approvedCount,
+      totalSlots,
+      isFullApproval: totalSlots > 0 && approvedCount >= totalSlots,
+      isPartialApproval: approvedCount > 0 && approvedCount < totalSlots,
+    };
+  }, [items, reviewHistory]);
   const slotSummary = useMemo(() => analyzeContentSessionSlots({
     contentJson: content.contentJson,
     contentType: content.contentType,
@@ -337,6 +452,43 @@ function ContentViewModalBody({
   }), [content.contentJson, content.contentType, content.metadataJson, meta.subject]);
   const globalDuplicateSummary = content.globalDuplicateSummary ?? null;
   const duplicatePairs = useMemo(() => buildDuplicatePairIssues(duplicateSummary.issues), [duplicateSummary.issues]);
+  const slotIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    items.forEach((item, index) => {
+      const explicitId = textValue(item.id);
+      if (explicitId) map.set(explicitId, index);
+      map.set(`${content.id}:slot-${index}`, index);
+    });
+    return map;
+  }, [content.id, items]);
+  const globalDuplicateIssues = useMemo(() => {
+    if (!globalDuplicateSummary?.matches?.length) return [] as GlobalDuplicateSlotIssue[];
+    const issues: GlobalDuplicateSlotIssue[] = [];
+    for (const match of globalDuplicateSummary.matches) {
+      const mappedIndex = slotIndexById.get(match.currentSlotId);
+      let resolvedIndex = typeof mappedIndex === "number" ? mappedIndex : -1;
+      if (resolvedIndex < 0) {
+        const fallback = /:slot-(\d+)$/.exec(match.currentSlotId);
+        if (fallback) {
+          const parsed = Number(fallback[1]);
+          if (Number.isFinite(parsed)) resolvedIndex = parsed;
+        }
+      }
+      if (resolvedIndex < 0 || resolvedIndex >= items.length) continue;
+      issues.push({
+        pairKey: `${match.currentSlotId}-${match.matchedQuestionId}-${match.matchedContentId}`,
+        currentSlotId: match.currentSlotId,
+        currentSlotIndex: resolvedIndex,
+        matchedQuestionId: match.matchedQuestionId,
+        matchedSlotIndex: match.matchedSlotIndex,
+        matchedContentId: match.matchedContentId,
+        duplicateType: match.duplicateType,
+        sourceStatus: match.sourceStatus,
+        similarity: match.similarity,
+      });
+    }
+    return issues;
+  }, [globalDuplicateSummary, items.length, slotIndexById]);
   const hasGlobalDuplicates = Boolean(globalDuplicateSummary?.hasDuplicates);
   const totalDuplicateCount = globalDuplicateSummary?.duplicateCount ?? duplicatePairs.length;
   const [pairKeepChoice, setPairKeepChoice] = useState<Record<string, number>>({});
@@ -344,6 +496,17 @@ function ContentViewModalBody({
   const [regeneratingDuplicateSlots, setRegeneratingDuplicateSlots] = useState(false);
   const [generatingMissingSlots, setGeneratingMissingSlots] = useState(false);
   const [repairingItem, setRepairingItem] = useState(false);
+  const [regeneratingQuestion, setRegeneratingQuestion] = useState(false);
+  const [blackBoxBatchFixPreview, setBlackBoxBatchFixPreview] = useState<BlackBoxBatchFixPreview | null>(null);
+  const [applyingBlackBoxBatchFix, setApplyingBlackBoxBatchFix] = useState(false);
+  const [questionRegenerationPreview, setQuestionRegenerationPreview] = useState<{
+    issueText: string;
+    aiMode: AiGenerationMode;
+    sourceLabel: string | null;
+    before: GeneratedReviewItem;
+    after: GeneratedReviewItem;
+  } | null>(null);
+  const [contentLibraryAiMode, setContentLibraryAiMode] = useState<AiGenerationMode>("openai_with_fallback");
   const effectivePairKeepChoice = useMemo(() => {
     const resolved: Record<string, number> = {};
     for (const pair of duplicatePairs) {
@@ -355,6 +518,13 @@ function ContentViewModalBody({
     return resolved;
   }, [duplicatePairs, pairKeepChoice]);
   const duplicateReplacementTargets = useMemo(() => {
+    if (globalDuplicateIssues.length > 0) {
+      const targets = new Set<number>();
+      for (const issue of globalDuplicateIssues) {
+        targets.add(issue.currentSlotIndex);
+      }
+      return Array.from(targets.values()).sort((a, b) => a - b);
+    }
     const targets = new Set<number>();
     for (const pair of duplicatePairs) {
       const keepIndex = effectivePairKeepChoice[pair.pairKey] ?? pair.slotIndexes[0];
@@ -362,7 +532,7 @@ function ContentViewModalBody({
       targets.add(replaceIndex);
     }
     return Array.from(targets.values()).sort((a, b) => a - b);
-  }, [duplicatePairs, effectivePairKeepChoice]);
+  }, [duplicatePairs, effectivePairKeepChoice, globalDuplicateIssues]);
   const missingSlotIndexes = useMemo(() => summarizeSessionSlots(items).emptySlotIndexes, [items]);
   const initialSlotEditor = buildSlotEditorState(currentItem, content.contentType);
   const [slotPromptInput, setSlotPromptInput] = useState(initialSlotEditor.prompt);
@@ -391,7 +561,49 @@ function ContentViewModalBody({
   const itemRepairReasons = currentItemCheck?.reasons?.filter(Boolean) ?? [];
   const fallbackRepairReasons = blackBox?.reasons?.filter(Boolean) ?? [];
   const repairReasons = itemRepairReasons.length > 0 ? itemRepairReasons : fallbackRepairReasons;
-  const shouldRenderRepairPanel = Boolean(currentItem && repairReasons.length > 0);
+  const localRepairReasons = repairReasons.filter((reason) => getBlackBoxRepairActionKind(reason) === "local");
+  const selectedItemLocalRepairReasons = useMemo(
+    () => localRepairReasons.filter((reason) => {
+      const parsedIndex = parseReasonItemIndex(reason);
+      return parsedIndex === null || parsedIndex === selectedItemIndex;
+    }),
+    [localRepairReasons, selectedItemIndex],
+  );
+  const offSlotRepairTargets = useMemo(
+    () => Array.from(new Set(
+      localRepairReasons
+        .map((reason) => parseReasonItemIndex(reason))
+        .filter((index): index is number => index !== null && index !== selectedItemIndex),
+    )).sort((a, b) => a - b),
+    [localRepairReasons, selectedItemIndex],
+  );
+  const hasBlockingBlackBoxReason = useCallback((reasons: string[]) => {
+    const normalizedReasons = reasons.map((reason) => String(reason).toLowerCase());
+    return normalizedReasons.some((reason) => (
+      reason.includes("curriculum quality block")
+      || reason.includes("missing question/prompt text")
+      || reason.includes("missing correct answer")
+      || reason.includes("correct answer is not present")
+      || reason.includes("duplicate options")
+      || reason.includes("fewer than two options")
+      || reason.includes("expected reading") && reason.includes("detected")
+    ));
+  }, []);
+  const rejectedSlotIndexes = useMemo(
+    () => Array.from(new Set(
+      (blackBox?.itemChecks ?? [])
+        .map((check, fallbackIndex) => {
+          const isRejected = hasBlockingBlackBoxReason(check.reasons ?? []);
+          if (!isRejected) return -1;
+          const itemIndex = typeof check.itemIndex === "number" ? check.itemIndex : fallbackIndex;
+          return itemIndex;
+        })
+        .filter((index) => index >= 0),
+    )).sort((a, b) => a - b),
+    [blackBox?.itemChecks, hasBlockingBlackBoxReason],
+  );
+  const rejectedSlotIndexSet = useMemo(() => new Set(rejectedSlotIndexes), [rejectedSlotIndexes]);
+  const shouldRenderRepairPanel = Boolean(currentItem && selectedItemLocalRepairReasons.length > 0);
   const gaTwiMarkers = Array.from(new Set([
     ...extractGaTwiMarkers(blackBox?.reasons),
     ...extractGaTwiMarkers(currentItemCheck?.reasons),
@@ -404,6 +616,13 @@ function ContentViewModalBody({
     itemChecks: blackBox?.itemChecks ?? [],
     itemCount: items.length,
     scoreCap: blackBox?.scoreCap,
+  });
+  const qualityRepairReasons = repairReasons.filter((reason) => getBlackBoxRepairActionKind(reason) === "quality");
+  const canRunRegeneration = hasRegenerationContext(meta.subject ?? "", meta.yearGroup, content.level, meta.topic, meta.skillFocus);
+  const generationSubjectContext = resolveAdminGenerationSubjectContext({
+    subject: meta.subject,
+    contentType: content.contentType,
+    yearGroup: meta.yearGroup,
   });
 
   function hydrateSlotEditor(index: number, sourceItems: GeneratedReviewItem[] = items) {
@@ -418,6 +637,62 @@ function ContentViewModalBody({
   function selectSlot(index: number) {
     setSelectedItemIndex(index);
     hydrateSlotEditor(index);
+  }
+
+  function toggleApprovalSlot(index: number) {
+    setSelectedApprovalSlots((current) => {
+      if (current.includes(index)) {
+        return current.filter((value) => value !== index);
+      }
+      return [...current, index].sort((left, right) => left - right);
+    });
+  }
+
+  function clearApprovalSelection() {
+    setSelectedApprovalSlots([]);
+  }
+
+  function highlightSlotCards(indexes: number[]) {
+    const unique = Array.from(new Set(indexes)).filter((index) => index >= 0 && index < items.length);
+    if (!unique.length) return;
+    setHighlightedSlots(unique);
+    window.setTimeout(() => setHighlightedSlots([]), 2200);
+  }
+
+  async function submitVerification(action: VerificationAction, questionIndex: number, noteOverride?: string | null) {
+    const targetItem = items[questionIndex] ?? null;
+    if (!content || !targetItem) return null;
+
+    const notes = (noteOverride ?? itemNotes[questionIndex] ?? "").trim();
+    const response = await fetch(`/api/admin/content/${content.id}/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        notes,
+        questionContext: {
+          questionIndex,
+          questionPreview: firstText(targetItem, ["question", "prompt", "word", "title"]).slice(0, 200) || undefined,
+          itemId: typeof targetItem.id === "string" ? targetItem.id : undefined,
+        },
+        ...(action === "reclassify"
+          ? {
+              reclassification: {
+                subject: subject.trim() || undefined,
+                strand: strand.trim() || undefined,
+              },
+            }
+          : {}),
+      }),
+    });
+
+    const payload = await response.json() as VerificationPayload;
+    if (!response.ok || !payload.item) {
+      setMessage(payload.error ?? "Verification could not be saved.");
+      return null;
+    }
+
+    return payload;
   }
 
   async function saveSlots(nextItems: GeneratedReviewItem[], successMessage: string) {
@@ -485,6 +760,24 @@ function ContentViewModalBody({
     }
   }
 
+  async function removeSlotAt(index: number) {
+    if (items.length <= 1) {
+      setMessage("At least 1 slot is required.");
+      return;
+    }
+    if (index < 0 || index >= items.length) {
+      setMessage("Could not resolve slot index for removal.");
+      return;
+    }
+    const nextItems = [...items];
+    nextItems.splice(index, 1);
+    const saved = await saveSlots(nextItems, `Removed Slot ${index + 1}. Slot count is now ${nextItems.length}.`);
+    if (saved) {
+      const nextSelectedIndex = Math.max(0, Math.min(index, nextItems.length - 1));
+      selectSlot(nextSelectedIndex);
+    }
+  }
+
   async function saveSelectedSlot() {
     if (!items.length) return;
     const prompt = slotPromptInput.trim();
@@ -539,6 +832,10 @@ function ContentViewModalBody({
       setMessage("No missing slots found.");
       return;
     }
+    if (!canRunRegeneration) {
+      setMessage("Missing slot generation needs subject, year group, level, and topic context.");
+      return;
+    }
 
     setGeneratingMissingSlots(true);
     setMessage(null);
@@ -548,11 +845,14 @@ function ContentViewModalBody({
         .filter((slot) => isQuestionSlotFilled(slot))
         .map((slot) => normalizedPrompt(promptLikeText(slot)))
         .filter(Boolean);
+      let latestSourceLabel: string | null = null;
 
       const plan = buildMissingSlotRecoveryPlan({ missingSlots: missingSlotIndexes.length, contentType: content.contentType });
       const attempts: MissingSlotRecoveryAttempt[] = [];
       const generatedItems: GeneratedReviewItem[] = [];
       const passFailures: string[] = [];
+      const passSeedBase = Date.now();
+      const generatedPromptPool = new Set<string>();
 
       for (const pass of plan.passes) {
         if (generatedItems.length >= plan.internalCandidateTarget) break;
@@ -570,13 +870,15 @@ function ContentViewModalBody({
             curriculumPathway: meta.curriculumPathway,
             module: strand || null,
             contentType: content.contentType,
-            avoidPrompts,
+            avoidPrompts: Array.from(new Set([...avoidPrompts, ...Array.from(generatedPromptPool.values())])).slice(0, 24),
           },
           missingSlots: missingSlotIndexes.length,
           candidatePoolSize: pass.candidateCount,
           questionStyles: pass.questionStyles,
           passId: pass.id,
           passLabel: pass.label,
+          aiMode: contentLibraryAiMode,
+          regenerationNonce: passSeedBase + attempts.length,
         });
 
         const controller = new AbortController();
@@ -593,18 +895,10 @@ function ContentViewModalBody({
           });
 
           const raw = await response.text();
-          let payload: {
-            success?: boolean;
-            error?: string;
-            content?: { items?: unknown[] };
-          } | null = null;
+          let payload: GenerationPayload | null = null;
           if (raw) {
             try {
-              payload = JSON.parse(raw) as {
-                success?: boolean;
-                error?: string;
-                content?: { items?: unknown[] };
-              };
+              payload = JSON.parse(raw) as GenerationPayload;
             } catch {
               payload = null;
             }
@@ -615,8 +909,19 @@ function ContentViewModalBody({
             passFailures.push(payload?.error ?? fallbackMessage ?? `Pass failed (${response.status}).`);
           } else {
             passItems = Array.isArray(payload?.content?.items)
-              ? payload.content.items.filter((entry): entry is GeneratedReviewItem => Boolean(entry && typeof entry === "object" && !Array.isArray(entry)))
+              ? payload.content.items.filter(isGeneratedItem)
               : [];
+            for (const candidate of passItems) {
+              const prompt = normalizedPrompt(promptLikeText(candidate));
+              if (prompt) generatedPromptPool.add(prompt);
+            }
+            const sourceLabel = generationSourceLabelFromPayload(payload);
+            if (sourceLabel) latestSourceLabel = sourceLabel;
+            console.info("[content-library] missing slots generation", {
+              aiMode: contentLibraryAiMode,
+              sourceLabel,
+              passId: pass.id,
+            });
           }
         } catch (error) {
           if (error instanceof DOMException && error.name === "AbortError") {
@@ -647,9 +952,34 @@ function ContentViewModalBody({
         skillFocus: meta.skillFocus,
       });
 
+      let usedRelaxedFallback = false;
+      let candidatesForMerge: GeneratedReviewItem[] = selection.selectedItems as GeneratedReviewItem[];
+      if (candidatesForMerge.length === 0 && generatedItems.length > 0) {
+        const existingPrompts = new Set(
+          items
+            .filter((entry) => isQuestionSlotFilled(entry))
+            .map((entry) => normalizedPrompt(promptLikeText(entry)))
+            .filter(Boolean),
+        );
+        const uniqueRelaxed: GeneratedReviewItem[] = [];
+        const seenRelaxedPrompts = new Set<string>();
+        for (const candidate of generatedItems) {
+          if (!isQuestionSlotFilled(candidate)) continue;
+          const prompt = normalizedPrompt(promptLikeText(candidate));
+          if (!prompt) continue;
+          if (existingPrompts.has(prompt) || seenRelaxedPrompts.has(prompt)) continue;
+          seenRelaxedPrompts.add(prompt);
+          existingPrompts.add(prompt);
+          uniqueRelaxed.push(candidate);
+          if (uniqueRelaxed.length >= missingSlotIndexes.length) break;
+        }
+        candidatesForMerge = uniqueRelaxed;
+        usedRelaxedFallback = candidatesForMerge.length > 0;
+      }
+
       const merged = mergeGeneratedIntoEmptySlots({
         existingItems: items,
-        generatedItems: selection.selectedItems,
+        generatedItems: candidatesForMerge,
       });
 
       if (!merged.replacedCount) {
@@ -673,7 +1003,7 @@ function ContentViewModalBody({
 
       const saved = await saveSlots(
         merged.mergedItems,
-        `${diagnosticsMessage}\n${merged.summary.missingSlots === 0
+        `${latestSourceLabel ? `${latestSourceLabel}. ` : ""}${diagnosticsMessage}${usedRelaxedFallback ? "\nUsed relaxed fill fallback after strict matching returned no candidates." : ""}\n${merged.summary.missingSlots === 0
           ? `Generated ${merged.replacedCount} missing slot${merged.replacedCount === 1 ? "" : "s"}. Filled Slots: ${merged.summary.filledSlots}/${merged.summary.totalSlots}. Empty Slots: ${merged.summary.missingSlots}. Black Box must be re-run before review/publish.`
           : `Generated ${merged.replacedCount} missing slot${merged.replacedCount === 1 ? "" : "s"}. ${merged.summary.missingSlots} slot${merged.summary.missingSlots === 1 ? " remains" : "s remain"} empty.`}`,
       );
@@ -713,18 +1043,35 @@ function ContentViewModalBody({
     }));
   }
 
-  async function regenerateDuplicateSlots() {
-    if (!duplicateReplacementTargets.length) {
+  function candidateStillDuplicateForSlot(candidateItems: GeneratedReviewItem[], slotIndex: number): boolean {
+    const nextSummary = analyzeSessionSlotDuplicates({
+      contentJson: JSON.stringify(candidateItems),
+      contentType: content.contentType,
+      metadataJson: content.metadataJson,
+      subject: meta.subject,
+    });
+    return nextSummary.issues.some((issue) =>
+      issue.slotIndexes[0] === slotIndex || issue.slotIndexes[1] === slotIndex,
+    );
+  }
+
+  async function regenerateDuplicateSlots(slotIndexes: number[] = duplicateReplacementTargets): Promise<boolean> {
+    if (!slotIndexes.length) {
       setMessage("No duplicate slots need replacement.");
-      return;
+      return false;
+    }
+    if (!canRunRegeneration) {
+      setMessage("Duplicate question regeneration needs subject, year group, level, and topic context.");
+      return false;
     }
 
     setRegeneratingDuplicateSlots(true);
     setMessage(null);
     const nextItems = [...items];
     const avoidPrompts = new Set<string>();
+    let latestSourceLabel: string | null = null;
     for (let index = 0; index < nextItems.length; index += 1) {
-      if (duplicateReplacementTargets.includes(index)) continue;
+      if (slotIndexes.includes(index)) continue;
       const prompt = normalizedPrompt(promptLikeText(nextItems[index]));
       if (prompt) avoidPrompts.add(prompt);
     }
@@ -732,13 +1079,14 @@ function ContentViewModalBody({
     const failedSlots: number[] = [];
     let replacedCount = 0;
 
-    for (const slotIndex of duplicateReplacementTargets) {
+    for (const slotIndex of slotIndexes) {
       try {
         const response = await fetch("/api/admin/ai/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            subject: meta.subject,
+            subject: generationSubjectContext.subject,
+            englishStrand: generationSubjectContext.englishStrand,
             keyStage: meta.keyStage,
             yearGroup: meta.yearGroup,
             curriculumPathway: meta.curriculumPathway,
@@ -747,17 +1095,15 @@ function ContentViewModalBody({
             topic: meta.topic || meta.skillFocus || "General",
             difficulty: content.level,
             numberOfItems: 4,
-            aiMode: "live_openai_only",
+            aiMode: contentLibraryAiMode,
             activityType: content.contentType,
-            avoidPrompts: Array.from(avoidPrompts.values()).slice(0, 10),
+            repairFeedback: "Replace duplicate question.",
+            regenerationNonce: Date.now() + slotIndex,
+            avoidPrompts: Array.from(avoidPrompts.values()).slice(0, 24),
           }),
         });
 
-        const payload = await response.json() as {
-          success?: boolean;
-          error?: string;
-          content?: { items?: unknown[] };
-        };
+        const payload = await response.json() as GenerationPayload;
 
         if (!response.ok || payload.success === false) {
           failedSlots.push(slotIndex);
@@ -765,13 +1111,16 @@ function ContentViewModalBody({
         }
 
         const generatedItems = Array.isArray(payload.content?.items)
-          ? payload.content.items.filter((item): item is GeneratedReviewItem => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+          ? payload.content.items.filter(isGeneratedItem)
           : [];
 
         const replacement = generatedItems.find((candidate) => {
           const prompt = normalizedPrompt(promptLikeText(candidate));
-          return Boolean(prompt) && !avoidPrompts.has(prompt);
-        }) ?? generatedItems.find((candidate) => Boolean(normalizedPrompt(promptLikeText(candidate))));
+          if (!prompt || avoidPrompts.has(prompt)) return false;
+          const trialItems = [...nextItems];
+          trialItems[slotIndex] = candidate;
+          return !candidateStillDuplicateForSlot(trialItems, slotIndex);
+        });
 
         if (!replacement) {
           failedSlots.push(slotIndex);
@@ -782,6 +1131,13 @@ function ContentViewModalBody({
         const replacementPrompt = normalizedPrompt(promptLikeText(replacement));
         if (replacementPrompt) avoidPrompts.add(replacementPrompt);
         replacedCount += 1;
+        const sourceLabel = generationSourceLabelFromPayload(payload);
+        if (sourceLabel) latestSourceLabel = sourceLabel;
+        console.info("[content-library] duplicate replacement generation", {
+          aiMode: contentLibraryAiMode,
+          sourceLabel,
+          slotIndex,
+        });
       } catch {
         failedSlots.push(slotIndex);
       }
@@ -790,12 +1146,12 @@ function ContentViewModalBody({
     if (!replacedCount) {
       setMessage("Could not regenerate duplicate slots. Use Replace From Library or Edit Manually.");
       setRegeneratingDuplicateSlots(false);
-      return;
+      return false;
     }
 
     const saved = await saveSlots(
       nextItems,
-      `Regenerated ${replacedCount} duplicate slot${replacedCount === 1 ? "" : "s"}.${failedSlots.length ? ` ${failedSlots.length} slot${failedSlots.length === 1 ? " still needs" : "s still need"} manual replacement.` : ""}`,
+      `${latestSourceLabel ? `${latestSourceLabel}. ` : ""}Regenerated ${replacedCount} duplicate slot${replacedCount === 1 ? "" : "s"}.${failedSlots.length ? ` ${failedSlots.length} slot${failedSlots.length === 1 ? " still needs" : "s still need"} manual replacement.` : ""}`,
     );
 
     if (saved && failedSlots.length) {
@@ -803,6 +1159,109 @@ function ContentViewModalBody({
     }
 
     setRegeneratingDuplicateSlots(false);
+    return Boolean(saved);
+  }
+
+  async function replaceExactDuplicateSlot(slotIndex: number, issueLabel?: string) {
+    if (slotIndex < 0 || slotIndex >= items.length) {
+      setMessage("Could not resolve duplicate slot index.");
+      return;
+    }
+    const replaced = await regenerateDuplicateSlots([slotIndex]);
+    if (!replaced && issueLabel) {
+      setMessage(`Could not replace Slot ${slotIndex + 1}. ${issueLabel}`);
+    }
+  }
+
+  async function regenerateQuestionPreview(issueText: string) {
+    if (!currentItem) {
+      setMessage("No selected item to regenerate.");
+      return;
+    }
+    if (!canRunRegeneration) {
+      setMessage("Question regeneration needs subject, year group, level, and topic context.");
+      return;
+    }
+
+    setRegeneratingQuestion(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/admin/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: generationSubjectContext.subject,
+          englishStrand: generationSubjectContext.englishStrand,
+          keyStage: meta.keyStage,
+          yearGroup: meta.yearGroup,
+          curriculumPathway: meta.curriculumPathway,
+          examBoard: meta.examBoard,
+          skillFocus: meta.skillFocus || meta.topic || "General",
+          topic: meta.topic || meta.skillFocus || "General",
+          difficulty: content.level,
+          numberOfItems: 1,
+          aiMode: contentLibraryAiMode,
+          activityType: content.contentType,
+          repairFeedback: issueText,
+          regenerationNonce: Date.now(),
+          avoidPrompts: [normalizedPrompt(promptLikeText(currentItem))].filter(Boolean),
+        }),
+      });
+
+      const payload = await response.json() as GenerationPayload;
+      if (!response.ok || payload.success === false) {
+        setMessage(payload.error ?? "Question regeneration failed.");
+        return;
+      }
+
+      const generatedItems = Array.isArray(payload.content?.items)
+        ? payload.content.items.filter(isGeneratedItem)
+        : [];
+      const regenerated = generatedItems[0] ?? null;
+      if (!regenerated) {
+        setMessage("Question regeneration returned no replacement item.");
+        return;
+      }
+
+      const sourceLabel = generationSourceLabelFromPayload(payload);
+      console.info("[content-library] question regeneration preview", {
+        aiMode: contentLibraryAiMode,
+        sourceLabel,
+        issueText,
+      });
+
+      setQuestionRegenerationPreview({
+        issueText,
+        aiMode: contentLibraryAiMode,
+        sourceLabel,
+        before: currentItem,
+        after: regenerated,
+      });
+      setMessage(sourceLabel ? `${sourceLabel}. Review the preview before saving.` : "Preview ready. Review before saving.");
+    } catch {
+      setMessage("Question regeneration request failed.");
+    } finally {
+      setRegeneratingQuestion(false);
+    }
+  }
+
+  async function applyQuestionRegenerationPreview() {
+    if (!questionRegenerationPreview || !currentItem) return;
+    const nextItems = [...items];
+    nextItems[selectedItemIndex] = {
+      ...currentItem,
+      ...questionRegenerationPreview.after,
+    };
+    const saved = await saveSlots(nextItems, questionRegenerationPreview.sourceLabel
+      ? `${questionRegenerationPreview.sourceLabel}. Question regenerated for item ${selectedItemIndex + 1}.`
+      : `Question regenerated for item ${selectedItemIndex + 1}.`);
+    if (saved) {
+      setQuestionRegenerationPreview(null);
+    }
+  }
+
+  function cancelQuestionRegenerationPreview() {
+    setQuestionRegenerationPreview(null);
   }
 
   function replaceFromLibrary() {
@@ -821,6 +1280,15 @@ function ContentViewModalBody({
     }
     selectSlot(duplicateReplacementTargets[0]);
     setMessage(`Edit Slot ${duplicateReplacementTargets[0] + 1} in the editor below and click Save slot content.`);
+  }
+
+  function createDuplicateManually(slotIndex: number) {
+    if (slotIndex < 0 || slotIndex >= items.length) {
+      setMessage("Could not resolve duplicate slot for manual creation.");
+      return;
+    }
+    selectSlot(slotIndex);
+    setMessage(`Create Question Manually selected for Slot ${slotIndex + 1}. Type replacement content in the slot editor and click Save slot content.`);
   }
 
   function ignoreDuplicateWarning() {
@@ -857,6 +1325,156 @@ function ContentViewModalBody({
       setMessage(`Item ${selectedItemIndex + 1} level updated to ${nextLevel}. Re-run Black Box to refresh the score.`);
     } catch {
       setMessage("Item level update request failed.");
+    }
+  }
+
+  function buildBlackBoxBatchFixPreview() {
+    if (!blackBox?.itemChecks?.length) {
+      setMessage("No item-level Black Box issues found.");
+      return;
+    }
+
+    const nextItems = [...items];
+    const changed = new Set<number>();
+    const details: string[] = [];
+
+    blackBox.itemChecks.forEach((check, fallbackIndex) => {
+      const issueList = (check.reasons ?? []).filter(Boolean);
+      if (!issueList.length) return;
+
+      const itemIndex = typeof check.itemIndex === "number" ? check.itemIndex : fallbackIndex;
+      if (itemIndex < 0 || itemIndex >= nextItems.length) return;
+
+      const result = runIssueSpecificRepairsForItem({
+        item: nextItems[itemIndex],
+        itemIndex,
+        issues: issueList,
+        selectedLevel: content.level,
+        selectedYearGroup: meta.yearGroup ?? "",
+        topic: meta.topic || "",
+      });
+
+      if (!result.applied.length) return;
+      nextItems[itemIndex] = result.after;
+      changed.add(itemIndex);
+      details.push(`Item ${itemIndex + 1}: ${result.applied.length} issue-specific fix${result.applied.length === 1 ? "" : "es"}.`);
+    });
+
+    if (!changed.size) {
+      setMessage("No deterministic Black Box fixes were available.");
+      return;
+    }
+
+    setBlackBoxBatchFixPreview({
+      updatedItems: nextItems,
+      changedIndexes: Array.from(changed.values()).sort((a, b) => a - b),
+      details,
+    });
+    setMessage("Black Box fix preview prepared. Review the changes, then click Apply Fixes.");
+  }
+
+  function previewFixReasonForSelectedItem(reason: string) {
+    const parsedIndex = parseReasonItemIndex(reason);
+    const targetIndex = parsedIndex !== null && parsedIndex >= 0 && parsedIndex < items.length
+      ? parsedIndex
+      : selectedItemIndex;
+    const targetItem = items[targetIndex] ?? null;
+
+    if (!targetItem) {
+      setMessage("No selected item to fix.");
+      return;
+    }
+
+    const result = runIssueSpecificRepairsForItem({
+      item: targetItem,
+      itemIndex: targetIndex,
+      issues: [reason],
+      selectedLevel: content.level,
+      selectedYearGroup: meta.yearGroup ?? "",
+      topic: meta.topic || "",
+    });
+
+    if (!result.applied.length) {
+      setMessage("No deterministic fix available for this issue on the selected item.");
+      return;
+    }
+
+    const nextItems = [...items];
+    nextItems[targetIndex] = result.after;
+    setBlackBoxBatchFixPreview({
+      updatedItems: nextItems,
+      changedIndexes: [targetIndex],
+      details: [`Item ${targetIndex + 1}: issue-specific fix preview for "${reason}".`],
+    });
+    setMessage(`Item ${targetIndex + 1} fix preview prepared. Review and click Apply Fixes.`);
+  }
+
+  function previewFixAllForSelectedItem() {
+    if (!currentItem) {
+      setMessage("No selected item to fix.");
+      return;
+    }
+    if (!currentItemCheck?.reasons?.length) {
+      setMessage("No item-specific Black Box issues found for this item.");
+      return;
+    }
+    const result = runIssueSpecificRepairsForItem({
+      item: currentItem,
+      itemIndex: selectedItemIndex,
+      issues: currentItemCheck.reasons,
+      selectedLevel: content.level,
+      selectedYearGroup: meta.yearGroup ?? "",
+      topic: meta.topic || "",
+    });
+    if (!result.applied.length) {
+      setMessage("No deterministic fixes were available for this item.");
+      return;
+    }
+    const nextItems = [...items];
+    nextItems[selectedItemIndex] = result.after;
+    setBlackBoxBatchFixPreview({
+      updatedItems: nextItems,
+      changedIndexes: [selectedItemIndex],
+      details: [`Item ${selectedItemIndex + 1}: prepared ${result.applied.length} issue-specific fix${result.applied.length === 1 ? "" : "es"}.`],
+    });
+    setMessage(`Item ${selectedItemIndex + 1} fix-all preview prepared. Review and click Apply Fixes.`);
+  }
+
+  async function applyBlackBoxBatchFixPreview() {
+    if (!blackBoxBatchFixPreview) return;
+    setApplyingBlackBoxBatchFix(true);
+    try {
+      const updatedItems = blackBoxBatchFixPreview.updatedItems;
+      const saved = await saveSlots(
+        updatedItems,
+        `Applied issue-specific fixes for ${blackBoxBatchFixPreview.changedIndexes.length} item${blackBoxBatchFixPreview.changedIndexes.length === 1 ? "" : "s"}.`,
+      );
+      if (!saved) return;
+      setBlackBoxBatchFixPreview(null);
+
+      const rerunResponse = await fetch(`/api/admin/content/${content.id}/black-box`, {
+        method: "POST",
+      });
+      let rerunPayload: VerificationPayload | null = null;
+      try {
+        rerunPayload = await rerunResponse.json() as VerificationPayload;
+      } catch {
+        rerunPayload = null;
+      }
+      const rerunItem = rerunPayload?.item;
+      if (!rerunResponse.ok || !rerunItem) {
+        setMessage(rerunPayload?.error ?? "Black Box re-run failed.");
+        return;
+      }
+      onVerified?.({
+        ...content,
+        status: rerunItem.status,
+        contentJson: JSON.stringify(updatedItems),
+        metadataJson: rerunItem.metadataJson ?? content.metadataJson,
+      });
+      setMessage("Black Box test re-run completed.");
+    } finally {
+      setApplyingBlackBoxBatchFix(false);
     }
   }
 
@@ -934,35 +1552,9 @@ function ContentViewModalBody({
     if (!content) return;
     setWorkingAction(action);
     setMessage(null);
-    const currentNote = itemNotes[selectedItemIndex] ?? "";
     try {
-      const response = await fetch(`/api/admin/content/${content.id}/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          notes: currentNote,
-          // Pass item-level context for richer history (Part 3)
-          questionContext: currentItem
-            ? {
-                questionIndex: selectedItemIndex,
-                questionPreview: questionText.slice(0, 200) || undefined,
-                itemId: typeof currentItem.id === "string" ? currentItem.id : undefined,
-              }
-            : undefined,
-          ...(action === "reclassify"
-            ? {
-                reclassification: {
-                  subject: subject.trim() || undefined,
-                  strand: strand.trim() || undefined,
-                },
-              }
-            : {}),
-        }),
-      });
-      const payload = await response.json() as VerificationPayload;
-      if (!response.ok || !payload.item) {
-        setMessage(payload.error ?? "Verification could not be saved.");
+      const payload = await submitVerification(action, selectedItemIndex);
+      if (!payload?.item) {
         return;
       }
       onVerified?.({
@@ -973,6 +1565,45 @@ function ContentViewModalBody({
       setMessage(`Verification saved: ${payload.item.status}.`);
     } catch {
       setMessage("Verification request failed.");
+    } finally {
+      setWorkingAction(null);
+    }
+  }
+
+  async function approveSelectedSlots() {
+    if (!selectedApprovalSlots.length) {
+      setMessage("Select one or more slots to approve.");
+      return;
+    }
+    const uniqueSelectedSlots = Array.from(new Set(selectedApprovalSlots)).sort((left, right) => left - right);
+    const pendingSelectedSlots = uniqueSelectedSlots.filter((index) => !approvalProgress.approvedSlotIndexes.includes(index));
+    if (!pendingSelectedSlots.length) {
+      setMessage("All selected slots are already approved.");
+      return;
+    }
+    setWorkingAction("approve");
+    setMessage(null);
+    try {
+      let latestPayload: VerificationPayload | null = null;
+      for (const questionIndex of pendingSelectedSlots) {
+        const payload = await submitVerification("approve", questionIndex);
+        if (!payload?.item) {
+          return;
+        }
+        latestPayload = payload;
+      }
+
+      if (!latestPayload?.item) return;
+
+      onVerified?.({
+        ...content,
+        status: latestPayload.item.status,
+        metadataJson: latestPayload.item.metadataJson ?? content.metadataJson,
+      });
+      setMessage(`Approved ${pendingSelectedSlots.length} selected slot${pendingSelectedSlots.length === 1 ? "" : "s"}. Approved Slots: ${approvalProgress.approvedCount + pendingSelectedSlots.length}/${approvalProgress.totalSlots}.`);
+      clearApprovalSelection();
+    } catch {
+      setMessage("Bulk approval request failed.");
     } finally {
       setWorkingAction(null);
     }
@@ -1047,6 +1678,12 @@ function ContentViewModalBody({
                     <span className={`rounded-full border px-2 py-1 font-black ${slotSummary.slotValidationExempt ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-100" : slotSummary.isSessionComplete ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>
                       {slotSummary.slotValidationExempt ? "Ga exempt" : slotSummary.isSessionComplete ? "Session Complete" : "Session Incomplete"}
                     </span>
+                    <span className={`rounded-full border px-2 py-1 font-black ${approvalProgress.isFullApproval ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : approvalProgress.isPartialApproval ? "border-amber-500/40 bg-amber-500/10 text-amber-100" : "border-slate-700 bg-slate-900 text-slate-200"}`}>
+                      Approved Slots: {approvalProgress.approvedCount}/{approvalProgress.totalSlots}
+                    </span>
+                    <span className={`rounded-full border px-2 py-1 font-black ${approvalProgress.isFullApproval ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : approvalProgress.isPartialApproval ? "border-amber-500/40 bg-amber-500/10 text-amber-100" : "border-slate-700 bg-slate-900 text-slate-200"}`}>
+                      {approvalProgress.isFullApproval ? "Whole Card Approved" : approvalProgress.isPartialApproval ? "Partially Approved" : "Not Yet Approved"}
+                    </span>
                   </div>
                 </div>
 
@@ -1055,13 +1692,35 @@ function ContentViewModalBody({
                     <p className="font-black">Duplicates Found: {totalDuplicateCount}</p>
                     {hasGlobalDuplicates ? (
                       <div className="mt-2 space-y-1">
-                        {globalDuplicateSummary?.matches.slice(0, 5).map((match) => (
-                          <p key={`${match.currentSlotId}-${match.matchedQuestionId}-${match.matchedContentId}`}>
-                            {match.duplicateType} found against {match.sourceStatus} content (score {Math.round(match.similarity * 100)}%).
-                          </p>
+                        {globalDuplicateIssues.slice(0, 12).map((issue) => (
+                          <div key={issue.pairKey} className="rounded-md border border-slate-700/80 bg-slate-950/60 p-2 text-slate-100">
+                            <p className="font-black">Duplicate Pair</p>
+                            <p className="mt-1 text-[11px] text-slate-300">Slot A: {issue.currentSlotIndex + 1} (current slot ID: {issue.currentSlotId})</p>
+                            <p className="text-[11px] text-slate-300">Slot B: {issue.matchedSlotIndex + 1} (matched question ID: {issue.matchedQuestionId})</p>
+                            <p className="text-[11px] text-slate-400">Matched content ID: {issue.matchedContentId}</p>
+                            <p className="text-[11px] text-slate-400">Type: {issue.duplicateType} | Source: {issue.sourceStatus} | Similarity: {Math.round(issue.similarity * 100)}%</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void replaceExactDuplicateSlot(issue.currentSlotIndex, `Matched with ${issue.matchedQuestionId}.`)}
+                                disabled={regeneratingDuplicateSlots || !canRunRegeneration}
+                                title={!canRunRegeneration ? "Need subject, year group, level, and topic context." : undefined}
+                                className="rounded-lg border border-indigo-400/40 bg-indigo-500/15 px-2 py-1 font-black text-indigo-100 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Replace Duplicate Question
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => createDuplicateManually(issue.currentSlotIndex)}
+                                className="rounded-lg border border-slate-600 px-2 py-1 font-black text-slate-100 hover:bg-slate-800"
+                              >
+                                Create Question Manually
+                              </button>
+                            </div>
+                          </div>
                         ))}
-                        {globalDuplicateSummary && globalDuplicateSummary.matches.length > 5 ? (
-                          <p>And {globalDuplicateSummary.matches.length - 5} more global duplicate match{globalDuplicateSummary.matches.length - 5 === 1 ? "" : "es"}.</p>
+                        {globalDuplicateSummary && globalDuplicateSummary.matches.length > 12 ? (
+                          <p>And {globalDuplicateSummary.matches.length - 12} more global duplicate match{globalDuplicateSummary.matches.length - 12 === 1 ? "" : "es"}.</p>
                         ) : null}
                       </div>
                     ) : null}
@@ -1078,6 +1737,7 @@ function ContentViewModalBody({
                       <p className="mt-2 font-black">Publish is blocked until duplicates are replaced or edited.</p>
                     ) : null}
 
+                    {!hasGlobalDuplicates ? (
                     <div className="mt-3 space-y-2">
                       {duplicatePairs.map((pair) => {
                         const keepIndex = effectivePairKeepChoice[pair.pairKey] ?? pair.slotIndexes[0];
@@ -1104,10 +1764,29 @@ function ContentViewModalBody({
                               </button>
                             </div>
                             <p className="mt-1 text-[11px] text-slate-400">Slot {replaceIndex + 1} will be replaced.</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void replaceExactDuplicateSlot(replaceIndex)}
+                                disabled={regeneratingDuplicateSlots || !canRunRegeneration}
+                                title={!canRunRegeneration ? "Need subject, year group, level, and topic context." : undefined}
+                                className="rounded-lg border border-indigo-400/40 bg-indigo-500/15 px-2 py-1 font-black text-indigo-100 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Replace Duplicate Question
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => createDuplicateManually(replaceIndex)}
+                                className="rounded-lg border border-slate-600 px-2 py-1 font-black text-slate-100 hover:bg-slate-800"
+                              >
+                                Create Question Manually
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
                     </div>
+                    ) : null}
 
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       <button
@@ -1116,7 +1795,7 @@ function ContentViewModalBody({
                         disabled={regeneratingDuplicateSlots || duplicateReplacementTargets.length === 0}
                         className="rounded-lg border border-indigo-400/40 bg-indigo-500/15 px-3 py-2 text-left font-black text-indigo-100 hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {regeneratingDuplicateSlots ? "Finding replacement..." : "Find replacement / Generate fallback question"}
+                        {regeneratingDuplicateSlots ? "Replacing..." : "Replace Marked Duplicate Slots"}
                       </button>
                       <button
                         type="button"
@@ -1132,7 +1811,7 @@ function ContentViewModalBody({
                         disabled={duplicateReplacementTargets.length === 0}
                         className="rounded-lg border border-slate-600 px-3 py-2 text-left font-black text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        Edit Manually
+                        Create Question Manually
                       </button>
                       <button
                         type="button"
@@ -1159,7 +1838,8 @@ function ContentViewModalBody({
                       <button
                         type="button"
                         onClick={() => void generateMissingSlots()}
-                        disabled={generatingMissingSlots || slotSummary.missingSlots <= 0}
+                        disabled={generatingMissingSlots || slotSummary.missingSlots <= 0 || !canRunRegeneration}
+                        title={!canRunRegeneration ? "Need subject, year group, level, and topic context." : undefined}
                         className="rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-2 text-left text-xs font-black text-amber-50 hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {generatingMissingSlots ? "Generating..." : "Generate Missing Slots"}
@@ -1182,6 +1862,12 @@ function ContentViewModalBody({
                       </button>
                     </div>
                   </div>
+                ) : null}
+
+                {message ? (
+                  <p className="mt-3 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200 whitespace-pre-line">
+                    {message}
+                  </p>
                 ) : null}
 
                 <div className="mt-3 flex flex-wrap items-end gap-2">
@@ -1209,25 +1895,81 @@ function ContentViewModalBody({
                   {items.map((slot, index) => {
                     const filled = isQuestionSlotFilled(slot);
                     const selectedSlot = index === selectedItemIndex;
+                    const isRejectedSlot = rejectedSlotIndexSet.has(index);
+                    const isHighlightedSlot = highlightedSlots.includes(index);
                     const primaryFlag = primaryDuplicateFlag(duplicateSummary.slotFlags[index]);
-                    const flagLabel = primaryFlag === "exact"
+                    const flagLabel = isRejectedSlot
+                      ? "Rejected"
+                      : primaryFlag === "exact"
                       ? "Duplicate"
                       : primaryFlag === "near"
                         ? "Near duplicate"
                         : primaryFlag === "same_pattern"
                           ? "Same pattern"
                           : null;
+                    const slotColorClass = selectedSlot
+                      ? "border-indigo-400 bg-indigo-500/20 text-indigo-100"
+                      : isRejectedSlot
+                        ? "border-rose-500/60 bg-rose-500/15 text-rose-100"
+                      : primaryFlag === "exact"
+                        ? "border-rose-500/50 bg-rose-500/10 text-rose-100"
+                        : primaryFlag
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+                          : filled
+                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                            : "border-amber-500/40 bg-amber-500/10 text-amber-100";
                     return (
-                      <button
-                        key={`slot-${index}`}
-                        type="button"
-                        onClick={() => selectSlot(index)}
-                        className={`rounded-full border px-2 py-1 text-xs font-black ${selectedSlot ? "border-indigo-400 bg-indigo-500/20 text-indigo-100" : primaryFlag === "exact" ? "border-rose-500/50 bg-rose-500/10 text-rose-100" : primaryFlag ? "border-amber-500/40 bg-amber-500/10 text-amber-100" : filled ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}
-                      >
-                        Slot {index + 1} {flagLabel ?? (filled ? "Filled" : "Empty")}
-                      </button>
+                      <span key={`slot-${index}`} className={`inline-flex items-center gap-1 rounded-full border text-xs font-black ${slotColorClass} ${isHighlightedSlot ? "ring-2 ring-rose-300/80 animate-pulse" : ""}`}>
+                        <button
+                          type="button"
+                          onClick={() => selectSlot(index)}
+                          className="py-1 pl-2 pr-1"
+                        >
+                          Slot {index + 1} {flagLabel ?? (filled ? "Filled" : "Empty")}
+                        </button>
+                        {filled ? (
+                          <button
+                            type="button"
+                            title={`Remove slot ${index + 1}`}
+                            onClick={() => void removeSlotAt(index)}
+                            className="rounded-full py-1 pl-0.5 pr-1.5 opacity-60 hover:opacity-100"
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </span>
                     );
                   })}
+                </div>
+
+                <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-200">AI Generation Mode</p>
+                      <p className="mt-1 text-xs text-slate-400">Applies to Generate Missing Slots, Replace Duplicate Question, and Regenerate Question.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        aria-label="AI generation mode"
+                        value={contentLibraryAiMode}
+                        onChange={(event) => setContentLibraryAiMode(event.target.value as AiGenerationMode)}
+                        className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-white outline-none focus:border-indigo-400"
+                      >
+                        {CONTENT_LIBRARY_AI_MODE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <span className={`rounded-full px-2 py-1 text-[11px] font-black ${contentLibraryAiMode === "fallback_only" ? "bg-amber-500/15 text-amber-100" : "bg-indigo-500/15 text-indigo-100"}`}>
+                        Selected: {aiModeLabel(contentLibraryAiMode)}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    {CONTENT_LIBRARY_AI_MODE_OPTIONS.find((option) => option.value === contentLibraryAiMode)?.helper}
+                    {contentLibraryAiMode === "fallback_only" ? " OpenAI will not be called." : ""}
+                  </p>
                 </div>
 
                 {items.length ? (
@@ -1453,26 +2195,214 @@ function ContentViewModalBody({
               <div className="mt-3 space-y-3 text-xs text-slate-400">
                 {blackBox.reasons && blackBox.reasons.length > 0 ? (
                   <div>
-                    <p className="font-bold text-slate-300">Reasons</p>
-                    <ul className="mt-1 list-disc space-y-1 pl-5">
-                      {blackBox.reasons.map((reason) => <li key={reason}>{reason}</li>)}
-                    </ul>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-bold text-slate-300">Reasons</p>
+                      <button
+                        type="button"
+                        onClick={buildBlackBoxBatchFixPreview}
+                        disabled={blackBoxRetesting || applyingBlackBoxBatchFix || repairingItem}
+                        className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+                      >
+                        Fix All BlackBox Issues
+                      </button>
+                    </div>
+                    <div className="mt-2 space-y-2">
+                      {blackBox.reasons.map((reason) => {
+                        const parsedReasonIndex = parseReasonItemIndex(reason);
+                        const isScoreCapReason = /score capped/i.test(reason);
+                        const issueKind = getBlackBoxRepairActionKind(reason);
+                        const isLocalRepair = issueKind === "local";
+                        const isQualityRepair = issueKind === "quality";
+                        return (
+                          <div key={reason} className="rounded-lg border border-slate-700/80 bg-slate-950/60 p-2">
+                            <p className="text-xs text-slate-300">{reason}</p>
+                            {parsedReasonIndex !== null ? (
+                              <p className="mt-1 text-[11px] font-black text-rose-100">Rejected slot: Slot {parsedReasonIndex + 1}</p>
+                            ) : null}
+                            {isScoreCapReason && rejectedSlotIndexes.length > 0 ? (
+                              <p className="mt-1 text-[11px] font-black text-amber-100">
+                                Rejected slots: {rejectedSlotIndexes.map((index) => `Slot ${index + 1}`).join(", ")}
+                              </p>
+                            ) : null}
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {isLocalRepair ? (
+                                <button
+                                  type="button"
+                                  onClick={() => previewFixReasonForSelectedItem(reason)}
+                                  disabled={blackBoxRetesting || applyingBlackBoxBatchFix || repairingItem}
+                                  className="rounded border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
+                                >
+                                  Fix Issue
+                                </button>
+                              ) : null}
+                              {isQualityRepair ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => previewFixReasonForSelectedItem(reason)}
+                                    disabled={blackBoxRetesting || applyingBlackBoxBatchFix || repairingItem}
+                                    className="rounded border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
+                                  >
+                                    Quick Repair
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void regenerateQuestionPreview(reason)}
+                                    disabled={blackBoxRetesting || applyingBlackBoxBatchFix || repairingItem || regeneratingQuestion || !canRunRegeneration}
+                                    title={!canRunRegeneration ? "Need subject, year group, level, and topic context." : undefined}
+                                    className="rounded border border-indigo-400/40 bg-indigo-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-indigo-100 hover:bg-indigo-500/20 disabled:opacity-50"
+                                  >
+                                    {regeneratingQuestion ? "Regenerating..." : "Regenerate Question"}
+                                  </button>
+                                </>
+                              ) : null}
+                              {!isLocalRepair && !isQualityRepair ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isScoreCapReason && rejectedSlotIndexes.length > 0) {
+                                      selectSlot(rejectedSlotIndexes[0]);
+                                      highlightSlotCards(rejectedSlotIndexes);
+                                      setMessage(`Rejected slots: ${rejectedSlotIndexes.map((index) => index + 1).join(", ")}. Select a rejected slot and run Fix Issue.`);
+                                      return;
+                                    }
+                                    previewFixReasonForSelectedItem(reason);
+                                  }}
+                                  disabled={blackBoxRetesting || applyingBlackBoxBatchFix || repairingItem}
+                                  className="rounded border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
+                                >
+                                  {isScoreCapReason ? "Locate Rejected Slots" : "Fix Issue"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 ) : null}
                 {shouldRenderRepairPanel ? (
                   <div>
                     <p className="font-bold text-slate-300">Targeted Repair Actions</p>
+                    {offSlotRepairTargets.length > 0 ? (
+                      <p className="mt-1 text-xs font-black text-amber-100">
+                        Additional local repair issues were detected in {offSlotRepairTargets.map((index) => `Slot ${index + 1}`).join(", ")}. Select those slots or use Fix Issue in the Reasons list above.
+                      </p>
+                    ) : null}
                     <div className="mt-2">
                       <BlackBoxRepairPanel
                         currentItem={currentItem}
                         itemIndex={selectedItemIndex}
-                        currentItemLevel={currentItemLevel}
-                        correctAnswer={slotAnswerInput}
+                        selectedLevel={content.level}
+                        selectedYearGroup={meta.yearGroup ?? ""}
                         topic={meta.topic || ""}
-                        reasons={repairReasons}
+                        reasons={selectedItemLocalRepairReasons}
                         onRepair={handleRepairApplied}
                         disabled={repairingItem}
                       />
+                    </div>
+                  </div>
+                ) : null}
+                {qualityRepairReasons.length > 0 ? (
+                  <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-indigo-100">Question Regeneration Preview</p>
+                      <button
+                        type="button"
+                        onClick={() => void regenerateQuestionPreview(qualityRepairReasons.join("; "))}
+                        disabled={regeneratingQuestion || blackBoxRetesting || applyingBlackBoxBatchFix || repairingItem || !canRunRegeneration}
+                        title={!canRunRegeneration ? "Need subject, year group, level, and topic context." : undefined}
+                        className="rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-indigo-100 hover:bg-indigo-500/20 disabled:opacity-50"
+                      >
+                        {regeneratingQuestion ? "Regenerating..." : "Regenerate All Quality Issues"}
+                      </button>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">Uses the selected AI mode and keeps manual editing available as backup.</p>
+                  </div>
+                ) : null}
+                {questionRegenerationPreview ? (
+                  <div className="rounded-lg border border-indigo-400/20 bg-indigo-500/5 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-black uppercase tracking-[0.12em] text-indigo-100">Regenerate Question Preview</p>
+                      <span className="rounded-full border border-indigo-400/40 bg-indigo-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-indigo-100">
+                        {aiModeLabel(questionRegenerationPreview.aiMode)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-300">Issue: {questionRegenerationPreview.issueText}</p>
+                    {questionRegenerationPreview.sourceLabel ? (
+                      <p className="mt-1 text-xs font-black text-emerald-100">{questionRegenerationPreview.sourceLabel}</p>
+                    ) : null}
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-slate-300">Before</p>
+                        <pre className="mt-1 max-h-40 overflow-auto rounded border border-slate-700 bg-slate-950 p-2 text-[10px] text-slate-300">
+                          {JSON.stringify(questionRegenerationPreview.before, null, 2).slice(0, 1200)}...
+                        </pre>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-emerald-200">After</p>
+                        <pre className="mt-1 max-h-40 overflow-auto rounded border border-slate-700 bg-slate-950 p-2 text-[10px] text-slate-300">
+                          {JSON.stringify(questionRegenerationPreview.after, null, 2).slice(0, 1200)}...
+                        </pre>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void applyQuestionRegenerationPreview()}
+                        disabled={repairingItem}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-black text-white hover:bg-emerald-500 disabled:opacity-60"
+                      >
+                        Apply Regeneration
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelQuestionRegenerationPreview}
+                        disabled={repairingItem}
+                        className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-black text-slate-200 hover:bg-slate-700 disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {blackBoxBatchFixPreview ? (
+                  <div className="rounded-lg border border-amber-400/20 bg-amber-500/5 p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.12em] text-amber-100">Before / After Preview</p>
+                    <div className="mt-2 space-y-1 text-xs text-amber-50">
+                      {blackBoxBatchFixPreview.details.map((detail) => <p key={detail}>{detail}</p>)}
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-amber-200">Before</p>
+                        <pre className="mt-1 max-h-40 overflow-auto rounded border border-slate-700 bg-slate-950 p-2 text-[10px] text-slate-300">
+                          {JSON.stringify(blackBoxBatchFixPreview.changedIndexes.map((index) => ({ index, item: items[index] })), null, 2).slice(0, 1200)}...
+                        </pre>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-emerald-200">After</p>
+                        <pre className="mt-1 max-h-40 overflow-auto rounded border border-slate-700 bg-slate-950 p-2 text-[10px] text-slate-300">
+                          {JSON.stringify(blackBoxBatchFixPreview.changedIndexes.map((index) => ({ index, item: blackBoxBatchFixPreview.updatedItems[index] })), null, 2).slice(0, 1200)}...
+                        </pre>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void applyBlackBoxBatchFixPreview()}
+                        disabled={applyingBlackBoxBatchFix || blackBoxRetesting}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-black text-white hover:bg-emerald-500 disabled:opacity-60"
+                      >
+                        {applyingBlackBoxBatchFix ? "Applying..." : "Apply Fixes"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBlackBoxBatchFixPreview(null)}
+                        disabled={applyingBlackBoxBatchFix}
+                        className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-black text-slate-200 hover:bg-slate-700 disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   </div>
                 ) : null}
@@ -1533,9 +2463,29 @@ function ContentViewModalBody({
                             ) : null}
                           </div>
                           {currentItemCheck.reasons && currentItemCheck.reasons.length > 0 ? (
-                            <ul className="mt-1 list-disc space-y-1 pl-5">
-                              {currentItemCheck.reasons.map((reason) => <li key={reason}>{reason}</li>)}
-                            </ul>
+                            <div className="mt-2 space-y-2">
+                              {currentItemCheck.reasons.map((reason) => (
+                                <div key={reason} className="rounded-lg border border-slate-700/80 bg-slate-950/60 p-2">
+                                  <p className="text-xs text-slate-300">{reason}</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => previewFixReasonForSelectedItem(reason)}
+                                    disabled={blackBoxRetesting || applyingBlackBoxBatchFix || repairingItem}
+                                    className="mt-2 rounded border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
+                                  >
+                                    Fix Issue
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={previewFixAllForSelectedItem}
+                                disabled={blackBoxRetesting || applyingBlackBoxBatchFix || repairingItem}
+                                className="rounded border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+                              >
+                                Fix All Issues for This Item
+                              </button>
+                            </div>
                           ) : null}
                           {currentItemCheck.checks ? (
                             <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-800 bg-slate-900 p-2 text-[11px] text-slate-400">
@@ -1546,6 +2496,46 @@ function ContentViewModalBody({
                       ) : (
                         <p>No item-specific Black Box check is stored for this question.</p>
                       )}
+                    </div>
+                    <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-200">Bulk Slot Approval</p>
+                        <p className="text-xs text-slate-400">Selected: {selectedApprovalSlots.length}</p>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {items.map((_, index) => {
+                          const selected = selectedApprovalSlots.includes(index);
+                          const approved = approvalProgress.approvedSlotIndexes.includes(index);
+                          return (
+                            <button
+                              key={`approval-slot-${index}`}
+                              type="button"
+                              onClick={() => toggleApprovalSlot(index)}
+                              className={`rounded-full border px-2 py-1 text-[11px] font-black ${selected ? "border-indigo-400 bg-indigo-500/20 text-indigo-100" : approved ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-slate-700 bg-slate-900 text-slate-200"}`}
+                            >
+                              {selected ? "✓ " : ""}Slot {index + 1}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void approveSelectedSlots()}
+                          disabled={workingAction !== null || selectedApprovalSlots.length === 0}
+                          className="rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {workingAction === "approve" ? "Approving..." : `Approve Selected Slots (${selectedApprovalSlots.length})`}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearApprovalSelection}
+                          disabled={workingAction !== null || selectedApprovalSlots.length === 0}
+                          className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Clear Selection
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -1630,7 +2620,6 @@ function ContentViewModalBody({
                 placeholder="Recommended strand"
               />
             </div>
-            {message ? <p className="mt-3 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200">{message}</p> : null}
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {([
                 ["approve", "Approve", "bg-emerald-500 hover:bg-emerald-400"],

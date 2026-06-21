@@ -10,6 +10,9 @@ import {
   fixTopicMatch,
   classifyRepairsForBatch,
   isSafeRepair,
+  inferBlackBoxIssueType,
+  runIssueSpecificRepair,
+  runIssueSpecificRepairsForItem,
 } from "@/lib/ai/content-repair";
 
 test.describe("Content Repair System", () => {
@@ -192,5 +195,145 @@ test.describe("Content Repair System", () => {
     });
 
     assert.equal(riskyResult.confidence, "needs_review");
+  });
+
+  test("issue type inference maps BlackBox reason text", () => {
+    assert.equal(inferBlackBoxIssueType("Item appears too easy for the selected level."), "item_too_easy");
+    assert.equal(inferBlackBoxIssueType("Item appears too hard for the selected level."), "item_too_hard");
+    assert.equal(inferBlackBoxIssueType("Answer is too thin for the selected level."), "answer_too_thin");
+    assert.equal(inferBlackBoxIssueType("Vocabulary/readability appears too simple."), "readability_too_simple");
+    assert.equal(inferBlackBoxIssueType("Item 1: Missing question/prompt text."), "missing_question_prompt");
+    assert.equal(inferBlackBoxIssueType("Item 1: Missing correct answer."), "missing_correct_answer");
+    assert.equal(inferBlackBoxIssueType("Item 1: Curriculum quality block: reading_missing_passage"), "reading_missing_passage");
+    assert.equal(inferBlackBoxIssueType("Item 1: Curriculum quality block: reading_missing_question"), "reading_missing_question");
+    assert.equal(inferBlackBoxIssueType("Item 1: Curriculum quality block: reading_missing_answer"), "reading_missing_answer");
+    assert.equal(inferBlackBoxIssueType("Item 1: Expected reading, detected unknown."), "reading_subject_mismatch");
+    assert.equal(inferBlackBoxIssueType("Item 8: Multiple-choice item contains duplicate options."), "duplicate_options");
+    assert.equal(inferBlackBoxIssueType("Item 8: Curriculum quality block: weak_distractors_duplicate_options"), "duplicate_options");
+  });
+
+  test("issue-specific repair fixes duplicate choices", () => {
+    const result = runIssueSpecificRepair({
+      item: {
+        index: 7,
+        question: "Choose the correct answer",
+        answer: "65",
+        choices: ["60", "65", "65", "70"],
+      },
+      itemIndex: 7,
+      issueText: "Item 8: Multiple-choice item contains duplicate options.",
+      selectedLevel: 5,
+      selectedYearGroup: "Year 4",
+      topic: "Addition reasoning",
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(result.issueType, "duplicate_options");
+    assert.equal(result.actionType, "fix_choices");
+    const afterChoices = Array.isArray(result.after.choices) ? result.after.choices as string[] : [];
+    assert.equal(new Set(afterChoices.map((entry) => String(entry).toLowerCase())).size, afterChoices.length);
+  });
+
+  test("issue-specific repair supports missing reading structure and mismatch issues", () => {
+    const baseItem = {
+      index: 0,
+      topic: "Reading Comprehension",
+      question: "",
+      prompt: "",
+      answer: "",
+      passage: "",
+      level: 5,
+      difficulty: 5,
+    };
+
+    const issueSamples = [
+      "Item 1: Missing question/prompt text.",
+      "Item 1: Missing correct answer.",
+      "Item 1: Curriculum quality block: reading_missing_passage",
+      "Item 1: Curriculum quality block: reading_missing_question",
+      "Item 1: Curriculum quality block: reading_missing_answer",
+      "Item 1: Expected reading, detected unknown.",
+      "Item 1: Item appears too hard for the selected level.",
+    ];
+
+    for (const issueText of issueSamples) {
+      const result = runIssueSpecificRepair({
+        item: baseItem,
+        itemIndex: 0,
+        issueText,
+        selectedLevel: 4,
+        selectedYearGroup: "Year 6",
+        topic: "Reading Comprehension",
+      });
+
+      assert.equal(result.success, true, `Expected supported repair for: ${issueText}`);
+    }
+  });
+
+  test("issue-specific repair applies to exact item and includes context", () => {
+    const baseItem = {
+      index: 2,
+      question: "What is 4 + 4?",
+      answer: "8",
+      difficulty: 1,
+      level: 1,
+    };
+
+    const result = runIssueSpecificRepair({
+      item: baseItem,
+      itemIndex: 2,
+      issueText: "Item appears too easy for the selected level.",
+      selectedLevel: 4,
+      selectedYearGroup: "Year 4",
+      topic: "Addition",
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(result.itemIndex, 2);
+    assert.equal(result.issueType, "item_too_easy");
+    assert.equal(Number(result.after.level), 4);
+  });
+
+  test("fix all issues for one item mutates only that item", () => {
+    const items = [
+      {
+        index: 0,
+        question: "What is 1 + 1?",
+        answer: "2",
+        explanation: "2",
+      },
+      {
+        index: 1,
+        question: "Please elucidate the predominant methodology used to ascertain the result.",
+        answer: "4",
+        explanation: "4",
+      },
+      {
+        index: 2,
+        question: "What is 10 - 2?",
+        answer: "8",
+        explanation: "8",
+      },
+    ];
+
+    const item1Before = JSON.stringify(items[1]);
+    const item2Before = JSON.stringify(items[2]);
+
+    const result = runIssueSpecificRepairsForItem({
+      item: items[0],
+      itemIndex: 0,
+      issues: [
+        "Answer is too thin for the selected level.",
+        "Vocabulary/readability appears too simple.",
+      ],
+      selectedLevel: 3,
+      selectedYearGroup: "Year 3",
+      topic: "Addition",
+    });
+
+    assert.ok(result.applied.length >= 1);
+    assert.notEqual(JSON.stringify(result.after), JSON.stringify(items[0]));
+    assert.equal(JSON.stringify(items[1]), item1Before, "Unrelated item 2 should remain unchanged");
+    assert.equal(JSON.stringify(items[2]), item2Before, "Unrelated item 3 should remain unchanged");
   });
 });

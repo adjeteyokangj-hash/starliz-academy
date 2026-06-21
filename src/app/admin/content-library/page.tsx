@@ -67,7 +67,7 @@ export default function ContentLibraryPage() {
   const searchParams = useSearchParams();
   const [items, setItems] = useState<ContentItem[]>([]);
   const [students, setStudents] = useState<StudentOption[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [contentLoading, setContentLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [operating, setOperating] = useState<{ id: string; action: "view" | "select" | "duplicate" | "archive" | "publish" | "review" } | null>(null);
@@ -84,36 +84,29 @@ export default function ContentLibraryPage() {
   const [localDuplicateByContent, setLocalDuplicateByContent] = useState<Record<string, Set<string>>>({});
   const [viewModalContent, setViewModalContent] = useState<ContentItem | null>(null);
   const [overrideAssigning, setOverrideAssigning] = useState(false);
+  const [bulkApproveSelectedIds, setBulkApproveSelectedIds] = useState<string[]>([]);
 
-  const fetchData = useCallback(async () => {
-    const [contentRes, studentsRes, governanceRes] = await Promise.all([
-      fetch("/api/admin/content"),
-      fetch("/api/admin/students?context=assignment"),
-      fetch("/api/admin/content/governance"),
-    ]);
+  const fetchContent = useCallback(async () => {
+    const contentRes = await fetch("/api/admin/content", { cache: "no-store" });
     const contentPayload = await contentRes.json() as { items?: ContentItem[] };
+    return (contentPayload.items ?? []).filter((item) => String(item.status).toLowerCase() !== "archived");
+  }, []);
+
+  const fetchStudents = useCallback(async () => {
+    const studentsRes = await fetch("/api/admin/students?context=assignment");
     const studentsPayload = await studentsRes.json() as { students?: StudentOption[] };
-    const governancePayload = await governanceRes.json() as { questionDuplicateSummaries?: Record<string, ContentItem["globalDuplicateSummary"]> };
-    return {
-      items: contentPayload.items ?? [],
-      students: studentsPayload.students ?? [],
-      questionDuplicateSummaries: governancePayload.questionDuplicateSummaries ?? {},
-    };
+    return studentsPayload.students ?? [];
   }, []);
 
   const loadData = useCallback(async () => {
-    setLoading(true);
+    setContentLoading(true);
     try {
-      const data = await fetchData();
-      setItems(data.items.map((item) => ({
-        ...item,
-        globalDuplicateSummary: data.questionDuplicateSummaries?.[item.id] ?? null,
-      })));
-      setStudents(data.students);
+      const data = await fetchContent();
+      setItems(data);
     } finally {
-      setLoading(false);
+      setContentLoading(false);
     }
-  }, [fetchData]);
+  }, [fetchContent]);
 
   const refreshDuplicateSummaryForContent = useCallback(async (contentId: string) => {
     const response = await fetch(`/api/admin/content/governance?contentId=${encodeURIComponent(contentId)}`);
@@ -124,31 +117,42 @@ export default function ContentLibraryPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetchData()
+    void fetchContent()
       .then((data) => {
         if (cancelled) return;
         queueMicrotask(() => {
           if (cancelled) return;
-          setItems(data.items.map((item) => ({
-            ...item,
-            globalDuplicateSummary: data.questionDuplicateSummaries?.[item.id] ?? null,
-          })));
-          setStudents(data.students);
+          setItems(data);
         });
       })
       .finally(() => {
         if (!cancelled) {
           queueMicrotask(() => {
             if (!cancelled) {
-              setLoading(false);
+              setContentLoading(false);
             }
           });
         }
       });
+    void fetchStudents().then((data) => {
+      if (cancelled) return;
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setStudents(data);
+        }
+      });
+    });
     return () => {
       cancelled = true;
     };
-  }, [fetchData]);
+  }, [fetchContent, fetchStudents]);
+
+  useEffect(() => {
+    setBulkApproveSelectedIds((current) => {
+      const validIds = new Set(items.map((item) => item.id));
+      return current.filter((id) => validIds.has(id));
+    });
+  }, [items]);
 
   const activeFilters = draftFilters;
 
@@ -214,7 +218,9 @@ export default function ContentLibraryPage() {
   }, [students, activeFilters]);
 
   const filteredItems = useMemo(() => {
-    const bySubject = items.filter((item) => {
+    const activeItems = items.filter((item) => String(item.status).toLowerCase() !== "archived");
+
+    const bySubject = activeItems.filter((item) => {
       if (activeFilters.subjectTab === "all") return true;
       return getContentMeta(item).subject === activeFilters.subjectTab;
     });
@@ -409,6 +415,11 @@ export default function ContentLibraryPage() {
   function handleReview(item: ContentItem) {
     setOperating({ id: item.id, action: "review" });
     setViewModalContent(item);
+    void refreshDuplicateSummaryForContent(item.id).then((summary) => {
+      if (!summary) return;
+      setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, globalDuplicateSummary: summary } : entry));
+      setViewModalContent((current) => current?.id === item.id ? { ...current, globalDuplicateSummary: summary } : current);
+    });
     window.setTimeout(() => setOperating(null), 180);
   }
 
@@ -480,9 +491,83 @@ export default function ContentLibraryPage() {
     }
   }
 
+  function toggleBulkApproveItem(item: ContentItem) {
+    if (item.status === "published" || item.status === "archived") return;
+    setBulkApproveSelectedIds((current) => (
+      current.includes(item.id)
+        ? current.filter((id) => id !== item.id)
+        : [...current, item.id]
+    ));
+  }
+
+  function clearBulkApproveSelection() {
+    setBulkApproveSelectedIds([]);
+  }
+
+  async function approveSelectedCardsInList() {
+    if (!bulkApproveSelectedIds.length) {
+      setMessage("Select one or more cards for bulk approval.");
+      return;
+    }
+    setMessage(null);
+    let successCount = 0;
+    const failures: string[] = [];
+    let latestStatus: string | null = null;
+
+    for (const id of bulkApproveSelectedIds) {
+      try {
+        const response = await fetch(`/api/admin/content/${id}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "approve",
+            notes: "Bulk approved from content library list.",
+          }),
+        });
+        const payload = await response.json() as { item?: { status: string; metadataJson?: string | null }; error?: string };
+        if (!response.ok || !payload.item) {
+          failures.push(payload.error ?? `Card ${id} failed to approve.`);
+          continue;
+        }
+        latestStatus = payload.item.status;
+        successCount += 1;
+        setItems((current) => current.map((entry) => (
+          entry.id === id
+            ? {
+                ...entry,
+                status: payload.item?.status ?? entry.status,
+                metadataJson: payload.item?.metadataJson ?? entry.metadataJson,
+              }
+            : entry
+        )));
+      } catch {
+        failures.push(`Card ${id} approval request failed.`);
+      }
+    }
+
+    if (successCount > 0 && failures.length === 0) {
+      setMessage(`Approved ${successCount} card${successCount === 1 ? "" : "s"} successfully${latestStatus ? ` (${latestStatus})` : ""}.`);
+      clearBulkApproveSelection();
+      return;
+    }
+
+    if (successCount > 0 && failures.length > 0) {
+      setMessage(`Approved ${successCount} card${successCount === 1 ? "" : "s"}; ${failures.length} failed: ${failures.slice(0, 2).join(" | ")}`);
+      setBulkApproveSelectedIds((current) => current.filter((id) => failures.some((failure) => failure.includes(id))));
+      return;
+    }
+
+    setMessage(failures.length ? `Bulk approval failed: ${failures.slice(0, 2).join(" | ")}` : "Bulk approval failed.");
+  }
+
   function handleOpenView(item: ContentItem) {
     setOperating({ id: item.id, action: "view" });
     setViewModalContent(item);
+    void refreshDuplicateSummaryForContent(item.id).then((summary) => {
+      if (!summary) return;
+      setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, globalDuplicateSummary: summary } : entry));
+      setViewModalContent((current) => current?.id === item.id ? { ...current, globalDuplicateSummary: summary } : current);
+    });
     window.setTimeout(() => setOperating(null), 180);
   }
 
@@ -593,6 +678,34 @@ export default function ContentLibraryPage() {
         </div>
       </section>
 
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-300">Bulk Card Approval</p>
+            <p className="mt-1 text-xs text-slate-400">Select cards and approve them without opening each modal.</p>
+          </div>
+          <p className="text-xs font-bold text-slate-300">Selected cards: {bulkApproveSelectedIds.length}</p>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void approveSelectedCardsInList()}
+            disabled={bulkApproveSelectedIds.length === 0}
+            className="rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Approve Selected Cards ({bulkApproveSelectedIds.length})
+          </button>
+          <button
+            type="button"
+            onClick={clearBulkApproveSelection}
+            disabled={bulkApproveSelectedIds.length === 0}
+            className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Clear Card Selection
+          </button>
+        </div>
+      </section>
+
       {message ? (
         <div className="space-y-2">
           <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">{message}</p>
@@ -611,7 +724,7 @@ export default function ContentLibraryPage() {
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         <AdminSectionCard title="Content by Topic" eyebrow="Library">
-          {loading ? (
+          {contentLoading ? (
             <div className="grid gap-3 xl:grid-cols-2">
               {[0, 1, 2, 3].map((idx) => (
                 <div key={idx} className="h-40 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />
@@ -628,6 +741,8 @@ export default function ContentLibraryPage() {
               onArchive={handleArchive}
               onPublish={handlePublish}
               onReview={handleReview}
+              onToggleBulkApprove={toggleBulkApproveItem}
+              bulkApproveSelectedIds={bulkApproveSelectedIds}
               operatingAction={operating?.action ?? null}
               operatingId={operating?.id ?? null}
               assigning={assigning}

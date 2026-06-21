@@ -13,6 +13,8 @@ type Props = {
   onArchive: (item: ContentItem) => void;
   onPublish: (item: ContentItem) => void;
   onReview: (item: ContentItem) => void;
+  onToggleBulkApprove?: (item: ContentItem) => void;
+  bulkApproveSelected?: boolean;
   /** Called with updated item data after a successful in-card Black Box run (Part 5) */
   onRefreshItem?: (updated: ContentItem) => void;
   viewMode: "grid" | "list";
@@ -30,6 +32,8 @@ export default function ContentCard({
   onArchive,
   onPublish,
   onReview,
+  onToggleBulkApprove,
+  bulkApproveSelected,
   onRefreshItem,
   viewMode,
   operatingAction,
@@ -68,6 +72,7 @@ export default function ContentCard({
       ? "Black Box stale - re-run Black Box before review/publish."
       : undefined;
   const isOperating = operatingId === item.id;
+  const canSelectForBulkApprove = item.status !== "published" && item.status !== "archived";
 
   /** Part 5: run Black Box test directly from card */
   async function handleRunBlackBox() {
@@ -146,6 +151,18 @@ export default function ContentCard({
       </div>
       {bbError ? (
         <p className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs font-bold text-rose-200">{bbError}</p>
+      ) : null}
+      {onToggleBulkApprove ? (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => onToggleBulkApprove(item)}
+            disabled={!canSelectForBulkApprove || isOperating || Boolean(assigning)}
+            className={`rounded-lg border px-2 py-1 text-[11px] font-black uppercase tracking-wide disabled:opacity-50 ${bulkApproveSelected ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-100" : "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"}`}
+          >
+            {bulkApproveSelected ? "Selected For Bulk Approve" : "Select For Bulk Approve"}
+          </button>
+        </div>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <button

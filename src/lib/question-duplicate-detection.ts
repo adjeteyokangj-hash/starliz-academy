@@ -348,6 +348,7 @@ export function analyzeQuestionDuplicateMatches(input: {
 
   const compareAgainst = (current: QuestionDuplicateEntry, matched: QuestionDuplicateEntry, sourceStatus: QuestionSourceStatus) => {
     if (!current.prompt || !matched.prompt) return;
+    if (current.contentId === matched.contentId && current.slotId === matched.slotId) return;
     if (!scopesAreCompatible(current, matched)) return;
     const pairKey = [current.contentId, current.slotId, matched.contentId, matched.slotId, sourceStatus].join("|");
     if (seenPairs.has(pairKey)) return;

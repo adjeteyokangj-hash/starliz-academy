@@ -14,6 +14,8 @@ type Props = {
   onArchive: (item: ContentItem) => void;
   onPublish: (item: ContentItem) => void;
   onReview: (item: ContentItem) => void;
+  onToggleBulkApprove?: (item: ContentItem) => void;
+  bulkApproveSelectedIds?: string[];
   /** Callback for in-card Black Box run result (Part 5) */
   onRefreshItem?: (updated: ContentItem) => void;
   operatingAction?: "view" | "select" | "duplicate" | "archive" | "publish" | "review" | null;
@@ -30,6 +32,8 @@ export default function ContentTopicGrid({
   onArchive,
   onPublish,
   onReview,
+  onToggleBulkApprove,
+  bulkApproveSelectedIds,
   onRefreshItem,
   viewMode,
   operatingAction,
@@ -73,6 +77,8 @@ export default function ContentTopicGrid({
                 onArchive={onArchive}
                 onPublish={onPublish}
                 onReview={onReview}
+                onToggleBulkApprove={onToggleBulkApprove}
+                bulkApproveSelected={Boolean(bulkApproveSelectedIds?.includes(item.id))}
                 onRefreshItem={onRefreshItem}
                 operatingAction={operatingAction}
                 operatingId={operatingId}
