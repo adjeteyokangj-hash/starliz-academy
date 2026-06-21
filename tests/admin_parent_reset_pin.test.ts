@@ -5,7 +5,7 @@ import {
   handleAdminResetParentPin,
   handleAdminResetParentPinPost,
 } from "../src/app/api/admin/parents/[id]/reset-pin/route";
-import { handlePinStatusForSession } from "../src/app/api/pin/status/route";
+import { handlePinStatusForSession } from "../src/lib/pin-status-api";
 import { handlePinVerifyForSession } from "../src/app/api/pin/verify/route";
 
 test("non-admin cannot reset parent PIN", async () => {

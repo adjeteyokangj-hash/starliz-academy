@@ -148,9 +148,11 @@ export default function ContentLibraryPage() {
   }, [fetchContent, fetchStudents]);
 
   useEffect(() => {
-    setBulkApproveSelectedIds((current) => {
-      const validIds = new Set(items.map((item) => item.id));
-      return current.filter((id) => validIds.has(id));
+    queueMicrotask(() => {
+      setBulkApproveSelectedIds((current) => {
+        const validIds = new Set(items.map((item) => item.id));
+        return current.filter((id) => validIds.has(id));
+      });
     });
   }, [items]);
 

@@ -5,18 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Logo from "@/components/Logo";
 import Button from "@/components/ui/Button";
-
-export function getLoginDisabledReason(email: string, password: string): string | null {
-  if (!email.trim()) {
-    return "Enter your email address to continue.";
-  }
-
-  if (!password) {
-    return "Enter your password to continue.";
-  }
-
-  return null;
-}
+import { getLoginDisabledReason } from "@/lib/login-utils";
 
 export default function LoginPage() {
   const searchParams = useSearchParams();

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { NextResponse } from "next/server";
 
-import { handleConsentGet } from "../src/app/api/consent/route";
+import { handleConsentGet } from "../src/lib/consent-api";
 
 test("consent API includes AI disclosure for parent visibility", async () => {
   const response = await handleConsentGet({

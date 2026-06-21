@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { getLoginDisabledReason } from "../src/app/auth/login/page";
+import { getLoginDisabledReason } from "../src/lib/login-utils";
 import ChildManagementForm, {
   getChildFormDisabledReason,
   getChildFormValidationErrors,

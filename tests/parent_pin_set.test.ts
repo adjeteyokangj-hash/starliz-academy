@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { handlePinSetForSession } from "../src/app/api/pin/set/route";
-import { handlePinStatusForSession } from "../src/app/api/pin/status/route";
+import { handlePinStatusForSession } from "../src/lib/pin-status-api";
 import { handlePinVerifyForSession } from "../src/app/api/pin/verify/route";
 import { resolveParentPinGateState } from "../src/lib/parent-pin-gate";
 import { decideParentPinSetRequest, isWeakParentPin } from "../src/lib/parent-pin";

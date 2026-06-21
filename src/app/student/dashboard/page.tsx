@@ -490,7 +490,6 @@ export default function StudentDashboardPage() {
   const [academicIntelligence, setAcademicIntelligence] = useState<StudentAcademicIntelligencePayload | null>(null);
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicError, setAcademicError] = useState("");
-  const [academicTaskPendingId, setAcademicTaskPendingId] = useState<string | null>(null);
   const [homeworkPendingId, setHomeworkPendingId] = useState<string | null>(null);
   const [weeklyHomeworkGate, setWeeklyHomeworkGate] = useState<WeeklyHomeworkGatePayload | null>(null);
   const [error, setError] = useState("");
@@ -880,42 +879,6 @@ export default function StudentDashboardPage() {
       return;
     }
     setPanelActionMessage("Certificate status is not ready yet.");
-  }
-
-  async function handleStudentCatchUpTaskAction(
-    taskId: string,
-    action: "start_task" | "complete_task" | "skip_task",
-    successMessage?: string,
-  ) {
-    setAcademicTaskPendingId(taskId);
-    setAcademicError("");
-    try {
-      const response = await fetchWithRefreshRetry("/api/student/academic-intelligence/catch-up-tasks", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId, action }),
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(payload?.error ?? "Unable to update catch-up task.");
-      }
-
-      await loadDashboard();
-      setPanelActionMessage(
-        successMessage
-          ?? (action === "start_task"
-            ? "Catch-up task started."
-            : action === "complete_task"
-              ? "Catch-up task completed."
-              : "Catch-up task skipped."),
-      );
-    } catch (err) {
-      setAcademicError(err instanceof Error ? err.message : "Unable to update catch-up task.");
-    } finally {
-      setAcademicTaskPendingId(null);
-    }
   }
 
   async function handleStudentHomeworkTaskAction(taskId: string, action: "start_homework" | "complete_homework") {
