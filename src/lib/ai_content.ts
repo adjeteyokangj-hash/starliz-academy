@@ -89,7 +89,7 @@ function normalizeSpelling(item: Record<string, unknown> | null): SpellingWord |
 function normalizeMath(item: Record<string, unknown> | null): MathQuestion | null {
   if (!item) return null;
   const prompt = String(item.prompt ?? item.question ?? "").trim();
-  const answer = Number(item.answer);
+  const answer = Number(item.answer ?? item.correctAnswer ?? item.expectedAnswer);
   if (!prompt || Number.isNaN(answer)) return null;
 
   const roundChoice = (value: number): number => {

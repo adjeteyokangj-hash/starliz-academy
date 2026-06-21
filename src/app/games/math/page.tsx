@@ -29,7 +29,12 @@ import { getTutorFeedbackPlan, hydrateCoachingMemoryFromServer } from "@/lib/tut
 import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
 import { awardChildRewards } from "@/lib/child_wallet";
 import { getTutorLine } from "@/lib/tutorVoice";
-import { resolveAssignmentSessionDecision } from "@/lib/math-assignment-session";
+import {
+  buildMathRequiredItemIds,
+  resolveAssignmentSessionDecision,
+  resolveNextAssignedMathQuestion,
+  shouldCompleteOnAssignedExhaustion,
+} from "@/lib/math-assignment-session";
 import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
 import { shouldEnableStudentVoiceWorkflow } from "@/lib/lesson-voice-help";
 import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
@@ -137,7 +142,8 @@ export default function MathMissionPage() {
   const [retryInitialCount, setRetryInitialCount] = useState(0);
   const [correctSinceCheckpoint, setCorrectSinceCheckpoint] = useState(0);
   const [sessionVoiceHelpEnabled, setSessionVoiceHelpEnabled] = useState(false);
-  const [assignedSessionTarget, setAssignedSessionTarget] = useState<number | null>(null);
+  const [assignedQuestions, setAssignedQuestions] = useState<MathQuestion[]>([]);
+  const [assignedQuestionsLoaded, setAssignedQuestionsLoaded] = useState(false);
   const [explainWhyQuestion, setExplainWhyQuestion] = useState<{
     question: string;
     choices: string[];
@@ -148,6 +154,7 @@ export default function MathMissionPage() {
   const lastAutoSelectionContextRef = useRef<string | null>(null);
   const coachPanelRef = useRef<HTMLDivElement | null>(null);
   const voiceHelpEnabled = shouldEnableStudentVoiceWorkflow(sessionVoiceHelpEnabled);
+  const assignedSessionTarget = assignmentLockedSession ? assignedQuestions.length : null;
 
   const sessionComplete = sessionMode === "completed_base" || sessionMode === "completed_retry";
   const retryPackMode = sessionMode === "retry_pack";
@@ -156,10 +163,11 @@ export default function MathMissionPage() {
     : assignmentLockedSession
       ? Math.max(1, assignedSessionTarget ?? 1)
       : MATH_SESSION_TARGET;
-  const requiredStepIds = useMemo(
-    () => Array.from({ length: sessionQuestionTarget }, (_, index) => `step-${index}`),
-    [sessionQuestionTarget],
-  );
+  const requiredStepIds = useMemo(() => buildMathRequiredItemIds({
+    assignmentLocked: assignmentLockedSession,
+    assignedQuestions,
+    sessionQuestionTarget,
+  }), [assignedQuestions, assignmentLockedSession, sessionQuestionTarget]);
   const canonicalSession = useMemo(() => {
     const approvedSkippedIds = Object.entries(questionOutcomes)
       .filter(([, outcome]) => outcome.state === "skipped")
@@ -326,7 +334,11 @@ export default function MathMissionPage() {
     let nextSource: "assigned" | "ai-cache" | "static" = "static";
 
     if (assignmentLockedSession) {
-      const assignedQuestion = await fetchAssignedMathQuestion(assignedContentId ?? "", assignedAssignmentId);
+      const assignedQuestion = await resolveNextAssignedMathQuestion({
+        assignmentLocked: true,
+        assignedQuestions,
+        sessionStep,
+      });
       const assignmentDecision = resolveAssignmentSessionDecision({
         assignmentLocked: true,
         assignedQuestionAvailable: Boolean(assignedQuestion),
@@ -336,9 +348,21 @@ export default function MathMissionPage() {
         nextQuestion = assignedQuestion;
         nextSource = "assigned";
       } else if (assignmentDecision.assignmentExhausted) {
-        setSessionMode("completed_base");
-        setFeedback("Assigned session complete. Ask your teacher/admin to assign more maths content.");
-        setReaction({ mood: "celebrate", message: "Assigned session complete. Great work!" });
+        const exhaustedCanonicalSession = computeCanonicalSessionMetrics({
+          requiredItemIds: requiredStepIds,
+          outcomes: questionOutcomes,
+          approvedSkippedIds: Object.entries(questionOutcomes)
+            .filter(([, outcome]) => outcome.state === "skipped")
+            .map(([id]) => id),
+        });
+        if (shouldCompleteOnAssignedExhaustion(exhaustedCanonicalSession.canComplete)) {
+          setSessionMode("completed_base");
+          setFeedback("Assigned session complete. Ask your teacher/admin to assign more maths content.");
+          setReaction({ mood: "celebrate", message: "Assigned session complete. Great work!" });
+        } else {
+          setFeedback(`Keep going: ${exhaustedCanonicalSession.unresolvedCount} required question${exhaustedCanonicalSession.unresolvedCount === 1 ? "" : "s"} still unresolved.`);
+          setReaction({ mood: "support", message: "Finish all required assigned questions to complete this session." });
+        }
         return;
       }
     }
@@ -376,7 +400,7 @@ export default function MathMissionPage() {
       }
     }
 
-    if (preferAssigned && (assignedAssignmentId || assignedContentId)) {
+    if (preferAssigned && !assignmentLockedSession && (assignedAssignmentId || assignedContentId)) {
       const assignedQuestion = await fetchAssignedMathQuestion(assignedContentId ?? "", assignedAssignmentId);
       if (assignedQuestion) {
         nextQuestion = assignedQuestion;
@@ -466,19 +490,32 @@ export default function MathMissionPage() {
   useEffect(() => {
     let cancelled = false;
     if (!assignmentLockedSession) {
+      void Promise.resolve().then(() => {
+        if (cancelled) return;
+        setAssignedQuestions([]);
+        setAssignedQuestionsLoaded(false);
+      });
       return () => {
         cancelled = true;
       };
     }
 
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      setAssignedQuestionsLoaded(false);
+      setAssignedQuestions([]);
+    });
+
     void fetchAssignedMathBatch(assignedContentId ?? "", assignedAssignmentId)
       .then((batch) => {
         if (cancelled) return;
-        setAssignedSessionTarget(batch?.items.length ?? 0);
+        setAssignedQuestions(batch?.items ?? []);
+        setAssignedQuestionsLoaded(true);
       })
       .catch(() => {
         if (!cancelled) {
-          setAssignedSessionTarget(null);
+          setAssignedQuestions([]);
+          setAssignedQuestionsLoaded(true);
         }
       });
 
@@ -489,12 +526,12 @@ export default function MathMissionPage() {
 
   useEffect(() => {
     if (!profile || !questionPool.length) return;
-    if (assignmentLockedSession && assignedSessionTarget === null) return;
+    if (assignmentLockedSession && !assignedQuestionsLoaded) return;
     if (currentContextKey && lastAutoSelectionContextRef.current === currentContextKey && currentQuestion) return;
     lastAutoSelectionContextRef.current = currentContextKey;
     void moveToNextQuestion(profile, true, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignedAssignmentId, assignedContentId, assignedSessionTarget, assignmentLockedSession, currentContextKey, currentQuestion, profile, questionPool]);
+  }, [assignedAssignmentId, assignedContentId, assignedQuestionsLoaded, assignmentLockedSession, currentContextKey, currentQuestion, profile, questionPool]);
 
   const question = useMemo(() => currentQuestion, [currentQuestion]);
   const sessionRewards = useMemo(() => {
@@ -524,7 +561,8 @@ export default function MathMissionPage() {
     ? (isOlderLearner ? "📘 GCSE Algebra: Linear equations" : "📘 Algebra: Solving linear equations")
     : (LEVEL_LABELS[mathDifficulty] ?? LEVEL_LABELS[1]);
   const currentQuestionNumber = Math.min(sessionStep + 1, sessionQuestionTarget);
-  const currentStepKey = `step-${Math.min(sessionStep, Math.max(0, sessionQuestionTarget - 1))}`;
+  const currentStepKey = requiredStepIds[Math.min(sessionStep, Math.max(0, requiredStepIds.length - 1))]
+    ?? `step-${Math.min(sessionStep, Math.max(0, sessionQuestionTarget - 1))}`;
   const showVisualSupport = !isAlgebraQuestion && (profile?.ageRange === "5-7" || mathDifficulty <= 2);
   const displayChoices = useMemo(() => {
     if (!question) return [] as number[];
