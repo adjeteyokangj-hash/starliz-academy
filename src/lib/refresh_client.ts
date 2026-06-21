@@ -5,6 +5,40 @@ type RefreshResult = {
 
 let refreshInFlight: Promise<RefreshResult> | null = null;
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
+}
+
+function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) {
+    return promise;
+  }
+
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("The operation was aborted.", "AbortError"));
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      }
+    );
+  });
+}
+
 async function executeRefreshOnce(): Promise<RefreshResult> {
   try {
     const response = await fetch("/api/auth/refresh", {
@@ -38,15 +72,21 @@ export async function refreshAuthSession(options?: { retryOnce?: boolean }): Pro
 }
 
 export async function fetchWithRefreshRetry(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const signal = init?.signal ?? undefined;
+  throwIfAborted(signal);
   const first = await fetch(input, init);
   if (first.status !== 401) {
     return first;
   }
 
-  const refreshResult = await refreshAuthSession({ retryOnce: true });
+  const refreshResult = await raceWithAbort(
+    refreshAuthSession({ retryOnce: true }),
+    signal,
+  );
   if (!refreshResult.ok) {
     return first;
   }
 
+  throwIfAborted(signal);
   return fetch(input, init);
 }

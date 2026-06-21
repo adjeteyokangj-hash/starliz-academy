@@ -11,7 +11,7 @@ export default function AdminHeader() {
   const current = adminNavItems.find((item) => item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href));
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     router.push("/auth/login");
   }
 

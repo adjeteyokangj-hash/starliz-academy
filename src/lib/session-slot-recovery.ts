@@ -1,4 +1,6 @@
 import { isQuestionSlotFilled } from "@/lib/session-slot-validation";
+import type { AiGenerationMode } from "@/lib/admin-ai-generation-meta";
+import { keyStageForYearGroup, normalizeCurriculumPathway, normalizeExamBoard, normalizeSubject, normalizeYearGroup } from "@/lib/curriculum";
 
 export type SessionSlotGenerationContext = {
   subject: string;
@@ -58,6 +60,38 @@ export type MissingSlotCandidateSelection = {
     exhausted: boolean;
   };
 };
+
+const PRIMARY_ENGLISH_PARENT_YEARS = new Set(["Year 1", "Year 2", "Year 3", "Year 4", "Year 5", "Year 6"]);
+const PRIMARY_ENGLISH_STRANDS = new Set(["phonics", "spelling", "reading", "writing", "grammar", "punctuation", "vocabulary"]);
+
+export function resolveAdminGenerationSubjectContext(input: {
+  subject?: string | null;
+  contentType?: string | null;
+  yearGroup?: string | null;
+}): {
+  subject: string;
+  englishStrand?: string;
+} {
+  const normalizedYearGroup = normalizeYearGroup(input.yearGroup);
+  const normalizedSubject = normalizeSubject(String(input.subject ?? "").trim());
+  const normalizedContentType = normalizeSubject(String(input.contentType ?? "").trim());
+  const strandCandidate = normalizedSubject && PRIMARY_ENGLISH_STRANDS.has(normalizedSubject)
+    ? normalizedSubject
+    : normalizedContentType && PRIMARY_ENGLISH_STRANDS.has(normalizedContentType)
+      ? normalizedContentType
+      : null;
+
+  if (normalizedYearGroup && PRIMARY_ENGLISH_PARENT_YEARS.has(normalizedYearGroup) && strandCandidate) {
+    return {
+      subject: "english-language",
+      englishStrand: strandCandidate,
+    };
+  }
+
+  return {
+    subject: normalizedSubject ?? normalizedContentType ?? String(input.subject ?? input.contentType ?? "").trim(),
+  };
+}
 
 const QUESTION_STYLE_ORDER = [
   "direct_calculation",
@@ -355,27 +389,47 @@ export function buildMissingSlotGenerationRequest(input: {
   questionStyles?: string[];
   passId?: string;
   passLabel?: string;
+  aiMode: AiGenerationMode;
+  regenerationNonce?: number;
 }): Record<string, unknown> {
-  return {
+  const resolvedYearGroup = String(input.context.yearGroup ?? "").trim();
+  const resolvedKeyStage = String(input.context.keyStage ?? "").trim() || (resolvedYearGroup ? keyStageForYearGroup(resolvedYearGroup) : "");
+  const resolvedSubjectContext = resolveAdminGenerationSubjectContext({
     subject: input.context.subject,
-    keyStage: input.context.keyStage ?? undefined,
-    yearGroup: input.context.yearGroup ?? undefined,
+    contentType: input.context.contentType,
+    yearGroup: resolvedYearGroup,
+  });
+  const resolvedTopic = String(input.context.topic ?? "").trim() || String(input.context.skillFocus ?? "").trim() || "General";
+  const resolvedSkillFocus = String(input.context.skillFocus ?? "").trim() || String(input.context.topic ?? "").trim() || "General";
+  const resolvedExamBoard = normalizeExamBoard(String(input.context.examBoard ?? "").trim());
+  const resolvedCurriculumPathway = normalizeCurriculumPathway(String(input.context.curriculumPathway ?? "").trim());
+  const resolvedModule = String(input.context.module ?? "").trim();
+  const resolvedContentType = String(input.context.contentType ?? "").trim();
+
+  return {
+    subject: resolvedSubjectContext.subject,
+    englishStrand: resolvedSubjectContext.englishStrand,
+    keyStage: resolvedKeyStage || undefined,
+    yearGroup: resolvedYearGroup || undefined,
     ageGroup: input.context.ageGroup ?? undefined,
-    examBoard: input.context.examBoard ?? undefined,
-    curriculumPathway: input.context.curriculumPathway ?? undefined,
-    module: input.context.module ?? undefined,
-    topic: input.context.topic ?? input.context.skillFocus ?? "General",
-    skillFocus: input.context.skillFocus ?? input.context.topic ?? "General",
+    examBoard: resolvedExamBoard ?? undefined,
+    curriculumPathway: resolvedCurriculumPathway ?? undefined,
+    module: resolvedModule || undefined,
+    topic: resolvedTopic,
+    skillFocus: resolvedSkillFocus,
     difficulty: input.context.level,
     level: input.context.level,
     numberOfItems: Math.max(1, Math.min(60, Math.round(input.candidatePoolSize ?? input.missingSlots))),
-    activityType: input.context.contentType,
-    lessonFormat: input.context.contentType,
+    activityType: resolvedContentType,
+    lessonFormat: resolvedContentType,
     questionStyle: "same_lesson_session_format",
     questionStyles: (input.questionStyles ?? []).slice(0, 12),
     generationPassId: input.passId ?? "single_pass",
     generationPassLabel: input.passLabel ?? "Single pass",
-    aiMode: "live_openai_only",
+    aiMode: input.aiMode,
+    regenerationNonce: Number.isFinite(Number(input.regenerationNonce))
+      ? Math.abs(Math.floor(Number(input.regenerationNonce)))
+      : undefined,
     avoidPrompts: (input.context.avoidPrompts ?? []).slice(0, 12),
   };
 }

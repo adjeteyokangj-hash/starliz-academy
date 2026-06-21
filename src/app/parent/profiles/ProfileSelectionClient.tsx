@@ -22,7 +22,7 @@ type ParentProfilePayload = {
   }>;
 };
 
-const PIN_VERIFY_TIMEOUT_MS = 15000;
+const PIN_VERIFY_TIMEOUT_MS = 45000;
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";

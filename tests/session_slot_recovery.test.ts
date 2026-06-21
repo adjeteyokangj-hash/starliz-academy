@@ -61,16 +61,18 @@ test("generation request uses missing slot count and lesson metadata", () => {
       avoidPrompts: ["2 x 3"],
     },
     missingSlots: 5,
+    aiMode: "fallback_only",
   });
 
-  assert.equal(request.subject, "math");
+  assert.equal(request.subject, "maths");
   assert.equal(request.keyStage, "KS2");
   assert.equal(request.yearGroup, "Year 4");
   assert.equal(request.ageGroup, "8-9");
-  assert.equal(request.examBoard, "None");
+  assert.equal(request.examBoard, undefined);
   assert.equal(request.numberOfItems, 5);
   assert.equal(request.lessonFormat, "math");
   assert.equal(request.questionStyle, "same_lesson_session_format");
+  assert.equal(request.aiMode, "fallback_only");
 });
 
 test("missing slot recovery plan generates larger internal candidate pool", () => {
@@ -96,11 +98,70 @@ test("generation request can request more candidates than missing slots", () => 
     questionStyles: ["direct_calculation", "word_problem"],
     passId: "alternative",
     passLabel: "Pass 2",
+    aiMode: "openai_with_fallback",
   });
 
   assert.equal(request.numberOfItems, 10);
   assert.deepEqual(request.questionStyles, ["direct_calculation", "word_problem"]);
   assert.equal(request.generationPassId, "alternative");
+});
+
+test("generation request derives key stage from year group when key stage is missing", () => {
+  const request = buildMissingSlotGenerationRequest({
+    context: {
+      subject: "reading",
+      keyStage: "",
+      yearGroup: "Year 4",
+      level: 3,
+      topic: "Inference",
+      contentType: "reading",
+    },
+    missingSlots: 1,
+    aiMode: "fallback_only",
+  });
+
+  assert.equal(request.yearGroup, "Year 4");
+  assert.equal(request.keyStage, "KS2");
+});
+
+test("generation request falls back from empty skill focus to topic", () => {
+  const request = buildMissingSlotGenerationRequest({
+    context: {
+      subject: "maths",
+      keyStage: "",
+      yearGroup: "Year 4",
+      level: 3,
+      topic: "Addition reasoning",
+      skillFocus: "",
+      contentType: "maths",
+    },
+    missingSlots: 2,
+    aiMode: "openai_with_fallback",
+  });
+
+  assert.equal(request.keyStage, "KS2");
+  assert.equal(request.topic, "Addition reasoning");
+  assert.equal(request.skillFocus, "Addition reasoning");
+});
+
+test("generation request maps Year 4 reading to english-language with english strand", () => {
+  const request = buildMissingSlotGenerationRequest({
+    context: {
+      subject: "reading",
+      keyStage: "KS2",
+      yearGroup: "Year 4",
+      level: 3,
+      topic: "Inference",
+      skillFocus: "Retrieval and inference",
+      contentType: "reading",
+    },
+    missingSlots: 1,
+    aiMode: "live_openai_only",
+  });
+
+  assert.equal(request.subject, "english-language");
+  assert.equal(request.englishStrand, "reading");
+  assert.equal(request.yearGroup, "Year 4");
 });
 
 test("candidate selection filters duplicates and preserves same-level preference", () => {
