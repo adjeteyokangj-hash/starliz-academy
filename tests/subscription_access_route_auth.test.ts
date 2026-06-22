@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { NextResponse } from "next/server";
 
-import { handleSubscriptionAccessGet } from "../src/app/api/subscription/access/route";
+import { handleSubscriptionAccessGet } from "../src/app/api/subscription/access.handler";
 
 function makeRequest(feature = "learning") {
   return new Request(`http://localhost/api/subscription/access?feature=${feature}`);

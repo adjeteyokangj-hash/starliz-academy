@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleAdminContentPublishPost } from "../src/app/api/admin/content/[id]/publish/route";
+import { handleAdminContentPublishPost } from "../src/app/api/admin/content/[id]/publish.handler";
 
 type PublishDeps = NonNullable<Parameters<typeof handleAdminContentPublishPost>[2]>;
 

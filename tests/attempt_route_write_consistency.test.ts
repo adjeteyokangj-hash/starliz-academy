@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { NextResponse } from "next/server";
-import { handleAttemptPost } from "../src/app/api/attempts/route";
+import { handleAttemptPost } from "../src/app/api/attempts.handler";
 
 function attemptRequest(overrides: Record<string, unknown> = {}): Request {
   return new Request("https://starliz.test/api/attempts", {

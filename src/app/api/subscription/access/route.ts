@@ -1,37 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api_guard";
-import { canUseFeature } from "@/lib/subscriptions/enforcement";
-import { PremiumFeature } from "@/lib/subscriptions/plans";
-import { resolveParentScope } from "@/lib/parent_scope";
+import { handleSubscriptionAccessGet } from "../access.handler";
 
-const features = new Set(["learning", "ai-content", "reports", "store"]);
-
-type AccessRouteDeps = {
-  requireSession: typeof requireSession;
-  resolveParentScope: typeof resolveParentScope;
-  canUseFeature: typeof canUseFeature;
-};
-
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   return handleSubscriptionAccessGet(request);
-}
-
-export async function handleSubscriptionAccessGet(
-  request: Request,
-  deps: AccessRouteDeps = { requireSession, resolveParentScope, canUseFeature },
-) {
-  const { session, response } = await deps.requireSession();
-  if (!session) return response;
-  const parentScope = await deps.resolveParentScope(session);
-  if (!parentScope) {
-    return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
-  }
-
-  const feature = new URL(request.url).searchParams.get("feature") ?? "learning";
-  if (!features.has(feature)) {
-    return NextResponse.json({ error: "Unknown feature." }, { status: 400 });
-  }
-
-  const decision = await deps.canUseFeature(parentScope.parentId, feature as PremiumFeature);
-  return NextResponse.json(decision, { status: decision.allowed ? 200 : 402 });
 }
