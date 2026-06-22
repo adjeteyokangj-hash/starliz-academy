@@ -31,6 +31,11 @@ function formatAuditDate(log: AuditLog) {
   return date.toLocaleString();
 }
 
+const quickActionFilters = [
+  { key: "all", label: "All Actions", value: "" },
+  { key: "content-unpublished", label: "Content Unpublished", value: "ai_content.unpublished" },
+] as const;
+
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [actorUserId, setActorUserId] = useState("");
@@ -38,11 +43,13 @@ export default function AuditLogsPage() {
   const [entityType, setEntityType] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const quickActionKey = action === "ai_content.unpublished" ? "content-unpublished" : action ? "custom" : "all";
 
-  async function loadLogs() {
+  async function loadLogs(actionOverride?: string) {
     const params = new URLSearchParams();
     if (actorUserId) params.set("actorUserId", actorUserId);
-    if (action) params.set("action", action);
+    const effectiveAction = actionOverride ?? action;
+    if (effectiveAction) params.set("action", effectiveAction);
     if (entityType) params.set("entityType", entityType);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
@@ -71,8 +78,23 @@ export default function AuditLogsPage() {
           <input className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" placeholder="Admin user ID" value={actorUserId} onChange={(event) => setActorUserId(event.target.value)} />
           <input className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" placeholder="Action type" value={action} onChange={(event) => setAction(event.target.value)} />
           <input className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" placeholder="Resource" value={entityType} onChange={(event) => setEntityType(event.target.value)} />
-          <input className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-          <input className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+          <input aria-label="From date" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+          <input aria-label="To date" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {quickActionFilters.map((filter) => (
+            <button
+              key={filter.key}
+              type="button"
+              onClick={() => {
+                setAction(filter.value);
+                void loadLogs(filter.value);
+              }}
+              className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.08em] ${quickActionKey === filter.key ? "bg-violet-500 text-white" : "border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"}`}
+            >
+              {filter.label}
+            </button>
+          ))}
         </div>
         <button type="button" onClick={() => void loadLogs()} className="mt-4 rounded-2xl bg-violet-500 px-5 py-3 font-bold text-white">
           Apply Filters

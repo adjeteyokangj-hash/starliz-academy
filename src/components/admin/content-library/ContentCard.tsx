@@ -56,6 +56,7 @@ export default function ContentCard({
   const slotIncomplete = incompleteSlotCount > 0;
   const assignDisabled = !["reviewed", "approved", "published"].includes(item.status) || !summary.valid || slotIncomplete || staleState.isStale;
   const canPublish = ["reviewed", "approved", "published"].includes(item.status);
+  const isPublished = item.status === "published";
   const assignTitle = isDraftOrGenerated
     ? "Review or publish this content before assigning."
     : !summary.valid
@@ -65,12 +66,14 @@ export default function ContentCard({
       : staleState.isStale
         ? "Black Box stale - re-run Black Box before assignment/publish."
       : undefined;
-  const publishDisabled = (item.status !== "published" && slotIncomplete) || !canPublish || staleState.isStale;
-  const publishTitle = slotIncomplete
-    ? `${incompleteSlotCount} question slots still require content.`
-    : staleState.isStale
-      ? "Black Box stale - re-run Black Box before review/publish."
-      : undefined;
+  const publishDisabled = isPublished ? !canPublish : (slotIncomplete || !canPublish || staleState.isStale);
+  const publishTitle = isPublished
+    ? undefined
+    : slotIncomplete
+      ? `${incompleteSlotCount} question slots still require content.`
+      : staleState.isStale
+        ? "Black Box stale - re-run Black Box before review/publish."
+        : undefined;
   const isOperating = operatingId === item.id;
   const canSelectForBulkApprove = item.status !== "published" && item.status !== "archived";
 
@@ -245,7 +248,7 @@ export default function ContentCard({
                 title={publishTitle}
                 className="block w-full px-4 py-2 text-left text-xs font-black text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800"
               >
-                {isOperating && operatingAction === "publish" ? "Loading..." : item.status === "published" ? "Unpublish" : "Publish"}
+                {isOperating && operatingAction === "publish" ? "Loading..." : isPublished ? "Unpublish" : "Publish"}
               </button>
             </div>
           ) : null}

@@ -85,6 +85,19 @@ export default function ContentLibraryPage() {
   const [viewModalContent, setViewModalContent] = useState<ContentItem | null>(null);
   const [overrideAssigning, setOverrideAssigning] = useState(false);
   const [bulkApproveSelectedIds, setBulkApproveSelectedIds] = useState<string[]>([]);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleAdminLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      router.push("/admin/login");
+      router.refresh();
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   const fetchContent = useCallback(async () => {
     const contentRes = await fetch("/api/admin/content", { cache: "no-store" });
@@ -475,6 +488,21 @@ export default function ContentLibraryPage() {
     setOperating({ id: item.id, action: "publish" });
     setMessage(null);
     try {
+      if (item.status === "published") {
+        const response = await fetch(`/api/admin/content/${item.id}/unpublish`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const payload = await response.json() as { error?: string; status?: string };
+        if (!response.ok) {
+          setMessage(payload.error ?? "Failed to unpublish content");
+          return;
+        }
+        setMessage("Content unpublished");
+        setItems((current) => current.map((c) => c.id === item.id ? { ...c, status: "approved" } : c));
+        return;
+      }
+
       const response = await fetch(`/api/admin/content/${item.id}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -487,7 +515,7 @@ export default function ContentLibraryPage() {
       setMessage("Content published");
       setItems((current) => current.map((c) => c.id === item.id ? { ...c, status: "published" } : c));
     } catch {
-      setMessage("Publish request failed");
+      setMessage(item.status === "published" ? "Unpublish request failed" : "Publish request failed");
     } finally {
       setOperating(null);
     }
@@ -587,9 +615,19 @@ export default function ContentLibraryPage() {
 
   return (
     <div className="space-y-6 pb-24">
-      <header>
-        <h1 className="text-2xl font-black text-white">Content Library</h1>
-        <p className="text-sm text-slate-400">Create, review and assign high-quality curriculum content to students.</p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black text-white">Content Library</h1>
+          <p className="text-sm text-slate-400">Create, review and assign high-quality curriculum content to students.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleAdminLogout()}
+          disabled={loggingOut}
+          className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.08em] text-rose-100 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loggingOut ? "Logging out..." : "Admin Logout"}
+        </button>
       </header>
 
       <ContentLibraryFilters
