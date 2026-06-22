@@ -2514,9 +2514,13 @@ export default function SpellingQuestPage() {
             </div>
 
             <div className="mt-5 flex flex-wrap gap-3">
-              <Button onClick={continueToNextLevel}>
-                {nextSpellingLevel ? `Continue to ${LEVEL_LABELS[nextSpellingLevel]}` : "Continue Challenge"}
-              </Button>
+              {assignedAssignmentId || assignedContentId ? (
+                <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
+              ) : (
+                <Button onClick={continueToNextLevel}>
+                  {nextSpellingLevel ? `Continue to ${LEVEL_LABELS[nextSpellingLevel]}` : "Continue Challenge"}
+                </Button>
+              )}
               <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
               <Button variant="secondary" onClick={restartCurrentSession}>Practise This Level Again</Button>
             </div>

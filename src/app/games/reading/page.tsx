@@ -1119,8 +1119,12 @@ export default function ReadingJourneyPage() {
         setSessionMode(retryPackMode ? "completed_retry" : "completed_base");
         setFeedback(
           isCorrect
-            ? "Session complete. Continue to the next level or go to dashboard."
-            : "Session complete. Great effort today. Continue to the next level or go to dashboard."
+            ? (assignedContentId || assignedAssignmentId
+              ? "Assigned reading session complete. Go to dashboard to continue when a new assignment is ready."
+              : "Session complete. Continue to the next level or go to dashboard.")
+            : (assignedContentId || assignedAssignmentId
+              ? "Assigned reading session complete. Great effort today. Go to dashboard to continue when a new assignment is ready."
+              : "Session complete. Great effort today. Continue to the next level or go to dashboard.")
         );
       } else {
         setFeedback(`Keep going: ${nextCanonicalSession.unresolvedCount} required question${nextCanonicalSession.unresolvedCount === 1 ? "" : "s"} still unresolved.`);
@@ -1458,11 +1462,17 @@ export default function ReadingJourneyPage() {
                     <p className="m-0 mt-1 font-semibold">Top mastery: {readingMastery.map((entry) => `${entry.tag} (${entry.accuracy}%)`).join(", ") || "Building now"}</p>
                     <p className="m-0 mt-1 font-semibold">Next suggestion: {profile.adaptive.nextBestActivity}</p>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <Button variant="accent" className="w-full" onClick={continueToNextLevel}>
-                        {(profile.subjectLevels?.reading ?? profile.adaptive.readingDifficulty ?? 1) >= 10
-                          ? "Play again at top level"
-                          : `Continue to Level ${Math.min(10, (profile.subjectLevels?.reading ?? profile.adaptive.readingDifficulty ?? 1) + 1)}`}
-                      </Button>
+                      {assignedContentId || assignedAssignmentId ? (
+                        <Link href="/dashboard" className="block">
+                          <Button variant="accent" className="w-full">Go to Dashboard</Button>
+                        </Link>
+                      ) : (
+                        <Button variant="accent" className="w-full" onClick={continueToNextLevel}>
+                          {(profile.subjectLevels?.reading ?? profile.adaptive.readingDifficulty ?? 1) >= 10
+                            ? "Play again at top level"
+                            : `Continue to Level ${Math.min(10, (profile.subjectLevels?.reading ?? profile.adaptive.readingDifficulty ?? 1) + 1)}`}
+                        </Button>
+                      )}
                       <Link href="/dashboard" className="block">
                         <Button variant="secondary" className="w-full">Go to Dashboard</Button>
                       </Link>

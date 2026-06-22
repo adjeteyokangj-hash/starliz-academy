@@ -357,7 +357,7 @@ export default function MathMissionPage() {
         });
         if (shouldCompleteOnAssignedExhaustion(exhaustedCanonicalSession.canComplete)) {
           setSessionMode("completed_base");
-          setFeedback("Assigned session complete. Ask your teacher/admin to assign more maths content.");
+          setFeedback("Assigned session complete. Start the next assigned session or go to dashboard.");
           setReaction({ mood: "celebrate", message: "Assigned session complete. Great work!" });
         } else {
           setFeedback(`Keep going: ${exhaustedCanonicalSession.unresolvedCount} required question${exhaustedCanonicalSession.unresolvedCount === 1 ? "" : "s"} still unresolved.`);
@@ -1396,7 +1396,7 @@ export default function MathMissionPage() {
                           void moveToNextQuestion(profile, true, true);
                         }}
                       >
-                        Start next session
+                          {assignmentLockedSession ? "Start next assigned session" : "Start next session"}
                       </Button>
                       <Link href="/dashboard" className="block">
                         <Button variant="secondary" className="w-full">Go to Dashboard</Button>
