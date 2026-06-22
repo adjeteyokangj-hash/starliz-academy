@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import type { StudentAssignmentCandidate } from "./types";
 
 type Props = {
@@ -9,10 +8,18 @@ type Props = {
   candidates: StudentAssignmentCandidate[];
   selectedStudentId: string | null;
   onSelectStudent: (id: string) => void;
+  onViewHistory?: (candidate: StudentAssignmentCandidate) => void;
   disabled?: boolean;
 };
 
-export default function StudentAssignmentColumn({ title, tone, candidates, selectedStudentId, onSelectStudent, disabled }: Props) {
+function formatDateShort(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+export default function StudentAssignmentColumn({ title, tone, candidates, selectedStudentId, onSelectStudent, onViewHistory, disabled }: Props) {
   const toneClasses = tone === "recommended"
     ? "border-emerald-500/40"
     : tone === "eligible"
@@ -29,6 +36,24 @@ export default function StudentAssignmentColumn({ title, tone, candidates, selec
             key={entry.student.id}
             className={`rounded-xl border px-3 py-2 ${selectedStudentId === entry.student.id ? "border-indigo-400 bg-indigo-500/10" : "border-slate-800 bg-slate-900/70"}`}
           >
+            {entry.student.contentAssignment?.badges?.length ? (
+              <div className="mb-2 flex flex-wrap gap-1">
+                {entry.student.contentAssignment.badges.map((badge) => {
+                  const toneClass = badge.includes("Active")
+                    ? "border-rose-400/40 bg-rose-500/10 text-rose-100"
+                    : badge.includes("Completed")
+                      ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100"
+                      : badge.includes("Assigned Before")
+                        ? "border-amber-400/40 bg-amber-500/10 text-amber-100"
+                        : "border-slate-600/60 bg-slate-800/70 text-slate-200";
+                  return (
+                    <span key={`${entry.student.id}-${badge}`} className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black ${toneClass}`}>
+                      {badge}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
             <div className="flex items-start justify-between gap-2">
               <button
                 type="button"
@@ -55,13 +80,30 @@ export default function StudentAssignmentColumn({ title, tone, candidates, selec
                 {tone === "blocked" ? (
                   <p className="mt-1 text-xs text-rose-200">{entry.hardBlockReason}</p>
                 ) : null}
+                {entry.student.contentAssignment ? (
+                  <>
+                    <p className="mt-1 text-xs text-slate-300">
+                      Last assigned: {formatDateShort(entry.student.contentAssignment.lastAssignedAt)}
+                    </p>
+                    {entry.student.contentAssignment.hasActiveAssignment ? (
+                      <p className="text-xs text-rose-200">
+                        Active progress: {entry.student.contentAssignment.progressAnswered}/{entry.student.contentAssignment.totalQuestions || 0}
+                      </p>
+                    ) : entry.student.contentAssignment.currentStatus === "completed" ? (
+                      <p className="text-xs text-emerald-200">
+                        Completed: {formatDateShort(entry.student.contentAssignment.completedAt)}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
               </button>
-              <Link
-                href={`/admin/students/${entry.student.id}`}
+              <button
+                type="button"
+                onClick={() => onViewHistory?.(entry)}
                 className="shrink-0 rounded px-2 py-1 text-xs font-bold text-slate-300 hover:bg-slate-800 hover:text-white"
               >
                 View
-              </Link>
+              </button>
             </div>
           </div>
         ))}

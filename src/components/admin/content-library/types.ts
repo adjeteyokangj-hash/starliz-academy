@@ -174,6 +174,26 @@ export type StudentOption = {
   subjectFocus?: string | null;
   weakPatterns?: string[];
   schoolIds?: string[];
+  contentAssignment?: StudentContentAssignmentInsight;
+};
+
+export type StudentContentAssignmentStatus = "none" | "assigned" | "in_progress" | "completed" | "archived";
+
+export type StudentContentAssignmentHistoryEntry = {
+  assignedAt: string;
+  statusAtTime: StudentContentAssignmentStatus;
+};
+
+export type StudentContentAssignmentInsight = {
+  assignmentCount: number;
+  lastAssignedAt: string | null;
+  currentStatus: StudentContentAssignmentStatus;
+  hasActiveAssignment: boolean;
+  progressAnswered: number;
+  totalQuestions: number;
+  completedAt: string | null;
+  history: StudentContentAssignmentHistoryEntry[];
+  badges: string[];
 };
 
 export type ContentSummary = {

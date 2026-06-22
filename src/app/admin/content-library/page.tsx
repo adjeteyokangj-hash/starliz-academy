@@ -105,8 +105,10 @@ export default function ContentLibraryPage() {
     return (contentPayload.items ?? []).filter((item) => String(item.status).toLowerCase() !== "archived");
   }, []);
 
-  const fetchStudents = useCallback(async () => {
-    const studentsRes = await fetch("/api/admin/students?context=assignment");
+  const fetchStudents = useCallback(async (contentId?: string | null) => {
+    const params = new URLSearchParams({ context: "assignment" });
+    if (contentId) params.set("contentId", contentId);
+    const studentsRes = await fetch(`/api/admin/students?${params.toString()}`);
     const studentsPayload = await studentsRes.json() as { students?: StudentOption[] };
     return studentsPayload.students ?? [];
   }, []);
@@ -147,7 +149,7 @@ export default function ContentLibraryPage() {
           });
         }
       });
-    void fetchStudents().then((data) => {
+    void fetchStudents(null).then((data) => {
       if (cancelled) return;
       queueMicrotask(() => {
         if (!cancelled) {
@@ -159,6 +161,21 @@ export default function ContentLibraryPage() {
       cancelled = true;
     };
   }, [fetchContent, fetchStudents]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchStudents(selectedContentId).then((data) => {
+      if (cancelled) return;
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setStudents(data);
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchStudents, selectedContentId]);
 
   useEffect(() => {
     queueMicrotask(() => {

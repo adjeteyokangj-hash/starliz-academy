@@ -35,6 +35,37 @@ const createStudentSchema = z.object({
   targetGrades: z.record(z.string(), z.string()).optional(),
 });
 
+type StudentContentAssignmentStatus = "none" | "assigned" | "in_progress" | "completed" | "archived";
+
+type StudentContentAssignmentHistoryEntry = {
+  assignedAt: string;
+  statusAtTime: StudentContentAssignmentStatus;
+};
+
+type StudentContentAssignmentInsight = {
+  assignmentCount: number;
+  lastAssignedAt: string | null;
+  currentStatus: StudentContentAssignmentStatus;
+  hasActiveAssignment: boolean;
+  progressAnswered: number;
+  totalQuestions: number;
+  completedAt: string | null;
+  history: StudentContentAssignmentHistoryEntry[];
+  badges: string[];
+};
+
+function toQuestionCount(contentJson: string | null): number {
+  if (!contentJson) return 0;
+  try {
+    const parsed = JSON.parse(contentJson) as unknown;
+    if (Array.isArray(parsed)) return parsed.length;
+    if (parsed && typeof parsed === "object") return 1;
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function GET(request: Request) {
   const { session, response } = await requireAdmin();
   if (!session) return response;
@@ -42,6 +73,7 @@ export async function GET(request: Request) {
   const context = new URL(request.url).searchParams.get("context")?.trim();
 
   if (context === "assignment") {
+    const contentId = new URL(request.url).searchParams.get("contentId")?.trim() ?? "";
     const children = await prisma.childProfile.findMany({
       where: { archived: false },
       orderBy: { updatedAt: "desc" },
@@ -69,6 +101,102 @@ export async function GET(request: Request) {
         },
       },
     });
+
+    const studentIds = children.map((child) => child.id);
+    const studentIdSet = new Set(studentIds);
+    const contentAssignmentInsightByStudent = new Map<string, StudentContentAssignmentInsight>();
+
+    if (contentId && studentIds.length > 0) {
+      const [contentRecord, assignments, assignmentCreatedLogs] = await Promise.all([
+        prisma.aIContentCache.findUnique({
+          where: { id: contentId },
+          select: { id: true, contentJson: true },
+        }),
+        prisma.assignment.findMany({
+          where: { contentId, studentId: { in: studentIds } },
+          select: {
+            id: true,
+            studentId: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+            completedAt: true,
+          },
+        }),
+        prisma.auditLog.findMany({
+          where: {
+            action: "assignment.created",
+            metadataJson: { contains: `\"contentId\":\"${contentId}\"` },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 5000,
+          select: { createdAt: true, metadataJson: true },
+        }),
+      ]);
+
+      const assignmentIds = assignments.map((assignment) => assignment.id);
+      const assignmentAttempts = assignmentIds.length
+        ? await prisma.attempt.groupBy({
+            by: ["assignmentId"],
+            where: { assignmentId: { in: assignmentIds } },
+            _count: { id: true },
+          })
+        : [];
+
+      const totalQuestions = toQuestionCount(contentRecord?.contentJson ?? null);
+      const assignmentByStudent = new Map(assignments.map((assignment) => [assignment.studentId, assignment]));
+      const progressByAssignment = new Map(assignmentAttempts.map((row) => [row.assignmentId, row._count.id]));
+      const historyByStudent = new Map<string, StudentContentAssignmentHistoryEntry[]>();
+
+      for (const row of assignmentCreatedLogs) {
+        if (!row.metadataJson) continue;
+        try {
+          const metadata = JSON.parse(row.metadataJson) as { studentId?: string; contentId?: string };
+          if (!metadata.studentId || !studentIdSet.has(metadata.studentId) || metadata.contentId !== contentId) continue;
+          const history = historyByStudent.get(metadata.studentId) ?? [];
+          const currentAssignment = assignmentByStudent.get(metadata.studentId);
+          history.push({
+            assignedAt: row.createdAt.toISOString(),
+            statusAtTime: (currentAssignment?.status as StudentContentAssignmentStatus | undefined) ?? "assigned",
+          });
+          historyByStudent.set(metadata.studentId, history);
+        } catch {
+          continue;
+        }
+      }
+
+      for (const studentId of studentIds) {
+        const assignment = assignmentByStudent.get(studentId);
+        const history = (historyByStudent.get(studentId) ?? []).sort((a, b) => Date.parse(b.assignedAt) - Date.parse(a.assignedAt));
+        const currentStatus = (assignment?.status as StudentContentAssignmentStatus | undefined) ?? "none";
+        const hasActiveAssignment = currentStatus === "assigned" || currentStatus === "in_progress";
+        const assignmentCount = history.length;
+        const lastAssignedAt = history[0]?.assignedAt ?? assignment?.updatedAt.toISOString() ?? null;
+        const progressAnswered = assignment ? (progressByAssignment.get(assignment.id) ?? 0) : 0;
+        const badges: string[] = [];
+
+        if (assignmentCount === 0) {
+          badges.push("Never Assigned");
+        } else {
+          badges.push(`Assigned Before (${assignmentCount})`);
+        }
+        if (hasActiveAssignment) badges.push("Currently Active");
+        if (currentStatus === "completed") badges.push("Completed");
+        if (currentStatus === "archived") badges.push("Expired");
+
+        contentAssignmentInsightByStudent.set(studentId, {
+          assignmentCount,
+          lastAssignedAt,
+          currentStatus,
+          hasActiveAssignment,
+          progressAnswered,
+          totalQuestions,
+          completedAt: assignment?.completedAt?.toISOString() ?? null,
+          history: history.slice(0, 10),
+          badges,
+        });
+      }
+    }
 
     const students = children.map((child) => {
       let weakPatterns: string[] = [];
@@ -115,6 +243,7 @@ export async function GET(request: Request) {
         parentName: child.parent.name,
         subjectFocus: child.studentProfile?.subjectFocus ?? null,
         weakPatterns,
+        contentAssignment: contentAssignmentInsightByStudent.get(child.id),
       };
     });
 

@@ -24,7 +24,15 @@ type Props = {
 
 export default function AssignmentPanel(props: Props) {
     const [overrideReason, setOverrideReason] = useState("Admin manual assignment after Level Finder review");
+    const [historyCandidate, setHistoryCandidate] = useState<StudentAssignmentCandidate | null>(null);
     const overrideEligibleBlocked = props.blocked.filter((b) => b.overrideEligible);
+
+  function formatDateTime(value: string | null | undefined): string {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleString();
+  }
   if (!props.selectedContent) {
     return (
       <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-sm text-slate-400">
@@ -94,6 +102,7 @@ export default function AssignmentPanel(props: Props) {
           candidates={props.recommended}
           selectedStudentId={props.selectedStudentId}
           onSelectStudent={props.onSelectStudent}
+          onViewHistory={setHistoryCandidate}
           disabled={props.assigning}
         />
         <StudentAssignmentColumn
@@ -102,6 +111,7 @@ export default function AssignmentPanel(props: Props) {
           candidates={props.eligibleManual}
           selectedStudentId={props.selectedStudentId}
           onSelectStudent={props.onSelectStudent}
+          onViewHistory={setHistoryCandidate}
           disabled={props.assigning}
         />
         <StudentAssignmentColumn
@@ -110,6 +120,7 @@ export default function AssignmentPanel(props: Props) {
           candidates={props.blocked}
           selectedStudentId={props.selectedStudentId}
           onSelectStudent={props.onSelectStudent}
+          onViewHistory={setHistoryCandidate}
           disabled
         />
 
@@ -191,6 +202,61 @@ export default function AssignmentPanel(props: Props) {
           <p>All assignment activity is stored and reviewable in audit logs.</p>
         </div>
       </div>
+
+      {historyCandidate ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4" role="dialog" aria-modal="true" aria-label="Assignment history">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-950 p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-lg font-black text-white">Assignment History</h4>
+                <p className="text-sm text-slate-300">{meta.title}</p>
+                <p className="text-xs text-slate-400">{historyCandidate.student.name} | {historyCandidate.student.yearGroup || "No year"} | {historyCandidate.student.keyStageLevel || "No key stage"}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoryCandidate(null)}
+                className="rounded-xl border border-slate-700 px-3 py-1 text-xs font-black text-slate-200 hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-sm text-slate-200">
+              {historyCandidate.student.contentAssignment?.hasActiveAssignment ? (
+                <>
+                  <p className="font-bold text-rose-200">Current status: Active</p>
+                  <p className="mt-1 text-xs">Progress: {historyCandidate.student.contentAssignment.progressAnswered}/{historyCandidate.student.contentAssignment.totalQuestions || 0}</p>
+                  <p className="text-xs">Assigned: {formatDateTime(historyCandidate.student.contentAssignment.lastAssignedAt)}</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-bold text-slate-200">Current status: {historyCandidate.student.contentAssignment?.currentStatus === "none" ? "No active assignment" : historyCandidate.student.contentAssignment?.currentStatus || "No active assignment"}</p>
+                  <p className="mt-1 text-xs">Last assigned: {formatDateTime(historyCandidate.student.contentAssignment?.lastAssignedAt)}</p>
+                  {historyCandidate.student.contentAssignment?.completedAt ? (
+                    <p className="text-xs">Completed: {formatDateTime(historyCandidate.student.contentAssignment.completedAt)}</p>
+                  ) : null}
+                </>
+              )}
+            </div>
+
+            <div className="mt-4">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Assignment Events</p>
+              {historyCandidate.student.contentAssignment?.history?.length ? (
+                <div className="mt-2 space-y-2">
+                  {historyCandidate.student.contentAssignment.history.map((entry, index) => (
+                    <div key={`${historyCandidate.student.id}-${entry.assignedAt}-${index}`} className="rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2">
+                      <p className="text-sm text-slate-100">{formatDateTime(entry.assignedAt)}</p>
+                      <p className="text-xs text-slate-400">Status: {entry.statusAtTime}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">No assignment events for this content yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
