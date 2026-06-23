@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { recalculateWeakAreaFromAttempts } from "@/lib/ai/weak-area-detector";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { checkSubscriptionAccess, getTrialSessionLimit } from "@/lib/subscriptions/enforcement";
+import { isPlayableAssignedStatus } from "@/lib/subscriptions/learning-access";
 import { updateStudentSkills } from "@/lib/skillEngine";
 import { resolveAttemptStudentIdentity, upsertLearningDnaProfileFromAttempt } from "@/lib/attempts/learning_dna_pipeline";
 import { invalidateAcademicIntelligenceSnapshot } from "@/lib/academic-intelligence/snapshot";
@@ -80,21 +81,22 @@ export async function handleAttemptPost(request: Request, deps: AttemptRouteDeps
       return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
     }
 
+    const { resolvedStudentId, assignment } = await deps.resolveAttemptStudentIdentity(deps.prisma, {
+      assignmentId: body.assignmentId,
+      requestedStudentId: body.studentId,
+      parentId: parentScope.parentId,
+    });
+
     const [user, access] = await Promise.all([
       deps.prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { trialSessionsUsed: true } }),
       deps.checkSubscriptionAccess(parentScope.parentId),
     ]);
 
     const hasPaidSubscription = access.hasPaidSubscription === true && access.allowed;
-    if (!hasPaidSubscription && (user?.trialSessionsUsed ?? 0) >= deps.getTrialSessionLimit()) {
+    const hasPlayableAssignedAccess = isPlayableAssignedStatus(assignment?.status);
+    if (!hasPaidSubscription && !hasPlayableAssignedAccess && (user?.trialSessionsUsed ?? 0) >= deps.getTrialSessionLimit()) {
       return NextResponse.json({ error: "Subscription required" }, { status: 403 });
     }
-
-    const { resolvedStudentId, assignment } = await deps.resolveAttemptStudentIdentity(deps.prisma, {
-      assignmentId: body.assignmentId,
-      requestedStudentId: body.studentId,
-      parentId: parentScope.parentId,
-    });
 
     const student = await deps.prisma.childProfile.findFirst({
       where: { id: resolvedStudentId, parentId: parentScope.parentId },

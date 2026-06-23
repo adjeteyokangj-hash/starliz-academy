@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import LockedPreview from "@/components/paywall/LockedPreview";
 import SoftPaywallBanner from "@/components/paywall/SoftPaywallBanner";
 import { getClientAccess, useTrialSession as consumeTrialSession } from "@/lib/access";
 import { trackUsageEvent } from "@/lib/admin-tracking";
+import { shouldBypassLearningAccessForAssignedSession } from "@/lib/subscriptions/learning-access";
 
 type Props = {
   children: React.ReactNode;
@@ -14,10 +15,16 @@ type Props = {
 
 export default function PremiumAccessGate({ children, feature = "learning" }: Props) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [blockedReason, setBlockedReason] = useState<"trial" | "locked" | "limit">("locked");
   const [trialSessionsLeft, setTrialSessionsLeft] = useState(3);
   const [hasPaidSubscription, setHasPaidSubscription] = useState(false);
+  const bypassAssignedSessionGate = feature === "learning" && shouldBypassLearningAccessForAssignedSession({
+    pathname,
+    assignmentId: searchParams.get("assignmentId"),
+    contentId: searchParams.get("contentId"),
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -107,8 +114,9 @@ export default function PremiumAccessGate({ children, feature = "learning" }: Pr
     return () => {
       mounted = false;
     };
-  }, [feature, pathname]);
+  }, [bypassAssignedSessionGate, feature, pathname, searchParams]);
 
+  if (bypassAssignedSessionGate) return <>{children}</>;
   if (allowed === null) return <main className="min-h-screen bg-background" />;
   if (!allowed) return <LockedPreview reason={blockedReason}>{children}</LockedPreview>;
 

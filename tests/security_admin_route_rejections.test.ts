@@ -13,7 +13,7 @@ import {
 import { handleAdminSafeguardingIncidentAuditGet } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/audit/route";
 import { handleAdminSafeguardingIncidentEscalationPost } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/escalation/route";
 import { handleAdminSafeguardingIncidentTimelinePost } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/timeline/route";
-import { handleAdminUsageEventsPost } from "../src/app/api/admin/usage-events/route";
+import { handleAdminUsageEventsPost } from "../src/app/api/admin/usage-events/route.handler";
 
 function deniedResponse() {
   return NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 });

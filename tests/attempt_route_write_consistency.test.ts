@@ -206,3 +206,33 @@ test("idempotency key is accepted but identical practice still creates an attemp
   assert.equal(calls.learningDna.length, 1);
   assert.equal(calls.invalidatedSnapshots.length, 1);
 });
+
+test("assigned attempts bypass subscription trial lock when the assignment is still playable", async () => {
+  const { deps, calls } = makeDeps({
+    resolvedStudentId: "assignment-student",
+    assignment: {
+      id: "assignment-1",
+      studentId: "assignment-student",
+      status: "assigned",
+      contentId: "content-1",
+      content: { contentType: "spelling", contentJson: JSON.stringify([{ word: "cat" }]) },
+    },
+  });
+
+  const lockedDeps = {
+    ...deps,
+    checkSubscriptionAccess: async () => ({ allowed: false, hasPaidSubscription: false, reason: "TRIAL_LIMIT_REACHED", status: "active" }),
+    getTrialSessionLimit: () => 3,
+    prisma: {
+      ...deps.prisma,
+      user: {
+        findUnique: async () => ({ trialSessionsUsed: 3 }),
+      },
+    },
+  };
+
+  const response = await handleAttemptPost(attemptRequest(), lockedDeps as never);
+
+  assert.equal(response.status, 201);
+  assert.equal(calls.attemptsCreated.length, 1);
+});
