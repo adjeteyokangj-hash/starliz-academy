@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildLearningAccessDeniedResponse, ensureLearningAccess } from "../src/lib/subscriptions/learning-access";
+import {
+  buildLearningAccessDeniedResponse,
+  ensureLearningAccess,
+  isPlayableAssignedStatus,
+  shouldBypassLearningAccessForAssignedQueue,
+  shouldBypassLearningAccessForAssignedSession,
+} from "../src/lib/subscriptions/learning-access";
 
 test("paid user access is allowed", async () => {
   const result = await ensureLearningAccess("parent-1", {
@@ -80,4 +86,71 @@ test("parent consent is required before learning access", async () => {
   assert.ok(result.response);
   assert.equal(result.response?.status, 403);
   assert.equal(result.decision.reason, "CONSENT_REQUIRED");
+});
+
+test("playable assigned statuses bypass learning access denial", () => {
+  assert.equal(isPlayableAssignedStatus("assigned"), true);
+  assert.equal(isPlayableAssignedStatus("in_progress"), true);
+  assert.equal(isPlayableAssignedStatus("overdue"), true);
+  assert.equal(isPlayableAssignedStatus("completed"), false);
+});
+
+test("assigned game URLs bypass the client learning access gate", () => {
+  assert.equal(
+    shouldBypassLearningAccessForAssignedSession({
+      pathname: "/games/math",
+      assignmentId: "assignment-1",
+      contentId: null,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldBypassLearningAccessForAssignedSession({
+      pathname: "/games/math",
+      assignmentId: null,
+      contentId: "content-1",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldBypassLearningAccessForAssignedSession({
+      pathname: "/student/dashboard",
+      assignmentId: "assignment-1",
+      contentId: null,
+    }),
+    false,
+  );
+});
+
+test("assigned queue bypass requires a playable current assignment for the same child", () => {
+  assert.equal(
+    shouldBypassLearningAccessForAssignedQueue({
+      currentAssignmentId: "assignment-1",
+      currentAssignmentStatus: "assigned",
+      currentAssignmentStudentId: "child-1",
+      requestedStudentId: "child-1",
+      activeStudentId: "child-2",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldBypassLearningAccessForAssignedQueue({
+      currentAssignmentId: "assignment-1",
+      currentAssignmentStatus: "completed",
+      currentAssignmentStudentId: "child-1",
+      requestedStudentId: "child-1",
+      activeStudentId: "child-1",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldBypassLearningAccessForAssignedQueue({
+      currentAssignmentId: "assignment-1",
+      currentAssignmentStatus: "assigned",
+      currentAssignmentStudentId: "child-1",
+      requestedStudentId: "child-2",
+      activeStudentId: "child-2",
+    }),
+    false,
+  );
 });

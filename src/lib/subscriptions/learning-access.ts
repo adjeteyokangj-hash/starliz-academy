@@ -2,10 +2,44 @@ import { NextResponse } from "next/server";
 import { canUseFeature, type SubscriptionAccessDecision } from "@/lib/subscriptions/enforcement";
 import { prisma } from "@/lib/db";
 
+const PLAYABLE_ASSIGNED_STATUSES = new Set(["assigned", "in_progress", "overdue"]);
+
 export type LearningAccessDeps = {
   canUseFeature: typeof canUseFeature;
   getConsentState: (parentId: string) => Promise<{ acceptedAt: Date | null; withdrawnAt: Date | null }>;
 };
+
+export function isPlayableAssignedStatus(status: string | null | undefined): boolean {
+  return PLAYABLE_ASSIGNED_STATUSES.has(String(status ?? "").trim().toLowerCase());
+}
+
+export function shouldBypassLearningAccessForAssignedSession(input: {
+  pathname: string;
+  assignmentId?: string | null;
+  contentId?: string | null;
+}): boolean {
+  const isLearningGamePath = /^\/games\/(spelling|math|reading)(?:\/|$)/.test(input.pathname);
+  return isLearningGamePath && Boolean(input.assignmentId || input.contentId);
+}
+
+export function shouldBypassLearningAccessForAssignedQueue(input: {
+  currentAssignmentId?: string | null;
+  currentAssignmentStatus?: string | null;
+  currentAssignmentStudentId?: string | null;
+  requestedStudentId?: string | null;
+  activeStudentId?: string | null;
+}): boolean {
+  if (!input.currentAssignmentId || !isPlayableAssignedStatus(input.currentAssignmentStatus)) {
+    return false;
+  }
+
+  const expectedStudentId = input.requestedStudentId ?? input.activeStudentId;
+  return Boolean(
+    expectedStudentId
+    && input.currentAssignmentStudentId
+    && input.currentAssignmentStudentId === expectedStudentId,
+  );
+}
 
 export function buildLearningAccessDeniedResponse(decision: SubscriptionAccessDecision): NextResponse {
   return NextResponse.json(

@@ -30,10 +30,13 @@ import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
 import { awardChildRewards } from "@/lib/child_wallet";
 import { getTutorLine } from "@/lib/tutorVoice";
 import {
+  buildMathSessionSummaryMetrics,
   buildMathRequiredItemIds,
   resolveAssignmentSessionDecision,
   resolveNextAssignedMathQuestion,
   shouldCompleteOnAssignedExhaustion,
+  selectNextPendingAssignment,
+  taskPathForAssignedSubject,
 } from "@/lib/math-assignment-session";
 import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
 import { shouldEnableStudentVoiceWorkflow } from "@/lib/lesson-voice-help";
@@ -106,6 +109,14 @@ type PersistedMathState = {
   questionOutcomes?: Record<string, CanonicalItemOutcome>;
 };
 
+type StudentAssignmentQueueEntry = {
+  id: string;
+  status: string;
+  href?: string | null;
+  subject?: string | null;
+  contentId?: string | null;
+};
+
 export default function MathMissionPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -144,6 +155,7 @@ export default function MathMissionPage() {
   const [sessionVoiceHelpEnabled, setSessionVoiceHelpEnabled] = useState(false);
   const [assignedQuestions, setAssignedQuestions] = useState<MathQuestion[]>([]);
   const [assignedQuestionsLoaded, setAssignedQuestionsLoaded] = useState(false);
+  const [launchingNextAssignedSession, setLaunchingNextAssignedSession] = useState(false);
   const [explainWhyQuestion, setExplainWhyQuestion] = useState<{
     question: string;
     choices: string[];
@@ -544,7 +556,17 @@ export default function MathMissionPage() {
       coins: Math.max(0, profile.coins - sessionStartStats.coins),
     };
   }, [profile, sessionStartStats]);
-  const sessionAccuracy = sessionAttempts > 0 ? Math.round((sessionCorrect / sessionAttempts) * 100) : 0;
+  const sessionSummary = useMemo(() => buildMathSessionSummaryMetrics({
+    canonical: {
+      totalRequired: canonicalSession.totalRequired,
+      correctCount: canonicalSession.correctCount,
+    },
+    sessionQuestionTarget,
+    sessionCorrect,
+    sessionAttempts,
+  }), [canonicalSession.correctCount, canonicalSession.totalRequired, sessionAttempts, sessionCorrect, sessionQuestionTarget]);
+  const resolvedSummaryTotal = canonicalSession.totalRequired > 0 ? canonicalSession.totalRequired : sessionSummary.totalQuestions;
+  const resolvedSummaryCount = Math.min(resolvedSummaryTotal, canonicalSession.answeredCount + canonicalSession.skippedCount);
   const mathMastery = useMemo(() => {
     if (!profile) return [] as Array<{ tag: string; accuracy: number }>;
     return Object.entries(profile.masteryTags.math)
@@ -735,6 +757,70 @@ export default function MathMissionPage() {
 
   function setVoiceHelpEnabled(nextEnabled: boolean) {
     setSessionVoiceHelpEnabled(nextEnabled);
+  }
+
+  async function startNextAssignedSession(currentProfile: ChildProfile): Promise<void> {
+    if (launchingNextAssignedSession) return;
+
+    if (!assignmentLockedSession) {
+      setSessionMode("standard");
+      await moveToNextQuestion(currentProfile, true, true);
+      return;
+    }
+
+    setLaunchingNextAssignedSession(true);
+    setFeedback("");
+
+    try {
+      if (assignedAssignmentId && sessionComplete && canonicalSession.canComplete) {
+        await fetch(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status: "completed" }),
+        }).catch(() => undefined);
+      }
+
+      const assignmentsParams = new URLSearchParams({ studentId: currentProfile.id });
+      if (assignedAssignmentId) {
+        assignmentsParams.set("currentAssignmentId", assignedAssignmentId);
+      }
+      const assignmentsResponse = await fetch(`/api/student/assignments?${assignmentsParams.toString()}`, { credentials: "include" });
+      if (!assignmentsResponse.ok) {
+        throw new Error("Unable to load assigned queue.");
+      }
+
+      const payload = (await assignmentsResponse.json()) as { assignments?: StudentAssignmentQueueEntry[] };
+      const nextAssignment = selectNextPendingAssignment({
+        assignments: Array.isArray(payload.assignments) ? payload.assignments : [],
+        currentAssignmentId: assignedAssignmentId,
+      });
+
+      if (!nextAssignment) {
+        setReaction({ mood: "celebrate", message: "No more assigned sessions pending. Returning to dashboard." });
+        setFeedback("Great work. You have completed all pending assigned sessions. Returning to dashboard...");
+        window.setTimeout(() => router.push("/dashboard"), 1000);
+        return;
+      }
+
+      if (typeof nextAssignment.href === "string" && nextAssignment.href.trim()) {
+        router.push(nextAssignment.href);
+        return;
+      }
+
+      const route = taskPathForAssignedSubject(nextAssignment.subject);
+      const params = new URLSearchParams({ assignmentId: nextAssignment.id });
+      if (nextAssignment.contentId) {
+        params.set("contentId", nextAssignment.contentId);
+      }
+      router.push(`/games/${route}?${params.toString()}`);
+    } catch {
+      setReaction({ mood: "support", message: "Could not open the next assigned session. Returning to dashboard." });
+      setFeedback("Unable to load the next assigned session right now. Returning to dashboard...");
+      window.setTimeout(() => router.push("/dashboard"), 1000);
+    } finally {
+      setLaunchingNextAssignedSession(false);
+    }
   }
 
   useEffect(() => {
@@ -1382,8 +1468,8 @@ export default function MathMissionPage() {
                 {sessionComplete ? (
                   <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                     <p className="m-0 font-black">Session complete.</p>
-                    <p className="m-0 mt-1 font-semibold">Accuracy: {sessionAccuracy}% ({sessionCorrect}/{sessionAttempts})</p>
-                    <p className="m-0 mt-1 font-semibold">Resolved: {canonicalSession.totalRequired - canonicalSession.unresolvedCount}/{canonicalSession.totalRequired} (Answered {canonicalSession.answeredCount}, Skipped {canonicalSession.skippedCount})</p>
+                    <p className="m-0 mt-1 font-semibold">Accuracy: {sessionSummary.accuracyPct}% ({sessionSummary.correctQuestions}/{sessionSummary.totalQuestions})</p>
+                    <p className="m-0 mt-1 font-semibold">Resolved: {resolvedSummaryCount}/{resolvedSummaryTotal} (Answered {canonicalSession.answeredCount}, Skipped {canonicalSession.skippedCount})</p>
                     <p className="m-0 mt-1 font-semibold">Rewards: +{sessionRewards.stars} stars, +{sessionRewards.xp} XP, +{sessionRewards.coins} coins</p>
                     <p className="m-0 mt-1 font-semibold">Top mastery: {mathMastery.map((entry) => `${entry.tag} (${entry.accuracy}%)`).join(", ") || "Building now"}</p>
                     <p className="m-0 mt-1 font-semibold">Next suggestion: {profile.adaptive.nextBestActivity}</p>
@@ -1392,9 +1478,9 @@ export default function MathMissionPage() {
                         variant="accent"
                         className="w-full"
                         onClick={() => {
-                          setSessionMode("standard");
-                          void moveToNextQuestion(profile, true, true);
+                          void startNextAssignedSession(profile);
                         }}
+                        disabled={launchingNextAssignedSession}
                       >
                           {assignmentLockedSession ? "Start next assigned session" : "Start next session"}
                       </Button>

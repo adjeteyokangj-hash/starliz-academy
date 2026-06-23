@@ -7,7 +7,11 @@ import { mergeWeakAreas, parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { normalizeExamBoard } from "@/lib/curriculum";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { normalizeLessonContentJson } from "@/lib/lesson-runtime-normalizer";
-import { ensureLearningAccess } from "@/lib/subscriptions/learning-access";
+import {
+  ensureLearningAccess,
+  isPlayableAssignedStatus,
+  shouldBypassLearningAccessForAssignedQueue,
+} from "@/lib/subscriptions/learning-access";
 
 function parseContentMetadata(raw: string | null): {
   examBoard: string | null;
@@ -67,11 +71,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
     }
 
-    const access = await ensureLearningAccess(parentScope.parentId);
-    if (access.response) return access.response;
-
     const params = new URL(request.url).searchParams;
     const assignmentId = params.get("id");
+    const currentAssignmentId = params.get("currentAssignmentId");
     const requestedStudentId = params.get("studentId");
     let studentId = requestedStudentId ?? await resolveParentActiveChildId(parentScope.parentId);
     if (!studentId) {
@@ -91,6 +93,11 @@ export async function GET(request: Request) {
 
       if (!assignment) {
         return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
+      }
+
+      if (!isPlayableAssignedStatus(assignment.status)) {
+        const access = await ensureLearningAccess(parentScope.parentId);
+        if (access.response) return access.response;
       }
 
       if (!requestedStudentId && assignment.studentId !== studentId) {
@@ -178,6 +185,43 @@ export async function GET(request: Request) {
       });
     }
 
+    let canBypassQueueAccess = false;
+    if (currentAssignmentId) {
+      const currentAssignment = await prisma.assignment.findFirst({
+        where: {
+          id: currentAssignmentId,
+          status: { not: "archived" },
+          student: { parentId: parentScope.parentId },
+        },
+        select: {
+          id: true,
+          status: true,
+          studentId: true,
+        },
+      });
+
+      canBypassQueueAccess = shouldBypassLearningAccessForAssignedQueue({
+        currentAssignmentId,
+        currentAssignmentStatus: currentAssignment?.status,
+        currentAssignmentStudentId: currentAssignment?.studentId,
+        requestedStudentId,
+        activeStudentId: studentId,
+      });
+
+      if (!requestedStudentId && currentAssignment?.studentId && currentAssignment.studentId !== studentId) {
+        studentId = currentAssignment.studentId;
+        await prisma.user.update({
+          where: { id: parentScope.parentId },
+          data: { activeChildId: studentId },
+        });
+      }
+    }
+
+    if (!canBypassQueueAccess) {
+      const access = await ensureLearningAccess(parentScope.parentId);
+      if (access.response) return access.response;
+    }
+
     const weakAreas = await prisma.weakArea.findMany({
       where: { studentId, status: "active" },
       select: { subject: true, skillFocus: true, metadataJson: true },
@@ -190,11 +234,6 @@ export async function GET(request: Request) {
         studentId,
         student: { parentId: parentScope.parentId },
         status: { not: "archived" },
-        content: {
-          NOT: {
-            createdBy: "auto_lesson_engine",
-          },
-        },
       },
       orderBy: { updatedAt: "desc" },
       select: {
