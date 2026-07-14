@@ -1160,6 +1160,22 @@ model TrueNumerisIntegration {
   updatedAt            DateTime @updatedAt
 }
 
+/// OpsWatch observability connectivity (Noble-style signed heartbeats).
+model OpsWatchIntegration {
+  id                       String    @id @default(cuid())
+  enabled                  Boolean   @default(false)
+  baseUrl                  String?
+  projectSlug              String?
+  environment              String    @default("production")
+  apiKeyEncrypted          String?
+  signingSecretEncrypted   String?
+  lastHeartbeatAt          DateTime?
+  lastHeartbeatStatus      String?
+  lastHeartbeatMessage     String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+}
+
 model FinancialSyncEvent {
   id               String   @id @default(cuid())
 

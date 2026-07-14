@@ -47,6 +47,15 @@ const integrations = [
     badgeClass: "bg-emerald-500/15 text-emerald-300",
   },
   {
+    id: "opswatch",
+    title: "OpsWatch",
+    desc: "Signed heartbeats and availability monitoring via opswatch.okanggroup.com. Paste Connect credentials after registering the app.",
+    icon: "📡",
+    href: "/admin/integrations/opswatch",
+    statusLabel: "Open OpsWatch Setup",
+    badgeClass: "bg-sky-500/15 text-sky-300",
+  },
+  {
     id: "storage",
     title: "Cloud Storage (S3 / R2)",
     desc: "Stores uploaded media assets, exports, and database backups. Supports AWS, Cloudflare R2, and Supabase.",
