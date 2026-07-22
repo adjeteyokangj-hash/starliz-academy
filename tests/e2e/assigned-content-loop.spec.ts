@@ -4,6 +4,7 @@ dotenv.config({ path: ".env.local", override: true });
 import bcrypt from "bcryptjs";
 import { expect, test } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import { selectNextPendingAssignment } from "../../src/lib/math-assignment-session";
 
 type SeededSubject = {
   assignmentId: string;
@@ -139,6 +140,7 @@ async function seedAssignedLoopFixtures(): Promise<SeededData> {
           answer: 13,
           choices: [11, 12, 13, 14],
           topic: "addition",
+          hints: ["Count on from 9.", "9 + 4 = 13"],
         },
         {
           id: "e2e-math-2",
@@ -146,6 +148,7 @@ async function seedAssignedLoopFixtures(): Promise<SeededData> {
           answer: 12,
           choices: [10, 11, 12, 13],
           topic: "addition",
+          hints: ["Count on from 10.", "10 + 2 = 12"],
         },
       ]),
     },
@@ -281,6 +284,14 @@ async function getAssignmentAttemptCount(assignmentId: string): Promise<number> 
   return prisma.attempt.count({ where: { assignmentId } });
 }
 
+async function resetAssignmentForUiJourney(assignmentId: string): Promise<void> {
+  await prisma.attempt.deleteMany({ where: { assignmentId } });
+  await prisma.assignment.update({
+    where: { id: assignmentId },
+    data: { status: "assigned", completedAt: null },
+  });
+}
+
 async function seedClientProfileState(
   page: import("@playwright/test").Page,
   profile: { id: string; name: string },
@@ -313,6 +324,9 @@ async function seedClientProfileState(
 }
 
 test.describe("Assigned Content Closed Loop", () => {
+  // Local Next.js compile + attempts writes routinely exceed the default 120s wall clock.
+  test.describe.configure({ timeout: 360_000 });
+
   test.beforeAll(async () => {
     await cleanupAssignedLoopFixtures();
     seeded = await seedAssignedLoopFixtures();
@@ -513,5 +527,154 @@ test.describe("Assigned Content Closed Loop", () => {
     expect(readingAttempt?.contentId).toBe(seeded.reading.contentId);
     expect(readingAttempt?.correct).toBe(true);
     expect(await getAssignmentAttemptCount(seeded.reading.assignmentId)).toBeGreaterThanOrEqual(2);
+  });
+
+  test("math assigned session completes and Next Session opens the next assignment by href", async ({ page }) => {
+    // Keep this journey independent of the API closed-loop test, which may complete the same fixtures.
+    await resetAssignmentForUiJourney(seeded.math.assignmentId);
+    await resetAssignmentForUiJourney(seeded.reading.assignmentId);
+    await prisma.assignment.update({
+      where: { id: seeded.spelling.assignmentId },
+      data: { status: "completed", completedAt: new Date() },
+    });
+
+    const loginResponse = await page.request.post("/api/auth/login", {
+      data: {
+        email: seeded.parentEmail,
+        password: seeded.parentPassword,
+      },
+    });
+    expect(loginResponse.ok()).toBe(true);
+
+    await expect.poll(async () => {
+      const response = await page.request.get("/api/auth/me");
+      return response.status();
+    }, { timeout: 20_000 }).toBe(200);
+
+    const activateChild = await page.request.post("/api/children/active", {
+      data: { childId: seeded.childId },
+    });
+    expect(activateChild.ok()).toBe(true);
+    await page.goto("/dashboard");
+    await seedClientProfileState(page, { id: seeded.childId, name: seeded.childName });
+
+    const consentCheck = await page.request.get("/api/consent");
+    const consentPayload = (await consentCheck.json()) as { accepted?: boolean };
+    if (!consentPayload.accepted) {
+      await page.request.post("/api/consent", { data: { accepted: true, version: "1.0" } });
+    }
+
+    const assignmentsResponse = await page.request.get(`/api/student/assignments?studentId=${encodeURIComponent(seeded.childId)}`);
+    expect(assignmentsResponse.ok(), `assignments status=${assignmentsResponse.status()}`).toBe(true);
+    const assignmentsPayload = (await assignmentsResponse.json()) as {
+      assignments?: Array<{ id: string; status: string; href?: string | null; subject?: string | null; contentId?: string | null }>;
+    };
+    expect(Array.isArray(assignmentsPayload.assignments)).toBe(true);
+
+    const queue = assignmentsPayload.assignments ?? [];
+    const mathAssignment = queue.find((entry) => entry.id === seeded.math.assignmentId);
+    expect(mathAssignment).toBeTruthy();
+    expect(["assigned", "in_progress"]).toContain(String(mathAssignment?.status).toLowerCase());
+
+    const expectedNext = selectNextPendingAssignment({
+      assignments: queue,
+      currentAssignmentId: seeded.math.assignmentId,
+    });
+    expect(expectedNext?.id).toBe(seeded.reading.assignmentId);
+    expect(expectedNext?.id).not.toBe(seeded.math.assignmentId);
+    expect(typeof expectedNext?.href).toBe("string");
+    expect(String(expectedNext?.href)).toMatch(/\/games\/reading/);
+
+    const consoleErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        consoleErrors.push(message.text());
+      }
+    });
+
+    const mathHref = `/games/math?assignmentId=${encodeURIComponent(seeded.math.assignmentId)}&contentId=${encodeURIComponent(seeded.math.contentId)}`;
+    await page.goto("/dashboard");
+    await page.evaluate((childId) => {
+      window.sessionStorage.removeItem(`starliz_math_resume_${childId}`);
+    }, seeded.childId);
+
+    // Warm cold Next.js compiles so the locked maths session can hydrate before the assertion budget.
+    await Promise.all([
+      page.request.get("/api/children/active"),
+      page.request.get(`/api/content/assigned?contentId=${encodeURIComponent(seeded.math.contentId)}&assignmentId=${encodeURIComponent(seeded.math.assignmentId)}`),
+      page.request.get("/api/subscription/access?feature=learning"),
+    ]);
+
+    await page.goto(mathHref);
+    await expect(page.getByText("Loading your learning profile...")).toHaveCount(0, { timeout: 180_000 });
+    try {
+      await expect(page.getByText("Question 1 of 2")).toBeVisible({ timeout: 120_000 });
+    } catch (error) {
+      const bodyText = (await page.locator("body").innerText()).slice(0, 1200);
+      throw new Error(`Math session did not reach Question 1 of 2. URL=${page.url()} body=${bodyText}`, { cause: error });
+    }
+    await expect(page.getByText(/Daily goal:/i)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Refresh session" })).toHaveCount(0);
+
+    async function answerCurrentMathQuestion() {
+      const answerInput = page.locator('input[placeholder="Type the answer"]');
+      await expect(answerInput).toBeVisible({ timeout: 60_000 });
+      const prompt = (await page.locator("h2.font-heading").first().innerText()).trim().replace(/\s+/g, " ");
+      const answer = /9\s*\+\s*4/.test(prompt) ? "13" : /10\s*\+\s*2/.test(prompt) ? "12" : null;
+      expect(answer, `Unrecognized math prompt: ${prompt}`).toBeTruthy();
+      await answerInput.fill(String(answer));
+      const attemptPromise = page.waitForResponse((response) => (
+        response.url().includes("/api/attempts")
+        && response.request().method() === "POST"
+      ), { timeout: 90_000 });
+      await page.getByRole("button", { name: "Check Answer" }).click();
+      const attemptResponse = await attemptPromise;
+      expect(attemptResponse.ok(), `attempts status=${attemptResponse.status()}`).toBe(true);
+    }
+
+    await answerCurrentMathQuestion();
+    await expect(page.getByText("Question 2 of 2")).toBeVisible({ timeout: 90_000 });
+    await answerCurrentMathQuestion();
+
+    await expect(page.getByText("Session complete.", { exact: true })).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByText(/Accuracy:.*\(.*2\/2\)/)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Resolved:\s*2\/2/)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Refresh session" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Next Session" })).toBeVisible();
+
+    await page.waitForTimeout(2_000);
+    await expect(page.getByText("Session complete.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Question 1 of 2")).toHaveCount(0);
+
+    const patchPromise = page.waitForResponse((response) => (
+      response.url().includes(`/api/assignments/${seeded.math.assignmentId}`)
+      && response.request().method() === "PATCH"
+    ), { timeout: 90_000 });
+
+    await page.getByRole("button", { name: "Next Session" }).click();
+    const patchResponse = await patchPromise;
+    expect(patchResponse.ok()).toBe(true);
+
+    await expect.poll(async () => {
+      const url = page.url();
+      return url.includes(`assignmentId=${expectedNext!.id}`);
+    }, { timeout: 30_000 }).toBe(true);
+
+    expect(page.url()).not.toContain(`assignmentId=${seeded.math.assignmentId}`);
+    if (expectedNext?.href) {
+      const expectedPath = expectedNext.href.split("?")[0];
+      expect(page.url()).toContain(expectedPath);
+    }
+
+    await expect(page.getByText(/Activity Mismatch|does not match Maths/i)).toHaveCount(0);
+    await expect.poll(async () => getAssignmentStatus(seeded.math.assignmentId)).toBe("completed");
+    await expect.poll(async () => getAssignmentStatus(expectedNext!.id)).not.toBe("completed");
+
+    const meaningfulConsoleErrors = consoleErrors.filter((entry) => (
+      !/Download the React DevTools/i.test(entry)
+      // E2E fixture children can hit wallet award validation without affecting assignment progression.
+      && !/status of 400 \(Bad Request\)/i.test(entry)
+    ));
+    expect(meaningfulConsoleErrors).toEqual([]);
   });
 });

@@ -23,20 +23,28 @@ import { isUsageLocked, trackUsage } from "@/lib/screen_time";
 import { fetchProfileHistory } from "@/lib/progress_data";
 import { getNextQuestionId, markQuestionCompleted } from "@/lib/question_history";
 import { recordCoachInteraction } from "@/lib/coach/session-memory";
-import { fetchAiMathQuestion, fetchAssignedMathBatch, fetchAssignedMathQuestion, resetAssignedContentCursor } from "@/lib/ai_content";
+import { fetchAiMathQuestion, fetchAssignedMathBatch, resetAssignedContentCursor } from "@/lib/ai_content";
 import { syncAttemptToServer } from "@/lib/server_sync";
 import { getTutorFeedbackPlan, hydrateCoachingMemoryFromServer } from "@/lib/tutor-voice";
 import { playCorrectSound, playTryAgainSound } from "@/lib/game-sounds";
 import { awardChildRewards } from "@/lib/child_wallet";
 import { getTutorLine } from "@/lib/tutorVoice";
 import {
+  buildMathCompletionSnapshot,
   buildMathSessionSummaryMetrics,
   buildMathRequiredItemIds,
+  canAutoSelectMathQuestion,
+  isStaleAssignmentResponse,
+  isTerminalMathLifecycle,
   resolveAssignmentSessionDecision,
+  resolveAuthoritativeSessionTotal,
   resolveNextAssignedMathQuestion,
   shouldCompleteOnAssignedExhaustion,
   selectNextPendingAssignment,
   taskPathForAssignedSubject,
+  type MathCompletionSnapshot,
+  type MathSessionLifecycle,
+  MATH_NEXT_SESSION_DASHBOARD_HREF,
 } from "@/lib/math-assignment-session";
 import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
 import { shouldEnableStudentVoiceWorkflow } from "@/lib/lesson-voice-help";
@@ -115,6 +123,8 @@ type StudentAssignmentQueueEntry = {
   href?: string | null;
   subject?: string | null;
   contentId?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 export default function MathMissionPage() {
@@ -155,7 +165,13 @@ export default function MathMissionPage() {
   const [sessionVoiceHelpEnabled, setSessionVoiceHelpEnabled] = useState(false);
   const [assignedQuestions, setAssignedQuestions] = useState<MathQuestion[]>([]);
   const [assignedQuestionsLoaded, setAssignedQuestionsLoaded] = useState(false);
+  const [assignedLoadError, setAssignedLoadError] = useState<string | null>(null);
+  const [frozenAssignedTotal, setFrozenAssignedTotal] = useState<number | null>(null);
+  const [sessionLifecycle, setSessionLifecycle] = useState<MathSessionLifecycle>("idle");
+  const [completionSnapshot, setCompletionSnapshot] = useState<MathCompletionSnapshot | null>(null);
   const [launchingNextAssignedSession, setLaunchingNextAssignedSession] = useState(false);
+  const [hasPendingNextAssignment, setHasPendingNextAssignment] = useState<boolean | null>(null);
+  const advanceTimerRef = useRef<number | null>(null);
   const [explainWhyQuestion, setExplainWhyQuestion] = useState<{
     question: string;
     choices: string[];
@@ -164,22 +180,43 @@ export default function MathMissionPage() {
   } | null>(null);
   const restoreAttemptedRef = useRef(false);
   const lastAutoSelectionContextRef = useRef<string | null>(null);
+  const sessionLifecycleRef = useRef<MathSessionLifecycle>("idle");
+  const assignmentLoadTokenRef = useRef(0);
+  const activeSessionIdentityRef = useRef(`${assignedAssignmentId ?? ""}:${assignedContentId ?? ""}`);
+  const launchingNextAssignmentIdRef = useRef<string | null>(null);
   const coachPanelRef = useRef<HTMLDivElement | null>(null);
   const voiceHelpEnabled = shouldEnableStudentVoiceWorkflow(sessionVoiceHelpEnabled);
-  const assignedSessionTarget = assignmentLockedSession ? assignedQuestions.length : null;
 
-  const sessionComplete = sessionMode === "completed_base" || sessionMode === "completed_retry";
+  const sessionComplete = sessionMode === "completed_base"
+    || sessionMode === "completed_retry"
+    || sessionLifecycle === "completed"
+    || sessionLifecycle === "launching-next";
   const retryPackMode = sessionMode === "retry_pack";
-  const sessionQuestionTarget = retryPackMode
-    ? Math.max(1, retryInitialCount)
-    : assignmentLockedSession
-      ? Math.max(1, assignedSessionTarget ?? 1)
-      : MATH_SESSION_TARGET;
-  const requiredStepIds = useMemo(() => buildMathRequiredItemIds({
+  const sessionQuestionTarget = resolveAuthoritativeSessionTotal({
     assignmentLocked: assignmentLockedSession,
-    assignedQuestions,
-    sessionQuestionTarget,
-  }), [assignedQuestions, assignmentLockedSession, sessionQuestionTarget]);
+    assignedQuestionCount: assignedQuestions.length,
+    frozenAssignedTotal,
+    retryPackMode,
+    retryInitialCount,
+    standardTarget: MATH_SESSION_TARGET,
+  });
+  const displaySessionTotal = completionSnapshot?.totalCount
+    ?? (sessionQuestionTarget > 0 ? sessionQuestionTarget : null);
+  const requiredStepIds = useMemo(() => {
+    if (assignmentLockedSession) {
+      if (assignedQuestions.length <= 0) return [] as string[];
+      return buildMathRequiredItemIds({
+        assignmentLocked: true,
+        assignedQuestions,
+        sessionQuestionTarget: Math.max(assignedQuestions.length, sessionQuestionTarget),
+      });
+    }
+    return buildMathRequiredItemIds({
+      assignmentLocked: false,
+      assignedQuestions,
+      sessionQuestionTarget: Math.max(1, sessionQuestionTarget || MATH_SESSION_TARGET),
+    });
+  }, [assignedQuestions, assignmentLockedSession, sessionQuestionTarget]);
   const canonicalSession = useMemo(() => {
     const approvedSkippedIds = Object.entries(questionOutcomes)
       .filter(([, outcome]) => outcome.state === "skipped")
@@ -192,6 +229,118 @@ export default function MathMissionPage() {
   }, [questionOutcomes, requiredStepIds]);
 
   const getResumeStateKey = (childId: string) => `starliz_math_resume_${childId}`;
+
+  function setLifecycle(next: MathSessionLifecycle) {
+    sessionLifecycleRef.current = next;
+    setSessionLifecycle(next);
+  }
+
+  function clearAdvanceTimer() {
+    if (advanceTimerRef.current !== null && typeof window !== "undefined") {
+      window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+  }
+
+  function resetTransientQuestionState() {
+    clearAdvanceTimer();
+    setCurrentQuestion(null);
+    setAnswer("");
+    setHintLevel(0);
+    setAttemptCount(0);
+    setSubmittedAttempts(0);
+    setCoachOpen(false);
+    setForcedChoices(false);
+    setQuestionStartedAt(0);
+    setFeedback("");
+    setTutorFeedback("");
+    setReaction(null);
+    setExplainWhyQuestion(null);
+    setInsightMessage(null);
+    setShowSuccessBurst(false);
+    setUsingAssignedContent(false);
+    setContentSource("static");
+    setRecentQuestionIds([]);
+  }
+
+  function resetForNextAssignment() {
+    resetTransientQuestionState();
+    setSessionStep(0);
+    setSessionMode("standard");
+    setSessionAttempts(0);
+    setSessionCorrect(0);
+    setQuestionOutcomes({});
+    setRetryQueueIds([]);
+    setRetryInitialCount(0);
+    setCorrectSinceCheckpoint(0);
+    setAssignedQuestions([]);
+    setAssignedQuestionsLoaded(false);
+    setAssignedLoadError(null);
+    setFrozenAssignedTotal(null);
+    setCompletionSnapshot(null);
+    setHasPendingNextAssignment(null);
+    restoreAttemptedRef.current = false;
+    lastAutoSelectionContextRef.current = null;
+    if (typeof window !== "undefined" && profile?.id) {
+      window.sessionStorage.removeItem(getResumeStateKey(profile.id));
+    }
+  }
+
+  function enterCompletionMode(
+    mode: "completed_base" | "completed_retry",
+    message: string,
+    reactionMessage: string,
+    metricsOverride?: {
+      answeredCount: number;
+      totalCount: number;
+      correctCount: number;
+      skippedCount: number;
+    },
+  ) {
+    if (isTerminalMathLifecycle(sessionLifecycleRef.current) && sessionLifecycleRef.current !== "completing") {
+      return;
+    }
+    clearAdvanceTimer();
+    setLifecycle("completing");
+    const candidateTotal = metricsOverride?.totalCount
+      ?? (typeof frozenAssignedTotal === "number" && frozenAssignedTotal > 0 ? frozenAssignedTotal : null)
+      ?? (sessionQuestionTarget > 0 ? sessionQuestionTarget : null)
+      ?? (canonicalSession.totalRequired > 0 ? canonicalSession.totalRequired : null)
+      ?? (requiredStepIds.length > 0 ? requiredStepIds.length : null);
+    if (!candidateTotal || candidateTotal <= 0) {
+      setLifecycle("active");
+      setFeedback("Unable to complete this assigned session because no valid question total is available.");
+      return;
+    }
+    const totalCount = candidateTotal;
+    const snapshot = buildMathCompletionSnapshot({
+      assignmentId: assignedAssignmentId,
+      contentId: assignedContentId,
+      answeredCount: metricsOverride?.answeredCount ?? canonicalSession.answeredCount,
+      totalCount,
+      correctCount: metricsOverride?.correctCount
+        ?? (canonicalSession.correctCount > 0 ? canonicalSession.correctCount : sessionCorrect),
+      skippedCount: metricsOverride?.skippedCount ?? canonicalSession.skippedCount,
+    });
+    setCompletionSnapshot(snapshot);
+    setSessionStep(totalCount);
+    setSessionMode(mode);
+    setCurrentQuestion(null);
+    setAnswer("");
+    setHintLevel(0);
+    setAttemptCount(0);
+    setSubmittedAttempts(0);
+    setCoachOpen(false);
+    setForcedChoices(false);
+    setQuestionStartedAt(0);
+    setUsingAssignedContent(false);
+    setFeedback(message);
+    setReaction({ mood: "celebrate", message: reactionMessage });
+    setLifecycle("completed");
+    if (typeof window !== "undefined" && profile?.id) {
+      window.sessionStorage.removeItem(getResumeStateKey(profile.id));
+    }
+  }
 
   useEffect(() => {
     void hydrateActiveProfileFromServer().then((serverProfile) => {
@@ -270,6 +419,7 @@ export default function MathMissionPage() {
 
   useEffect(() => {
     if (!profile || !questionPool.length || !currentContextKey || restoreAttemptedRef.current) return;
+    if (isTerminalMathLifecycle(sessionLifecycleRef.current)) return;
     restoreAttemptedRef.current = true;
     if (typeof window === "undefined") return;
     try {
@@ -279,28 +429,38 @@ export default function MathMissionPage() {
       const restoredMode = parsed.sessionMode === "completed" ? "completed_base" : (parsed.sessionMode
         ?? (parsed.sessionComplete ? "completed_base" : parsed.retryPackMode ? "retry_pack" : "standard"));
       if (parsed.contextKey !== currentContextKey || !parsed.currentQuestion) return;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCurrentQuestion(parsed.currentQuestion);
-      setSessionStep(parsed.sessionStep ?? 0);
-      setSessionMode(restoredMode);
-      setSessionAttempts(parsed.sessionAttempts ?? 0);
-      setSessionCorrect(parsed.sessionCorrect ?? 0);
-      setQuestionOutcomes(parsed.questionOutcomes ?? {});
-      setRetryInitialCount(parsed.retryInitialCount ?? 0);
-      setHintLevel(0);
-      setAttemptCount(0);
-      setSubmittedAttempts(0);
-      setAnswer("");
-      setForcedChoices(false);
-      setQuestionStartedAt(Date.now());
-      lastAutoSelectionContextRef.current = currentContextKey;
+      const parsedStep = parsed.sessionStep ?? 0;
+      const normalizedCompleted = restoredMode === "completed_base" || restoredMode === "completed_retry";
+      queueMicrotask(() => {
+        if (isTerminalMathLifecycle(sessionLifecycleRef.current)) return;
+        setCurrentQuestion(normalizedCompleted ? null : parsed.currentQuestion);
+        setSessionStep(normalizedCompleted ? Math.max(parsedStep, displaySessionTotal ?? parsedStep) : parsedStep);
+        setSessionMode(restoredMode);
+        setSessionAttempts(parsed.sessionAttempts ?? 0);
+        setSessionCorrect(parsed.sessionCorrect ?? 0);
+        setQuestionOutcomes(parsed.questionOutcomes ?? {});
+        setRetryInitialCount(parsed.retryInitialCount ?? 0);
+        setHintLevel(0);
+        setAttemptCount(0);
+        setSubmittedAttempts(0);
+        setAnswer("");
+        setForcedChoices(false);
+        setQuestionStartedAt(Date.now());
+        lastAutoSelectionContextRef.current = currentContextKey;
+        if (normalizedCompleted) {
+          setLifecycle("completed");
+        } else {
+          setLifecycle("active");
+        }
+      });
     } catch {
       // Ignore malformed resume data.
     }
-  }, [currentContextKey, profile, questionPool.length]);
+  }, [currentContextKey, displaySessionTotal, profile, questionPool.length]);
 
   useEffect(() => {
     if (!profile || !currentContextKey || typeof window === "undefined") return;
+    if (sessionComplete || isTerminalMathLifecycle(sessionLifecycleRef.current)) return;
     const payload: PersistedMathState = {
       currentQuestion,
       sessionStep,
@@ -327,6 +487,12 @@ export default function MathMissionPage() {
     resetSessionProgress = false,
     retryIdsOverride?: string[],
   ): Promise<void> {
+    if (isTerminalMathLifecycle(sessionLifecycleRef.current)) {
+      return;
+    }
+    // Call sites still pass preferAssigned; assignment-locked sessions never use cursor fetch.
+    void preferAssigned;
+
     const activeRetryQueue = retryIdsOverride ?? retryQueueIds;
     const activeRetryMode = retryPackMode || Boolean(retryIdsOverride?.length);
 
@@ -336,30 +502,52 @@ export default function MathMissionPage() {
       setSessionAttempts(0);
       setSessionCorrect(0);
       setQuestionOutcomes({});
+      setCompletionSnapshot(null);
       setSessionStartStats({ stars: currentProfile.stars, xp: currentProfile.xp, coins: currentProfile.coins });
       if (retryIdsOverride?.length) {
         setRetryInitialCount(retryIdsOverride.length);
       }
     }
 
-    let nextQuestion: MathQuestion | null = null;
-    let nextSource: "assigned" | "ai-cache" | "static" = "static";
-
     if (assignmentLockedSession) {
+      if (!assignedQuestionsLoaded || sessionQuestionTarget <= 0) {
+        return;
+      }
       const assignedQuestion = await resolveNextAssignedMathQuestion({
         assignmentLocked: true,
         assignedQuestions,
-        sessionStep,
+        sessionStep: resetSessionProgress ? 0 : sessionStep,
       });
+      if (isTerminalMathLifecycle(sessionLifecycleRef.current)) {
+        return;
+      }
       const assignmentDecision = resolveAssignmentSessionDecision({
         assignmentLocked: true,
         assignedQuestionAvailable: Boolean(assignedQuestion),
       });
 
       if (assignedQuestion && !assignmentDecision.assignmentExhausted) {
-        nextQuestion = assignedQuestion;
-        nextSource = "assigned";
-      } else if (assignmentDecision.assignmentExhausted) {
+        setCurrentQuestion(assignedQuestion);
+        setContentSource("assigned");
+        setUsingAssignedContent(true);
+        setHintLevel(0);
+        setAttemptCount(0);
+        setSubmittedAttempts(0);
+        setCoachOpen(false);
+        setAnswer("");
+        setForcedChoices(false);
+        setQuestionStartedAt(Date.now());
+        if (sessionLifecycleRef.current !== "active") {
+          setLifecycle("active");
+        }
+        setRecentQuestionIds((prev) => {
+          const merged = [...prev.filter((id) => id !== assignedQuestion.id), assignedQuestion.id];
+          return merged.slice(-RECENT_LIMIT);
+        });
+        return;
+      }
+
+      if (assignmentDecision.assignmentExhausted) {
         const exhaustedCanonicalSession = computeCanonicalSessionMetrics({
           requiredItemIds: requiredStepIds,
           outcomes: questionOutcomes,
@@ -368,16 +556,29 @@ export default function MathMissionPage() {
             .map(([id]) => id),
         });
         if (shouldCompleteOnAssignedExhaustion(exhaustedCanonicalSession.canComplete)) {
-          setSessionMode("completed_base");
-          setFeedback("Assigned session complete. Start the next assigned session or go to dashboard.");
-          setReaction({ mood: "celebrate", message: "Assigned session complete. Great work!" });
+          enterCompletionMode(
+            "completed_base",
+            "Assigned session complete. Start the next assigned session or go to dashboard.",
+            "Assigned session complete. Great work!",
+            {
+              answeredCount: exhaustedCanonicalSession.answeredCount,
+              totalCount: frozenAssignedTotal && frozenAssignedTotal > 0
+                ? frozenAssignedTotal
+                : exhaustedCanonicalSession.totalRequired,
+              correctCount: exhaustedCanonicalSession.correctCount,
+              skippedCount: exhaustedCanonicalSession.skippedCount,
+            },
+          );
         } else {
           setFeedback(`Keep going: ${exhaustedCanonicalSession.unresolvedCount} required question${exhaustedCanonicalSession.unresolvedCount === 1 ? "" : "s"} still unresolved.`);
           setReaction({ mood: "support", message: "Finish all required assigned questions to complete this session." });
         }
-        return;
       }
+      return;
     }
+
+    let nextQuestion: MathQuestion | null = null;
+    let nextSource: "ai-cache" | "static" = "static";
 
     if (activeRetryMode && activeRetryQueue.length) {
       const retryId = activeRetryQueue[0];
@@ -399,7 +600,8 @@ export default function MathMissionPage() {
     if (!nextQuestion) {
       const currentDifficulty = currentProfile.adaptive.mathDifficulty;
       const shouldUseEasier = sessionStep === 0;
-      const shouldUseChallenge = sessionStep === sessionQuestionTarget - 1;
+      const effectiveTarget = Math.max(1, sessionQuestionTarget || MATH_SESSION_TARGET);
+      const shouldUseChallenge = sessionStep === effectiveTarget - 1;
       const targetDifficulty = shouldUseEasier
         ? Math.max(1, currentDifficulty - 1)
         : shouldUseChallenge
@@ -409,14 +611,6 @@ export default function MathMissionPage() {
       if (balancedPool.length) {
         nextQuestion = balancedPool[Math.floor(Math.random() * balancedPool.length)] ?? null;
         nextSource = "static";
-      }
-    }
-
-    if (preferAssigned && !assignmentLockedSession && (assignedAssignmentId || assignedContentId)) {
-      const assignedQuestion = await fetchAssignedMathQuestion(assignedContentId ?? "", assignedAssignmentId);
-      if (assignedQuestion) {
-        nextQuestion = assignedQuestion;
-        nextSource = "assigned";
       }
     }
 
@@ -439,7 +633,7 @@ export default function MathMissionPage() {
 
     setCurrentQuestion(nextQuestion);
     setContentSource(nextSource);
-    setUsingAssignedContent(nextSource === "assigned");
+    setUsingAssignedContent(false);
     setHintLevel(0);
     setAttemptCount(0);
     setSubmittedAttempts(0);
@@ -447,6 +641,9 @@ export default function MathMissionPage() {
     setAnswer("");
     setForcedChoices(false);
     setQuestionStartedAt(Date.now());
+    if (nextQuestion && sessionLifecycleRef.current !== "active") {
+      setLifecycle("active");
+    }
     if (nextQuestion) {
       setRecentQuestionIds((prev) => {
         const merged = [...prev.filter((id) => id !== nextQuestion.id), nextQuestion.id];
@@ -456,6 +653,9 @@ export default function MathMissionPage() {
   }
 
   function advanceSession(currentProfile: ChildProfile, delayMs: number, nextOutcomes?: Record<string, CanonicalItemOutcome>): void {
+    if (isTerminalMathLifecycle(sessionLifecycleRef.current)) {
+      return;
+    }
     const outcomes = nextOutcomes ?? questionOutcomes;
     const nextCanonicalSession = computeCanonicalSessionMetrics({
       requiredItemIds: requiredStepIds,
@@ -466,29 +666,50 @@ export default function MathMissionPage() {
     });
     if (retryPackMode && retryQueueIds.length === 0) {
       if (nextCanonicalSession.canComplete) {
-        setSessionMode("completed_retry");
-        setFeedback("Retry pack complete. Great correction work. You can move to the next level or return to the dashboard.");
-        setReaction({ mood: "celebrate", message: "Retry pack complete. Excellent recovery!" });
+        enterCompletionMode(
+          "completed_retry",
+          "Retry pack complete. Great correction work. You can move to the next level or return to the dashboard.",
+          "Retry pack complete. Excellent recovery!",
+          {
+            answeredCount: nextCanonicalSession.answeredCount,
+            totalCount: Math.max(1, retryInitialCount, nextCanonicalSession.totalRequired),
+            correctCount: nextCanonicalSession.correctCount,
+            skippedCount: nextCanonicalSession.skippedCount,
+          },
+        );
       } else {
         setFeedback(`Keep going: ${nextCanonicalSession.unresolvedCount} required question${nextCanonicalSession.unresolvedCount === 1 ? "" : "s"} still unresolved.`);
       }
       return;
     }
 
+    const effectiveTarget = sessionQuestionTarget > 0 ? sessionQuestionTarget : (retryPackMode ? Math.max(1, retryInitialCount) : MATH_SESSION_TARGET);
     const nextStep = sessionStep + 1;
-    if (nextStep >= sessionQuestionTarget) {
-      setSessionStep(sessionQuestionTarget);
+    if (nextStep >= effectiveTarget) {
       if (nextCanonicalSession.canComplete) {
-        setSessionMode("completed_base");
-        setFeedback("Session complete. Start the next session or go to dashboard.");
-        setReaction({ mood: "celebrate", message: "Session complete. Amazing focus!" });
+        enterCompletionMode(
+          "completed_base",
+          "Session complete. Start the next session or go to dashboard.",
+          "Session complete. Amazing focus!",
+          {
+            answeredCount: nextCanonicalSession.answeredCount,
+            totalCount: (frozenAssignedTotal && frozenAssignedTotal > 0)
+              ? frozenAssignedTotal
+              : (sessionQuestionTarget > 0 ? sessionQuestionTarget : nextCanonicalSession.totalRequired),
+            correctCount: nextCanonicalSession.correctCount,
+            skippedCount: nextCanonicalSession.skippedCount,
+          },
+        );
       } else {
         setFeedback(`Keep going: ${nextCanonicalSession.unresolvedCount} required question${nextCanonicalSession.unresolvedCount === 1 ? "" : "s"} still unresolved.`);
       }
       return;
     }
     setSessionStep(nextStep);
-    window.setTimeout(() => {
+    clearAdvanceTimer();
+    advanceTimerRef.current = window.setTimeout(() => {
+      advanceTimerRef.current = null;
+      if (isTerminalMathLifecycle(sessionLifecycleRef.current)) return;
       void moveToNextQuestion(currentProfile, true);
     }, delayMs);
   }
@@ -500,50 +721,121 @@ export default function MathMissionPage() {
   }, [assignedContentId, assignedAssignmentId]);
 
   useEffect(() => {
-    let cancelled = false;
+    const nextIdentity = `${assignedAssignmentId ?? ""}:${assignedContentId ?? ""}`;
+    const previousIdentity = activeSessionIdentityRef.current;
+    if (previousIdentity === nextIdentity) return;
+
+    const launchingNextId = launchingNextAssignmentIdRef.current;
+    const isExpectedLaunch = Boolean(
+      launchingNextId
+      && assignedAssignmentId
+      && launchingNextId === assignedAssignmentId,
+    );
+
+    if (sessionLifecycleRef.current === "completed" && !isExpectedLaunch) {
+      // Ignore unexpected URL churn while completion is locked.
+      return;
+    }
+
+    activeSessionIdentityRef.current = nextIdentity;
+    launchingNextAssignmentIdRef.current = null;
+    resetForNextAssignment();
+    setLifecycle(assignmentLockedSession ? "loading" : "idle");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignedAssignmentId, assignedContentId, assignmentLockedSession]);
+
+  useEffect(() => {
+    const requestToken = ++assignmentLoadTokenRef.current;
+    const requestAssignmentId = assignedAssignmentId ?? null;
+    const requestContentId = assignedContentId ?? null;
+
+    const isCurrentRequest = () => !isStaleAssignmentResponse({
+      requestToken,
+      activeToken: assignmentLoadTokenRef.current,
+      requestAssignmentId,
+      activeAssignmentId: assignedAssignmentId ?? null,
+      requestContentId,
+      activeContentId: assignedContentId ?? null,
+    });
+
     if (!assignmentLockedSession) {
       void Promise.resolve().then(() => {
-        if (cancelled) return;
+        if (!isCurrentRequest()) return;
         setAssignedQuestions([]);
         setAssignedQuestionsLoaded(false);
+        setAssignedLoadError(null);
+        setFrozenAssignedTotal(null);
       });
-      return () => {
-        cancelled = true;
-      };
+      return;
+    }
+
+    // Keep a finished completion lock stable, but never skip the initial load for a locked session.
+    if (
+      isTerminalMathLifecycle(sessionLifecycleRef.current)
+      && sessionLifecycleRef.current !== "launching-next"
+      && sessionLifecycleRef.current === "completed"
+    ) {
+      return;
     }
 
     void Promise.resolve().then(() => {
-      if (cancelled) return;
+      if (!isCurrentRequest()) return;
+      setLifecycle("loading");
       setAssignedQuestionsLoaded(false);
+      setAssignedLoadError(null);
       setAssignedQuestions([]);
     });
 
     void fetchAssignedMathBatch(assignedContentId ?? "", assignedAssignmentId)
       .then((batch) => {
-        if (cancelled) return;
-        setAssignedQuestions(batch?.items ?? []);
+        if (!isCurrentRequest()) return;
+        // Completion may have started while the request was in flight; keep the lock,
+        // but mark loaded so the UI cannot remain stuck on the loading card.
+        if (
+          isTerminalMathLifecycle(sessionLifecycleRef.current)
+          && sessionLifecycleRef.current !== "launching-next"
+        ) {
+          setAssignedQuestionsLoaded(true);
+          return;
+        }
+        const items = batch?.items ?? [];
+        setAssignedQuestions(items);
         setAssignedQuestionsLoaded(true);
+        if (items.length > 0) {
+          setFrozenAssignedTotal(items.length);
+          setAssignedLoadError(null);
+          if (sessionLifecycleRef.current === "loading" || sessionLifecycleRef.current === "launching-next") {
+            setLifecycle("idle");
+          }
+          return;
+        }
+        setFrozenAssignedTotal(null);
+        setAssignedLoadError("This assigned maths session has no valid questions. Return to the dashboard and ask a parent or teacher to check the assignment.");
+        setFeedback("Assigned content is missing or invalid for this maths session.");
+        setReaction({ mood: "support", message: "No valid assigned maths questions were found for this session." });
       })
       .catch(() => {
-        if (!cancelled) {
-          setAssignedQuestions([]);
-          setAssignedQuestionsLoaded(true);
-        }
+        if (!isCurrentRequest()) return;
+        setAssignedQuestions([]);
+        setFrozenAssignedTotal(null);
+        setAssignedQuestionsLoaded(true);
+        setAssignedLoadError("Unable to load this assigned maths session. Please return to the dashboard and try again.");
+        setFeedback("Unable to load assigned maths questions right now.");
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [assignedAssignmentId, assignedContentId, assignmentLockedSession]);
 
   useEffect(() => {
     if (!profile || !questionPool.length) return;
+    if (!canAutoSelectMathQuestion(sessionLifecycleRef.current)) return;
+    if (sessionComplete || isTerminalMathLifecycle(sessionLifecycle)) return;
+    if (assignmentLockedSession && assignedLoadError) return;
     if (assignmentLockedSession && !assignedQuestionsLoaded) return;
+    if (assignmentLockedSession && sessionQuestionTarget <= 0) return;
     if (currentContextKey && lastAutoSelectionContextRef.current === currentContextKey && currentQuestion) return;
     lastAutoSelectionContextRef.current = currentContextKey;
     void moveToNextQuestion(profile, true, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignedAssignmentId, assignedContentId, assignedQuestionsLoaded, assignmentLockedSession, currentContextKey, currentQuestion, profile, questionPool]);
+  }, [assignedAssignmentId, assignedContentId, assignedLoadError, assignedQuestionsLoaded, assignmentLockedSession, currentContextKey, currentQuestion, profile, questionPool, sessionComplete, sessionLifecycle, sessionQuestionTarget]);
 
   const question = useMemo(() => currentQuestion, [currentQuestion]);
   const sessionRewards = useMemo(() => {
@@ -556,17 +848,32 @@ export default function MathMissionPage() {
       coins: Math.max(0, profile.coins - sessionStartStats.coins),
     };
   }, [profile, sessionStartStats]);
-  const sessionSummary = useMemo(() => buildMathSessionSummaryMetrics({
-    canonical: {
-      totalRequired: canonicalSession.totalRequired,
-      correctCount: canonicalSession.correctCount,
-    },
-    sessionQuestionTarget,
-    sessionCorrect,
-    sessionAttempts,
-  }), [canonicalSession.correctCount, canonicalSession.totalRequired, sessionAttempts, sessionCorrect, sessionQuestionTarget]);
-  const resolvedSummaryTotal = canonicalSession.totalRequired > 0 ? canonicalSession.totalRequired : sessionSummary.totalQuestions;
-  const resolvedSummaryCount = Math.min(resolvedSummaryTotal, canonicalSession.answeredCount + canonicalSession.skippedCount);
+  const sessionSummary = useMemo(() => {
+    if (completionSnapshot) {
+      return {
+        totalQuestions: completionSnapshot.totalCount,
+        correctQuestions: completionSnapshot.correctCount,
+        accuracyPct: completionSnapshot.accuracyPct,
+      };
+    }
+    const summaryTarget = displaySessionTotal && displaySessionTotal > 0
+      ? displaySessionTotal
+      : Math.max(1, sessionQuestionTarget || MATH_SESSION_TARGET);
+    return buildMathSessionSummaryMetrics({
+      canonical: {
+        totalRequired: canonicalSession.totalRequired > 0 ? canonicalSession.totalRequired : summaryTarget,
+        correctCount: canonicalSession.correctCount,
+      },
+      sessionQuestionTarget: summaryTarget,
+      sessionCorrect,
+      sessionAttempts,
+    });
+  }, [canonicalSession.correctCount, canonicalSession.totalRequired, completionSnapshot, displaySessionTotal, sessionAttempts, sessionCorrect, sessionQuestionTarget]);
+  const resolvedSummaryTotal = completionSnapshot?.totalCount
+    ?? (canonicalSession.totalRequired > 0 ? canonicalSession.totalRequired : sessionSummary.totalQuestions);
+  const resolvedSummaryCount = completionSnapshot
+    ? Math.min(completionSnapshot.totalCount, completionSnapshot.answeredCount + completionSnapshot.skippedCount)
+    : Math.min(resolvedSummaryTotal, canonicalSession.answeredCount + canonicalSession.skippedCount);
   const mathMastery = useMemo(() => {
     if (!profile) return [] as Array<{ tag: string; accuracy: number }>;
     return Object.entries(profile.masteryTags.math)
@@ -582,9 +889,10 @@ export default function MathMissionPage() {
   const levelLabel = isAlgebraQuestion
     ? (isOlderLearner ? "📘 GCSE Algebra: Linear equations" : "📘 Algebra: Solving linear equations")
     : (LEVEL_LABELS[mathDifficulty] ?? LEVEL_LABELS[1]);
-  const currentQuestionNumber = Math.min(sessionStep + 1, sessionQuestionTarget);
+  const progressTotal = displaySessionTotal && displaySessionTotal > 0 ? displaySessionTotal : null;
+  const currentQuestionNumber = progressTotal ? Math.min(sessionStep + 1, progressTotal) : sessionStep + 1;
   const currentStepKey = requiredStepIds[Math.min(sessionStep, Math.max(0, requiredStepIds.length - 1))]
-    ?? `step-${Math.min(sessionStep, Math.max(0, sessionQuestionTarget - 1))}`;
+    ?? `step-${Math.min(sessionStep, Math.max(0, (progressTotal ?? MATH_SESSION_TARGET) - 1))}`;
   const showVisualSupport = !isAlgebraQuestion && (profile?.ageRange === "5-7" || mathDifficulty <= 2);
   const displayChoices = useMemo(() => {
     if (!question) return [] as number[];
@@ -761,29 +1069,54 @@ export default function MathMissionPage() {
 
   async function startNextAssignedSession(currentProfile: ChildProfile): Promise<void> {
     if (launchingNextAssignedSession) return;
+    if (sessionLifecycleRef.current === "launching-next") return;
 
     if (!assignmentLockedSession) {
+      setLifecycle("idle");
+      setCompletionSnapshot(null);
       setSessionMode("standard");
       await moveToNextQuestion(currentProfile, true, true);
       return;
     }
 
     setLaunchingNextAssignedSession(true);
-    setFeedback("");
+    setLifecycle("launching-next");
+
+    const completedAssignmentId = assignedAssignmentId ?? completionSnapshot?.assignmentId;
+    const dashboardHref = MATH_NEXT_SESSION_DASHBOARD_HREF;
 
     try {
-      if (assignedAssignmentId && sessionComplete && canonicalSession.canComplete) {
-        await fetch(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
-          method: "PATCH",
-          credentials: "include",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ status: "completed" }),
-        }).catch(() => undefined);
+      if (completedAssignmentId && (sessionMode === "completed_base" || sessionMode === "completed_retry" || completionSnapshot)) {
+        let completionResponse: Response;
+        try {
+          completionResponse = await fetch(`/api/assignments/${encodeURIComponent(completedAssignmentId)}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ status: "completed" }),
+          });
+        } catch (error) {
+          console.error("[math] assignment completion PATCH failed", {
+            assignmentId: completedAssignmentId,
+            error,
+          });
+          setLifecycle("completed");
+          setReaction({ mood: "support", message: "Could not confirm assignment completion. Please try again." });
+          setFeedback("Unable to mark this assignment complete right now. Please try again.");
+          return;
+        }
+
+        if (!completionResponse.ok) {
+          setLifecycle("completed");
+          setReaction({ mood: "support", message: "Could not confirm assignment completion. Please try again." });
+          setFeedback("Unable to mark this assignment complete right now. Please try again.");
+          return;
+        }
       }
 
       const assignmentsParams = new URLSearchParams({ studentId: currentProfile.id });
-      if (assignedAssignmentId) {
-        assignmentsParams.set("currentAssignmentId", assignedAssignmentId);
+      if (completedAssignmentId) {
+        assignmentsParams.set("currentAssignmentId", completedAssignmentId);
       }
       const assignmentsResponse = await fetch(`/api/student/assignments?${assignmentsParams.toString()}`, { credentials: "include" });
       if (!assignmentsResponse.ok) {
@@ -791,20 +1124,27 @@ export default function MathMissionPage() {
       }
 
       const payload = (await assignmentsResponse.json()) as { assignments?: StudentAssignmentQueueEntry[] };
+      const queue = Array.isArray(payload.assignments) ? payload.assignments : [];
       const nextAssignment = selectNextPendingAssignment({
-        assignments: Array.isArray(payload.assignments) ? payload.assignments : [],
-        currentAssignmentId: assignedAssignmentId,
+        assignments: queue,
+        currentAssignmentId: completedAssignmentId,
       });
 
-      if (!nextAssignment) {
+      if (!nextAssignment || nextAssignment.id === completedAssignmentId) {
+        setHasPendingNextAssignment(false);
+        setLifecycle("completed");
         setReaction({ mood: "celebrate", message: "No more assigned sessions pending. Returning to dashboard." });
         setFeedback("Great work. You have completed all pending assigned sessions. Returning to dashboard...");
-        window.setTimeout(() => router.push("/dashboard"), 1000);
+        window.setTimeout(() => router.push(dashboardHref), 1000);
         return;
       }
 
+      setHasPendingNextAssignment(true);
+      launchingNextAssignmentIdRef.current = nextAssignment.id;
+      // Keep completion snapshot/UI until the next assignment identity mounts and resets state.
+
       if (typeof nextAssignment.href === "string" && nextAssignment.href.trim()) {
-        router.push(nextAssignment.href);
+        router.replace(nextAssignment.href);
         return;
       }
 
@@ -813,11 +1153,13 @@ export default function MathMissionPage() {
       if (nextAssignment.contentId) {
         params.set("contentId", nextAssignment.contentId);
       }
-      router.push(`/games/${route}?${params.toString()}`);
+      router.replace(`/games/${route}?${params.toString()}`);
     } catch {
+      launchingNextAssignmentIdRef.current = null;
+      setLifecycle("completed");
       setReaction({ mood: "support", message: "Could not open the next assigned session. Returning to dashboard." });
       setFeedback("Unable to load the next assigned session right now. Returning to dashboard...");
-      window.setTimeout(() => router.push("/dashboard"), 1000);
+      window.setTimeout(() => router.push(dashboardHref), 1000);
     } finally {
       setLaunchingNextAssignedSession(false);
     }
@@ -1175,7 +1517,8 @@ export default function MathMissionPage() {
     );
   }
 
-  if (!question) {
+  if (!question && !sessionComplete) {
+    const assignedContentMissing = Boolean(assignmentLockedSession && assignedQuestionsLoaded && assignedLoadError);
     return (
       <PremiumAccessGate>
         <>
@@ -1184,22 +1527,37 @@ export default function MathMissionPage() {
             <section className="mx-auto flex min-h-[50vh] max-w-4xl items-center justify-center px-4 py-10">
               <div className="w-full max-w-xl rounded-3xl border border-emerald-200 bg-white p-6 text-center shadow-sm">
                 <p className="text-sm font-black uppercase tracking-wide text-emerald-700">Math Mission</p>
-                <h2 className="mt-2 text-2xl font-black text-slate-900">Session complete</h2>
+                <h2 className="mt-2 text-2xl font-black text-slate-900">
+                  {assignedContentMissing
+                    ? "Assigned content unavailable"
+                    : assignmentLockedSession && !assignedQuestionsLoaded
+                      ? "Loading assigned session..."
+                      : "Preparing your next question"}
+                </h2>
                 <p className="mt-2 text-sm font-semibold text-slate-600">
-                  {feedback || "No more assigned maths questions are available right now."}
+                  {assignedLoadError
+                    || feedback
+                    || (assignmentLockedSession
+                      ? "Loading your assigned maths questions."
+                      : "Getting the next maths question ready.")}
                 </p>
                 <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                  <Button
-                    variant="accent"
-                    className="w-full"
-                    onClick={() => {
-                      setSessionMode("standard");
-                      void moveToNextQuestion(profile, true, true);
-                    }}
-                  >
-                    Refresh session
-                  </Button>
-                  <Link href="/dashboard" className="block">
+                  {!assignedContentMissing ? (
+                    <Button
+                      variant="accent"
+                      className="w-full"
+                      onClick={() => {
+                        if (isTerminalMathLifecycle(sessionLifecycleRef.current)) return;
+                        setLifecycle("idle");
+                        setSessionMode("standard");
+                        void moveToNextQuestion(profile, true, true);
+                      }}
+                      disabled={isTerminalMathLifecycle(sessionLifecycle)}
+                    >
+                      Refresh session
+                    </Button>
+                  ) : null}
+                  <Link href={MATH_NEXT_SESSION_DASHBOARD_HREF} className={assignedContentMissing ? "block sm:col-span-2" : "block"}>
                     <Button variant="secondary" className="w-full">Go to Dashboard</Button>
                   </Link>
                 </div>
@@ -1211,10 +1569,12 @@ export default function MathMissionPage() {
     );
   }
 
-  // Validate content subject matches route
-  const contentValidation = validateContentItem(question as Record<string, unknown>, "math");
-  if (!contentValidation.valid) {
-    return <ContentMismatchFallback subject="Maths" message={contentValidation.error ?? "Content does not match Maths."} />;
+  // Validate content subject matches route (skip while completion UI has no active question)
+  if (question) {
+    const contentValidation = validateContentItem(question as Record<string, unknown>, "math");
+    if (!contentValidation.valid) {
+      return <ContentMismatchFallback subject="Maths" message={contentValidation.error ?? "Content does not match Maths."} />;
+    }
   }
 
   return (
@@ -1343,12 +1703,16 @@ export default function MathMissionPage() {
                   <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-black text-emerald-800">
                     {levelLabel}
                   </span>
-                  <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-black text-cyan-800">
-                    Question {currentQuestionNumber} of {sessionQuestionTarget}
-                  </span>
-                  <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black text-indigo-800">
-                    Target {profile.dailySubjectProgress.completed.math}/{profile.dailySubjectProgress.targets.math}
-                  </span>
+                  {!sessionComplete && progressTotal ? (
+                    <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-black text-cyan-800">
+                      Question {currentQuestionNumber} of {progressTotal}
+                    </span>
+                  ) : null}
+                  {!assignmentLockedSession ? (
+                    <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black text-indigo-800">
+                      Daily goal: {profile.dailySubjectProgress.completed.math} of {profile.dailySubjectProgress.targets.math}
+                    </span>
+                  ) : null}
                   {sessionComplete ? (
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800">
                       Session complete
@@ -1365,111 +1729,114 @@ export default function MathMissionPage() {
                   </span>
                 </div>
 
-                <div className="mt-6 rounded-3xl bg-linear-to-br from-slate-950 to-emerald-950 p-5 text-white shadow-inner">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">
-                    Current problem
-                  </p>
-                  <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h2 className="font-heading text-4xl font-black tracking-wide text-white">
-                        {displayPrompt}
-                      </h2>
-                      <p className="mt-2 text-sm leading-6 text-cyan-100">
-                        {showChoices ? "Work it out, then choose or type your answer." : "Work it out, then type your answer."}
+                {!sessionComplete && question ? (
+                  <>
+                    <div className="mt-6 rounded-3xl bg-linear-to-br from-slate-950 to-emerald-950 p-5 text-white shadow-inner">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">
+                        Current problem
                       </p>
+                      <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h2 className="font-heading text-4xl font-black tracking-wide text-white">
+                            {displayPrompt}
+                          </h2>
+                          <p className="mt-2 text-sm leading-6 text-cyan-100">
+                            {showChoices ? "Work it out, then choose or type your answer." : "Work it out, then type your answer."}
+                          </p>
+                        </div>
+                        <div className="rounded-2xl bg-white/10 px-4 py-3 text-center">
+                          <p className="text-xs font-bold uppercase tracking-wide text-cyan-100">Topic</p>
+                          <p className="mt-1 text-sm font-black">{isAlgebraQuestion ? "Algebra" : question.topic}</p>
+                        </div>
+                      </div>
+                      {showVisualSupport && question.visual ? (
+                        <p className="mt-5 rounded-2xl bg-white/10 p-4 text-2xl leading-10 text-white">
+                          {question.visual}
+                        </p>
+                      ) : null}
+                      {profile.mathSupport?.mode === "math_support" && buildCraVisual(question) ? (
+                        <div className="mt-4 rounded-2xl border border-violet-300 bg-violet-900/30 p-4">
+                          <p className="text-xs font-black uppercase tracking-wide text-violet-200">Concrete picture</p>
+                          <p className="mt-2 font-mono text-lg leading-8 text-white tracking-widest">{buildCraVisual(question)}</p>
+                          <p className="mt-1 text-xs text-violet-200">Use this picture to help you count.</p>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="rounded-2xl bg-white/10 px-4 py-3 text-center">
-                      <p className="text-xs font-bold uppercase tracking-wide text-cyan-100">Topic</p>
-                      <p className="mt-1 text-sm font-black">{isAlgebraQuestion ? "Algebra" : question.topic}</p>
-                    </div>
-                  </div>
-                  {showVisualSupport && question.visual ? (
-                    <p className="mt-5 rounded-2xl bg-white/10 p-4 text-2xl leading-10 text-white">
-                      {question.visual}
-                    </p>
-                  ) : null}
-                  {profile.mathSupport?.mode === "math_support" && buildCraVisual(question) ? (
-                    <div className="mt-4 rounded-2xl border border-violet-300 bg-violet-900/30 p-4">
-                      <p className="text-xs font-black uppercase tracking-wide text-violet-200">Concrete picture</p>
-                      <p className="mt-2 font-mono text-lg leading-8 text-white tracking-widest">{buildCraVisual(question)}</p>
-                      <p className="mt-1 text-xs text-violet-200">Use this picture to help you count.</p>
-                    </div>
-                  ) : null}
-                </div>
 
-                {currentHint ? (
-                  <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
-                    Hint: {currentHint}
-                  </p>
+                    {currentHint ? (
+                      <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+                        Hint: {currentHint}
+                      </p>
+                    ) : null}
+
+                    <input
+                      className="mt-5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-lg font-bold text-slate-900 shadow-inner outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-100"
+                      value={answer}
+                      onChange={(e) => setAnswer(e.target.value)}
+                      placeholder="Type the answer"
+                      inputMode="numeric"
+                    />
+
+                    {showChoices ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                        {displayChoices.map((choice) => (
+                          <Button className="w-full text-lg" key={`${question.id}-${choice}`} variant="secondary" onClick={() => setAnswer(String(choice))}>{choice}</Button>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <Button className="w-full" onClick={checkAnswer}>Check Answer</Button>
+                      <VoiceHelpControls
+                        className="w-full"
+                        voiceHelpEnabled={voiceHelpEnabled}
+                        onToggleVoiceHelp={setVoiceHelpEnabled}
+                        actions={[{
+                          id: "read-question",
+                          label: "Read question",
+                          onClick: repeatQuestion,
+                          disabled: !question,
+                          variant: "secondary",
+                        }]}
+                      />
+                      <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)} disabled={!question}>Coach</Button>
+                      <Button className="w-full" variant="secondary" onClick={makeItEasier}>{isAlgebraQuestion && isOlderLearner ? "Need a scaffold" : "Make it easier"}</Button>
+                      <Button
+                        className="w-full"
+                        variant="secondary"
+                        onClick={() => {
+                          const nextOutcomes: Record<string, CanonicalItemOutcome> = {
+                            ...questionOutcomes,
+                            [currentStepKey]: { state: "skipped", correct: false },
+                          };
+                          setQuestionOutcomes(nextOutcomes);
+                          advanceSession(profile, 0, nextOutcomes);
+                        }}
+                      >
+                        Try Another
+                      </Button>
+                      <Button
+                        className="w-full"
+                        variant="secondary"
+                        onClick={() => {
+                          const retryIds = weakMathRetryIds;
+                          if (!retryIds.length) return;
+                          void moveToNextQuestion(profile, true, true, retryIds);
+                        }}
+                        disabled={assignmentLockedSession || !weakMathRetryIds.length}
+                      >
+                        Retry Weak Pack ({weakMathRetryIds.length})
+                      </Button>
+                      <Link href={MATH_NEXT_SESSION_DASHBOARD_HREF} className="block"><Button className="w-full" variant="secondary">Dashboard</Button></Link>
+                    </div>
+                  </>
                 ) : null}
-
-                <input
-                  className="mt-5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-lg font-bold text-slate-900 shadow-inner outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-100"
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  placeholder="Type the answer"
-                  inputMode="numeric"
-                />
-
-                {showChoices ? (
-                  <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                    {displayChoices.map((choice) => (
-                      <Button className="w-full text-lg" key={`${question.id}-${choice}`} variant="secondary" onClick={() => setAnswer(String(choice))}>{choice}</Button>
-                    ))}
-                  </div>
-                ) : null}
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Button className="w-full" onClick={checkAnswer} disabled={sessionComplete}>Check Answer</Button>
-                  <VoiceHelpControls
-                    className="w-full"
-                    voiceHelpEnabled={voiceHelpEnabled}
-                    onToggleVoiceHelp={setVoiceHelpEnabled}
-                    actions={[{
-                      id: "read-question",
-                      label: "Read question",
-                      onClick: repeatQuestion,
-                      disabled: !question,
-                      variant: "secondary",
-                    }]}
-                  />
-                  <Button className="w-full" variant="accent" onClick={() => setCoachOpen((open) => !open)} disabled={!question}>Coach</Button>
-                  <Button className="w-full" variant="secondary" onClick={makeItEasier} disabled={sessionComplete}>{isAlgebraQuestion && isOlderLearner ? "Need a scaffold" : "Make it easier"}</Button>
-                  <Button
-                    className="w-full"
-                    variant="secondary"
-                    onClick={() => {
-                      const nextOutcomes: Record<string, CanonicalItemOutcome> = {
-                        ...questionOutcomes,
-                        [currentStepKey]: { state: "skipped", correct: false },
-                      };
-                      setQuestionOutcomes(nextOutcomes);
-                      advanceSession(profile, 0, nextOutcomes);
-                    }}
-                    disabled={sessionComplete}
-                  >
-                    Try Another
-                  </Button>
-                  <Button
-                    className="w-full"
-                    variant="secondary"
-                    onClick={() => {
-                      const retryIds = weakMathRetryIds;
-                      if (!retryIds.length) return;
-                      void moveToNextQuestion(profile, true, true, retryIds);
-                    }}
-                    disabled={assignmentLockedSession || sessionMode === "completed_retry" || !weakMathRetryIds.length}
-                  >
-                    Retry Weak Pack ({weakMathRetryIds.length})
-                  </Button>
-                  <Link href="/dashboard" className="block"><Button className="w-full" variant="secondary">Dashboard</Button></Link>
-                </div>
 
                 {sessionComplete ? (
                   <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                     <p className="m-0 font-black">Session complete.</p>
                     <p className="m-0 mt-1 font-semibold">Accuracy: {sessionSummary.accuracyPct}% ({sessionSummary.correctQuestions}/{sessionSummary.totalQuestions})</p>
-                    <p className="m-0 mt-1 font-semibold">Resolved: {resolvedSummaryCount}/{resolvedSummaryTotal} (Answered {canonicalSession.answeredCount}, Skipped {canonicalSession.skippedCount})</p>
+                    <p className="m-0 mt-1 font-semibold">Resolved: {resolvedSummaryCount}/{resolvedSummaryTotal} (Answered {completionSnapshot?.answeredCount ?? canonicalSession.answeredCount}, Skipped {completionSnapshot?.skippedCount ?? canonicalSession.skippedCount})</p>
                     <p className="m-0 mt-1 font-semibold">Rewards: +{sessionRewards.stars} stars, +{sessionRewards.xp} XP, +{sessionRewards.coins} coins</p>
                     <p className="m-0 mt-1 font-semibold">Top mastery: {mathMastery.map((entry) => `${entry.tag} (${entry.accuracy}%)`).join(", ") || "Building now"}</p>
                     <p className="m-0 mt-1 font-semibold">Next suggestion: {profile.adaptive.nextBestActivity}</p>
@@ -1478,13 +1845,21 @@ export default function MathMissionPage() {
                         variant="accent"
                         className="w-full"
                         onClick={() => {
+                          if (hasPendingNextAssignment === false) {
+                            router.push(MATH_NEXT_SESSION_DASHBOARD_HREF);
+                            return;
+                          }
                           void startNextAssignedSession(profile);
                         }}
-                        disabled={launchingNextAssignedSession}
+                        disabled={launchingNextAssignedSession || sessionLifecycle === "launching-next"}
                       >
-                          {assignmentLockedSession ? "Start next assigned session" : "Start next session"}
+                          {hasPendingNextAssignment === false
+                            ? "Return to Dashboard"
+                            : assignmentLockedSession
+                              ? "Next Session"
+                              : "Start next session"}
                       </Button>
-                      <Link href="/dashboard" className="block">
+                      <Link href={MATH_NEXT_SESSION_DASHBOARD_HREF} className="block">
                         <Button variant="secondary" className="w-full">Go to Dashboard</Button>
                       </Link>
                     </div>

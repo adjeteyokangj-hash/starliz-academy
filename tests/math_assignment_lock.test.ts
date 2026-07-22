@@ -2,14 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildMathCompletionSnapshot,
   buildMathSessionSummaryMetrics,
   buildMathRequiredItemIds,
+  canAutoSelectMathQuestion,
+  isStaleAssignmentResponse,
+  isTerminalMathLifecycle,
   resolveAssignmentSessionDecision,
+  resolveAuthoritativeSessionTotal,
   resolveNextAssignedMathQuestion,
   selectNextPendingAssignment,
   shouldCompleteOnAssignedExhaustion,
   taskPathForAssignedSubject,
+  MATH_NEXT_SESSION_DASHBOARD_HREF,
 } from "../src/lib/math-assignment-session";
+import { computeCanonicalSessionMetrics } from "../src/lib/canonical-learning-state";
 
 test("assigned maths session does not allow static fallback when assigned content is exhausted", () => {
   const decision = resolveAssignmentSessionDecision({
@@ -54,6 +61,75 @@ test("assigned maths uses preloaded 10-question IDs as required steps", () => {
 
   assert.equal(requiredIds.length, 10);
   assert.deepEqual(requiredIds, assignedQuestions.map((question) => question.id));
+});
+
+test("progress consistency: 9-question assigned session stays 0/9 → 9/9 and never 9/12", () => {
+  const assignedQuestions = Array.from({ length: 9 }, (_, index) => ({ id: `assigned-${index + 1}` }));
+  const frozenTotal = resolveAuthoritativeSessionTotal({
+    assignmentLocked: true,
+    assignedQuestionCount: assignedQuestions.length,
+    frozenAssignedTotal: assignedQuestions.length,
+    retryPackMode: false,
+    retryInitialCount: 0,
+    standardTarget: 10,
+  });
+  assert.equal(frozenTotal, 9);
+
+  const requiredIds = buildMathRequiredItemIds({
+    assignmentLocked: true,
+    assignedQuestions,
+    sessionQuestionTarget: frozenTotal,
+  });
+  assert.equal(requiredIds.length, 9);
+
+  const emptyOutcomes = computeCanonicalSessionMetrics({
+    requiredItemIds: requiredIds,
+    outcomes: {},
+  });
+  assert.equal(emptyOutcomes.totalRequired, 9);
+  assert.equal(emptyOutcomes.answeredCount, 0);
+
+  const completedOutcomes = Object.fromEntries(
+    requiredIds.map((id) => [id, { state: "answered" as const, correct: true }]),
+  );
+  const done = computeCanonicalSessionMetrics({
+    requiredItemIds: requiredIds,
+    outcomes: completedOutcomes,
+  });
+  assert.equal(done.totalRequired, 9);
+  assert.equal(done.answeredCount, 9);
+  assert.equal(done.canComplete, true);
+
+  const summary = buildMathSessionSummaryMetrics({
+    canonical: { totalRequired: done.totalRequired, correctCount: done.correctCount },
+    sessionQuestionTarget: frozenTotal,
+    sessionCorrect: 9,
+    sessionAttempts: 9,
+  });
+  assert.equal(summary.totalQuestions, 9);
+  assert.equal(summary.correctQuestions, 9);
+
+  const snapshot = buildMathCompletionSnapshot({
+    assignmentId: "assignment-a",
+    answeredCount: 9,
+    totalCount: frozenTotal,
+    correctCount: 9,
+    skippedCount: 0,
+  });
+  assert.equal(snapshot.totalCount, 9);
+  assert.equal(`${snapshot.correctCount}/${snapshot.totalCount}`, "9/9");
+  assert.notEqual(`${snapshot.correctCount}/${snapshot.totalCount}`, "9/12");
+
+  // Library/daily target of 12 must not change the frozen assigned total.
+  const stillNine = resolveAuthoritativeSessionTotal({
+    assignmentLocked: true,
+    assignedQuestionCount: 0,
+    frozenAssignedTotal: 9,
+    retryPackMode: false,
+    retryInitialCount: 0,
+    standardTarget: 12,
+  });
+  assert.equal(stillNine, 9);
 });
 
 test("assigned locked mode does not call cursor fetch per question", async () => {
@@ -104,12 +180,38 @@ test("next pending assignment selection does not return the completed current as
   const next = selectNextPendingAssignment({
     currentAssignmentId: "assignment-1",
     assignments: [
-      { id: "assignment-1", status: "in_progress", href: "/games/math?assignmentId=assignment-1" },
-      { id: "assignment-2", status: "assigned", href: "/games/reading?assignmentId=assignment-2" },
+      { id: "assignment-1", status: "in_progress", href: "/games/math?assignmentId=assignment-1", createdAt: "2026-07-01T10:00:00.000Z" },
+      { id: "assignment-2", status: "assigned", href: "/games/reading?assignmentId=assignment-2", createdAt: "2026-07-01T11:00:00.000Z" },
     ],
   });
 
   assert.equal(next?.id, "assignment-2");
+});
+
+test("next assignment preserves API response order", () => {
+  const next = selectNextPendingAssignment({
+    currentAssignmentId: "assignment-a",
+    assignments: [
+      { id: "assignment-c", status: "assigned", createdAt: "2026-07-03T10:00:00.000Z" },
+      { id: "assignment-b", status: "assigned", createdAt: "2026-07-02T10:00:00.000Z" },
+      { id: "assignment-a", status: "completed", createdAt: "2026-07-01T10:00:00.000Z" },
+    ],
+  });
+
+  // First eligible entry in the API array wins (no createdAt re-sort).
+  assert.equal(next?.id, "assignment-c");
+});
+
+test("empty locked assigned total does not invent 1", () => {
+  const total = resolveAuthoritativeSessionTotal({
+    assignmentLocked: true,
+    assignedQuestionCount: 0,
+    frozenAssignedTotal: null,
+    retryPackMode: false,
+    retryInitialCount: 0,
+    standardTarget: 10,
+  });
+  assert.equal(total, 0);
 });
 
 test("next pending assignment selection returns null when no other pending assignment exists", () => {
@@ -118,10 +220,136 @@ test("next pending assignment selection returns null when no other pending assig
     assignments: [
       { id: "assignment-1", status: "in_progress" },
       { id: "assignment-3", status: "completed" },
+      { id: "assignment-4", status: "archived" },
+      { id: "assignment-5", status: "cancelled" },
+      { id: "assignment-6", status: "expired" },
     ],
   });
 
   assert.equal(next, null);
+});
+
+test("final assignment: next picker never restarts the completed assignment id", () => {
+  const next = selectNextPendingAssignment({
+    currentAssignmentId: "assignment-only",
+    assignments: [
+      { id: "assignment-only", status: "completed", createdAt: "2026-07-01T10:00:00.000Z" },
+    ],
+  });
+  assert.equal(next, null);
+
+  const stillSelf = selectNextPendingAssignment({
+    currentAssignmentId: "assignment-only",
+    assignments: [
+      { id: "assignment-only", status: "assigned", createdAt: "2026-07-01T10:00:00.000Z" },
+    ],
+  });
+  assert.equal(stillSelf, null);
+});
+
+test("final assignment dashboard href stays on student refresh route", () => {
+  assert.equal(MATH_NEXT_SESSION_DASHBOARD_HREF, "/student/dashboard?refresh=1");
+});
+
+test("completion lifecycle blocks auto-selection until explicit launch", () => {
+  assert.equal(canAutoSelectMathQuestion("idle"), true);
+  assert.equal(canAutoSelectMathQuestion("loading"), true);
+  assert.equal(canAutoSelectMathQuestion("active"), true);
+  assert.equal(canAutoSelectMathQuestion("completing"), false);
+  assert.equal(canAutoSelectMathQuestion("completed"), false);
+  assert.equal(canAutoSelectMathQuestion("launching-next"), false);
+  assert.equal(isTerminalMathLifecycle("completed"), true);
+  assert.equal(isTerminalMathLifecycle("launching-next"), true);
+  assert.equal(isTerminalMathLifecycle("active"), false);
+});
+
+test("completion snapshot stays stable when later totals change", () => {
+  const snapshot = buildMathCompletionSnapshot({
+    assignmentId: "assignment-a",
+    contentId: "content-a",
+    answeredCount: 8,
+    totalCount: 9,
+    correctCount: 8,
+    skippedCount: 1,
+  });
+
+  const laterLibraryTotal = resolveAuthoritativeSessionTotal({
+    assignmentLocked: true,
+    assignedQuestionCount: 12,
+    frozenAssignedTotal: snapshot.totalCount,
+    retryPackMode: false,
+    retryInitialCount: 0,
+    standardTarget: 12,
+  });
+
+  assert.equal(laterLibraryTotal, 9);
+  assert.equal(snapshot.totalCount, 9);
+  assert.equal(snapshot.answeredCount + snapshot.skippedCount, 9);
+  assert.equal(`${snapshot.correctCount}/${snapshot.totalCount}`, "8/9");
+  assert.equal(snapshot.assignmentId, "assignment-a");
+});
+
+test("stale assignment response protection rejects late responses from prior assignment", () => {
+  assert.equal(isStaleAssignmentResponse({
+    requestToken: 1,
+    activeToken: 2,
+    requestAssignmentId: "assignment-a",
+    activeAssignmentId: "assignment-b",
+    requestContentId: "content-a",
+    activeContentId: "content-b",
+  }), true);
+
+  assert.equal(isStaleAssignmentResponse({
+    requestToken: 2,
+    activeToken: 2,
+    requestAssignmentId: "assignment-b",
+    activeAssignmentId: "assignment-b",
+    requestContentId: "content-b",
+    activeContentId: "content-b",
+  }), false);
+
+  assert.equal(isStaleAssignmentResponse({
+    requestToken: 2,
+    activeToken: 2,
+    requestAssignmentId: "assignment-a",
+    activeAssignmentId: "assignment-b",
+    requestContentId: "content-a",
+    activeContentId: "content-b",
+  }), true);
+});
+
+test("next assignment B uses its own identity and question set start index", async () => {
+  const assignmentAQuestions = Array.from({ length: 9 }, (_, index) => ({ id: `a-${index + 1}` }));
+  const assignmentBQuestions = Array.from({ length: 5 }, (_, index) => ({ id: `b-${index + 1}` }));
+
+  const next = selectNextPendingAssignment({
+    currentAssignmentId: "assignment-a",
+    assignments: [
+      { id: "assignment-a", status: "completed", contentId: "content-a", createdAt: "2026-07-01T10:00:00.000Z" },
+      { id: "assignment-b", status: "assigned", contentId: "content-b", createdAt: "2026-07-02T10:00:00.000Z" },
+    ],
+  });
+  assert.equal(next?.id, "assignment-b");
+  assert.notEqual(next?.id, "assignment-a");
+  assert.equal(next?.contentId, "content-b");
+
+  const bTotal = resolveAuthoritativeSessionTotal({
+    assignmentLocked: true,
+    assignedQuestionCount: assignmentBQuestions.length,
+    frozenAssignedTotal: assignmentBQuestions.length,
+    retryPackMode: false,
+    retryInitialCount: 0,
+    standardTarget: assignmentAQuestions.length,
+  });
+  assert.equal(bTotal, 5);
+
+  const firstB = await resolveNextAssignedMathQuestion({
+    assignmentLocked: true,
+    assignedQuestions: assignmentBQuestions,
+    sessionStep: 0,
+  });
+  assert.deepEqual(firstB, { id: "b-1" });
+  assert.equal(`0/${bTotal}`, "0/5");
 });
 
 test("session summary avoids 0/0 after answered session even when canonical required count is missing", () => {
@@ -142,6 +370,7 @@ test("session summary avoids 0/0 after answered session even when canonical requ
 
 test("subject routing helper maps queue subjects to game paths", () => {
   assert.equal(taskPathForAssignedSubject("math"), "math");
+  assert.equal(taskPathForAssignedSubject("maths"), "math");
   assert.equal(taskPathForAssignedSubject("reading"), "reading");
   assert.equal(taskPathForAssignedSubject("spelling"), "spelling");
   assert.equal(taskPathForAssignedSubject("unknown"), "spelling");

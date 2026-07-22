@@ -16,11 +16,44 @@ export type AssignmentQueueEntry = {
   href?: string | null;
   subject?: string | null;
   contentId?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type MathSessionLifecycle =
+  | "idle"
+  | "loading"
+  | "active"
+  | "completing"
+  | "completed"
+  | "launching-next";
+
+export const MATH_NEXT_SESSION_DASHBOARD_HREF = "/student/dashboard?refresh=1";
+
+export type MathCompletionSnapshot = {
+  assignmentId?: string;
+  contentId?: string | null;
+  answeredCount: number;
+  totalCount: number;
+  correctCount: number;
+  skippedCount: number;
+  accuracyPct: number;
+  completedAt: string;
 };
 
 type AssignedQuestionLike = {
   id?: string | null;
 };
+
+const PENDING_ASSIGNMENT_STATUSES = new Set(["assigned", "in_progress", "overdue"]);
+const BLOCKED_ASSIGNMENT_STATUSES = new Set([
+  "completed",
+  "archived",
+  "cancelled",
+  "canceled",
+  "expired",
+  "withdrawn",
+]);
 
 export function resolveAssignmentSessionDecision(input: {
   assignmentLocked: boolean;
@@ -71,6 +104,34 @@ export function buildMathRequiredItemIds(input: {
   return Array.from({ length: input.sessionQuestionTarget }, (_, index) => `step-${index}`);
 }
 
+/**
+ * Single authoritative denominator for an assigned maths session.
+ * Once questions are loaded, prefer the frozen total so UI never flips
+ * between library slot counts and validated assigned counts.
+ */
+export function resolveAuthoritativeSessionTotal(input: {
+  assignmentLocked: boolean;
+  assignedQuestionCount: number;
+  frozenAssignedTotal: number | null;
+  retryPackMode: boolean;
+  retryInitialCount: number;
+  standardTarget: number;
+}): number {
+  if (input.retryPackMode) {
+    return Math.max(1, input.retryInitialCount);
+  }
+  if (input.assignmentLocked) {
+    if (typeof input.frozenAssignedTotal === "number" && input.frozenAssignedTotal > 0) {
+      return input.frozenAssignedTotal;
+    }
+    if (input.assignedQuestionCount > 0) {
+      return input.assignedQuestionCount;
+    }
+    return 0;
+  }
+  return Math.max(1, input.standardTarget);
+}
+
 export async function resolveNextAssignedMathQuestion<T>(input: {
   assignmentLocked: boolean;
   assignedQuestions: T[];
@@ -117,15 +178,68 @@ export function buildMathSessionSummaryMetrics(input: {
   };
 }
 
+export function buildMathCompletionSnapshot(input: {
+  assignmentId?: string;
+  contentId?: string | null;
+  answeredCount: number;
+  totalCount: number;
+  correctCount: number;
+  skippedCount: number;
+  completedAt?: string;
+}): MathCompletionSnapshot {
+  const totalCount = Math.max(0, input.totalCount);
+  const correctCount = Math.max(0, Math.min(totalCount, input.correctCount));
+  const answeredCount = Math.max(0, Math.min(totalCount, input.answeredCount));
+  const skippedCount = Math.max(0, Math.min(totalCount, input.skippedCount));
+  const accuracyPct = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
+  return {
+    assignmentId: input.assignmentId,
+    contentId: input.contentId ?? null,
+    answeredCount,
+    totalCount,
+    correctCount,
+    skippedCount,
+    accuracyPct,
+    completedAt: input.completedAt ?? new Date().toISOString(),
+  };
+}
+
+export function canAutoSelectMathQuestion(lifecycle: MathSessionLifecycle): boolean {
+  return lifecycle === "idle" || lifecycle === "loading" || lifecycle === "active";
+}
+
+export function isTerminalMathLifecycle(lifecycle: MathSessionLifecycle): boolean {
+  return lifecycle === "completing" || lifecycle === "completed" || lifecycle === "launching-next";
+}
+
+export function isStaleAssignmentResponse(input: {
+  requestToken: number;
+  activeToken: number;
+  requestAssignmentId?: string | null;
+  activeAssignmentId?: string | null;
+  requestContentId?: string | null;
+  activeContentId?: string | null;
+}): boolean {
+  if (input.requestToken !== input.activeToken) return true;
+  if ((input.requestAssignmentId ?? null) !== (input.activeAssignmentId ?? null)) return true;
+  if ((input.requestContentId ?? null) !== (input.activeContentId ?? null)) return true;
+  return false;
+}
+
+/**
+ * Deterministic next-assignment picker.
+ * Preserves the API/dashboard array order. Skips the completed assignment by unique ID.
+ */
 export function selectNextPendingAssignment(input: {
   assignments: AssignmentQueueEntry[];
   currentAssignmentId?: string;
 }): AssignmentQueueEntry | null {
-  const pendingStatuses = new Set(["assigned", "in_progress", "overdue"]);
   for (const assignment of input.assignments) {
     if (!assignment?.id) continue;
     if (input.currentAssignmentId && assignment.id === input.currentAssignmentId) continue;
-    if (!pendingStatuses.has(String(assignment.status ?? "").toLowerCase())) continue;
+    const status = String(assignment.status ?? "").toLowerCase();
+    if (BLOCKED_ASSIGNMENT_STATUSES.has(status)) continue;
+    if (!PENDING_ASSIGNMENT_STATUSES.has(status)) continue;
     return assignment;
   }
   return null;
@@ -134,6 +248,6 @@ export function selectNextPendingAssignment(input: {
 export function taskPathForAssignedSubject(subject: string | null | undefined): "spelling" | "math" | "reading" {
   const normalized = String(subject ?? "").toLowerCase();
   if (normalized === "reading") return "reading";
-  if (normalized === "math") return "math";
+  if (normalized === "math" || normalized === "maths") return "math";
   return "spelling";
 }
