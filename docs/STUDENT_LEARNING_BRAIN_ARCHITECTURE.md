@@ -68,9 +68,18 @@ Hard rule:
 - The Brain must not become the write layer for homework or catch-up persistence.
 - Write workflows, mutation orchestration, approvals, and audit decisions remain in dedicated services/routes.
 
-## Future Brain Module Checklist
+## Brain quality policies (additive)
 
-Potential modules that should plug into this architecture:
+Implemented in `src/lib/student-learning-brain/qualityPolicies.ts` and applied through data-state honesty fields:
+
+1. **Evidence ranking** — Attempt → WeakArea → StudentSkill → snapshot before legacy ProgressRecord reconstruction.
+2. **Honesty over confidence** — thin evidence yields `recommendationHonesty: "insufficient_data" | "limited_evidence"` instead of confident advice.
+3. **Explainable recommendations** — catch-up recommendations include optional `evidenceCitations` and `insufficientData`.
+4. **Read-only Brain** — quality policies reaffirm writes stay outside Brain (homework, approvals, payments, coach runtime).
+5. **Role-safe views** — dashboard/parent/admin views may expose `dataState` honesty fields without renaming existing keys.
+
+These fields are additive. Existing consumers that ignore unknown keys remain compatible.
+
 
 - Adult Learning
 - Ga Learning

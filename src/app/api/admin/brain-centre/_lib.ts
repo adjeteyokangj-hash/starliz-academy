@@ -32,29 +32,93 @@ export function snapshotStatus(profileJson: string | null | undefined): {
   return { status: "fresh", lastCalculatedAt: snapshot.lastCalculatedAt };
 }
 
+export type BrainEvidenceSufficiency = "sufficient" | "limited" | "insufficient";
+
+export function evidenceSufficiencyForBrain(input: {
+  dataState: Pick<StudentDataNormalisationResult, "state" | "checklistStatus" | "recommendationHonesty">;
+  attemptsCount?: number;
+}): BrainEvidenceSufficiency {
+  const honesty = input.dataState.recommendationHonesty;
+  if (
+    honesty === "insufficient_data"
+    || input.dataState.state === "new_no_activity"
+    || input.dataState.state === "insufficient_evidence"
+  ) {
+    return "insufficient";
+  }
+  if (
+    honesty === "limited_evidence"
+    || (typeof input.attemptsCount === "number" && input.attemptsCount === 0)
+    || input.dataState.checklistStatus === "warning"
+  ) {
+    return "limited";
+  }
+  return "sufficient";
+}
+
+export function cappedHeartbeatSeverity(
+  riskLevel: HeartbeatDecision["riskLevel"],
+  sufficiency: BrainEvidenceSufficiency,
+): HeartbeatDecision["riskLevel"] {
+  if (sufficiency === "insufficient") {
+    if (riskLevel === "critical" || riskLevel === "high") return "medium";
+    if (riskLevel === "medium") return "low";
+    return "low";
+  }
+  if (sufficiency === "limited") {
+    if (riskLevel === "critical") return "high";
+    return riskLevel;
+  }
+  return riskLevel;
+}
+
+export function cappedHeartbeatUrgency(
+  urgency: HeartbeatDecision["urgency"],
+  sufficiency: BrainEvidenceSufficiency,
+): HeartbeatDecision["urgency"] {
+  if (sufficiency === "insufficient") {
+    if (urgency === "critical" || urgency === "high") return "medium";
+    if (urgency === "medium") return "low";
+    return "low";
+  }
+  if (sufficiency === "limited") {
+    if (urgency === "critical") return "high";
+    return urgency;
+  }
+  return urgency;
+}
+
 export function healthForBrain(input: {
   brain: {
     heartbeatSummary: HeartbeatDecision;
     academicIntelligence: { recommendationSync: RecommendationSyncAudit };
-    dataState: Pick<StudentDataNormalisationResult, "checklistStatus">;
+    dataState: Pick<StudentDataNormalisationResult, "state" | "checklistStatus" | "recommendationHonesty">;
+    source?: { attempts?: unknown[] };
   };
   snapshotStatus: "fresh" | "stale" | "missing";
 }): BrainHealthStatus {
   const sync = input.brain.academicIntelligence.recommendationSync;
-  if (
-    input.brain.heartbeatSummary.riskLevel === "critical"
-    || sync.status === "blocked"
-    || input.brain.dataState.checklistStatus === "fail"
-  ) {
+  const sufficiency = evidenceSufficiencyForBrain({
+    dataState: input.brain.dataState,
+    attemptsCount: input.brain.source?.attempts?.length,
+  });
+  const displayRisk = cappedHeartbeatSeverity(input.brain.heartbeatSummary.riskLevel, sufficiency);
+  const displayUrgency = cappedHeartbeatUrgency(input.brain.heartbeatSummary.urgency, sufficiency);
+  // Hard blockers stay critical; thin-evidence heartbeat alone does not.
+  if (sync.status === "blocked" || input.brain.dataState.checklistStatus === "fail") {
+    return "critical";
+  }
+  if (displayRisk === "critical") {
     return "critical";
   }
   if (
-    input.brain.heartbeatSummary.riskLevel === "high"
-    || input.brain.heartbeatSummary.urgency === "critical"
-    || input.brain.heartbeatSummary.urgency === "high"
+    displayRisk === "high"
+    || displayUrgency === "critical"
+    || displayUrgency === "high"
     || sync.status === "warning"
     || input.brain.dataState.checklistStatus === "warning"
     || input.snapshotStatus !== "fresh"
+    || sufficiency !== "sufficient"
   ) {
     return "warning";
   }

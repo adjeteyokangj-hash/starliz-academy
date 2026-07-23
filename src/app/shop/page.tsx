@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -12,6 +13,13 @@ import { levelFromXp } from "@/lib/level_system";
 import { buyShopItem, equipShopItem, fetchOwnedItems, fetchShopItems, ShopCategory, ShopItemView } from "@/lib/shop_api";
 import { previewShopVoicePack } from "@/lib/voice";
 import { getVoiceStyleLabel } from "@/lib/voice_options";
+import {
+  AVATAR_SAMPLE_BY_ID,
+  PET_SAMPLE_BY_ID,
+  THEME_CARD_CLASS_BY_ID,
+  getStoreItemImageUrl,
+  getThemePalette,
+} from "@/lib/store_item_preview";
 
 const CATEGORY_TABS: Array<{ key: ShopCategory; label: string }> = [
   { key: "themes", label: "Themes" },
@@ -23,43 +31,6 @@ const CATEGORY_TABS: Array<{ key: ShopCategory; label: string }> = [
 
 const SHOP_REWARDS_BANNER_DISMISSED_KEY = "shop_rewards_moved_banner_dismissed";
 
-const THEME_CARD_CLASS_BY_ID: Record<string, string> = {
-  "theme-rainbow": "border-pink-200 bg-gradient-to-br from-pink-50 via-purple-50 to-cyan-50",
-  "theme-sunshine": "border-amber-200 bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50",
-  "theme-night-sky": "border-indigo-200 bg-gradient-to-br from-indigo-50 via-blue-50 to-slate-100",
-  "theme-space": "border-violet-200 bg-gradient-to-br from-violet-50 via-fuchsia-50 to-slate-100",
-  "theme-candy": "border-rose-200 bg-gradient-to-br from-rose-50 via-pink-50 to-fuchsia-50",
-  "theme-princess": "border-fuchsia-200 bg-gradient-to-br from-fuchsia-50 via-pink-50 to-violet-50",
-  "theme-dinosaur": "border-lime-200 bg-gradient-to-br from-lime-50 via-emerald-50 to-teal-50",
-  "theme-jungle": "border-green-200 bg-gradient-to-br from-green-50 via-emerald-50 to-lime-50",
-  "theme-football": "border-emerald-200 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50",
-  "theme-ocean": "border-cyan-200 bg-gradient-to-br from-cyan-50 via-sky-50 to-blue-50",
-  "theme-galaxy-pro": "border-slate-300 bg-gradient-to-br from-slate-100 via-indigo-50 to-purple-50",
-};
-
-const AVATAR_SAMPLE_BY_ID: Record<string, string> = {
-  "avatar-unicorn": "🦄",
-  "avatar-star-student": "🧑‍🎓",
-  "avatar-robot": "🤖",
-  "avatar-astronaut": "👨‍🚀",
-  "outfit-superhero-cape": "🦸",
-  "avatar-dragon": "🐉",
-  "outfit-crown": "👑",
-  "outfit-wizard-hat": "🧙",
-  "avatar-book-hero": "📚",
-};
-
-const PET_SAMPLE_BY_ID: Record<string, string> = {
-  "pet-food": "🥣",
-  "pet-treats": "🦴",
-  "pet-ball": "🎾",
-  "pet-brush": "🪮",
-  "pet-bed": "🛏️",
-  "pet-hat": "🎩",
-  "pet-sparkle-collar": "✨",
-  "pet-house": "🏠",
-  "pet-playground": "🎠",
-};
 
 export default function RewardsShopPage() {
   const router = useRouter();
@@ -322,23 +293,42 @@ export default function RewardsShopPage() {
               return (
                 <div key={item.id} className={`rounded-[1.5rem] border p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-xl ${cardClassFor(item)}`}>
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-heading text-xl font-black text-slate-900">{item.name}</p>
-                      <p className="mt-1 text-sm font-bold text-slate-600">{item.cost} coins</p>
+                    <div className="flex min-w-0 items-start gap-3">
+                      {getStoreItemImageUrl(item.category, item.id) ? (
+                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                          <Image
+                            src={getStoreItemImageUrl(item.category, item.id)!}
+                            alt=""
+                            fill
+                            className="object-cover"
+                            sizes="64px"
+                          />
+                        </div>
+                      ) : null}
+                      <div className="min-w-0">
+                        <p className="font-heading text-xl font-black text-slate-900">{item.name}</p>
+                        <p className="mt-1 text-sm font-bold text-slate-600">{item.cost} coins</p>
+                      </div>
                     </div>
                     {item.id.startsWith("admin-store-") ? (
                       <span className="rounded-full bg-cyan-100 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-cyan-800">Admin</span>
                     ) : null}
                   </div>
                   {item.category === "themes" ? (
-                    <div className="mt-3 flex items-center gap-2">
-                      <span className="h-3 w-3 rounded-full bg-white/90 ring-1 ring-slate-200" />
-                      <span className="h-3 w-3 rounded-full bg-slate-200/90" />
-                      <span className="h-3 w-3 rounded-full bg-slate-400/80" />
-                      <p className="text-xs font-bold text-slate-600">Theme colors preview</p>
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs font-bold text-slate-600">Theme colors</p>
+                      <div className="flex items-center gap-2">
+                        {getThemePalette(item.id).swatches.map((color) => (
+                          <span
+                            key={color}
+                            className="h-4 w-4 rounded-full border border-slate-200 shadow-sm"
+                            style={{ background: color }}
+                          />
+                        ))}
+                      </div>
                     </div>
                   ) : null}
-                  {getPreviewEmoji(item) ? (
+                  {!getStoreItemImageUrl(item.category, item.id) && getPreviewEmoji(item) ? (
                     <div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/80 px-3 py-2">
                       <span aria-hidden className="text-2xl leading-none">{getPreviewEmoji(item)}</span>
                       <p className="text-xs font-black uppercase tracking-wide text-indigo-700">Preview</p>

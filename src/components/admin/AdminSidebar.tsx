@@ -23,34 +23,34 @@ export default function AdminSidebar() {
   const activeItemRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<string[]>(() => {
-    if (typeof window === "undefined") return [];
+  // SSR-safe defaults only — localStorage / matchMedia are applied after mount to avoid hydration mismatch.
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
+  const [isVisible, setIsVisible] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter((value): value is string => typeof value === "string");
-    } catch {
-      return [];
-    }
-  });
-  const [isVisible, setIsVisible] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
-      if (raw !== null) {
-        const parsed = JSON.parse(raw);
-        if (typeof parsed === "boolean") return parsed;
+      const visibilityRaw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
+      if (visibilityRaw !== null) {
+        const parsed = JSON.parse(visibilityRaw);
+        if (typeof parsed === "boolean") setIsVisible(parsed);
       }
     } catch {
       // Ignore storage read errors.
     }
-    return false;
-  });
-  const [isDesktop, setIsDesktop] = useState(false);
 
-  useEffect(() => {
+    try {
+      const collapsedRaw = window.localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY);
+      if (collapsedRaw) {
+        const parsed = JSON.parse(collapsedRaw);
+        if (Array.isArray(parsed)) {
+          setCollapsedGroups(parsed.filter((value): value is string => typeof value === "string"));
+        }
+      }
+    } catch {
+      // Ignore storage read errors.
+    }
+
     const media = window.matchMedia("(min-width: 1024px)");
 
     function updateDesktopState() {

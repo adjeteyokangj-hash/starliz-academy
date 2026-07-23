@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import AdminSectionCard from "./AdminSectionCard";
 
 type Field = {
@@ -8,10 +8,18 @@ type Field = {
   label: string;
   type?: "text" | "number" | "textarea" | "checkbox" | "select";
   options?: string[];
+  /** Empty input maps to null instead of 0. */
+  optionalNumber?: boolean;
 };
 
 type RecordValue = string | number | boolean | null | undefined;
-type ResourceRecord = Record<string, RecordValue> & { id: string; createdAt?: string; updatedAt?: string };
+export type ResourceRecord = Record<string, RecordValue> & { id: string; createdAt?: string; updatedAt?: string };
+
+export type ListColumn = {
+  key: string;
+  label: string;
+  render?: (value: RecordValue, record: ResourceRecord) => string;
+};
 
 type Props = {
   title: string;
@@ -19,15 +27,38 @@ type Props = {
   resource: string;
   fields: Field[];
   primaryField: string;
+  listColumns?: ListColumn[];
+  /** Extra action buttons rendered before Edit/Delete. */
+  renderRowActions?: (record: ResourceRecord) => ReactNode;
 };
 
 function emptyDraft(fields: Field[]) {
   return Object.fromEntries(
-    fields.map((field) => [field.name, field.type === "number" ? 0 : field.type === "checkbox" ? true : field.options?.[0] ?? ""]),
+    fields.map((field) => {
+      if (field.type === "checkbox") return [field.name, true];
+      if (field.type === "number" && field.optionalNumber) return [field.name, ""];
+      if (field.type === "number") return [field.name, 0];
+      return [field.name, field.options?.[0] ?? ""];
+    }),
   ) as Record<string, RecordValue>;
 }
 
-export default function AdminResourceManager({ title, description, resource, fields, primaryField }: Props) {
+function normalizeDraftForSave(fields: Field[], draft: Record<string, RecordValue>) {
+  const payload: Record<string, RecordValue> = { ...draft };
+  for (const field of fields) {
+    if (field.type === "number" && field.optionalNumber) {
+      const raw = payload[field.name];
+      if (raw === "" || raw === undefined || raw === null || Number.isNaN(Number(raw))) {
+        payload[field.name] = null;
+      } else {
+        payload[field.name] = Number(raw);
+      }
+    }
+  }
+  return payload;
+}
+
+export default function AdminResourceManager({ title, description, resource, fields, primaryField, listColumns, renderRowActions }: Props) {
   const [records, setRecords] = useState<ResourceRecord[]>([]);
   const [draft, setDraft] = useState<Record<string, RecordValue>>(() => emptyDraft(fields));
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -35,6 +66,21 @@ export default function AdminResourceManager({ title, description, resource, fie
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const activeRecord = useMemo(() => records.find((record) => record.id === editingId) ?? null, [editingId, records]);
+  const columns: ListColumn[] = listColumns?.length
+    ? listColumns
+    : [
+        { key: primaryField, label: "Name" },
+        {
+          key: "status",
+          label: "Status",
+          render: (value, record) => String(value ?? (record.isActive === false ? "inactive" : "active")),
+        },
+        {
+          key: "updatedAt",
+          label: "Updated",
+          render: (value) => (typeof value === "string" || typeof value === "number" ? new Date(value).toLocaleString() : "-"),
+        },
+      ];
 
   async function loadRecords(nextSearch = search) {
     const params = new URLSearchParams();
@@ -51,7 +97,13 @@ export default function AdminResourceManager({ title, description, resource, fie
 
   function startEdit(record: ResourceRecord) {
     setEditingId(record.id);
-    setDraft(Object.fromEntries(fields.map((field) => [field.name, record[field.name] ?? emptyDraft([field])[field.name]])));
+    setDraft(Object.fromEntries(fields.map((field) => {
+      const value = record[field.name];
+      if (field.type === "number" && field.optionalNumber && (value === null || value === undefined)) {
+        return [field.name, ""];
+      }
+      return [field.name, value ?? emptyDraft([field])[field.name]];
+    })));
   }
 
   async function save() {
@@ -60,7 +112,7 @@ export default function AdminResourceManager({ title, description, resource, fie
     const response = await fetch(`/api/admin/resources/${resource}${editingId ? `/${editingId}` : ""}`, {
       method: editingId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(draft),
+      body: JSON.stringify(normalizeDraftForSave(fields, draft)),
     });
     setBusy(false);
     if (!response.ok) {
@@ -120,7 +172,18 @@ export default function AdminResourceManager({ title, description, resource, fie
                   {(field.options ?? []).map((option) => <option key={option}>{option}</option>)}
                 </select>
               ) : (
-                <input className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" type={field.type ?? "text"} value={String(draft[field.name] ?? "")} onChange={(event) => updateDraft(field.name, field.type === "number" ? Number(event.target.value) : event.target.value)} />
+                <input
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                  type={field.type ?? "text"}
+                  value={String(draft[field.name] ?? "")}
+                  onChange={(event) => {
+                    if (field.type === "number" && field.optionalNumber) {
+                      updateDraft(field.name, event.target.value === "" ? "" : Number(event.target.value));
+                      return;
+                    }
+                    updateDraft(field.name, field.type === "number" ? Number(event.target.value) : event.target.value);
+                  }}
+                />
               )}
             </label>
           ))}
@@ -143,20 +206,31 @@ export default function AdminResourceManager({ title, description, resource, fie
           <table className="min-w-full text-left text-sm">
             <thead className="text-xs uppercase tracking-[0.18em] text-slate-500">
               <tr>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Updated</th>
+                {columns.map((column) => (
+                  <th key={column.key} className="px-3 py-2">{column.label}</th>
+                ))}
                 <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 text-slate-300">
               {records.map((record) => (
                 <tr key={record.id}>
-                  <td className="px-3 py-3 font-semibold text-white">{String(record[primaryField] ?? record.id)}</td>
-                  <td className="px-3 py-3">{String(record.status ?? (record.isActive === false ? "inactive" : "active"))}</td>
-                  <td className="px-3 py-3">{record.updatedAt ? new Date(record.updatedAt).toLocaleString() : "-"}</td>
+                  {columns.map((column) => {
+                    const value = record[column.key];
+                    const display = column.render
+                      ? column.render(value, record)
+                      : column.key === primaryField
+                        ? String(value ?? record.id)
+                        : String(value ?? "-");
+                    return (
+                      <td key={column.key} className={`px-3 py-3 ${column.key === primaryField ? "font-semibold text-white" : ""}`}>
+                        {display}
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-3">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {renderRowActions?.(record)}
                       <button type="button" onClick={() => startEdit(record)} className="rounded-xl border border-white/10 px-3 py-2 font-bold text-white">Edit</button>
                       <button type="button" onClick={() => void remove(record.id)} className="rounded-xl border border-rose-400/30 px-3 py-2 font-bold text-rose-200">Delete</button>
                     </div>
@@ -165,7 +239,7 @@ export default function AdminResourceManager({ title, description, resource, fie
               ))}
               {!records.length ? (
                 <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-slate-500">No records yet. Create the first one above.</td>
+                  <td colSpan={columns.length + 1} className="px-3 py-8 text-center text-slate-500">No records yet. Create the first one above.</td>
                 </tr>
               ) : null}
             </tbody>

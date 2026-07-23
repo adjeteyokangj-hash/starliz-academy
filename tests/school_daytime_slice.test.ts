@@ -3,7 +3,7 @@ import test from "node:test";
 
 import {
   bootstrapDaytimeSchool,
-  DAYTIME_PERIODS,
+  periodsForDay,
   SEED_STUDENTS,
   SEED_TUTORS,
   emptyBucket,
@@ -55,6 +55,12 @@ function makeBootstrapStore() {
     startsAt: string;
     endsAt: string;
     subject: string;
+    title: string;
+    lessonType: string;
+    skillFocus: string | null;
+    room: string | null;
+    teacherId: string | null;
+    lessonId: string | null;
   }>();
   let seq = 0;
   const id = (prefix: string) => `${prefix}-${++seq}`;
@@ -163,6 +169,34 @@ function makeBootstrapStore() {
       }
       return null;
     },
+    listClassroomDayLessons: async (input) => {
+      return [...dayLessons.values()]
+        .filter((row) => row.schoolId === input.schoolId && row.classroomId === input.classroomId)
+        .map((row) => ({
+          id: row.id,
+          dayOfWeek: row.dayOfWeek,
+          startsAt: row.startsAt,
+          endsAt: row.endsAt,
+          subject: row.subject,
+          title: row.title,
+          lessonType: row.lessonType,
+          skillFocus: row.skillFocus,
+          room: row.room,
+          teacherId: row.teacherId,
+          lessonId: row.lessonId,
+        }));
+    },
+    updateDayLessonSlot: async (input) => {
+      const row = dayLessons.get(input.dayLessonId);
+      if (!row) return;
+      row.title = input.title;
+      row.subject = input.subject;
+      row.lessonType = input.lessonType;
+      row.skillFocus = input.skillFocus;
+      row.room = input.room;
+      row.teacherId = input.teacherId;
+      row.lessonId = input.lessonId;
+    },
     createDayLesson: async (input) => {
       const row = {
         id: id("day"),
@@ -172,9 +206,38 @@ function makeBootstrapStore() {
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         subject: input.subject,
+        title: input.title,
+        lessonType: input.lessonType,
+        skillFocus: input.skillFocus,
+        room: input.room,
+        teacherId: input.teacherId,
+        lessonId: input.lessonId,
       };
       dayLessons.set(row.id, row);
       return row;
+    },
+    createDayLessonsBatch: async (rows) => {
+      const created = [];
+      for (const input of rows) {
+        const row = {
+          id: id("day"),
+          schoolId: input.schoolId,
+          classroomId: input.classroomId,
+          dayOfWeek: input.dayOfWeek,
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+          subject: input.subject,
+          title: input.title,
+          lessonType: input.lessonType,
+          skillFocus: input.skillFocus,
+          room: input.room,
+          teacherId: input.teacherId,
+          lessonId: input.lessonId,
+        };
+        dayLessons.set(row.id, row);
+        created.push({ id: row.id });
+      }
+      return created;
     },
     writeSchoolAuditLog: async () => undefined,
     hashPassword: async () => "hash",
@@ -191,10 +254,19 @@ test("bootstrap first run creates tutors, students, enrolments, and timetable", 
   assert.equal(result.summary.tutors.created, SEED_TUTORS.length);
   assert.equal(result.summary.students.created, SEED_STUDENTS.length);
   assert.equal(result.summary.enrolments.created, SEED_STUDENTS.length);
-  assert.equal(result.summary.dayLessons.created, DAYTIME_PERIODS.length * 5);
+  assert.equal(result.summary.dayLessons.created, periodsForDay(1).length * 5);
   assert.equal(store.teachers.size, SEED_TUTORS.length);
   assert.equal(store.students.size, SEED_STUDENTS.length);
-  assert.equal(store.dayLessons.size, DAYTIME_PERIODS.length * 5);
+  assert.equal(store.dayLessons.size, periodsForDay(1).length * 5);
+  const mondayTitles = [...store.dayLessons.values()]
+    .filter((row) => row.dayOfWeek === 1 && row.startsAt === "09:00")
+    .map((row) => row.title);
+  const tuesdayTitles = [...store.dayLessons.values()]
+    .filter((row) => row.dayOfWeek === 2 && row.startsAt === "09:00")
+    .map((row) => row.title);
+  assert.equal(mondayTitles[0], "English — Guided reading");
+  assert.equal(tuesdayTitles[0], "English — Writing craft");
+  assert.notEqual(mondayTitles[0], tuesdayTitles[0]);
 });
 
 test("bootstrap second run does not duplicate tutors, students, enrolments, or periods", async () => {
@@ -210,10 +282,10 @@ test("bootstrap second run does not duplicate tutors, students, enrolments, or p
   assert.equal(second.summary.enrolments.created, 0);
   assert.equal(second.summary.enrolments.reused, SEED_STUDENTS.length);
   assert.equal(second.summary.dayLessons.created, 0);
-  assert.equal(second.summary.dayLessons.reused, DAYTIME_PERIODS.length * 5);
+  assert.equal(second.summary.dayLessons.reused, periodsForDay(1).length * 5);
   assert.equal(store.teachers.size, SEED_TUTORS.length);
   assert.equal(store.students.size, SEED_STUDENTS.length);
-  assert.equal(store.dayLessons.size, DAYTIME_PERIODS.length * 5);
+  assert.equal(store.dayLessons.size, periodsForDay(1).length * 5);
   assert.equal(second.changed, false);
 });
 
@@ -226,8 +298,8 @@ test("bootstrap restores missing timetable without duplicating roster", async ()
   if (!restored.ok) return;
   assert.equal(store.teachers.size, SEED_TUTORS.length);
   assert.equal(store.students.size, SEED_STUDENTS.length);
-  assert.equal(store.dayLessons.size, DAYTIME_PERIODS.length * 5);
-  assert.equal(restored.summary.dayLessons.restored, DAYTIME_PERIODS.length * 5);
+  assert.equal(store.dayLessons.size, periodsForDay(1).length * 5);
+  assert.equal(restored.summary.dayLessons.restored, periodsForDay(1).length * 5);
   assert.equal(restored.summary.tutors.created, 0);
   assert.equal(restored.summary.students.created, 0);
 });

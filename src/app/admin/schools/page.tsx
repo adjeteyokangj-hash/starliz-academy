@@ -39,7 +39,7 @@ function badgeClass(value: string): string {
 }
 
 function shortDate(iso: string | null): string {
-  if (!iso) return "-";
+  if (!iso) return "—";
   return new Date(iso).toLocaleDateString();
 }
 
@@ -56,7 +56,7 @@ function safeguardingLabel(school: SchoolRecord): { label: string; className: st
     return { label: "Critical", className: "border-rose-500/40 bg-rose-500/10 text-rose-200" };
   }
   if (school.safeguarding.openAlerts > 0) {
-    return { label: "Warning", className: "border-amber-500/40 bg-amber-500/10 text-amber-200" };
+    return { label: "Watch", className: "border-amber-500/40 bg-amber-500/10 text-amber-200" };
   }
   return { label: "Clear", className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" };
 }
@@ -150,68 +150,68 @@ export default function AdminSchoolsPage() {
   }, [filteredSchools]);
 
   return (
-    <main className="space-y-6 text-slate-100">
-      <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">Schools</p>
-        <h1 className="mt-1 text-2xl font-black text-white">Schools</h1>
-        <p className="mt-1 text-sm text-slate-300">Registered schools list with operational readiness and status overview.</p>
+    <main className="space-y-8 text-slate-100">
+      <section className="relative overflow-hidden rounded-3xl border border-slate-700/60 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-6 py-7 sm:px-8">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.12),transparent_55%)]" />
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Schools</h1>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400 sm:text-base">
+              Registry of registered schools — readiness, safeguarding signals, and licence status.
+            </p>
+          </div>
+          <div className="relative flex flex-wrap gap-2">
+            <Link
+              href="/admin/schools?start=add-school"
+              className="rounded-xl border border-sky-400/50 bg-sky-500/15 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/25"
+            >
+              Add School
+            </Link>
+            <Link
+              href="/admin/schools?start=onboarding-setup"
+              className="rounded-xl border border-slate-600/80 bg-slate-950/50 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+            >
+              Onboarding Setup
+            </Link>
+          </div>
+        </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-lg border border-slate-600 bg-slate-950/70 px-2.5 py-1.5 font-semibold text-slate-200">Schools</span>
-          <Link
-            href="/admin/schools?start=add-school"
-            className="rounded-lg border border-slate-600 bg-slate-950/70 px-2.5 py-1.5 font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
-          >
-            Add School
-          </Link>
-          <Link
-            href="/admin/schools?start=onboarding-setup"
-            className="rounded-lg border border-sky-500/60 bg-sky-500/10 px-2.5 py-1.5 font-semibold text-sky-100 transition hover:bg-sky-500/20"
-          >
-            School Onboarding Setup
-          </Link>
+        <div className="relative mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { label: "Registered", value: summary.totalSchools, tone: "text-white" },
+            { label: "Active students", value: summary.totalStudents, tone: "text-white" },
+            { label: "Active teachers", value: summary.totalTeachers, tone: "text-white" },
+            { label: "Safeguarding watch", value: summary.schoolsAtRisk, tone: "text-rose-200" },
+          ].map((metric) => (
+            <article
+              key={metric.label}
+              className="rounded-2xl border border-slate-700/60 bg-slate-950/55 px-4 py-4 backdrop-blur-sm"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{metric.label}</p>
+              <p className={`mt-2 text-3xl font-semibold tracking-tight ${metric.tone}`}>{metric.value}</p>
+            </article>
+          ))}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-3">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Registered Schools</p>
-            <p className="mt-1 text-2xl font-black text-white">{summary.totalSchools}</p>
-          </article>
-          <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-3">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Active Students</p>
-            <p className="mt-1 text-2xl font-black text-white">{summary.totalStudents}</p>
-          </article>
-          <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-3">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Active Teachers</p>
-            <p className="mt-1 text-2xl font-black text-white">{summary.totalTeachers}</p>
-          </article>
-          <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-3">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Safeguarding Watch</p>
-            <p className="mt-1 text-2xl font-black text-rose-200">{summary.schoolsAtRisk}</p>
-          </article>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4">
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          <label className="space-y-1 text-xs font-semibold text-slate-300 md:col-span-2">
-            Search schools
+      <section className="rounded-2xl border border-slate-700/60 bg-slate-950/40 p-4 sm:p-5">
+        <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+          <label className="space-y-1.5 text-xs font-semibold text-slate-400">
+            Search
             <input
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by school name, admin lead, or email"
-              className="w-full rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-sky-400"
+              placeholder="School name, admin lead, or email"
+              className="w-full rounded-xl border border-slate-700/80 bg-slate-950/80 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-sky-500/50"
             />
           </label>
-          <label className="space-y-1 text-xs font-semibold text-slate-300">
-            Filter by status
+          <label className="space-y-1.5 text-xs font-semibold text-slate-400">
+            Status
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
-              className="w-full rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-sky-400"
+              className="w-full rounded-xl border border-slate-700/80 bg-slate-950/80 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition focus:border-sky-500/50"
             >
               <option value="all">All statuses</option>
               <option value="active">Active</option>
@@ -224,22 +224,17 @@ export default function AdminSchoolsPage() {
       </section>
 
       {escalationPreview.length > 0 ? (
-        <section className="rounded-2xl border border-amber-500/35 bg-amber-500/10 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-200">Escalation Warning</p>
-              <p className="mt-1 text-sm text-amber-100">Top safeguarding signals requiring governance follow-up.</p>
-            </div>
-            <p className="text-xs text-amber-100/80">Queue is intentionally compact on this page.</p>
-          </div>
-          <ul className="mt-3 space-y-2 text-sm text-amber-100">
+        <section className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-200/90">Needs attention</p>
+          <p className="mt-1 text-sm text-amber-100/80">Safeguarding signals requiring follow-up.</p>
+          <ul className="mt-4 space-y-2">
             {escalationPreview.map((school) => (
-              <li key={school.id} className="rounded-lg border border-amber-300/20 bg-slate-950/35 px-3 py-2">
+              <li key={school.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/15 bg-slate-950/40 px-3.5 py-2.5 text-sm">
                 <Link href={`/admin/schools/${school.id}`} className="font-semibold text-white hover:text-sky-200">
                   {school.name}
                 </Link>
-                <span className="ml-2 text-xs text-amber-100/80">
-                  Critical: {school.safeguarding.criticalAlerts} | Open: {school.safeguarding.openAlerts}
+                <span className="text-xs text-amber-100/70">
+                  Critical {school.safeguarding.criticalAlerts} · Open {school.safeguarding.openAlerts}
                 </span>
               </li>
             ))}
@@ -248,51 +243,56 @@ export default function AdminSchoolsPage() {
       ) : null}
 
       {loading ? (
-        <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-6 text-sm text-slate-300">Loading schools...</section>
+        <section className="rounded-2xl border border-slate-700/60 bg-slate-950/40 px-6 py-10 text-sm text-slate-400">
+          Loading schools…
+        </section>
       ) : null}
 
       {error ? (
-        <section className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-100">{error}</section>
+        <section className="rounded-2xl border border-rose-500/35 bg-rose-500/10 px-5 py-4 text-sm text-rose-100">
+          <p className="font-semibold text-rose-50">{error}</p>
+          <p className="mt-1 text-rose-100/75">Refresh the page, or check that the admin API is reachable.</p>
+        </section>
       ) : null}
 
       {!loading && !error && filteredSchools.length === 0 ? (
-        <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-6">
-          <h2 className="text-xl font-black text-white">No schools registered yet</h2>
-          <p className="mt-2 max-w-2xl text-sm text-slate-300">
-            Start by adding your first school, then complete onboarding setup to configure staff, classes, and licence settings.
+        <section className="rounded-3xl border border-dashed border-slate-600/70 bg-slate-950/30 px-6 py-12 text-center">
+          <h2 className="text-xl font-semibold text-white">No schools yet</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-slate-400">
+            Add your first school, then run onboarding to set up staff, classes, and licences.
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
             <Link
               href="/admin/schools?start=add-school"
-              className="rounded-lg border border-sky-500/60 bg-sky-500/10 px-3 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20"
+              className="rounded-xl border border-sky-400/50 bg-sky-500/15 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/25"
             >
               Add School
             </Link>
             <Link
               href="/admin/schools?start=onboarding-setup"
-              className="rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+              className="rounded-xl border border-slate-600/80 bg-slate-950/50 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500"
             >
-              Open School Onboarding Setup
+              Onboarding Setup
             </Link>
           </div>
         </section>
       ) : null}
 
       {!loading && !error && filteredSchools.length > 0 ? (
-        <section className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4">
+        <section className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/40">
           <div className="hidden overflow-x-auto lg:block">
             <table className="min-w-full border-collapse text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-700 text-xs uppercase tracking-[0.08em] text-slate-400">
-                  <th className="px-2 py-2">School Name</th>
-                  <th className="px-2 py-2">Contact/Admin Lead</th>
-                  <th className="px-2 py-2">Students</th>
-                  <th className="px-2 py-2">Teachers</th>
-                  <th className="px-2 py-2">Safeguarding</th>
-                  <th className="px-2 py-2">Subscription/Licence</th>
-                  <th className="px-2 py-2">Setup Status</th>
-                  <th className="px-2 py-2">Last Activity</th>
-                  <th className="px-2 py-2">Action</th>
+                <tr className="border-b border-slate-800 text-[11px] uppercase tracking-[0.12em] text-slate-500">
+                  <th className="px-5 py-3.5 font-semibold">School</th>
+                  <th className="px-4 py-3.5 font-semibold">Admin lead</th>
+                  <th className="px-4 py-3.5 font-semibold">Students</th>
+                  <th className="px-4 py-3.5 font-semibold">Teachers</th>
+                  <th className="px-4 py-3.5 font-semibold">Safeguarding</th>
+                  <th className="px-4 py-3.5 font-semibold">Licence</th>
+                  <th className="px-4 py-3.5 font-semibold">Setup</th>
+                  <th className="px-4 py-3.5 font-semibold">Activity</th>
+                  <th className="px-5 py-3.5 font-semibold" />
                 </tr>
               </thead>
               <tbody>
@@ -308,40 +308,40 @@ export default function AdminSchoolsPage() {
                       : null;
 
                   return (
-                    <tr key={school.id} className="border-b border-slate-800/80 text-slate-200">
-                      <td className="px-2 py-3">
+                    <tr key={school.id} className="border-b border-slate-800/70 text-slate-300 transition hover:bg-slate-900/50">
+                      <td className="px-5 py-4">
                         <Link href={`/admin/schools/${school.id}`} className="font-semibold text-white hover:text-sky-200">
                           {school.name}
                         </Link>
-                        <p className="text-xs text-slate-400">Status: {school.status}</p>
+                        <p className="mt-0.5 text-xs text-slate-500 capitalize">{school.status}</p>
                       </td>
-                      <td className="px-2 py-3">
-                        <p>{school.ownerName ?? "-"}</p>
-                        <p className="text-xs text-slate-400">{school.ownerEmail ?? school.contactEmail ?? "No contact email"}</p>
+                      <td className="px-4 py-4">
+                        <p className="text-slate-200">{school.ownerName ?? "—"}</p>
+                        <p className="text-xs text-slate-500">{school.ownerEmail ?? school.contactEmail ?? "No email"}</p>
                       </td>
-                      <td className="px-2 py-3">{activeStudents}</td>
-                      <td className="px-2 py-3">{activeTeachers}</td>
-                      <td className="px-2 py-3">
-                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${safeguarding.className}`}>
+                      <td className="px-4 py-4 tabular-nums text-slate-200">{activeStudents}</td>
+                      <td className="px-4 py-4 tabular-nums text-slate-200">{activeTeachers}</td>
+                      <td className="px-4 py-4">
+                        <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${safeguarding.className}`}>
                           {safeguarding.label}
                         </span>
                       </td>
-                      <td className="px-2 py-3">
-                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${badgeClass(school.licence?.status ?? "pilot")}`}>
+                      <td className="px-4 py-4">
+                        <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${badgeClass(school.licence?.status ?? "pilot")}`}>
                           {school.licence?.status ?? "pilot"}
                         </span>
-                        <p className="mt-1 text-xs text-slate-400">
-                          Seats: {school.licence?.seatsUsed ?? 0}/{school.licence?.seatLimit ?? "-"}
+                        <p className="mt-1 text-xs text-slate-500">
+                          {school.licence?.seatsUsed ?? 0}/{school.licence?.seatLimit ?? "—"} seats
                         </p>
                       </td>
-                      <td className="px-2 py-3">{setupStatus(school)}</td>
-                      <td className="px-2 py-3">{shortDate(lastActivity)}</td>
-                      <td className="px-2 py-3">
+                      <td className="px-4 py-4 text-slate-300">{setupStatus(school)}</td>
+                      <td className="px-4 py-4 text-slate-400">{shortDate(lastActivity)}</td>
+                      <td className="px-5 py-4 text-right">
                         <Link
                           href={`/admin/schools/${school.id}`}
-                          className="inline-flex rounded-lg border border-slate-600 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                          className="inline-flex rounded-lg border border-slate-600/80 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
                         >
-                          View School Dashboard
+                          Open
                         </Link>
                       </td>
                     </tr>
@@ -351,7 +351,7 @@ export default function AdminSchoolsPage() {
             </table>
           </div>
 
-          <div className="grid gap-3 lg:hidden">
+          <div className="grid gap-3 p-4 lg:hidden">
             {filteredSchools.map((school) => {
               const activeTeachers = school.teachers.filter((row) => row.status === "active").length;
               const activeStudents = school.students.filter((row) => row.status === "active").length;
@@ -364,31 +364,31 @@ export default function AdminSchoolsPage() {
                   : null;
 
               return (
-                <article key={school.id} className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+                <article key={school.id} className="rounded-2xl border border-slate-700/60 bg-slate-950/55 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <Link href={`/admin/schools/${school.id}`} className="text-base font-semibold text-white hover:text-sky-200">
                         {school.name}
                       </Link>
-                      <p className="text-xs text-slate-400">{school.ownerName ?? "No admin lead assigned"}</p>
+                      <p className="text-xs text-slate-500">{school.ownerName ?? "No admin lead"}</p>
                     </div>
-                    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${badgeClass(school.status)}`}>
+                    <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${badgeClass(school.status)}`}>
                       {school.status}
                     </span>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
-                    <p>Students: {activeStudents}</p>
-                    <p>Teachers: {activeTeachers}</p>
-                    <p>Safeguarding: {safeguarding.label}</p>
-                    <p>Setup: {setupStatus(school)}</p>
-                    <p>Licence: {school.licence?.status ?? "pilot"}</p>
-                    <p>Last activity: {shortDate(lastActivity)}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-400">
+                    <p>Students: <span className="text-slate-200">{activeStudents}</span></p>
+                    <p>Teachers: <span className="text-slate-200">{activeTeachers}</span></p>
+                    <p>Safeguarding: <span className="text-slate-200">{safeguarding.label}</span></p>
+                    <p>Setup: <span className="text-slate-200">{setupStatus(school)}</span></p>
+                    <p>Licence: <span className="text-slate-200">{school.licence?.status ?? "pilot"}</span></p>
+                    <p>Activity: <span className="text-slate-200">{shortDate(lastActivity)}</span></p>
                   </div>
                   <Link
                     href={`/admin/schools/${school.id}`}
-                    className="mt-3 inline-flex rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                    className="mt-4 inline-flex rounded-lg border border-slate-600/80 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
                   >
-                    View School Dashboard
+                    Open school
                   </Link>
                 </article>
               );

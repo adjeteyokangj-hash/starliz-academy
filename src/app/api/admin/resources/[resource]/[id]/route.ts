@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { adminResourceDelegates, adminResourceSchemas, isAdminResource } from "@/lib/admin-resources";
+import { applyStoreItemPolicy, enrichStoreItemsWithPolicy, splitStoreItemWrite } from "@/lib/store_item_db";
 
 type Delegate = {
   findUnique(args: unknown): Promise<unknown | null>;
@@ -26,6 +27,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ resource: 
 
   const record = await delegate.findUnique({ where: { id } });
   if (!record) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  if (resource === "store") {
+    const [enriched] = await enrichStoreItemsWithPolicy([record as { id: string }]);
+    return NextResponse.json({ record: enriched });
+  }
   return NextResponse.json({ record });
 }
 
@@ -41,8 +46,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ re
 
   try {
     const schema = adminResourceSchemas[resource].partial();
-    const data = schema.parse(await request.json());
-    const record = await delegate.update({ where: { id }, data });
+    const parsed = schema.parse(await request.json());
+    if (resource === "store") {
+      const { base, policy } = splitStoreItemWrite(parsed as Record<string, unknown>);
+      const record = Object.keys(base).length
+        ? await prisma.storeItem.update({ where: { id }, data: base as never })
+        : await prisma.storeItem.findUniqueOrThrow({ where: { id } });
+      await applyStoreItemPolicy(id, policy);
+      await writeAuditLog({
+        actorUserId: session.userId,
+        action: `${resource}.update`,
+        entityType: resource,
+        entityId: id,
+      });
+      const [enriched] = await enrichStoreItemsWithPolicy([record]);
+      return NextResponse.json({ record: enriched });
+    }
+
+    const record = await delegate.update({ where: { id }, data: parsed });
     await writeAuditLog({
       actorUserId: session.userId,
       action: `${resource}.update`,
@@ -50,8 +71,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ re
       entityId: id,
     });
     return NextResponse.json({ record });
-  } catch {
-    return NextResponse.json({ error: "Invalid resource payload." }, { status: 400 });
+  } catch (error) {
+    console.error(`[admin/${resource}] PATCH failed`, error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Invalid resource payload." },
+      { status: 400 },
+    );
   }
 }
 

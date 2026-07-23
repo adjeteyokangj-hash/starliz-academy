@@ -1,4 +1,4 @@
-﻿import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/db";
 
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
 
@@ -404,6 +404,7 @@ export const schoolDashboardInclude = {
   licence: true,
   classrooms: {
     orderBy: [{ updatedAt: "desc" as const }],
+    take: 80,
     include: {
       teacher: {
         include: {
@@ -415,12 +416,14 @@ export const schoolDashboardInclude = {
   },
   teachers: {
     orderBy: [{ updatedAt: "desc" as const }],
+    take: 120,
     include: {
       user: { select: { id: true, email: true, name: true } },
     },
   },
   students: {
     orderBy: [{ updatedAt: "desc" as const }],
+    take: 300,
     include: {
       child: {
         select: {
@@ -434,13 +437,14 @@ export const schoolDashboardInclude = {
   },
   safeguardingAlerts: {
     where: { status: { in: ["open", "under_review", "escalated"] } },
+    take: 100,
     select: {
       severity: true,
     },
   },
   safeguardingIncidents: {
     orderBy: [{ updatedAt: "desc" as const }],
-    take: 25,
+    take: 12,
     include: {
       student: { select: { name: true } },
       reportedBy: { select: { name: true, email: true } },
@@ -448,7 +452,7 @@ export const schoolDashboardInclude = {
   },
   auditLogs: {
     orderBy: [{ createdAt: "desc" as const }],
-    take: 40,
+    take: 15,
     select: {
       id: true,
       action: true,
@@ -461,7 +465,7 @@ export const schoolDashboardInclude = {
   },
   dayLessons: {
     orderBy: [{ dayOfWeek: "asc" as const }, { periodIndex: "asc" as const }],
-    take: 120,
+    take: 600,
     include: {
       classroom: { select: { id: true, name: true } },
       teacher: {

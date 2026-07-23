@@ -462,6 +462,10 @@ export type CatchUpRecommendation = TopicSignal & {
   sourceTrigger: CatchUpTriggerType;
   recommendedAction: string;
   routeTarget?: string | null;
+  /** Additive explainability — evidence strings supporting this recommendation. */
+  evidenceCitations?: string[];
+  /** Additive honesty — true when supporting attempt evidence is thin. */
+  insufficientData?: boolean;
 };
 
 export type AssessmentRecommendation = TopicSignal & {

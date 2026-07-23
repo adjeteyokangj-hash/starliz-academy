@@ -2,25 +2,10 @@
 
 import Image from "next/image";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import { resolveParentPinGateState } from "@/lib/parent-pin-gate";
-
-type ParentProfilePayload = {
-  parent: {
-    id: string;
-    name: string;
-    email: string;
-    label: string;
-  };
-  children: Array<{
-    id: string;
-    name: string;
-    yearGroup: string | null;
-    avatar: string | null;
-    pinEnabled: boolean;
-  }>;
-};
+import type { ParentProfilesPayload } from "@/lib/parent-profiles";
 
 const PIN_VERIFY_TIMEOUT_MS = 45000;
 
@@ -144,14 +129,24 @@ function ChildAvatarOrb({ index }: { index: number }) {
   );
 }
 
-export default function ProfileSelectionClient() {
+export default function ProfileSelectionClient({
+  intent = null,
+  nextPath = null,
+  initialPayload = null,
+}: {
+  intent?: string | null;
+  nextPath?: string | null;
+  initialPayload?: ParentProfilesPayload | null;
+}) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [payload, setPayload] = useState<ParentProfilePayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [payload, setPayload] = useState<ParentProfilesPayload | null>(initialPayload);
+  const [loading, setLoading] = useState(!initialPayload);
+  const [error, setError] = useState<string | null>(
+    initialPayload ? null : "Could not load profiles.",
+  );
   const [parentPinStatus, setParentPinStatus] = useState<{ hasPin: boolean; unlocked: boolean } | null>(null);
   const [parentPinSetupRequired, setParentPinSetupRequired] = useState(false);
+  const [loadToken, setLoadToken] = useState(0);
 
   const [showParentPinModal, setShowParentPinModal] = useState(false);
   const [parentPin, setParentPin] = useState("");
@@ -168,33 +163,80 @@ export default function ProfileSelectionClient() {
   const childSwitchInFlightRef = useRef(false);
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const [response, pinStatusResponse] = await Promise.all([
-          fetchWithRefreshRetry("/api/parent/profiles", { credentials: "include", cache: "no-store" }),
-          fetchWithRefreshRetry("/api/pin/status", { credentials: "include", cache: "no-store" }),
-        ]);
-        if (pinStatusResponse.ok) {
+    // SSR already provided children — only load PIN status in the background.
+    if (initialPayload && loadToken === 0) {
+      setPayload(initialPayload);
+      setLoading(false);
+      setError(null);
+      void (async () => {
+        try {
+          const pinStatusResponse = await fetchWithRefreshRetry("/api/pin/status", {
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (!pinStatusResponse.ok) return;
           const statusPayload = (await pinStatusResponse.json()) as { hasPin: boolean; unlocked: boolean };
           setParentPinStatus(statusPayload);
           if (!statusPayload.hasPin) {
             setParentPinSetupRequired(true);
           }
+        } catch {
+          // PIN status is optional for showing the child list.
         }
+      })();
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetchWithRefreshRetry("/api/parent/profiles", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!active) return;
+
         if (!response.ok) {
-          setError("Could not load profiles.");
+          setError(response.status === 401
+            ? "Session expired. Please log in again."
+            : "Could not load profiles.");
           setLoading(false);
           return;
         }
-        const nextPayload = (await response.json()) as ParentProfilePayload;
+
+        const nextPayload = (await response.json()) as ParentProfilesPayload;
+        if (!active) return;
         setPayload(nextPayload);
         setLoading(false);
+
+        try {
+          const pinStatusResponse = await fetchWithRefreshRetry("/api/pin/status", {
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (!active || !pinStatusResponse.ok) return;
+          const statusPayload = (await pinStatusResponse.json()) as { hasPin: boolean; unlocked: boolean };
+          if (!active) return;
+          setParentPinStatus(statusPayload);
+          if (!statusPayload.hasPin) {
+            setParentPinSetupRequired(true);
+          }
+        } catch {
+          // PIN status is optional for showing the child list.
+        }
       } catch {
+        if (!active) return;
         setError("Could not load profiles.");
         setLoading(false);
       }
     })();
-  }, []);
+
+    return () => {
+      active = false;
+    };
+  }, [initialPayload, loadToken]);
 
   useEffect(() => {
     router.prefetch("/parent/dashboard");
@@ -203,11 +245,10 @@ export default function ProfileSelectionClient() {
   }, [router]);
 
   function goToParentPinSetup() {
-    const next = safeParentNext(searchParams.get("next"));
+    const next = safeParentNext(nextPath);
     router.replace(`/parent-pin?reset=1&next=${encodeURIComponent(next)}`);
   }
 
-  const intent = searchParams.get("intent");
   const bannerMessage = useMemo(() => {
     if (intent === "parent") {
       return "Enter the Parent PIN to access the parent dashboard.";
@@ -267,7 +308,7 @@ export default function ProfileSelectionClient() {
         return;
       }
 
-      router.replace(safeParentNext(searchParams.get("next")));
+      router.replace(safeParentNext(nextPath));
     } catch (error: unknown) {
       if (isAbortError(error)) {
         setParentPinError("Verification timed out. Please try again.");
@@ -366,8 +407,24 @@ export default function ProfileSelectionClient() {
   if (!payload || error) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#1b2359_0%,#070b24_42%,#030512_100%)] px-4">
-        <div className="w-full max-w-md rounded-2xl border border-rose-300/40 bg-rose-950/30 p-5 text-sm text-rose-100">
-          {error ?? "Could not load profile selection."}
+        <div className="w-full max-w-md space-y-3 rounded-2xl border border-rose-300/40 bg-rose-950/30 p-5 text-sm text-rose-100">
+          <p>{error ?? "Could not load profile selection."}</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setLoadToken((token) => token + 1)}
+              className="rounded-xl border border-rose-200/40 bg-rose-500/20 px-3 py-2 text-xs font-semibold text-rose-50 hover:bg-rose-500/30"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-white/5"
+            >
+              Back to login
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -446,6 +503,20 @@ export default function ProfileSelectionClient() {
           </p>
         ) : null}
 
+        {parentGateState === "setup_required" ? (
+          <div className="mt-6 rounded-2xl border border-amber-300/35 bg-amber-400/10 px-4 py-4 text-sm text-amber-100">
+            <p className="font-semibold">Parent PIN has been reset. Please create a new PIN to open the parent dashboard.</p>
+            <button
+              type="button"
+              onClick={goToParentPinSetup}
+              className="mt-3 rounded-xl bg-amber-300 px-4 py-2 text-sm font-black text-slate-900 hover:bg-amber-200"
+              data-testid="create-parent-pin-cta"
+            >
+              Create parent PIN
+            </button>
+          </div>
+        ) : null}
+
         {childSwitchError ? (
           <p role="alert" className="mt-4 rounded-2xl border border-rose-300/35 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-100">
             {childSwitchError}
@@ -457,8 +528,38 @@ export default function ProfileSelectionClient() {
             type="button"
             onClick={() => {
               if (submitting) return;
+              if (parentPinStatus === null) {
+                setPendingProfileId("parent");
+                void (async () => {
+                  try {
+                    const pinStatusResponse = await fetchWithRefreshRetry("/api/pin/status", {
+                      credentials: "include",
+                      cache: "no-store",
+                    });
+                    if (!pinStatusResponse.ok) {
+                      setChildSwitchError("Could not check parent PIN status. Use Create parent PIN above.");
+                      setPendingProfileId(null);
+                      return;
+                    }
+                    const statusPayload = (await pinStatusResponse.json()) as { hasPin: boolean; unlocked: boolean };
+                    setParentPinStatus(statusPayload);
+                    if (!statusPayload.hasPin) {
+                      setParentPinSetupRequired(true);
+                      goToParentPinSetup();
+                      return;
+                    }
+                    setParentPin("");
+                    setParentPinError(null);
+                    setShowParentPinModal(true);
+                  } catch {
+                    setChildSwitchError("Could not check parent PIN status. Please try again.");
+                    setPendingProfileId(null);
+                  }
+                })();
+                return;
+              }
               if (parentGateState === "setup_required") {
-                setParentPinSetupRequired(true);
+                goToParentPinSetup();
                 return;
               }
               setPendingProfileId("parent");
@@ -487,7 +588,7 @@ export default function ProfileSelectionClient() {
                   <p className="mt-2 text-base text-slate-200">Parent dashboard is PIN protected.</p>
                   <p className="mt-3 text-sm font-semibold text-fuchsia-200">
                     {parentGateState === "setup_required"
-                      ? "Parent PIN has been reset. Create a new PIN to continue."
+                      ? "Tap to create a new parent PIN"
                       : pendingProfileId === "parent"
                         ? "Opening..."
                         : "PIN required to access"}
@@ -524,7 +625,13 @@ export default function ProfileSelectionClient() {
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300">Child</p>
                     <p className="mt-2 truncate text-2xl font-black text-white">{child.name}</p>
                     <p className="mt-1 text-base text-slate-300">{child.yearGroup ?? "Year group not set"}</p>
-                    <p className="mt-3 text-sm font-medium text-slate-300">{pendingProfileId === child.id ? "Opening..." : child.pinEnabled ? "PIN required" : "No PIN required"}</p>
+                    <p className="mt-3 text-sm font-medium text-slate-300">
+                      {pendingProfileId === child.id
+                        ? "Opening student dashboard…"
+                        : child.pinEnabled
+                          ? "PIN required"
+                          : "No PIN required"}
+                    </p>
                   </div>
                 </div>
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-indigo-300/45 bg-indigo-400/5 text-cyan-200 transition group-hover:border-cyan-300 group-hover:text-white">
@@ -536,19 +643,6 @@ export default function ProfileSelectionClient() {
             </button>
           ))}
         </div>
-
-        {parentGateState === "setup_required" ? (
-          <div className="mt-6 rounded-2xl border border-amber-300/35 bg-amber-400/10 px-4 py-4 text-sm text-amber-100">
-            <p className="font-semibold">Parent PIN has been reset. Please create a new PIN.</p>
-            <button
-              type="button"
-              onClick={goToParentPinSetup}
-              className="mt-3 rounded-xl bg-amber-300 px-4 py-2 text-sm font-black text-slate-900 hover:bg-amber-200"
-            >
-              Create parent PIN
-            </button>
-          </div>
-        ) : null}
 
         <div className="mt-6 rounded-[1.8rem] border border-white/10 bg-[linear-gradient(135deg,rgba(76,29,149,0.3),rgba(15,23,42,0.72))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:p-6">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">

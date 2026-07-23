@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { adminResourceDelegates, adminResourceSchemas, adminResourceSearchFields, isAdminResource } from "@/lib/admin-resources";
+import { ensureCatalogItemsInDb } from "@/app/api/shop/_helpers";
+import { applyStoreItemPolicy, enrichStoreItemsWithPolicy, splitStoreItemWrite } from "@/lib/store_item_db";
 
 type Delegate = {
   findMany(args?: unknown): Promise<unknown[]>;
@@ -25,6 +27,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ reso
     return NextResponse.json({ error: "Unknown admin resource." }, { status: 404 });
   }
 
+  if (resource === "store") {
+    try {
+      await ensureCatalogItemsInDb();
+    } catch (error) {
+      console.error("[admin/store] catalog seed failed", error);
+    }
+  }
+
   const search = new URL(request.url).searchParams.get("search")?.trim();
   const searchFields = adminResourceSearchFields[resource];
   const records = await delegate.findMany({
@@ -34,8 +44,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ reso
         }
       : undefined,
     orderBy: { createdAt: "desc" },
-    take: 100,
+    take: 200,
   });
+
+  if (resource === "store") {
+    const enriched = await enrichStoreItemsWithPolicy(records as Array<{ id: string }>);
+    return NextResponse.json({ records: enriched });
+  }
 
   return NextResponse.json({ records });
 }
@@ -51,8 +66,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ res
   }
 
   try {
-    const data = adminResourceSchemas[resource].parse(await request.json());
-    const record = await delegate.create({ data });
+    const parsed = adminResourceSchemas[resource].parse(await request.json());
+    if (resource === "store") {
+      const { base, policy } = splitStoreItemWrite(parsed as Record<string, unknown>);
+      const record = await prisma.storeItem.create({ data: base as never });
+      await applyStoreItemPolicy(record.id, {
+        rewardType: policy.rewardType ?? "digital",
+        approvalMode: policy.approvalMode ?? "none",
+        stockTotal: policy.stockTotal ?? null,
+      });
+      await writeAuditLog({
+        actorUserId: session.userId,
+        action: `${resource}.create`,
+        entityType: resource,
+        entityId: record.id,
+      });
+      const [enriched] = await enrichStoreItemsWithPolicy([record]);
+      return NextResponse.json({ record: enriched }, { status: 201 });
+    }
+
+    const record = await delegate.create({ data: parsed });
     await writeAuditLog({
       actorUserId: session.userId,
       action: `${resource}.create`,
@@ -60,7 +93,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ res
       entityId: record.id,
     });
     return NextResponse.json({ record }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Invalid resource payload." }, { status: 400 });
+  } catch (error) {
+    console.error(`[admin/${resource}] POST failed`, error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Invalid resource payload." },
+      { status: 400 },
+    );
   }
 }

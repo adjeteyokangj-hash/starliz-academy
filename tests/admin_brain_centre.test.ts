@@ -178,6 +178,9 @@ function makeBrain(input: {
         ? "Quick Level Finder is complete but lesson or quiz activity has not started yet."
         : "Brain state detail",
       reviewRecommended: dataState !== "active_with_qlf",
+      confidenceBand: dataState === "active_with_qlf" ? "high" : dataState === "new_no_activity" ? "insufficient" : "medium",
+      recommendationHonesty: dataState === "active_with_qlf" ? "ready" : dataState === "new_no_activity" ? "insufficient_data" : "limited_evidence",
+      evidenceCitations: dataState === "active_with_qlf" ? ["attempts:1", "qlf:completed"] : [],
     },
     generatedAt: now,
   };
@@ -539,6 +542,10 @@ test("Brain Centre student investigation exposes evidence chain, diagnostics, co
 
   assert.equal(response.status, 200);
   assert.equal(payload.student.id, "student-1");
+  assert.equal(payload.dataState.state, "active_with_qlf");
+  assert.equal(payload.recommendationHonesty, "ready");
+  assert.ok(payload.evidenceCitations.includes("attempts:1"));
+  assert.ok(Array.isArray(payload.catchUpExplainability));
   assert.ok(payload.evidenceChain.some((stage) => stage.stage === "Attempt" && stage.status === "present"));
   assert.equal(payload.coachTutorAudit.status, "mismatch");
   assert.ok(payload.evidenceChain.some((stage) => stage.stage === "Coach/Tutor" && stage.status === "warning"));
@@ -547,6 +554,155 @@ test("Brain Centre student investigation exposes evidence chain, diagnostics, co
   assert.ok(payload.timeline.some((event) => event.type === "heartbeat_warning"));
   assert.ok(payload.timeline.some((event) => event.type === "catch_up_generated"));
   assert.equal(payload.warningReview.status, "unreviewed");
+});
+
+test("Brain Centre investigation caps severity and ignores missing-data disagreements when evidence is thin", async () => {
+  const brain = {
+    ...makeBrain({
+      studentId: "student-1",
+      dataState: "new_no_activity",
+      checklistStatus: "warning",
+      heartbeat: heartbeat({
+        primaryAction: "assign_catch_up",
+        riskLevel: "critical",
+        urgency: "critical",
+        confidenceScore: 22,
+        reasons: ["Active or overdue catch-up tasks must be completed before progression."],
+      }),
+    }),
+    source: {
+      studentId: "student-1",
+      studentName: "Adjei",
+      yearGroup: "Year 9",
+      keyStage: "KS3",
+      assignments: [],
+      attempts: [],
+      weakAreas: [],
+      studentSkills: [],
+      coachUsage: [],
+      dictionarySignals: [],
+      progressRecords: [],
+      assessmentHistory: [],
+      generatedAt: now,
+    },
+    learningDnaSummary: null,
+    academicIntelligence: {
+      ...makeBrain({ studentId: "student-1" }).academicIntelligence,
+      summary: {
+        totalTopics: 0,
+        byStatus: {
+          not_started: 0,
+          started: 0,
+          practising: 0,
+          needs_catch_up: 0,
+          nearly_secure: 0,
+          mastered: 0,
+          needs_revision: 0,
+        },
+        needsCatchUpCount: 0,
+        needsRevisionCount: 0,
+        coveredCount: 0,
+        averageScore: null,
+      },
+      masteryExpansion: {
+        needsCatchUpTopics: 0,
+        nearlySecureTopics: 0,
+        masteredTopics: 0,
+        overdueRevisionTopics: 0,
+        highConfidenceTopics: 0,
+        priorityTopics: [],
+      },
+      nextRecommendedActions: ["Complete catch-up before progression."],
+      assessmentReadiness: "needs_catch_up",
+      catchUpRecommendations: [],
+      examReadinessProfile: {
+        score: 0,
+        band: "not_ready",
+        headline: "Not ready",
+        blockers: [],
+        recommendedActions: [],
+        signals: {
+          masteryScore: 0,
+          consistencyScore: 0,
+          examEvidenceScore: 0,
+          weakAreaPenalty: 0,
+        },
+      },
+      catchUpTasks: [{
+        taskId: "catch-up-chem",
+        studentId: "student-1",
+        recommendationId: "rec-chem",
+        title: "Chemistry practice catch-up",
+        subject: "science",
+        topic: "Chemistry",
+        status: "active",
+        priority: "high",
+        estimatedMinutes: 20,
+        sourceTrigger: "active_weak_area",
+        createdAt: now,
+        updatedAt: now,
+      }],
+      homeworkTasks: [],
+    },
+    quickLevelFinderBaseline: {
+      completedAt: now,
+      yearGroup: "Year 9",
+      parentSubjectScores: [
+        { subject: "science", accuracy: 78 },
+        { subject: "math", accuracy: 72 },
+      ],
+    },
+    evidenceSummary: {
+      assignments: { total: 0, active: 0, completed: 0 },
+      progress: { total: 0, completed: 0, averageScore: null },
+      attempts: { total: 0, correct: 0, accuracy: null },
+      weakAreas: { total: 0, active: 0, top: [] },
+      skills: { total: 0, mastered: 0, weak: 0, averageAccuracy: null },
+      certificates: { issuedCount: 0 },
+      homework: { total: 0, active: 0, completed: 0, overdue: 0 },
+    },
+  };
+
+  const response = await handleAdminBrainCentreStudentGet(
+    new Request("http://localhost/api/admin/brain-centre/student-1"),
+    { params: Promise.resolve({ studentId: "student-1" }) },
+    {
+      requireAdmin: async () => ({ session: { userId: "admin-1", email: "admin@example.com", role: "admin" }, response: null }),
+      findStudent: async () => ({
+        id: "student-1",
+        name: "Adjei",
+        yearGroup: "Year 9",
+        updatedAt: new Date(now),
+        studentProfile: { aiLearningProfileJson: profileWithSnapshot(now) },
+      }),
+      getStudentLearningBrain: async () => brain as never,
+      findLatestWarningReview: async () => null,
+    },
+  );
+  const payload = await response.json() as BrainCentreDetailPayload;
+  const investigation = payload.heartbeatInvestigation;
+  const learningDna = investigation.systems.find((row) => row.system === "Learning DNA");
+  const qlf = investigation.systems.find((row) => row.system === "QLF Baseline");
+
+  assert.equal(response.status, 200);
+  assert.equal(investigation.conflictSummary.evidenceSufficiency, "insufficient");
+  assert.equal(investigation.conflictSummary.severity, "medium");
+  assert.match(investigation.conflictSummary.honestyNote ?? "", /Thin evidence/i);
+  assert.equal(learningDna?.recommendation, "Learning DNA Missing");
+  assert.equal(learningDna?.agreement, "no_data");
+  assert.equal(learningDna?.disagreeing, false);
+  assert.equal(qlf?.recommendation, "Ready For Next Lesson");
+  assert.equal(qlf?.disagreeing, true);
+  assert.equal(investigation.conflictSummary.status, "conflict_detected");
+  assert.ok(investigation.recommendedActions[0]?.includes("Gather recent attempt evidence"));
+  assert.equal(payload.brainHealth.status, "warning");
+  assert.equal(payload.heartbeatDisplay.riskLevel, "medium");
+  assert.equal(payload.heartbeatDisplay.urgency, "medium");
+  assert.equal(payload.heartbeat.riskLevel, "critical");
+  assert.equal(
+    payload.diagnostics.issues.find((issue) => issue.code === "heartbeat_conflicts")?.severity,
+    "warning",
+  );
 });
 
 test("Brain Centre student investigation overlays matching warning review audit state", async () => {

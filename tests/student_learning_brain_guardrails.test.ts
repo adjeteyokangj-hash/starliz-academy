@@ -32,6 +32,8 @@ const FORBIDDEN_ROUTE_LEVEL_READ_PATTERNS = [
   "listHomeworkTasks(",
 ];
 
+const WRITE_PATH_GUARD = "src/lib/learning-activity/writeLearningActivity.ts";
+
 function readRoute(routePath: string): string {
   const fullPath = path.join(PROJECT_ROOT, routePath);
   return fs.readFileSync(fullPath, "utf8");
@@ -59,4 +61,11 @@ test("display/read learning routes consume Student Learning Brain and avoid dupl
     0,
     `Use Student Learning Brain for display/read learning intelligence instead of duplicating route-level reads.\n${violations.join("\n")}`,
   );
+});
+
+test("canonical learning write coordinator remains the Brain-compatible evidence entrypoint", () => {
+  const fullPath = path.join(PROJECT_ROOT, WRITE_PATH_GUARD);
+  assert.equal(fs.existsSync(fullPath), true, "writeLearningActivity.ts must remain present for evidence quality policy");
+  const source = fs.readFileSync(fullPath, "utf8");
+  assert.ok(source.includes("export"), "writeLearningActivity must export the canonical writer");
 });

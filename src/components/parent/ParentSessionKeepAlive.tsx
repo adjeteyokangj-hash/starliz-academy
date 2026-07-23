@@ -38,7 +38,10 @@ export default function ParentSessionKeepAlive() {
       }
     }
 
-    void tick();
+    // Let first-page data finish before competing for Next.js compile slots in dev.
+    const startId = window.setTimeout(() => {
+      void tick();
+    }, 15000);
     const intervalId = window.setInterval(() => {
       void tick();
     }, KEEP_ALIVE_MS);
@@ -52,6 +55,7 @@ export default function ParentSessionKeepAlive() {
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       mounted = false;
+      window.clearTimeout(startId);
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };

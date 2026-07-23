@@ -25,6 +25,10 @@ import { buildSubjectLevelProgression, progressionFriendlyLabel } from "@/lib/su
 import { buildLanguageReadinessBrain, type LanguageReadinessBrain } from "@/lib/student-learning-brain/languageReadinessBrain";
 import { classifyStudentDataState, type StudentDataNormalisationResult } from "@/lib/student-learning-brain/studentDataNormalisation";
 import { supportedContentYearGroups } from "@/lib/curriculum-level-targets";
+
+export { BRAIN_QUALITY_POLICIES } from "@/lib/student-learning-brain/qualityPolicies";
+export { classifyStudentDataState } from "@/lib/student-learning-brain/studentDataNormalisation";
+export type { StudentDataNormalisationResult, StudentDataState } from "@/lib/student-learning-brain/studentDataNormalisation";
 import type {
   AcademicIntelligenceOutput,
   AcademicSourceData,
@@ -143,6 +147,8 @@ export function buildStudentLearningBrainFromSource(input: {
   coachHeartbeatSignals?: CoachHeartbeatSignalSummary | null;
   learningDnaSummary?: Record<string, unknown> | null;
   certificateCount?: number;
+  profileCreatedAt?: string | null;
+  hasAcademicSnapshot?: boolean;
 }): StudentLearningBrain {
   const academicIntelligence = input.academicIntelligence ?? buildAcademicIntelligence(input.source, {
     existingCatchUpTasks: input.catchUpTasks,
@@ -154,6 +160,16 @@ export function buildStudentLearningBrainFromSource(input: {
     source: input.source,
     heartbeatDecision: academicIntelligence.heartbeatDecision,
   });
+
+  const earliestEvidenceAt = [
+    ...input.source.attempts.map((row) => row.createdAt),
+    ...input.source.progressRecords.map((row) => row.createdAt),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .sort()[0] ?? null;
+
+  const hasAcademicSnapshot = input.hasAcademicSnapshot
+    ?? academicIntelligence.masteryMap.length > 0;
 
   return {
     studentId: input.source.studentId,
@@ -178,9 +194,9 @@ export function buildStudentLearningBrainFromSource(input: {
       hasQuickLevelFinderCompleted: Boolean(input.source.quickLevelFinderBaseline),
       hasQuickLevelFinderSession: Boolean(input.source.quickLevelFinderBaseline),
       hasQuickLevelFinderPlacementSignal: Boolean(input.source.quickLevelFinderBaseline),
-      hasAcademicSnapshot: false,
+      hasAcademicSnapshot,
       hasLearningDna: Boolean(input.learningDnaSummary),
-      createdAt: null,
+      createdAt: input.profileCreatedAt ?? earliestEvidenceAt,
     }),
     languageReadiness,
     generatedAt: academicIntelligence.generatedAt,
@@ -191,10 +207,14 @@ export async function getStudentLearningBrain(studentId: string, options: BrainO
   const source = await buildAcademicSourceForStudent(studentId);
   if (!source) return null;
 
-  const [profile, existingCatchUpTasks, allCatchUpTasks, existingHomeworkTasks, coachHeartbeatSignals] = await Promise.all([
+  const [profile, childProfile, existingCatchUpTasks, allCatchUpTasks, existingHomeworkTasks, coachHeartbeatSignals] = await Promise.all([
     prisma.studentProfile.findUnique({
       where: { childId: studentId },
       select: { aiLearningProfileJson: true },
+    }),
+    prisma.childProfile.findUnique({
+      where: { id: studentId },
+      select: { createdAt: true },
     }),
     listCatchUpTasks(studentId),
     listCatchUpTasks(studentId, { includeHidden: true }),
@@ -258,6 +278,8 @@ export async function getStudentLearningBrain(studentId: string, options: BrainO
     coachHeartbeatSignals,
     learningDnaSummary: learningDna ? buildParentLearningDnaSummary(learningDna) : null,
     certificateCount: await readCertificateCount(studentId, profile?.aiLearningProfileJson ?? null),
+    profileCreatedAt: childProfile?.createdAt?.toISOString() ?? null,
+    hasAcademicSnapshot: Boolean(profile?.aiLearningProfileJson) && output.masteryMap.length > 0,
   });
 }
 
@@ -389,6 +411,8 @@ export function toStudentDashboardBrainView(
     heartbeatSummary: brain.heartbeatSummary,
     quickLevelFinderBaseline: brain.quickLevelFinderBaseline,
     languageReadiness: brain.languageReadiness,
+    dataState: brain.dataState,
+    recommendationHonesty: brain.dataState.recommendationHonesty ?? "ready",
     snapshot: {
       available: Boolean(snapshot),
       refreshed: snapshotResult?.refreshed ?? false,

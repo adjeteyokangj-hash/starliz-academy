@@ -1,4 +1,5 @@
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
+import SchoolSampleDataBanner from "@/components/admin/schools/SchoolSampleDataBanner";
 import Link from "next/link";
 import { getAttendanceOverview, getAttendanceStudentSignals } from "./attendance-intelligence-data";
 
@@ -19,6 +20,7 @@ export default async function SchoolAttendanceActivityPage({ params }: PageProps
       subtitle="Attendance intelligence for safeguarding risk, interventions, learning engagement, parent engagement, and AI support signals."
     >
       <div className="space-y-4">
+        <SchoolSampleDataBanner schoolId={schoolId} surface="attendance" />
         <section className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 text-xs text-sky-100">
           <p className="font-semibold">Reduced Scope</p>
           <p className="mt-1">Attendance stays education-intelligence focused. This area does not implement full timetable systems, room scheduling, payroll links, registration infrastructure, or government census workflows.</p>

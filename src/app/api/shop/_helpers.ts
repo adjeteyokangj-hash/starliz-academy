@@ -4,6 +4,8 @@ import { fromDbRecord, toDbUpdateInput } from "@/lib/child_profile_db";
 import { FLAT_REWARD_CATALOG, findRewardCatalogItem } from "@/lib/reward_catalog";
 import { levelFromXp } from "@/lib/level_system";
 import { VoiceStyle } from "@/lib/voice_options";
+import { resolveStorePolicy } from "@/lib/store-policy";
+import { enrichStoreItemsWithPolicy } from "@/lib/store_item_db";
 
 type ShopCategory = "themes" | "avatars" | "voices" | "pet" | "boosts" | "badges";
 
@@ -26,6 +28,21 @@ export type LiveShopItem = {
   stockTotal: number | null;
   stockRemaining: number | null;
   stockState: StoreStockState;
+};
+
+type StoreItemRow = {
+  id: string;
+  name: string;
+  category: string;
+  description: string | null;
+  price: number;
+  minAge: number | null;
+  maxAge: number | null;
+  requiredLevel: number | null;
+  rewardType?: string | null;
+  approvalMode?: string | null;
+  stockTotal?: number | null;
+  isActive: boolean;
 };
 
 export const shopBodySchema = z.object({
@@ -67,28 +84,100 @@ function getAdminStoreIdFromRewardId(rewardId: string): string | null {
   return rewardId.startsWith("admin-store-") ? rewardId.replace(/^admin-store-/, "") : null;
 }
 
-function parseStorePolicyFromDescription(description: string | null | undefined): {
-  rewardType: StoreRewardType;
-  approvalMode: StoreApprovalMode;
-  stockTotal: number | null;
-} {
-  const text = (description ?? "").toLowerCase();
-  const typeMatch = text.match(/type\s*:\s*(digital|physical)/i);
-  const approvalMatch = text.match(/approval\s*:\s*(none|parent|admin)/i);
-  const stockMatch = text.match(/stock\s*:\s*(\d+)/i);
-
-  return {
-    rewardType: (typeMatch?.[1] as StoreRewardType | undefined) ?? "digital",
-    approvalMode: (approvalMatch?.[1] as StoreApprovalMode | undefined) ?? "none",
-    stockTotal: stockMatch ? Math.max(0, Number(stockMatch[1])) : null,
-  };
-}
-
 function getStockState(stockRemaining: number | null): StoreStockState {
   if (stockRemaining === null) return "unlimited";
   if (stockRemaining <= 0) return "sold_out";
   if (stockRemaining <= 3) return "low";
   return "available";
+}
+
+const CATALOG_IDS = new Set(FLAT_REWARD_CATALOG.map((item) => item.id));
+
+function resolveOverlayStoreItem(
+  rewardId: string,
+  storeById: Map<string, StoreItemRow>,
+): StoreItemRow | null {
+  const direct = storeById.get(rewardId);
+  if (direct) return direct;
+  const adminStoreId = getAdminStoreIdFromRewardId(rewardId);
+  if (!adminStoreId) return null;
+  return storeById.get(adminStoreId) ?? null;
+}
+
+function buildLiveShopItem(
+  item: {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    cost: number;
+    unlockLevel: number;
+  },
+  storeItem: StoreItemRow | null,
+  used: number,
+): LiveShopItem {
+  const category = normalizeShopCategory(item.category);
+  const requiredLevel = storeItem?.requiredLevel ?? item.unlockLevel;
+  const policy = resolveStorePolicy({
+    rewardType: storeItem?.rewardType,
+    approvalMode: storeItem?.approvalMode,
+    stockTotal: storeItem?.stockTotal,
+    description: storeItem?.description ?? item.description,
+  });
+  const stockRemaining = policy.stockTotal === null ? null : Math.max(0, policy.stockTotal - used);
+
+  return {
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    category,
+    cost: item.cost,
+    unlockLevel: requiredLevel,
+    requiredLevel,
+    minAge: storeItem?.minAge ?? getMinAgeFromDescription(item.description, category),
+    maxAge: storeItem?.maxAge ?? getMaxAgeFromDescription(item.description),
+    rewardType: policy.rewardType,
+    approvalMode: policy.approvalMode,
+    stockTotal: policy.stockTotal,
+    stockRemaining,
+    stockState: getStockState(stockRemaining),
+  };
+}
+
+/** Upsert catalog SKUs into StoreItem with stable catalog ids (admin list + shop sync). */
+export async function seedStoreItemsFromCatalog(): Promise<number> {
+  let count = 0;
+  for (const item of FLAT_REWARD_CATALOG) {
+    const description = item.description ?? `${item.category} reward`;
+    // Avoid rewardType/approvalMode/stockTotal on typed client until prisma generate refreshes.
+    await prisma.storeItem.upsert({
+      where: { id: item.id },
+      create: {
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        description,
+        price: item.cost,
+        requiredLevel: item.unlockLevel,
+        isActive: true,
+      },
+      update: {
+        name: item.name,
+        category: item.category,
+        price: item.cost,
+        requiredLevel: item.unlockLevel,
+      },
+    });
+    await prisma.$executeRawUnsafe(
+      `UPDATE "StoreItem"
+       SET "rewardType" = COALESCE("rewardType", 'digital'),
+           "approvalMode" = COALESCE("approvalMode", 'none')
+       WHERE "id" = $1`,
+      item.id,
+    );
+    count += 1;
+  }
+  return count;
 }
 
 export async function ensureCatalogItemsInDb(): Promise<void> {
@@ -98,7 +187,7 @@ export async function ensureCatalogItemsInDb(): Promise<void> {
         where: { id: item.id },
         update: {
           name: item.name,
-          description: `${item.category} reward`,
+          description: item.description ?? `${item.category} reward`,
           category: item.category,
           cost: item.cost,
           unlockLevel: item.unlockLevel,
@@ -107,23 +196,69 @@ export async function ensureCatalogItemsInDb(): Promise<void> {
         create: {
           id: item.id,
           name: item.name,
-          description: `${item.category} reward`,
+          description: item.description ?? `${item.category} reward`,
           category: item.category,
           cost: item.cost,
           unlockLevel: item.unlockLevel,
           isActive: true,
         },
-      })
-    )
+      }),
+    ),
   );
 
+  await seedStoreItemsFromCatalog();
+
   const adminStoreItems = await prisma.storeItem.findMany();
-  await prisma.rewardItem.updateMany({
+  const customStoreItems = adminStoreItems.filter((item) => !CATALOG_IDS.has(item.id));
+  const customRewardIds = customStoreItems.map((item) => `admin-store-${item.id}`);
+
+  // Deactivate orphan custom mirrors only (never touch catalog reward ids).
+  const staleCustomRewards = await prisma.rewardItem.findMany({
     where: { id: { startsWith: "admin-store-" } },
-    data: { isActive: false },
+    select: { id: true },
   });
+  const keepCustom = new Set(customRewardIds);
+  const staleIds = staleCustomRewards.map((row) => row.id).filter((id) => !keepCustom.has(id));
+  if (staleIds.length) {
+    await prisma.rewardItem.updateMany({
+      where: { id: { in: staleIds } },
+      data: { isActive: false },
+    });
+  }
+
+  // Catalog-backed store rows update RewardItem in place (same id).
   await Promise.all(
-    adminStoreItems.map((item) => {
+    adminStoreItems
+      .filter((item) => CATALOG_IDS.has(item.id))
+      .map((item) => {
+        const category = normalizeShopCategory(item.category);
+        const description = item.description ?? `${category} reward`;
+        return prisma.rewardItem.upsert({
+          where: { id: item.id },
+          update: {
+            name: item.name,
+            description,
+            category,
+            cost: item.price,
+            unlockLevel: item.requiredLevel ?? getUnlockLevelFromDescription(item.description),
+            isActive: item.isActive,
+          },
+          create: {
+            id: item.id,
+            name: item.name,
+            description,
+            category,
+            cost: item.price,
+            unlockLevel: item.requiredLevel ?? getUnlockLevelFromDescription(item.description),
+            isActive: item.isActive,
+          },
+        });
+      }),
+  );
+
+  // Legacy/custom cuid store rows keep admin-store-* mirrors.
+  await Promise.all(
+    customStoreItems.map((item) => {
       const rewardId = `admin-store-${item.id}`;
       const category = normalizeShopCategory(item.category);
       const description = item.description ?? `Admin store ${category} reward`;
@@ -160,7 +295,8 @@ export async function getLiveShopItems(): Promise<LiveShopItem[]> {
     }),
     prisma.storeItem.findMany(),
   ]);
-  const adminStoreMap = new Map(adminStoreItems.map((item) => [item.id, item]));
+  const enrichedStoreItems = await enrichStoreItemsWithPolicy(adminStoreItems);
+  const storeById = new Map(enrichedStoreItems.map((item) => [item.id, item as StoreItemRow]));
   const rewardIds = items.map((item) => item.id);
   const purchaseCounts = rewardIds.length
     ? await prisma.childReward.groupBy({
@@ -172,32 +308,8 @@ export async function getLiveShopItems(): Promise<LiveShopItem[]> {
   const purchaseCountMap = new Map(purchaseCounts.map((entry) => [entry.rewardId, entry._count.rewardId]));
 
   return items.map((item) => {
-    const adminStoreId = getAdminStoreIdFromRewardId(item.id);
-    const adminStoreItem = adminStoreId ? adminStoreMap.get(adminStoreId) ?? null : null;
-    const category = normalizeShopCategory(item.category);
-    const requiredLevel = adminStoreItem?.requiredLevel ?? item.unlockLevel;
-    const minAge = adminStoreItem?.minAge ?? getMinAgeFromDescription(item.description, category);
-    const maxAge = adminStoreItem?.maxAge ?? getMaxAgeFromDescription(item.description);
-    const policy = parseStorePolicyFromDescription(adminStoreItem?.description ?? item.description);
-    const used = purchaseCountMap.get(item.id) ?? 0;
-    const stockRemaining = policy.stockTotal === null ? null : Math.max(0, policy.stockTotal - used);
-
-    return {
-      id: item.id,
-      name: item.name,
-      description: item.description,
-      category,
-      cost: item.cost,
-      unlockLevel: requiredLevel,
-      requiredLevel,
-      minAge,
-      maxAge,
-      rewardType: policy.rewardType,
-      approvalMode: policy.approvalMode,
-      stockTotal: policy.stockTotal,
-      stockRemaining,
-      stockState: getStockState(stockRemaining),
-    };
+    const storeItem = resolveOverlayStoreItem(item.id, storeById);
+    return buildLiveShopItem(item, storeItem, purchaseCountMap.get(item.id) ?? 0);
   });
 }
 
@@ -205,29 +317,18 @@ export async function getLiveShopItem(itemId: string): Promise<LiveShopItem | nu
   await ensureCatalogItemsInDb();
   const item = await prisma.rewardItem.findFirst({ where: { id: itemId, isActive: true } });
   if (!item) return null;
-  const adminStoreId = getAdminStoreIdFromRewardId(item.id);
-  const adminStoreItem = adminStoreId ? await prisma.storeItem.findUnique({ where: { id: adminStoreId } }) : null;
-  const category = normalizeShopCategory(item.category);
-  const requiredLevel = adminStoreItem?.requiredLevel ?? item.unlockLevel;
-  const policy = parseStorePolicyFromDescription(adminStoreItem?.description ?? item.description);
+
+  let storeItem = await prisma.storeItem.findUnique({ where: { id: item.id } });
+  if (!storeItem) {
+    const adminStoreId = getAdminStoreIdFromRewardId(item.id);
+    if (adminStoreId) {
+      storeItem = await prisma.storeItem.findUnique({ where: { id: adminStoreId } });
+    }
+  }
+
+  const enriched = storeItem ? (await enrichStoreItemsWithPolicy([storeItem]))[0] : null;
   const used = await prisma.childReward.count({ where: { rewardId: item.id } });
-  const stockRemaining = policy.stockTotal === null ? null : Math.max(0, policy.stockTotal - used);
-  return {
-    id: item.id,
-    name: item.name,
-    description: item.description,
-    category,
-    cost: item.cost,
-    unlockLevel: requiredLevel,
-    requiredLevel,
-    minAge: adminStoreItem?.minAge ?? getMinAgeFromDescription(item.description, category),
-    maxAge: adminStoreItem?.maxAge ?? getMaxAgeFromDescription(item.description),
-    rewardType: policy.rewardType,
-    approvalMode: policy.approvalMode,
-    stockTotal: policy.stockTotal,
-    stockRemaining,
-    stockState: getStockState(stockRemaining),
-  };
+  return buildLiveShopItem(item, enriched as StoreItemRow | null, used);
 }
 
 export function applyEquippedItemToProfile(profile: ReturnType<typeof fromDbRecord>, itemId: string, categoryHint?: string): ReturnType<typeof fromDbRecord> {

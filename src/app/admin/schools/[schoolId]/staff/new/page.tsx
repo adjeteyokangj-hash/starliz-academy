@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
+import { mapStaffUiRoleToSchoolRole, postSchoolAction } from "@/components/admin/schools/school-actions";
+import { useSchoolDashboardRecord } from "@/components/admin/schools/school-dashboard-data";
 
 type StaffRoleOption = {
   value: string;
@@ -166,9 +168,12 @@ export default function SchoolStaffNewPage() {
 
   const roleFromQuery = searchParams.get("role")?.toLowerCase() === "teacher" ? "class-teacher" : "class-teacher";
 
+  const router = useRouter();
+  const { refresh } = useSchoolDashboardRecord(schoolId);
   const [selectedRole, setSelectedRole] = useState(roleFromQuery);
   const [selectedProfile, setSelectedProfile] = useState<PermissionProfileKey>("class-teacher-access");
-  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const selectedPermissions = PROFILE_PERMISSIONS[selectedProfile];
 
@@ -207,9 +212,31 @@ export default function SchoolStaffNewPage() {
     return warnings;
   }, [selectedPermissions, selectedProfile, selectedRole]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSaved(true);
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
+    const apiRole = mapStaffUiRoleToSchoolRole(selectedRole);
+    const roleLabel = STAFF_ROLE_OPTIONS.find((item) => item.value === selectedRole)?.label ?? selectedRole;
+
+    setSaving(true);
+    setError(null);
+    const result = await postSchoolAction("inviteTeacher", {
+      schoolId,
+      email,
+      name,
+      role: apiRole,
+      title: roleLabel,
+      ownerInviteConfirmed: apiRole === "owner",
+    });
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    refresh();
+    router.push(`/admin/schools/${schoolId}/staff`);
   }
 
   return (
@@ -299,10 +326,12 @@ export default function SchoolStaffNewPage() {
 
         <p className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">This user’s access is controlled by their school role and permission profile.</p>
 
-        {saved ? <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">Staff profile captured and ready for invite.</p> : null}
+        {error ? <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{error}</p> : null}
 
         <div className="flex flex-wrap gap-2">
-          <button type="submit" className="rounded-lg border border-sky-500/60 bg-sky-500/15 px-3 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20">Create Staff Profile</button>
+          <button type="submit" disabled={saving} className="rounded-lg border border-sky-500/60 bg-sky-500/15 px-3 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20 disabled:opacity-60">
+            {saving ? "Creating..." : "Create Staff Profile"}
+          </button>
           <Link href={`/admin/schools/${schoolId}/staff`} className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Cancel</Link>
         </div>
       </form>

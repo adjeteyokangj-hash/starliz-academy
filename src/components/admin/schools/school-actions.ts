@@ -6,6 +6,8 @@ export type SchoolActionName =
   | "createClassroom"
   | "inviteTeacher"
   | "enrolStudent"
+  | "assignStudent"
+  | "ensureYearClasses"
   | "updateClassroom"
   | "updateTeacher"
   | "updateStudentAssignment"

@@ -171,10 +171,14 @@ export async function middleware(request: NextRequest) {
         const target = new URL(`/admin/login?next=${encodeURIComponent(next)}`, request.url);
         return finalize(NextResponse.redirect(target));
       }
-    } else if (session.role !== "admin") {
-      return finalize(NextResponse.redirect(new URL("/dashboard", request.url)));
-    } else if (pathname === "/admin/login") {
+    } else if (session.role === "admin" && pathname === "/admin/login") {
       return finalize(NextResponse.redirect(new URL(requestedAdminNext ?? "/admin", request.url)));
+    } else if (session.role !== "admin" && pathname !== "/admin/login") {
+      // Non-admins may open /admin/login to switch into an admin account.
+      // Other /admin routes stay blocked — send them to admin login, not a blank fallback.
+      const next = `${pathname}${request.nextUrl.search}`;
+      const target = new URL(`/admin/login?next=${encodeURIComponent(next)}&reason=switch`, request.url);
+      return finalize(NextResponse.redirect(target));
     }
   }
 
@@ -286,7 +290,9 @@ export async function middleware(request: NextRequest) {
     return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
   }
 
-  return finalize(NextResponse.next());
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+  return finalize(NextResponse.next({ request: { headers: requestHeaders } }));
 }
 
 export const config = {

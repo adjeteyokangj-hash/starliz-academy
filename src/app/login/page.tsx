@@ -69,6 +69,7 @@ export default function LoginPage() {
                 onChange={(event) => setEmail(event.target.value)}
                 className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3"
                 placeholder="you@example.com"
+                suppressHydrationWarning
               />
             </label>
 
@@ -83,6 +84,7 @@ export default function LoginPage() {
                 onChange={(event) => setPassword(event.target.value)}
                 className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3"
                 placeholder="Your password"
+                suppressHydrationWarning
               />
             </label>
           </div>

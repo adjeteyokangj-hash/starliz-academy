@@ -1,5 +1,6 @@
 "use client";
 
+import SchoolSampleDataBanner from "@/components/admin/schools/SchoolSampleDataBanner";
 import { useDerivedSchoolMetrics, useSchoolDashboardRecord } from "@/components/admin/schools/school-dashboard-data";
 
 type Props = {
@@ -40,6 +41,7 @@ export default function SchoolAiIntelligenceInsights({ schoolId }: Props) {
 
   return (
     <div className="space-y-3">
+      <SchoolSampleDataBanner schoolId={schoolId} surface="ai" />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
           <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Predicted Next-Cycle Risk</p>

@@ -337,6 +337,14 @@ export function buildCatchUpRecommendations(input: {
       sourceTrigger: trigger.triggerType,
       recommendedAction: "Start a short targeted practice now.",
       routeTarget: "/student/dashboard",
+      evidenceCitations: [
+        trigger.evidenceSummary,
+        `trigger:${trigger.triggerType}`,
+        trigger.subject ? `subject:${trigger.subject}` : null,
+        trigger.topic ? `topic:${trigger.topic}` : null,
+        trigger.skill ? `skill:${trigger.skill}` : null,
+      ].filter((value): value is string => Boolean(value)),
+      insufficientData: !trigger.evidenceSummary || trigger.evidenceSummary.trim().length < 12,
     };
   });
 

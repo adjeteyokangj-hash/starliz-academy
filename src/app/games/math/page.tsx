@@ -486,6 +486,8 @@ export default function MathMissionPage() {
     preferAssigned = false,
     resetSessionProgress = false,
     retryIdsOverride?: string[],
+    /** Explicit step for assigned index lookup — required after advanceSession (setState is async). */
+    sessionStepOverride?: number,
   ): Promise<void> {
     if (isTerminalMathLifecycle(sessionLifecycleRef.current)) {
       return;
@@ -516,7 +518,7 @@ export default function MathMissionPage() {
       const assignedQuestion = await resolveNextAssignedMathQuestion({
         assignmentLocked: true,
         assignedQuestions,
-        sessionStep: resetSessionProgress ? 0 : sessionStep,
+        sessionStep: resetSessionProgress ? 0 : (sessionStepOverride ?? sessionStep),
       });
       if (isTerminalMathLifecycle(sessionLifecycleRef.current)) {
         return;
@@ -526,26 +528,34 @@ export default function MathMissionPage() {
         assignedQuestionAvailable: Boolean(assignedQuestion),
       });
 
-      if (assignedQuestion && !assignmentDecision.assignmentExhausted) {
-        setCurrentQuestion(assignedQuestion);
-        setContentSource("assigned");
-        setUsingAssignedContent(true);
-        setHintLevel(0);
-        setAttemptCount(0);
-        setSubmittedAttempts(0);
-        setCoachOpen(false);
-        setAnswer("");
-        setForcedChoices(false);
-        setQuestionStartedAt(Date.now());
-        if (sessionLifecycleRef.current !== "active") {
-          setLifecycle("active");
-        }
-        setRecentQuestionIds((prev) => {
-          const merged = [...prev.filter((id) => id !== assignedQuestion.id), assignedQuestion.id];
-          return merged.slice(-RECENT_LIMIT);
-        });
-        return;
+    if (assignedQuestion && !assignmentDecision.assignmentExhausted) {
+      // Keep step label and problem in the same update so advance doesn't flash Q2 with Q1 content.
+      if (typeof sessionStepOverride === "number") {
+        setSessionStep(sessionStepOverride);
       }
+      setCurrentQuestion(assignedQuestion);
+      setContentSource("assigned");
+      setUsingAssignedContent(true);
+      setHintLevel(0);
+      setAttemptCount(0);
+      setSubmittedAttempts(0);
+      setCoachOpen(false);
+      setAnswer("");
+      setForcedChoices(false);
+      setFeedback("");
+      setTutorFeedback("");
+      setReaction(null);
+      setShowSuccessBurst(false);
+      setQuestionStartedAt(Date.now());
+      if (sessionLifecycleRef.current !== "active") {
+        setLifecycle("active");
+      }
+      setRecentQuestionIds((prev) => {
+        const merged = [...prev.filter((id) => id !== assignedQuestion.id), assignedQuestion.id];
+        return merged.slice(-RECENT_LIMIT);
+      });
+      return;
+    }
 
       if (assignmentDecision.assignmentExhausted) {
         const exhaustedCanonicalSession = computeCanonicalSessionMetrics({
@@ -598,10 +608,11 @@ export default function MathMissionPage() {
     }
 
     if (!nextQuestion) {
+      const stepForBalance = resetSessionProgress ? 0 : (sessionStepOverride ?? sessionStep);
       const currentDifficulty = currentProfile.adaptive.mathDifficulty;
-      const shouldUseEasier = sessionStep === 0;
+      const shouldUseEasier = stepForBalance === 0;
       const effectiveTarget = Math.max(1, sessionQuestionTarget || MATH_SESSION_TARGET);
-      const shouldUseChallenge = sessionStep === effectiveTarget - 1;
+      const shouldUseChallenge = stepForBalance === effectiveTarget - 1;
       const targetDifficulty = shouldUseEasier
         ? Math.max(1, currentDifficulty - 1)
         : shouldUseChallenge
@@ -640,6 +651,13 @@ export default function MathMissionPage() {
     setCoachOpen(false);
     setAnswer("");
     setForcedChoices(false);
+    if (typeof sessionStepOverride === "number") {
+      setSessionStep(sessionStepOverride);
+    }
+    setFeedback("");
+    setTutorFeedback("");
+    setReaction(null);
+    setShowSuccessBurst(false);
     setQuestionStartedAt(Date.now());
     if (nextQuestion && sessionLifecycleRef.current !== "active") {
       setLifecycle("active");
@@ -705,12 +723,13 @@ export default function MathMissionPage() {
       }
       return;
     }
-    setSessionStep(nextStep);
+    // Delay only the swap. Do not bump sessionStep early — that made "Question 2"
+    // appear while Q1 content was still on screen (visible flicker).
     clearAdvanceTimer();
     advanceTimerRef.current = window.setTimeout(() => {
       advanceTimerRef.current = null;
       if (isTerminalMathLifecycle(sessionLifecycleRef.current)) return;
-      void moveToNextQuestion(currentProfile, true);
+      void moveToNextQuestion(currentProfile, true, false, undefined, nextStep);
     }, delayMs);
   }
 

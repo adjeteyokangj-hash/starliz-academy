@@ -298,6 +298,7 @@ function buildBrainCentrePayload(rows: Array<{ student: BrainCentreStudent; brai
         heartbeatSummary: heartbeat,
         academicIntelligence: { recommendationSync: sync },
         dataState: row.brain.dataState,
+        source: row.brain.source,
       },
       snapshotStatus: snapshot.status,
     });

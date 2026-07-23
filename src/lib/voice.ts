@@ -274,32 +274,136 @@ function getVoiceStyle(profile: ChildProfile | null): VoiceStyle {
   return sanitizeVoiceStyle(profile?.settings.voiceStyle);
 }
 
+const STYLE_TO_OPENAI_VOICE: Record<VoiceStyle, NonNullable<PlayHumanVoiceOptions["voice"]>> = {
+  friendly_coach: "nova",
+  cheerful_kid: "shimmer",
+  calm_reader: "fable",
+  fun_robot: "onyx",
+  storyteller: "echo",
+  little_helper: "alloy",
+  superhero_coach: "alloy",
+  soft_encourager: "nova",
+  accent_american: "nova",
+  accent_british: "fable",
+  accent_irish: "shimmer",
+  accent_south_african: "onyx",
+  accent_australian: "alloy",
+  accent_canadian: "nova",
+  accent_indian: "shimmer",
+  accent_new_zealand: "alloy",
+};
+
+/** Stable OpenAI voice id for a voiceStyle (store-equipped tutor identity). */
+export function resolveTutorOpenAiVoice(style: VoiceStyle): NonNullable<PlayHumanVoiceOptions["voice"]> {
+  return STYLE_TO_OPENAI_VOICE[sanitizeVoiceStyle(style)] ?? "nova";
+}
+
+/** Stable style/accent persona instructions for a voiceStyle. */
+export function resolveTutorStyleInstructions(style: VoiceStyle): string {
+  return getAccentProfile(sanitizeVoiceStyle(style)).ttsInstruction;
+}
+
 function resolveHumanVoice(profile: ChildProfile | null): NonNullable<PlayHumanVoiceOptions["voice"]> {
-  const style = getVoiceStyle(profile);
-  const styleToVoice: Record<VoiceStyle, NonNullable<PlayHumanVoiceOptions["voice"]>> = {
-    friendly_coach: "nova",
-    cheerful_kid: "shimmer",
-    calm_reader: "fable",
-    fun_robot: "onyx",
-    storyteller: "echo",
-    little_helper: "alloy",
-    superhero_coach: "alloy",
-    soft_encourager: "nova",
-    accent_american: "nova",
-    accent_british: "fable",
-    accent_irish: "shimmer",
-    accent_south_african: "onyx",
-    accent_australian: "alloy",
-    accent_canadian: "nova",
-    accent_indian: "shimmer",
-    accent_new_zealand: "alloy",
-  };
-  return styleToVoice[style] ?? "nova";
+  return resolveTutorOpenAiVoice(getVoiceStyle(profile));
 }
 
 function resolveHumanVoiceInstructions(profile: ChildProfile | null): string {
-  const style = getVoiceStyle(profile);
-  return getAccentProfile(style).ttsInstruction;
+  return resolveTutorStyleInstructions(getVoiceStyle(profile));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION TUTOR IDENTITY — one voice persona per equipped voiceStyle for the
+// browser session. Context only changes delivery pacing, not who is speaking.
+// Equipping a new store voice changes voiceStyle and re-pins.
+// ─────────────────────────────────────────────────────────────────────────────
+const SESSION_TUTOR_IDENTITY_KEY = "starliz_session_tutor_identity";
+
+export type SessionTutorIdentity = {
+  voiceStyle: VoiceStyle;
+  openaiVoice: NonNullable<PlayHumanVoiceOptions["voice"]>;
+  styleInstructions: string;
+};
+
+let pinnedTutorIdentity: SessionTutorIdentity | null = null;
+
+function readStoredTutorIdentity(): SessionTutorIdentity | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_TUTOR_IDENTITY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SessionTutorIdentity>;
+    const voiceStyle = sanitizeVoiceStyle(parsed.voiceStyle);
+    const openaiVoice = typeof parsed.openaiVoice === "string" ? parsed.openaiVoice : null;
+    const styleInstructions = typeof parsed.styleInstructions === "string" ? parsed.styleInstructions : null;
+    if (!openaiVoice || !styleInstructions) return null;
+    const expectedVoice = resolveTutorOpenAiVoice(voiceStyle);
+    const expectedInstructions = resolveTutorStyleInstructions(voiceStyle);
+    // Re-pin if stored voice/instructions drifted from the style mapping.
+    if (openaiVoice !== expectedVoice || styleInstructions !== expectedInstructions) {
+      return {
+        voiceStyle,
+        openaiVoice: expectedVoice,
+        styleInstructions: expectedInstructions,
+      };
+    }
+    return {
+      voiceStyle,
+      openaiVoice: expectedVoice,
+      styleInstructions: expectedInstructions,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredTutorIdentity(identity: SessionTutorIdentity): void {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(SESSION_TUTOR_IDENTITY_KEY, JSON.stringify(identity));
+}
+
+/** Resolve and pin the session tutor identity from the equipped voiceStyle. */
+export function getOrPinTutorIdentity(profile: ChildProfile | null): SessionTutorIdentity {
+  const voiceStyle = getVoiceStyle(profile);
+  if (pinnedTutorIdentity?.voiceStyle === voiceStyle) {
+    return pinnedTutorIdentity;
+  }
+
+  const stored = readStoredTutorIdentity();
+  if (stored?.voiceStyle === voiceStyle) {
+    pinnedTutorIdentity = stored;
+    writeStoredTutorIdentity(stored);
+    return stored;
+  }
+
+  const identity: SessionTutorIdentity = {
+    voiceStyle,
+    openaiVoice: resolveTutorOpenAiVoice(voiceStyle),
+    styleInstructions: resolveTutorStyleInstructions(voiceStyle),
+  };
+  pinnedTutorIdentity = identity;
+  writeStoredTutorIdentity(identity);
+  return identity;
+}
+
+/** Test helper: clear session tutor/browser pins and restore human TTS for a fresh lesson. */
+export function resetSessionTutorVoicePinForTests(): void {
+  pinnedTutorIdentity = null;
+  pinnedBrowserVoice = null;
+  _humanVoiceDisabled = false;
+  if (typeof window !== "undefined") {
+    window.sessionStorage.removeItem(SESSION_TUTOR_IDENTITY_KEY);
+    window.sessionStorage.removeItem(VOICE_MODE_KEY);
+  }
+}
+
+/** Test helper: peek current in-memory tutor identity pin. */
+export function peekSessionTutorVoicePinForTests(): SessionTutorIdentity | null {
+  return pinnedTutorIdentity;
+}
+
+/** Test helper: peek pinned browser SpeechSynthesis voice for the session. */
+export function peekPinnedBrowserVoiceForTests(): { key: string; name: string; lang: string } | null {
+  return pinnedBrowserVoice;
 }
 
 let _humanVoiceDisabled = false; // flipped to true after first 503 so we stop hammering
@@ -481,7 +585,8 @@ const PREFERRED_HINTS = [
 ];
 
 const ROBOTIC_HINTS = ["default", "david", "zira", "desktop", "espeak", "sam"];
-let pinnedBrowserVoice: { key: string; name: string; lang: string } | null = null;
+/** Browser TTS pin keyed by equipped voiceStyle so the same engine voice is reused for the session. */
+let pinnedBrowserVoice: { key: VoiceStyle; name: string; lang: string } | null = null;
 
 function getVoicesSafe(): SpeechSynthesisVoice[] {
   if (typeof window === "undefined" || !window.speechSynthesis) return [];
@@ -517,13 +622,17 @@ function scoreVoice(voice: SpeechSynthesisVoice, preferredLang: string, accentHi
   return score;
 }
 
-function selectBestVoice(preferredLang: string, accentHints: string[]): { voice: SpeechSynthesisVoice | null; poor: boolean } {
+function selectBestVoice(
+  voiceStyle: VoiceStyle,
+  preferredLang: string,
+  accentHints: string[],
+): { voice: SpeechSynthesisVoice | null; poor: boolean } {
   const voices = getVoicesSafe();
   if (!voices.length) {
     return { voice: null, poor: true };
   }
 
-  const pinKey = `${preferredLang}:${accentHints.join("|")}`;
+  const pinKey = sanitizeVoiceStyle(voiceStyle);
   if (pinnedBrowserVoice?.key === pinKey) {
     const pinned = voices.find((voice) => voice.name === pinnedBrowserVoice?.name && voice.lang === pinnedBrowserVoice?.lang) ?? null;
     if (pinned) {
@@ -593,17 +702,14 @@ function speakWithSettings(message: string, profile: ChildProfile | null, onEnd?
   if (!window.speechSynthesis) return false;
   if (profile && !profile.settings.voiceEnabled) return false;
 
-  const style = getVoiceStyle(profile);
+  // Keep tutor identity pinned even on browser/fallback path.
+  const identity = getOrPinTutorIdentity(profile);
+  const style = identity.voiceStyle;
   const accentProfile = getAccentProfile(style);
   const preset = STYLE_PRESETS[style] ?? STYLE_PRESETS.friendly_coach;
   const pacedLines = paceMessage(message);
   if (!pacedLines.length) return false;
 
-  const voicePick = selectBestVoice(accentProfile.lang, accentProfile.hints);
-  const fallbackRate = Math.min(0.84, (preset.rate ?? 0.9) - 0.04);
-  const fallbackPitch = Math.max(1.0, (preset.pitch ?? 1) - 0.06);
-  const rate = voicePick.poor ? fallbackRate : (preset.rate ?? 0.9);
-  const pitch = voicePick.poor ? fallbackPitch : (preset.pitch ?? 1);
   const volume = Math.max(0, Math.min(1, profile?.settings.volume ?? 1));
   beginTutorTurn("browser_tts");
 
@@ -612,6 +718,13 @@ function speakWithSettings(message: string, profile: ChildProfile | null, onEnd?
   let idx = 0;
   const speakNext = () => {
     if (idx >= pacedLines.length) return;
+    // Re-resolve each chunk so a late voiceschanged load can pin once, then reuse.
+    const voicePick = selectBestVoice(style, accentProfile.lang, accentProfile.hints);
+    const fallbackRate = Math.min(0.84, (preset.rate ?? 0.9) - 0.04);
+    const fallbackPitch = Math.max(1.0, (preset.pitch ?? 1) - 0.06);
+    const rate = voicePick.poor ? fallbackRate : (preset.rate ?? 0.9);
+    const pitch = voicePick.poor ? fallbackPitch : (preset.pitch ?? 1);
+
     const utterance = new SpeechSynthesisUtterance(pacedLines[idx]);
     utterance.rate = rate;
     utterance.pitch = pitch;
@@ -656,10 +769,11 @@ function speakWithSettings(message: string, profile: ChildProfile | null, onEnd?
 
 export function speakEncouragement(message: string): boolean {
   const profile = getProfile();
+  const identity = getOrPinTutorIdentity(profile);
   if (getVoiceMode() === "human" && !_humanVoiceDisabled) {
     void playHumanVoice(message, {
-      voice: resolveHumanVoice(profile),
-      instructions: resolveHumanVoiceInstructions(profile),
+      voice: identity.openaiVoice,
+      instructions: identity.styleInstructions,
       volume: profile?.settings.volume ?? 1,
     });
     return true;
@@ -671,12 +785,13 @@ export function speakEncouragement(message: string): boolean {
 export async function speak(text: string, opts: PlayHumanVoiceOptions = {}): Promise<void> {
   const profile = getProfile();
   if (profile && !profile.settings.voiceEnabled) return;
+  const identity = getOrPinTutorIdentity(profile);
   const volume = opts.volume ?? profile?.settings.volume ?? 1;
   if (getVoiceMode() === "human" && !_humanVoiceDisabled) {
     await playHumanVoice(text, {
       ...opts,
-      voice: opts.voice ?? resolveHumanVoice(profile),
-      instructions: opts.instructions ?? resolveHumanVoiceInstructions(profile),
+      voice: opts.voice ?? identity.openaiVoice,
+      instructions: opts.instructions ?? identity.styleInstructions,
       volume,
     });
   } else {
@@ -686,10 +801,11 @@ export async function speak(text: string, opts: PlayHumanVoiceOptions = {}): Pro
 
 export function speakProfileFeedback(profile: ChildProfile, event: VoiceEvent, suffix?: string): boolean {
   const msg = `${getVoiceReaction(event)}${suffix ? ` ${suffix}` : ""}`;
+  const identity = getOrPinTutorIdentity(profile);
   if (getVoiceMode() === "human" && !_humanVoiceDisabled) {
     void playHumanVoice(msg, {
-      voice: resolveHumanVoice(profile),
-      instructions: resolveHumanVoiceInstructions(profile),
+      voice: identity.openaiVoice,
+      instructions: identity.styleInstructions,
       volume: profile.settings.volume ?? 1,
     });
     return true;
@@ -739,32 +855,116 @@ const SHOP_VOICE_PREVIEWS: Record<string, { style: VoiceStyle; voice: NonNullabl
   "voice-accent-new-zealand": { style: "accent_new_zealand", voice: "alloy", line: "Awesome learning today. You are doing a brilliant job step by step." },
 };
 
-export function previewShopVoicePack(profile: ChildProfile, packId: string): boolean {
+function buildShopVoicePreviewProfile(base: ChildProfile | null, packId: string): { profile: ChildProfile; line: string; voice: NonNullable<PlayHumanVoiceOptions["voice"]>; style: VoiceStyle } {
   const config = SHOP_VOICE_PREVIEWS[packId];
-  if (!config) {
-    return previewVoiceStyle(profile, profile.settings.voiceStyle);
-  }
+  const style = config?.style ?? sanitizeVoiceStyle(base?.settings.voiceStyle);
+  const line = config?.line ?? "Hello! I am your learning coach. Let us learn. Play. Grow.";
+  const voice = config?.voice ?? resolveTutorOpenAiVoice(style);
 
-  const previewProfile: ChildProfile = {
-    ...profile,
+  const profile: ChildProfile = {
+    ...(base ?? ({} as ChildProfile)),
     settings: {
-      ...profile.settings,
-      voiceStyle: config.style,
       voiceEnabled: true,
+      sfxEnabled: true,
+      volume: base?.settings.volume ?? 1,
+      voiceStyle: style,
+      coachingStyle: base?.settings.coachingStyle ?? "balanced",
+      reduceMotion: false,
+      largeText: false,
+      highContrast: false,
     },
   };
+  return { profile, line, voice, style };
+}
+
+export function previewShopVoicePack(profile: ChildProfile, packId: string): boolean {
+  const resolvedPackId = packId.startsWith("admin-store-") ? packId.replace(/^admin-store-/, "") : packId;
+  const { profile: previewProfile, line, voice, style } = buildShopVoicePreviewProfile(profile, resolvedPackId);
 
   if (getVoiceMode() === "human" && !_humanVoiceDisabled) {
-    void playHumanVoice(config.line, {
-      voice: config.voice,
-      instructions: getAccentProfile(config.style).ttsInstruction,
+    void playHumanVoice(line, {
+      voice,
+      instructions: getAccentProfile(style).ttsInstruction,
       fallbackProfile: previewProfile,
       volume: previewProfile.settings.volume ?? 1,
     });
     return true;
   }
 
-  return speakWithSettings(config.line, previewProfile);
+  return speakWithSettings(line, previewProfile);
+}
+
+/**
+ * Admin catalog preview — always uses browser TTS so samples work without
+ * student session / OpenAI TTS credentials. Returns a Promise so the UI can await.
+ */
+export async function previewShopVoicePackById(packId: string): Promise<boolean> {
+  if (typeof window === "undefined" || !window.speechSynthesis) return false;
+
+  const resolvedPackId = packId.startsWith("admin-store-") ? packId.replace(/^admin-store-/, "") : packId;
+  const config = SHOP_VOICE_PREVIEWS[resolvedPackId];
+  const style = config?.style ?? "friendly_coach";
+  const line = config?.line ?? `Hello! This is a preview of ${resolvedPackId.replace(/-/g, " ")}.`;
+  const preset = STYLE_PRESETS[style] ?? STYLE_PRESETS.friendly_coach;
+
+  // Ensure voices are loaded (Chrome often returns [] until voiceschanged).
+  await new Promise<void>((resolve) => {
+    const existing = window.speechSynthesis.getVoices();
+    if (existing.length) {
+      resolve();
+      return;
+    }
+    const onVoices = () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", onVoices);
+      resolve();
+    };
+    window.speechSynthesis.addEventListener("voiceschanged", onVoices);
+    window.setTimeout(() => {
+      window.speechSynthesis.removeEventListener("voiceschanged", onVoices);
+      resolve();
+    }, 700);
+  });
+
+  const voices = window.speechSynthesis.getVoices();
+  const englishVoice =
+    voices.find((v) => /en[-_]GB/i.test(v.lang) && /female|zira|susan|serena|martha|libby/i.test(v.name))
+    ?? voices.find((v) => /en[-_]US/i.test(v.lang) && /female|zira|samantha|jenny|aria/i.test(v.name))
+    ?? voices.find((v) => /^en/i.test(v.lang))
+    ?? voices[0]
+    ?? null;
+
+  window.speechSynthesis.cancel();
+  beginTutorTurn("browser_tts");
+
+  const utterance = new SpeechSynthesisUtterance(line);
+  utterance.rate = Math.min(0.95, preset.rate ?? 0.9);
+  utterance.pitch = preset.pitch ?? 1;
+  utterance.volume = 1;
+  if (englishVoice) {
+    utterance.voice = englishVoice;
+    utterance.lang = englishVoice.lang;
+  } else {
+    utterance.lang = "en-GB";
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    utterance.onstart = () => finish(true);
+    utterance.onerror = () => finish(false);
+    utterance.onend = () => finish(true);
+    try {
+      window.speechSynthesis.speak(utterance);
+      // Some browsers never fire onstart; assume success if speak() didn't throw.
+      window.setTimeout(() => finish(true), 250);
+    } catch {
+      finish(false);
+    }
+  });
 }
 
 /** Preview the human AI voice in parent settings. */
@@ -773,8 +973,8 @@ export async function previewHumanVoice(): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TUTOR CONTEXT — context-aware TTS instructions so the AI sounds like a real
-// teacher adapting their voice to the activity, not just reading text aloud.
+// TUTOR CONTEXT — delivery pacing only. Persona/accent comes from the pinned
+// voiceStyle so maths_problem / math_hint / encouragement stay the same teacher.
 // ─────────────────────────────────────────────────────────────────────────────
 export type TutorSpeakContext =
   | "spelling_dictation"   // Slow, clear word for spelling practice — say it twice
@@ -788,75 +988,73 @@ export type TutorSpeakContext =
   | "math_hint"            // Patient hint guiding child towards the answer
   | "encouragement";       // Warm praise and celebration
 
-const TUTOR_CONTEXT_INSTRUCTIONS: Record<TutorSpeakContext, string> = {
+/** Delivery-only cues — must not redefine who is speaking. */
+const TUTOR_CONTEXT_DELIVERY_CUES: Record<TutorSpeakContext, string> = {
   spelling_dictation:
-    "You are a kind primary school teacher giving a spelling dictation to a child aged 5-10. " +
-    "Say the word slowly and very clearly, emphasising each sound so the child can hear every letter. " +
-    "Pause naturally after saying the word the first time, then say it again a second time at the same slow pace. " +
-    "Sound warm, patient, and encouraging — like you genuinely believe the child can spell it.",
+    "Say the spelling word slowly and clearly, emphasising each sound. " +
+    "Pause briefly, then say the word a second time at the same slow pace.",
 
   spelling_sentence:
-    "You are a primary school teacher reading a sentence aloud so a child can spot the spelling word inside it. " +
-    "Read the whole sentence naturally and expressively, as if telling a short story. " +
-    "When you reach the end, pause briefly, then say the target spelling word slowly and clearly on its own. " +
-    "Be warm and encouraging.",
+    "Read the sentence naturally, then pause and say the target spelling word slowly on its own.",
 
   spelling_instruction:
-    "You are a friendly, energetic teacher giving a quick task instruction to a young child. " +
-    "Keep it upbeat, clear, and brief — like you are excited for them to try. " +
-    "Do not drag it out; just tell them what to do in a lively, encouraging way.",
+    "Keep the instruction brief, clear, and upbeat. Do not drag it out.",
 
   spelling_slow:
-    "You are a patient primary school teacher helping a child who is struggling to hear the sounds in a word. " +
-    "Say the word very slowly, stretching out and emphasising each individual sound (phoneme) so the child can hear every part. " +
-    "Draw out the sounds — do not spell letter names, just speak the word phonetically at a very slow pace. " +
-    "Then say the whole word once more at a normal speed. " +
-    "Be warm, calm, and encouraging throughout.",
+    "Say the word very slowly, stretching each sound (phoneme). " +
+    "Do not spell letter names. Then say the whole word once at a normal pace.",
 
   spelling_syllables:
-    "You are a kind teacher helping a child hear the parts of a word. " +
-    "Say each syllable clearly and separately with a short pause between each one — like clapping out the beats. " +
-    "After all syllables, say the full word together smoothly at a normal pace. " +
-    "Sound gentle and encouraging, as if you are sharing a fun trick for remembering the word.",
+    "Say each syllable clearly with a short pause between them, then say the full word smoothly.",
 
   reading_passage:
-    "You are a warm, expressive storyteller reading a passage to children aged 5-10. " +
-    "Bring the text to life with natural intonation, gentle drama, and well-placed pauses. " +
-    "Vary your pace to match the mood — slow down for important moments, speed up for exciting ones. " +
-    "Sound like you are sharing a story you genuinely love.",
+    "Read with natural intonation and well-placed pauses. Match pace to the mood of the text.",
 
   reading_question:
-    "You are a curious, encouraging teacher asking a child a question about something they just read. " +
-    "Sound genuinely interested in what they think. " +
-    "Use a warm, inviting tone with a slightly rising inflection at the end to signal it is their turn. " +
-    "Give them space — do not rush or sound impatient.",
+    "Ask the question clearly with a warm inviting tone and a slight rise at the end. Do not rush.",
 
   math_problem:
-    "You are an enthusiastic maths teacher presenting a problem to a young child. " +
-    "Say any numbers and symbols clearly and precisely — pause slightly between key values. " +
-    "Make the problem sound like an exciting puzzle worth figuring out. " +
-    "Be warm and encouraging, as if you already believe they can solve it.",
+    "Say numbers and symbols clearly, with a slight pause between key values.",
 
   math_hint:
-    "You are a patient, gentle maths teacher giving a helpful clue to a child who is stuck. " +
-    "Sound encouraging and nurturing — never frustrated. " +
-    "Guide them towards the answer step by step without giving it away. " +
-    "Make them feel capable, not stuck.",
+    "Speak patiently and clearly while guiding step by step. Do not sound frustrated.",
 
   encouragement:
-    "You are a warm, enthusiastic teacher celebrating a child's achievement. " +
-    "Be genuinely excited and expressive — vary your energy to match the win. " +
-    "Sound like you are truly proud of them. " +
-    "Keep it short, punchy, and uplifting.",
+    "Keep praise short, warm, and uplifting. Stay the same teacher — only the energy of the win changes slightly.",
 };
 
+const TUTOR_IDENTITY_LOCK =
+  "Stay as the same single teacher for the whole session. Do not change character, accent, age, or persona.";
+
 /**
- * Speak text with a specific tutor context so the AI voice adapts its delivery
- * to the activity — dictation sounds like dictation, stories sound like stories,
- * maths problems sound like a teacher presenting a challenge.
- *
- * The context instruction is combined with the child's chosen accent/style
- * instruction so both personality and activity are preserved.
+ * Compose TTS instructions: pinned style persona first, then delivery-only context cue.
+ * Context must not change OpenAI voice id or the core persona.
+ */
+export function composeTutorSpeakInstructions(
+  styleInstructions: string,
+  context: TutorSpeakContext,
+): string {
+  const delivery = TUTOR_CONTEXT_DELIVERY_CUES[context] ?? "";
+  return `${styleInstructions} ${TUTOR_IDENTITY_LOCK} ${delivery}`.replace(/\s+/g, " ").trim();
+}
+
+/** All tutor speak contexts — exported for regression tests. */
+export const TUTOR_SPEAK_CONTEXTS: TutorSpeakContext[] = [
+  "spelling_dictation",
+  "spelling_sentence",
+  "spelling_instruction",
+  "spelling_slow",
+  "spelling_syllables",
+  "reading_passage",
+  "reading_question",
+  "math_problem",
+  "math_hint",
+  "encouragement",
+];
+
+/**
+ * Speak text with a specific tutor context so delivery pacing fits the activity
+ * (dictation slower, praise shorter) while the pinned voiceStyle persona stays fixed.
  */
 export async function speakWithContext(
   text: string,
@@ -867,15 +1065,13 @@ export async function speakWithContext(
   if (profile && !profile.settings.voiceEnabled) return;
   const volume = opts.volume ?? profile?.settings.volume ?? 1;
 
-  const contextInstruction = TUTOR_CONTEXT_INSTRUCTIONS[context];
-  const accentInstruction = resolveHumanVoiceInstructions(profile);
-  // Combine: activity behaviour first, accent flavour second.
-  const combinedInstruction = `${contextInstruction} ${accentInstruction}`;
+  const identity = getOrPinTutorIdentity(profile);
+  const combinedInstruction = composeTutorSpeakInstructions(identity.styleInstructions, context);
 
   if (getVoiceMode() === "human" && !_humanVoiceDisabled) {
     await playHumanVoice(text, {
       ...opts,
-      voice: opts.voice ?? resolveHumanVoice(profile),
+      voice: opts.voice ?? identity.openaiVoice,
       instructions: combinedInstruction,
       volume,
     });

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
+import SchoolSampleDataBanner from "@/components/admin/schools/SchoolSampleDataBanner";
 import { getAttendanceAnomalies } from "../attendance-intelligence-data";
 
 type PageProps = {
@@ -24,6 +25,7 @@ export default async function AttendanceAnomaliesPage({ params }: PageProps) {
       subtitle="Detect persistent absence patterns, engagement drift, and safeguarding-linked anomalies that matter to learning intelligence."
     >
       <div className="space-y-4">
+        <SchoolSampleDataBanner schoolId={schoolId} surface="attendance" />
         <section className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4 text-xs text-slate-300">
           <p className="font-semibold text-white">Reduced Scope</p>
           <p className="mt-1">Anomaly detection here feeds intervention and safeguarding queues. It is not a full registration, timetable, or census subsystem.</p>

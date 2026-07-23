@@ -361,7 +361,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
                   onClick={() => void handleBootstrapDaytimeSchool()}
                   className="rounded-lg border border-emerald-400/50 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-500/30 disabled:opacity-60"
                 >
-                  {bootstrapping ? "Bootstrapping..." : "Bootstrap daytime school"}
+                  {bootstrapping ? "Building timetable + lessons…" : "Build week timetable"}
                 </button>
                 <Link
                   href={`/admin/schools/${schoolId}/staff/new?role=teacher`}

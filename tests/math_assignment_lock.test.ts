@@ -150,6 +150,37 @@ test("assigned locked mode does not call cursor fetch per question", async () =>
   assert.equal(cursorFetchCalls, 0);
 });
 
+test("advancing from Q1 must request sessionStep 1 (not stale 0) so Q2 is not a duplicate", async () => {
+  // Regression: advanceSession used to call moveToNextQuestion with a closed-over
+  // pre-increment sessionStep, so Question 2 of N showed assignedQuestions[0] again.
+  const assignedQuestions = [
+    { id: "farmer-7x8", prompt: "A farmer has 7 fields..." },
+    { id: "different-q2", prompt: "Different second question" },
+    { id: "q3", prompt: "Third" },
+  ];
+
+  const question1 = await resolveNextAssignedMathQuestion({
+    assignmentLocked: true,
+    assignedQuestions,
+    sessionStep: 0,
+  });
+  const staleAdvanceWouldReload = await resolveNextAssignedMathQuestion({
+    assignmentLocked: true,
+    assignedQuestions,
+    sessionStep: 0,
+  });
+  const correctAdvance = await resolveNextAssignedMathQuestion({
+    assignmentLocked: true,
+    assignedQuestions,
+    sessionStep: 1,
+  });
+
+  assert.equal(question1?.id, "farmer-7x8");
+  assert.equal(staleAdvanceWouldReload?.id, question1?.id, "stale step 0 would duplicate Q1 as Q2");
+  assert.equal(correctAdvance?.id, "different-q2");
+  assert.notEqual(correctAdvance?.id, question1?.id);
+});
+
 test("completing 5 of 9 does not satisfy canonical exhaustion completion gate", () => {
   const shouldComplete = shouldCompleteOnAssignedExhaustion(false);
   assert.equal(shouldComplete, false);

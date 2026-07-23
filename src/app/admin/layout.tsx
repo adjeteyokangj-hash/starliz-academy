@@ -1,7 +1,6 @@
 import AdminLayout from "@/components/admin/AdminLayout";
 import { prisma } from "@/lib/db";
 import { readSessionFromCookie } from "@/lib/auth";
-import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +19,6 @@ export default async function Layout({ children }: { children: React.ReactNode }
   if (!session) {
     // Middleware handles admin route protection. Returning children here prevents
     // a self-redirect loop for /admin/login and avoids unnecessary DB access.
-    // Note: If middleware is bypassed and !session on non-login pages, that's a middleware issue.
     return <>{children}</>;
   }
 
@@ -44,11 +42,12 @@ export default async function Layout({ children }: { children: React.ReactNode }
     throw error;
   }
 
-  if (!user || user.role !== "admin" || user.adminProfile?.active === false) {
-    // User not found, not an admin, or deactivated: redirect to login page.
-    // When a stale session token refers to a deleted/deactivated user, this provides
-    // a logout option instead of rendering a blank page with no nav or logout button.
-    redirect("/admin/login");
+  const isActiveAdmin = Boolean(user && user.role === "admin" && user.adminProfile?.active !== false);
+
+  if (!isActiveAdmin) {
+    // Always render children for non-admins so /admin/login stays usable.
+    // Middleware blocks other /admin routes; do not replace the login form with a gate.
+    return <>{children}</>;
   }
 
   return <AdminLayout>{children}</AdminLayout>;

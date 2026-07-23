@@ -32,7 +32,10 @@ export const adminResourceSchemas = {
     price: z.number().int().min(0).default(0),
     minAge: z.number().int().min(5).max(18).optional().nullable(),
     maxAge: z.number().int().min(5).max(18).optional().nullable(),
-    requiredLevel: z.number().int().min(1).max(20).optional().nullable(),
+    requiredLevel: z.number().int().min(1).max(100).optional().nullable(),
+    rewardType: z.enum(["digital", "physical"]).default("digital"),
+    approvalMode: z.enum(["none", "parent", "admin"]).default("none"),
+    stockTotal: z.number().int().min(0).optional().nullable(),
     isActive: z.boolean().default(true),
   }),
   support: z.object({

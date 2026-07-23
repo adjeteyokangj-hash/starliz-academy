@@ -33,6 +33,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: true,
       child: null,
+      schoolEnrolment: null,
       assignments: [],
       skills: [],
       today: { nextActivity: null },
@@ -75,7 +76,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const dashboardBrain = await getStudentLearningBrainForDashboard(studentId, { forceRefresh: manualRefresh });
+  const [dashboardBrain, schoolEnrolment] = await Promise.all([
+    getStudentLearningBrainForDashboard(studentId, { forceRefresh: manualRefresh }),
+    prisma.schoolStudent.findFirst({
+      where: {
+        childId: studentId,
+        status: "active",
+        classroomId: { not: null },
+      },
+      select: {
+        id: true,
+        schoolId: true,
+        classroomId: true,
+        classroom: { select: { name: true, yearGroup: true } },
+        school: { select: { name: true } },
+      },
+      orderBy: { joinedAt: "desc" },
+    }),
+  ]);
   if (!dashboardBrain) return NextResponse.json({ error: "Student not found." }, { status: 404 });
 
   return NextResponse.json({
@@ -98,6 +116,16 @@ export async function GET(request: Request) {
         dateOfBirth: child.studentProfile?.dateOfBirth?.toISOString() ?? null,
       }),
     },
+    schoolEnrolment: schoolEnrolment?.classroomId
+      ? {
+          schoolStudentId: schoolEnrolment.id,
+          schoolId: schoolEnrolment.schoolId,
+          schoolName: schoolEnrolment.school.name,
+          classroomId: schoolEnrolment.classroomId,
+          classroomName: schoolEnrolment.classroom?.name ?? null,
+          yearGroup: schoolEnrolment.classroom?.yearGroup ?? null,
+        }
+      : null,
     currentLevelSummary: {
       level: child.level,
       xp: child.xp,

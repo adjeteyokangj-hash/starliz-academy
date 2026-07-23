@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
 import { getProfile, hydrateProfilesFromServer } from "@/lib/store";
 
@@ -8,12 +9,49 @@ type Props = {
   children: React.ReactNode;
 };
 
+function shouldSkipStoreBootstrap(pathname: string): boolean {
+  return (
+    pathname.startsWith("/consent")
+    || pathname.startsWith("/privacy")
+    || pathname.startsWith("/auth/")
+    || pathname.startsWith("/admin")
+    || pathname.startsWith("/parent")
+    || pathname === "/"
+    || pathname.startsWith("/about")
+    || pathname.startsWith("/pricing")
+    || pathname.startsWith("/contact")
+    || pathname.startsWith("/features")
+    || pathname.startsWith("/roadmap")
+    || pathname.startsWith("/login")
+    || pathname.startsWith("/signup")
+    || pathname.startsWith("/forgot-password")
+    || pathname.startsWith("/reset-password")
+    || pathname.startsWith("/terms")
+    || pathname.startsWith("/policies")
+    || pathname.startsWith("/uk")
+    || pathname.startsWith("/ghana")
+    || pathname.startsWith("/nigeria")
+  );
+}
+
 export default function StoreBootstrap({ children }: Props) {
-  const [ready, setReady] = useState(false);
+  const pathname = usePathname() ?? "";
+  const skipBootstrap = shouldSkipStoreBootstrap(pathname);
+  // Public/auth/admin routes must SSR their UI immediately — otherwise /admin/login
+  // only shows body gradients until a client effect flips ready.
+  const [ready, setReady] = useState(skipBootstrap);
   const [showFallback, setShowFallback] = useState(false);
 
   useEffect(() => {
     let mounted = true;
+
+    if (skipBootstrap) {
+      setReady(true);
+      return () => {
+        mounted = false;
+      };
+    }
+
     const timeoutId = window.setTimeout(() => {
       if (mounted) {
         setShowFallback(true);
@@ -21,41 +59,24 @@ export default function StoreBootstrap({ children }: Props) {
     }, 5000);
 
     const bootstrap = async () => {
-      const pathname = window.location.pathname;
-      const isConsentPage = pathname.startsWith("/consent");
-      const isPrivacyPage = pathname.startsWith("/privacy");
       const isProfilesPage = pathname.startsWith("/profiles") || pathname.startsWith("/parent/profiles");
-      const isParentPage = pathname.startsWith("/parent");
-      const isAuthPage = pathname.startsWith("/auth/");
-      const isAdminPage = pathname.startsWith("/admin");
-      const isPublicPage = pathname === "/" || pathname.startsWith("/about") || pathname.startsWith("/pricing")
-        || pathname.startsWith("/contact") || pathname.startsWith("/features") || pathname.startsWith("/roadmap")
-        || pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname.startsWith("/forgot-password")
-        || pathname.startsWith("/reset-password") || pathname.startsWith("/terms") || pathname.startsWith("/privacy")
-        || pathname.startsWith("/policies") || pathname.startsWith("/uk") || pathname.startsWith("/ghana")
-        || pathname.startsWith("/nigeria");
+      const needsActiveProfile = !isProfilesPage;
 
-      const needsProtectedBootstrap = !isConsentPage && !isPrivacyPage && !isAuthPage && !isAdminPage && !isPublicPage && !isParentPage;
-      const needsActiveProfile = needsProtectedBootstrap && !isProfilesPage && !isParentPage;
-      const shouldHydrateProfiles = needsActiveProfile;
-
-      if (shouldHydrateProfiles) {
+      if (needsActiveProfile) {
         await hydrateProfilesFromServer();
       }
 
-      if (needsProtectedBootstrap) {
-        try {
-          const response = await fetch("/api/consent", { credentials: "include" });
-          if (response.ok) {
-            const payload = await response.json() as { accepted: boolean };
-            if (!payload.accepted) {
-              window.location.replace("/consent");
-              return;
-            }
+      try {
+        const response = await fetch("/api/consent", { credentials: "include" });
+        if (response.ok) {
+          const payload = await response.json() as { accepted: boolean };
+          if (!payload.accepted) {
+            window.location.replace("/consent");
+            return;
           }
-        } catch {
-          // Keep UX resilient if consent API is temporarily unavailable.
         }
+      } catch {
+        // Keep UX resilient if consent API is temporarily unavailable.
       }
 
       if (needsActiveProfile && !getProfile()) {
@@ -74,7 +95,7 @@ export default function StoreBootstrap({ children }: Props) {
       mounted = false;
       window.clearTimeout(timeoutId);
     };
-  }, []);
+  }, [pathname, skipBootstrap]);
 
   if (!ready) {
     return (

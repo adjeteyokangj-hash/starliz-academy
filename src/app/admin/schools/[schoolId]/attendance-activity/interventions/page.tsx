@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
+import SchoolSampleDataBanner from "@/components/admin/schools/SchoolSampleDataBanner";
 import { getAttendanceInterventions } from "../attendance-intelligence-data";
 
 type PageProps = {
@@ -24,6 +25,7 @@ export default async function AttendanceInterventionsPage({ params }: PageProps)
       subtitle="Recommended actions that connect attendance drift to learning support, parent contact, and safeguarding escalation prompts."
     >
       <div className="space-y-4">
+        <SchoolSampleDataBanner schoolId={schoolId} surface="attendance" />
         <section className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4 text-xs text-slate-300">
           <p className="font-semibold text-white">Intervention Intelligence</p>
           <p className="mt-1">Attendance interventions stay focused on learner support signals, not operational registration workflows.</p>

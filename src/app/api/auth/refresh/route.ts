@@ -25,12 +25,31 @@ function withNoStore<T extends NextResponse>(response: T): T {
   return response;
 }
 
+function defaultPathForRole(role: string): string {
+  if (role === "admin") return "/admin";
+  if (role === "student") return "/student/dashboard";
+  return "/parent/profiles";
+}
+
+function resolveRefreshNextPath(nextPath: string | null | undefined, role: string): string | null {
+  if (!nextPath || !nextPath.startsWith("/") || nextPath.startsWith("//")) {
+    return null;
+  }
+  // Never dump a parent/student session onto /admin after access-token refresh.
+  if (nextPath.startsWith("/admin") && role !== "admin") {
+    return null;
+  }
+  if (nextPath.startsWith("/student") && role === "parent") {
+    return "/parent/profiles";
+  }
+  return nextPath;
+}
+
 async function refreshSession(request: Request, nextPath?: string | null) {
   const refreshCookieName = getRefreshCookieName();
   const authCookieName = getAuthCookieName();
   const hasRedirect = Boolean(nextPath && nextPath.startsWith("/"));
-  const safeNext = hasRedirect ? nextPath! : "/admin";
-  const loginTarget = safeNext.startsWith("/admin") ? "/admin/login" : "/auth/login";
+  const loginTarget = nextPath?.startsWith("/admin") ? "/admin/login" : "/auth/login";
 
   const buildError = (status = 401, message = "Session expired", clearCookies = hasRedirect) => {
     const target = hasRedirect ? new URL(loginTarget, request.url) : null;
@@ -113,6 +132,7 @@ async function refreshSession(request: Request, nextPath?: string | null) {
     getAccessTokenMaxAgeSeconds()
   );
 
+  const safeNext = resolveRefreshNextPath(nextPath, user.role) ?? defaultPathForRole(user.role);
   const response = hasRedirect
     ? NextResponse.redirect(new URL(safeNext, request.url))
     : NextResponse.json({

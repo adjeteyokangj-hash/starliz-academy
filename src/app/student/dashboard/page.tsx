@@ -147,6 +147,14 @@ type DashboardSummaryPayload = {
     dashboardTier?: "primary" | "ks3" | "gcse";
     keyStage?: string | null;
   }) | null;
+  schoolEnrolment?: {
+    schoolStudentId: string;
+    schoolId: string;
+    schoolName: string;
+    classroomId: string;
+    classroomName: string | null;
+    yearGroup: string | null;
+  } | null;
   assignments?: StudentAssignment[];
   activeLanguageModules?: Array<{
     id: string;
@@ -471,6 +479,7 @@ export default function StudentDashboardPage() {
   const [journey] = useState<DailyJourneyPayload["journey"] | null>(null);
   const [childName, setChildName] = useState("Learner");
   const [stats, setStats] = useState({ stars: 0, xp: 0, coins: 0, streak: 0 });
+  const [schoolEnrolment, setSchoolEnrolment] = useState<NonNullable<DashboardSummaryPayload["schoolEnrolment"]> | null>(null);
   const [dashboardTier, setDashboardTier] = useState<"primary" | "ks3" | "gcse">("primary");
   const [profileContext, setProfileContext] = useState<{ yearGroup: string; ageGroup: string; keyStage: string } | null>(null);
   const [activeChildId, setActiveChildId] = useState<string | null>(null);
@@ -528,6 +537,20 @@ export default function StudentDashboardPage() {
         setError("Your session expired. Please sign in again.");
         return;
       }
+      if (summaryRes.status === 402) {
+        const denied = await summaryRes.json().catch(() => null) as {
+          error?: string;
+          code?: string;
+          access?: { reason?: string; trialSessionsUsed?: number; trialLimit?: number };
+        } | null;
+        const reason = denied?.access?.reason ?? denied?.code ?? "FEATURE_LOCKED";
+        if (reason === "TRIAL_LIMIT_REACHED") {
+          setError("Your free trial sessions are used up. Open Parent Billing to continue learning.");
+        } else {
+          setError(denied?.error ?? "A subscription is required to open the student dashboard.");
+        }
+        return;
+      }
       if (!summaryRes.ok) {
         throw new Error("Unable to confirm active learner profile.");
       }
@@ -557,6 +580,7 @@ export default function StudentDashboardPage() {
         setBossUnlocked(false);
         setBossPlayedToday(false);
         setBossAssignmentId(null);
+        setSchoolEnrolment(null);
         return;
       }
 
@@ -566,6 +590,7 @@ export default function StudentDashboardPage() {
       setBossUnlocked(false);
       setBossPlayedToday(false);
       setBossAssignmentId(null);
+      setSchoolEnrolment(summaryPayload.schoolEnrolment ?? null);
       setActiveChildId(summaryPayload.child.id);
       setDeferredPanelsLoadedFor(null);
       setAcademicLoading(true);
@@ -1182,6 +1207,15 @@ export default function StudentDashboardPage() {
             >
               Try again
             </button>
+            {/subscription|trial|billing/i.test(error) ? (
+              <button
+                type="button"
+                onClick={() => router.push("/parent/billing")}
+                className="mt-3 ml-3 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-500"
+              >
+                Open Parent Billing
+              </button>
+            ) : null}
             {authRequired ? (
               <button
                 type="button"
@@ -1231,6 +1265,33 @@ export default function StudentDashboardPage() {
                   </Link>
                 ) : null}
               </div>
+            ) : null}
+
+            {schoolEnrolment ? (
+              <section className="mb-6 rounded-3xl border border-sky-200 bg-sky-50 p-5">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-700">Day school</p>
+                <h2 className="mt-1 text-lg font-black text-slate-900">
+                  Enrolled in {schoolEnrolment.classroomName ?? "class"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {schoolEnrolment.schoolName}
+                  {schoolEnrolment.yearGroup ? ` · ${schoolEnrolment.yearGroup}` : ""}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link
+                    href="/student/today"
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white hover:bg-sky-500"
+                  >
+                    Today&apos;s timetable
+                  </Link>
+                  <Link
+                    href="/student/attendance"
+                    className="rounded-xl border border-sky-300 bg-white px-4 py-2 text-sm font-bold text-sky-800 hover:bg-sky-100"
+                  >
+                    Attendance
+                  </Link>
+                </div>
+              </section>
             ) : null}
 
             {dashboardExperience ? (

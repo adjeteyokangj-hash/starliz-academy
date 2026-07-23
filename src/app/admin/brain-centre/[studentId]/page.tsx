@@ -540,7 +540,7 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
               </div>
               <div>
                 <p className="text-[11px] uppercase text-indigo-200/80">Risk</p>
-                <p className="text-sm font-bold text-white">{toTitleCase(payload.heartbeat.riskLevel)}</p>
+                <p className="text-sm font-bold text-white">{toTitleCase(payload.heartbeatDisplay.riskLevel)}</p>
               </div>
               <div>
                 <p className="text-[11px] uppercase text-indigo-200/80">Review Status</p>
@@ -567,6 +567,73 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
             >
               {mainButtonLabel}
             </button>
+          </section>
+
+          <section className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-cyan-200">Brain Quality Policies</p>
+                <h2 className="mt-1 text-sm font-bold text-white">Honesty & evidence</h2>
+                <p className="mt-1 text-xs text-slate-300">
+                  {payload.dataState.headline} — {payload.dataState.detail}
+                </p>
+              </div>
+              <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${badgeClass(payload.dataState.checklistStatus)}`}>
+                {toTitleCase(payload.dataState.checklistStatus)}
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                <p className="text-[11px] uppercase text-slate-500">Data state</p>
+                <p className="mt-1 text-sm font-black text-white">{toTitleCase(toFriendlyPhrase(payload.dataState.state))}</p>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                <p className="text-[11px] uppercase text-slate-500">Confidence band</p>
+                <p className="mt-1 text-sm font-black text-white">{toTitleCase(payload.dataState.confidenceBand ?? "medium")}</p>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                <p className="text-[11px] uppercase text-slate-500">Recommendation honesty</p>
+                <p className="mt-1 text-sm font-black text-white">{toTitleCase(toFriendlyPhrase(payload.recommendationHonesty))}</p>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                <p className="text-[11px] uppercase text-slate-500">Review recommended</p>
+                <p className="mt-1 text-sm font-black text-white">{payload.dataState.reviewRecommended ? "Yes" : "No"}</p>
+              </div>
+            </div>
+            {payload.evidenceCitations.length ? (
+              <div className="mt-3">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Evidence citations</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {payload.evidenceCitations.map((citation) => (
+                    <span key={citation} className="rounded-lg border border-cyan-400/20 bg-slate-950/70 px-2.5 py-1 text-xs font-semibold text-cyan-100">
+                      {citation}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-400">No strong evidence citations yet — recommendations should stay cautious.</p>
+            )}
+            {payload.catchUpExplainability.length ? (
+              <div className="mt-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Catch-up explainability</p>
+                <div className="mt-2 space-y-2">
+                  {payload.catchUpExplainability.slice(0, 4).map((row) => (
+                    <div key={row.id} className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-bold text-white">{row.title}</p>
+                        {row.insufficientData ? (
+                          <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-100">
+                            Insufficient data
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">{row.evidenceCitations.slice(0, 3).join(" · ") || "No citations"}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
 
           {academicSummary ? (
@@ -653,12 +720,21 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
               <div className="mt-3 grid gap-2 text-xs">
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2">
                   <span className="font-bold uppercase text-slate-500">Risk</span>
-                  <span className={`rounded-full border px-2 py-1 font-bold ${badgeClass(payload.heartbeat.riskLevel)}`}>{toTitleCase(payload.heartbeat.riskLevel)}</span>
+                  <span className={`rounded-full border px-2 py-1 font-bold ${badgeClass(payload.heartbeatDisplay.riskLevel)}`}>{toTitleCase(payload.heartbeatDisplay.riskLevel)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2">
                   <span className="font-bold uppercase text-slate-500">Urgency</span>
-                  <span className={`rounded-full border px-2 py-1 font-bold ${badgeClass(payload.heartbeat.urgency)}`}>{toTitleCase(payload.heartbeat.urgency)}</span>
+                  <span className={`rounded-full border px-2 py-1 font-bold ${badgeClass(payload.heartbeatDisplay.urgency)}`}>{toTitleCase(payload.heartbeatDisplay.urgency)}</span>
                 </div>
+                {payload.heartbeatDisplay.honestyNote ? (
+                  <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sky-50">
+                    <p className="font-bold uppercase text-sky-200/80">Evidence {toTitleCase(payload.heartbeatDisplay.evidenceSufficiency)}</p>
+                    <p className="mt-1 text-slate-200">{payload.heartbeatDisplay.honestyNote}</p>
+                    {payload.heartbeatDisplay.riskLevel !== payload.heartbeat.riskLevel ? (
+                      <p className="mt-1 text-slate-400">Engine raw risk: {toTitleCase(payload.heartbeat.riskLevel)}</p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2">
                   <p className="font-bold uppercase text-slate-500">Action</p>
                   <p className="mt-1 font-black text-white">{toTitleCase(toFriendlyPhrase(payload.heartbeat.primaryAction))}</p>
@@ -691,6 +767,18 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
                   <div className="mt-4 space-y-3">
                     <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
                       <p className="text-xs font-bold uppercase text-slate-400">1. Investigation Summary</p>
+                      {payload.heartbeatInvestigation.conflictSummary.honestyNote ? (
+                        <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
+                          payload.heartbeatInvestigation.conflictSummary.evidenceSufficiency === "insufficient"
+                            ? "border-amber-500/40 bg-amber-500/10 text-amber-50"
+                            : "border-sky-500/40 bg-sky-500/10 text-sky-50"
+                        }`}>
+                          <p className="font-bold uppercase tracking-wide">
+                            Evidence {toTitleCase(payload.heartbeatInvestigation.conflictSummary.evidenceSufficiency)}
+                          </p>
+                          <p className="mt-1">{payload.heartbeatInvestigation.conflictSummary.honestyNote}</p>
+                        </div>
+                      ) : null}
                       <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                         <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
                           <p className="text-[11px] font-bold uppercase text-slate-500">Student</p>
@@ -750,8 +838,14 @@ export default function AdminBrainCentreStudentPage({ params }: Props) {
                                 <td className="px-2 py-2">{row.recommendation}</td>
                                 <td className="px-2 py-2">{row.confidence === null ? "-" : `${row.confidence}%`}</td>
                                 <td className="px-2 py-2">
-                                  <span className={`rounded-full border px-2 py-1 ${row.disagreeing ? "border-amber-500/40 bg-amber-500/10 text-amber-100" : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"}`}>
-                                    {row.disagreeing ? "Disagree" : "Agree"}
+                                  <span className={`rounded-full border px-2 py-1 ${
+                                    row.agreement === "disagree"
+                                      ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+                                      : row.agreement === "no_data"
+                                        ? "border-slate-500/40 bg-slate-500/10 text-slate-200"
+                                        : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                                  }`}>
+                                    {row.agreement === "disagree" ? "Disagree" : row.agreement === "no_data" ? "No data" : "Agree"}
                                   </span>
                                 </td>
                               </tr>

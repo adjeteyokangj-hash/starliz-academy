@@ -11,6 +11,7 @@ import { enrolSchoolStudent } from "@/lib/schools/enrol-student";
 import { bootstrapDaytimeSchool } from "@/lib/schools/bootstrap-daytime-school";
 import { assignSchoolLesson } from "@/lib/schools/assign-school-lesson";
 import { updateSchoolDayLesson } from "@/lib/schools/update-school-day-lesson";
+import { ensureSchoolYearClasses } from "@/lib/schools/ensure-year-classes";
 import {
   buildSchoolsAdminListPayload,
   loadSecurityGateContext,
@@ -70,6 +71,12 @@ const actionSchema = z.discriminatedUnion("action", [
       academicYear: z.string().trim().max(40).optional(),
       teacherId: z.string().min(1).optional().nullable(),
       status: z.string().trim().default("active"),
+    }),
+  }),
+  z.object({
+    action: z.literal("ensureYearClasses"),
+    payload: z.object({
+      schoolId: z.string().min(1),
     }),
   }),
   z.object({
@@ -368,6 +375,7 @@ export async function POST(request: Request) {
       }
       | null = null;
     let bootstrapResult: Record<string, unknown> | null = null;
+    let ensureYearClassesResult: Record<string, unknown> | null = null;
     let assignLessonResult: { dayLessonId: string; lessonId: string } | null = null;
     let updateDayLessonResult: { dayLessonId: string } | null = null;
 
@@ -488,6 +496,27 @@ export async function POST(request: Request) {
             status: parsed.payload.status,
           },
         });
+        break;
+      }
+      case "ensureYearClasses": {
+        const ensured = await ensureSchoolYearClasses({
+          schoolId: parsed.payload.schoolId,
+          actorUserId: session.userId,
+        });
+        if (!ensured.ok) {
+          return NextResponse.json({ error: ensured.error }, { status: ensured.status });
+        }
+        ensureYearClassesResult = {
+          academicYear: ensured.academicYear,
+          createdCount: ensured.created.length,
+          restoredCount: ensured.restored.length,
+          reusedCount: ensured.reused.length,
+          yearGroups: [
+            ...ensured.created.map((row) => row.yearGroup),
+            ...ensured.restored.map((row) => row.yearGroup),
+            ...ensured.reused.map((row) => row.yearGroup),
+          ],
+        };
         break;
       }
       case "updateClassroom": {
@@ -819,6 +848,14 @@ export async function POST(request: Request) {
         break;
       }
       case "assignStudent": {
+        const child = await prisma.childProfile.findUnique({
+          where: { id: parsed.payload.childId },
+          select: { id: true, parentId: true, archived: true },
+        });
+        if (!child || child.archived) {
+          return NextResponse.json({ error: "Platform student not found." }, { status: 404 });
+        }
+
         const existing = await prisma.schoolStudent.findUnique({
           where: {
             schoolId_childId: {
@@ -843,7 +880,17 @@ export async function POST(request: Request) {
           }
         }
 
-        await prisma.schoolStudent.upsert({
+        if (parsed.payload.classroomId) {
+          const classroom = await prisma.classroom.findFirst({
+            where: { id: parsed.payload.classroomId, schoolId: parsed.payload.schoolId },
+            select: { id: true },
+          });
+          if (!classroom) {
+            return NextResponse.json({ error: "Classroom not found for this school." }, { status: 404 });
+          }
+        }
+
+        const schoolStudent = await prisma.schoolStudent.upsert({
           where: {
             schoolId_childId: {
               schoolId: parsed.payload.schoolId,
@@ -862,6 +909,43 @@ export async function POST(request: Request) {
             externalRef: parsed.payload.externalRef || null,
             status: parsed.payload.status,
             joinedAt: parsed.payload.status === "active" ? new Date() : undefined,
+            leftAt: parsed.payload.status === "active" ? null : undefined,
+          },
+          select: { id: true },
+        });
+
+        await prisma.parentSchoolLink.upsert({
+          where: {
+            schoolId_parentUserId_schoolStudentId: {
+              schoolId: parsed.payload.schoolId,
+              parentUserId: child.parentId,
+              schoolStudentId: schoolStudent.id,
+            },
+          },
+          create: {
+            schoolId: parsed.payload.schoolId,
+            parentUserId: child.parentId,
+            schoolStudentId: schoolStudent.id,
+            status: "active",
+            canReceiveReports: true,
+            canMessageTeachers: true,
+          },
+          update: {
+            status: "active",
+          },
+        });
+
+        await writeSchoolAuditLog({
+          schoolId: parsed.payload.schoolId,
+          actorUserId: session.userId,
+          action: "student_enrolled",
+          entityType: "student",
+          entityId: schoolStudent.id,
+          metadata: {
+            childId: child.id,
+            classroomId: parsed.payload.classroomId || null,
+            status: parsed.payload.status,
+            source: "assign_existing",
           },
         });
         break;
@@ -1002,6 +1086,7 @@ export async function POST(request: Request) {
       ...(inviteFallback ? { inviteFallback } : {}),
       ...(enrolResult ? { enrolResult } : {}),
       ...(bootstrapResult ? { bootstrapResult } : {}),
+      ...(ensureYearClassesResult ? { ensureYearClassesResult } : {}),
       ...(assignLessonResult ? { assignLessonResult } : {}),
       ...(updateDayLessonResult ? { updateDayLessonResult } : {}),
     });

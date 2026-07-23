@@ -6,9 +6,13 @@ import {
   BRAIN_WARNING_REVIEW_ACTION,
   BRAIN_WARNING_REVIEW_ENTITY_TYPE,
   buildBrainWarningFingerprint,
+  cappedHeartbeatSeverity,
+  cappedHeartbeatUrgency,
+  evidenceSufficiencyForBrain,
   healthForBrain,
   parseBrainWarningReviewState,
   snapshotStatus,
+  type BrainEvidenceSufficiency,
   type BrainWarningReviewState,
 } from "@/app/api/admin/brain-centre/_lib";
 import { yearGroupToOrdinal } from "@/lib/curriculum";
@@ -55,7 +59,24 @@ export type BrainCentreDetailPayload = {
     snapshotLastCalculatedAt: string | null;
     generatedAt: string;
   };
+  /** Additive Brain quality honesty — confidence band, recommendation honesty, citations. */
+  dataState: StudentLearningBrain["dataState"];
+  recommendationHonesty: NonNullable<StudentLearningBrain["dataState"]["recommendationHonesty"]> | "ready";
+  evidenceCitations: string[];
+  catchUpExplainability: Array<{
+    id: string;
+    title: string;
+    evidenceCitations: string[];
+    insufficientData: boolean;
+  }>;
   heartbeat: StudentLearningBrain["heartbeatSummary"];
+  /** Honesty-capped display of HEART BEAT risk — raw values remain on `heartbeat`. */
+  heartbeatDisplay: {
+    riskLevel: StudentLearningBrain["heartbeatSummary"]["riskLevel"];
+    urgency: StudentLearningBrain["heartbeatSummary"]["urgency"];
+    evidenceSufficiency: BrainEvidenceSufficiency;
+    honestyNote: string | null;
+  };
   coachTutorAudit: StudentLearningBrain["academicIntelligence"]["coachTutorAudit"];
   recommendationSync: StudentLearningBrain["academicIntelligence"]["recommendationSync"];
   learningDnaSummary: StudentLearningBrain["learningDnaSummary"];
@@ -113,12 +134,15 @@ export type BrainCentreDetailPayload = {
       assignmentEngineConfidence: number | null;
       assignmentEngineReason: string;
       status: "conflict_detected" | "aligned";
+      evidenceSufficiency: BrainEvidenceSufficiency;
+      honestyNote: string | null;
     };
     systems: Array<{
       system: string;
       recommendation: string;
       confidence: number | null;
       disagreeing: boolean;
+      agreement: "agree" | "disagree" | "no_data";
     }>;
     reasoning: {
       weakAreas: string[];
@@ -156,8 +180,9 @@ function recommendationFromIntent(intent: StudentLearningBrain["academicIntellig
   return intent.replaceAll("_", " ");
 }
 
-function stanceForRecommendation(recommendation: string): "catch_up" | "advance" | "maintain" | "review" {
+function stanceForRecommendation(recommendation: string): "catch_up" | "advance" | "maintain" | "review" | "missing" {
   const normal = recommendation.toLowerCase();
+  if (normal.includes("missing") || normal.includes("unavailable") || normal.includes("no data")) return "missing";
   if (normal.includes("catch-up") || normal.includes("catch up")) return "catch_up";
   if (normal.includes("next lesson") || normal.includes("advance")) return "advance";
   if (normal.includes("maintain")) return "maintain";
@@ -228,40 +253,61 @@ function buildHeartbeatInvestigation(
     ? (brain.evidenceSummary.weakAreas.active > 0 ? "Catch-Up Required" : "Maintain Current Level")
     : "Learning DNA Missing";
 
+  function systemAgreement(recommendation: string): {
+    disagreeing: boolean;
+    agreement: "agree" | "disagree" | "no_data";
+  } {
+    const stance = stanceForRecommendation(recommendation);
+    if (stance === "missing") return { disagreeing: false, agreement: "no_data" };
+    if (stance === heartbeatStance) return { disagreeing: false, agreement: "agree" };
+    return { disagreeing: true, agreement: "disagree" };
+  }
+
   const systems: BrainCentreDetailPayload["heartbeatInvestigation"]["systems"] = [
     {
       system: "HEART BEAT",
       recommendation: heartbeatRecommendation,
       confidence: Math.max(0, Math.min(100, Math.round(brain.heartbeatSummary.confidenceScore))),
       disagreeing: false,
+      agreement: "agree",
     },
     {
       system: "Learning DNA",
       recommendation: learningDnaRecommendation,
       confidence: skillConfidence,
-      disagreeing: stanceForRecommendation(learningDnaRecommendation) !== heartbeatStance,
+      ...systemAgreement(learningDnaRecommendation),
     },
     {
       system: "Assignment Engine",
       recommendation: assignmentRecommendation,
       confidence: assignmentSignal ? confidenceFromSignalStatus(assignmentSignal.status) : null,
-      disagreeing: stanceForRecommendation(assignmentRecommendation) !== heartbeatStance,
+      ...systemAgreement(assignmentRecommendation),
     },
     {
       system: "Recommendation Engine",
       recommendation: recommendationFromIntent(sync.canonicalDecision.intent),
       confidence: sync.status === "synced" ? 84 : sync.status === "warning" ? 74 : 62,
-      disagreeing: stanceForRecommendation(recommendationFromIntent(sync.canonicalDecision.intent)) !== heartbeatStance,
+      ...systemAgreement(recommendationFromIntent(sync.canonicalDecision.intent)),
     },
     {
       system: "QLF Baseline",
       recommendation: qlfRecommendation,
       confidence: qlfConfidence,
-      disagreeing: stanceForRecommendation(qlfRecommendation) !== heartbeatStance,
+      ...systemAgreement(qlfRecommendation),
     },
   ];
 
   const conflictDetected = systems.some((row) => row.disagreeing);
+  const evidenceSufficiency = evidenceSufficiencyForBrain({
+    dataState: brain.dataState,
+    attemptsCount: brain.source.attempts.length,
+  });
+  const severity = cappedHeartbeatSeverity(brain.heartbeatSummary.riskLevel, evidenceSufficiency);
+  const honestyNote = evidenceSufficiency === "insufficient"
+    ? "Thin evidence — conflict severity capped. Refresh snapshot and gather attempts before trusting progression locks."
+    : evidenceSufficiency === "limited"
+      ? "Limited evidence — treat disagreements cautiously until Learning DNA / recent attempts are present."
+      : null;
   const topWeakArea = weakAreas[0] ?? "Foundational skills";
   const activeCatchUpTasks = brain.academicIntelligence.catchUpTasks.filter((task) => task.status !== "completed" && task.status !== "waived" && task.status !== "skipped");
   const schoolYear = student.yearGroup;
@@ -272,11 +318,6 @@ function buildHeartbeatInvestigation(
     ? Math.max(0, schoolYearOrdinal - workingYearOrdinal)
     : null;
   const currentWorkingLevel = workingYear ? `${workingYear} ${topWeakArea}` : topWeakArea;
-  const learningGapLabel = learningGapYears === null
-    ? "Gap not calculated"
-    : learningGapYears === 0
-      ? "No academic year gap detected"
-      : `${learningGapYears} academic year${learningGapYears === 1 ? "" : "s"}`;
   const learningGapReason = learningGapYears === null
     ? "Brain does not yet have enough year-level evidence to compare school year and working level."
     : learningGapYears > 0 && schoolYear
@@ -290,7 +331,7 @@ function buildHeartbeatInvestigation(
   return {
     conflictSummary: {
       conflictType: conflictDetected ? "Progression Conflict" : "Aligned Recommendation",
-      severity: brain.heartbeatSummary.riskLevel,
+      severity,
       detectedAt: brain.generatedAt,
       studentName: student.name,
       currentYearGroup: student.yearGroup,
@@ -298,13 +339,19 @@ function buildHeartbeatInvestigation(
       schoolYear,
       currentWorkingLevel,
       learningGapYears,
-      learningGapLabel,
+      learningGapLabel: learningGapYears === null
+        ? "Gap not calculated"
+        : learningGapYears === 0
+          ? "No academic year gap detected"
+          : `${learningGapYears} academic year${learningGapYears === 1 ? "" : "s"}`,
       learningGapReason,
       heartbeatRecommendation: heartbeatRecommendation,
       assignmentEngineRecommendation: assignmentRecommendation,
       assignmentEngineConfidence,
       assignmentEngineReason,
       status: conflictDetected ? "conflict_detected" : "aligned",
+      evidenceSufficiency,
+      honestyNote,
     },
     systems,
     reasoning: {
@@ -322,6 +369,7 @@ function buildHeartbeatInvestigation(
       snapshotUpdatedAt: snapshot.lastCalculatedAt,
     },
     recommendedActions: [
+      ...(evidenceSufficiency !== "sufficient" ? ["Gather recent attempt evidence before locking progression"] : []),
       activeCatchUpTasks[0]?.title ? `Complete Catch-Up Task: ${activeCatchUpTasks[0].title}` : "Complete highest-priority catch-up task",
       "Re-run mastery assessment",
       "Refresh snapshot",
@@ -381,7 +429,17 @@ function diagnosticsForBrain(input: {
     issues.push({ code: "recommendation_conflicts", severity: "warning", label: "Recommendation Conflicts", detail: `${input.brain.academicIntelligence.recommendationSync.mismatches.length} recommendation mismatch(es) detected.` });
   }
   if (input.brain.heartbeatSummary.riskLevel === "critical" || input.brain.heartbeatSummary.riskLevel === "high") {
-    issues.push({ code: "heartbeat_conflicts", severity: input.brain.heartbeatSummary.riskLevel === "critical" ? "critical" : "warning", label: "HEART BEAT Conflicts", detail: input.brain.heartbeatSummary.suggestedNextStep });
+    const sufficiency = evidenceSufficiencyForBrain({
+      dataState: input.brain.dataState,
+      attemptsCount: input.brain.source.attempts.length,
+    });
+    const displayRisk = cappedHeartbeatSeverity(input.brain.heartbeatSummary.riskLevel, sufficiency);
+    issues.push({
+      code: "heartbeat_conflicts",
+      severity: displayRisk === "critical" ? "critical" : "warning",
+      label: "HEART BEAT Conflicts",
+      detail: input.brain.heartbeatSummary.suggestedNextStep,
+    });
   }
   return issues;
 }
@@ -506,6 +564,15 @@ function buildDetailPayload(
   const status = healthForBrain({ brain, snapshotStatus: snapshot.status });
   const issues = diagnosticsForBrain({ brain, snapshot });
   const score = scoreFromIssues(status, issues);
+  const evidenceSufficiency = evidenceSufficiencyForBrain({
+    dataState: brain.dataState,
+    attemptsCount: brain.source.attempts.length,
+  });
+  const honestyNote = evidenceSufficiency === "insufficient"
+    ? "Thin evidence — HEART BEAT risk capped until attempts / Learning DNA refresh."
+    : evidenceSufficiency === "limited"
+      ? "Limited evidence — treat HEART BEAT Critical cautiously until more activity lands."
+      : null;
   return {
     student: { id: student.id, name: student.name, yearGroup: student.yearGroup },
     brainHealth: {
@@ -515,7 +582,22 @@ function buildDetailPayload(
       snapshotLastCalculatedAt: snapshot.lastCalculatedAt,
       generatedAt: brain.generatedAt,
     },
+    dataState: brain.dataState,
+    recommendationHonesty: brain.dataState.recommendationHonesty ?? "ready",
+    evidenceCitations: brain.dataState.evidenceCitations ?? [],
+    catchUpExplainability: brain.academicIntelligence.catchUpRecommendations.slice(0, 8).map((row) => ({
+      id: row.id,
+      title: row.title,
+      evidenceCitations: row.evidenceCitations ?? (row.reason ? [row.reason] : []),
+      insufficientData: Boolean(row.insufficientData),
+    })),
     heartbeat: brain.heartbeatSummary,
+    heartbeatDisplay: {
+      riskLevel: cappedHeartbeatSeverity(brain.heartbeatSummary.riskLevel, evidenceSufficiency),
+      urgency: cappedHeartbeatUrgency(brain.heartbeatSummary.urgency, evidenceSufficiency),
+      evidenceSufficiency,
+      honestyNote,
+    },
     coachTutorAudit: brain.academicIntelligence.coachTutorAudit,
     recommendationSync: brain.academicIntelligence.recommendationSync,
     learningDnaSummary: brain.learningDnaSummary,

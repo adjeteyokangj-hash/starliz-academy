@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ReactNode, useMemo, useState } from "react";
 import { canDo, getSchoolRoleLabel, type SchoolRole } from "@/lib/schools/permissions";
-import { useSchoolDashboardRecord, SchoolDashboardProvider, type SchoolDashboardRecord } from "@/components/admin/schools/school-dashboard-data";
+import { useSchoolDashboardRecord, type SchoolDashboardRecord } from "@/components/admin/schools/school-dashboard-data";
 
 type TabKey =
   | "dashboard"
@@ -71,16 +71,6 @@ function onboardingStatus(school: SchoolDashboardRecord): string {
 }
 
 export default function SchoolDashboardShell({ schoolId, activeTab, title, subtitle, children }: Props) {
-  return (
-    <SchoolDashboardProvider schoolId={schoolId}>
-      <SchoolDashboardShellInner schoolId={schoolId} activeTab={activeTab} title={title} subtitle={subtitle}>
-        {children}
-      </SchoolDashboardShellInner>
-    </SchoolDashboardProvider>
-  );
-}
-
-function SchoolDashboardShellInner({ schoolId, activeTab, title, subtitle, children }: Props) {
   const { school, loading, error, refresh } = useSchoolDashboardRecord(schoolId);
   const [viewAsRole, setViewAsRole] = useState<SchoolRole>("owner");
 

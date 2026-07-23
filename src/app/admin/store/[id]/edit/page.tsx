@@ -4,7 +4,20 @@ import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 
-type StoreItem = { id: string; name: string; category: string; description: string | null; price: number; minAge: number | null; maxAge: number | null; requiredLevel: number | null; isActive: boolean };
+type StoreItem = {
+  id: string;
+  name: string;
+  category: string;
+  description: string | null;
+  price: number;
+  minAge: number | null;
+  maxAge: number | null;
+  requiredLevel: number | null;
+  rewardType?: string;
+  approvalMode?: string;
+  stockTotal?: number | null;
+  isActive: boolean;
+};
 
 const inputCls = "w-full rounded-xl border border-slate-700/80 bg-slate-950 px-3.5 py-3 text-sm text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/40 transition";
 const CATEGORIES = ["themes", "avatars", "voices", "pet", "boosts"];
@@ -20,6 +33,9 @@ export default function EditStoreItemPage() {
   const [minAge, setMinAge] = useState("");
   const [maxAge, setMaxAge] = useState("");
   const [requiredLevel, setRequiredLevel] = useState("");
+  const [rewardType, setRewardType] = useState("digital");
+  const [approvalMode, setApprovalMode] = useState("none");
+  const [stockTotal, setStockTotal] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -38,6 +54,9 @@ export default function EditStoreItemPage() {
           setMinAge(found.minAge ? String(found.minAge) : "");
           setMaxAge(found.maxAge ? String(found.maxAge) : "");
           setRequiredLevel(found.requiredLevel ? String(found.requiredLevel) : "");
+          setRewardType(found.rewardType ?? "digital");
+          setApprovalMode(found.approvalMode ?? "none");
+          setStockTotal(found.stockTotal === null || found.stockTotal === undefined ? "" : String(found.stockTotal));
           setIsActive(found.isActive);
         }
       });
@@ -51,12 +70,16 @@ export default function EditStoreItemPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name, category,
+        name,
+        category,
         description: description || null,
         price: Number(price),
         minAge: minAge ? Number(minAge) : null,
         maxAge: maxAge ? Number(maxAge) : null,
         requiredLevel: requiredLevel ? Number(requiredLevel) : null,
+        rewardType,
+        approvalMode,
+        stockTotal: stockTotal === "" ? null : Number(stockTotal),
         isActive,
       }),
     });
@@ -84,6 +107,24 @@ export default function EditStoreItemPage() {
           <label className="block text-sm font-bold text-slate-300">Min age<input type="number" min={5} max={18} value={minAge} onChange={(e) => setMinAge(e.target.value)} placeholder="—" className={`mt-1.5 ${inputCls}`} /></label>
           <label className="block text-sm font-bold text-slate-300">Max age<input type="number" min={5} max={18} value={maxAge} onChange={(e) => setMaxAge(e.target.value)} placeholder="—" className={`mt-1.5 ${inputCls}`} /></label>
           <label className="block text-sm font-bold text-slate-300">Req. level<input type="number" min={1} value={requiredLevel} onChange={(e) => setRequiredLevel(e.target.value)} placeholder="—" className={`mt-1.5 ${inputCls}`} /></label>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <label className="block text-sm font-bold text-slate-300">
+            Type
+            <select value={rewardType} onChange={(e) => setRewardType(e.target.value)} className={`mt-1.5 ${inputCls}`}>
+              <option value="digital">digital</option>
+              <option value="physical">physical</option>
+            </select>
+          </label>
+          <label className="block text-sm font-bold text-slate-300">
+            Approval
+            <select value={approvalMode} onChange={(e) => setApprovalMode(e.target.value)} className={`mt-1.5 ${inputCls}`}>
+              <option value="none">none</option>
+              <option value="parent">parent</option>
+              <option value="admin">admin</option>
+            </select>
+          </label>
+          <label className="block text-sm font-bold text-slate-300">Stock (blank = unlimited)<input type="number" min={0} value={stockTotal} onChange={(e) => setStockTotal(e.target.value)} placeholder="Unlimited" className={`mt-1.5 ${inputCls}`} /></label>
         </div>
         <label className="flex items-center gap-3 text-sm font-bold text-slate-300 cursor-pointer">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded" />
