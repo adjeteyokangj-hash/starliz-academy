@@ -17,6 +17,7 @@ import {
   type BrainIssueType,
 } from "@/lib/brain-centre/action-map";
 import type {
+  AcademicSourceData,
   HeartbeatDecision,
   RecommendationSyncAudit,
 } from "@/lib/academic-intelligence/types";
@@ -34,6 +35,7 @@ type BrainCentreStudent = {
 
 type BrainCentreBrain = {
   studentId: string;
+  source: AcademicSourceData;
   heartbeatSummary: HeartbeatDecision;
   academicIntelligence: {
     generatedAt: string;
