@@ -1,12 +1,16 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 
 const SUCCESS_MESSAGE = "If an account exists, a reset link has been sent.";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordForm() {
+  const searchParams = useSearchParams();
+  const fromAdmin = searchParams.get("from") === "admin";
+  const loginHref = fromAdmin ? "/admin/login" : "/auth/login";
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -43,10 +47,13 @@ export default function ForgotPasswordPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-4 sm:py-10">
       <section className="w-full max-w-md rounded-2xl sm:rounded-3xl bg-white/90 p-6 sm:p-8 shadow-xl ring-1 ring-slate-200">
-        <p className="text-xs sm:text-sm font-bold uppercase tracking-[0.18em] text-primary">Parent Account</p>
+        <p className="text-xs sm:text-sm font-bold uppercase tracking-[0.18em] text-primary">
+          {fromAdmin ? "Admin Account" : "Account"}
+        </p>
         <h1 className="mt-2 font-heading text-3xl sm:text-4xl font-black text-slate-900">Reset Password</h1>
         <p className="mt-2 text-sm sm:text-base text-slate-600">
-          Enter your parent account email and we will send a secure reset link.
+          Enter your account email and we will send a secure reset link
+          {fromAdmin ? " so you can regain admin access" : ""}.
         </p>
 
         <form className="mt-6 space-y-3 sm:space-y-4" onSubmit={onSubmit}>
@@ -54,6 +61,7 @@ export default function ForgotPasswordPage() {
             Email
             <input
               type="email"
+              name="email"
               autoComplete="email"
               required
               value={email}
@@ -75,9 +83,28 @@ export default function ForgotPasswordPage() {
         </form>
 
         <p className="mt-4 text-xs sm:text-sm text-slate-600">
-          Remembered it? <Link href="/auth/login" className="font-bold text-primary">Back to login</Link>
+          Remembered it?{" "}
+          <Link href={loginHref} className="font-bold text-primary">
+            Back to {fromAdmin ? "admin login" : "login"}
+          </Link>
         </p>
       </section>
     </main>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-background px-4 py-4 sm:py-10">
+          <section className="w-full max-w-md rounded-2xl bg-white/90 p-6 shadow-xl ring-1 ring-slate-200 sm:rounded-3xl sm:p-8">
+            <p className="text-sm font-semibold text-slate-600">Loading reset form...</p>
+          </section>
+        </main>
+      }
+    >
+      <ForgotPasswordForm />
+    </Suspense>
   );
 }

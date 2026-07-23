@@ -17,7 +17,7 @@ function buildResetEmail(resetUrl: string) {
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a">
         <h1 style="font-size:24px">Reset your StarLiz Academy password</h1>
         <p>Hello,</p>
-        <p>We received a request to reset the password for your StarLiz Academy parent account.</p>
+        <p>We received a request to reset the password for your StarLiz Academy account.</p>
         <p>
           <a href="${resetUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 18px;border-radius:12px;text-decoration:none;font-weight:700">
             Reset password
@@ -32,7 +32,7 @@ function buildResetEmail(resetUrl: string) {
     text: [
       "Reset your StarLiz Academy password",
       "",
-      "We received a request to reset the password for your StarLiz Academy parent account.",
+      "We received a request to reset the password for your StarLiz Academy account.",
       `Open this secure link to choose a new password: ${resetUrl}`,
       "",
       `This link expires in ${PASSWORD_RESET_TTL_MINUTES} minutes.`,

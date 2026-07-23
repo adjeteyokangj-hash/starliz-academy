@@ -27,18 +27,29 @@ function AdminLoginForm() {
     void fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => undefined);
   }, [switching]);
 
-  async function onSubmit(event: FormEvent) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setLoading(true);
     try {
+      // Prefer FormData so browser autofill values are included even when React state is stale.
+      const formData = new FormData(event.currentTarget);
+      const submittedEmail = String(formData.get("email") ?? email).trim();
+      const submittedPassword = String(formData.get("password") ?? password);
+      if (!submittedEmail || !submittedPassword) {
+        setError("Enter your admin email and password.");
+        return;
+      }
+      setEmail(submittedEmail);
+      setPassword(submittedPassword);
+
       // Always clear the previous session before admin sign-in.
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => undefined);
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: submittedEmail, password: submittedPassword }),
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -79,7 +90,8 @@ function AdminLoginForm() {
           Email
           <input
             type="email"
-            autoComplete="email"
+            name="email"
+            autoComplete="username"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -92,6 +104,7 @@ function AdminLoginForm() {
           Password
           <input
             type="password"
+            name="password"
             autoComplete="current-password"
             required
             value={password}
@@ -113,7 +126,16 @@ function AdminLoginForm() {
         </Button>
       </form>
 
-      <p className="mt-5 text-sm text-slate-600">
+      <p className="mt-4 text-sm text-slate-600">
+        Forgot password?{" "}
+        <Link
+          href="/auth/forgot-password?from=admin"
+          className="font-bold text-cyan-700 underline-offset-2 hover:underline"
+        >
+          Reset it by email
+        </Link>
+      </p>
+      <p className="mt-3 text-sm text-slate-600">
         Back to{" "}
         <Link href="/" className="font-bold text-cyan-700 underline-offset-2 hover:underline">
           home
