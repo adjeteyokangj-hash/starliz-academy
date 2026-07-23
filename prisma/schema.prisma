@@ -1280,6 +1280,8 @@ model School {
   provisioningJobs                SchoolProvisioningJob[]
   notificationEvents              NotificationEvent[]
   notificationPreferences         NotificationPreference[]
+  dayLessons                      SchoolDayLesson[]
+  dayAttendance                   SchoolDayAttendance[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1323,7 +1325,8 @@ model Classroom {
   teacherId    String?
   teacher      SchoolTeacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
 
-  students SchoolStudent[]
+  students   SchoolStudent[]
+  dayLessons SchoolDayLesson[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1349,6 +1352,8 @@ model SchoolTeacher {
 
   classrooms   Classroom[]
   inviteTokens TeacherInviteToken[]
+  dayLessons   SchoolDayLesson[]
+  attendanceRecorded SchoolDayAttendance[] @relation("AttendanceRecordedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1373,6 +1378,7 @@ model SchoolStudent {
   leftAt      DateTime?
 
   parentLinks ParentSchoolLink[]
+  dayAttendance SchoolDayAttendance[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1453,6 +1459,77 @@ model Lesson {
   skills         String?  // comma-separated skill codes
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  schoolDayLessons SchoolDayLesson[]
+}
+
+/// Period on a school weekday timetable (registration through afternoon lessons).
+model SchoolDayLesson {
+  id          String         @id @default(cuid())
+  schoolId    String
+  school      School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classroomId String?
+  classroom   Classroom?     @relation(fields: [classroomId], references: [id], onDelete: SetNull)
+  teacherId   String?
+  teacher     SchoolTeacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  lessonId    String?
+  lesson      Lesson?        @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+
+  title       String
+  subject     String
+  lessonType  String  @default("core") // core | intervention | revision | assessment | homework | registration | break
+  yearGroup   String?
+  keyStage    String?
+  skillFocus  String?
+  dayOfWeek   Int // 1=Mon … 5=Fri
+  periodIndex Int
+  startsAt    String // HH:MM
+  endsAt      String // HH:MM
+  room        String?
+  status      String    @default("scheduled") // scheduled | in_progress | completed | cancelled
+  dueDate     DateTime?
+
+  attendance  SchoolDayAttendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, dayOfWeek, periodIndex])
+  @@index([classroomId])
+  @@index([teacherId])
+  @@index([lessonId])
+  @@index([schoolId, status])
+}
+
+/// One attendance mark per student per SchoolDayLesson period on a calendar session date.
+/// Historical rows are retained when a student later leaves the class (classroomId is a snapshot).
+model SchoolDayAttendance {
+  id                  String         @id @default(cuid())
+  schoolId            String
+  school              School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolDayLessonId   String
+  schoolDayLesson     SchoolDayLesson @relation(fields: [schoolDayLessonId], references: [id], onDelete: Cascade)
+  schoolStudentId     String
+  schoolStudent       SchoolStudent  @relation(fields: [schoolStudentId], references: [id], onDelete: Cascade)
+  /// Class context at time of mark — preserved if the student later moves class.
+  classroomId         String?
+  recordedByTeacherId String?
+  recordedByTeacher   SchoolTeacher? @relation("AttendanceRecordedBy", fields: [recordedByTeacherId], references: [id], onDelete: SetNull)
+  /// present | absent | late | authorised_absence | medical | not_recorded
+  status              String         @default("not_recorded")
+  note                String?
+  /// Calendar date of the school session (timetable slots are weekday templates).
+  sessionDate         DateTime       @db.Date
+  recordedAt          DateTime       @default(now())
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([schoolDayLessonId, schoolStudentId, sessionDate])
+  @@index([schoolId, sessionDate])
+  @@index([schoolId, schoolDayLessonId, sessionDate])
+  @@index([schoolStudentId, sessionDate])
+  @@index([recordedByTeacherId])
+  @@index([classroomId])
 }
 
 model RewardRule {
@@ -1474,6 +1551,9 @@ model StoreItem {
   minAge        Int?
   maxAge        Int?
   requiredLevel Int?
+  rewardType    String   @default("digital")
+  approvalMode  String   @default("none")
+  stockTotal    Int?
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

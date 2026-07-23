@@ -14,6 +14,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/teacher", label: "Dashboard", icon: "🏠", permission: "viewDashboard" },
+  { href: "/teacher/timetable", label: "Timetable", icon: "🗓️", permission: "viewClassrooms" },
   { href: "/teacher/classrooms", label: "Classrooms", icon: "🏫", permission: "viewClassrooms" },
   { href: "/teacher/students", label: "Students", icon: "👤", permission: "viewStudents" },
   { href: "/teacher/progress", label: "Progress", icon: "📊", permission: "viewProgress" },

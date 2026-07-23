@@ -7,172 +7,19 @@ import { hashPassword } from "@/lib/auth";
 import { canAddSchoolStudent } from "@/lib/schools/licensing";
 import { createInviteToken, resendInviteToken } from "@/lib/schools/invite";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
+import { enrolSchoolStudent } from "@/lib/schools/enrol-student";
+import { bootstrapDaytimeSchool } from "@/lib/schools/bootstrap-daytime-school";
+import { assignSchoolLesson } from "@/lib/schools/assign-school-lesson";
+import { updateSchoolDayLesson } from "@/lib/schools/update-school-day-lesson";
+import {
+  buildSchoolsAdminListPayload,
+  loadSecurityGateContext,
+  type SecurityGatePayload,
+} from "@/lib/schools/school-admin-payload";
 
 function getBaseUrl(): string {
   return process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
 }
-
-const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
-
-type SecuritySettingsRow = {
-  id: string;
-  maxLoginAttempts: number;
-  twoFaEnabled: boolean;
-};
-
-type SecurityGatePayload = {
-  blocked: boolean;
-  reason: "none" | "elevated_auth_anomaly";
-  twoFaEnabled: boolean;
-  authAnomalySignals: number;
-  threshold: number;
-};
-
-function getSecuritySettingsModel() {
-  return (prisma as unknown as { securitySettings?: {
-    findFirst: () => Promise<SecuritySettingsRow | null>;
-  } }).securitySettings;
-}
-
-async function loadSecurityGateContext(): Promise<SecurityGatePayload> {
-  const model = getSecuritySettingsModel();
-  const settings = model ? await model.findFirst() : null;
-  const threshold = Math.max(3, settings?.maxLoginAttempts ?? 5);
-  const authAnomalySignals = await prisma.schoolLoginHistory.count({
-    where: {
-      success: false,
-      createdAt: { gte: new Date(Date.now() - FIFTEEN_MINUTES_MS) },
-    },
-  });
-  const twoFaEnabled = Boolean(settings?.twoFaEnabled);
-  const blocked = twoFaEnabled && authAnomalySignals >= threshold;
-
-  return {
-    blocked,
-    reason: blocked ? "elevated_auth_anomaly" : "none",
-    twoFaEnabled,
-    authAnomalySignals,
-    threshold,
-  };
-}
-
-type SchoolPayload = {
-  securityGate: SecurityGatePayload;
-  schools: Array<{
-    id: string;
-    name: string;
-    slug: string;
-    status: string;
-    type: string;
-    contactEmail: string | null;
-    contactPhone: string | null;
-    notes: string | null;
-    ownerUserId: string | null;
-    ownerName: string | null;
-    ownerEmail: string | null;
-    createdAt: string;
-    updatedAt: string;
-    licence: {
-      id: string;
-      status: string;
-      seatLimit: number;
-      seatsUsed: number;
-      seatsAvailable: number;
-      provider: string;
-      pricingPlanId: string | null;
-      currency: string;
-      billingInterval: string;
-      trialEndsAt: string | null;
-      currentPeriodEnd: string | null;
-      startsAt: string | null;
-      endsAt: string | null;
-      notes: string | null;
-      updatedAt: string;
-    } | null;
-    classrooms: Array<{
-      id: string;
-      name: string;
-      yearGroup: string | null;
-      academicYear: string | null;
-      status: string;
-      teacherId: string | null;
-      teacherName: string | null;
-      studentsCount: number;
-      updatedAt: string;
-    }>;
-    teachers: Array<{
-      id: string;
-      userId: string;
-      email: string;
-      name: string | null;
-      role: string;
-      status: string;
-      title: string | null;
-      invitedAt: string | null;
-      acceptedAt: string | null;
-      lastActiveAt: string | null;
-      updatedAt: string;
-    }>;
-    students: Array<{
-      id: string;
-      childId: string;
-      childName: string;
-      parentEmail: string;
-      classroomId: string | null;
-      classroomName: string | null;
-      status: string;
-      externalRef: string | null;
-      joinedAt: string;
-      updatedAt: string;
-    }>;
-    communicationPreferences: Array<{
-      linkId: string;
-      parentName: string | null;
-      parentEmail: string;
-      studentName: string;
-      optedOutAt: string | null;
-      optOutReason: string | null;
-      safeguardingLockedAt: string | null;
-      safeguardingLockReason: string | null;
-      updatedAt: string;
-    }>;
-    communicationLogs: Array<{
-      id: string;
-      subject: string;
-      messageBody: string;
-      deliveryStatus: string;
-      deliveryReason: string | null;
-      parentEmail: string;
-      studentName: string;
-      actorName: string | null;
-      createdAt: string;
-    }>;
-    safeguarding: {
-      openAlerts: number;
-      criticalAlerts: number;
-    };
-    safeguardingIncidents: Array<{
-      id: string;
-      category: string;
-      severity: string;
-      status: string;
-      studentName: string | null;
-      escalationLevel: string | null;
-      reportedBy: string | null;
-      createdAt: string;
-      updatedAt: string;
-    }>;
-    activityTimeline: Array<{
-      id: string;
-      action: string;
-      entityType: string;
-      entityId: string | null;
-      severity: string;
-      actorUserId: string | null;
-      createdAt: string;
-    }>;
-  }>;
-};
 
 const baseSchoolSchema = z.object({
   name: z.string().trim().min(2),
@@ -279,6 +126,21 @@ const actionSchema = z.discriminatedUnion("action", [
     }),
   }),
   z.object({
+    action: z.literal("enrolStudent"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      firstName: z.string().trim().min(1).max(80),
+      lastName: z.string().trim().min(1).max(80),
+      yearGroup: z.string().trim().min(1).max(40),
+      classroomId: z.string().min(1).optional().nullable(),
+      guardianName: z.string().trim().min(1).max(120),
+      guardianEmail: z.string().trim().email(),
+      sendSupport: z.boolean().optional(),
+      safeguardingFlag: z.boolean().optional(),
+      baselineNotes: z.string().trim().max(4000).optional().nullable(),
+    }),
+  }),
+  z.object({
     action: z.literal("updateStudentAssignment"),
     payload: z.object({
       schoolStudentId: z.string().min(1),
@@ -306,6 +168,46 @@ const actionSchema = z.discriminatedUnion("action", [
       reason: z.string().trim().min(1).max(1500),
     }),
   }),
+  z.object({
+    action: z.literal("bootstrapDaytimeSchool"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    action: z.literal("assignSchoolLesson"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      subject: z.string().trim().min(1).max(80),
+      keyStage: z.string().trim().max(20).optional().nullable(),
+      yearGroup: z.string().trim().min(1).max(40),
+      classroomId: z.string().min(1).optional().nullable(),
+      teacherId: z.string().min(1).optional().nullable(),
+      skillFocus: z.string().trim().min(1).max(160),
+      lessonType: z.string().trim().min(1).max(40),
+      title: z.string().trim().max(160).optional().nullable(),
+      dayOfWeek: z.number().int().min(1).max(5).optional().nullable(),
+      periodIndex: z.number().int().min(1).max(12).optional().nullable(),
+      startsAt: z.string().trim().max(8).optional().nullable(),
+      endsAt: z.string().trim().max(8).optional().nullable(),
+      room: z.string().trim().max(80).optional().nullable(),
+      dueDate: z.string().optional().nullable(),
+    }),
+  }),
+  z.object({
+    action: z.literal("updateSchoolDayLesson"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      dayLessonId: z.string().min(1),
+      teacherId: z.string().min(1).optional().nullable(),
+      room: z.string().trim().max(80).optional().nullable(),
+      startsAt: z.string().trim().max(8).optional(),
+      endsAt: z.string().trim().max(8).optional(),
+      subject: z.string().trim().max(80).optional(),
+      title: z.string().trim().max(160).optional(),
+      lessonId: z.string().min(1).optional().nullable(),
+    }),
+  }),
 ]);
 
 function slugify(input: string): string {
@@ -327,225 +229,8 @@ async function uniqueSlug(name: string, provided?: string): Promise<string> {
   return candidate;
 }
 
-async function buildPayload(): Promise<SchoolPayload> {
-  const securityGate = await loadSecurityGateContext();
-  const schools = await prisma.school.findMany({
-    orderBy: [{ updatedAt: "desc" }],
-    include: {
-      owner: { select: { id: true, name: true, email: true } },
-      licence: true,
-      classrooms: {
-        orderBy: [{ updatedAt: "desc" }],
-        include: {
-          teacher: {
-            include: {
-              user: { select: { name: true } },
-            },
-          },
-          _count: { select: { students: { where: { status: "active" } } } },
-        },
-      },
-      teachers: {
-        orderBy: [{ updatedAt: "desc" }],
-        include: {
-          user: { select: { id: true, email: true, name: true } },
-        },
-      },
-      students: {
-        orderBy: [{ updatedAt: "desc" }],
-        include: {
-          child: {
-            select: {
-              id: true,
-              name: true,
-              parent: { select: { email: true } },
-            },
-          },
-          classroom: { select: { id: true, name: true } },
-        },
-      },
-      parentLinks: {
-        orderBy: [{ updatedAt: "desc" }],
-        include: {
-          parent: { select: { id: true, name: true, email: true } },
-          schoolStudent: {
-            include: {
-              child: { select: { id: true, name: true } },
-            },
-          },
-          communicationPreference: true,
-        },
-      },
-      communicationLogs: {
-        orderBy: [{ createdAt: "desc" }],
-        take: 25,
-        include: {
-          actor: { select: { id: true, name: true, email: true } },
-          parentSchoolLink: {
-            include: {
-              parent: { select: { id: true, name: true, email: true } },
-              schoolStudent: {
-                include: {
-                  child: { select: { id: true, name: true } },
-                },
-              },
-            },
-          },
-        },
-      },
-      safeguardingAlerts: {
-        where: { status: { in: ["open", "under_review", "escalated"] } },
-        select: {
-          severity: true,
-        },
-      },
-      safeguardingIncidents: {
-        orderBy: [{ updatedAt: "desc" }],
-        take: 25,
-        include: {
-          student: { select: { name: true } },
-          reportedBy: { select: { name: true, email: true } },
-        },
-      },
-      auditLogs: {
-        orderBy: [{ createdAt: "desc" }],
-        take: 50,
-        select: {
-          id: true,
-          action: true,
-          entityType: true,
-          entityId: true,
-          severity: true,
-          actorUserId: true,
-          createdAt: true,
-        },
-      },
-    },
-  });
-
-  return {
-    securityGate,
-    schools: schools.map((school) => {
-      const seatsUsed = school.students.filter((row) => row.status === "active").length;
-      const seatLimit = school.licence?.seatLimit ?? 0;
-      return {
-        id: school.id,
-        name: school.name,
-        slug: school.slug,
-        status: school.status,
-        type: school.type,
-        contactEmail: school.contactEmail,
-        contactPhone: school.contactPhone,
-        notes: school.notes,
-        ownerUserId: school.ownerUserId,
-        ownerName: school.owner?.name ?? null,
-        ownerEmail: school.owner?.email ?? null,
-        createdAt: school.createdAt.toISOString(),
-        updatedAt: school.updatedAt.toISOString(),
-        licence: school.licence
-          ? {
-            id: school.licence.id,
-            status: school.licence.status,
-            seatLimit,
-            seatsUsed,
-            seatsAvailable: seatLimit === 0 ? Number.MAX_SAFE_INTEGER : Math.max(0, seatLimit - seatsUsed),
-            provider: school.licence.provider,
-            pricingPlanId: school.licence.pricingPlanId,
-            currency: school.licence.currency,
-            billingInterval: school.licence.billingInterval,
-            trialEndsAt: school.licence.trialEndsAt?.toISOString() ?? null,
-            currentPeriodEnd: school.licence.currentPeriodEnd?.toISOString() ?? null,
-            startsAt: school.licence.startsAt?.toISOString() ?? null,
-            endsAt: school.licence.endsAt?.toISOString() ?? null,
-            notes: school.licence.notes,
-            updatedAt: school.licence.updatedAt.toISOString(),
-          }
-          : null,
-        classrooms: school.classrooms.map((classroom) => ({
-          id: classroom.id,
-          name: classroom.name,
-          yearGroup: classroom.yearGroup,
-          academicYear: classroom.academicYear,
-          status: classroom.status,
-          teacherId: classroom.teacherId,
-          teacherName: classroom.teacher?.user.name ?? null,
-          studentsCount: classroom._count.students,
-          updatedAt: classroom.updatedAt.toISOString(),
-        })),
-        teachers: school.teachers.map((teacher) => ({
-          id: teacher.id,
-          userId: teacher.user.id,
-          email: teacher.user.email,
-          name: teacher.user.name,
-          role: teacher.role,
-          status: teacher.status,
-          title: teacher.title,
-          invitedAt: teacher.invitedAt?.toISOString() ?? null,
-          acceptedAt: teacher.acceptedAt?.toISOString() ?? null,
-          lastActiveAt: teacher.lastActiveAt?.toISOString() ?? null,
-          updatedAt: teacher.updatedAt.toISOString(),
-        })),
-        students: school.students.map((student) => ({
-          id: student.id,
-          childId: student.child.id,
-          childName: student.child.name,
-          parentEmail: student.child.parent.email,
-          classroomId: student.classroomId,
-          classroomName: student.classroom?.name ?? null,
-          status: student.status,
-          externalRef: student.externalRef,
-          joinedAt: student.joinedAt.toISOString(),
-          updatedAt: student.updatedAt.toISOString(),
-        })),
-        communicationPreferences: school.parentLinks.map((link) => ({
-          linkId: link.id,
-          parentName: link.parent.name,
-          parentEmail: link.parent.email,
-          studentName: link.schoolStudent.child.name,
-          optedOutAt: link.communicationPreference?.optedOutAt?.toISOString() ?? null,
-          optOutReason: link.communicationPreference?.optOutReason ?? null,
-          safeguardingLockedAt: link.communicationPreference?.safeguardingLockedAt?.toISOString() ?? null,
-          safeguardingLockReason: link.communicationPreference?.safeguardingLockReason ?? null,
-          updatedAt: link.updatedAt.toISOString(),
-        })),
-        communicationLogs: school.communicationLogs.map((log) => ({
-          id: log.id,
-          subject: log.subject,
-          messageBody: log.messageBody,
-          deliveryStatus: log.deliveryStatus,
-          deliveryReason: log.deliveryReason,
-          parentEmail: log.parentSchoolLink.parent.email,
-          studentName: log.parentSchoolLink.schoolStudent.child.name,
-          actorName: log.actor?.name ?? log.actor?.email ?? null,
-          createdAt: log.createdAt.toISOString(),
-        })),
-        safeguarding: {
-          openAlerts: school.safeguardingAlerts.length,
-          criticalAlerts: school.safeguardingAlerts.filter((alert) => alert.severity === "critical").length,
-        },
-        safeguardingIncidents: school.safeguardingIncidents.map((incident) => ({
-          id: incident.id,
-          category: incident.category,
-          severity: incident.severity,
-          status: incident.status,
-          studentName: incident.student?.name ?? null,
-          escalationLevel: incident.escalationLevel ?? null,
-          reportedBy: incident.reportedBy?.name ?? incident.reportedBy?.email ?? null,
-          createdAt: incident.createdAt.toISOString(),
-          updatedAt: incident.updatedAt.toISOString(),
-        })),
-        activityTimeline: school.auditLogs.map((log) => ({
-          id: log.id,
-          action: log.action,
-          entityType: log.entityType,
-          entityId: log.entityId ?? null,
-          severity: log.severity,
-          actorUserId: log.actorUserId ?? null,
-          createdAt: log.createdAt.toISOString(),
-        })),
-      };
-    }),
-  };
+async function buildPayload() {
+  return buildSchoolsAdminListPayload();
 }
 
 export async function GET() {
@@ -675,6 +360,16 @@ export async function POST(request: Request) {
         inviteUrl: string;
       }
       | null = null;
+    let enrolResult:
+      | {
+        schoolStudentId: string;
+        childId: string;
+        parentUserId: string;
+      }
+      | null = null;
+    let bootstrapResult: Record<string, unknown> | null = null;
+    let assignLessonResult: { dayLessonId: string; lessonId: string } | null = null;
+    let updateDayLessonResult: { dayLessonId: string } | null = null;
 
     switch (parsed.action) {
       case "createSchool": {
@@ -1171,6 +866,33 @@ export async function POST(request: Request) {
         });
         break;
       }
+      case "enrolStudent": {
+        const enrolled = await enrolSchoolStudent({
+          schoolId: parsed.payload.schoolId,
+          firstName: parsed.payload.firstName,
+          lastName: parsed.payload.lastName,
+          yearGroup: parsed.payload.yearGroup,
+          classroomId: parsed.payload.classroomId,
+          guardianName: parsed.payload.guardianName,
+          guardianEmail: parsed.payload.guardianEmail,
+          sendSupport: parsed.payload.sendSupport,
+          safeguardingFlag: parsed.payload.safeguardingFlag,
+          baselineNotes: parsed.payload.baselineNotes,
+          actorUserId: session.userId,
+        });
+        if (!enrolled.ok) {
+          return NextResponse.json(
+            { error: enrolled.error, ...(enrolled.access ? { access: enrolled.access } : {}) },
+            { status: enrolled.status },
+          );
+        }
+        enrolResult = {
+          schoolStudentId: enrolled.schoolStudentId,
+          childId: enrolled.childId,
+          parentUserId: enrolled.parentUserId,
+        };
+        break;
+      }
       case "updateStudentAssignment": {
         const existing = await prisma.schoolStudent.findUnique({
           where: { id: parsed.payload.schoolStudentId },
@@ -1204,6 +926,72 @@ export async function POST(request: Request) {
         });
         break;
       }
+      case "bootstrapDaytimeSchool": {
+        const bootstrapped = await bootstrapDaytimeSchool({
+          schoolId: parsed.payload.schoolId,
+          actorUserId: session.userId,
+        });
+        if (!bootstrapped.ok) {
+          return NextResponse.json({ error: bootstrapped.error }, { status: bootstrapped.status });
+        }
+        bootstrapResult = {
+          changed: bootstrapped.changed,
+          classroomId: bootstrapped.classroomId,
+          teacherIds: bootstrapped.teacherIds,
+          studentIds: bootstrapped.studentIds,
+          dayLessonCount: bootstrapped.dayLessonIds.length,
+          lessonCount: bootstrapped.lessonIds.length,
+          summary: bootstrapped.summary,
+        };
+        break;
+      }
+      case "assignSchoolLesson": {
+        const assigned = await assignSchoolLesson({
+          schoolId: parsed.payload.schoolId,
+          actorUserId: session.userId,
+          subject: parsed.payload.subject,
+          keyStage: parsed.payload.keyStage,
+          yearGroup: parsed.payload.yearGroup,
+          classroomId: parsed.payload.classroomId,
+          teacherId: parsed.payload.teacherId,
+          skillFocus: parsed.payload.skillFocus,
+          lessonType: parsed.payload.lessonType,
+          title: parsed.payload.title,
+          dayOfWeek: parsed.payload.dayOfWeek,
+          periodIndex: parsed.payload.periodIndex,
+          startsAt: parsed.payload.startsAt,
+          endsAt: parsed.payload.endsAt,
+          room: parsed.payload.room,
+          dueDate: parsed.payload.dueDate,
+        });
+        if (!assigned.ok) {
+          return NextResponse.json({ error: assigned.error }, { status: assigned.status });
+        }
+        assignLessonResult = {
+          dayLessonId: assigned.dayLessonId,
+          lessonId: assigned.lessonId,
+        };
+        break;
+      }
+      case "updateSchoolDayLesson": {
+        const updated = await updateSchoolDayLesson({
+          schoolId: parsed.payload.schoolId,
+          dayLessonId: parsed.payload.dayLessonId,
+          actorUserId: session.userId,
+          teacherId: parsed.payload.teacherId,
+          room: parsed.payload.room,
+          startsAt: parsed.payload.startsAt,
+          endsAt: parsed.payload.endsAt,
+          subject: parsed.payload.subject,
+          title: parsed.payload.title,
+          lessonId: parsed.payload.lessonId,
+        });
+        if (!updated.ok) {
+          return NextResponse.json({ error: updated.error }, { status: updated.status });
+        }
+        updateDayLessonResult = { dayLessonId: updated.dayLessonId };
+        break;
+      }
       default:
         return NextResponse.json({ error: "Unsupported action." }, { status: 400 });
     }
@@ -1212,6 +1000,10 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ...payload,
       ...(inviteFallback ? { inviteFallback } : {}),
+      ...(enrolResult ? { enrolResult } : {}),
+      ...(bootstrapResult ? { bootstrapResult } : {}),
+      ...(assignLessonResult ? { assignLessonResult } : {}),
+      ...(updateDayLessonResult ? { updateDayLessonResult } : {}),
     });
   } catch {
     return NextResponse.json({ error: "Invalid school request." }, { status: 400 });

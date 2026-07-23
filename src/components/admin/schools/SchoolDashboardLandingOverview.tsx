@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { postSchoolAction } from "@/components/admin/schools/school-actions";
 import { useDerivedSchoolMetrics, useSchoolDashboardRecord } from "@/components/admin/schools/school-dashboard-data";
 
 type Props = {
@@ -40,6 +41,7 @@ const CONTENT_HUB_ITEMS = [
 ];
 
 const JUMP_TO_ITEMS = [
+  { label: "Timetable", href: "timetable" },
   { label: "Students", href: "students" },
   { label: "Teachers", href: "staff" },
   { label: "Safeguarding", href: "safeguarding" },
@@ -92,17 +94,21 @@ function takeRecent(records: ActivityRecord[], limit: number): ActivityRecord[] 
 }
 
 export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
-  const { school, loading, error } = useSchoolDashboardRecord(schoolId);
+  const { school, loading, error, refresh } = useSchoolDashboardRecord(schoolId);
   const metrics = useDerivedSchoolMetrics(school);
+  const [bootstrapping, setBootstrapping] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   const computed = useMemo(() => {
     if (!school) {
       return {
-        activeToday: 0,
-        weakAreas: 0,
+        recentAuditEvents24h: 0,
+        unassignedStudents: 0,
+        inactiveTeachers: 0,
         aiLessonsGenerated: 0,
         parentEngagementPct: 0,
-        attendancePct: 0,
+        classroomCoveragePct: 0,
+        licenceUtilisationPct: 0,
         systemHealth: 0,
         onboardingProgress: 0,
         lastActivityAt: null as string | null,
@@ -140,15 +146,16 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
     });
 
     const parentEngagementPct = metrics.deliveredCommsPct;
-    const attendancePct = Math.max(60, Math.min(100, Math.round(72 + metrics.engagementScore * 0.22 - metrics.riskScore * 0.12)));
     const systemHealth = Math.max(0, Math.min(100, Math.round(100 - metrics.riskScore * 0.6 + metrics.engagementScore * 0.35)));
 
     return {
-      activeToday: recentActivity.length,
-      weakAreas: metrics.studentsWithoutClassroom + school.safeguarding.openAlerts,
+      recentAuditEvents24h: recentActivity.length,
+      unassignedStudents: metrics.studentsWithoutClassroom,
+      inactiveTeachers: metrics.inactiveTeachers,
       aiLessonsGenerated: aiEvents.length,
       parentEngagementPct,
-      attendancePct,
+      classroomCoveragePct: metrics.classroomCoveragePct,
+      licenceUtilisationPct: metrics.licenceUtilisationPct,
       systemHealth,
       onboardingProgress: calculateOnboardingProgress(
         school.students.filter((row) => row.status === "active").length,
@@ -165,7 +172,16 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
       weakLearningTrends: takeRecent(weakSignals, 5),
       aiInterventions: takeRecent(aiEvents, 5),
     };
-  }, [metrics.deliveredCommsPct, metrics.engagementScore, metrics.riskScore, metrics.studentsWithoutClassroom, school]);
+  }, [
+    metrics.classroomCoveragePct,
+    metrics.deliveredCommsPct,
+    metrics.engagementScore,
+    metrics.inactiveTeachers,
+    metrics.licenceUtilisationPct,
+    metrics.riskScore,
+    metrics.studentsWithoutClassroom,
+    school,
+  ]);
 
   if (loading) {
     return (
@@ -212,29 +228,95 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
   const activeStudents = school.students.filter((row) => row.status === "active").length;
   const activeTeachers = school.teachers.filter((row) => row.status === "active").length;
   const totalClasses = school.classrooms.length;
+  const teachingLessons = (school.dayLessons ?? []).filter(
+    (row) => row.lessonType !== "break" && row.lessonType !== "registration",
+  ).length;
   const safeguarding = safeguardingBadge(school.safeguarding.openAlerts, school.safeguarding.criticalAlerts);
   const licence = statusBadge(school.licence?.status ?? "pilot");
 
   const overviewMetrics = [
     { label: "Total Students", value: String(activeStudents) },
-    { label: "Active Today", value: String(computed.activeToday) },
+    { label: "Recent audit events (24h)", value: String(computed.recentAuditEvents24h) },
     { label: "Teachers", value: String(activeTeachers) },
     { label: "Classes", value: String(totalClasses) },
+    { label: "Daytime lessons", value: String(teachingLessons) },
     { label: "Safeguarding Alerts", value: String(school.safeguarding.openAlerts) },
-    { label: "Weak Areas", value: String(computed.weakAreas) },
-    { label: "AI Lessons Generated", value: String(computed.aiLessonsGenerated) },
-    { label: "Parent Engagement %", value: `${computed.parentEngagementPct}%` },
-    { label: "Attendance %", value: `${computed.attendancePct}%` },
-    { label: "System Health", value: `${computed.systemHealth}%` },
+    { label: "Unassigned students", value: String(computed.unassignedStudents) },
+    { label: "AI audit events", value: String(computed.aiLessonsGenerated) },
+    { label: "Parent comms delivered %", value: `${computed.parentEngagementPct}%` },
+    { label: "Class coverage %", value: `${computed.classroomCoveragePct}%` },
+    { label: "Licence utilisation %", value: school.licence?.seatLimit ? `${computed.licenceUtilisationPct}%` : "No seat limit" },
   ];
 
   const upcomingActions = [
     activeStudents === 0 ? "Add first students to begin school onboarding" : null,
     activeTeachers === 0 ? "Add teachers and assign class ownership" : null,
     totalClasses === 0 ? "Create classes to organize student cohorts" : null,
+    teachingLessons === 0 ? "Build a daytime timetable with real lessons" : null,
     school.safeguarding.openAlerts > 0 ? "Review open safeguarding alerts" : null,
+    computed.unassignedStudents > 0 ? `Assign ${computed.unassignedStudents} student(s) without a class` : null,
+    computed.inactiveTeachers > 0 ? `Follow up ${computed.inactiveTeachers} non-active staff invite/status` : null,
     computed.aiLessonsGenerated === 0 ? "Generate first AI follow-up lesson set" : null,
   ].filter((item): item is string => Boolean(item));
+
+  const unassignedPreview = school.students
+    .filter((row) => row.status === "active" && !row.classroomId)
+    .slice(0, 5);
+  const inactiveTeacherPreview = school.teachers
+    .filter((row) => row.status !== "active")
+    .slice(0, 5);
+
+  const setupSteps = [
+    {
+      id: "teacher",
+      done: activeTeachers > 0 || school.teachers.length > 0,
+      title: "Invite at least one teacher",
+      href: `/admin/schools/${schoolId}/staff/new?role=teacher`,
+      cta: "Invite teacher",
+    },
+    {
+      id: "class",
+      done: totalClasses > 0,
+      title: "Create at least one class",
+      href: `/admin/schools/${schoolId}/classrooms/new`,
+      cta: "Create class",
+    },
+    {
+      id: "student",
+      done: activeStudents > 0,
+      title: "Enrol at least one student",
+      href: `/admin/schools/${schoolId}/students/new`,
+      cta: "Enrol student",
+    },
+    {
+      id: "lessons",
+      done: teachingLessons > 0,
+      title: "Schedule daytime lessons on the timetable",
+      href: `/admin/schools/${schoolId}/timetable`,
+      cta: "Open timetable",
+    },
+    {
+      id: "assign",
+      done: computed.unassignedStudents === 0 || activeStudents === 0,
+      title: "Assign unassigned students to classes",
+      href: `/admin/schools/${schoolId}/students`,
+      cta: "Open roster",
+    },
+  ] as const;
+  const setupComplete = setupSteps.every((step) => step.done);
+  const setupDoneCount = setupSteps.filter((step) => step.done).length;
+
+  async function handleBootstrapDaytimeSchool() {
+    setBootstrapping(true);
+    setBootstrapError(null);
+    const result = await postSchoolAction("bootstrapDaytimeSchool", { schoolId });
+    setBootstrapping(false);
+    if (!result.ok) {
+      setBootstrapError(result.error);
+      return;
+    }
+    refresh();
+  }
 
   return (
     <div className="space-y-5">
@@ -260,6 +342,62 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
         </div>
       </section>
 
+      <section className={`rounded-2xl border p-4 ${setupComplete ? "border-emerald-500/30 bg-emerald-500/10" : "border-sky-500/40 bg-sky-500/10"}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-white">{setupComplete ? "Setup complete" : "Setup this school"}</h2>
+            <p className="mt-1 text-xs text-slate-300">
+              {setupComplete
+                ? "Tutors, classes, students, and daytime lessons are in place. Open the timetable for today’s board."
+                : `Stand up a runnable daytime academy — tutors, a class, students, and real lessons. Progress ${setupDoneCount}/${setupSteps.length}.`}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {!setupComplete ? (
+              <>
+                <button
+                  type="button"
+                  disabled={bootstrapping}
+                  onClick={() => void handleBootstrapDaytimeSchool()}
+                  className="rounded-lg border border-emerald-400/50 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-500/30 disabled:opacity-60"
+                >
+                  {bootstrapping ? "Bootstrapping..." : "Bootstrap daytime school"}
+                </button>
+                <Link
+                  href={`/admin/schools/${schoolId}/staff/new?role=teacher`}
+                  className="rounded-lg border border-sky-400/50 bg-sky-500/20 px-3 py-1.5 text-xs font-semibold text-sky-50 hover:bg-sky-500/30"
+                >
+                  Start setup
+                </Link>
+              </>
+            ) : (
+              <Link
+                href={`/admin/schools/${schoolId}/timetable`}
+                className="rounded-lg border border-emerald-400/50 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-500/30"
+              >
+                Open timetable
+              </Link>
+            )}
+          </div>
+        </div>
+        {bootstrapError ? <p className="mt-2 text-xs text-rose-200">{bootstrapError}</p> : null}
+        <ol className="mt-3 grid gap-2 md:grid-cols-2">
+          {setupSteps.map((step, index) => (
+            <li key={step.id} className="rounded-lg border border-slate-700/70 bg-slate-950/50 px-3 py-2 text-xs text-slate-200">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-semibold text-white">
+                  <span className="text-slate-500">{index + 1}.</span> {step.title}
+                </p>
+                <span className={step.done ? "text-emerald-300" : "text-amber-200"}>{step.done ? "Done" : "Todo"}</span>
+              </div>
+              {!step.done ? (
+                <Link href={step.href} className="mt-2 inline-flex font-semibold text-sky-300 hover:text-sky-200">{step.cta}</Link>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      </section>
+
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {overviewMetrics.map((metric) => (
           <article key={metric.label} className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
@@ -267,6 +405,43 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
             <p className="mt-2 text-2xl font-black text-white">{metric.value}</p>
           </article>
         ))}
+      </section>
+
+      <section className="grid gap-3 lg:grid-cols-2">
+        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-white">At a glance · Unassigned students</h3>
+            <Link href={`/admin/schools/${schoolId}/students`} className="text-xs font-semibold text-sky-300 hover:text-sky-200">Open roster</Link>
+          </div>
+          {unassignedPreview.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-400">All active students are assigned to a class.</p>
+          ) : (
+            <ul className="mt-2 space-y-1 text-xs text-slate-300">
+              {unassignedPreview.map((student) => (
+                <li key={student.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">
+                  {student.childName ?? "Unnamed student"}
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-white">At a glance · Non-active staff</h3>
+            <Link href={`/admin/schools/${schoolId}/staff`} className="text-xs font-semibold text-sky-300 hover:text-sky-200">Open teachers</Link>
+          </div>
+          {inactiveTeacherPreview.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-400">All staff records are active.</p>
+          ) : (
+            <ul className="mt-2 space-y-1 text-xs text-slate-300">
+              {inactiveTeacherPreview.map((teacher) => (
+                <li key={teacher.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">
+                  {(teacher.name ?? teacher.email ?? "Unnamed staff")} · {teacher.status}
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
       </section>
 
       <section className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4">

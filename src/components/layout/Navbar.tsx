@@ -43,12 +43,16 @@ export function buildPrimaryNavLinks(input: {
     return [
       { href: "/parent/dashboard", label: "Dashboard" },
       { href: "/dashboard", label: "Child Dashboard" },
+      { href: "/student/today", label: "Today" },
+      { href: "/student/attendance", label: "Attendance" },
       { href: "/parent/profiles?intent=parent", label: "Parent Area" },
     ];
   }
 
   const links: PrimaryNavLink[] = [{ href: input.dashboardHref, label: "Dashboard" }];
   if (input.isStudentContext) {
+    links.push({ href: "/student/today", label: "Today" });
+    links.push({ href: "/student/attendance", label: "Attendance" });
     links.push({ href: input.gaLearningHubHref, label: "Ga Learning Hub" });
   }
   links.push({ href: input.profileHref, label: "My Profile" });
@@ -69,9 +73,13 @@ export default function Navbar() {
     pathname === "/dashboard" ||
     pathname?.startsWith("/dashboard/")
   );
-  const isStudentContext = role === "student" || (!authResolved && isStudentPage);
-  const dashboardHref = isStudentContext ? "/student/dashboard" : "/dashboard";
-  const profileHref = isStudentContext ? "/student/profile" : "/my-profile";
+  // Parent→child open keeps role "parent". Do not treat unresolved auth on /student/*
+  // as a student, or Ga Learning Hub flashes before /api/auth/me returns.
+  const isStudentRole = role === "student";
+  const pendingStudentExperience = !authResolved && isStudentPage;
+  const isStudentContext = isStudentRole;
+  const dashboardHref = isStudentRole || pendingStudentExperience ? "/student/dashboard" : "/dashboard";
+  const profileHref = isStudentRole || pendingStudentExperience ? "/student/profile" : "/my-profile";
   const gaLearningHubHref = "/ga-learning-hub";
   const showParentAccess = authResolved && role === "parent";
   const primaryNavLinks = buildPrimaryNavLinks({
@@ -141,7 +149,7 @@ export default function Navbar() {
 
   useEffect(() => {
     // Track last child page so "Continue" can resume their session
-    const CHILD_PAGES = ["/dashboard", "/student", "/games", "/spelling", "/maths", "/reading", "/student/profile", "/goals"];
+    const CHILD_PAGES = ["/dashboard", "/student", "/games", "/spelling", "/maths", "/reading", "/student/profile", "/student/today", "/student/attendance", "/goals"];
     if (CHILD_PAGES.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
       saveLastPage(pathname);
     }
