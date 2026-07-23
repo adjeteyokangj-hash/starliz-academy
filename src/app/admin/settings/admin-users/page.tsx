@@ -26,6 +26,7 @@ export default function AdminUsersPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -34,6 +35,10 @@ export default function AdminUsersPage() {
     roleId: '',
   });
   const [editingRole, setEditingRole] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
 
   async function fetchAdmins() {
     try {
@@ -136,6 +141,85 @@ export default function AdminUsersPage() {
     }
   };
 
+  function openResetPassword(admin: AdminUser) {
+    setError(null);
+    setSuccess(null);
+    setResetTarget(admin);
+    setResetPassword('');
+    setResetConfirm('');
+  }
+
+  function closeResetPassword() {
+    if (resetBusy) return;
+    setResetTarget(null);
+    setResetPassword('');
+    setResetConfirm('');
+  }
+
+  async function handleSetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resetTarget) return;
+    if (resetPassword.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (resetPassword !== resetConfirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setResetBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch(`/api/admin/users/${resetTarget.id}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'set', password: resetPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Failed to set password');
+        return;
+      }
+      setSuccess(data.message || `Password updated for ${resetTarget.email}`);
+      setResetTarget(null);
+      setResetPassword('');
+      setResetConfirm('');
+    } catch {
+      setError('Error setting password');
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
+  async function handleEmailResetLink() {
+    if (!resetTarget) return;
+    setResetBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch(`/api/admin/users/${resetTarget.id}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'email' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Failed to send reset email');
+        return;
+      }
+      setSuccess(data.message || `Reset link sent to ${resetTarget.email}`);
+      setResetTarget(null);
+      setResetPassword('');
+      setResetConfirm('');
+    } catch {
+      setError('Error sending reset email');
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -163,6 +247,82 @@ export default function AdminUsersPage() {
         {error && (
           <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4 mb-6 text-red-200">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="bg-emerald-900/20 border border-emerald-500/50 rounded-lg p-4 mb-6 text-emerald-200">
+            {success}
+          </div>
+        )}
+
+        {resetTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reset-password-title"
+              className="w-full max-w-md rounded-xl border border-slate-600 bg-slate-800 p-6 shadow-2xl"
+            >
+              <h2 id="reset-password-title" className="text-xl font-bold text-white">
+                Reset password
+              </h2>
+              <p className="mt-2 text-sm text-gray-300">
+                Set a new password for <span className="font-semibold text-white">{resetTarget.email}</span>, or email them a reset link.
+              </p>
+
+              <form className="mt-5 space-y-3" onSubmit={handleSetPassword}>
+                <label className="block text-sm font-medium text-gray-300">
+                  New password
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    minLength={8}
+                    required
+                    className="mt-1 w-full rounded-lg border border-slate-500 bg-slate-700 px-3 py-2 text-white"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-gray-300">
+                  Confirm password
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={resetConfirm}
+                    onChange={(e) => setResetConfirm(e.target.value)}
+                    minLength={8}
+                    required
+                    className="mt-1 w-full rounded-lg border border-slate-500 bg-slate-700 px-3 py-2 text-white"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={resetBusy}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {resetBusy ? 'Saving…' : 'Set password'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resetBusy}
+                    onClick={() => void handleEmailResetLink()}
+                    className="rounded-lg border border-slate-500 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-slate-700 disabled:opacity-60"
+                  >
+                    Email reset link
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resetBusy}
+                    onClick={closeResetPassword}
+                    className="rounded-lg px-4 py-2 text-sm font-medium text-gray-400 hover:text-white disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 
@@ -284,16 +444,26 @@ export default function AdminUsersPage() {
                           : 'Never'}
                       </td>
                       <td className="px-6 py-4">
-                        <button
-                          onClick={() => handleToggleActive(admin.id, admin.active)}
-                          className={`text-sm px-3 py-1 rounded ${
-                            admin.active
-                              ? 'bg-red-900/30 text-red-300 hover:bg-red-900/50'
-                              : 'bg-green-900/30 text-green-300 hover:bg-green-900/50'
-                          }`}
-                        >
-                          {admin.active ? 'Deactivate' : 'Activate'}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openResetPassword(admin)}
+                            className="rounded bg-slate-600/80 px-3 py-1 text-sm text-cyan-200 hover:bg-slate-500"
+                          >
+                            Reset password
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleActive(admin.id, admin.active)}
+                            className={`rounded px-3 py-1 text-sm ${
+                              admin.active
+                                ? 'bg-red-900/30 text-red-300 hover:bg-red-900/50'
+                                : 'bg-green-900/30 text-green-300 hover:bg-green-900/50'
+                            }`}
+                          >
+                            {admin.active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
