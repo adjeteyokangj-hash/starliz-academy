@@ -6,11 +6,29 @@ function inferSkillFocus(record: { notes: string | null; activityName: string })
   return (record.notes || record.activityName || "General practice").slice(0, 80);
 }
 
-function inferWeaknessType(accuracy: number, hintRate: number, responseTime: number, averageResponseTime: number) {
+function inferWeaknessType(
+  accuracy: number,
+  hintRate: number,
+  responseTime: number,
+  averageResponseTime: number,
+  consecutiveWrong = 0,
+) {
+  // Misconception marker: repeated incorrect streak with low accuracy (feeds Academic Intelligence).
+  if (accuracy < 55 && consecutiveWrong >= 3) return "misconception";
+  if (accuracy < 60 && consecutiveWrong >= 2 && hintRate >= 0.5) return "misconception";
   if (accuracy < 60) return "weak";
   if (hintRate >= 0.5) return "needs support";
   if (averageResponseTime > 0 && responseTime > averageResponseTime * 1.35) return "slow recall";
   return "improving";
+}
+
+function countLeadingWrong(attempts: Array<{ correct: boolean }>): number {
+  let count = 0;
+  for (const attempt of attempts) {
+    if (attempt.correct) break;
+    count += 1;
+  }
+  return count;
 }
 
 export async function detectAndStoreWeakAreas(actorUserId?: string) {
@@ -46,7 +64,10 @@ export async function detectAndStoreWeakAreas(actorUserId?: string) {
       .map((attempt) => Number(String(attempt.notes ?? "").match(/responseTimeMs:(\d+)/i)?.[1] ?? 0))
       .filter(Boolean);
     const responseTime = groupResponseTimes.length ? groupResponseTimes.reduce((total, value) => total + value, 0) / groupResponseTimes.length : 0;
-    const weaknessType = inferWeaknessType(accuracy, hintUsage, responseTime, averageResponseTime);
+    const consecutiveWrong = countLeadingWrong(
+      attempts.map((attempt) => ({ correct: attempt.correct === true })),
+    );
+    const weaknessType = inferWeaknessType(accuracy, hintUsage, responseTime, averageResponseTime, consecutiveWrong);
     const status = accuracy >= 80 ? "resolved" : accuracy >= 60 ? "improving" : "active";
     const student = attempts[0].child;
     const range = yearDifficultyRange(student.yearGroup);
@@ -67,19 +88,19 @@ export async function detectAndStoreWeakAreas(actorUserId?: string) {
         attemptsCount: attempts.length,
         currentDifficulty,
         status,
-        metadataJson: JSON.stringify({ hintUsage, responseTime }),
-      },
-      update: {
-        keyStage: range.keyStage,
-        yearGroup: student.yearGroup,
-        weaknessType,
-        accuracy,
-        attemptsCount: attempts.length,
-        currentDifficulty,
-        status,
-        lastDetectedAt: new Date(),
-        metadataJson: JSON.stringify({ hintUsage, responseTime }),
-      },
+      metadataJson: JSON.stringify({ hintUsage, responseTime, misconception: weaknessType === "misconception" }),
+    },
+    update: {
+      keyStage: range.keyStage,
+      yearGroup: student.yearGroup,
+      weaknessType,
+      accuracy,
+      attemptsCount: attempts.length,
+      currentDifficulty,
+      status,
+      lastDetectedAt: new Date(),
+      metadataJson: JSON.stringify({ hintUsage, responseTime, misconception: weaknessType === "misconception" }),
+    },
       include: { student: { select: { name: true } } },
     });
 
@@ -138,7 +159,8 @@ export async function recalculateWeakAreaFromAttempts(input: {
     ? allStudentAttempts.reduce((total, attempt) => total + attempt.responseTimeMs, 0) / allStudentAttempts.length
     : avgResponse;
 
-  const weaknessType = inferWeaknessType(accuracy, hintUsage, avgResponse, studentAvgResponse);
+  const consecutiveWrong = countLeadingWrong(attempts);
+  const weaknessType = inferWeaknessType(accuracy, hintUsage, avgResponse, studentAvgResponse, consecutiveWrong);
   const recentTwoStrong = attempts.slice(0, 2).length === 2 && attempts.slice(0, 2).every((attempt) => attempt.correct);
   const status = accuracy >= 80 && recentTwoStrong ? "resolved" : accuracy >= 60 ? "improving" : "active";
   const student = attempts[0].student;
@@ -162,7 +184,7 @@ export async function recalculateWeakAreaFromAttempts(input: {
       attemptsCount: attempts.length,
       currentDifficulty,
       status,
-      metadataJson: JSON.stringify({ hintUsage, avgResponse }),
+      metadataJson: JSON.stringify({ hintUsage, avgResponse, misconception: weaknessType === "misconception" }),
     },
     update: {
       keyStage: attempts[0].keyStage ?? range.keyStage,
@@ -173,7 +195,7 @@ export async function recalculateWeakAreaFromAttempts(input: {
       currentDifficulty,
       status,
       lastDetectedAt: new Date(),
-      metadataJson: JSON.stringify({ hintUsage, avgResponse }),
+      metadataJson: JSON.stringify({ hintUsage, avgResponse, misconception: weaknessType === "misconception" }),
     },
   });
 
@@ -184,7 +206,7 @@ export async function recalculateWeakAreaFromAttempts(input: {
     skillFocus: input.skillFocus,
     previousDifficulty,
     nextDifficulty: currentDifficulty,
-    reason: `attempt accuracy ${accuracy}% status ${status}`,
+    reason: `attempt accuracy ${accuracy}% status ${status}${weaknessType === "misconception" ? " misconception" : ""}`,
   });
 
   await writeAuditLog({

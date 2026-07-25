@@ -4,6 +4,11 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import { getStudentDaytimeBoardScoped } from "@/lib/schools/daytime-timetable-queries";
+import {
+  countOnlineTutors,
+  getOrCreateSupportPolicy,
+} from "@/lib/schools/human-support-presence";
+import { supportPreviewLabel } from "@/lib/schools/student-attendance-dashboard";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -55,5 +60,29 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ ok: true, board: result.board });
+  let supportPreview = supportPreviewLabel({
+    onlineTutorCount: 0,
+    availableTutorCount: 0,
+  });
+  const schoolId = result.board.enrolment?.schoolId ?? null;
+  if (schoolId) {
+    try {
+      const policy = await getOrCreateSupportPolicy(schoolId);
+      const counts = await countOnlineTutors({
+        schoolId,
+        staleAfterSec: policy.staleAfterSec,
+      });
+      supportPreview = supportPreviewLabel(counts);
+    } catch {
+      // Keep AI-only preview if presence lookup fails.
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    board: {
+      ...result.board,
+      supportPreview,
+    },
+  });
 }

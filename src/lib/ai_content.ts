@@ -1,5 +1,6 @@
 import type { MathQuestion, ReadingPassage, SpellingWord } from "@/lib/adaptive";
 import { validateSpellingContentContract } from "@/lib/content-governance";
+import type { DaytimeStagePackExtras } from "@/lib/schools/daytime-lesson-ui";
 
 type NextContentResponse = {
   item: Record<string, unknown> | null;
@@ -26,6 +27,7 @@ type AssignedContentResponse = {
     keyStage?: string | null;
     metadata?: Record<string, unknown>;
     items: unknown[];
+    stagePack?: DaytimeStagePackExtras | null;
   };
 };
 
@@ -196,17 +198,39 @@ function normalizeMath(item: Record<string, unknown> | null): MathQuestion | nul
   };
 }
 
+function readingPassageText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const row = value as Record<string, unknown>;
+    if (typeof row.text === "string" && row.text.trim()) return row.text.trim();
+    if (Array.isArray(row.paragraphs)) {
+      return row.paragraphs.map((part) => String(part ?? "").trim()).filter(Boolean).join("\n\n");
+    }
+  }
+  return "";
+}
+
 function normalizeReading(item: Record<string, unknown> | null): ReadingPassage | null {
   if (!item) return null;
-  const passage = String(item.passage ?? item.text ?? "").trim();
+  const passage = readingPassageText(item.passage) || readingPassageText(item.text);
   const question = String(item.question ?? item.prompt ?? "").trim();
-  const answer = String(item.answer ?? "").trim();
+  const answer = String(item.answer ?? item.correctAnswer ?? "").trim();
   if (!passage || !question || !answer) return null;
 
   const choices = Array.isArray(item.choices)
     ? item.choices.map((v) => String(v)).filter(Boolean)
-    : [];
+    : Array.isArray(item.options)
+      ? item.options.map((v) => String(v)).filter(Boolean)
+      : [];
   const normalizedChoices = choices.length ? Array.from(new Set([...choices, answer])) : [answer];
+  const hints = Array.isArray(item.hints)
+    ? item.hints.map((h) => String(h ?? "").trim()).filter(Boolean)
+    : typeof item.hint === "string" && item.hint.trim()
+      ? [item.hint.trim()]
+      : undefined;
+  const breakdown = item.breakdown && typeof item.breakdown === "object"
+    ? item.breakdown as ReadingPassage["breakdown"]
+    : undefined;
 
   return {
     id: String(item.id ?? `ai-reading-${question.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 28)}`),
@@ -214,6 +238,9 @@ function normalizeReading(item: Record<string, unknown> | null): ReadingPassage 
     question,
     choices: normalizedChoices,
     answer,
+    explanation: typeof item.explanation === "string" ? item.explanation : undefined,
+    hints,
+    breakdown,
   };
 }
 

@@ -162,6 +162,22 @@ export default function ContentLibraryPage() {
     };
   }, [fetchContent, fetchStudents]);
 
+  // Deep-link from school timetable: /admin/content-library?view=<contentId> opens Review Workspace.
+  useEffect(() => {
+    const viewId = searchParams.get("view");
+    if (!viewId || contentLoading || items.length === 0) return;
+    if (viewModalContent?.id === viewId) return;
+    const match = items.find((item) => item.id === viewId);
+    if (!match) return;
+    setViewModalContent(match);
+    setSelectedContentId(match.id);
+    void refreshDuplicateSummaryForContent(match.id).then((summary) => {
+      if (!summary) return;
+      setItems((current) => current.map((entry) => entry.id === match.id ? { ...entry, globalDuplicateSummary: summary } : entry));
+      setViewModalContent((current) => current?.id === match.id ? { ...current, globalDuplicateSummary: summary } : current);
+    });
+  }, [searchParams, contentLoading, items, viewModalContent?.id, refreshDuplicateSummaryForContent]);
+
   useEffect(() => {
     let cancelled = false;
     void fetchStudents(selectedContentId).then((data) => {
@@ -848,7 +864,15 @@ export default function ContentLibraryPage() {
       <ContentViewModal
         open={viewModalContent !== null}
         content={viewModalContent}
-        onClose={() => setViewModalContent(null)}
+        onClose={() => {
+          setViewModalContent(null);
+          if (searchParams.get("view")) {
+            const next = new URLSearchParams(searchParams.toString());
+            next.delete("view");
+            const query = next.toString();
+            router.replace(query ? `${pathname}?${query}` : pathname);
+          }
+        }}
         onVerified={handleVerified}
       />
     </div>

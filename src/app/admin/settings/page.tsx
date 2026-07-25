@@ -377,15 +377,23 @@ export default function SettingsPage() {
     <div className="space-y-8 pb-16">
 
       {/* ── Platform Modules ── */}
-      <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 backdrop-blur">
+      <section
+        className="rounded-[var(--admin-radius-lg)] border border-[var(--admin-border)] p-6"
+        style={{ background: "var(--admin-surface)", boxShadow: "var(--admin-shadow-sm)" }}
+      >
         <SectionHeader eyebrow="Platform control" title="Settings" subtitle="Manage all platform configuration from one place." />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {settingsModules.map((m) => (
-            <a key={m.title} href={m.href} className="group flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 transition hover:border-indigo-500/40 hover:bg-indigo-950/20">
+            <a
+              key={m.title}
+              href={m.href}
+              className="group flex cursor-pointer items-start gap-3 rounded-[var(--admin-radius)] border border-[var(--admin-border)] p-4 transition hover:border-[var(--admin-primary)]/40 hover:bg-[var(--admin-primary-muted)]"
+              style={{ background: "var(--admin-rail)" }}
+            >
               <span className="mt-0.5 text-xl">{m.icon}</span>
               <div>
-                <p className="text-sm font-black text-white group-hover:text-indigo-200 transition">{m.title}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{m.desc}</p>
+                <p className="text-sm font-bold text-[var(--admin-text)] transition group-hover:text-[var(--admin-primary-hover)]">{m.title}</p>
+                <p className="admin-body mt-0.5 text-xs">{m.desc}</p>
               </div>
             </a>
           ))}
@@ -393,7 +401,10 @@ export default function SettingsPage() {
       </section>
 
       {/* ── API Keys ── */}
-      <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 backdrop-blur">
+      <section
+        className="rounded-[var(--admin-radius-lg)] border border-[var(--admin-border)] p-6"
+        style={{ background: "var(--admin-surface)", boxShadow: "var(--admin-shadow-sm)" }}
+      >
         <SectionHeader
           eyebrow="Encrypted secrets"
           title="API Keys"

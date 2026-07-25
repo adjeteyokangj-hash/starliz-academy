@@ -12,7 +12,7 @@ test("student context navigation includes Ga Learning Hub", () => {
   });
 
   assert.deepEqual(links, [
-    { href: "/student/dashboard", label: "Dashboard" },
+    { href: "/student/dashboard", label: "Home" },
     { href: "/student/today", label: "Today" },
     { href: "/student/attendance", label: "Attendance" },
     { href: "/ga-learning-hub", label: "Ga Learning Hub" },

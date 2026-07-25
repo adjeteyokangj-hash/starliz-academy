@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
 import { getProfile, hydrateProfilesFromServer } from "@/lib/store";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 type Props = {
   children: React.ReactNode;
@@ -62,12 +63,13 @@ export default function StoreBootstrap({ children }: Props) {
       const isProfilesPage = pathname.startsWith("/profiles") || pathname.startsWith("/parent/profiles");
       const needsActiveProfile = !isProfilesPage;
 
+      let hydrateResult: "ok" | "empty" | "failed" = "ok";
       if (needsActiveProfile) {
-        await hydrateProfilesFromServer();
+        hydrateResult = await hydrateProfilesFromServer();
       }
 
       try {
-        const response = await fetch("/api/consent", { credentials: "include" });
+        const response = await fetchWithRefreshRetry("/api/consent", { credentials: "include" });
         if (response.ok) {
           const payload = await response.json() as { accepted: boolean };
           if (!payload.accepted) {
@@ -79,7 +81,9 @@ export default function StoreBootstrap({ children }: Props) {
         // Keep UX resilient if consent API is temporarily unavailable.
       }
 
-      if (needsActiveProfile && !getProfile()) {
+      // Only force profile selection when we know there is no active child.
+      // Transient hydrate failures must not look like a logout.
+      if (needsActiveProfile && hydrateResult !== "failed" && !getProfile()) {
         window.location.replace("/profiles");
         return;
       }

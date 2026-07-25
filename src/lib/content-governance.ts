@@ -102,6 +102,18 @@ function toRecords(value: unknown): Record<string, unknown>[] {
   return [];
 }
 
+/** Daytime stage packs store spelling rows under items/questions; legacy packs may be a bare array. */
+function spellingItemRecords(content: unknown): Record<string, unknown>[] {
+  if (Array.isArray(content)) return toRecords(content);
+  if (content && typeof content === "object" && !Array.isArray(content)) {
+    const row = content as Record<string, unknown>;
+    if (Array.isArray(row.items) && row.items.length) return toRecords(row.items);
+    if (Array.isArray(row.questions) && row.questions.length) return toRecords(row.questions);
+    return [row];
+  }
+  return [];
+}
+
 function parseJsonObject(value: string | null | undefined): ContentMetadata {
   if (!value) return {};
   try {
@@ -115,7 +127,7 @@ function parseJsonObject(value: string | null | undefined): ContentMetadata {
 function getContentItems(record: ContentGovernanceRecord): Record<string, unknown>[] {
   if (!record.contentJson) return [];
   try {
-    return toRecords(JSON.parse(record.contentJson) as unknown);
+    return spellingItemRecords(JSON.parse(record.contentJson) as unknown);
   } catch {
     return [];
   }
@@ -159,7 +171,7 @@ function hasQuestionTypeSpelling(items: Record<string, unknown>[]): boolean {
 }
 
 export function validateSpellingContentContract(content: unknown): { ok: boolean; reason?: string; reasonCode?: string } {
-  const items = toRecords(content);
+  const items = spellingItemRecords(content);
   if (!items.length) {
     return { ok: false, reasonCode: "empty_spelling_content", reason: "Spelling content must include at least one item." };
   }

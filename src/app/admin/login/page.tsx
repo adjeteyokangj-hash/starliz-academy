@@ -97,7 +97,7 @@ function AdminLoginForm() {
             onChange={(e) => setEmail(e.target.value)}
             // Password managers inject attributes like wfd-id before hydration.
             suppressHydrationWarning
-            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-slate-50/80 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-cyan-600 focus:bg-white focus:ring-2 focus:ring-cyan-600/20"
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-slate-50/80 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[var(--admin-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-primary)]/20"
           />
         </label>
         <label className="block text-sm font-semibold text-slate-700">
@@ -111,7 +111,7 @@ function AdminLoginForm() {
             onChange={(e) => setPassword(e.target.value)}
             // Password managers inject attributes like wfd-id before hydration.
             suppressHydrationWarning
-            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-slate-50/80 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-cyan-600 focus:bg-white focus:ring-2 focus:ring-cyan-600/20"
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-slate-50/80 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[var(--admin-primary)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-primary)]/20"
           />
         </label>
 
@@ -210,19 +210,11 @@ function AdminBrandPanel() {
 
 export default function AdminLoginPage() {
   return (
-    <main className="admin-login-shell relative isolate flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:py-12">
+    <main data-admin-theme className="admin-login-shell relative isolate flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:py-12" style={{ background: "var(--admin-bg)" }}>
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
-        <div className="absolute inset-0 bg-[linear-gradient(160deg,#e8f7ff_0%,#f4f7fb_42%,#eef2ff_100%)]" />
-        <div className="absolute -left-24 top-0 h-80 w-80 rounded-full bg-cyan-300/30 blur-3xl" />
-        <div className="absolute -right-16 bottom-0 h-96 w-96 rounded-full bg-sky-400/20 blur-3xl" />
-        <div
-          className="absolute inset-0 opacity-[0.35]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, rgba(15,23,42,0.08) 1px, transparent 0)",
-            backgroundSize: "22px 22px",
-          }}
-        />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(160deg, #0a1528 0%, var(--admin-bg) 42%, #0c1220 100%)" }} />
+        <div className="absolute -left-24 top-0 h-80 w-80 rounded-full bg-[var(--admin-primary)]/20 blur-3xl" />
+        <div className="absolute -right-16 bottom-0 h-96 w-96 rounded-full bg-sky-500/10 blur-3xl" />
       </div>
 
       <div className="admin-login-stage mx-auto grid w-full max-w-6xl items-stretch gap-6 lg:grid-cols-[1.15fr_0.85fr]">

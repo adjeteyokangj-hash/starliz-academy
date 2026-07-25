@@ -148,8 +148,68 @@ export type SchoolAdminRecord = {
     teacherId: string | null;
     teacherName: string | null;
     lessonId: string | null;
+    lessonTitle: string | null;
     dueDate: string | null;
     updatedAt: string;
+    playableContent: {
+      id: string;
+      contentType: string;
+      topic: string;
+      skillFocus: string | null;
+      status: string;
+      itemCount: number;
+      yearGroup: string | null;
+      estimatedMinutes: number | null;
+      stage: string | null;
+      stageLabel: string | null;
+    } | null;
+    playableSession: {
+      periodMinutes: number;
+      totalEstimatedMinutes: number;
+      stageCount: number;
+      contentType: string | null;
+      stages: Array<{
+        id: string;
+        contentType: string;
+        topic: string;
+        status: string;
+        itemCount: number;
+        estimatedMinutes: number;
+        stage: string;
+        stageLabel: string;
+        preview: {
+          headline: string | null;
+          body: string | null;
+          items: string[];
+        };
+      }>;
+    } | null;
+    lessonReview: {
+      reviewStatus: "draft" | "machine_failed" | "awaiting_review" | "approved";
+      teacherReviewedAt: string | null;
+      teacherReviewedBy: string | null;
+      machineHealth: {
+        overall: "PASS" | "FAIL";
+        checkedAt: string;
+        periodMinutes: number;
+        totalEstimatedMinutes: number;
+        stageCount: number;
+        checks: Array<{ id: string; label: string; passed: boolean; detail?: string }>;
+        reason: string | null;
+        regenerateHint: string | null;
+        weekDiversity?: {
+          weekStart: string;
+          passage: string;
+          vocabularyOverlap: string;
+          questionOverlap: string;
+          workedExamples: string;
+          scenarios: string;
+          blocked: boolean;
+          blockedReason: string | null;
+          comparedAgainst: string[];
+        } | null;
+      } | null;
+    } | null;
   }>;
 };
 
@@ -257,6 +317,17 @@ export const schoolAdminInclude = {
           user: { select: { name: true } },
         },
       },
+      lesson: {
+        select: {
+          id: true,
+          title: true,
+          contentRefs: true,
+          reviewStatus: true,
+          machineHealthJson: true,
+          teacherReviewedAt: true,
+          teacherReviewedBy: true,
+        },
+      },
     },
   },
 };
@@ -287,6 +358,15 @@ type DayLessonSource = {
   updatedAt: Date;
   classroom: { id: string; name: string } | null;
   teacher: { user: { name: string | null } } | null;
+  lesson: {
+    id: string;
+    title: string;
+    contentRefs: string | null;
+    reviewStatus: string;
+    machineHealthJson: string | null;
+    teacherReviewedAt: Date | null;
+    teacherReviewedBy: string | null;
+  } | null;
 };
 
 type SchoolAdminSource = {
@@ -473,37 +553,328 @@ export const schoolDashboardInclude = {
           user: { select: { name: true } },
         },
       },
+      lesson: {
+        select: {
+          id: true,
+          title: true,
+          contentRefs: true,
+          reviewStatus: true,
+          machineHealthJson: true,
+          teacherReviewedAt: true,
+          teacherReviewedBy: true,
+        },
+      },
     },
   },
 };
 
 type SchoolDashboardSource = Omit<SchoolAdminSource, "parentLinks" | "communicationLogs">;
 
-function mapDayLessons(
+function parseContentRefIds(contentRefs: string | null | undefined): string[] {
+  if (!contentRefs?.trim()) return [];
+  return contentRefs
+    .split(/[,;\s]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function countPlayableItems(contentJson: string): number {
+  try {
+    const parsed = JSON.parse(contentJson) as unknown;
+    if (Array.isArray(parsed)) return parsed.length;
+    if (parsed && typeof parsed === "object") {
+      const row = parsed as Record<string, unknown>;
+      if (Array.isArray(row.questions)) return row.questions.length;
+      if (Array.isArray(row.items)) return row.items.length;
+      return 1;
+    }
+  } catch {
+    // ignore malformed content
+  }
+  return 0;
+}
+
+type PlayableContentDto = NonNullable<SchoolAdminRecord["dayLessons"][number]["playableContent"]>;
+type PlayableSessionDto = NonNullable<SchoolAdminRecord["dayLessons"][number]["playableSession"]>;
+type StagePreview = PlayableSessionDto["stages"][number]["preview"];
+
+function buildStagePreview(contentType: string, contentJson: string): StagePreview {
+  try {
+    const parsed = JSON.parse(contentJson) as unknown;
+    if (Array.isArray(parsed)) {
+      const firstPassage = parsed.find((item) => {
+        if (!item || typeof item !== "object") return false;
+        return typeof (item as { passage?: unknown }).passage === "string"
+          && String((item as { passage: string }).passage).trim().length > 40;
+      }) as { passage?: string } | undefined;
+      const items = parsed.slice(0, 8).map((item, index) => {
+        if (!item || typeof item !== "object") return `Item ${index + 1}`;
+        const row = item as Record<string, unknown>;
+        return String(row.prompt ?? row.question ?? row.word ?? row.text ?? `Item ${index + 1}`);
+      });
+      return {
+        headline: `${contentType} practice`,
+        body: firstPassage?.passage ? firstPassage.passage.slice(0, 900) : null,
+        items,
+      };
+    }
+    if (parsed && typeof parsed === "object") {
+      const row = parsed as Record<string, unknown>;
+      const sections: string[] = [];
+      if (row.passage && typeof row.passage === "object") {
+        const p = row.passage as Record<string, unknown>;
+        const title = typeof p.title === "string" ? p.title : "Passage";
+        const text = typeof p.text === "string" ? p.text : "";
+        if (text) sections.push(`Passage — ${title}\n\n${text}`);
+      } else if (typeof row.passage === "string" && row.passage.trim()) {
+        sections.push(`Passage\n\n${row.passage.trim()}`);
+      }
+      if (typeof row.explanation === "string" && row.explanation.trim()) {
+        sections.push(`Explanation\n\n${row.explanation.trim()}`);
+      }
+      if (typeof row.ruleExplanation === "string" && row.ruleExplanation.trim()) {
+        sections.push(`Spelling rule\n\n${row.ruleExplanation.trim()}`);
+      }
+      if (Array.isArray(row.targetWords) && row.targetWords.length) {
+        sections.push(`Target words: ${row.targetWords.map(String).join(", ")}`);
+      }
+      if (Array.isArray(row.vocabulary) && row.vocabulary.length) {
+        const vocabLines = row.vocabulary.slice(0, 8).map((item) => {
+          if (!item || typeof item !== "object") return null;
+          const v = item as Record<string, unknown>;
+          return `${String(v.word ?? "")} — ${String(v.childFriendlyMeaning ?? v.meaning ?? "")}`;
+        }).filter(Boolean);
+        if (vocabLines.length) sections.push(`Vocabulary\n${vocabLines.join("\n")}`);
+      }
+      if (Array.isArray(row.workedExamples) && row.workedExamples[0] && typeof row.workedExamples[0] === "object") {
+        const ex = row.workedExamples[0] as Record<string, unknown>;
+        sections.push(`Worked example\n${String(ex.question ?? "")}\n→ ${String(ex.answer ?? "")}`);
+      }
+      if (Array.isArray(row.activities) && row.activities.length) {
+        const activityLines = row.activities.map((item) => {
+          if (!item || typeof item !== "object") return null;
+          const a = item as Record<string, unknown>;
+          return `${String(a.estimatedMinutes ?? "?")}m · ${String(a.kind ?? "activity")}${a.title ? ` — ${String(a.title)}` : ""}`;
+        }).filter(Boolean);
+        sections.push(`Activities\n${activityLines.join("\n")}`);
+      }
+      if (typeof row.scenarioOrObservation === "string" && row.scenarioOrObservation.trim()) {
+        sections.push(`Scenario\n\n${row.scenarioOrObservation.trim()}`);
+      }
+
+      const questions = Array.isArray(row.questions) ? row.questions : Array.isArray(row.items) ? row.items : [];
+      const words = Array.isArray(row.words) ? row.words : [];
+      const items = (questions.length ? questions : words).slice(0, 8).map((item, index) => {
+        if (typeof item === "string") return item;
+        if (!item || typeof item !== "object") return `Item ${index + 1}`;
+        const entry = item as Record<string, unknown>;
+        return String(entry.prompt ?? entry.question ?? entry.word ?? entry.text ?? `Item ${index + 1}`);
+      });
+      return {
+        headline: typeof row.title === "string"
+          ? row.title
+          : typeof row.spellingFocus === "string"
+            ? row.spellingFocus
+            : typeof row.learningObjective === "string"
+              ? row.learningObjective
+              : `${contentType} stage`,
+        body: sections.length ? sections.join("\n\n").slice(0, 1600) : null,
+        items,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return { headline: null, body: null, items: [] };
+}
+
+function parseDaytimeSessionFromMetadata(metadataJson: string | null | undefined): {
+  stage: string | null;
+  stageLabel: string | null;
+  estimatedMinutes: number | null;
+} {
+  if (!metadataJson?.trim()) {
+    return { stage: null, stageLabel: null, estimatedMinutes: null };
+  }
+  try {
+    const parsed = JSON.parse(metadataJson) as {
+      daytimeSession?: { stage?: unknown; label?: unknown; estimatedMinutes?: unknown };
+      estimatedMinutes?: unknown;
+    };
+    const session = parsed.daytimeSession;
+    const stage = typeof session?.stage === "string" ? session.stage : null;
+    const stageLabel = typeof session?.label === "string" ? session.label : null;
+    const estimatedMinutes = typeof session?.estimatedMinutes === "number"
+      ? session.estimatedMinutes
+      : typeof parsed.estimatedMinutes === "number"
+        ? parsed.estimatedMinutes
+        : null;
+    return { stage, stageLabel, estimatedMinutes };
+  } catch {
+    return { stage: null, stageLabel: null, estimatedMinutes: null };
+  }
+}
+
+type ContentRowForPlayable = PlayableContentDto & { preview: StagePreview };
+
+async function loadPlayableContentByIds(ids: string[]): Promise<Map<string, ContentRowForPlayable>> {
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  const map = new Map<string, ContentRowForPlayable>();
+  if (!unique.length) return map;
+
+  const rows = await prisma.aIContentCache.findMany({
+    where: { id: { in: unique } },
+    select: {
+      id: true,
+      contentType: true,
+      topic: true,
+      skillFocus: true,
+      status: true,
+      yearGroup: true,
+      contentJson: true,
+      metadataJson: true,
+    },
+  });
+
+  for (const row of rows) {
+    const session = parseDaytimeSessionFromMetadata(row.metadataJson);
+    const itemCount = countPlayableItems(row.contentJson);
+    map.set(row.id, {
+      id: row.id,
+      contentType: row.contentType,
+      topic: row.topic,
+      skillFocus: row.skillFocus,
+      status: row.status,
+      itemCount,
+      yearGroup: row.yearGroup,
+      estimatedMinutes: session.estimatedMinutes ?? Math.max(2, Math.ceil(itemCount * 1.5)),
+      stage: session.stage,
+      stageLabel: session.stageLabel,
+      preview: buildStagePreview(row.contentType, row.contentJson),
+    });
+  }
+  return map;
+}
+
+function normalizeReviewStatus(
+  value: string | null | undefined,
+): "draft" | "machine_failed" | "awaiting_review" | "approved" {
+  if (value === "machine_failed" || value === "awaiting_review" || value === "approved") return value;
+  return "draft";
+}
+
+async function mapDayLessons(
   dayLessons: DayLessonSource[] | undefined,
-): SchoolAdminRecord["dayLessons"] {
-  return (dayLessons ?? []).map((lesson) => ({
-    id: lesson.id,
-    title: lesson.title,
-    subject: lesson.subject,
-    lessonType: lesson.lessonType,
-    yearGroup: lesson.yearGroup,
-    keyStage: lesson.keyStage,
-    skillFocus: lesson.skillFocus,
-    dayOfWeek: lesson.dayOfWeek,
-    periodIndex: lesson.periodIndex,
-    startsAt: lesson.startsAt,
-    endsAt: lesson.endsAt,
-    room: lesson.room,
-    status: lesson.status,
-    classroomId: lesson.classroomId,
-    classroomName: lesson.classroom?.name ?? null,
-    teacherId: lesson.teacherId,
-    teacherName: lesson.teacher?.user.name ?? null,
-    lessonId: lesson.lessonId,
-    dueDate: lesson.dueDate?.toISOString() ?? null,
-    updatedAt: lesson.updatedAt.toISOString(),
-  }));
+): Promise<SchoolAdminRecord["dayLessons"]> {
+  const rows = dayLessons ?? [];
+  const contentIds = rows.flatMap((row) => parseContentRefIds(row.lesson?.contentRefs));
+  const contentById = await loadPlayableContentByIds(contentIds);
+
+  return rows.map((lesson) => {
+    const linkedIds = parseContentRefIds(lesson.lesson?.contentRefs);
+    const stages = linkedIds
+      .map((id) => contentById.get(id))
+      .filter((row): row is ContentRowForPlayable => Boolean(row));
+    const firstContent = stages[0] ?? null;
+    const periodStart = lesson.startsAt;
+    const periodEnd = lesson.endsAt;
+    const startParts = /^(\d{1,2}):(\d{2})$/.exec(periodStart.trim());
+    const endParts = /^(\d{1,2}):(\d{2})$/.exec(periodEnd.trim());
+    let periodMinutes = 50;
+    if (startParts && endParts) {
+      const start = Number(startParts[1]) * 60 + Number(startParts[2]);
+      const end = Number(endParts[1]) * 60 + Number(endParts[2]);
+      if (end > start) periodMinutes = end - start;
+    }
+
+    const playableSession: PlayableSessionDto | null = stages.length
+      ? {
+          periodMinutes,
+          totalEstimatedMinutes: stages.reduce((sum, stage) => sum + (stage.estimatedMinutes ?? 0), 0),
+          stageCount: stages.length,
+          contentType: firstContent?.contentType ?? null,
+          stages: stages.map((stage, index) => ({
+            id: stage.id,
+            contentType: stage.contentType,
+            topic: stage.topic,
+            status: stage.status,
+            itemCount: stage.itemCount,
+            estimatedMinutes: stage.estimatedMinutes ?? Math.max(2, Math.ceil(stage.itemCount * 1.5)),
+            stage: stage.stage ?? (index === 0 ? "warmup" : index === stages.length - 1 ? "stretch" : "core"),
+            stageLabel: stage.stageLabel
+              ?? (index === 0 ? "Warm-up" : index === stages.length - 1 ? "Stretch" : "Core practice"),
+            preview: stage.preview,
+          })),
+        }
+      : null;
+
+    type MachineHealthDto = NonNullable<
+      NonNullable<SchoolAdminRecord["dayLessons"][number]["lessonReview"]>["machineHealth"]
+    >;
+    let machineHealth: MachineHealthDto | null = null;
+    if (lesson.lesson?.machineHealthJson) {
+      try {
+        const parsed = JSON.parse(lesson.lesson.machineHealthJson) as Partial<MachineHealthDto>;
+        if (parsed && (parsed.overall === "PASS" || parsed.overall === "FAIL") && Array.isArray(parsed.checks)) {
+          machineHealth = parsed as MachineHealthDto;
+        }
+      } catch {
+        machineHealth = null;
+      }
+    }
+
+    const reviewStatus = normalizeReviewStatus(lesson.lesson?.reviewStatus);
+    const lessonReview = lesson.lesson
+      ? {
+          reviewStatus,
+          teacherReviewedAt: lesson.lesson.teacherReviewedAt?.toISOString() ?? null,
+          teacherReviewedBy: lesson.lesson.teacherReviewedBy,
+          machineHealth,
+        }
+      : null;
+
+    const playableContent: PlayableContentDto | null = firstContent
+      ? {
+          id: firstContent.id,
+          contentType: firstContent.contentType,
+          topic: firstContent.topic,
+          skillFocus: firstContent.skillFocus,
+          status: firstContent.status,
+          itemCount: firstContent.itemCount,
+          yearGroup: firstContent.yearGroup,
+          estimatedMinutes: firstContent.estimatedMinutes,
+          stage: firstContent.stage,
+          stageLabel: firstContent.stageLabel,
+        }
+      : null;
+
+    return {
+      id: lesson.id,
+      title: lesson.title,
+      subject: lesson.subject,
+      lessonType: lesson.lessonType,
+      yearGroup: lesson.yearGroup,
+      keyStage: lesson.keyStage,
+      skillFocus: lesson.skillFocus,
+      dayOfWeek: lesson.dayOfWeek,
+      periodIndex: lesson.periodIndex,
+      startsAt: lesson.startsAt,
+      endsAt: lesson.endsAt,
+      room: lesson.room,
+      status: lesson.status,
+      classroomId: lesson.classroomId,
+      classroomName: lesson.classroom?.name ?? null,
+      teacherId: lesson.teacherId,
+      teacherName: lesson.teacher?.user.name ?? null,
+      lessonId: lesson.lessonId,
+      lessonTitle: lesson.lesson?.title ?? null,
+      dueDate: lesson.dueDate?.toISOString() ?? null,
+      updatedAt: lesson.updatedAt.toISOString(),
+      playableContent,
+      playableSession,
+      lessonReview,
+    };
+  });
 }
 
 function getSecuritySettingsModel() {
@@ -536,7 +907,7 @@ export async function loadSecurityGateContext(): Promise<SecurityGatePayload> {
   };
 }
 
-export function mapSchoolToAdminRecord(school: SchoolAdminSource): SchoolAdminRecord {
+export async function mapSchoolToAdminRecord(school: SchoolAdminSource): Promise<SchoolAdminRecord> {
   const seatsUsed = school.students.filter((row) => row.status === "active").length;
   const seatLimit = school.licence?.seatLimit ?? 0;
   return {
@@ -654,11 +1025,11 @@ export function mapSchoolToAdminRecord(school: SchoolAdminSource): SchoolAdminRe
       actorUserId: log.actorUserId ?? null,
       createdAt: log.createdAt.toISOString(),
     })),
-    dayLessons: mapDayLessons(school.dayLessons),
+    dayLessons: await mapDayLessons(school.dayLessons),
   };
 }
 
-export function mapSchoolToDashboardRecord(school: SchoolDashboardSource): SchoolAdminRecord {
+export async function mapSchoolToDashboardRecord(school: SchoolDashboardSource): Promise<SchoolAdminRecord> {
   const seatsUsed = school.students.filter((row) => row.status === "active").length;
   const seatLimit = school.licence?.seatLimit ?? 0;
   return {
@@ -756,7 +1127,7 @@ export function mapSchoolToDashboardRecord(school: SchoolDashboardSource): Schoo
       actorUserId: log.actorUserId ?? null,
       createdAt: log.createdAt.toISOString(),
     })),
-    dayLessons: mapDayLessons(school.dayLessons),
+    dayLessons: await mapDayLessons(school.dayLessons),
   };
 }
 
@@ -769,8 +1140,10 @@ export async function buildSchoolsAdminListPayload(): Promise<SchoolsAdminListPa
 
   return {
     securityGate,
-    schools: schools.map((school) =>
-      mapSchoolToAdminRecord({ ...(school as object), dayLessons: [] } as unknown as SchoolAdminSource),
+    schools: await Promise.all(
+      schools.map((school) =>
+        mapSchoolToAdminRecord({ ...(school as object), dayLessons: [] } as unknown as SchoolAdminSource),
+      ),
     ),
   };
 }
@@ -782,7 +1155,7 @@ export async function findSchoolAdminRecord(schoolId: string): Promise<SchoolAdm
       include: schoolAdminInclude as never,
     });
     if (!school) return null;
-    return mapSchoolToAdminRecord(school as unknown as SchoolAdminSource);
+    return await mapSchoolToAdminRecord(school as unknown as SchoolAdminSource);
   } catch (error) {
     if (!isMissingRelationTable(error, "SchoolDayLesson")) throw error;
     const school = await prisma.school.findUnique({
@@ -790,7 +1163,7 @@ export async function findSchoolAdminRecord(schoolId: string): Promise<SchoolAdm
       include: schoolAdminListInclude as never,
     });
     if (!school) return null;
-    return mapSchoolToAdminRecord({ ...(school as object), dayLessons: [] } as unknown as SchoolAdminSource);
+    return await mapSchoolToAdminRecord({ ...(school as object), dayLessons: [] } as unknown as SchoolAdminSource);
   }
 }
 
@@ -805,7 +1178,7 @@ export async function findSchoolDashboardRecord(schoolId: string): Promise<Schoo
       include: schoolDashboardInclude as never,
     });
     if (!school) return null;
-    return mapSchoolToDashboardRecord(school as unknown as SchoolDashboardSource);
+    return await mapSchoolToDashboardRecord(school as unknown as SchoolDashboardSource);
   } catch (error) {
     if (!isMissingRelationTable(error, "SchoolDayLesson")) throw error;
     const school = await prisma.school.findUnique({
@@ -813,7 +1186,7 @@ export async function findSchoolDashboardRecord(schoolId: string): Promise<Schoo
       include: dashboardWithoutDayLessons as never,
     });
     if (!school) return null;
-    return mapSchoolToDashboardRecord({ ...(school as object), dayLessons: [] } as unknown as SchoolDashboardSource);
+    return await mapSchoolToDashboardRecord({ ...(school as object), dayLessons: [] } as unknown as SchoolDashboardSource);
   }
 }
 

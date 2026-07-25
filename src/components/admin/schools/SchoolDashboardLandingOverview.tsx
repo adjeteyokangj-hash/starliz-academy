@@ -65,7 +65,7 @@ function shortDate(iso: string | null): string {
 function statusBadge(value: string): StatusBadge {
   const normalized = value.toLowerCase();
   if (normalized === "active") return { label: "Active", className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" };
-  if (normalized === "pilot" || normalized === "trialing") return { label: "Pilot", className: "border-sky-500/40 bg-sky-500/10 text-sky-200" };
+  if (normalized === "pilot" || normalized === "trialing") return { label: "Pilot", className: "border-[var(--admin-primary)]/40 bg-sky-500/10 text-sky-200" };
   if (normalized === "suspended" || normalized === "past_due") return { label: "At Risk", className: "border-amber-500/40 bg-amber-500/10 text-amber-200" };
   if (normalized === "archived" || normalized === "cancelled") return { label: "Archived", className: "border-slate-500/40 bg-slate-500/10 text-slate-300" };
   return { label: value || "Unknown", className: "border-rose-500/40 bg-rose-500/10 text-rose-200" };
@@ -97,7 +97,9 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
   const { school, loading, error, refresh } = useSchoolDashboardRecord(schoolId);
   const metrics = useDerivedSchoolMetrics(school);
   const [bootstrapping, setBootstrapping] = useState(false);
+  const [generatingContent, setGeneratingContent] = useState(false);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [generateMessage, setGenerateMessage] = useState<string | null>(null);
 
   const computed = useMemo(() => {
     if (!school) {
@@ -118,6 +120,16 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
         recentSafeguarding: [] as SafeguardingIncidentRecord[],
         weakLearningTrends: [] as ActivityRecord[],
         aiInterventions: [] as ActivityRecord[],
+        playableDaytimeLessons: [] as Array<{
+          periodId: string;
+          title: string;
+          startsAt: string;
+          contentId: string;
+          contentType: string;
+          topic: string;
+          itemCount: number;
+          status: string;
+        }>,
       };
     }
 
@@ -129,7 +141,10 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
       return age <= oneDayMs;
     });
 
-    const aiEvents = school.activityTimeline.filter((item) => item.action.toLowerCase().includes("ai"));
+    const aiEvents = school.activityTimeline.filter((item) => {
+      const action = item.action.toLowerCase();
+      return action.includes("ai") || action.includes("daytime_lesson_content");
+    });
     const weakSignals = school.activityTimeline.filter((item) => {
       const action = item.action.toLowerCase();
       return action.includes("weak") || action.includes("intervention") || action.includes("struggle");
@@ -148,11 +163,38 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
     const parentEngagementPct = metrics.deliveredCommsPct;
     const systemHealth = Math.max(0, Math.min(100, Math.round(100 - metrics.riskScore * 0.6 + metrics.engagementScore * 0.35)));
 
+    const playableSeen = new Set<string>();
+    const playableDaytimeLessons: Array<{
+      periodId: string;
+      title: string;
+      startsAt: string;
+      contentId: string;
+      contentType: string;
+      topic: string;
+      itemCount: number;
+      status: string;
+    }> = [];
+    for (const period of school.dayLessons ?? []) {
+      const content = period.playableContent;
+      if (!content || playableSeen.has(content.id)) continue;
+      playableSeen.add(content.id);
+      playableDaytimeLessons.push({
+        periodId: period.id,
+        title: period.title,
+        startsAt: period.startsAt,
+        contentId: content.id,
+        contentType: content.contentType,
+        topic: content.topic || period.subject,
+        itemCount: content.itemCount,
+        status: content.status,
+      });
+    }
+
     return {
       recentAuditEvents24h: recentActivity.length,
       unassignedStudents: metrics.studentsWithoutClassroom,
       inactiveTeachers: metrics.inactiveTeachers,
-      aiLessonsGenerated: aiEvents.length,
+      aiLessonsGenerated: Math.max(aiEvents.length, playableDaytimeLessons.length),
       parentEngagementPct,
       classroomCoveragePct: metrics.classroomCoveragePct,
       licenceUtilisationPct: metrics.licenceUtilisationPct,
@@ -171,6 +213,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
         .slice(0, 5),
       weakLearningTrends: takeRecent(weakSignals, 5),
       aiInterventions: takeRecent(aiEvents, 5),
+      playableDaytimeLessons: playableDaytimeLessons.slice(0, 8),
     };
   }, [
     metrics.classroomCoveragePct,
@@ -186,7 +229,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
   if (loading) {
     return (
       <div className="space-y-5">
-        <section className="animate-pulse rounded-2xl border border-slate-700/70 bg-slate-950/60 p-5">
+        <section className="animate-pulse rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-5">
           <div className="h-5 w-48 rounded bg-slate-800" />
           <div className="mt-3 h-4 w-72 rounded bg-slate-800" />
           <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -198,7 +241,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {Array.from({ length: 10 }).map((_, index) => (
-            <article key={index} className="animate-pulse rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+            <article key={index} className="animate-pulse rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
               <div className="h-4 w-24 rounded bg-slate-800" />
               <div className="mt-3 h-7 w-16 rounded bg-slate-800" />
             </article>
@@ -207,7 +250,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
 
         <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, index) => (
-            <article key={index} className="animate-pulse rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+            <article key={index} className="animate-pulse rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
               <div className="h-4 w-40 rounded bg-slate-800" />
               <div className="mt-3 h-20 rounded bg-slate-800" />
             </article>
@@ -256,7 +299,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
     school.safeguarding.openAlerts > 0 ? "Review open safeguarding alerts" : null,
     computed.unassignedStudents > 0 ? `Assign ${computed.unassignedStudents} student(s) without a class` : null,
     computed.inactiveTeachers > 0 ? `Follow up ${computed.inactiveTeachers} non-active staff invite/status` : null,
-    computed.aiLessonsGenerated === 0 ? "Generate first AI follow-up lesson set" : null,
+    computed.aiLessonsGenerated === 0 ? "Generate playable lesson content for the timetable" : null,
   ].filter((item): item is string => Boolean(item));
 
   const unassignedPreview = school.students
@@ -309,6 +352,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
   async function handleBootstrapDaytimeSchool() {
     setBootstrapping(true);
     setBootstrapError(null);
+    setGenerateMessage(null);
     const result = await postSchoolAction("bootstrapDaytimeSchool", { schoolId });
     setBootstrapping(false);
     if (!result.ok) {
@@ -318,9 +362,33 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
     refresh();
   }
 
+  async function handleGenerateLessonContent() {
+    setGeneratingContent(true);
+    setBootstrapError(null);
+    setGenerateMessage(null);
+    const result = await postSchoolAction("generateDaytimeLessonContent", {
+      schoolId,
+      force: false,
+    });
+    setGeneratingContent(false);
+    if (!result.ok) {
+      setBootstrapError(result.error);
+      return;
+    }
+    const generated = result.data.generateContentResult as {
+      created?: number;
+      reused?: number;
+      blackBoxFailed?: number;
+    } | undefined;
+    setGenerateMessage(
+      `Lessons ready — created ${generated?.created ?? 0}, already linked ${generated?.reused ?? 0}, Lesson Health failed ${generated?.blackBoxFailed ?? 0}. Open Timetable to preview and approve.`,
+    );
+    refresh();
+  }
+
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-5">
+      <section className="rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-slate-600 bg-slate-900 text-lg font-black text-sky-200">
@@ -342,7 +410,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
         </div>
       </section>
 
-      <section className={`rounded-2xl border p-4 ${setupComplete ? "border-emerald-500/30 bg-emerald-500/10" : "border-sky-500/40 bg-sky-500/10"}`}>
+      <section className={`rounded-2xl border p-4 ${setupComplete ? "border-emerald-500/30 bg-emerald-500/10" : "border-[var(--admin-primary)]/40 bg-sky-500/10"}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-white">{setupComplete ? "Setup complete" : "Setup this school"}</h2>
@@ -371,19 +439,30 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
                 </Link>
               </>
             ) : (
-              <Link
-                href={`/admin/schools/${schoolId}/timetable`}
-                className="rounded-lg border border-emerald-400/50 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-500/30"
-              >
-                Open timetable
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={generatingContent}
+                  onClick={() => void handleGenerateLessonContent()}
+                  className="rounded-lg border border-violet-400/50 bg-violet-500/20 px-3 py-1.5 text-xs font-semibold text-violet-50 hover:bg-violet-500/30 disabled:opacity-60"
+                >
+                  {generatingContent ? "Generating lessons…" : "Generate lesson content"}
+                </button>
+                <Link
+                  href={`/admin/schools/${schoolId}/timetable`}
+                  className="rounded-lg border border-emerald-400/50 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 hover:bg-emerald-500/30"
+                >
+                  Open timetable
+                </Link>
+              </div>
             )}
           </div>
         </div>
         {bootstrapError ? <p className="mt-2 text-xs text-rose-200">{bootstrapError}</p> : null}
+        {generateMessage ? <p className="mt-2 text-xs text-emerald-200">{generateMessage}</p> : null}
         <ol className="mt-3 grid gap-2 md:grid-cols-2">
           {setupSteps.map((step, index) => (
-            <li key={step.id} className="rounded-lg border border-slate-700/70 bg-slate-950/50 px-3 py-2 text-xs text-slate-200">
+            <li key={step.id} className="rounded-lg border border-[var(--admin-border)] bg-slate-950/50 px-3 py-2 text-xs text-slate-200">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-semibold text-white">
                   <span className="text-slate-500">{index + 1}.</span> {step.title}
@@ -391,7 +470,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
                 <span className={step.done ? "text-emerald-300" : "text-amber-200"}>{step.done ? "Done" : "Todo"}</span>
               </div>
               {!step.done ? (
-                <Link href={step.href} className="mt-2 inline-flex font-semibold text-sky-300 hover:text-sky-200">{step.cta}</Link>
+                <Link href={step.href} className="mt-2 inline-flex font-semibold text-[var(--admin-primary-hover)] hover:text-sky-200">{step.cta}</Link>
               ) : null}
             </li>
           ))}
@@ -400,7 +479,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {overviewMetrics.map((metric) => (
-          <article key={metric.label} className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+          <article key={metric.label} className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
             <p className="text-[11px] uppercase tracking-[0.08em] text-slate-400">{metric.label}</p>
             <p className="mt-2 text-2xl font-black text-white">{metric.value}</p>
           </article>
@@ -408,34 +487,34 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
       </section>
 
       <section className="grid gap-3 lg:grid-cols-2">
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-white">At a glance · Unassigned students</h3>
-            <Link href={`/admin/schools/${schoolId}/students`} className="text-xs font-semibold text-sky-300 hover:text-sky-200">Open roster</Link>
+            <Link href={`/admin/schools/${schoolId}/students`} className="text-xs font-semibold text-[var(--admin-primary-hover)] hover:text-sky-200">Open roster</Link>
           </div>
           {unassignedPreview.length === 0 ? (
             <p className="mt-2 text-xs text-slate-400">All active students are assigned to a class.</p>
           ) : (
             <ul className="mt-2 space-y-1 text-xs text-slate-300">
               {unassignedPreview.map((student) => (
-                <li key={student.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">
+                <li key={student.id} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1.5">
                   {student.childName ?? "Unnamed student"}
                 </li>
               ))}
             </ul>
           )}
         </article>
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-white">At a glance · Non-active staff</h3>
-            <Link href={`/admin/schools/${schoolId}/staff`} className="text-xs font-semibold text-sky-300 hover:text-sky-200">Open teachers</Link>
+            <Link href={`/admin/schools/${schoolId}/staff`} className="text-xs font-semibold text-[var(--admin-primary-hover)] hover:text-sky-200">Open teachers</Link>
           </div>
           {inactiveTeacherPreview.length === 0 ? (
             <p className="mt-2 text-xs text-slate-400">All staff records are active.</p>
           ) : (
             <ul className="mt-2 space-y-1 text-xs text-slate-300">
               {inactiveTeacherPreview.map((teacher) => (
-                <li key={teacher.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">
+                <li key={teacher.id} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1.5">
                   {(teacher.name ?? teacher.email ?? "Unnamed staff")} · {teacher.status}
                 </li>
               ))}
@@ -444,7 +523,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
         </article>
       </section>
 
-      <section className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4">
+      <section className="rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
         <h2 className="text-sm font-semibold text-white">Jump To</h2>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {JUMP_TO_ITEMS.map((item) => (
@@ -460,14 +539,14 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h3 className="text-sm font-semibold text-white">Recent Student Activity</h3>
           {computed.recentStudentActivity.length === 0 ? (
             <p className="mt-2 text-xs text-slate-400">No students yet. Add students to start activity tracking.</p>
           ) : (
             <ul className="mt-2 space-y-2 text-xs text-slate-300">
               {computed.recentStudentActivity.map((item) => (
-                <li key={item.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">
+                <li key={item.id} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1.5">
                   <p>{item.action}</p>
                   <p className="text-slate-400">{shortDateTime(item.createdAt)}</p>
                 </li>
@@ -476,14 +555,14 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
           )}
         </article>
 
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h3 className="text-sm font-semibold text-white">Recent Safeguarding Incidents</h3>
           {computed.recentSafeguarding.length === 0 ? (
             <p className="mt-2 text-xs text-slate-400">No safeguarding incidents recorded for this school.</p>
           ) : (
             <ul className="mt-2 space-y-2 text-xs text-slate-300">
               {computed.recentSafeguarding.map((incident) => (
-                <li key={incident.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">
+                <li key={incident.id} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1.5">
                   <p>{incident.category} | {incident.severity}</p>
                   <p className="text-slate-400">{shortDate(incident.updatedAt)}</p>
                 </li>
@@ -492,14 +571,14 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
           )}
         </article>
 
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h3 className="text-sm font-semibold text-white">Weak Learning Trends</h3>
           {computed.weakLearningTrends.length === 0 ? (
             <p className="mt-2 text-xs text-slate-400">No weak area trends currently flagged.</p>
           ) : (
             <ul className="mt-2 space-y-2 text-xs text-slate-300">
               {computed.weakLearningTrends.map((item) => (
-                <li key={item.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">
+                <li key={item.id} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1.5">
                   <p>{item.action}</p>
                   <p className="text-slate-400">{shortDate(item.createdAt)}</p>
                 </li>
@@ -508,7 +587,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
           )}
         </article>
 
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h3 className="text-sm font-semibold text-white">Teacher Activity</h3>
           {activeTeachers === 0 ? (
             <p className="mt-2 text-xs text-slate-400">No teachers yet. Add teachers to enable class delivery workflows.</p>
@@ -517,7 +596,7 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
           ) : (
             <ul className="mt-2 space-y-2 text-xs text-slate-300">
               {computed.recentTeacherActivity.map((item) => (
-                <li key={item.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">
+                <li key={item.id} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1.5">
                   <p>{item.action}</p>
                   <p className="text-slate-400">{shortDate(item.createdAt)}</p>
                 </li>
@@ -526,14 +605,14 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
           )}
         </article>
 
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h3 className="text-sm font-semibold text-white">Coach Activity</h3>
           {computed.recentCoachActivity.length === 0 ? (
             <p className="mt-2 text-xs text-slate-400">No coach support history recorded yet.</p>
           ) : (
             <ul className="mt-2 space-y-2 text-xs text-slate-300">
               {computed.recentCoachActivity.map((item) => (
-                <li key={item.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">
+                <li key={item.id} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1.5">
                   <p>{item.action}</p>
                   <p className="text-slate-400">{shortDate(item.createdAt)}</p>
                 </li>
@@ -542,16 +621,31 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
           )}
         </article>
 
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
-          <h3 className="text-sm font-semibold text-white">AI-Generated Interventions</h3>
-          {computed.aiInterventions.length === 0 ? (
-            <p className="mt-2 text-xs text-slate-400">No AI content generated yet. Use Generate AI Content to create interventions.</p>
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-white">Class lessons</h3>
+            <Link href={`/admin/schools/${schoolId}/timetable`} className="text-xs font-semibold text-[var(--admin-primary-hover)] hover:text-sky-200">
+              Open timetable
+            </Link>
+          </div>
+          {computed.playableDaytimeLessons.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-400">
+              No class lessons generated yet. Use Generate lesson content on the timetable, then approve each period.
+            </p>
           ) : (
             <ul className="mt-2 space-y-2 text-xs text-slate-300">
-              {computed.aiInterventions.map((item) => (
-                <li key={item.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">
-                  <p>{item.action}</p>
-                  <p className="text-slate-400">{shortDate(item.createdAt)}</p>
+              {computed.playableDaytimeLessons.map((item) => (
+                <li key={item.contentId} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1.5">
+                  <p className="font-semibold text-white">{item.title}</p>
+                  <p className="text-slate-400">
+                    {item.contentType} · {item.topic} · {item.itemCount} items · {item.status}
+                  </p>
+                  <Link
+                    href={`/admin/schools/${schoolId}/timetable`}
+                    className="mt-1 inline-flex font-semibold text-violet-300 hover:text-violet-100"
+                  >
+                    Review on timetable →
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -560,25 +654,25 @@ export default function SchoolDashboardLandingOverview({ schoolId }: Props) {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h3 className="text-sm font-semibold text-white">School Content Hub</h3>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {CONTENT_HUB_ITEMS.map((item) => (
-              <div key={item} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-xs text-slate-200">
+              <div key={item} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-xs text-slate-200">
                 {item}
               </div>
             ))}
           </div>
         </article>
 
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h3 className="text-sm font-semibold text-white">Upcoming Tasks / Actions</h3>
           {upcomingActions.length === 0 ? (
             <p className="mt-2 text-xs text-slate-300">No urgent setup tasks right now. Continue with weekly review and governance checks.</p>
           ) : (
             <ul className="mt-2 space-y-2 text-xs text-slate-300">
               {upcomingActions.map((task) => (
-                <li key={task} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 py-1.5">{task}</li>
+                <li key={task} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1.5">{task}</li>
               ))}
             </ul>
           )}

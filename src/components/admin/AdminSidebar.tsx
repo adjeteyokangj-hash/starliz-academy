@@ -23,7 +23,6 @@ export default function AdminSidebar() {
   const activeItemRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
-  // SSR-safe defaults only — localStorage / matchMedia are applied after mount to avoid hydration mismatch.
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
   const [isVisible, setIsVisible] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -75,14 +74,12 @@ export default function AdminSidebar() {
     }
   }
 
-  // Scroll active item into view.
   useEffect(() => {
     if (activeItemRef.current && navRef.current) {
       activeItemRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }, [pathname, collapsedGroups]);
 
-  // Track scroll position for up/down indicators.
   useEffect(() => {
     const nav = navRef.current;
     if (!nav) return;
@@ -130,21 +127,23 @@ export default function AdminSidebar() {
       <div ref={active ? activeItemRef : null} key={item.href}>
         <Link
           href={item.href}
-          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
+          className={`flex items-center gap-3 rounded-[var(--admin-radius)] px-3 py-2.5 text-sm font-semibold transition ${
             active
-              ? "bg-indigo-500 text-white shadow-lg shadow-indigo-950/30"
-              : "text-slate-400 hover:bg-slate-900 hover:text-white"
+              ? "bg-[var(--admin-primary)] text-white shadow-[var(--admin-shadow-sm)]"
+              : "text-[var(--admin-muted)] hover:bg-white/5 hover:text-[var(--admin-text)]"
           }`}
         >
-          <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[0.65rem] font-black ${
-            active ? "bg-white/16 text-white" : "bg-slate-900 text-slate-500"
-          }`}>
+          <span
+            className={`flex h-7 w-7 items-center justify-center rounded-lg text-[0.65rem] font-bold ${
+              active ? "bg-white/15 text-white" : "bg-[var(--admin-surface)] text-[var(--admin-muted)]"
+            }`}
+          >
             {item.icon}
           </span>
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate">{item.title}</span>
             {item.launchTag === "beta" ? (
-              <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-amber-300">
+              <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-amber-200">
                 Beta
               </span>
             ) : null}
@@ -161,7 +160,7 @@ export default function AdminSidebar() {
       {!sidebarVisible && (
         <button
           onClick={toggleVisibility}
-          className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-500"
+          className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-[var(--admin-radius)] bg-[var(--admin-primary)] text-white shadow-[var(--admin-shadow-sm)] hover:bg-[var(--admin-primary-hover)]"
           title="Show sidebar"
         >
           ☰
@@ -169,7 +168,7 @@ export default function AdminSidebar() {
       )}
       {sidebarVisible && !isDesktop && (
         <div
-          className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden lg:pointer-events-none"
+          className="fixed inset-0 z-30 bg-[#020617]/65 lg:pointer-events-none lg:hidden"
           aria-hidden="true"
           onClick={toggleVisibility}
         />
@@ -177,32 +176,33 @@ export default function AdminSidebar() {
       <aside
         className={`${
           sidebarVisible
-            ? "translate-x-0 lg:w-72 lg:px-4 lg:py-5 lg:border-r lg:opacity-100 lg:pointer-events-auto"
-            : "-translate-x-full pointer-events-none lg:translate-x-0 lg:w-0 lg:px-0 lg:py-0 lg:border-r-0 lg:opacity-0 lg:pointer-events-none"
-        } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-slate-800 bg-slate-950/92 transition-all duration-300`}
+            ? "translate-x-0 lg:w-72 lg:border-r lg:px-4 lg:py-5 lg:opacity-100 lg:pointer-events-auto"
+            : "pointer-events-none -translate-x-full lg:translate-x-0 lg:w-0 lg:border-r-0 lg:px-0 lg:py-0 lg:opacity-0 lg:pointer-events-none"
+        } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-[var(--admin-border)] transition-all duration-300`}
+        style={{ background: "var(--admin-rail)" }}
       >
-        <div className="relative">
-          <div className="flex items-center gap-3 px-2">
+        <div className="relative px-1">
+          <div className="flex items-center gap-3">
             <Logo href="/admin" variant="icon" size={44} animation={false} className="pointer-events-none" />
             <span>
-              <span className="block text-base font-black text-white">StarLiz Admin</span>
-              <span className="text-xs font-semibold text-slate-400">Admin Portal</span>
+              <span className="block text-base font-bold text-[var(--admin-text)]">StarLiz</span>
+              <span className="text-xs font-semibold text-[var(--admin-muted)]">School Management</span>
             </span>
           </div>
 
           <button
             onClick={toggleVisibility}
-            className="absolute right-2 top-1 rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+            className="absolute right-0 top-1 rounded-lg p-1.5 text-[var(--admin-muted)] hover:bg-white/5 hover:text-[var(--admin-text)]"
             title="Hide sidebar"
           >
-            x
+            ×
           </button>
         </div>
 
-        <div ref={navRef} className="relative mt-8 min-h-0 flex-1 space-y-1 overflow-y-auto pr-2">
+        <div ref={navRef} className="relative mt-8 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
           {canScrollUp && (
-            <div className="sticky top-0 z-10 -mx-2 flex justify-center bg-linear-to-b from-slate-950 to-transparent py-2">
-              <div className="text-xs text-slate-500">Scroll up</div>
+            <div className="sticky top-0 z-10 flex justify-center py-2" style={{ background: "linear-gradient(to bottom, var(--admin-rail), transparent)" }}>
+              <div className="text-xs text-[var(--admin-muted)]">Scroll up</div>
             </div>
           )}
           <nav aria-label="Admin navigation" className="space-y-3">
@@ -210,17 +210,23 @@ export default function AdminSidebar() {
               const activeGroup = group.items.some((item) => isActiveHref(pathname, item.href));
               const collapsed = collapsedGroups.includes(group.title) && !activeGroup;
               return (
-                <section key={group.title} className="rounded-xl border border-slate-900 bg-slate-950/50 p-1.5">
+                <section
+                  key={group.title}
+                  className="rounded-[var(--admin-radius)] border border-[var(--admin-border)] p-1.5"
+                  style={{ background: "var(--admin-surface)" }}
+                >
                   <button
                     type="button"
                     onClick={() => toggleGroup(group.title)}
                     aria-controls={groupDomId(group.title)}
-                    className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.14em] transition ${
-                      activeGroup ? "text-indigo-200" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"
+                    className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-[11px] font-bold uppercase tracking-[0.12em] transition ${
+                      activeGroup
+                        ? "text-[var(--admin-primary-hover)]"
+                        : "text-[var(--admin-muted)] hover:bg-white/5 hover:text-[var(--admin-text)]"
                     }`}
                   >
                     <span>{group.title}</span>
-                    <span aria-hidden="true" className="text-sm">{collapsed ? "+" : "-"}</span>
+                    <span aria-hidden="true" className="text-sm">{collapsed ? "+" : "−"}</span>
                   </button>
                   <div id={groupDomId(group.title)} className="mt-1 space-y-1" hidden={collapsed}>
                     {group.items.map((item) => renderNavItem(item))}
@@ -231,8 +237,8 @@ export default function AdminSidebar() {
           </nav>
 
           {canScrollDown && (
-            <div className="sticky bottom-0 z-10 -mx-2 flex justify-center bg-linear-to-t from-slate-950 to-transparent py-2">
-              <div className="text-xs text-slate-500">Scroll down</div>
+            <div className="sticky bottom-0 z-10 flex justify-center py-2" style={{ background: "linear-gradient(to top, var(--admin-rail), transparent)" }}>
+              <div className="text-xs text-[var(--admin-muted)]">Scroll down</div>
             </div>
           )}
         </div>
@@ -241,7 +247,7 @@ export default function AdminSidebar() {
           <button
             type="button"
             onClick={expandAllGroups}
-            className="w-full rounded-lg border border-slate-800 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400 hover:bg-slate-900 hover:text-white"
+            className="w-full rounded-[var(--admin-radius)] border border-[var(--admin-border)] px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-[var(--admin-muted)] hover:bg-white/5 hover:text-[var(--admin-text)]"
           >
             Expand All Sections
           </button>

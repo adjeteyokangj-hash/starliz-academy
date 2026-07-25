@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import AdminLayout from "@/components/admin/AdminLayout";
 import { prisma } from "@/lib/db";
 import { readSessionFromCookie } from "@/lib/auth";
@@ -14,12 +16,25 @@ function isTransientDbSaturationError(error: unknown): boolean {
   );
 }
 
+function isAdminLoginPath(pathname: string): boolean {
+  return pathname === "/admin/login" || pathname.startsWith("/admin/login/");
+}
+
 export default async function Layout({ children }: { children: React.ReactNode }) {
+  const headerStore = await headers();
+  const pathname = headerStore.get("x-pathname")
+    ?? headerStore.get("x-invoke-path")
+    ?? "";
+  const onLogin = isAdminLoginPath(pathname) || headerStore.get("x-admin-login") === "1";
   const session = await readSessionFromCookie();
   if (!session) {
-    // Middleware handles admin route protection. Returning children here prevents
-    // a self-redirect loop for /admin/login and avoids unnecessary DB access.
-    return <>{children}</>;
+    // When pathname headers are missing, do NOT redirect — that caused an infinite
+    // /admin/login → /admin/login loop (stuck on the global "Loading page" screen).
+    // Middleware remains the primary gate for unauthenticated /admin access.
+    if (onLogin || !pathname) {
+      return <>{children}</>;
+    }
+    redirect(`/admin/login?next=${encodeURIComponent(pathname)}`);
   }
 
   let user: { role: string; adminProfile: { active: boolean } | null } | null = null;
@@ -45,9 +60,10 @@ export default async function Layout({ children }: { children: React.ReactNode }
   const isActiveAdmin = Boolean(user && user.role === "admin" && user.adminProfile?.active !== false);
 
   if (!isActiveAdmin) {
-    // Always render children for non-admins so /admin/login stays usable.
-    // Middleware blocks other /admin routes; do not replace the login form with a gate.
-    return <>{children}</>;
+    if (onLogin || !pathname) {
+      return <>{children}</>;
+    }
+    redirect(`/admin/login?next=${encodeURIComponent(pathname)}&reason=switch`);
   }
 
   return <AdminLayout>{children}</AdminLayout>;

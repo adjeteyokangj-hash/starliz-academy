@@ -4,6 +4,9 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import { getStudentAttendanceHistory } from "@/lib/schools/attendance-register";
+import {
+  buildStudentAttendanceDashboard,
+} from "@/lib/schools/student-attendance-dashboard";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -42,9 +45,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
+  const dashboard = buildStudentAttendanceDashboard({
+    items: result.items,
+    windowDays: 30,
+    linkedToSchool: true,
+  });
+
   return NextResponse.json({
     ok: true,
     schoolStudentId: result.schoolStudentId,
     items: result.items,
+    summary: dashboard.summary,
+    today: dashboard.today,
+    streakDays: dashboard.streakDays,
   });
 }

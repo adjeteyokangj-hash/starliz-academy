@@ -15,7 +15,7 @@ function shortDate(iso: string | null | undefined): string {
 function statusClass(value: string): string {
   const normalized = value.toLowerCase();
   if (normalized === "active") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
-  if (normalized === "invited" || normalized === "pilot") return "border-sky-500/40 bg-sky-500/10 text-sky-200";
+  if (normalized === "invited" || normalized === "pilot") return "border-[var(--admin-primary)]/40 bg-sky-500/10 text-sky-200";
   if (normalized === "suspended" || normalized === "transferred") return "border-amber-500/40 bg-amber-500/10 text-amber-200";
   return "border-slate-500/40 bg-slate-500/10 text-slate-300";
 }
@@ -196,7 +196,7 @@ function LinkExistingStudentsPanel({ schoolId }: { schoolId: string }) {
     <section className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
       <h2 className="text-sm font-semibold text-white">Link existing platform students</h2>
       <p className="mt-1 text-xs text-slate-400">
-        Students registered under <Link href="/admin/students" className="text-sky-300 hover:text-sky-200">Admin → Students</Link> are
+        Students registered under <Link href="/admin/students" className="text-[var(--admin-primary-hover)] hover:text-sky-200">Admin → Students</Link> are
         platform learners. They only appear on this school roster after you link them here (or enrol new ones below).
       </p>
 
@@ -330,19 +330,19 @@ export function SchoolStudentsRegistry({ schoolId }: { schoolId: string }) {
       <LinkExistingStudentsPanel schoolId={schoolId} />
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h2 className="text-sm font-semibold text-white">Enrol a new student</h2>
           <p className="mt-1 text-xs text-slate-400">Creates a new parent + child account and enrols them in this school.</p>
           <Link href={`/admin/schools/${schoolId}/students/new`} className="mt-3 inline-flex rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Enrol Student</Link>
         </article>
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h2 className="text-sm font-semibold text-white">Student CSV Import</h2>
           <p className="mt-1 text-xs text-slate-400">Import students by CSV with template guidance and validation checks.</p>
           <Link href={`/admin/schools/${schoolId}/students/import`} className="mt-3 inline-flex rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Open CSV Import</Link>
         </article>
       </div>
 
-      <section className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+      <section className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-white">Student Roster</h2>
           <p className="text-xs text-slate-400">{students.length} enrolled</p>
@@ -350,7 +350,7 @@ export function SchoolStudentsRegistry({ schoolId }: { schoolId: string }) {
         {students.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-slate-600 bg-slate-900/40 p-4 text-sm text-slate-300">
             No students enrolled in this school yet. Link Ephi, Kelvin, Elizabeth (and others) from the panel above, or
-            <Link href={`/admin/schools/${schoolId}/students/new`} className="ml-1 font-semibold text-sky-300 hover:text-sky-200">enrol a new student</Link>.
+            <Link href={`/admin/schools/${schoolId}/students/new`} className="ml-1 font-semibold text-[var(--admin-primary-hover)] hover:text-sky-200">enrol a new student</Link>.
           </div>
         ) : (
           <div className="mt-3 overflow-x-auto">
@@ -407,19 +407,19 @@ export function SchoolTeachersRegistry({ schoolId }: { schoolId: string }) {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 lg:grid-cols-2">
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h2 className="text-sm font-semibold text-white">Invite Teacher</h2>
           <p className="mt-1 text-xs text-slate-400">Create staff profiles, assign school roles, and send invites.</p>
           <Link href={`/admin/schools/${schoolId}/staff/new?role=teacher`} className="mt-3 inline-flex rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Add Teacher</Link>
         </article>
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h2 className="text-sm font-semibold text-white">Staff CSV Import</h2>
           <p className="mt-1 text-xs text-slate-400">Import and validate staff profiles by CSV before invite dispatch.</p>
           <Link href={`/admin/schools/${schoolId}/staff/import`} className="mt-3 inline-flex rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">View CSV Import Plan</Link>
         </article>
       </div>
 
-      <section className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+      <section className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-white">Teacher Directory</h2>
           <p className="text-xs text-slate-400">{teachers.length} staff</p>
@@ -427,7 +427,7 @@ export function SchoolTeachersRegistry({ schoolId }: { schoolId: string }) {
         {teachers.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-slate-600 bg-slate-900/40 p-4 text-sm text-slate-300">
             No teachers yet.
-            <Link href={`/admin/schools/${schoolId}/staff/new?role=teacher`} className="ml-2 font-semibold text-sky-300 hover:text-sky-200">Invite the first teacher</Link>
+            <Link href={`/admin/schools/${schoolId}/staff/new?role=teacher`} className="ml-2 font-semibold text-[var(--admin-primary-hover)] hover:text-sky-200">Invite the first teacher</Link>
           </div>
         ) : (
           <div className="mt-3 overflow-x-auto">
@@ -502,12 +502,12 @@ export function SchoolClassroomsRegistry({ schoolId }: { schoolId: string }) {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 lg:grid-cols-2">
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h2 className="text-sm font-semibold text-white">Create Class</h2>
           <p className="mt-1 text-xs text-slate-400">Add a single class with year group and tutor ownership.</p>
           <Link href={`/admin/schools/${schoolId}/classrooms/new`} className="mt-3 inline-flex rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">New Class</Link>
         </article>
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+        <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
           <h2 className="text-sm font-semibold text-white">Year 1–11 ladder</h2>
           <p className="mt-1 text-xs text-slate-400">Ensure standard year classes exist for every year group from 1 to 11.</p>
           <button
@@ -524,7 +524,7 @@ export function SchoolClassroomsRegistry({ schoolId }: { schoolId: string }) {
       {actionError ? <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{actionError}</p> : null}
       {actionMessage ? <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">{actionMessage}</p> : null}
 
-      <section className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
+      <section className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-white">Classes</h2>
           <p className="text-xs text-slate-400">{classrooms.length} classes</p>
@@ -532,9 +532,9 @@ export function SchoolClassroomsRegistry({ schoolId }: { schoolId: string }) {
         {classrooms.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-slate-600 bg-slate-900/40 p-4 text-sm text-slate-300">
             No classes yet.
-            <button type="button" onClick={() => void ensureYearClasses()} className="ml-2 font-semibold text-sky-300 hover:text-sky-200">Create Year 1–11</button>
+            <button type="button" onClick={() => void ensureYearClasses()} className="ml-2 font-semibold text-[var(--admin-primary-hover)] hover:text-sky-200">Create Year 1–11</button>
             {" "}or
-            <Link href={`/admin/schools/${schoolId}/classrooms/new`} className="ml-1 font-semibold text-sky-300 hover:text-sky-200">create one class</Link>.
+            <Link href={`/admin/schools/${schoolId}/classrooms/new`} className="ml-1 font-semibold text-[var(--admin-primary-hover)] hover:text-sky-200">create one class</Link>.
           </div>
         ) : (
           <div className="mt-3 overflow-x-auto">

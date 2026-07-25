@@ -9,31 +9,39 @@ type AdminStatCardProps = {
   href?: string;
 };
 
-const toneClass = {
-  purple: "border-white/10 bg-gradient-to-br from-violet-600/35 to-indigo-500/15 text-violet-100",
-  blue: "border-white/10 bg-gradient-to-br from-blue-600/35 to-cyan-500/15 text-blue-100",
-  green: "border-white/10 bg-gradient-to-br from-emerald-600/30 to-teal-500/15 text-emerald-100",
-  amber: "border-white/10 bg-gradient-to-br from-amber-500/30 to-yellow-400/15 text-amber-100",
-  rose: "border-white/10 bg-gradient-to-br from-rose-600/30 to-pink-500/15 text-rose-100",
-  slate: "border-white/10 bg-gradient-to-br from-slate-700/80 to-slate-800/60 text-slate-100",
-  neutral: "border-slate-700/70 bg-slate-950/70 text-slate-100",
+const toneAccent: Record<NonNullable<AdminStatCardProps["tone"]>, string> = {
+  purple: "border-l-[var(--admin-primary)]",
+  blue: "border-l-sky-400",
+  green: "border-l-emerald-400",
+  amber: "border-l-amber-400",
+  rose: "border-l-rose-400",
+  slate: "border-l-slate-400",
+  neutral: "border-l-[var(--admin-border-strong)]",
 };
 
 export default function AdminStatCard({ title, value, detail, icon, tone = "neutral", href }: AdminStatCardProps) {
   const inner = (
-    <article className={`rounded-2xl border p-5 shadow-xl shadow-slate-950/20 ${toneClass[tone]} ${href ? "transition hover:border-slate-500 hover:bg-slate-900/80 cursor-pointer" : ""}`}>
+    <article
+      className={`rounded-[var(--admin-radius-lg)] border border-[var(--admin-border)] border-l-4 p-5 ${toneAccent[tone]} ${
+        href ? "cursor-pointer transition hover:border-[var(--admin-border-strong)]" : ""
+      }`}
+      style={{ background: "var(--admin-surface)", boxShadow: "var(--admin-shadow-sm)" }}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{title}</p>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-white">{value}</p>
+          <p className="admin-meta">{title}</p>
+          <p className="mt-3 text-3xl font-bold tracking-tight text-[var(--admin-text)]">{value}</p>
         </div>
         {icon ? (
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/80 text-xs font-semibold text-slate-300">
+          <span
+            className="flex h-9 w-9 items-center justify-center rounded-[var(--admin-radius)] border border-[var(--admin-border)] text-xs font-semibold text-[var(--admin-muted)]"
+            style={{ background: "var(--admin-rail)" }}
+          >
             {icon}
           </span>
         ) : null}
       </div>
-      {detail ? <p className="mt-3 text-sm text-slate-400">{detail}</p> : null}
+      {detail ? <p className="admin-body mt-3">{detail}</p> : null}
     </article>
   );
 

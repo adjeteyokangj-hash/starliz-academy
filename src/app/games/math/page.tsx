@@ -48,7 +48,15 @@ import {
 } from "@/lib/math-assignment-session";
 import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
 import { shouldEnableStudentVoiceWorkflow } from "@/lib/lesson-voice-help";
+import { continueDaytimePeriodFromClient } from "@/lib/schools/daytime-period-client";
 import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
+import DaytimeTutorPanel from "@/components/games/DaytimeTutorPanel";
+import {
+  DaytimeSchoolLessonShell,
+  DaytimeMathsPanel,
+  DaytimeAnswerFeedback,
+} from "@/components/student/daytime-lesson";
+import { useDaytimeStagePack } from "@/components/student/daytime-lesson/useDaytimeStagePack";
 
 const LEVEL_LABELS: Record<number, string> = {
   1: "⭐ Level 1: Counting with visuals",
@@ -132,6 +140,14 @@ export default function MathMissionPage() {
   const searchParams = useSearchParams();
   const assignedContentId = searchParams.get("contentId");
   const assignedAssignmentId = searchParams.get("assignmentId") ?? undefined;
+  const daytimePeriodId = searchParams.get("daytimePeriodId");
+  const [answerFeedbackKind, setAnswerFeedbackKind] = useState<"correct" | "incorrect" | null>(null);
+  const daytimeStagePack = useDaytimeStagePack({
+    enabled: Boolean(daytimePeriodId),
+    contentId: assignedContentId,
+    assignmentId: assignedAssignmentId,
+  });
+  const isDaytimeSchool = Boolean(daytimePeriodId && assignedAssignmentId && assignedContentId);
   const assignmentLockedSession = Boolean(assignedAssignmentId || assignedContentId);
   const [profile, setProfile] = useState<ChildProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -1133,6 +1149,26 @@ export default function MathMissionPage() {
         }
       }
 
+      if (daytimePeriodId) {
+        const continued = await continueDaytimePeriodFromClient({
+          dayLessonId: daytimePeriodId,
+          completedContentId: assignedContentId,
+        });
+        if (continued.ok) {
+          if (continued.mode === "period_complete") {
+            setHasPendingNextAssignment(false);
+            setLifecycle("completed");
+            setReaction({ mood: "celebrate", message: "Period activities complete. Returning to Today." });
+            setFeedback("Great work — this period's stages are done.");
+            window.setTimeout(() => router.push(continued.href || "/student/today"), 900);
+            return;
+          }
+          launchingNextAssignmentIdRef.current = continued.assignmentId ?? "daytime-next";
+          router.replace(continued.href);
+          return;
+        }
+      }
+
       const assignmentsParams = new URLSearchParams({ studentId: currentProfile.id });
       if (completedAssignmentId) {
         assignmentsParams.set("currentAssignmentId", completedAssignmentId);
@@ -1289,6 +1325,7 @@ export default function MathMissionPage() {
       const nextLevel = levelFromXp(awardedProfile.xp);
       setReaction({ mood: nextLevel > prevLevel || result.surpriseReward.awarded ? "celebrate" : "happy", message: "Great job! Next one..." });
       setFeedback(`Great job! Next one...${result.promotedDifficulty ? " Difficulty increased!" : ""}${result.surpriseReward.awarded ? ` ${result.surpriseReward.message}` : ""}`);
+      if (isDaytimeSchool) setAnswerFeedbackKind("correct");
 
       markQuestionCompleted({
         childId: profile.id,
@@ -1390,6 +1427,7 @@ export default function MathMissionPage() {
         ? errorHint
         : (question.hints[Math.min(question.hints.length, nextHint) - 1] ?? "Try breaking the problem into steps.");
       setFeedback("Good try. Listen again and have another go.");
+      if (isDaytimeSchool) setAnswerFeedbackKind("incorrect");
       setReaction({ mood: "support", message: "Good try. Listen again and have another go." });
       recordCoachInteraction({
         questionText: question.prompt,
@@ -1538,6 +1576,34 @@ export default function MathMissionPage() {
 
   if (!question && !sessionComplete) {
     const assignedContentMissing = Boolean(assignmentLockedSession && assignedQuestionsLoaded && assignedLoadError);
+    if (isDaytimeSchool) {
+      return (
+        <PremiumAccessGate>
+          <DaytimeSchoolLessonShell
+            periodId={daytimePeriodId!}
+            assignmentId={assignedAssignmentId!}
+            contentId={assignedContentId!}
+            answered={sessionAttempts}
+            correct={sessionCorrect}
+            lessonProgressPct={null}
+            mobileActionBar={<span className="text-xs font-semibold text-slate-600">Loading maths…</span>}
+          >
+            <DaytimeMathsPanel
+              learningObjective={daytimeStagePack?.learningObjective}
+              explanation={daytimeStagePack?.explanation}
+              workedExamples={daytimeStagePack?.workedExamples}
+            />
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+              {assignedLoadError
+                || feedback
+                || (assignedContentMissing
+                  ? "This maths stage is still being prepared. Try again in a moment or ask your teacher."
+                  : "Loading your maths question…")}
+            </div>
+          </DaytimeSchoolLessonShell>
+        </PremiumAccessGate>
+      );
+    }
     return (
       <PremiumAccessGate>
         <>
@@ -1599,8 +1665,69 @@ export default function MathMissionPage() {
   return (
     <PremiumAccessGate>
     <>
-      <Navbar />
+      {isDaytimeSchool ? null : <Navbar />}
       <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+      {isDaytimeSchool ? (
+        <DaytimeSchoolLessonShell
+          periodId={daytimePeriodId!}
+          assignmentId={assignedAssignmentId!}
+          contentId={assignedContentId!}
+          questionId={question?.id}
+          questionIndex={sessionStep}
+          answered={sessionAttempts}
+          correct={sessionCorrect}
+          lessonProgressPct={
+            sessionQuestionTarget > 0
+              ? Math.round((Math.min(sessionStep, sessionQuestionTarget) / sessionQuestionTarget) * 100)
+              : null
+          }
+          mobileActionBar={
+            <Button className="w-full" onClick={() => { void checkAnswer(); }}>Check answer</Button>
+          }
+        >
+          <DaytimeMathsPanel
+            learningObjective={daytimeStagePack?.learningObjective}
+            explanation={daytimeStagePack?.explanation}
+            workedExamples={daytimeStagePack?.workedExamples}
+          />
+          {answerFeedbackKind === "correct" ? (
+            <DaytimeAnswerFeedback kind="correct" explanation={feedback} onContinue={() => setAnswerFeedbackKind(null)} />
+          ) : null}
+          {answerFeedbackKind === "incorrect" ? (
+            <DaytimeAnswerFeedback kind="incorrect" onTryAgain={() => setAnswerFeedbackKind(null)} />
+          ) : null}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm [&>section]:shadow-none">
+            {/* Existing mission chrome is nested for daytime; non-daytime path renders full page below. */}
+            <p className="text-sm font-semibold text-slate-700">
+              {question ? question.prompt : "Loading maths question…"}
+            </p>
+            {question?.visual ? (
+              <p className="mt-3 text-sm text-slate-600" data-testid="daytime-maths-visual">{question.visual}</p>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <input
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+                className="min-w-[10rem] flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Your answer"
+                aria-label="Maths answer"
+              />
+              <Button onClick={() => { void checkAnswer(); }}>Check answer</Button>
+            </div>
+            {question?.choices?.length ? (
+              <div className="mt-3 grid gap-2">
+                {question.choices.map((choice) => (
+                  <Button key={String(choice)} variant="secondary" className="justify-start" onClick={() => setAnswer(String(choice))}>
+                    {choice}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+            <p className="mt-3 text-xs text-slate-500">Use the working area above, then check your answer. Ask the AI Tutor for a first step if you need help.</p>
+          </div>
+        </DaytimeSchoolLessonShell>
+      ) : null}
+      <div className={isDaytimeSchool ? "hidden" : undefined}>
       {profileContext ? (
         <section className="mx-auto max-w-6xl px-4 pt-4 sm:pt-6">
           <StudentContextStrip
@@ -1782,6 +1909,20 @@ export default function MathMissionPage() {
                       ) : null}
                     </div>
 
+                    {daytimePeriodId && assignedAssignmentId && assignedContentId && question ? (
+                      <div className="mt-4">
+                        <DaytimeTutorPanel
+                          periodId={daytimePeriodId}
+                          assignmentId={assignedAssignmentId}
+                          contentId={assignedContentId}
+                          questionId={question.id}
+                          questionIndex={sessionStep}
+                          studentAttempt={answer}
+                          className="rounded-2xl border border-violet-200 bg-violet-50/70 p-3"
+                        />
+                      </div>
+                    ) : null}
+
                     {currentHint ? (
                       <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
                         Hint: {currentHint}
@@ -1864,7 +2005,7 @@ export default function MathMissionPage() {
                         variant="accent"
                         className="w-full"
                         onClick={() => {
-                          if (hasPendingNextAssignment === false) {
+                          if (!daytimePeriodId && hasPendingNextAssignment === false) {
                             router.push(MATH_NEXT_SESSION_DASHBOARD_HREF);
                             return;
                           }
@@ -1872,11 +2013,13 @@ export default function MathMissionPage() {
                         }}
                         disabled={launchingNextAssignedSession || sessionLifecycle === "launching-next"}
                       >
-                          {hasPendingNextAssignment === false
-                            ? "Return to Dashboard"
-                            : assignmentLockedSession
-                              ? "Next Session"
-                              : "Start next session"}
+                          {daytimePeriodId
+                            ? "Continue lesson"
+                            : hasPendingNextAssignment === false
+                              ? "Return to Dashboard"
+                              : assignmentLockedSession
+                                ? "Next Session"
+                                : "Start next session"}
                       </Button>
                       <Link href={MATH_NEXT_SESSION_DASHBOARD_HREF} className="block">
                         <Button variant="secondary" className="w-full">Go to Dashboard</Button>
@@ -1886,7 +2029,7 @@ export default function MathMissionPage() {
                 ) : null}
               </div>
 
-          {coachOpen && question ? (
+          {coachOpen && question && !(daytimePeriodId && assignedAssignmentId) ? (
             <div ref={coachPanelRef} className="scroll-mt-24 relative z-20">
               <SmartCoachPanel
                 studentId={profile?.id}
@@ -1983,6 +2126,7 @@ export default function MathMissionPage() {
         </section>
       </div>
       </div>
+    </div>
     </main>
     </>
     </PremiumAccessGate>

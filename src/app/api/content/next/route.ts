@@ -14,7 +14,13 @@ type CacheRecord = {
 
 function asArray(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
-  if (value && typeof value === "object") return [value];
+  if (value && typeof value === "object") {
+    const row = value as Record<string, unknown>;
+    if (Array.isArray(row.questions)) return row.questions;
+    if (Array.isArray(row.items)) return row.items;
+    if (Array.isArray(row.words)) return row.words;
+    return [value];
+  }
   return [];
 }
 

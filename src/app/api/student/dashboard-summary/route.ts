@@ -6,6 +6,11 @@ import { prisma } from "@/lib/db";
 import { resolveDashboardTier } from "@/lib/dashboardResolver";
 import { ensureLearningAccess } from "@/lib/subscriptions/learning-access";
 import { getStudentLearningBrainForDashboard } from "@/lib/student-learning-brain";
+import {
+  createChildSelectionToken,
+  getChildSelectionCookieName,
+  getChildSelectionMaxAgeSeconds,
+} from "@/lib/auth";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -96,7 +101,7 @@ export async function GET(request: Request) {
   ]);
   if (!dashboardBrain) return NextResponse.json({ error: "Student not found." }, { status: 404 });
 
-  return NextResponse.json({
+  const reply = NextResponse.json({
     ok: true,
     child: {
       id: child.id,
@@ -156,4 +161,19 @@ export async function GET(request: Request) {
     languageReadiness: dashboardBrain.languageReadiness,
     snapshot: dashboardBrain.snapshot,
   });
+
+  // Sliding renewal: keep the learner on the student dashboard while actively learning
+  // instead of bouncing to /parent/profiles after the 12h child-selection cookie expires.
+  if (parentScope) {
+    const selectionToken = await createChildSelectionToken(parentScope.parentId, studentId);
+    reply.cookies.set(getChildSelectionCookieName(), selectionToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: getChildSelectionMaxAgeSeconds(),
+    });
+  }
+
+  return reply;
 }

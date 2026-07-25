@@ -89,7 +89,15 @@ function explanationText(item: ItemRecord): string {
 }
 
 function passageText(item: ItemRecord): string {
-  return text(item.passage ?? item.text ?? item.extract);
+  const raw = item.passage ?? item.text ?? item.extract;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const row = raw as ItemRecord;
+    if (typeof row.text === "string" && row.text.trim()) return row.text.trim();
+    if (Array.isArray(row.paragraphs)) {
+      return row.paragraphs.map((part) => text(part)).filter(Boolean).join("\n\n");
+    }
+  }
+  return text(raw);
 }
 
 function allItemText(item: ItemRecord): string {
@@ -101,7 +109,7 @@ function allItemText(item: ItemRecord): string {
     item.skillFocus,
     item.question,
     item.prompt,
-    item.passage,
+    passageText(item),
     item.word,
     item.answer,
     item.correctAnswer,
@@ -169,7 +177,7 @@ function hasGcseCommandWord(value: string): boolean {
 }
 
 function hasMathsSignal(value: string): boolean {
-  return /(\d+\s*[+\-x÷*/]\s*\d+|\bequation\b|\bfraction\b|\bdecimal\b|\bratio\b|\bpercentage\b|\bprobability\b|\balgebra\b|\bperimeter\b|\barea\b|\bmean\b|\bmedian\b|\bsequence\b|\bscale\b|\bgraph\b|\bangle\b|\btriangle\b|\bmultiplication\b|\bmultiply(?:ing|ied)?\b|\bdivision\b|\bdivide(?:d|s|ing)?\b|\bremainder\b|\bshare(?:d|s|ing)?\b|\bequal\s+groups?\b|\btimes\s+tables?\b|\bhow\s+many\b|\baltogether\b|\btotal\b|\beach\b|\brows?\b|\bgroups?\b)/i.test(value);
+  return /(\d+\s*[+\-x÷*/]\s*\d+|\bequation\b|\bfraction\b|\bdecimal\b|\bratio\b|\bpercentage\b|\bprobability\b|\balgebra\b|\bperimeter\b|\barea\b|\bmean\b|\bmedian\b|\bsequence\b|\bscale\b|\bgraph\b|\bangle\b|\btriangle\b|\bmultiplication\b|\bmultiply(?:ing|ied)?\b|\bdivision\b|\bdivide(?:d|s|ing)?\b|\bremainder\b|\bshare(?:d|s|ing)?\b|\bequal\s+groups?\b|\btimes(?:\s+tables?)?\b|\bhow\s+many\b|\baltogether\b|\btotal\b|\beach\b|\brows?\b|\bgroups?\b)/i.test(value);
 }
 
 function isComputeOnlyMaths(prompt: string): boolean {
@@ -391,7 +399,8 @@ export function validateScienceQuestionQuality(input: CurriculumQualityInput): C
 
   if (!prompt) blockingIssues.push("science_missing_prompt");
   if (!answerText(item)) blockingIssues.push("science_missing_answer");
-  if (!/\b(force|energy|circuit|voltage|current|cell|photosynthesis|atom|reaction|acid|alkali|ecosystem|gravity|diffusion|osmosis|enzyme|wave|mass|weight|bond|ion|ph)\b/i.test(full)) {
+  // Secondary specialist terms OR primary scientific-enquiry / KS1–KS2 topic vocabulary.
+  if (!/\b(force|energy|circuit|voltage|current|cell|photosynthesis|atom|reaction|acid|alkali|ecosystem|gravity|diffusion|osmosis|enzyme|wave|mass|weight|bond|ion|ph|hypothesis|evidence|variable|variables|observation|prediction|investigation|enquiry|inquiry|fair\s*test|material|habitat|solid|liquid|gas|magnet|adaptation|food\s*chain|life\s*cycle|microbe|organism|evaporation|condensation|friction|light|sound|temperature|plant|animal|soil|rock|water|air|heat|classify|classification|compare|comparison)\b/i.test(full)) {
     blockingIssues.push("science_subject_fit_missing");
   }
   if (containsPlaceholder(full)) blockingIssues.push("placeholder_style_content");

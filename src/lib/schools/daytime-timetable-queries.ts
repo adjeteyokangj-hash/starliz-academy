@@ -2,10 +2,14 @@ import { prisma } from "@/lib/db";
 import {
   describeSchoolClock,
   minutesNow,
+  periodMinutes,
   schoolDayOfWeek,
   sortPeriodsByTime,
+  studentWorkMinutes,
   weekdayLabel,
 } from "@/lib/schools/school-day-period";
+import { buildDaytimeSessionPlan } from "@/lib/schools/daytime-session-plan";
+import { isPlayableDaytimeLessonType } from "@/lib/schools/start-daytime-period";
 
 export type DaytimePeriodDto = {
   id: string;
@@ -25,6 +29,12 @@ export type DaytimePeriodDto = {
   lessonId: string | null;
   lessonTitle: string | null;
   skillFocus: string | null;
+  sessionSummary: {
+    periodMinutes: number;
+    studentWorkMinutes: number;
+    stageCount: number;
+    totalEstimatedMinutes: number;
+  } | null;
 };
 
 export type DaytimeStudentDto = {
@@ -49,10 +59,16 @@ type PeriodRow = {
   lessonId: string | null;
   classroom: { id: string; name: string } | null;
   teacher: { id: string; user: { name: string | null } } | null;
-  lesson: { id: string; title: string } | null;
+  lesson: { id: string; title: string; contentRefs: string | null } | null;
 };
 
 function mapPeriod(row: PeriodRow): DaytimePeriodDto {
+  const linkedRefs = (row.lesson?.contentRefs ?? "")
+    .split(/[,;\s]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const playable = isPlayableDaytimeLessonType(row.lessonType) && linkedRefs.length > 0;
+  const plan = playable ? buildDaytimeSessionPlan(row.startsAt, row.endsAt) : null;
   return {
     id: row.id,
     title: row.title,
@@ -71,6 +87,14 @@ function mapPeriod(row: PeriodRow): DaytimePeriodDto {
     lessonId: row.lessonId,
     lessonTitle: row.lesson?.title ?? null,
     skillFocus: row.skillFocus,
+    sessionSummary: plan
+      ? {
+          periodMinutes: plan.periodMinutes || periodMinutes(row.startsAt, row.endsAt),
+          studentWorkMinutes: plan.studentWorkMinutes || studentWorkMinutes(plan.periodMinutes),
+          stageCount: plan.stages.length,
+          totalEstimatedMinutes: plan.totalEstimatedMinutes,
+        }
+      : null,
   };
 }
 
@@ -113,7 +137,7 @@ const periodInclude = {
       user: { select: { name: true } },
     },
   },
-  lesson: { select: { id: true, title: true } },
+  lesson: { select: { id: true, title: true, contentRefs: true } },
 } as const;
 
 export function createDefaultTutorBoardDeps(): TutorBoardDeps {

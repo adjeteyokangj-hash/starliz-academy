@@ -1,14 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 import { adminNavItems } from "@/lib/admin-nav";
+import { AdminButton, AdminButtonLink, AdminInput } from "@/components/admin/ui";
 
 export default function AdminHeader() {
   const pathname = usePathname();
   const router = useRouter();
-  const current = adminNavItems.find((item) => item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href));
+  const current = adminNavItems.find((item) =>
+    item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href),
+  );
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
@@ -16,13 +18,16 @@ export default function AdminHeader() {
   }
 
   return (
-    <header className="relative z-20 border-b border-slate-800 bg-slate-950/92 backdrop-blur-xl">
-      <div className="flex min-h-20 flex-col gap-4 px-4 py-4 pl-24 md:px-6 md:pl-28 xl:flex-row xl:items-center xl:justify-between">
+    <header
+      className="relative z-20 border-b border-[var(--admin-border)] backdrop-blur-xl"
+      style={{ background: "color-mix(in srgb, var(--admin-rail) 92%, transparent)", boxShadow: "var(--admin-shadow-sm)" }}
+    >
+      <div className="flex min-h-[4.75rem] flex-col gap-4 px-4 py-4 pl-24 md:px-6 md:pl-28 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-center gap-3">
           <Logo variant="icon" size={36} animation={false} className="pointer-events-none" />
           <div>
-            <p className="text-xs font-bold uppercase text-blue-300">StarLiz Admin</p>
-            <h1 className="text-2xl font-black text-white">
+            <p className="admin-meta">Operations console</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-[var(--admin-text)] sm:text-[1.75rem]">
               {current?.title ?? "Admin Portal"}
               {current?.launchTag === "beta" ? " (Beta)" : ""}
             </h1>
@@ -32,34 +37,29 @@ export default function AdminHeader() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <label className="relative min-w-0 sm:w-80">
             <span className="sr-only">Search admin portal</span>
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">⌕</span>
-            <input
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--admin-muted)]">⌕</span>
+            <AdminInput
               type="search"
               placeholder="Search parents, students, content"
-              className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-9 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30"
+              className="pl-9"
             />
           </label>
 
-          <Link href="/admin/inbox" aria-label="Notifications" className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-300 hover:text-white">
+          <AdminButtonLink href="/admin/inbox" variant="secondary" size="sm" className="h-11 w-11 px-0" aria-label="Notifications">
             !
-          </Link>
-          <Link href="/admin/settings" className="flex h-11 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-sm font-bold text-slate-200 hover:text-white">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-500 text-xs text-white">A</span>
+          </AdminButtonLink>
+          <AdminButtonLink href="/admin/settings" variant="secondary" size="sm" className="h-11 gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--admin-primary)] text-xs text-white">A</span>
             Admin
-          </Link>
-          <Link href="/dashboard" className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 hover:text-white">
+          </AdminButtonLink>
+          <AdminButtonLink href="/dashboard" variant="secondary" size="sm" className="h-11">
             Back to App
-          </Link>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="rounded-2xl border border-red-800 bg-red-950/60 px-4 py-3 text-sm font-bold text-red-300 hover:bg-red-900/60 hover:text-red-100"
-          >
+          </AdminButtonLink>
+          <AdminButton variant="danger" size="sm" className="h-11" onClick={handleLogout}>
             Logout
-          </button>
+          </AdminButton>
         </div>
       </div>
     </header>
   );
 }
-

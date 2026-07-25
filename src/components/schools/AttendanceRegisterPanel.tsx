@@ -190,7 +190,7 @@ export default function AttendanceRegisterPanel({ register, saveUrl, onSaved }: 
           type="button"
           disabled={saving || register.summary.totalStudents === 0}
           onClick={() => void persist("mark_all_present")}
-          className="rounded-lg border border-sky-500/50 bg-sky-500/15 px-3 py-2 text-sm font-semibold text-sky-100 disabled:opacity-50"
+          className="rounded-lg border border-sky-500/50 bg-[var(--admin-primary-muted)] px-3 py-2 text-sm font-semibold text-[var(--admin-text)] disabled:opacity-50"
         >
           Mark all present
         </button>

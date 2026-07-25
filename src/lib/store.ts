@@ -1,4 +1,5 @@
 import { VOICE_STYLE_OPTIONS, VoiceStyle } from "@/lib/voice_options";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 export type LearningLevel = "Beginner" | "Growing" | "Advanced";
 export type StartLevelChoice = "Beginner" | "Intermediate" | "Confident";
@@ -448,7 +449,7 @@ function syncLegacyProfilesToLocalStorage(profiles: ChildProfile[], activeProfil
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T | null> {
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithRefreshRetry(url, {
       credentials: "include",
       ...init,
       headers: {
@@ -463,12 +464,21 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T | null> 
   }
 }
 
-export async function hydrateProfilesFromServer(): Promise<void> {
-  if (typeof window === "undefined") return;
+export type HydrateProfilesResult = "ok" | "empty" | "failed";
+
+export async function hydrateProfilesFromServer(): Promise<HydrateProfilesResult> {
+  if (typeof window === "undefined") return "failed";
   const payload = await fetchJson<{ children: ChildProfile[]; activeChildId: string | null }>("/api/children");
   if (!payload) {
-    setCache([], null);
-    return;
+    // Do not wipe a working in-memory/local profile on transient auth or network failure —
+    // that previously bounced students to /profiles after access-token expiry.
+    if (profilesCache.length > 0) return "ok";
+    const legacy = readLegacyProfilesFromLocalStorage();
+    if (legacy.profiles.length > 0) {
+      setCache(legacy.profiles, legacy.activeProfileId);
+      return "ok";
+    }
+    return "failed";
   }
 
   const serverChildren = Array.isArray(payload.children) ? payload.children : [];
@@ -481,13 +491,13 @@ export async function hydrateProfilesFromServer(): Promise<void> {
   if (dbProfiles.length > 0) {
     setCache(dbProfiles, serverActiveChildId);
     syncLegacyProfilesToLocalStorage(dbProfiles, serverActiveChildId);
-    return;
+    return "ok";
   }
 
   if (!legacy.profiles.length) {
     setCache([], serverActiveChildId);
     syncLegacyProfilesToLocalStorage([], serverActiveChildId);
-    return;
+    return "empty";
   }
 
   const mergedById = new Map<string, ChildProfile>();
@@ -514,6 +524,7 @@ export async function hydrateProfilesFromServer(): Promise<void> {
   const finalActiveChildId = refreshed?.activeChildId ?? mergedActiveChildId;
   setCache(finalProfiles, finalActiveChildId);
   syncLegacyProfilesToLocalStorage(finalProfiles, finalActiveChildId);
+  return finalProfiles.length > 0 ? "ok" : "empty";
 }
 
 export async function hydrateActiveProfileFromServer(): Promise<ChildProfile | null> {

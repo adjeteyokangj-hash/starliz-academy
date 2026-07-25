@@ -106,13 +106,14 @@ function makeSchoolSource(overrides: Record<string, unknown> = {}) {
       updatedAt: now,
       classroom: { id: "class-1", name: "9A" },
       teacher: { user: { name: "Ms Rivera" } },
+      lesson: { id: "lesson-1", title: "Maths — Number fluency", contentRefs: null },
     }],
     ...overrides,
   };
 }
 
-test("mapSchoolToAdminRecord maps roster fields for academy dashboard", () => {
-  const record = mapSchoolToAdminRecord(makeSchoolSource() as never);
+test("mapSchoolToAdminRecord maps roster fields for academy dashboard", async () => {
+  const record = await mapSchoolToAdminRecord(makeSchoolSource() as never);
 
   assert.equal(record.id, "school-1");
   assert.equal(record.students[0]?.childName, "Adjei");
@@ -124,23 +125,24 @@ test("mapSchoolToAdminRecord maps roster fields for academy dashboard", () => {
   assert.equal(record.safeguarding.openAlerts, 1);
   assert.equal(record.dayLessons[0]?.title, "Maths — Number fluency");
   assert.equal(record.dayLessons[0]?.teacherName, "Ms Rivera");
+  assert.equal(record.dayLessons[0]?.playableContent, null);
 });
 
-test("mapSchoolToDashboardRecord omits parent-comms graph", () => {
+test("mapSchoolToDashboardRecord omits parent-comms graph", async () => {
   const source = makeSchoolSource();
   const dashboardSource = {
     ...source,
     parentLinks: undefined,
     communicationLogs: undefined,
   };
-  const record = mapSchoolToDashboardRecord(dashboardSource as never);
+  const record = await mapSchoolToDashboardRecord(dashboardSource as never);
   assert.equal(record.communicationPreferences.length, 0);
   assert.equal(record.communicationLogs.length, 0);
   assert.equal(record.students[0]?.childName, "Adjei");
 });
 
 test("school-dashboard GET returns one school payload", async () => {
-  const school = mapSchoolToDashboardRecord(makeSchoolSource() as never);
+  const school = await mapSchoolToDashboardRecord(makeSchoolSource() as never);
   const response = await handleAdminSchoolDashboardGet(
     new Request("http://localhost/api/admin/school-dashboard/school-1"),
     { params: Promise.resolve({ schoolId: "school-1" }) },
@@ -160,7 +162,7 @@ test("school-dashboard GET returns one school payload", async () => {
 });
 
 test("single-school GET returns one school payload", async () => {
-  const school = mapSchoolToAdminRecord(makeSchoolSource() as never);
+  const school = await mapSchoolToAdminRecord(makeSchoolSource() as never);
   const response = await handleAdminSchoolGet(
     new Request("http://localhost/api/admin/schools/school-1"),
     { params: Promise.resolve({ schoolId: "school-1" }) },

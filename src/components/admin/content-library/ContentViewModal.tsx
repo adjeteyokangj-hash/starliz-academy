@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
 import type { ContentItem } from "./types";
 import BlackBoxRepairPanel from "./BlackBoxRepairPanel";
@@ -370,14 +371,16 @@ function generationSourceLabelFromPayload(payload: GenerationPayload | null | un
 }
 
 export default function ContentViewModal({ open, content, onClose, onVerified }: Props) {
-  if (!open || !content) return null;
-  return (
+  if (!open || !content || typeof document === "undefined") return null;
+  // Portal above AdminHeader (z-20) / sidebar — modal lives under main's z-10 stacking context otherwise.
+  return createPortal(
     <ContentViewModalBody
       key={content.id}
       content={content}
       onClose={onClose}
       onVerified={onVerified}
-    />
+    />,
+    document.body,
   );
 }
 
@@ -1610,7 +1613,7 @@ function ContentViewModalBody({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-2 sm:p-4">
+    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/50 p-2 sm:p-4">
       <div className="max-h-[calc(100dvh-1rem)] w-full max-w-6xl overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-3 sm:max-h-[calc(100dvh-2rem)] sm:p-6">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">

@@ -36,7 +36,21 @@ import {
   getTutorLine,
 } from "@/lib/tutorVoice";
 import { shouldEnableStudentVoiceWorkflow } from "@/lib/lesson-voice-help";
+import { continueDaytimePeriodFromClient } from "@/lib/schools/daytime-period-client";
 import SmartCoachPanel from "@/components/coach/SmartCoachPanel";
+import QuestionHelpPanel from "@/components/games/QuestionHelpPanel";
+import { extractHelpFromQuestionItem } from "@/lib/schools/question-help";
+import DaytimeTutorPanel from "@/components/games/DaytimeTutorPanel";
+import {
+  DaytimeSchoolLessonShell,
+  DaytimeGuidedReadingPanel,
+  DaytimeAnswerFeedback,
+  DaytimeStageComplete,
+} from "@/components/student/daytime-lesson";
+import { useDaytimeLessonContext } from "@/components/student/daytime-lesson/useDaytimeLessonContext";
+import { useDaytimeStagePack } from "@/components/student/daytime-lesson/useDaytimeStagePack";
+import { toStudentFacingSessionPlan } from "@/lib/schools/daytime-lesson-ui";
+import type { DaytimeSessionPlanDto } from "@/lib/schools/start-daytime-period";
 
 const MIN_READING_QUESTIONS = 5;
 const MAX_RECENT_READING_IDS = 24;
@@ -262,7 +276,20 @@ export default function ReadingJourneyPage() {
   const searchParams = useSearchParams();
   const assignedContentId = searchParams.get("contentId");
   const assignedAssignmentId = searchParams.get("assignmentId") ?? undefined;
+  const daytimePeriodId = searchParams.get("daytimePeriodId");
   const requestedMode = searchParams.get("mode");
+  const [continuingDaytime, setContinuingDaytime] = useState(false);
+  const [answerFeedbackKind, setAnswerFeedbackKind] = useState<"correct" | "incorrect" | null>(null);
+  const [continueSessionPlan, setContinueSessionPlan] = useState<DaytimeSessionPlanDto | null>(null);
+  const daytimeStagePack = useDaytimeStagePack({
+    enabled: Boolean(daytimePeriodId),
+    contentId: assignedContentId,
+    assignmentId: assignedAssignmentId,
+  });
+  const daytimeContext = useDaytimeLessonContext(
+    daytimePeriodId,
+    assignedContentId,
+  );
   const [profile, setProfile] = useState<ChildProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const profileId = profile?.id ?? null;
@@ -772,6 +799,7 @@ export default function ReadingJourneyPage() {
     setSessionIndex((prev) => Math.min(prev + 1, Math.max(0, sessionQuestions.length - 1)));
     setHintLevel(0);
     setCoachOpen(false);
+    setAnswerFeedbackKind(null);
     // eslint-disable-next-line react-hooks/purity
     setQuestionStartedAt(Date.now());
     lastAutoReadRef.current = null;
@@ -1090,6 +1118,9 @@ export default function ReadingJourneyPage() {
       }
     }
     setFeedback(isCorrect ? `Excellent reading!${result.promotedDifficulty ? " Difficulty increased!" : ""}${result.surpriseReward.awarded ? ` ${result.surpriseReward.message}` : ""}` : "Good try. Read carefully and try another passage.");
+    if (daytimePeriodId) {
+      setAnswerFeedbackKind(isCorrect ? "correct" : "incorrect");
+    }
     const nextOutcomes: Record<string, CanonicalItemOutcome> = {
       ...questionOutcomes,
       [item.id]: {
@@ -1236,6 +1267,148 @@ export default function ReadingJourneyPage() {
     );
   }
 
+  const isDaytimeSchool = Boolean(daytimePeriodId && assignedAssignmentId && assignedContentId);
+  const facingPlan = daytimeContext.data?.sessionPlan
+    ?? toStudentFacingSessionPlan(continueSessionPlan);
+
+  async function continueDaytimeAfterStage() {
+    if (!daytimePeriodId) return;
+    setContinuingDaytime(true);
+    if (assignedAssignmentId) {
+      await fetch(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      }).catch(() => undefined);
+    }
+    const continued = await continueDaytimePeriodFromClient({
+      dayLessonId: daytimePeriodId,
+      completedContentId: assignedContentId,
+    });
+    if (continued.ok) {
+      setContinueSessionPlan((continued.sessionPlan as DaytimeSessionPlanDto | null) ?? null);
+      if (continued.mode === "period_complete") {
+        router.push("/student/today");
+        return;
+      }
+      router.push(continued.href);
+      return;
+    }
+    setContinuingDaytime(false);
+    setFeedback(continued.error);
+  }
+
+  if (isDaytimeSchool && item && profile) {
+    const passageTitle = daytimeStagePack?.passage?.title || "Passage";
+    const passageParagraphs = daytimeStagePack?.passage?.paragraphs;
+    const lessonProgressPct = sessionQuestions.length
+      ? Math.round(((sessionComplete ? sessionQuestions.length : sessionIndex) / sessionQuestions.length) * 100)
+      : 0;
+
+    return (
+      <PremiumAccessGate>
+        <DaytimeSchoolLessonShell
+          periodId={daytimePeriodId!}
+          assignmentId={assignedAssignmentId!}
+          contentId={assignedContentId!}
+          questionId={item.id}
+          questionIndex={sessionIndex}
+          answered={sessionAttempts}
+          correct={sessionCorrect}
+          lessonProgressPct={lessonProgressPct}
+          mobileActionBar={
+            sessionComplete ? (
+              <Button
+                variant="accent"
+                className="w-full"
+                disabled={continuingDaytime}
+                onClick={() => {
+                  void continueDaytimeAfterStage();
+                }}
+              >
+                {continuingDaytime ? "Continuing…" : "Continue lesson"}
+              </Button>
+            ) : answerFeedbackKind === "correct" ? (
+              <Button variant="accent" className="w-full" onClick={() => advanceToNextQuestion()}>
+                Next question
+              </Button>
+            ) : (
+              <span className="text-xs font-semibold text-slate-600">Choose an answer above</span>
+            )
+          }
+        >
+          {rewardToast ? <RewardToast points={rewardToast.points} message={rewardToast.message} /> : null}
+          <DaytimeGuidedReadingPanel
+            passageTitle={passageTitle}
+            passageText={item.passage}
+            paragraphs={passageParagraphs}
+            vocabulary={daytimeStagePack?.vocabulary}
+          />
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-600">
+              {sessionComplete
+                ? "Session complete"
+                : `Question ${Math.min(sessionIndex + 1, sessionQuestions.length)} of ${sessionQuestions.length}`}
+            </p>
+            <h2 className="mt-2 font-heading text-2xl font-black leading-tight text-slate-950">{item.question}</h2>
+
+            {answerFeedbackKind === "correct" ? (
+              <div className="mt-4">
+                <DaytimeAnswerFeedback
+                  kind="correct"
+                  explanation={item.explanation || tutorFeedback || feedback}
+                  onContinue={() => advanceToNextQuestion()}
+                />
+              </div>
+            ) : null}
+            {answerFeedbackKind === "incorrect" ? (
+              <div className="mt-4">
+                <DaytimeAnswerFeedback
+                  kind="incorrect"
+                  onTryAgain={() => setAnswerFeedbackKind(null)}
+                />
+              </div>
+            ) : null}
+
+            {!sessionComplete && answerFeedbackKind !== "correct" ? (
+              <div className="mt-5 grid gap-3">
+                {item.choices.map((choice, index) => (
+                  <Button
+                    key={choice}
+                    variant="secondary"
+                    className="flex w-full items-center justify-start gap-3 px-5 py-4 text-left"
+                    onClick={() => choose(choice)}
+                    disabled={!readAloudReadyToAnswer}
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-sm font-black text-indigo-700">
+                      {index + 1}
+                    </span>
+                    <span>{choice}</span>
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+
+            {sessionComplete ? (
+              <div className="mt-5">
+                <DaytimeStageComplete
+                  completedStageName={facingPlan?.currentStageName ?? "Stage"}
+                  nextStageName={facingPlan?.nextStageLabel ?? null}
+                  continuing={continuingDaytime}
+                  onContinue={() => {
+                    void continueDaytimeAfterStage();
+                  }}
+                />
+              </div>
+            ) : null}
+          </section>
+        </DaytimeSchoolLessonShell>
+      </PremiumAccessGate>
+    );
+  }
+
   return (
     <PremiumAccessGate>
     <>
@@ -1347,6 +1520,27 @@ export default function ReadingJourneyPage() {
                   <h2 className="mt-2 font-heading text-2xl font-black leading-tight text-slate-950">
                     {item.question}
                   </h2>
+                  <div className="mt-4">
+                    {daytimePeriodId && assignedAssignmentId && assignedContentId ? (
+                      <DaytimeTutorPanel
+                        periodId={daytimePeriodId}
+                        assignmentId={assignedAssignmentId}
+                        contentId={assignedContentId}
+                        questionId={item.id}
+                        questionIndex={sessionIndex}
+                        className="rounded-2xl border border-violet-200 bg-white/80 p-3"
+                      />
+                    ) : (
+                      <QuestionHelpPanel
+                        help={extractHelpFromQuestionItem({
+                          hints: item.hints,
+                          explanation: item.explanation,
+                          breakdown: item.breakdown,
+                          answer: item.answer,
+                        })}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 {hintMessage ? (
@@ -1462,7 +1656,38 @@ export default function ReadingJourneyPage() {
                     <p className="m-0 mt-1 font-semibold">Top mastery: {readingMastery.map((entry) => `${entry.tag} (${entry.accuracy}%)`).join(", ") || "Building now"}</p>
                     <p className="m-0 mt-1 font-semibold">Next suggestion: {profile.adaptive.nextBestActivity}</p>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {assignedContentId || assignedAssignmentId ? (
+                      {daytimePeriodId ? (
+                        <Button
+                          variant="accent"
+                          className="w-full"
+                          disabled={continuingDaytime}
+                          onClick={() => {
+                            setContinuingDaytime(true);
+                            void (async () => {
+                              if (assignedAssignmentId) {
+                                await fetch(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
+                                  method: "PATCH",
+                                  credentials: "include",
+                                  headers: { "content-type": "application/json" },
+                                  body: JSON.stringify({ status: "completed" }),
+                                }).catch(() => undefined);
+                              }
+                              const continued = await continueDaytimePeriodFromClient({
+                                dayLessonId: daytimePeriodId,
+                                completedContentId: assignedContentId,
+                              });
+                              if (continued.ok) {
+                                router.push(continued.href);
+                                return;
+                              }
+                              setContinuingDaytime(false);
+                              setFeedback(continued.error);
+                            })();
+                          }}
+                        >
+                          {continuingDaytime ? "Continuing…" : "Continue lesson"}
+                        </Button>
+                      ) : assignedContentId || assignedAssignmentId ? (
                         <Link href="/dashboard" className="block">
                           <Button variant="accent" className="w-full">Go to Dashboard</Button>
                         </Link>
@@ -1473,15 +1698,15 @@ export default function ReadingJourneyPage() {
                             : `Continue to Level ${Math.min(10, (profile.subjectLevels?.reading ?? profile.adaptive.readingDifficulty ?? 1) + 1)}`}
                         </Button>
                       )}
-                      <Link href="/dashboard" className="block">
-                        <Button variant="secondary" className="w-full">Go to Dashboard</Button>
+                      <Link href={daytimePeriodId ? "/student/today" : "/dashboard"} className="block">
+                        <Button variant="secondary" className="w-full">{daytimePeriodId ? "Back to Today" : "Go to Dashboard"}</Button>
                       </Link>
                     </div>
                   </div>
                 ) : null}
               </div>
 
-          {coachOpen && item ? (
+          {coachOpen && item && !(daytimePeriodId && assignedAssignmentId) ? (
             <SmartCoachPanel
               studentId={profile?.id}
               subject="reading"

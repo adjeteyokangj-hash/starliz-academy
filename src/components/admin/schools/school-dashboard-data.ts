@@ -100,8 +100,57 @@ export type SchoolDashboardRecord = {
     teacherId: string | null;
     teacherName: string | null;
     lessonId: string | null;
+    lessonTitle?: string | null;
     dueDate: string | null;
     updatedAt: string;
+    playableContent?: {
+      id: string;
+      contentType: string;
+      topic: string;
+      skillFocus: string | null;
+      status: string;
+      itemCount: number;
+      yearGroup: string | null;
+      estimatedMinutes?: number | null;
+      stage?: string | null;
+      stageLabel?: string | null;
+    } | null;
+    playableSession?: {
+      periodMinutes: number;
+      totalEstimatedMinutes: number;
+      stageCount: number;
+      contentType: string | null;
+      stages: Array<{
+        id: string;
+        contentType: string;
+        topic: string;
+        status: string;
+        itemCount: number;
+        estimatedMinutes: number;
+        stage: string;
+        stageLabel: string;
+        preview: {
+          headline: string | null;
+          body: string | null;
+          items: string[];
+        };
+      }>;
+    } | null;
+    lessonReview?: {
+      reviewStatus: "draft" | "machine_failed" | "awaiting_review" | "approved";
+      teacherReviewedAt: string | null;
+      teacherReviewedBy: string | null;
+      machineHealth: {
+        overall: "PASS" | "FAIL";
+        checkedAt: string;
+        periodMinutes: number;
+        totalEstimatedMinutes: number;
+        stageCount: number;
+        checks: Array<{ id: string; label: string; passed: boolean; detail?: string }>;
+        reason: string | null;
+        regenerateHint: string | null;
+      } | null;
+    } | null;
   }>;
 };
 

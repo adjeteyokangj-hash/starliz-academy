@@ -3,6 +3,7 @@ import Link from "next/link";
 import { readSessionFromCookie } from "@/lib/auth";
 import { getSchoolTeacherContext, canDo } from "@/lib/schools/rbac";
 import { getSchoolWeakAreas, getAccessibleStudents } from "@/lib/schools/scoping";
+import { buildTeacherProgressPack } from "@/lib/progress-reporting";
 
 export default async function TeacherProgressPage() {
   const session = await readSessionFromCookie();
@@ -16,6 +17,18 @@ export default async function TeacherProgressPage() {
     getSchoolWeakAreas(ctx.schoolId, ctx.schoolTeacherId, ctx.role),
     getAccessibleStudents(ctx.schoolId, ctx.schoolTeacherId, ctx.role),
   ]);
+
+  const progressPack = await buildTeacherProgressPack({
+    schoolId: ctx.schoolId,
+    windowDays: 30,
+    students: students.map((row) => ({
+      childId: row.childId,
+      name: row.child.name,
+      classroomId: row.classroomId,
+      classroomName: row.classroom?.name ?? null,
+      yearGroup: row.child.yearGroup ?? null,
+    })),
+  });
 
   // Group weak areas by subject
   const bySubject = new Map<string, typeof weakAreas>();
@@ -37,16 +50,58 @@ export default async function TeacherProgressPage() {
         </p>
       </div>
 
+      <section className="mb-8 rounded-2xl border border-border bg-card p-4">
+        <h2 className="font-semibold text-foreground mb-1">Class progress pack (30 days)</h2>
+        <p className="text-xs text-foreground/50 mb-3">
+          Privacy-safe aggregates — no tutor logs or private session notes.
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div>
+            <p className="text-xs text-foreground/50">Avg accuracy</p>
+            <p className="text-lg font-semibold text-foreground">
+              {progressPack.totals.completion.averageAccuracyPct ?? "—"}%
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-foreground/50">Assignment completion</p>
+            <p className="text-lg font-semibold text-foreground">
+              {progressPack.totals.completion.assignmentCompletionPct ?? "—"}%
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-foreground/50">Present rate</p>
+            <p className="text-lg font-semibold text-foreground">
+              {progressPack.totals.attendance.presentRatePct ?? "—"}%
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-foreground/50">Focus topics</p>
+            <p className="text-lg font-semibold text-foreground">
+              {progressPack.totals.focusTopics.length}
+            </p>
+          </div>
+        </div>
+        {progressPack.totals.focusTopics.length > 0 ? (
+          <ul className="mt-3 space-y-1 text-sm text-foreground/70">
+            {progressPack.totals.focusTopics.slice(0, 5).map((topic) => (
+              <li key={`${topic.subject}-${topic.skillFocus}`}>
+                {topic.label} · {topic.signalCount} signals · {topic.severity}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+
       {/* Summary pills */}
       <div className="mb-8 flex flex-wrap gap-3">
         <span className="rounded-full bg-destructive/10 px-3 py-1 text-sm font-medium text-destructive">
-          🔴 {criticalCount} critical (&lt;40%)
+          {criticalCount} critical (&lt;40%)
         </span>
         <span className="rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
-          🟡 {improvingCount} needs attention (40–65%)
+          {improvingCount} needs attention (40–65%)
         </span>
         <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-          📊 {bySubject.size} subject{bySubject.size !== 1 ? "s" : ""} affected
+          {bySubject.size} subject{bySubject.size !== 1 ? "s" : ""} affected
         </span>
       </div>
 

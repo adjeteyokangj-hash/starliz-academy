@@ -11,6 +11,12 @@ import { enrolSchoolStudent } from "@/lib/schools/enrol-student";
 import { bootstrapDaytimeSchool } from "@/lib/schools/bootstrap-daytime-school";
 import { assignSchoolLesson } from "@/lib/schools/assign-school-lesson";
 import { updateSchoolDayLesson } from "@/lib/schools/update-school-day-lesson";
+import { generateDaytimeLessonContent } from "@/lib/schools/generate-daytime-lesson-content";
+import {
+  approveDaytimeDay,
+  approveDaytimeLesson,
+  regenerateDaytimeLesson,
+} from "@/lib/schools/daytime-lesson-review";
 import { ensureSchoolYearClasses } from "@/lib/schools/ensure-year-classes";
 import {
   buildSchoolsAdminListPayload,
@@ -215,6 +221,41 @@ const actionSchema = z.discriminatedUnion("action", [
       lessonId: z.string().min(1).optional().nullable(),
     }),
   }),
+  z.object({
+    action: z.literal("generateDaytimeLessonContent"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      classroomId: z.string().min(1).optional().nullable(),
+      dayOfWeek: z.number().int().min(1).max(5).optional().nullable(),
+      force: z.boolean().optional(),
+      dayLessonId: z.string().min(1).optional().nullable(),
+    }),
+  }),
+  z.object({
+    action: z.literal("approveDaytimeLesson"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      dayLessonId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    action: z.literal("regenerateDaytimeLesson"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      dayLessonId: z.string().min(1),
+      regenerateReason: z.string().trim().max(200).optional(),
+      allowWeeklyReview: z.boolean().optional(),
+      reviewReason: z.string().trim().max(200).optional(),
+    }),
+  }),
+  z.object({
+    action: z.literal("approveDaytimeDay"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      classroomId: z.string().min(1),
+      dayOfWeek: z.number().int().min(1).max(5),
+    }),
+  }),
 ]);
 
 function slugify(input: string): string {
@@ -225,15 +266,21 @@ function slugify(input: string): string {
     .slice(0, 90) || "school";
 }
 
-async function uniqueSlug(name: string, provided?: string): Promise<string> {
+async function uniqueSlug(name: string, provided?: string, excludeSchoolId?: string): Promise<string> {
   const base = slugify(provided && provided.length > 0 ? provided : name);
   let candidate = base;
   let counter = 1;
-  while (await prisma.school.findUnique({ where: { slug: candidate }, select: { id: true } })) {
+  while (true) {
+    const existing = await prisma.school.findUnique({
+      where: { slug: candidate },
+      select: { id: true },
+    });
+    if (!existing || (excludeSchoolId && existing.id === excludeSchoolId)) {
+      return candidate;
+    }
     counter += 1;
     candidate = `${base}-${counter}`;
   }
-  return candidate;
 }
 
 async function buildPayload() {
@@ -378,6 +425,10 @@ export async function POST(request: Request) {
     let ensureYearClassesResult: Record<string, unknown> | null = null;
     let assignLessonResult: { dayLessonId: string; lessonId: string } | null = null;
     let updateDayLessonResult: { dayLessonId: string } | null = null;
+    let generateContentResult: Record<string, unknown> | null = null;
+    let approveLessonResult: Record<string, unknown> | null = null;
+    let regenerateLessonResult: Record<string, unknown> | null = null;
+    let approveDayResult: Record<string, unknown> | null = null;
 
     switch (parsed.action) {
       case "createSchool": {
@@ -386,7 +437,7 @@ export async function POST(request: Request) {
           data: {
             name: parsed.payload.name,
             slug,
-            status: parsed.payload.status,
+            status: parsed.payload.status ?? "pilot",
             type: parsed.payload.type ?? "school",
             contactEmail: parsed.payload.contactEmail || null,
             contactPhone: parsed.payload.contactPhone || null,
@@ -406,7 +457,7 @@ export async function POST(request: Request) {
         }
 
         const nextSlug = parsed.payload.slug
-          ? await uniqueSlug(parsed.payload.name, parsed.payload.slug)
+          ? await uniqueSlug(parsed.payload.name, parsed.payload.slug, parsed.payload.schoolId)
           : current.slug;
 
         await prisma.school.update({
@@ -419,7 +470,9 @@ export async function POST(request: Request) {
             contactEmail: parsed.payload.contactEmail || null,
             contactPhone: parsed.payload.contactPhone || null,
             notes: parsed.payload.notes || null,
-            ownerUserId: parsed.payload.ownerUserId || null,
+            ...(parsed.payload.ownerUserId !== undefined
+              ? { ownerUserId: parsed.payload.ownerUserId || null }
+              : {}),
           },
         });
 
@@ -1076,6 +1129,78 @@ export async function POST(request: Request) {
         updateDayLessonResult = { dayLessonId: updated.dayLessonId };
         break;
       }
+      case "generateDaytimeLessonContent": {
+        const generated = await generateDaytimeLessonContent({
+          schoolId: parsed.payload.schoolId,
+          actorUserId: session.userId,
+          classroomId: parsed.payload.classroomId,
+          dayOfWeek: parsed.payload.dayOfWeek,
+          force: parsed.payload.force,
+          dayLessonId: parsed.payload.dayLessonId,
+        });
+        if (!generated.ok) {
+          return NextResponse.json({ error: generated.error }, { status: generated.status });
+        }
+        generateContentResult = {
+          created: generated.created,
+          reused: generated.reused,
+          skipped: generated.skipped,
+          blackBoxFailed: generated.blackBoxFailed,
+          linkedLessonCount: generated.linkedLessonIds.length,
+          contentCount: generated.contentIds.length,
+        };
+        break;
+      }
+      case "approveDaytimeLesson": {
+        const approved = await approveDaytimeLesson({
+          schoolId: parsed.payload.schoolId,
+          dayLessonId: parsed.payload.dayLessonId,
+          actorUserId: session.userId,
+        });
+        if (!approved.ok) {
+          return NextResponse.json(
+            { error: approved.error, code: approved.code ?? null },
+            { status: approved.status },
+          );
+        }
+        approveLessonResult = approved;
+        break;
+      }
+      case "regenerateDaytimeLesson": {
+        const regenerated = await regenerateDaytimeLesson({
+          schoolId: parsed.payload.schoolId,
+          dayLessonId: parsed.payload.dayLessonId,
+          actorUserId: session.userId,
+          regenerateReason: parsed.payload.regenerateReason ?? null,
+          allowWeeklyReview: parsed.payload.allowWeeklyReview ?? null,
+          reviewReason: parsed.payload.reviewReason ?? parsed.payload.regenerateReason ?? null,
+        });
+        if (!regenerated.ok) {
+          return NextResponse.json({ error: regenerated.error }, { status: regenerated.status });
+        }
+        regenerateLessonResult = regenerated;
+        break;
+      }
+      case "approveDaytimeDay": {
+        const dayApproved = await approveDaytimeDay({
+          schoolId: parsed.payload.schoolId,
+          classroomId: parsed.payload.classroomId,
+          dayOfWeek: parsed.payload.dayOfWeek,
+          actorUserId: session.userId,
+        });
+        if (!dayApproved.ok) {
+          return NextResponse.json(
+            {
+              error: dayApproved.error,
+              code: dayApproved.code ?? null,
+              blockers: dayApproved.blockers ?? [],
+            },
+            { status: dayApproved.status },
+          );
+        }
+        approveDayResult = dayApproved;
+        break;
+      }
       default:
         return NextResponse.json({ error: "Unsupported action." }, { status: 400 });
     }
@@ -1089,6 +1214,10 @@ export async function POST(request: Request) {
       ...(ensureYearClassesResult ? { ensureYearClassesResult } : {}),
       ...(assignLessonResult ? { assignLessonResult } : {}),
       ...(updateDayLessonResult ? { updateDayLessonResult } : {}),
+      ...(generateContentResult ? { generateContentResult } : {}),
+      ...(approveLessonResult ? { approveLessonResult } : {}),
+      ...(regenerateLessonResult ? { regenerateLessonResult } : {}),
+      ...(approveDayResult ? { approveDayResult } : {}),
     });
   } catch {
     return NextResponse.json({ error: "Invalid school request." }, { status: 400 });

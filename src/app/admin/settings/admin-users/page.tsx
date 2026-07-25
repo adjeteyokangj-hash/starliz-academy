@@ -1,6 +1,22 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  AdminButton,
+  AdminCard,
+  AdminFieldLabel,
+  AdminInput,
+  AdminModal,
+  AdminPageHeader,
+  AdminSelect,
+  AdminTable,
+  AdminTableBody,
+  AdminTableEmpty,
+  AdminTableHead,
+  AdminTd,
+  AdminTh,
+  AdminTr,
+} from '@/components/admin/ui';
 
 interface AdminUser {
   id: string;
@@ -222,144 +238,114 @@ export default function AdminUsersPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-400">Loading admins...</p>
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <p className="admin-body">Loading admins...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-white mb-2">Admin Users & Roles</h1>
-            <p className="text-gray-400">Manage admin access and role assignments</p>
-          </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium"
-          >
+    <div className="mx-auto max-w-7xl space-y-6">
+      <AdminPageHeader
+        eyebrow="Platform"
+        title="Admin Users & Roles"
+        subtitle="Manage admin access and role assignments"
+        actions={
+          <AdminButton onClick={() => setShowForm(!showForm)}>
             {showForm ? 'Cancel' : 'Add Admin User'}
-          </button>
-        </div>
+          </AdminButton>
+        }
+      />
 
         {error && (
-          <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4 mb-6 text-red-200">
+          <div className="rounded-[var(--admin-radius)] border border-rose-500/50 bg-rose-900/20 p-4 text-rose-200">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="bg-emerald-900/20 border border-emerald-500/50 rounded-lg p-4 mb-6 text-emerald-200">
+          <div className="rounded-[var(--admin-radius)] border border-emerald-500/50 bg-emerald-900/20 p-4 text-emerald-200">
             {success}
           </div>
         )}
 
-        {resetTarget && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="reset-password-title"
-              className="w-full max-w-md rounded-xl border border-slate-600 bg-slate-800 p-6 shadow-2xl"
-            >
-              <h2 id="reset-password-title" className="text-xl font-bold text-white">
-                Reset password
-              </h2>
-              <p className="mt-2 text-sm text-gray-300">
-                Set a new password for <span className="font-semibold text-white">{resetTarget.email}</span>, or email them a reset link.
-              </p>
-
-              <form className="mt-5 space-y-3" onSubmit={handleSetPassword}>
-                <label className="block text-sm font-medium text-gray-300">
-                  New password
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={resetPassword}
-                    onChange={(e) => setResetPassword(e.target.value)}
-                    minLength={8}
-                    required
-                    className="mt-1 w-full rounded-lg border border-slate-500 bg-slate-700 px-3 py-2 text-white"
-                  />
-                </label>
-                <label className="block text-sm font-medium text-gray-300">
-                  Confirm password
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={resetConfirm}
-                    onChange={(e) => setResetConfirm(e.target.value)}
-                    minLength={8}
-                    required
-                    className="mt-1 w-full rounded-lg border border-slate-500 bg-slate-700 px-3 py-2 text-white"
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2 pt-2">
-                  <button
-                    type="submit"
-                    disabled={resetBusy}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-                  >
-                    {resetBusy ? 'Saving…' : 'Set password'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={resetBusy}
-                    onClick={() => void handleEmailResetLink()}
-                    className="rounded-lg border border-slate-500 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-slate-700 disabled:opacity-60"
-                  >
-                    Email reset link
-                  </button>
-                  <button
-                    type="button"
-                    disabled={resetBusy}
-                    onClick={closeResetPassword}
-                    className="rounded-lg px-4 py-2 text-sm font-medium text-gray-400 hover:text-white disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        <AdminModal
+          open={Boolean(resetTarget)}
+          title="Reset password"
+          description={resetTarget ? `Set a new password for ${resetTarget.email}, or email them a reset link.` : undefined}
+          onClose={closeResetPassword}
+          footer={
+            <>
+              <AdminButton type="submit" form="admin-reset-password-form" disabled={resetBusy}>
+                {resetBusy ? 'Saving…' : 'Set password'}
+              </AdminButton>
+              <AdminButton type="button" variant="secondary" disabled={resetBusy} onClick={() => void handleEmailResetLink()}>
+                Email reset link
+              </AdminButton>
+              <AdminButton type="button" variant="ghost" disabled={resetBusy} onClick={closeResetPassword}>
+                Cancel
+              </AdminButton>
+            </>
+          }
+        >
+          <form id="admin-reset-password-form" className="space-y-3" onSubmit={handleSetPassword}>
+            <AdminFieldLabel>
+              New password
+              <AdminInput
+                type="password"
+                autoComplete="new-password"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                minLength={8}
+                required
+                className="mt-1"
+              />
+            </AdminFieldLabel>
+            <AdminFieldLabel>
+              Confirm password
+              <AdminInput
+                type="password"
+                autoComplete="new-password"
+                value={resetConfirm}
+                onChange={(e) => setResetConfirm(e.target.value)}
+                minLength={8}
+                required
+                className="mt-1"
+              />
+            </AdminFieldLabel>
+          </form>
+        </AdminModal>
 
         {showForm && (
-          <div className="bg-slate-700 rounded-lg p-6 mb-8 border border-slate-600">
-            <h2 className="text-xl font-bold text-white mb-4">Create New Admin</h2>
+          <AdminCard className="mb-2">
+            <h2 className="admin-section-title mb-4">Create New Admin</h2>
             <form onSubmit={handleCreateAdmin} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <input
+              <div className="grid gap-4 sm:grid-cols-2">
+                <AdminInput
                   type="text"
                   placeholder="Full Name"
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
-                  className="bg-slate-600 border border-slate-500 rounded px-4 py-2 text-white placeholder-gray-400"
                   required
                 />
-                <input
+                <AdminInput
                   type="email"
                   placeholder="Email"
                   value={formData.email}
                   onChange={e => setFormData({ ...formData, email: e.target.value })}
-                  className="bg-slate-600 border border-slate-500 rounded px-4 py-2 text-white placeholder-gray-400"
                   required
                 />
-                <input
+                <AdminInput
                   type="password"
                   placeholder="Password"
                   value={formData.password}
                   onChange={e => setFormData({ ...formData, password: e.target.value })}
-                  className="bg-slate-600 border border-slate-500 rounded px-4 py-2 text-white placeholder-gray-400"
                   required
                   minLength={8}
                 />
-                <select
+                <AdminSelect
                   value={formData.roleId}
                   onChange={e => setFormData({ ...formData, roleId: e.target.value })}
-                  className="bg-slate-600 border border-slate-500 rounded px-4 py-2 text-white"
                   aria-label="Admin role"
                   required
                 >
@@ -367,49 +353,42 @@ export default function AdminUsersPage() {
                   {roles.map(role => (
                     <option key={role.id} value={role.id}>{role.name}</option>
                   ))}
-                </select>
+                </AdminSelect>
               </div>
-              <button
-                type="submit"
-                className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-medium"
-              >
+              <AdminButton type="submit" className="w-full">
                 Create Admin
-              </button>
+              </AdminButton>
             </form>
-          </div>
+          </AdminCard>
         )}
 
-        <div className="bg-slate-700 rounded-lg overflow-hidden border border-slate-600">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-slate-800 border-b border-slate-600">
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Name</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Email</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Role</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Status</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Last Login</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+        <div
+          className="overflow-hidden rounded-[var(--admin-radius-lg)] border border-[var(--admin-border)]"
+          style={{ background: "var(--admin-surface)", boxShadow: "var(--admin-shadow-sm)" }}
+        >
+          <AdminTable>
+            <AdminTableHead>
+              <AdminTh>Name</AdminTh>
+              <AdminTh>Email</AdminTh>
+              <AdminTh>Role</AdminTh>
+              <AdminTh>Status</AdminTh>
+              <AdminTh>Last Login</AdminTh>
+              <AdminTh>Actions</AdminTh>
+            </AdminTableHead>
+            <AdminTableBody>
                 {admins.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-400">
-                      No admin users found
-                    </td>
-                  </tr>
+                  <AdminTableEmpty colSpan={6} message="No admin users found" />
                 ) : (
                   admins.map(admin => (
-                    <tr key={admin.id} className="border-b border-slate-600 hover:bg-slate-600/50">
-                      <td className="px-6 py-4 text-white">{admin.name || 'N/A'}</td>
-                      <td className="px-6 py-4 text-gray-300">{admin.email}</td>
-                      <td className="px-6 py-4">
+                    <AdminTr key={admin.id}>
+                      <AdminTd>{admin.name || 'N/A'}</AdminTd>
+                      <AdminTd className="text-[var(--admin-muted)]">{admin.email}</AdminTd>
+                      <AdminTd>
                         {editingRole === admin.id ? (
-                          <select
+                          <AdminSelect
                             value={admin.roleId}
                             onChange={e => handleUpdateRole(admin.id, e.target.value)}
-                            className="bg-slate-600 border border-slate-500 rounded px-2 py-1 text-white text-sm"
+                            className="py-1 text-sm"
                             aria-label={`Update role for ${admin.name || admin.email}`}
                             onBlur={() => setEditingRole(null)}
                             autoFocus
@@ -417,62 +396,53 @@ export default function AdminUsersPage() {
                             {roles.map(role => (
                               <option key={role.id} value={role.id}>{role.name}</option>
                             ))}
-                          </select>
+                          </AdminSelect>
                         ) : (
                           <button
                             onClick={() => setEditingRole(admin.id)}
-                            className="text-blue-400 hover:text-blue-300 text-sm"
+                            className="text-sm text-[var(--admin-primary-hover)] hover:underline"
                           >
                             {admin.role || 'No Role'}
                           </button>
                         )}
-                      </td>
-                      <td className="px-6 py-4">
+                      </AdminTd>
+                      <AdminTd>
                         <span
-                          className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                          className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
                             admin.active && !admin.isLocked
-                              ? 'bg-green-900/30 text-green-300'
-                              : 'bg-red-900/30 text-red-300'
+                              ? 'bg-emerald-900/30 text-emerald-300'
+                              : 'bg-rose-900/30 text-rose-300'
                           }`}
                         >
                           {admin.isLocked ? 'Locked' : admin.active ? 'Active' : 'Inactive'}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-400 text-sm">
+                      </AdminTd>
+                      <AdminTd className="text-sm text-[var(--admin-muted)]">
                         {admin.lastLoginAt
                           ? new Date(admin.lastLoginAt).toLocaleDateString()
                           : 'Never'}
-                      </td>
-                      <td className="px-6 py-4">
+                      </AdminTd>
+                      <AdminTd>
                         <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openResetPassword(admin)}
-                            className="rounded bg-slate-600/80 px-3 py-1 text-sm text-cyan-200 hover:bg-slate-500"
-                          >
+                          <AdminButton type="button" size="sm" variant="secondary" onClick={() => openResetPassword(admin)}>
                             Reset password
-                          </button>
-                          <button
+                          </AdminButton>
+                          <AdminButton
                             type="button"
+                            size="sm"
+                            variant={admin.active ? 'danger' : 'secondary'}
                             onClick={() => handleToggleActive(admin.id, admin.active)}
-                            className={`rounded px-3 py-1 text-sm ${
-                              admin.active
-                                ? 'bg-red-900/30 text-red-300 hover:bg-red-900/50'
-                                : 'bg-green-900/30 text-green-300 hover:bg-green-900/50'
-                            }`}
                           >
                             {admin.active ? 'Deactivate' : 'Activate'}
-                          </button>
+                          </AdminButton>
                         </div>
-                      </td>
-                    </tr>
+                      </AdminTd>
+                    </AdminTr>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
+            </AdminTableBody>
+          </AdminTable>
         </div>
-      </div>
     </div>
   );
 }

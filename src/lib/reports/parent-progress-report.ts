@@ -5,6 +5,8 @@ import { summarizeWalletTransactions } from "@/lib/wallet_ledger";
 import { isGcseYearGroup } from "@/lib/curriculum";
 import { parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
+import { buildParentProgressPack } from "@/lib/progress-reporting";
+import type { AttendanceSummary, SanitizedFocusTopic } from "@/lib/progress-reporting";
 
 export type ParentReportRange = "7d" | "30d" | "90d" | "all";
 
@@ -80,6 +82,10 @@ export type ParentProgressReportData = {
       reportSignals: string[];
     };
   };
+  /** Parent-safe attendance aggregates — never includes teacher notes. */
+  attendanceSummary: AttendanceSummary;
+  /** Sanitized focus topics from misconception analytics (labels only). */
+  focusTopics: SanitizedFocusTopic[];
 };
 
 export type ParentProgressReportTable = {
@@ -218,7 +224,7 @@ export async function buildParentProgressReportData(input: {
     throw new Error("Child not found for this parent account.");
   }
 
-  const [attempts, walletTransactions, assignments, weakAreaSignals] = await Promise.all([
+  const [attempts, walletTransactions, assignments, weakAreaSignals, progressPack] = await Promise.all([
     prisma.attempt.findMany({
       where: {
         studentId: child.id,
@@ -286,6 +292,10 @@ export async function buildParentProgressReportData(input: {
         lastDetectedAt: true,
       },
       take: 200,
+    }),
+    buildParentProgressPack({
+      childId: child.id,
+      windowDays: input.range === "all" ? 90 : RANGE_TO_DAYS[input.range],
     }),
   ]);
 
@@ -388,6 +398,13 @@ export async function buildParentProgressReportData(input: {
     interventionTrackingCount,
   });
 
+  const focusTopics = progressPack.totals.focusTopics;
+  if (focusTopics[0]) {
+    recommendations.unshift(`Focus practice on ${focusTopics[0].skillFocus} this week.`);
+  }
+
+  const attendanceSummary = progressPack.totals.attendance;
+
   return {
     generatedAt: new Date().toISOString(),
     range: input.range,
@@ -425,7 +442,7 @@ export async function buildParentProgressReportData(input: {
       earnedPence: rewards.totalEarned,
       spentPence: rewards.totalSpent,
     },
-    recommendations,
+    recommendations: recommendations.slice(0, 5),
     academicIntelligence: {
       masteryStatus: academicOutput.summary.needsCatchUpCount > 0
         ? "needs_catch_up"
@@ -447,6 +464,8 @@ export async function buildParentProgressReportData(input: {
         reportSignals: academicOutput.curriculumIntelligenceGraph.reportSummary.reportSignals,
       },
     },
+    attendanceSummary,
+    focusTopics,
   };
 }
 
@@ -542,7 +561,41 @@ export function buildParentProgressReportTables(report: ParentProgressReportData
         ["parentAdminRecommendedAction", report.academicIntelligence.parentAdminRecommendedAction],
         ["graphParentSummary", report.academicIntelligence.graphSummary.parentSummary],
         ["graphSignals", report.academicIntelligence.graphSummary.reportSignals.join(" | ")],
+        ["attendanceLinkedToSchool", report.attendanceSummary.linkedToSchool],
+        ["attendancePresentRatePct", report.attendanceSummary.presentRatePct ?? ""],
+        ["attendanceLateRatePct", report.attendanceSummary.lateRatePct ?? ""],
+        ["attendanceAbsentRatePct", report.attendanceSummary.absentRatePct ?? ""],
+        ["attendanceRecordedMarks", report.attendanceSummary.recordedMarks],
+        ["focusTopicCount", report.focusTopics.length],
       ],
+    },
+    {
+      name: "Attendance",
+      headers: ["metric", "value"],
+      rows: [
+        ["linkedToSchool", report.attendanceSummary.linkedToSchool],
+        ["windowDays", report.attendanceSummary.windowDays],
+        ["recordedMarks", report.attendanceSummary.recordedMarks],
+        ["present", report.attendanceSummary.counts.present],
+        ["late", report.attendanceSummary.counts.late],
+        ["absent", report.attendanceSummary.counts.absent],
+        ["authorised_absence", report.attendanceSummary.counts.authorised_absence],
+        ["medical", report.attendanceSummary.counts.medical],
+        ["presentRatePct", report.attendanceSummary.presentRatePct ?? ""],
+        ["lateRatePct", report.attendanceSummary.lateRatePct ?? ""],
+        ["absentRatePct", report.attendanceSummary.absentRatePct ?? ""],
+      ],
+    },
+    {
+      name: "FocusTopics",
+      headers: ["subject", "skillFocus", "severity", "signalCount", "label"],
+      rows: report.focusTopics.map((item) => [
+        item.subject,
+        item.skillFocus,
+        item.severity,
+        item.signalCount,
+        item.label,
+      ]),
     },
     {
       name: "Strengths",
@@ -672,6 +725,22 @@ export function renderParentProgressReportPdf(report: ParentProgressReportData):
     ? report.weakAreas.map((item) => `${item.topic}: ${item.accuracy}% accuracy across ${item.attempts} attempts`)
     : ["No weak areas detected in this range."];
   y = drawTextLines(doc, weakLines, y);
+
+  y += 10;
+  y = drawSectionTitle(doc, "Attendance", y);
+  y = drawTextLines(doc, report.attendanceSummary.linkedToSchool
+    ? [
+        `Recorded marks: ${report.attendanceSummary.recordedMarks} (last ${report.attendanceSummary.windowDays} days)`,
+        `Present / on-time rate: ${report.attendanceSummary.presentRatePct ?? "N/A"}%`,
+        `Late rate: ${report.attendanceSummary.lateRatePct ?? "N/A"}% | Absent rate: ${report.attendanceSummary.absentRatePct ?? "N/A"}%`,
+      ]
+    : ["No school attendance link for this child yet."], y);
+
+  y += 10;
+  y = drawSectionTitle(doc, "Focus Topics", y);
+  y = drawTextLines(doc, report.focusTopics.length
+    ? report.focusTopics.map((item) => item.label)
+    : ["No focus topics identified in this range."], y);
 
   if (y > 700) {
     doc.addPage();

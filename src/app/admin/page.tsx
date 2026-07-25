@@ -5,6 +5,8 @@ import Link from "next/link";
 import AdminEmptyState from "@/components/admin/AdminEmptyState";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import AdminStatCard from "@/components/admin/AdminStatCard";
+import { AdminButtonLink, AdminCard, AdminPageHeader } from "@/components/admin/ui";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 type Stats = {
   totalUsers: number;
@@ -144,7 +146,7 @@ export default function AdminDashboardPage() {
     setLoading(true);
     setError(null);
 
-    fetch("/api/admin/stats", { credentials: "include", signal: controller.signal })
+    fetchWithRefreshRetry("/api/admin/stats", { credentials: "include", signal: controller.signal })
       .then(async (response) => {
         if (response.status === 401 || response.status === 403) {
           const body = await response.json().catch(() => null);
@@ -207,35 +209,33 @@ export default function AdminDashboardPage() {
   }, [stats]);
 
   if (error) {
+    const isUnauthorized = /unauthorized|session expired|sign in/i.test(error);
     const isForbidden = /forbidden|admin only/i.test(error);
+    const needsAdminLogin = isUnauthorized || isForbidden;
     return (
       <AdminSectionCard title="Dashboard unavailable">
-        <p className="text-sm text-slate-400">{error}</p>
-        {isForbidden ? (
+        <p className="admin-body">{error}</p>
+        {needsAdminLogin ? (
           <div className="mt-4 space-y-3">
-            <p className="text-sm text-slate-300">
-              You are signed in as a parent or non-admin account. Refresh will not fix this — switch to an admin login.
+            <p className="text-sm text-slate-700">
+              {isForbidden && !isUnauthorized
+                ? "You are signed in as a parent or non-admin account. Refresh will not fix this — switch to an admin login."
+                : "Your admin session is missing or expired. Sign in again to open the dashboard."}
             </p>
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => undefined);
-                  window.location.assign("/admin/login?next=/admin&reason=switch");
-                }}
-                className="rounded-xl border border-sky-500/40 bg-sky-500/15 px-4 py-2.5 text-sm font-semibold text-sky-50 transition hover:bg-sky-500/25"
+              <AdminButtonLink
+                href="/admin/login?next=/admin&reason=switch"
+                className="!bg-indigo-600 !text-white hover:!bg-indigo-500"
               >
-                Sign out and open admin login
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.assign("/parent/profiles");
-                }}
-                className="rounded-xl border border-slate-600 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                Sign in as admin
+              </AdminButtonLink>
+              <AdminButtonLink
+                href="/parent/profiles"
+                variant="secondary"
+                className="!border-slate-300 !bg-white !text-slate-800"
               >
                 Go to parent portal
-              </button>
+              </AdminButtonLink>
             </div>
           </div>
         ) : null}
@@ -245,44 +245,29 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-8">
-      <section className="relative overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-950/80 px-6 py-7 sm:px-8">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.12),transparent_45%),radial-gradient(ellipse_at_bottom_left,rgba(15,23,42,0.9),transparent_50%)]" />
-        <div className="relative flex flex-wrap items-end justify-between gap-5">
-          <div className="max-w-2xl">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-300/90">StarLiz command</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">Platform overview</h2>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
-              A quieter view of learners, schools, content and ops — start with Schools or Students when you need to act.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/admin/schools"
-              className="rounded-xl border border-sky-500/40 bg-sky-500/15 px-4 py-2.5 text-sm font-semibold text-sky-50 transition hover:bg-sky-500/25"
-            >
-              Open Schools
-            </Link>
-            <Link
-              href="/admin/ai"
-              className="rounded-xl border border-slate-600 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
-            >
-              AI Generator
-            </Link>
-          </div>
-        </div>
-      </section>
+      <AdminPageHeader
+        eyebrow="Operations console"
+        title="Platform overview"
+        subtitle="A quieter view of learners, schools, content and ops — start with Schools or Students when you need to act."
+        actions={
+          <>
+            <AdminButtonLink href="/admin/schools">Open Schools</AdminButtonLink>
+            <AdminButtonLink href="/admin/ai" variant="secondary">AI Generator</AdminButtonLink>
+          </>
+        }
+      />
 
       <section>
         <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h3 className="text-sm font-semibold text-white">At a glance</h3>
-          <p className="text-xs text-slate-500">{loading ? "Loading platform signals…" : "Primary platform signals"}</p>
+          <h3 className="admin-section-title">At a glance</h3>
+          <p className="admin-body text-xs">{loading ? "Loading platform signals…" : "Primary platform signals"}</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-          <AdminStatCard title="Parents" value={stats?.totalUsers ?? "…"} href="/admin/parents" />
-          <AdminStatCard title="Learners" value={stats?.totalChildren ?? "…"} href="/admin/students" />
+          <AdminStatCard title="Parents" value={stats?.totalUsers ?? "…"} href="/admin/parents" tone="purple" />
+          <AdminStatCard title="Learners" value={stats?.totalChildren ?? "…"} href="/admin/students" tone="blue" />
           <AdminStatCard title="Active today" value={stats?.activeToday ?? "…"} detail="Unique learners" href="/admin/reports" />
-          <AdminStatCard title="Avg accuracy" value={stats ? `${stats.avgAccuracy}%` : "…"} href="/admin/reports" />
-          <AdminStatCard title="Need support" value={stats?.studentsNeedingSupport ?? "…"} href="/admin/students?filter=support" />
+          <AdminStatCard title="Avg accuracy" value={stats ? `${stats.avgAccuracy}%` : "…"} href="/admin/reports" tone="green" />
+          <AdminStatCard title="Need support" value={stats?.studentsNeedingSupport ?? "…"} href="/admin/students?filter=support" tone="amber" />
           <AdminStatCard title="Subscriptions" value={stats?.subscriptions ?? "…"} href="/admin/subscriptions" />
         </div>
       </section>
@@ -311,26 +296,24 @@ export default function AdminDashboardPage() {
         />
       </section>
 
-      <section className="rounded-3xl border border-slate-700/60 bg-slate-950/50 p-6 sm:p-7">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Workspace</p>
-            <h3 className="mt-1 text-xl font-semibold text-white">Admin modules</h3>
-          </div>
+      <AdminCard padding="lg">
+        <div className="mb-6">
+          <p className="admin-meta">Workspace</p>
+          <h3 className="admin-section-title mt-1">Admin modules</h3>
         </div>
         <div className="grid gap-8 lg:grid-cols-2 xl:grid-cols-4">
           {moduleGroups.map((group) => (
             <div key={group.label}>
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{group.label}</p>
-              <ul className="space-y-2">
+              <p className="admin-meta mb-3">{group.label}</p>
+              <ul className="space-y-1">
                 {group.items.map((item) => (
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      className="block rounded-xl border border-transparent px-3 py-2.5 transition hover:border-slate-700 hover:bg-slate-900/70"
+                      className="block rounded-[var(--admin-radius)] border border-transparent px-3 py-2.5 transition hover:border-[var(--admin-border)] hover:bg-white/[0.03]"
                     >
-                      <span className="block text-sm font-semibold text-white">{item.title}</span>
-                      <span className="mt-0.5 block text-xs leading-5 text-slate-500">{item.description}</span>
+                      <span className="block text-sm font-semibold text-[var(--admin-text)]">{item.title}</span>
+                      <span className="admin-body mt-0.5 block text-xs">{item.description}</span>
                     </Link>
                   </li>
                 ))}
@@ -338,7 +321,7 @@ export default function AdminDashboardPage() {
             </div>
           ))}
         </div>
-      </section>
+      </AdminCard>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.9fr)]">
         <div className="space-y-5">
@@ -351,11 +334,11 @@ export default function AdminDashboardPage() {
                   return (
                     <div key={item.label}>
                       <div className="mb-1.5 flex justify-between text-sm">
-                        <span className="capitalize text-slate-300">{item.label}</span>
-                        <span className="font-semibold text-white">{item.value}</span>
+                        <span className="capitalize text-[var(--admin-muted)]">{item.label}</span>
+                        <span className="font-semibold text-[var(--admin-text)]">{item.value}</span>
                       </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
-                        <div className="h-full rounded-full bg-sky-500/80" style={{ width: `${pct}%` }} />
+                      <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "var(--admin-rail)" }}>
+                        <div className="h-full rounded-full bg-[var(--admin-primary)]" style={{ width: `${pct}%` }} />
                       </div>
                     </div>
                   );
@@ -373,11 +356,11 @@ export default function AdminDashboardPage() {
 
           <AdminSectionCard title="Attention areas" eyebrow="Learning">
             {weakSignals.length > 0 ? (
-              <ul className="divide-y divide-slate-800">
+              <ul className="divide-y divide-[var(--admin-border)]">
                 {weakSignals.map((item) => (
                   <li key={`${item.label}-${item.detail}`} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                    <span className="text-sm text-slate-200">{item.label}</span>
-                    <span className="text-xs font-semibold text-slate-400">{item.detail}</span>
+                    <span className="text-sm text-[var(--admin-text)]">{item.label}</span>
+                    <span className="text-xs font-semibold text-[var(--admin-muted)]">{item.detail}</span>
                   </li>
                 ))}
               </ul>
@@ -401,9 +384,9 @@ export default function AdminDashboardPage() {
                 ["Frustration", stats?.sessionSignalsSummary?.frustrationSignals ?? "—"],
                 ["Mood", (stats?.sessionSignalsSummary?.dominantMood ?? "—").replace("_", " ")],
               ].map(([label, value]) => (
-                <div key={String(label)} className="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-2.5 last:border-0 last:pb-0">
-                  <span className="text-slate-500">{label}</span>
-                  <span className="font-semibold capitalize text-slate-100">{value}</span>
+                <div key={String(label)} className="flex items-center justify-between gap-3 border-b border-[var(--admin-border)] pb-2.5 last:border-0 last:pb-0">
+                  <span className="text-[var(--admin-muted)]">{label}</span>
+                  <span className="font-semibold capitalize text-[var(--admin-text)]">{value}</span>
                 </div>
               ))}
             </div>
@@ -419,13 +402,13 @@ export default function AdminDashboardPage() {
                 ["Email", stats?.apiKeyStatuses.email ?? "not saved"],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between gap-3">
-                  <span className="text-slate-500">{label}</span>
+                  <span className="text-[var(--admin-muted)]">{label}</span>
                   <span className={`font-semibold capitalize ${statusTone(value)}`}>{value}</span>
                 </div>
               ))}
             </div>
             {openAiStatus !== "connected" ? (
-              <p className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              <p className="mt-4 rounded-[var(--admin-radius)] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                 OpenAI is {openAiStatus}. Configure it in API Keys for reliable generation.
               </p>
             ) : null}
@@ -435,12 +418,16 @@ export default function AdminDashboardPage() {
             {stats && stats.recentActivity.length > 0 ? (
               <div className="space-y-2.5">
                 {stats.recentActivity.slice(0, 5).map((item) => (
-                  <div key={item.id} className="rounded-xl border border-slate-800/80 bg-slate-950/40 px-3 py-2.5">
+                  <div
+                    key={item.id}
+                    className="rounded-[var(--admin-radius)] border border-[var(--admin-border)] px-3 py-2.5"
+                    style={{ background: "var(--admin-rail)" }}
+                  >
                     <div className="flex justify-between gap-3 text-sm">
-                      <span className="font-semibold text-white">{item.childName}</span>
-                      <span className="shrink-0 text-xs text-slate-500">{timeAgo(item.createdAt)}</span>
+                      <span className="font-semibold text-[var(--admin-text)]">{item.childName}</span>
+                      <span className="shrink-0 text-xs text-[var(--admin-muted)]">{timeAgo(item.createdAt)}</span>
                     </div>
-                    <p className="mt-1 text-xs capitalize text-slate-500">{item.activityType} · {item.activityName}</p>
+                    <p className="mt-1 text-xs capitalize text-[var(--admin-muted)]">{item.activityType} · {item.activityName}</p>
                   </div>
                 ))}
               </div>

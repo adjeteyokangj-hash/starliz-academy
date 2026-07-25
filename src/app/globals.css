@@ -194,6 +194,58 @@
   --color-success: #00b894;
 }
 
+/* Admin Portal MIS design language — separate from student/parent themes */
+[data-admin-theme] {
+  --admin-bg: #08111f;
+  --admin-rail: #060d18;
+  --admin-surface: #101a2b;
+  --admin-surface-raised: #152033;
+  --admin-border: rgba(148, 163, 184, 0.14);
+  --admin-border-strong: rgba(148, 163, 184, 0.22);
+  --admin-primary: #6c5ce7;
+  --admin-primary-hover: #7f70ef;
+  --admin-primary-muted: rgba(108, 92, 231, 0.16);
+  --admin-text: #f1f5f9;
+  --admin-muted: #94a3b8;
+  --admin-shadow: 0 10px 30px rgba(2, 8, 23, 0.35);
+  --admin-shadow-sm: 0 4px 14px rgba(2, 8, 23, 0.28);
+  --admin-radius: 0.875rem;
+  --admin-radius-lg: 1.125rem;
+  color: var(--admin-text);
+  background: var(--admin-bg);
+}
+
+[data-admin-theme] .admin-page-title {
+  font-family: var(--font-heading), sans-serif;
+  font-size: clamp(1.75rem, 2.2vw, 2.25rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--admin-text);
+}
+
+[data-admin-theme] .admin-section-title {
+  font-family: var(--font-heading), sans-serif;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--admin-text);
+}
+
+[data-admin-theme] .admin-meta {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--admin-muted);
+}
+
+[data-admin-theme] .admin-body {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--admin-muted);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

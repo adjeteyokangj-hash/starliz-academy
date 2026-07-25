@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS "reviewStatus" TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS "machineHealthJson" TEXT;
+ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS "teacherReviewedAt" TIMESTAMP(3);
+ALTER TABLE "Lesson" ADD COLUMN IF NOT EXISTS "teacherReviewedBy" TEXT;

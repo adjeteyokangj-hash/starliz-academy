@@ -18,6 +18,7 @@ import { assessWarmupTranscript } from "@/lib/warmup-response";
 import { levelFromXp } from "@/lib/level_system";
 import { buildInterventionMission, isInterventionEligibleSkill } from "@/lib/interventionMission";
 import { normalizeLessonContentItems, type NormalizedLessonItem } from "@/lib/lesson-runtime-normalizer";
+import { continueDaytimePeriodFromClient } from "@/lib/schools/daytime-period-client";
 import {
   decodeLessonText,
   classifySpokenVsTarget,
@@ -60,6 +61,12 @@ import { computeMasteryReady, type QuestionLearningStatus } from "@/lib/engines/
 import { reviewReason } from "@/lib/engines/review-engine";
 import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
 import StarLizQuestionCard from "@/components/learning/StarLizQuestionCard";
+import {
+  DaytimeSchoolLessonShell,
+  DaytimePracticalPanel,
+} from "@/components/student/daytime-lesson";
+import { useDaytimeStagePack } from "@/components/student/daytime-lesson/useDaytimeStagePack";
+import { isPracticalPePack } from "@/lib/schools/daytime-lesson-ui";
 
 type LessonItem = NormalizedLessonItem;
 
@@ -518,6 +525,8 @@ export default function DailyLessonGamePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assignmentId = searchParams.get("assignmentId");
+  const daytimePeriodId = searchParams.get("daytimePeriodId");
+  const urlContentId = searchParams.get("contentId");
   const interventionEnabled = searchParams.get("intervention") === "1";
   const requestedPhase = searchParams.get("phase");
   const requestedBossPhase = requestedPhase === "boss_battle";
@@ -535,9 +544,18 @@ export default function DailyLessonGamePage() {
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const recognitionStoppingRef = useRef(false);
   const bossEntryHandledRef = useRef(false);
+  const [continuingDaytime, setContinuingDaytime] = useState(false);
   const [profile, setProfile] = useState<ChildProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [assignment, setAssignment] = useState<LessonAssignment | null>(null);
+  const daytimeContentId = assignment?.contentId ?? urlContentId;
+  const daytimeStagePack = useDaytimeStagePack({
+    enabled: Boolean(daytimePeriodId),
+    contentId: daytimeContentId,
+    assignmentId,
+  });
+  const isDaytimeSchool = Boolean(daytimePeriodId && assignmentId && daytimeContentId);
+  const isPracticalDaytime = isDaytimeSchool && isPracticalPePack(daytimeStagePack, assignment?.subject);
   const [loading, setLoading] = useState(true);
   const [sessionHydrated, setSessionHydrated] = useState(false);
   const [error, setError] = useState("");
@@ -2502,6 +2520,25 @@ export default function DailyLessonGamePage() {
   }
 
   if (loading || (assignment && !sessionHydrated)) {
+    if (isDaytimeSchool && isPracticalDaytime) {
+      return (
+        <DaytimeSchoolLessonShell
+          periodId={daytimePeriodId!}
+          assignmentId={assignmentId!}
+          contentId={daytimeContentId!}
+          answered={0}
+          correct={0}
+          lessonProgressPct={null}
+        >
+          <DaytimePracticalPanel
+            title={daytimeStagePack?.title || "PE activity"}
+            explanation={daytimeStagePack?.explanation || "Loading practical instructions…"}
+            scenarioOrObservation={daytimeStagePack?.scenarioOrObservation}
+            activities={daytimeStagePack?.activities}
+          />
+        </DaytimeSchoolLessonShell>
+      );
+    }
     return (
       <>
         <Navbar />
@@ -2518,14 +2555,117 @@ export default function DailyLessonGamePage() {
     );
   }
 
-  if (error || !assignment || !activeAssignment) {
+  if ((error || !assignment || !activeAssignment) && !isDaytimeSchool) {
     return (<><Navbar /><main className="min-h-screen bg-[#f6f8ff]"><div className="mx-auto max-w-4xl px-6 py-10 text-rose-600">{error || "Lesson not found."}</div></main></>);
+  }
+
+  if ((error || !assignment || !activeAssignment) && isDaytimeSchool) {
+    return (
+      <>
+        {isPracticalDaytime ? (
+          <DaytimeSchoolLessonShell
+            periodId={daytimePeriodId!}
+            assignmentId={assignmentId!}
+            contentId={daytimeContentId!}
+            answered={0}
+            correct={0}
+            lessonProgressPct={null}
+          >
+            <DaytimePracticalPanel
+              title={daytimeStagePack?.title || "PE activity"}
+              explanation={daytimeStagePack?.explanation || error || "Practical instructions are loading."}
+              scenarioOrObservation={daytimeStagePack?.scenarioOrObservation}
+              activities={daytimeStagePack?.activities}
+            />
+          </DaytimeSchoolLessonShell>
+        ) : (
+          <DaytimeSchoolLessonShell
+            periodId={daytimePeriodId!}
+            assignmentId={assignmentId!}
+            contentId={daytimeContentId!}
+            answered={0}
+            correct={0}
+            lessonProgressPct={null}
+          >
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="daytime-science-panel">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-teal-700">Lesson</p>
+              <p className="mt-2 text-sm text-slate-700">
+                {daytimeStagePack?.explanation || error || "Lesson content is loading."}
+              </p>
+            </section>
+          </DaytimeSchoolLessonShell>
+        )}
+      </>
+    );
   }
 
   return (
     <>
-      <Navbar />
-      <main className="min-h-screen bg-[#f6f8ff] text-slate-950">
+      {isDaytimeSchool ? null : <Navbar />}
+      {isDaytimeSchool && isPracticalDaytime ? (
+        <DaytimeSchoolLessonShell
+          periodId={daytimePeriodId!}
+          assignmentId={assignmentId!}
+          contentId={daytimeContentId!}
+          questionId={assignment?.items[index]?.id}
+          questionIndex={index}
+          answered={records.length}
+          correct={records.filter((row) => row.correct).length}
+          lessonProgressPct={
+            assignment?.items.length
+              ? Math.round((Math.min(index, assignment.items.length) / assignment.items.length) * 100)
+              : null
+          }
+        >
+          <DaytimePracticalPanel
+            title={daytimeStagePack?.title || assignment?.title || "PE activity"}
+            explanation={daytimeStagePack?.explanation}
+            scenarioOrObservation={daytimeStagePack?.scenarioOrObservation}
+            activities={daytimeStagePack?.activities}
+          />
+        </DaytimeSchoolLessonShell>
+      ) : null}
+      {isDaytimeSchool && !isPracticalDaytime ? (
+        <DaytimeSchoolLessonShell
+          periodId={daytimePeriodId!}
+          assignmentId={assignmentId!}
+          contentId={daytimeContentId!}
+          questionId={assignment?.items[index]?.id}
+          questionIndex={index}
+          answered={records.length}
+          correct={records.filter((row) => row.correct).length}
+          lessonProgressPct={
+            assignment?.items.length
+              ? Math.round((Math.min(index, assignment.items.length) / assignment.items.length) * 100)
+              : null
+          }
+        >
+          {daytimeStagePack?.learningObjective || daytimeStagePack?.explanation || daytimeStagePack?.scenarioOrObservation ? (
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="daytime-science-panel">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-teal-700">
+                {assignment?.subject || "Lesson"}
+              </p>
+              {daytimeStagePack?.learningObjective ? (
+                <p className="mt-2 text-sm font-semibold text-slate-900">{daytimeStagePack.learningObjective}</p>
+              ) : null}
+              {daytimeStagePack?.explanation ? (
+                <p className="mt-2 text-sm leading-relaxed text-slate-700">{daytimeStagePack.explanation}</p>
+              ) : null}
+              {daytimeStagePack?.scenarioOrObservation ? (
+                <p className="mt-2 text-sm text-slate-600">{daytimeStagePack.scenarioOrObservation}</p>
+              ) : null}
+            </section>
+          ) : (
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="daytime-science-panel">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-teal-700">Lesson</p>
+              <p className="mt-2 text-sm text-slate-600">
+                Continue with the lesson questions below. Use AI Tutor in the sidebar for hints without revealing answers.
+              </p>
+            </section>
+          )}
+        </DaytimeSchoolLessonShell>
+      ) : null}
+      <main className={`min-h-screen bg-[#f6f8ff] text-slate-950 ${isPracticalDaytime ? "hidden" : ""}`}>
       {profileContext ? (
         <section className="mx-auto max-w-6xl px-4 pt-4 sm:pt-6">
           <StudentContextStrip
@@ -2542,8 +2682,8 @@ export default function DailyLessonGamePage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-black uppercase tracking-[0.25em] text-indigo-500">{interventionMission ? interventionMission.badge : "Today's Lesson"}</p>
-              <h1 className="mt-2 text-4xl font-black">{decodeLessonText(activeAssignment.title || "Daily practice")}</h1>
-              <p className="mt-1 text-sm font-black text-indigo-700">{interventionMission ? `Level ${interventionLevel} • ${decodeLessonText(String(activeAssignment.skillFocus ?? "Sound Builder Mission"))}` : lessonLabelText()}</p>
+              <h1 className="mt-2 text-4xl font-black">{decodeLessonText(activeAssignment?.title || "Daily practice")}</h1>
+              <p className="mt-1 text-sm font-black text-indigo-700">{interventionMission ? `Level ${interventionLevel} • ${decodeLessonText(String(activeAssignment?.skillFocus ?? "Sound Builder Mission"))}` : lessonLabelText()}</p>
               <p className="mt-2 text-slate-600">{interventionMission ? "Voice-led repair mission with visual cues and repeat-until-correct practice." : "Spelling, maths and reading in one focused session."}</p>
             </div>
             <VoiceHelpControls
@@ -2909,8 +3049,40 @@ export default function DailyLessonGamePage() {
               {memoryFeedback ? (
                 <p className="mx-auto mt-4 max-w-xl rounded-2xl bg-cyan-50 p-4 text-sm font-bold text-cyan-900">{memoryFeedback}</p>
               ) : null}
-              <Link href="/student/dashboard" className="mt-6 inline-flex rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white">
-                Back to Dashboard
+              {daytimePeriodId ? (
+                <button
+                  type="button"
+                  disabled={continuingDaytime}
+                  onClick={() => {
+                    setContinuingDaytime(true);
+                    void (async () => {
+                      if (assignmentId) {
+                        await fetch(`/api/assignments/${encodeURIComponent(assignmentId)}`, {
+                          method: "PATCH",
+                          credentials: "include",
+                          headers: { "content-type": "application/json" },
+                          body: JSON.stringify({ status: "completed" }),
+                        }).catch(() => undefined);
+                      }
+                      const continued = await continueDaytimePeriodFromClient({
+                        dayLessonId: daytimePeriodId,
+                        completedContentId: assignment?.contentId ?? null,
+                      });
+                      if (continued.ok) {
+                        router.push(continued.href);
+                        return;
+                      }
+                      setContinuingDaytime(false);
+                      setError(continued.error);
+                    })();
+                  }}
+                  className="mt-6 inline-flex rounded-2xl bg-sky-600 px-6 py-4 font-black text-white disabled:opacity-60"
+                >
+                  {continuingDaytime ? "Continuing…" : "Continue lesson"}
+                </button>
+              ) : null}
+              <Link href={daytimePeriodId ? "/student/today" : "/student/dashboard"} className="mt-6 inline-flex rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white">
+                {daytimePeriodId ? "Back to Today" : "Back to Dashboard"}
               </Link>
               {lessonMasteryReady ? (
                 <>

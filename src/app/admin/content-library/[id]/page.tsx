@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
+import ContentLessonPreview from "@/components/admin/ContentLessonPreview";
 
 type ContentDetail = {
   id: string;
@@ -39,6 +40,8 @@ export default function ContentDetailPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [editJson, setEditJson] = useState("");
   const [savingJson, setSavingJson] = useState(false);
+  const [runningBlackBox, setRunningBlackBox] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   const loadItem = useCallback(async () => {
     const response = await fetch(`/api/admin/content/${params.id}`);
@@ -68,6 +71,60 @@ export default function ContentDetailPage() {
     }
     setMessage(`Content moved to ${status}.`);
     await loadItem();
+  }
+
+  async function runBlackBox() {
+    setRunningBlackBox(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/content/${params.id}/black-box`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(typeof payload.error === "string" ? payload.error : "Black box test failed.");
+        return;
+      }
+      const score = payload.blackBoxContentTest?.score;
+      setMessage(
+        typeof score === "number"
+          ? `Black box live test completed (score ${score}). Next: Verify & approve, then move to Reviewed.`
+          : "Black box live test completed. Next: Verify & approve, then move to Reviewed.",
+      );
+      await loadItem();
+    } catch {
+      setMessage("Black box request failed.");
+    } finally {
+      setRunningBlackBox(false);
+    }
+  }
+
+  async function verifyAndApprove() {
+    setVerifying(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/content/${params.id}/verify`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "approve",
+          notes: "Admin verified after black box live and runtime tests.",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(typeof payload.error === "string" ? payload.error : "Verification failed. Run Black Box first.");
+        return;
+      }
+      setMessage("Black box verification saved. You can now move this content to Reviewed or Published.");
+      await loadItem();
+    } catch {
+      setMessage("Verification request failed.");
+    } finally {
+      setVerifying(false);
+    }
   }
 
   async function saveContentJson() {
@@ -120,8 +177,33 @@ export default function ContentDetailPage() {
         </div>
       </AdminSectionCard>
 
+      <AdminSectionCard title="Lesson preview" eyebrow="What students will play">
+        <ContentLessonPreview contentType={item.contentType} contentJson={item.contentJson} />
+      </AdminSectionCard>
+
       <AdminSectionCard title="Approval Workflow" eyebrow="Draft to published">
         {message ? <p className="mb-4 rounded-xl border border-blue-400/20 bg-blue-400/10 p-3 text-sm text-blue-100">{message}</p> : null}
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void runBlackBox()}
+            disabled={runningBlackBox}
+            className="rounded-xl border border-violet-400/50 bg-violet-500/20 px-4 py-2 text-sm font-black text-violet-50 hover:bg-violet-500/30 disabled:opacity-50"
+          >
+            {runningBlackBox ? "Running black box…" : "1. Run Black Box"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void verifyAndApprove()}
+            disabled={verifying}
+            className="rounded-xl border border-emerald-400/50 bg-emerald-500/20 px-4 py-2 text-sm font-black text-emerald-50 hover:bg-emerald-500/30 disabled:opacity-50"
+          >
+            {verifying ? "Verifying…" : "2. Verify & approve"}
+          </button>
+        </div>
+        <p className="mb-3 text-xs text-slate-400">
+          Black box live testing and admin verification are required before Reviewed / Approved / Published.
+        </p>
         <div className="flex flex-wrap gap-2">
           {statuses.map((status) => (
             <button
@@ -135,7 +217,7 @@ export default function ContentDetailPage() {
         </div>
       </AdminSectionCard>
 
-      <AdminSectionCard title="Content JSON">
+      <AdminSectionCard title="Content JSON" eyebrow="Advanced edit">
         <div className="mb-3 flex flex-wrap gap-2">
           <button
             type="button"

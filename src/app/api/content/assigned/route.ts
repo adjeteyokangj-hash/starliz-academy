@@ -3,10 +3,41 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { getAssignmentSafetyAndRecommendation } from "@/lib/assignments";
+import { extractStagePackExtras } from "@/lib/schools/daytime-lesson-ui";
 
 function toArray(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
-  if (value && typeof value === "object") return [value];
+  if (value && typeof value === "object") {
+    const row = value as Record<string, unknown>;
+    const nested = Array.isArray(row.questions)
+      ? row.questions
+      : Array.isArray(row.items)
+        ? row.items
+        : Array.isArray(row.words)
+          ? row.words
+          : null;
+    if (nested) {
+      const sharedPassage = typeof row.passage === "string"
+        ? row.passage
+        : row.passage && typeof row.passage === "object" && typeof (row.passage as { text?: unknown }).text === "string"
+          ? String((row.passage as { text: string }).text)
+          : null;
+      const explanation = typeof row.explanation === "string" ? row.explanation : null;
+      return nested.map((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+        const entry = item as Record<string, unknown>;
+        return {
+          ...entry,
+          passage: entry.passage ?? sharedPassage ?? undefined,
+          explanation: entry.explanation ?? explanation ?? undefined,
+          title: entry.title ?? row.title,
+          skillFocus: entry.skillFocus ?? row.skillFocus,
+          subject: entry.subject ?? row.subjectType ?? row.subject,
+        };
+      });
+    }
+    return [value];
+  }
   return [];
 }
 
@@ -89,6 +120,7 @@ export async function GET(request: Request) {
 
   const items = toArray(parsed);
   const metadata = parseMetadata(assignment.content.metadataJson);
+  const stagePack = extractStagePackExtras(parsed);
   return NextResponse.json({
     assignment: {
       id: assignment.id,
@@ -110,6 +142,7 @@ export async function GET(request: Request) {
       keyStage: assignment.content.keyStage,
       metadata,
       items,
+      stagePack,
     },
   });
 }

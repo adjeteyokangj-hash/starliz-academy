@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { readSessionFromCookie } from "@/lib/auth";
 import { canDo, getSchoolTeacherContext } from "@/lib/schools/rbac";
 import { getAccessibleStudents, getSchoolWeakAreas } from "@/lib/schools/scoping";
+import { buildMisconceptionCohortSummary } from "@/lib/misconception-analytics";
+import { outcomeUiLabel } from "@/lib/schools/human-support-session";
 
 export default async function TeacherOperationsPage() {
   const session = await readSessionFromCookie();
@@ -18,7 +20,7 @@ export default async function TeacherOperationsPage() {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [weakAreas, openAssignments, alerts, incidents] = await Promise.all([
+  const [weakAreas, openAssignments, alerts, incidents, misconceptionCohort] = await Promise.all([
     getSchoolWeakAreas(ctx.schoolId, ctx.schoolTeacherId, ctx.role),
     childIds.length
       ? prisma.assignment.findMany({
@@ -37,6 +39,11 @@ export default async function TeacherOperationsPage() {
       where: { schoolId: ctx.schoolId, status: { in: ["open", "under_review", "escalated"] } },
       orderBy: [{ severity: "desc" }, { createdAt: "desc" }],
       take: 40,
+    }),
+    buildMisconceptionCohortSummary({
+      studentIds: childIds,
+      windowDays: 30,
+      schoolId: ctx.schoolId,
     }),
   ]);
 
@@ -102,12 +109,72 @@ export default async function TeacherOperationsPage() {
         </p>
       </div>
 
-      <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Metric label="Weak Queue" value={weakLearnerQueue.length} />
         <Metric label="Overdue Assignments" value={overdueAssignments.length} alert={overdueAssignments.length > 0} />
         <Metric label="Safeguarding Alerts" value={alerts.length} alert={alerts.length > 0} />
         <Metric label="Open Incidents" value={incidents.length} alert={incidents.length > 0} />
         <Metric label="Students In Scope" value={students.length} />
+        <Metric label="Misconception Signals" value={misconceptionCohort.totalSignals} alert={misconceptionCohort.totalSignals > 0} />
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-4">
+        <h2 className="font-semibold text-foreground mb-1">Misconception Analytics (30 days)</h2>
+        <p className="text-xs text-foreground/50 mb-3">
+          Derived from attempts, AI help, Learning DNA, spelling mistakes, and human-support notes (read-only).
+        </p>
+        {misconceptionCohort.totalSignals === 0 ? (
+          <p className="text-sm text-foreground/50">No misconception signals in scope yet.</p>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground/50 mb-2">By source</h3>
+              <ul className="space-y-1 text-sm text-foreground/70">
+                {misconceptionCohort.bySource.map((row) => (
+                  <li key={row.source} className="flex justify-between gap-3">
+                    <span>{row.source.replace(/_/g, " ")}</span>
+                    <span className="font-medium text-foreground">{row.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground/50 mb-2">Top skills</h3>
+              <ul className="space-y-1 text-sm text-foreground/70">
+                {misconceptionCohort.topSkills.slice(0, 8).map((row) => (
+                  <li key={`${row.subject}-${row.skillFocus}`} className="flex justify-between gap-3">
+                    <span className="truncate">{row.skillFocus} <span className="text-foreground/40">({row.subject})</span></span>
+                    <span className="font-medium text-foreground">{row.signalCount}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {misconceptionCohort.humanOutcomeLinks.length > 0 && (
+              <div className="md:col-span-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground/50 mb-2">
+                  Human support links (Needs monitoring / unresolved / escalated)
+                </h3>
+                <ul className="space-y-2 text-sm text-foreground/70">
+                  {misconceptionCohort.humanOutcomeLinks.slice(0, 8).map((link) => {
+                    const name = misconceptionCohort.students.find((s) => s.studentId === link.studentId)?.studentName
+                      ?? link.studentId.slice(-8);
+                    return (
+                      <li key={link.sessionId}>
+                        <span className="font-medium text-foreground">{name}</span>
+                        {" · "}
+                        {outcomeUiLabel(link.outcome)}
+                        {link.misconception ? ` · ${link.misconception.slice(0, 120)}` : ""}
+                        {link.remainingDifficulty && !link.misconception
+                          ? ` · ${link.remainingDifficulty.slice(0, 120)}`
+                          : ""}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-border bg-card p-4">

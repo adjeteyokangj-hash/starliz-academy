@@ -502,6 +502,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reportDownloading, setReportDownloading] = useState(false);
+  const [progressPackSummary, setProgressPackSummary] = useState<{
+    presentRatePct: number | null;
+    focusTopics: Array<{ label: string; severity: string }>;
+    linkedToSchool: boolean;
+  } | null>(null);
   const [supportSubject, setSupportSubject] = useState("");
   const [supportBody, setSupportBody] = useState("");
   const [notificationsDraft, setNotificationsDraft] = useState({
@@ -776,6 +781,42 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     }
     return section;
   }, [pathname, section]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (activeSection !== "progress" || !selectedChildId) {
+      setProgressPackSummary(null);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadProgressPack() {
+      const response = await fetch(
+        `/api/parent/progress-report?childId=${encodeURIComponent(selectedChildId)}&range=30d`,
+        { credentials: "include" },
+      );
+      if (!response.ok || cancelled) return;
+      const payload = (await response.json()) as {
+        pack?: {
+          totals?: {
+            attendance?: { presentRatePct: number | null; linkedToSchool: boolean };
+            focusTopics?: Array<{ label: string; severity: string }>;
+          };
+        };
+      };
+      if (cancelled) return;
+      setProgressPackSummary({
+        presentRatePct: payload.pack?.totals?.attendance?.presentRatePct ?? null,
+        linkedToSchool: Boolean(payload.pack?.totals?.attendance?.linkedToSchool),
+        focusTopics: (payload.pack?.totals?.focusTopics ?? []).slice(0, 5),
+      });
+    }
+
+    void loadProgressPack();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, loading, selectedChildId]);
 
   const activeLearningDna = useMemo(() => {
     if (!selectedChildId || !insights?.learningDna?.length) return null;
@@ -2024,6 +2065,25 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     {reportDownloading ? "Preparing Report..." : "Download Excel"}
                   </Button>
                 </div>
+                {progressPackSummary ? (
+                  <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                    <p className="font-medium text-white">30-day progress snapshot</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {progressPackSummary.linkedToSchool
+                        ? `School attendance present rate: ${progressPackSummary.presentRatePct ?? "—"}%`
+                        : "No school attendance link yet."}
+                    </p>
+                    {progressPackSummary.focusTopics.length > 0 ? (
+                      <ul className="mt-2 space-y-1 text-xs">
+                        {progressPackSummary.focusTopics.map((topic) => (
+                          <li key={topic.label}>{topic.label}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500">No focus topics flagged in this window.</p>
+                    )}
+                  </div>
+                ) : null}
                 {childDetail ? (
                   <div className="grid gap-3 md:grid-cols-3">
                     {childDetail.progressRecords.slice(0, 6).map((record) => (

@@ -95,3 +95,70 @@ export async function ensureLearningAccess(
   }
   return { decision, response: null };
 }
+
+/** School daytime lessons are covered by school enrolment, not home subscription. */
+export async function childHasActiveSchoolDaytimeEnrolment(input: {
+  childId: string;
+  dayLessonId: string;
+}): Promise<boolean> {
+  const period = await prisma.schoolDayLesson.findUnique({
+    where: { id: input.dayLessonId },
+    select: { schoolId: true },
+  });
+  if (!period?.schoolId) return false;
+  const enrolment = await prisma.schoolStudent.findFirst({
+    where: {
+      childId: input.childId,
+      schoolId: period.schoolId,
+      status: "active",
+    },
+    select: { id: true },
+  });
+  return Boolean(enrolment);
+}
+
+export async function ensureLearningAccessForDaytimePeriod(input: {
+  parentId: string;
+  childId: string;
+  dayLessonId: string;
+}): Promise<{ decision: SubscriptionAccessDecision; response: NextResponse | null }> {
+  const user = await prisma.user.findUnique({
+    where: { id: input.parentId },
+    select: { consentAcceptedAt: true, consentWithdrawnAt: true },
+  });
+  if (!user?.consentAcceptedAt || Boolean(user.consentWithdrawnAt)) {
+    const decision: SubscriptionAccessDecision = {
+      allowed: false,
+      reason: "CONSENT_REQUIRED",
+      upgradeRequired: false,
+      status: "consent_required",
+    };
+    return {
+      decision,
+      response: NextResponse.json(
+        {
+          error: "Parent consent is required before child learning access.",
+          code: "CONSENT_REQUIRED",
+          access: decision,
+        },
+        { status: 403 },
+      ),
+    };
+  }
+
+  if (await childHasActiveSchoolDaytimeEnrolment({
+    childId: input.childId,
+    dayLessonId: input.dayLessonId,
+  })) {
+    return {
+      decision: {
+        allowed: true,
+        upgradeRequired: false,
+        status: "active",
+      },
+      response: null,
+    };
+  }
+
+  return ensureLearningAccess(input.parentId);
+}

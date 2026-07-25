@@ -6,6 +6,7 @@ import Navbar from "@/components/layout/Navbar";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 import type { RankedCertificateType, RankingMethod } from "@/lib/ranked-certificates";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 type CertificateLibraryEntry = {
   certificateNumber: string;
@@ -92,7 +93,7 @@ export default function StudentCertificatesPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch("/api/student/certificates", { credentials: "include" });
+        const response = await fetchWithRefreshRetry("/api/student/certificates", { credentials: "include" });
         if (response.status === 401) {
           if (!cancelled) router.replace("/auth/login");
           return;

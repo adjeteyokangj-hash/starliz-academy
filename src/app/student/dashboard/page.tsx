@@ -26,6 +26,10 @@ import { isStudentCertificateCenterEnabled } from "@/lib/launch-scope";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import { formatStudentId } from "@/lib/student-id";
 import { resolveRecoverySeverityChips } from "@/lib/recovery-task-severity";
+import { subjectGlyph } from "@/components/student/school-day/subjectGlyph";
+import { greetingForHour, minutesUntil } from "@/components/student/school-day/periodStatus";
+import { isPlayableDaytimeLessonType } from "@/lib/schools/start-daytime-period";
+import { minutesNow } from "@/lib/schools/school-day-period";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 import type { CoverageEntry, LearningTwinProfile } from "@/lib/academic-intelligence/types";
 
@@ -480,6 +484,16 @@ export default function StudentDashboardPage() {
   const [childName, setChildName] = useState("Learner");
   const [stats, setStats] = useState({ stars: 0, xp: 0, coins: 0, streak: 0 });
   const [schoolEnrolment, setSchoolEnrolment] = useState<NonNullable<DashboardSummaryPayload["schoolEnrolment"]> | null>(null);
+  const [schoolDaySnapshot, setSchoolDaySnapshot] = useState<{
+    weekdayLabel: string;
+    phase: string;
+    current: { title: string; subject: string; lessonType: string; startsAt: string; endsAt: string; teacherName: string | null } | null;
+    next: { title: string; subject: string; lessonType: string; startsAt: string; endsAt: string } | null;
+    supportLabel: string | null;
+    lessonsToday: number;
+    endedLessons: number;
+  } | null>(null);
+  const [attendancePresentRate, setAttendancePresentRate] = useState<number | null>(null);
   const [dashboardTier, setDashboardTier] = useState<"primary" | "ks3" | "gcse">("primary");
   const [profileContext, setProfileContext] = useState<{ yearGroup: string; ageGroup: string; keyStage: string } | null>(null);
   const [activeChildId, setActiveChildId] = useState<string | null>(null);
@@ -531,7 +545,7 @@ export default function StudentDashboardPage() {
         : "";
       const refreshParam = forceDashboardRefresh ? "refresh=1" : "";
       const summaryQuery = [summaryParam, refreshParam].filter(Boolean).join("&");
-      const summaryRes = await fetch(`/api/student/dashboard-summary${summaryQuery ? `?${summaryQuery}` : ""}`, { credentials: "include" });
+      const summaryRes = await fetchWithRefreshRetry(`/api/student/dashboard-summary${summaryQuery ? `?${summaryQuery}` : ""}`, { credentials: "include" });
       if (summaryRes.status === 401) {
         setAuthRequired(true);
         setError("Your session expired. Please sign in again.");
@@ -591,6 +605,10 @@ export default function StudentDashboardPage() {
       setBossPlayedToday(false);
       setBossAssignmentId(null);
       setSchoolEnrolment(summaryPayload.schoolEnrolment ?? null);
+      if (!summaryPayload.schoolEnrolment) {
+        setSchoolDaySnapshot(null);
+        setAttendancePresentRate(null);
+      }
       setActiveChildId(summaryPayload.child.id);
       setDeferredPanelsLoadedFor(null);
       setAcademicLoading(true);
@@ -638,19 +656,19 @@ export default function StudentDashboardPage() {
 
         try {
           const [sessionSummaryRes, academicIntelligenceRes, learningStateRes, bossStatusRes, ownedResponse] = await Promise.all([
-            fetch(`/api/student/session-summary?${studentParam}`, { credentials: "include" }),
-            fetch(`/api/student/academic-intelligence?${studentParam}`, { credentials: "include" }),
-            fetch(`/api/student/learning-state?${studentParam}`, { credentials: "include" }),
-            fetch("/api/student/boss-battle", { credentials: "include" }),
-            fetch(`/api/shop/owned?childId=${encodeURIComponent(deferredStudentId)}`, { credentials: "include" }),
+            fetchWithRefreshRetry(`/api/student/session-summary?${studentParam}`, { credentials: "include" }),
+            fetchWithRefreshRetry(`/api/student/academic-intelligence?${studentParam}`, { credentials: "include" }),
+            fetchWithRefreshRetry(`/api/student/learning-state?${studentParam}`, { credentials: "include" }),
+            fetchWithRefreshRetry("/api/student/boss-battle", { credentials: "include" }),
+            fetchWithRefreshRetry(`/api/shop/owned?childId=${encodeURIComponent(deferredStudentId)}`, { credentials: "include" }),
           ]);
 
           const [placementLevelsRes, placementLessonsRes, progressionRes, certificateEligibilityRes] = await Promise.all([
-            fetch("/api/student/quick-level-finder/levels", { credentials: "include" }),
-            fetch("/api/student/placement-lessons", { credentials: "include" }),
-            fetch(`/api/student/progression/recommendations?${studentParam}`, { credentials: "include" }),
+            fetchWithRefreshRetry("/api/student/quick-level-finder/levels", { credentials: "include" }),
+            fetchWithRefreshRetry("/api/student/placement-lessons", { credentials: "include" }),
+            fetchWithRefreshRetry(`/api/student/progression/recommendations?${studentParam}`, { credentials: "include" }),
             certificateCenterEnabled
-              ? fetch(`/api/student/certificates/eligibility?${studentParam}`, { credentials: "include" })
+              ? fetchWithRefreshRetry(`/api/student/certificates/eligibility?${studentParam}`, { credentials: "include" })
               : Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } })),
           ]);
 
@@ -765,6 +783,99 @@ export default function StudentDashboardPage() {
       cancelled = true;
     };
   }, [activeChildId, loading]);
+
+  useEffect(() => {
+    if (loading || !schoolEnrolment || !activeChildId) {
+      return;
+    }
+
+    let cancelled = false;
+    async function loadSchoolHome() {
+      try {
+        const studentParam = `studentId=${encodeURIComponent(activeChildId!)}`;
+        const [timetableRes, attendanceRes] = await Promise.all([
+          fetchWithRefreshRetry(`/api/student/daytime-timetable?${studentParam}`, { credentials: "include" }),
+          fetchWithRefreshRetry(`/api/student/attendance?${studentParam}`, { credentials: "include" }),
+        ]);
+        if (cancelled) return;
+
+        if (timetableRes.ok) {
+          const data = await timetableRes.json().catch(() => ({}));
+          const board = data.board as {
+            weekdayLabel?: string;
+            phase?: string;
+            currentPeriodId?: string | null;
+            nextPeriodId?: string | null;
+            periods?: Array<{
+              id: string;
+              title: string;
+              subject: string;
+              lessonType: string;
+              startsAt: string;
+              endsAt: string;
+              teacherName: string | null;
+            }>;
+            supportPreview?: { label?: string } | null;
+          } | undefined;
+          const periods = board?.periods ?? [];
+          const current = periods.find((row) => row.id === board?.currentPeriodId) ?? null;
+          const next = periods.find((row) => row.id === board?.nextPeriodId) ?? null;
+          const playable = periods.filter((row) => isPlayableDaytimeLessonType(row.lessonType));
+          const now = minutesNow();
+          const endedLessons = playable.filter((row) => {
+            const end = Number(row.endsAt.split(":")[0]) * 60 + Number(row.endsAt.split(":")[1]);
+            return Number.isFinite(end) && now >= end;
+          }).length;
+          if (!cancelled) {
+            setSchoolDaySnapshot({
+              weekdayLabel: board?.weekdayLabel ?? "Today",
+              phase: board?.phase ?? "no_timetable",
+              current: current
+                ? {
+                    title: current.title,
+                    subject: current.subject,
+                    lessonType: current.lessonType,
+                    startsAt: current.startsAt,
+                    endsAt: current.endsAt,
+                    teacherName: current.teacherName,
+                  }
+                : null,
+              next: next
+                ? {
+                    title: next.title,
+                    subject: next.subject,
+                    lessonType: next.lessonType,
+                    startsAt: next.startsAt,
+                    endsAt: next.endsAt,
+                  }
+                : null,
+              supportLabel: board?.supportPreview?.label ?? "AI Tutor ready",
+              lessonsToday: playable.length,
+              endedLessons,
+            });
+          }
+        }
+
+        if (attendanceRes.ok) {
+          const attendance = await attendanceRes.json().catch(() => ({}));
+          const rate = attendance?.summary?.presentRatePct;
+          if (!cancelled) {
+            setAttendancePresentRate(typeof rate === "number" ? rate : null);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setSchoolDaySnapshot(null);
+          setAttendancePresentRate(null);
+        }
+      }
+    }
+
+    void loadSchoolHome();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChildId, loading, schoolEnrolment]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -935,9 +1046,13 @@ export default function StudentDashboardPage() {
     setError("");
     try {
       const studentParam = activeChildId ? `&studentId=${encodeURIComponent(activeChildId)}` : "";
-      const response = await fetch(`/api/student/daily-journey?quick=1${studentParam}`, { credentials: "include" });
+      const response = await fetchWithRefreshRetry(`/api/student/daily-journey?quick=1${studentParam}`, { credentials: "include" });
       const payload = (await response.json()) as DailyJourneyPayload;
       if (!response.ok) {
+        if (response.status === 401) {
+          setAuthRequired(true);
+          throw new Error("Your session expired. Please sign in again.");
+        }
         if (response.status === 409 && payload && typeof payload === "object" && "code" in payload) {
           const code = (payload as { code?: string }).code;
           if (code === "ONBOARDING_REQUIRED") {
@@ -969,7 +1084,7 @@ export default function StudentDashboardPage() {
     try {
       let nextAssignmentId = bossAssignmentId;
       if (!nextAssignmentId) {
-        const statusRes = await fetch("/api/student/boss-battle", { credentials: "include" });
+        const statusRes = await fetchWithRefreshRetry("/api/student/boss-battle", { credentials: "include" });
         const statusPayload = (await statusRes.json()) as BossBattleStatusPayload;
         if (statusRes.status === 401) {
           setAuthRequired(true);
@@ -1268,28 +1383,112 @@ export default function StudentDashboardPage() {
             ) : null}
 
             {schoolEnrolment ? (
-              <section className="mb-6 rounded-3xl border border-sky-200 bg-sky-50 p-5">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-700">Day school</p>
-                <h2 className="mt-1 text-lg font-black text-slate-900">
-                  Enrolled in {schoolEnrolment.classroomName ?? "class"}
+              <section className="mb-6 overflow-hidden rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-5 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-700">
+                  {schoolEnrolment.schoolName}
+                </p>
+                <h2 className="mt-2 text-2xl font-black text-slate-900">
+                  {greetingForHour(new Date().getHours())}
+                  {childName && childName !== "Learner" ? `, ${childName.split(/\s+/)[0]}` : ""}
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  {schoolEnrolment.schoolName}
-                  {schoolEnrolment.yearGroup ? ` · ${schoolEnrolment.yearGroup}` : ""}
+                  {schoolEnrolment.yearGroup ? `${schoolEnrolment.yearGroup}` : "School"}
+                  {schoolEnrolment.classroomName ? ` · ${schoolEnrolment.classroomName}` : ""}
+                  {schoolDaySnapshot?.weekdayLabel ? ` · ${schoolDaySnapshot.weekdayLabel}` : ""}
                 </p>
+
+                <div className="mt-5 rounded-2xl border border-sky-200/80 bg-white/80 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-sky-700">
+                    {schoolDaySnapshot?.current ? "Current lesson" : "Coming up"}
+                  </p>
+                  {(() => {
+                    const focus = schoolDaySnapshot?.current ?? schoolDaySnapshot?.next;
+                    if (!focus) {
+                      return (
+                        <p className="mt-2 text-sm text-slate-600">
+                          {schoolDaySnapshot?.phase === "after_school"
+                            ? "School day finished — see you tomorrow."
+                            : "Open today's lessons when you are ready."}
+                        </p>
+                      );
+                    }
+                    const glyph = subjectGlyph(focus);
+                    const startsIn = !schoolDaySnapshot?.current
+                      ? minutesUntil(focus.startsAt, minutesNow())
+                      : null;
+                    return (
+                      <>
+                        <p className="mt-2 text-xl font-black text-slate-900">
+                          <span aria-hidden className="mr-1.5">{glyph.glyph}</span>
+                          {glyph.shortLabel}
+                        </p>
+                        <p className="mt-1 font-mono text-xs text-slate-500">
+                          {focus.startsAt}–{focus.endsAt}
+                          {"teacherName" in focus && focus.teacherName ? ` · ${focus.teacherName}` : ""}
+                        </p>
+                        {startsIn != null && startsIn > 0 ? (
+                          <p className="mt-2 text-sm font-semibold text-sky-800">
+                            Starts in {startsIn} minute{startsIn === 1 ? "" : "s"}
+                          </p>
+                        ) : null}
+                        {schoolDaySnapshot?.supportLabel ? (
+                          <p className="mt-2 text-xs font-semibold text-violet-700">{schoolDaySnapshot.supportLabel}</p>
+                        ) : null}
+                      </>
+                    );
+                  })()}
+                  <Link
+                    href="/student/today"
+                    className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-sky-600 px-4 py-3 text-sm font-black text-white hover:bg-sky-500 sm:w-auto"
+                  >
+                    Enter School Day
+                  </Link>
+                </div>
+
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
                     href="/student/today"
-                    className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white hover:bg-sky-500"
+                    className="rounded-xl border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-800 hover:bg-sky-100"
                   >
                     Today&apos;s timetable
                   </Link>
                   <Link
                     href="/student/attendance"
-                    className="rounded-xl border border-sky-300 bg-white px-4 py-2 text-sm font-bold text-sky-800 hover:bg-sky-100"
+                    className="rounded-xl border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-800 hover:bg-sky-100"
                   >
                     Attendance
                   </Link>
+                  <Link
+                    href="/student/certificates"
+                    className="rounded-xl border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-800 hover:bg-sky-100"
+                  >
+                    Achievements
+                  </Link>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="rounded-xl border border-white/70 bg-white/70 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Attendance</p>
+                    <p className="text-lg font-black text-slate-900">
+                      {attendancePresentRate != null ? `${attendancePresentRate}%` : "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/70 bg-white/70 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">School streak</p>
+                    <p className="text-lg font-black text-slate-900">{stats.streak} days</p>
+                  </div>
+                  <div className="rounded-xl border border-white/70 bg-white/70 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Lessons today</p>
+                    <p className="text-lg font-black text-slate-900">{schoolDaySnapshot?.lessonsToday ?? "—"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/70 bg-white/70 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Completed</p>
+                    <p className="text-lg font-black text-slate-900">
+                      {schoolDaySnapshot
+                        ? `${schoolDaySnapshot.endedLessons}/${schoolDaySnapshot.lessonsToday}`
+                        : "—"}
+                    </p>
+                  </div>
                 </div>
               </section>
             ) : null}

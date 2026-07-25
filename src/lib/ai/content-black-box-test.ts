@@ -311,15 +311,21 @@ function scoreItem(item: BlackBoxGeneratedItem, index: number, input: BlackBoxCo
   };
   const dimensions: BlackBoxDimensionScore[] = [];
   const reasons: string[] = [];
+  // When the item clearly belongs to another subject family, score curriculum quality
+  // against the inferred subject so genuine reclassify cases are not hard-rejected by
+  // expected-subject validators (e.g. reading_missing_passage on a spelling word item).
+  const qualitySubject = (!compatibleSubjects(expectedSubject, inferredSubject) && inferredSubject)
+    ? inferredSubject
+    : expectedSubject;
   const curriculumQuality = validateCurriculumContentQuality({
     subject: input.subject,
-    type: expectedSubjectFamily(input.subject) === "maths" ? "maths"
-      : expectedSubjectFamily(input.subject) === "science" ? "science"
-        : expectedSubjectFamily(input.subject) === "reading" ? "reading"
-          : expectedSubjectFamily(input.subject) === "grammar" ? "grammar"
-            : expectedSubjectFamily(input.subject) === "punctuation" ? "punctuation"
-              : expectedSubjectFamily(input.subject) === "writing" ? "writing"
-                : expectedSubjectFamily(input.subject) === "spelling" ? "spelling"
+    type: qualitySubject === "maths" ? "maths"
+      : qualitySubject === "science" ? "science"
+        : qualitySubject === "reading" ? "reading"
+          : qualitySubject === "grammar" ? "grammar"
+            : qualitySubject === "punctuation" ? "punctuation"
+              : qualitySubject === "writing" ? "writing"
+                : qualitySubject === "spelling" ? "spelling"
                   : undefined,
     keyStage: input.keyStage,
     yearGroup: input.yearGroup,
@@ -387,14 +393,20 @@ function scoreItem(item: BlackBoxGeneratedItem, index: number, input: BlackBoxCo
   const maxScore = dimensions.reduce((sum, entry) => sum + entry.maxScore, 0);
   const score = Math.max(0, Math.min(dimensionScore, Math.round(dimensionScore * (curriculumQuality.score / 100))));
   let decision: BlackBoxContentDecision = "APPROVE";
-  if (!answerOk || !qText || reasons.some((reason) => /options|Correct answer is not present/.test(reason)) || curriculumQuality.blockingIssues.length > 0) {
+  const hardStructuralReject = !answerOk
+    || !qText
+    || reasons.some((reason) => /options|Correct answer is not present/.test(reason));
+  if (hardStructuralReject) {
     decision = "REJECT";
   } else if (!subjectOk && inferredSubject) {
+    // Prefer reclassify over expected-subject curriculum blocks (e.g. maths fit on a reading item).
     decision = "RECLASSIFY";
-  } else if (!keyStageOk || (!yearOk && expectedYear && itemYear)) {
-    decision = "REJECT";
   } else if (!strandOk && inferredStrand) {
     decision = "RECLASSIFY";
+  } else if (curriculumQuality.blockingIssues.length > 0) {
+    decision = "REJECT";
+  } else if (!keyStageOk || (!yearOk && expectedYear && itemYear)) {
+    decision = "REJECT";
   } else if (score / maxScore < 0.82 || !difficultyOk || !readabilityOk || !topicOk || curriculumQuality.warnings.length > 0) {
     decision = "NEEDS_ADMIN_REVIEW";
   }

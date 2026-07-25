@@ -1,15 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import AdminStatCard from "@/components/admin/AdminStatCard";
+import SchoolEditorModal, {
+  type EditableSchool,
+} from "@/components/admin/schools/SchoolEditorModal";
+import {
+  AdminButton,
+  AdminButtonLink,
+  AdminCard,
+  AdminFieldLabel,
+  AdminInput,
+  AdminPageHeader,
+  AdminSelect,
+} from "@/components/admin/ui";
 
-type SchoolRecord = {
-  id: string;
-  name: string;
-  status: string;
+type SchoolRecord = EditableSchool & {
   ownerName: string | null;
   ownerEmail: string | null;
-  contactEmail: string | null;
   licence: {
     status: string;
     seatsUsed: number;
@@ -67,41 +76,67 @@ export default function AdminSchoolsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
+  const [editingSchool, setEditingSchool] = useState<EditableSchool | null>(null);
+
+  const loadSchools = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/schools", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        setError("Unable to load registered schools.");
+        return;
+      }
+
+      const payload = (await response.json()) as ApiResponse;
+      setSchools(payload.schools ?? []);
+    } catch {
+      setError("Unable to load registered schools.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-
-    async function loadSchools() {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch("/api/admin/schools", {
-          credentials: "include",
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          if (!active) return;
-          setError("Unable to load registered schools.");
-          return;
-        }
-
-        const payload = (await response.json()) as ApiResponse;
-        if (!active) return;
-        setSchools(payload.schools ?? []);
-      } catch {
-        if (!active) return;
-        setError("Unable to load registered schools.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadSchools();
+  }, [loadSchools]);
 
-    return () => {
-      active = false;
-    };
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("start") !== "add-school") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEditorMode("create");
+    setEditingSchool(null);
+    setEditorOpen(true);
+    window.history.replaceState({}, "", "/admin/schools");
   }, []);
+
+  function openCreate() {
+    setEditorMode("create");
+    setEditingSchool(null);
+    setEditorOpen(true);
+  }
+
+  function openEdit(school: SchoolRecord) {
+    setEditorMode("edit");
+    setEditingSchool({
+      id: school.id,
+      name: school.name,
+      slug: school.slug,
+      status: school.status,
+      type: school.type,
+      contactEmail: school.contactEmail,
+      contactPhone: school.contactPhone,
+      notes: school.notes,
+    });
+    setEditorOpen(true);
+  }
 
   const filteredSchools = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -150,78 +185,58 @@ export default function AdminSchoolsPage() {
   }, [filteredSchools]);
 
   return (
-    <main className="space-y-8 text-slate-100">
-      <section className="relative overflow-hidden rounded-3xl border border-slate-700/60 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-6 py-7 sm:px-8">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(56,189,248,0.12),transparent_55%)]" />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Schools</h1>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400 sm:text-base">
-              Registry of registered schools — readiness, safeguarding signals, and licence status.
-            </p>
-          </div>
-          <div className="relative flex flex-wrap gap-2">
-            <Link
-              href="/admin/schools?start=add-school"
-              className="rounded-xl border border-sky-400/50 bg-sky-500/15 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/25"
-            >
+    <main className="space-y-8">
+      <AdminPageHeader
+        eyebrow="School Management"
+        title="Schools"
+        subtitle="Registry of registered schools — readiness, safeguarding signals, and licence status."
+        actions={
+          <>
+            <AdminButton type="button" onClick={openCreate}>
               Add School
-            </Link>
-            <Link
-              href="/admin/schools?start=onboarding-setup"
-              className="rounded-xl border border-slate-600/80 bg-slate-950/50 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
-            >
+            </AdminButton>
+            <AdminButtonLink href="/admin/schools?start=onboarding-setup" variant="secondary">
               Onboarding Setup
-            </Link>
-          </div>
-        </div>
+            </AdminButtonLink>
+          </>
+        }
+      />
 
-        <div className="relative mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            { label: "Registered", value: summary.totalSchools, tone: "text-white" },
-            { label: "Active students", value: summary.totalStudents, tone: "text-white" },
-            { label: "Active teachers", value: summary.totalTeachers, tone: "text-white" },
-            { label: "Safeguarding watch", value: summary.schoolsAtRisk, tone: "text-rose-200" },
-          ].map((metric) => (
-            <article
-              key={metric.label}
-              className="rounded-2xl border border-slate-700/60 bg-slate-950/55 px-4 py-4 backdrop-blur-sm"
-            >
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{metric.label}</p>
-              <p className={`mt-2 text-3xl font-semibold tracking-tight ${metric.tone}`}>{metric.value}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <AdminStatCard title="Registered" value={summary.totalSchools} tone="purple" />
+        <AdminStatCard title="Active students" value={summary.totalStudents} tone="blue" />
+        <AdminStatCard title="Active teachers" value={summary.totalTeachers} tone="green" />
+        <AdminStatCard title="Safeguarding watch" value={summary.schoolsAtRisk} tone="rose" />
+      </div>
 
-      <section className="rounded-2xl border border-slate-700/60 bg-slate-950/40 p-4 sm:p-5">
+      <AdminCard>
         <div className="grid gap-3 md:grid-cols-[1fr_220px]">
-          <label className="space-y-1.5 text-xs font-semibold text-slate-400">
+          <AdminFieldLabel>
             Search
-            <input
+            <AdminInput
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="School name, admin lead, or email"
-              className="w-full rounded-xl border border-slate-700/80 bg-slate-950/80 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-sky-500/50"
+              className="mt-1.5"
             />
-          </label>
-          <label className="space-y-1.5 text-xs font-semibold text-slate-400">
+          </AdminFieldLabel>
+          <AdminFieldLabel>
             Status
-            <select
+            <AdminSelect
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
-              className="w-full rounded-xl border border-slate-700/80 bg-slate-950/80 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition focus:border-sky-500/50"
+              className="mt-1.5"
             >
               <option value="all">All statuses</option>
               <option value="active">Active</option>
               <option value="pilot">Pilot</option>
               <option value="suspended">Suspended</option>
               <option value="archived">Archived</option>
-            </select>
-          </label>
+            </AdminSelect>
+          </AdminFieldLabel>
         </div>
-      </section>
+      </AdminCard>
 
       {escalationPreview.length > 0 ? (
         <section className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-5">
@@ -262,18 +277,12 @@ export default function AdminSchoolsPage() {
             Add your first school, then run onboarding to set up staff, classes, and licences.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-2">
-            <Link
-              href="/admin/schools?start=add-school"
-              className="rounded-xl border border-sky-400/50 bg-sky-500/15 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/25"
-            >
+            <AdminButton type="button" onClick={openCreate}>
               Add School
-            </Link>
-            <Link
-              href="/admin/schools?start=onboarding-setup"
-              className="rounded-xl border border-slate-600/80 bg-slate-950/50 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500"
-            >
+            </AdminButton>
+            <AdminButtonLink href="/admin/schools?start=onboarding-setup" variant="secondary">
               Onboarding Setup
-            </Link>
+            </AdminButtonLink>
           </div>
         </section>
       ) : null}
@@ -337,12 +346,17 @@ export default function AdminSchoolsPage() {
                       <td className="px-4 py-4 text-slate-300">{setupStatus(school)}</td>
                       <td className="px-4 py-4 text-slate-400">{shortDate(lastActivity)}</td>
                       <td className="px-5 py-4 text-right">
-                        <Link
-                          href={`/admin/schools/${school.id}`}
-                          className="inline-flex rounded-lg border border-slate-600/80 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
-                        >
-                          Open
-                        </Link>
+                        <div className="inline-flex items-center gap-2">
+                          <AdminButton type="button" size="sm" variant="secondary" onClick={() => openEdit(school)}>
+                            Edit
+                          </AdminButton>
+                          <Link
+                            href={`/admin/schools/${school.id}`}
+                            className="inline-flex rounded-lg border border-slate-600/80 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                          >
+                            Open
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -384,18 +398,33 @@ export default function AdminSchoolsPage() {
                     <p>Licence: <span className="text-slate-200">{school.licence?.status ?? "pilot"}</span></p>
                     <p>Activity: <span className="text-slate-200">{shortDate(lastActivity)}</span></p>
                   </div>
-                  <Link
-                    href={`/admin/schools/${school.id}`}
-                    className="mt-4 inline-flex rounded-lg border border-slate-600/80 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
-                  >
-                    Open school
-                  </Link>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <AdminButton type="button" size="sm" variant="secondary" onClick={() => openEdit(school)}>
+                      Edit
+                    </AdminButton>
+                    <Link
+                      href={`/admin/schools/${school.id}`}
+                      className="inline-flex rounded-lg border border-slate-600/80 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                    >
+                      Open school
+                    </Link>
+                  </div>
                 </article>
               );
             })}
           </div>
         </section>
       ) : null}
+
+      <SchoolEditorModal
+        open={editorOpen}
+        mode={editorMode}
+        school={editingSchool}
+        onClose={() => setEditorOpen(false)}
+        onSaved={() => {
+          void loadSchools();
+        }}
+      />
     </main>
   );
 }

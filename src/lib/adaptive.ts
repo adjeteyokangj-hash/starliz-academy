@@ -37,6 +37,14 @@ export type ReadingPassage = {
   question: string;
   choices: string[];
   answer: string;
+  explanation?: string;
+  hints?: string[];
+  breakdown?: {
+    simplerQuestion: string;
+    steps: string[];
+    keyWords: Array<{ word: string; meaning: string }>;
+    startingPoint: string;
+  };
 };
 
 function ensureMinimumMathQuestions(questions: MathQuestion[], minCount = 12): MathQuestion[] {

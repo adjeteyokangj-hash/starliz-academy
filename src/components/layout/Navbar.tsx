@@ -49,7 +49,9 @@ export function buildPrimaryNavLinks(input: {
     ];
   }
 
-  const links: PrimaryNavLink[] = [{ href: input.dashboardHref, label: "Dashboard" }];
+  const links: PrimaryNavLink[] = [
+    { href: input.dashboardHref, label: input.isStudentContext ? "Home" : "Dashboard" },
+  ];
   if (input.isStudentContext) {
     links.push({ href: "/student/today", label: "Today" });
     links.push({ href: "/student/attendance", label: "Attendance" });

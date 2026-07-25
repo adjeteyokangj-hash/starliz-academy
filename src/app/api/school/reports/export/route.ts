@@ -5,7 +5,7 @@
  * Body: {
  *   schoolId: string
  *   format: "csv"                  // pdf to be added later
- *   reportType: "attempts" | "assignments" | "progress"
+ *   reportType: "attempts" | "assignments" | "progress" | "progress_pack"
  *   classroomId?: string           // optional classroom filter
  *   subject?: string               // optional subject filter
  *   days?: number                  // lookback window (1–365, default 30)
@@ -16,6 +16,7 @@
  *   - Students resolved through getAccessibleStudents() — teachers see only their classrooms
  *   - schoolId never taken from student records; always from verified guard context
  *   - Output rows include schoolId as first column so logs are self-describing
+ *   - progress_pack is privacy-safe aggregates only (no tutor logs / private notes)
  */
 
 import { NextResponse } from "next/server";
@@ -23,6 +24,7 @@ import { prisma } from "@/lib/db";
 import { requireSchoolPermission } from "@/lib/schools/guards";
 import { getAccessibleStudents } from "@/lib/schools/scoping";
 import { csvEscape } from "@/lib/csv_escape";
+import { buildSchoolLeaderProgressPack, renderProgressPackCsv } from "@/lib/progress-reporting";
 
 function buildCsv(rows: Array<Array<string | number | boolean | null>>): string {
   return rows.map((row) => row.map((cell) => csvEscape(cell ?? "")).join(",")).join("\r\n");
@@ -58,9 +60,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Only format=csv is supported" }, { status: 400 });
   }
 
-  if (!["attempts", "assignments", "progress"].includes(reportType)) {
+  if (!["attempts", "assignments", "progress", "progress_pack"].includes(reportType)) {
     return NextResponse.json(
-      { error: "reportType must be one of: attempts, assignments, progress" },
+      { error: "reportType must be one of: attempts, assignments, progress, progress_pack" },
       { status: 400 }
     );
   }
@@ -226,6 +228,22 @@ export async function POST(request: Request) {
       ]);
     }
     csv = buildCsv(rows);
+  }
+
+  // ── Privacy-safe progress pack aggregates ────────────────────────────────
+  if (reportType === "progress_pack") {
+    const pack = await buildSchoolLeaderProgressPack({
+      schoolId,
+      windowDays: days,
+      students: students.map((row) => ({
+        childId: row.childId,
+        name: row.child.name,
+        classroomId: row.classroomId,
+        classroomName: row.classroom?.name ?? null,
+        yearGroup: row.child.yearGroup ?? null,
+      })),
+    });
+    csv = renderProgressPackCsv(pack);
   }
 
   return new NextResponse(csv, {

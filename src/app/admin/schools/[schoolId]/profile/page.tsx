@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
+import SchoolProfileEditor from "@/components/admin/schools/SchoolProfileEditor";
 
 type PageProps = {
   params: Promise<{ schoolId: string }>;
@@ -16,11 +17,7 @@ export default async function SchoolProfilePage({ params }: PageProps) {
       subtitle="School-level profile, status, and settings for operations workflows."
     >
       <div className="grid gap-3 lg:grid-cols-2">
-        <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
-          <h2 className="text-sm font-semibold text-white">School Profile</h2>
-          <p className="mt-1 text-xs text-slate-400">Name, status, contact profile, and school metadata controls.</p>
-          <Link href={`/admin/schools/${schoolId}/profile?mode=edit`} className="mt-3 inline-flex rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">Edit Profile</Link>
-        </article>
+        <SchoolProfileEditor schoolId={schoolId} />
         <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
           <h2 className="text-sm font-semibold text-white">Billing & Licence</h2>
           <p className="mt-1 text-xs text-slate-400">Licence status, seat limits, renewal windows, and billing settings.</p>

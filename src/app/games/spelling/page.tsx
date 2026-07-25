@@ -55,6 +55,14 @@ import {
 } from "@/lib/spelling-session-runtime";
 import { computeCanonicalSessionMetrics, type CanonicalItemOutcome } from "@/lib/canonical-learning-state";
 import { shouldEnableStudentVoiceWorkflow } from "@/lib/lesson-voice-help";
+import { continueDaytimePeriodFromClient } from "@/lib/schools/daytime-period-client";
+import DaytimeTutorPanel from "@/components/games/DaytimeTutorPanel";
+import {
+  DaytimeSchoolLessonShell,
+  DaytimeSpellingPanel,
+  DaytimeAnswerFeedback,
+} from "@/components/student/daytime-lesson";
+import { useDaytimeStagePack } from "@/components/student/daytime-lesson/useDaytimeStagePack";
 
 const LEVEL_LABELS: Record<number, string> = {
   1: "⭐ Alphabet foundation",
@@ -245,6 +253,15 @@ export default function SpellingQuestPage() {
   const searchParams = useSearchParams();
   const assignedContentId = searchParams.get("contentId");
   const assignedAssignmentId = searchParams.get("assignmentId") ?? undefined;
+  const daytimePeriodId = searchParams.get("daytimePeriodId");
+  const [continuingDaytime, setContinuingDaytime] = useState(false);
+  const [answerFeedbackKind, setAnswerFeedbackKind] = useState<"correct" | "incorrect" | null>(null);
+  const daytimeStagePack = useDaytimeStagePack({
+    enabled: Boolean(daytimePeriodId),
+    contentId: assignedContentId,
+    assignmentId: assignedAssignmentId,
+  });
+  const isDaytimeSchool = Boolean(daytimePeriodId && assignedAssignmentId && assignedContentId);
   const [profile, setProfile] = useState<ChildProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const profileId = profile?.id ?? null;
@@ -1911,6 +1928,7 @@ export default function SpellingQuestPage() {
       if (profile.settings.sfxEnabled) {
         playCorrectSound();
       }
+      if (isDaytimeSchool) setAnswerFeedbackKind("correct");
       setShowSuccessBurst(true);
       window.setTimeout(() => setShowSuccessBurst(false), 900);
 
@@ -2252,6 +2270,7 @@ export default function SpellingQuestPage() {
     if (profile.settings.sfxEnabled) {
       playTryAgainSound();
     }
+    if (isDaytimeSchool) setAnswerFeedbackKind("incorrect");
     if (displayMode === "build_word") {
       void speakEncouragement(`The letters build ${buildTargetAnswer}. Let's try a new one.`);
     } else if (displayMode === "missing_letter") {
@@ -2414,8 +2433,53 @@ export default function SpellingQuestPage() {
   return (
     <PremiumAccessGate>
     <>
-      <Navbar />
+      {isDaytimeSchool ? null : <Navbar />}
       <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
+      {isDaytimeSchool ? (
+        <DaytimeSchoolLessonShell
+          periodId={daytimePeriodId!}
+          assignmentId={assignedAssignmentId!}
+          contentId={assignedContentId!}
+          questionId={targetWord?.id}
+          answered={sessionPlan?.phases.length ? Math.min(sessionCorrect + (answerFeedbackKind === "incorrect" ? 1 : 0), sessionPlan.phases.length) : sessionCorrect}
+          correct={sessionCorrect}
+          lessonProgressPct={
+            sessionPlan?.phases.length
+              ? Math.round((sessionCorrect / sessionPlan.phases.length) * 100)
+              : null
+          }
+          mobileActionBar={
+            <Button className="w-full" onClick={() => { void checkAnswer(); }}>Check answer</Button>
+          }
+        >
+          <DaytimeSpellingPanel
+            spellingFocus={daytimeStagePack?.spellingFocus || targetWord?.patterns?.[0] || targetWord?.categoryHint}
+            targetWords={daytimeStagePack?.targetWords?.length ? daytimeStagePack.targetWords : targetWord ? [targetWord.word] : []}
+            ruleExplanation={daytimeStagePack?.ruleExplanation || targetWord?.hint}
+            sentenceContext={typeof (targetWord as { sentence?: string } | null)?.sentence === "string" ? (targetWord as { sentence?: string }).sentence : null}
+          />
+          {answerFeedbackKind === "correct" ? (
+            <DaytimeAnswerFeedback kind="correct" explanation={feedback} onContinue={() => setAnswerFeedbackKind(null)} />
+          ) : null}
+          {answerFeedbackKind === "incorrect" ? (
+            <DaytimeAnswerFeedback kind="incorrect" onTryAgain={() => setAnswerFeedbackKind(null)} />
+          ) : null}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-semibold text-slate-800">Spell the target word carefully.</p>
+            <input
+              value={answer}
+              onChange={(event) => setAnswer(event.target.value)}
+              className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Type your spelling"
+              aria-label="Spelling answer"
+            />
+            <div className="mt-3">
+              <Button onClick={() => { void checkAnswer(); }}>Check answer</Button>
+            </div>
+          </div>
+        </DaytimeSchoolLessonShell>
+      ) : null}
+      <div className={isDaytimeSchool ? "hidden" : undefined}>
       {profileContext ? (
         <section className="mx-auto max-w-6xl px-4 pt-4 sm:pt-6">
           <StudentContextStrip
@@ -2514,14 +2578,45 @@ export default function SpellingQuestPage() {
             </div>
 
             <div className="mt-5 flex flex-wrap gap-3">
-              {assignedAssignmentId || assignedContentId ? (
+              {daytimePeriodId ? (
+                <Button
+                  disabled={continuingDaytime}
+                  onClick={() => {
+                    setContinuingDaytime(true);
+                    void (async () => {
+                      if (assignedAssignmentId) {
+                        await fetch(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
+                          method: "PATCH",
+                          credentials: "include",
+                          headers: { "content-type": "application/json" },
+                          body: JSON.stringify({ status: "completed" }),
+                        }).catch(() => undefined);
+                      }
+                      const continued = await continueDaytimePeriodFromClient({
+                        dayLessonId: daytimePeriodId,
+                        completedContentId: assignedContentId,
+                      });
+                      if (continued.ok) {
+                        router.push(continued.href);
+                        return;
+                      }
+                      setContinuingDaytime(false);
+                      setFeedback(continued.error);
+                    })();
+                  }}
+                >
+                  {continuingDaytime ? "Continuing…" : "Continue lesson"}
+                </Button>
+              ) : assignedAssignmentId || assignedContentId ? (
                 <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
               ) : (
                 <Button onClick={continueToNextLevel}>
                   {nextSpellingLevel ? `Continue to ${LEVEL_LABELS[nextSpellingLevel]}` : "Continue Challenge"}
                 </Button>
               )}
-              <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
+              <Button onClick={() => router.push(daytimePeriodId ? "/student/today" : "/dashboard")}>
+                {daytimePeriodId ? "Back to Today" : "Go to Dashboard"}
+              </Button>
               <Button variant="secondary" onClick={restartCurrentSession}>Practise This Level Again</Button>
             </div>
           </div>
@@ -3132,6 +3227,19 @@ export default function SpellingQuestPage() {
             </div>
           ) : null}
 
+          {daytimePeriodId && assignedAssignmentId && assignedContentId && targetWord ? (
+            <div className="mt-3">
+              <DaytimeTutorPanel
+                periodId={daytimePeriodId}
+                assignmentId={assignedAssignmentId}
+                contentId={assignedContentId}
+                questionId={targetWord.id}
+                studentAttempt={answer}
+                className="rounded-2xl border border-violet-200 bg-violet-50/70 p-3"
+              />
+            </div>
+          ) : null}
+
           {hintMessage ? <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">{hintMessage}</p> : null}
 
           {hintLevel >= 2 && targetWord ? (
@@ -3199,7 +3307,7 @@ export default function SpellingQuestPage() {
           </div>
           </div>
 
-          {coachOpen && targetWord ? (
+          {coachOpen && targetWord && !(daytimePeriodId && assignedAssignmentId) ? (
             <SmartCoachPanel
               studentId={profile?.id}
               subject="spelling"
@@ -3366,6 +3474,7 @@ export default function SpellingQuestPage() {
             </aside>
           </div>
         </section>
+      </div>
       </div>
       </div>
     </main>

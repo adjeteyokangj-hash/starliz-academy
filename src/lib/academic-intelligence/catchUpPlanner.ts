@@ -43,6 +43,7 @@ function triggerPriority(triggerType: CatchUpTriggerType): AcademicPriority {
     || triggerType === "low_attempt_score"
     || triggerType === "assessment_below_readiness"
     || triggerType === "gcse_coverage_gap"
+    || triggerType === "misconception_marker"
   ) {
     return "high";
   }
@@ -66,6 +67,8 @@ function supportiveReason(triggerType: CatchUpTriggerType): string {
       return "Let's practise this again with a simpler step-by-step path.";
     case "active_weak_area":
       return "You are close. A short recap will help.";
+    case "misconception_marker":
+      return "Let's clear up this sticky idea with a short reteach and practice.";
     case "high_coach_usage":
     case "high_hint_usage":
       return "A guided recap can make this feel easier next time.";
@@ -94,6 +97,13 @@ function mapTriggerToTask(triggerType: CatchUpTriggerType, subject: string): Cat
   if (triggerType === "gcse_coverage_gap" || triggerType === "assessment_below_readiness") return "gcse_improve_my_answer";
   if (triggerType === "missed_homework") return "homework_adjustment";
   if (triggerType === "low_quiz_score") return "quiz_retry";
+  if (triggerType === "misconception_marker" || triggerType === "repeated_wrong_answers" || triggerType === "low_attempt_score") {
+    if (normalizedSubject.includes("reading")) return "reading_support";
+    if (normalizedSubject.includes("math")) return "maths_method_practice";
+    if (normalizedSubject.includes("language")) return "language_pronunciation_retry";
+    if (normalizedSubject.includes("spelling")) return "spelling_review";
+    return "targeted_practice";
+  }
   if (normalizedSubject.includes("reading")) return "reading_support";
   if (normalizedSubject.includes("math")) return "maths_method_practice";
   if (normalizedSubject.includes("language")) return "language_pronunciation_retry";
@@ -180,6 +190,23 @@ export function detectCatchUpTriggers(input: {
         source: "attempts",
         evidenceSummary: `${entry.repeatedMistakes} repeated wrong answers detected on ${topic}.`,
         priority: triggerPriority("repeated_wrong_answers"),
+        detectedAt: now,
+      });
+    }
+
+    // Misconception marker: repeated mistakes + active weak area and/or heavy hints.
+    if (
+      entry.repeatedMistakes >= 3
+      && (entry.weakAreaActive || entry.hintUsageRate >= 1 || entry.coachUsageCount >= 4)
+    ) {
+      triggers.push({
+        triggerType: "misconception_marker",
+        subject,
+        topic,
+        skill,
+        source: "attempts",
+        evidenceSummary: `Misconception risk on ${topic}: ${entry.repeatedMistakes} repeated mistakes with ongoing support signals.`,
+        priority: triggerPriority("misconception_marker"),
         detectedAt: now,
       });
     }

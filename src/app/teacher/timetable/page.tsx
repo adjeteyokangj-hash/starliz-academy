@@ -163,8 +163,23 @@ export default function TeacherDaytimeTimetablePage() {
                     Students: {studentNames.map((student) => student.name).join(", ")}
                   </p>
                 ) : null}
-                {isRegisterEligibleLessonType(period.lessonType) && period.classroomId ? (
-                  <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {period.classroomId
+                    && period.lessonType !== "break"
+                    && period.lessonType !== "lunch"
+                    && period.lessonType !== "registration" ? (
+                    <Link
+                      href={`/teacher/live/${period.id}`}
+                      className={`inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                        state === "now"
+                          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-800 hover:bg-emerald-500/20 dark:text-emerald-100"
+                          : "border-border bg-muted/30 text-foreground/70 hover:bg-muted/50"
+                      }`}
+                    >
+                      {state === "now" ? "Open live classroom" : "Live classroom"}
+                    </Link>
+                  ) : null}
+                  {isRegisterEligibleLessonType(period.lessonType) && period.classroomId ? (
                     <Link
                       href={`/teacher/attendance/${period.id}`}
                       className="inline-flex rounded-lg border border-sky-500/50 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-500/20 dark:text-sky-100"
@@ -175,12 +190,12 @@ export default function TeacherDaytimeTimetablePage() {
                           ? "Take register"
                           : "Open / amend register"}
                     </Link>
-                  </div>
-                ) : isRegisterEligibleLessonType(period.lessonType) ? (
-                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-200">No class attached — register unavailable.</p>
-                ) : (
-                  <p className="mt-2 text-xs text-foreground/45">No student register for break / lunch.</p>
-                )}
+                  ) : isRegisterEligibleLessonType(period.lessonType) ? (
+                    <p className="self-center text-xs text-amber-700 dark:text-amber-200">No class attached — register unavailable.</p>
+                  ) : (
+                    <p className="self-center text-xs text-foreground/45">No student register for break / lunch.</p>
+                  )}
+                </div>
               </li>
             );
           })}
