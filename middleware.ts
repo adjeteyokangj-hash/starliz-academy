@@ -162,12 +162,10 @@ export async function middleware(request: NextRequest) {
     const requestedAdminNext = safeAdminNextPath(request.nextUrl.searchParams.get("next"));
     if (!authenticated) {
       // Allow unauthenticated access to /admin/login, redirect all other admin routes there.
+      // Do NOT bounce through /api/auth/refresh first — a stale/parent refresh token against
+      // /admin caused redirect loops (refresh → /admin → refresh) stuck on "Loading page".
       if (pathname !== "/admin/login") {
         const next = `${pathname}${request.nextUrl.search}`;
-        if (shouldAttemptRefresh) {
-          const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
-          return finalize(NextResponse.redirect(refreshTarget));
-        }
         const target = new URL(`/admin/login?next=${encodeURIComponent(next)}`, request.url);
         return finalize(NextResponse.redirect(target));
       }
@@ -200,6 +198,9 @@ export async function middleware(request: NextRequest) {
     }
     if (session.role === "student") {
       return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+    }
+    if (session.role === "teacher") {
+      return finalize(NextResponse.redirect(new URL("/teacher", request.url)));
     }
     return finalize(NextResponse.redirect(new URL("/parent/profiles", request.url)));
   }
@@ -292,6 +293,7 @@ export async function middleware(request: NextRequest) {
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
+  requestHeaders.set("x-admin-login", pathname === "/admin/login" || pathname.startsWith("/admin/login/") ? "1" : "0");
   return finalize(NextResponse.next({ request: { headers: requestHeaders } }));
 }
 

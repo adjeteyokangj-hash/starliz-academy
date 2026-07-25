@@ -4,6 +4,7 @@ import { readSessionFromCookie } from "@/lib/auth";
 import { getSchoolTeacherContext, canDo } from "@/lib/schools/rbac";
 import { getSchoolSeatUsage } from "@/lib/schools/licensing";
 import { getAccessibleClassrooms, getAccessibleStudents, getSchoolWeakAreas } from "@/lib/schools/scoping";
+import { getTeacherSupportDashboard } from "@/lib/schools/teacher-support-dashboard";
 
 export default async function TeacherDashboardPage() {
   const session = await readSessionFromCookie();
@@ -12,11 +13,19 @@ export default async function TeacherDashboardPage() {
   const ctx = await getSchoolTeacherContext(session.userId);
   if (!ctx) redirect("/dashboard");
 
-  const [seatUsage, classrooms, students, weakAreas] = await Promise.all([
+  const [seatUsage, classrooms, students, weakAreas, support] = await Promise.all([
     canDo(ctx.role, "viewBilling") ? getSchoolSeatUsage(ctx.schoolId) : null,
     getAccessibleClassrooms(ctx.schoolId, ctx.schoolTeacherId, ctx.role),
     getAccessibleStudents(ctx.schoolId, ctx.schoolTeacherId, ctx.role),
     canDo(ctx.role, "viewWeakAreas") ? getSchoolWeakAreas(ctx.schoolId, ctx.schoolTeacherId, ctx.role) : null,
+    canDo(ctx.role, "viewHumanSupport")
+      ? getTeacherSupportDashboard({
+          schoolId: ctx.schoolId,
+          schoolName: ctx.schoolName,
+          schoolTeacherId: ctx.schoolTeacherId,
+          role: ctx.role,
+        })
+      : null,
   ]);
 
   const criticalWeakAreas = weakAreas?.filter((w) => w.accuracy < 40) ?? [];
@@ -58,6 +67,49 @@ export default async function TeacherDashboardPage() {
           />
         )}
       </div>
+
+      {support ? (
+        <section className="mb-8 rounded-2xl border border-violet-200 bg-violet-50/70 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-violet-700">Human support</p>
+              <h2 className="mt-1 text-lg font-semibold text-foreground">Support desk</h2>
+              <p className="mt-1 text-sm text-foreground/60">
+                Presence: <span className="font-semibold capitalize">{support.presence.status}</span>
+                {" · "}
+                {support.counts.assignedToMe} assigned · {support.counts.waiting} waiting · {support.counts.activeMine} active
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/teacher/support"
+                className="rounded-xl bg-violet-700 px-4 py-2 text-sm font-bold text-white hover:bg-violet-600"
+              >
+                Open Support
+              </Link>
+              <Link
+                href="/teacher/timetable"
+                className="rounded-xl border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100"
+              >
+                Timetable / Live
+              </Link>
+            </div>
+          </div>
+          {support.activeSession ? (
+            <p className="mt-3 text-sm font-semibold text-violet-950">
+              Active session with {support.activeSession.studentName}
+              {support.activeSession.liveHref ? (
+                <>
+                  {" · "}
+                  <Link href={support.activeSession.liveHref} className="underline">
+                    Continue in Live Classroom
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {/* Classrooms overview */}
       {canDo(ctx.role, "viewClassrooms") && classrooms.length > 0 && (

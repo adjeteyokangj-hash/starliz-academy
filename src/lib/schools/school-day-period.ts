@@ -130,3 +130,37 @@ export function describeSchoolClock(
   }
   return { phase: "in_session", current, next };
 }
+
+/** Duration of a timetable period in minutes (0 if times are invalid). */
+export function periodMinutes(startsAt: string, endsAt: string): number {
+  const start = parseHmToMinutes(startsAt);
+  const end = parseHmToMinutes(endsAt);
+  if (start < 0 || end < 0 || end <= start) return 0;
+  return end - start;
+}
+
+/** Student digital-work budget for a period (~80%, minimum 15 minutes). */
+export function studentWorkMinutes(periodLengthMinutes: number): number {
+  if (!Number.isFinite(periodLengthMinutes) || periodLengthMinutes <= 0) return 15;
+  return Math.max(15, Math.round(periodLengthMinutes * 0.8));
+}
+
+/** Content Library-style estimate: ~1.5 minutes per item. */
+export function estimatedMinutesForItemCount(itemCount: number): number {
+  const count = Math.max(0, Math.floor(itemCount));
+  if (count <= 0) return 0;
+  return Math.max(2, Math.ceil(count * 1.5));
+}
+
+export function minutesRemainingInPeriod(endsAt: string, now = new Date()): number {
+  const end = parseHmToMinutes(endsAt);
+  if (end < 0) return 0;
+  return Math.max(0, end - minutesNow(now));
+}
+
+const NON_PLAYABLE_LESSON_TYPES = new Set(["break", "lunch", "registration"]);
+
+/** True for teaching periods that can open Live Classroom / human support. */
+export function isPlayableDaytimeLessonType(lessonType: string): boolean {
+  return !NON_PLAYABLE_LESSON_TYPES.has(lessonType.trim().toLowerCase());
+}

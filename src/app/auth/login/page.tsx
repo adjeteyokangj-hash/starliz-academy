@@ -36,6 +36,14 @@ export default function LoginPage() {
         window.location.assign(nextPath?.startsWith("/admin") ? nextPath : "/admin");
         return;
       }
+      if (payload.user?.role === "teacher") {
+        window.location.assign(nextPath?.startsWith("/teacher") ? nextPath : "/teacher");
+        return;
+      }
+      if (nextPath?.startsWith("/") && !nextPath.startsWith("//")) {
+        window.location.assign(nextPath);
+        return;
+      }
       window.location.assign("/parent/profiles");
     } catch {
       setError("Unable to login right now.");

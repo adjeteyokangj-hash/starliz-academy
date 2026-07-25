@@ -1282,6 +1282,10 @@ model School {
   notificationPreferences         NotificationPreference[]
   dayLessons                      SchoolDayLesson[]
   dayAttendance                   SchoolDayAttendance[]
+  tutorPresences                  TutorPresence[]
+  humanSupportQueueEntries        HumanSupportQueueEntry[]
+  humanSupportSessions            HumanSupportSession[]
+  humanSupportPolicy              SchoolSupportPolicy?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1354,6 +1358,9 @@ model SchoolTeacher {
   inviteTokens TeacherInviteToken[]
   dayLessons   SchoolDayLesson[]
   attendanceRecorded SchoolDayAttendance[] @relation("AttendanceRecordedBy")
+  tutorPresence TutorPresence?
+  humanSupportSessions HumanSupportSession[]
+  assignedQueueEntries HumanSupportQueueEntry[] @relation("QueueAssignedTutor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1457,6 +1464,11 @@ model Lesson {
   status         String   @default("draft") // "draft" | "ready" | "assigned" | "in_progress" | "completed" | "archived"
   contentRefs    String?  // comma-separated AIContentCache IDs
   skills         String?  // comma-separated skill codes
+  /// Daytime lesson review: draft | machine_failed | awaiting_review | approved
+  reviewStatus        String    @default("draft")
+  machineHealthJson   String?
+  teacherReviewedAt   DateTime?
+  teacherReviewedBy   String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -2479,4 +2491,142 @@ model NotificationPreference {
   @@index([userId, createdAt])
   @@index([schoolId, userId])
   @@index([trustId, userId])
+}
+
+// ─── Human Support Availability & Scheduling v1 ───────────────────────────
+
+enum TutorAvailabilityStatus {
+  offline
+  available
+  busy
+  paused
+}
+
+enum HumanSupportQueueStatus {
+  waiting
+  assigned
+  in_session
+  completed
+  cancelled
+  paused_ai_only
+  recovered
+  expired
+}
+
+enum HumanSupportSessionStatus {
+  active
+  completed
+  abandoned
+  timed_out
+  handed_over
+}
+
+enum HumanSupportOutcome {
+  resolved
+  partially_resolved
+  unresolved
+  escalated
+  student_recovered
+  period_ended
+  disconnected
+}
+
+model TutorPresence {
+  id                   String                  @id @default(cuid())
+  schoolId             String
+  school               School                  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolTeacherId      String                  @unique
+  schoolTeacher        SchoolTeacher           @relation(fields: [schoolTeacherId], references: [id], onDelete: Cascade)
+  status               TutorAvailabilityStatus @default(offline)
+  lastHeartbeatAt      DateTime                @default(now())
+  availableSince       DateTime?
+  pausedAt             DateTime?
+  busySince            DateTime?
+  activeSessionId      String?
+  dayLessonId          String?
+  rollingMedianMinutes Float?
+  sessionsCompleted    Int                     @default(0)
+  resolutionRate       Float?
+  metadataJson         String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  @@index([schoolId, status, lastHeartbeatAt])
+  @@index([dayLessonId])
+}
+
+model HumanSupportQueueEntry {
+  id               String                  @id @default(cuid())
+  schoolId         String
+  school           School                  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  childId          String
+  classroomId      String?
+  periodId         String?
+  assignmentId     String?
+  questionKey      String?
+  priority         Int                     @default(0)
+  status           HumanSupportQueueStatus @default(waiting)
+  enqueuedAt       DateTime                @default(now())
+  assignedAt       DateTime?
+  assignedTutorId  String?
+  assignedTutor    SchoolTeacher?          @relation("QueueAssignedTutor", fields: [assignedTutorId], references: [id], onDelete: SetNull)
+  expiresAt        DateTime?
+  estimatedWaitSec Int?
+  budgetMinutes    Int?
+  metadataJson     String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  session HumanSupportSession?
+
+  @@index([schoolId, status, enqueuedAt])
+  @@index([periodId, status])
+  @@index([childId, status])
+  @@index([assignedTutorId, status])
+}
+
+model HumanSupportSession {
+  id                   String                    @id @default(cuid())
+  schoolId             String
+  school               School                    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  queueEntryId         String                    @unique
+  queueEntry           HumanSupportQueueEntry    @relation(fields: [queueEntryId], references: [id], onDelete: Cascade)
+  schoolTeacherId      String
+  schoolTeacher        SchoolTeacher             @relation(fields: [schoolTeacherId], references: [id], onDelete: Cascade)
+  childId              String
+  periodId             String?
+  /// Frozen at accept time — never shrink when later students join the queue.
+  budgetMinutes        Int
+  startedAt            DateTime                  @default(now())
+  plannedEndsAt        DateTime?
+  endedAt              DateTime?
+  extendedAt           DateTime?
+  status               HumanSupportSessionStatus @default(active)
+  outcome              HumanSupportOutcome?
+  outcomeNotes         String?
+  unresolvedReportJson String?
+  exceededBudget       Boolean                   @default(false)
+  metadataJson         String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@index([schoolId, status, startedAt])
+  @@index([schoolTeacherId, status])
+  @@index([childId, startedAt])
+  @@index([periodId, status])
+}
+
+model SchoolSupportPolicy {
+  id                     String   @id @default(cuid())
+  schoolId               String   @unique
+  school                 School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  minimumSessionMinutes  Int      @default(5)
+  maximumSessionMinutes  Int      @default(15)
+  closeoutReserveMinutes Int      @default(2)
+  heartbeatIntervalSec   Int      @default(25)
+  staleAfterSec          Int      @default(75)
+  transitionMinutes      Float    @default(0.5)
+  metadataJson           String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }

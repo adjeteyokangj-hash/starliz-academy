@@ -39,7 +39,37 @@ export type SchoolAuditAction =
   | "recovery_orchestration_rejected"
   | "recovery_orchestration_rolled_back"
   | "recovery_orchestration_executed"
-  | "recovery_orchestration_policy_updated";
+  | "recovery_orchestration_policy_updated"
+  | "daytime_lesson_content_generated"
+  | "daytime_lesson_approved"
+  | "daytime_day_approved"
+  | "daytime_tutor_help"
+  | "live_classroom_intervene"
+  | "tutor_online"
+  | "tutor_available"
+  | "tutor_paused"
+  | "tutor_busy"
+  | "tutor_offline"
+  | "tutor_offline_stale"
+  | "human_support_eligible"
+  | "human_support_enqueued"
+  | "human_support_left_queue"
+  | "human_support_recovered"
+  | "human_support_queue_paused"
+  | "human_support_queue_resumed"
+  | "human_support_assigned"
+  | "human_support_released"
+  | "human_support_accepted"
+  | "human_support_session_started"
+  | "human_support_session_ended"
+  | "human_support_guidance_sent"
+  | "human_support_unresolved"
+  | "human_support_admin_force_offline"
+  | "human_support_admin_reassign"
+  | "human_support_admin_close_abandoned"
+  | "human_support_admin_follow_up"
+  | "human_support_admin_view_private_notes"
+  | "human_support_admin_export";
 
 export type SchoolEntityType =
   | "school"
@@ -48,9 +78,11 @@ export type SchoolEntityType =
   | "classroom"
   | "licence"
   | "assignment"
+  | "lesson"
   | "provisioning_job"
   | "compliance"
-  | "system";
+  | "system"
+  | "human_support";
 
 export type SchoolAuditSeverity = "info" | "warning" | "critical";
 

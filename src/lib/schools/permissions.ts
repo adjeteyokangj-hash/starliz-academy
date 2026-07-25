@@ -14,6 +14,7 @@ export type SchoolPermission =
   | "viewProgress"
   | "viewWeakAreas"
   | "viewReports"
+  | "viewHumanSupport"
   | "inviteTeacher"
   | "manageTeachers"
   | "manageClassrooms"
@@ -32,6 +33,7 @@ const PERMISSION_MATRIX: Record<SchoolPermission, SchoolRole[]> = {
   viewProgress: ["owner", "admin", "teacher"],
   viewWeakAreas: ["owner", "admin", "teacher"],
   viewReports: ["owner", "admin", "finance", "teacher"],
+  viewHumanSupport: ["owner", "admin", "teacher", "support"],
   inviteTeacher: ["owner", "admin"],
   manageTeachers: ["owner", "admin"],
   manageClassrooms: ["owner", "admin"],
