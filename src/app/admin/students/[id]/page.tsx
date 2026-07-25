@@ -1439,7 +1439,10 @@ export default function StudentDetailPage() {
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-xs text-amber-100/90">Actions are placeholder-safe and currently require persistence setup.</p>
+                <p className="mt-2 text-xs text-amber-100/90">
+                  These review actions are intentionally disabled until persistence is wired. Use Assignments, Support, or
+                  student notes for operational follow-up.
+                </p>
               </div>
             </div>
           )}

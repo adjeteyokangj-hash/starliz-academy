@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
@@ -528,7 +529,7 @@ export default function ReadingJourneyPage() {
   const startReadingSession = useCallback(async (currentProfile: ChildProfile, preferAssigned = false, retryIds: string[] = []): Promise<void> => {
     const reportAssignmentFailure = async (reason: string, details?: Record<string, unknown>) => {
       try {
-        await fetch("/api/student/assignment-load-failure", {
+        await fetchWithRefreshRetry("/api/student/assignment-load-failure", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -1275,7 +1276,7 @@ export default function ReadingJourneyPage() {
     if (!daytimePeriodId) return;
     setContinuingDaytime(true);
     if (assignedAssignmentId) {
-      await fetch(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
+      await fetchWithRefreshRetry(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "content-type": "application/json" },
@@ -1665,7 +1666,7 @@ export default function ReadingJourneyPage() {
                             setContinuingDaytime(true);
                             void (async () => {
                               if (assignedAssignmentId) {
-                                await fetch(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
+                                await fetchWithRefreshRetry(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
                                   method: "PATCH",
                                   credentials: "include",
                                   headers: { "content-type": "application/json" },

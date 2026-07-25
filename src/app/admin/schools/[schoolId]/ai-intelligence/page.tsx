@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AdminSecondaryModuleBanner from "@/components/admin/schools/AdminSecondaryModuleBanner";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
 import SchoolAiIntelligenceInsights from "@/components/admin/schools/SchoolAiIntelligenceInsights";
 
@@ -16,6 +17,7 @@ export default async function SchoolAiIntelligencePage({ params }: PageProps) {
       title="AI Intelligence"
       subtitle="Prediction signals, risk forecasting, and narrative recommendations."
     >
+      <AdminSecondaryModuleBanner schoolId={schoolId} />
       <SchoolAiIntelligenceInsights schoolId={schoolId} />
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-300">

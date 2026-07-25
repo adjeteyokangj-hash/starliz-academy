@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AdminSecondaryModuleBanner from "@/components/admin/schools/AdminSecondaryModuleBanner";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
 import SchoolInterventionInsights from "@/components/admin/schools/SchoolInterventionInsights";
 
@@ -16,6 +17,7 @@ export default async function SchoolInterventionsPage({ params }: PageProps) {
       title="Intervention Command"
       subtitle="Recovery plans, active support pathways, and escalation outcomes."
     >
+      <AdminSecondaryModuleBanner schoolId={schoolId} />
       <SchoolInterventionInsights schoolId={schoolId} />
 
       <div className="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/60 p-4 text-xs text-slate-300">

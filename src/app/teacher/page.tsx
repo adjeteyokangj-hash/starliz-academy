@@ -1,10 +1,14 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { readSessionFromCookie } from "@/lib/auth";
 import { getSchoolTeacherContext, canDo } from "@/lib/schools/rbac";
 import { getSchoolSeatUsage } from "@/lib/schools/licensing";
 import { getAccessibleClassrooms, getAccessibleStudents, getSchoolWeakAreas } from "@/lib/schools/scoping";
 import { getTeacherSupportDashboard } from "@/lib/schools/teacher-support-dashboard";
+import { resolveTutorShiftEligibility } from "@/lib/schools/tutor-support-shifts";
+import { isSchoolAdminRole, PORTAL_MODE_COOKIE } from "@/lib/schools/portal-routing";
+import { prisma } from "@/lib/db";
 
 export default async function TeacherDashboardPage() {
   const session = await readSessionFromCookie();
@@ -13,7 +17,11 @@ export default async function TeacherDashboardPage() {
   const ctx = await getSchoolTeacherContext(session.userId);
   if (!ctx) redirect("/dashboard");
 
-  const [seatUsage, classrooms, students, weakAreas, support] = await Promise.all([
+  const supportOnlyLead =
+    ctx.role === "support"
+    || (canDo(ctx.role, "viewHumanSupport") && !canDo(ctx.role, "issueAssignment"));
+
+  const [seatUsage, classrooms, students, weakAreas, support, presence] = await Promise.all([
     canDo(ctx.role, "viewBilling") ? getSchoolSeatUsage(ctx.schoolId) : null,
     getAccessibleClassrooms(ctx.schoolId, ctx.schoolTeacherId, ctx.role),
     getAccessibleStudents(ctx.schoolId, ctx.schoolTeacherId, ctx.role),
@@ -26,9 +34,31 @@ export default async function TeacherDashboardPage() {
           role: ctx.role,
         })
       : null,
+    prisma.tutorPresence.findUnique({
+      where: { schoolTeacherId: ctx.schoolTeacherId },
+      select: { status: true, lastHeartbeatAt: true, activeSessionId: true },
+    }),
   ]);
 
+  const shiftEligibility =
+    supportOnlyLead || canDo(ctx.role, "viewHumanSupport")
+      ? await resolveTutorShiftEligibility({
+          schoolId: ctx.schoolId,
+          schoolTeacherId: ctx.schoolTeacherId,
+          presenceStatus: presence?.status ?? "offline",
+          lastHeartbeatAt: presence?.lastHeartbeatAt ?? null,
+          hasActiveSupportSession: Boolean(presence?.activeSessionId),
+        })
+      : null;
+
+  const portalMode = (await cookies()).get(PORTAL_MODE_COOKIE)?.value;
+  const schoolAdminLinkLabel =
+    portalMode === "teaching" && isSchoolAdminRole(ctx.role)
+      ? "Return to School Admin"
+      : "Switch to School Admin";
+
   const criticalWeakAreas = weakAreas?.filter((w) => w.accuracy < 40) ?? [];
+  const showTeachingClassrooms = canDo(ctx.role, "viewClassrooms") && !supportOnlyLead && classrooms.length > 0;
 
   const roleLabel: Record<string, string> = {
     owner: "School Owner",
@@ -42,31 +72,71 @@ export default async function TeacherDashboardPage() {
   return (
     <div className="p-6 lg:p-10 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">{ctx.schoolName}</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          {roleLabel[ctx.role] ?? ctx.role} Dashboard
-        </p>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">{ctx.schoolName}</h1>
+          <p className="mt-1 text-sm text-foreground/60">
+            {roleLabel[ctx.role] ?? ctx.role} Dashboard
+          </p>
+        </div>
+        {isSchoolAdminRole(ctx.role) ? (
+          <Link
+            href="/api/portal/mode?mode=school_admin"
+            className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted/40"
+          >
+            {schoolAdminLinkLabel}
+          </Link>
+        ) : null}
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-8">
-        <StatCard label="Classrooms" value={classrooms.length} href="/teacher/classrooms" />
-        <StatCard label="Students" value={students.length} href="/teacher/students" />
-        <StatCard
-          label="Weak Areas"
-          value={weakAreas?.length ?? "–"}
-          href="/teacher/progress"
-          alert={criticalWeakAreas.length > 0}
-        />
-        {seatUsage?.licence && (
+      {/* Stats row — classroom teachers */}
+      {!supportOnlyLead ? (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-8">
+          <StatCard label="Classrooms" value={classrooms.length} href="/teacher/classrooms" />
+          <StatCard label="Students" value={students.length} href="/teacher/students" />
           <StatCard
-            label="Seats"
-            value={`${seatUsage.seatsUsed} / ${seatUsage.seatsAllowed === 0 ? "∞" : seatUsage.seatsAllowed}`}
-            href="/teacher/settings"
+            label="Weak Areas"
+            value={weakAreas?.length ?? "–"}
+            href="/teacher/progress"
+            alert={criticalWeakAreas.length > 0}
           />
-        )}
-      </div>
+          {seatUsage?.licence && (
+            <StatCard
+              label="Seats"
+              value={`${seatUsage.seatsUsed} / ${seatUsage.seatsAllowed === 0 ? "∞" : seatUsage.seatsAllowed}`}
+              href="/teacher/settings"
+            />
+          )}
+        </div>
+      ) : null}
+
+      {shiftEligibility ? (
+        <section className="mb-8 rounded-2xl border border-sky-200 bg-sky-50/70 p-5">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-sky-700">Tutor shift eligibility</p>
+          <h2 className="mt-1 text-lg font-semibold text-foreground">
+            {shiftEligibility.derivedState.replaceAll("-", " ")}
+          </h2>
+          <p className="mt-1 text-sm text-foreground/70">{shiftEligibility.reason}</p>
+          <p className="mt-2 text-sm text-foreground/70">
+            Can go available:{" "}
+            <span className="font-semibold">{shiftEligibility.canBecomeAvailable ? "Yes" : "No"}</span>
+            {" · "}
+            Can accept students:{" "}
+            <span className="font-semibold">{shiftEligibility.canAcceptStudent ? "Yes" : "No"}</span>
+          </p>
+          {shiftEligibility.nextShift ? (
+            <p className="mt-2 text-sm text-foreground/60">
+              Next shift: {new Date(shiftEligibility.nextShift.startsAt).toLocaleString()} –{" "}
+              {new Date(shiftEligibility.nextShift.endsAt).toLocaleString()}
+            </p>
+          ) : null}
+          {shiftEligibility.graceActive && shiftEligibility.graceEndsAt ? (
+            <p className="mt-2 text-sm font-semibold text-amber-800">
+              Grace until {new Date(shiftEligibility.graceEndsAt).toLocaleString()}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {support ? (
         <section className="mb-8 rounded-2xl border border-violet-200 bg-violet-50/70 p-5">
@@ -96,26 +166,57 @@ export default async function TeacherDashboardPage() {
             </div>
           </div>
           {support.activeSession ? (
-            <p className="mt-3 text-sm font-semibold text-violet-950">
-              Active session with {support.activeSession.studentName}
-              {support.activeSession.liveHref ? (
-                <>
-                  {" · "}
-                  <Link href={support.activeSession.liveHref} className="underline">
-                    Continue in Live Classroom
+            <div className="mt-4 rounded-xl border border-violet-200 bg-white/80 p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-violet-700">Active assignment</p>
+              <p className="mt-1 text-base font-semibold text-foreground">{support.activeSession.studentName}</p>
+              <dl className="mt-3 grid gap-2 text-sm text-foreground/75 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-foreground/50">Started</dt>
+                  <dd>{new Date(support.activeSession.startedAt).toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-foreground/50">Planned end</dt>
+                  <dd>
+                    {support.activeSession.plannedEndsAt
+                      ? new Date(support.activeSession.plannedEndsAt).toLocaleString()
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-foreground/50">Budget</dt>
+                  <dd>{support.activeSession.budgetMinutes} minutes</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-foreground/50">Session</dt>
+                  <dd className="font-mono text-xs">{support.activeSession.sessionId.slice(0, 10)}…</dd>
+                </div>
+              </dl>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {support.activeSession.liveHref ? (
+                  <Link
+                    href={support.activeSession.liveHref}
+                    className="rounded-lg bg-violet-700 px-3 py-1.5 text-sm font-bold text-white hover:bg-violet-600"
+                  >
+                    Continue session
                   </Link>
-                </>
-              ) : null}
-            </p>
+                ) : null}
+                <Link
+                  href="/teacher/support"
+                  className="rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-sm font-semibold text-violet-900 hover:bg-violet-50"
+                >
+                  Outcome controls
+                </Link>
+              </div>
+            </div>
           ) : null}
         </section>
       ) : null}
 
       {/* Classrooms overview */}
-      {canDo(ctx.role, "viewClassrooms") && classrooms.length > 0 && (
+      {showTeachingClassrooms && (
         <section className="mb-8">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-foreground">Your Classrooms</h2>
+            <h2 className="text-lg font-semibold text-foreground">My teaching classrooms</h2>
             <Link href="/teacher/classrooms" className="text-sm text-primary hover:underline">
               View all →
             </Link>

@@ -9,7 +9,7 @@ const PARENT_UNLOCK_COOKIE = "starliz_parent_unlock";
 const CHILD_SELECTION_COOKIE = "starliz_child_selection";
 const ONE_WEEK = 60 * 60 * 24 * 7;
 const FIFTEEN_MINUTES = 60 * 15;
-const PARENT_UNLOCK_SECONDS = 60 * 10;
+const PARENT_UNLOCK_SECONDS = 60 * 30;
 const CHILD_SELECTION_SECONDS = 60 * 60 * 12;
 
 function getJwtSecret(): Uint8Array {

@@ -1,65 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { refreshAuthSession } from "@/lib/refresh_client";
-
-const KEEP_ALIVE_MS = 2 * 60 * 1000;
+import SessionKeepAlive from "@/components/auth/SessionKeepAlive";
 
 export default function ParentSessionKeepAlive() {
-  const runningRef = useRef(false);
-  const pinRefreshDisabledRef = useRef(false);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function tick() {
-      if (!mounted || runningRef.current) return;
-      runningRef.current = true;
-      try {
-        const refreshed = await refreshAuthSession({ retryOnce: true });
-        if (!refreshed.ok) {
-          return;
-        }
-
-        if (!pinRefreshDisabledRef.current) {
-          const pinResponse = await fetch("/api/pin/refresh", {
-            method: "POST",
-            credentials: "include",
-            cache: "no-store",
-          });
-          if (pinResponse.status === 401 || pinResponse.status === 403) {
-            pinRefreshDisabledRef.current = true;
-          }
-        }
-      } catch {
-        // Keep-alive is best-effort and should not interrupt the parent UI.
-      } finally {
-        runningRef.current = false;
-      }
-    }
-
-    // Let first-page data finish before competing for Next.js compile slots in dev.
-    const startId = window.setTimeout(() => {
-      void tick();
-    }, 15000);
-    const intervalId = window.setInterval(() => {
-      void tick();
-    }, KEEP_ALIVE_MS);
-
-    function onVisibilityChange() {
-      if (document.visibilityState === "visible") {
-        void tick();
-      }
-    }
-
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      mounted = false;
-      window.clearTimeout(startId);
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, []);
-
-  return null;
+  return <SessionKeepAlive loginPath="/auth/login" refreshPin />;
 }

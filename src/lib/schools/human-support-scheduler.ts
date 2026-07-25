@@ -12,6 +12,11 @@ import {
   getOrCreateSupportPolicy,
   markTutorAvailableAfterSession,
 } from "@/lib/schools/human-support-presence";
+import { resolveTutorShiftEligibility } from "@/lib/schools/tutor-support-shifts";
+import {
+  countShiftEligibleTutorCapacity,
+  resolveEscalationQueueDecision,
+} from "@/lib/schools/support-eligibility";
 import {
   buildSupportContextSnapshot,
   emptySessionNotes,
@@ -40,11 +45,14 @@ export async function syncEligibleStudentQueue(input: {
 }) {
   const now = input.now ?? new Date();
   const policy = await getOrCreateSupportPolicy(input.schoolId);
-  const counts = await countOnlineTutors({
-    schoolId: input.schoolId,
-    staleAfterSec: policy.staleAfterSec,
-    now,
-  });
+  const [counts, capacity] = await Promise.all([
+    countOnlineTutors({
+      schoolId: input.schoolId,
+      staleAfterSec: policy.staleAfterSec,
+      now,
+    }),
+    countShiftEligibleTutorCapacity({ schoolId: input.schoolId, now }),
+  ]);
 
   if (counts.onlineTutorCount === 0) {
     const paused = await prisma.humanSupportQueueEntry.updateMany({
@@ -141,11 +149,41 @@ export async function syncEligibleStudentQueue(input: {
     });
     if (existingOpen) continue;
 
-    if (!shouldEnqueueStudent({
-      humanTutorEligible: true,
-      onlineTutorCount: counts.onlineTutorCount,
-      availableTutorCount: counts.availableTutorCount,
-    })) {
+    const queueDecision = resolveEscalationQueueDecision({
+      student: {
+        humanTutorEligible: student.humanTutorEligible,
+        continueAi: !student.humanTutorEligible,
+        reason: student.humanTutorEligible
+          ? "Student eligible for human support."
+          : "Student not human-tutor eligible.",
+      },
+      capacity,
+    });
+    if (
+      !shouldEnqueueStudent({
+        humanTutorEligible: student.humanTutorEligible,
+        acceptReadyTutorCount: capacity.acceptReadyTutorCount,
+      })
+      || !queueDecision.shouldEnqueue
+    ) {
+      if (student.humanTutorEligible && queueDecision.unmetEscalation) {
+        await writeSchoolAuditLog({
+          schoolId: input.schoolId,
+          actorType: "system",
+          source: "api",
+          action: "human_support_eligible",
+          entityType: "student",
+          entityId: student.childId,
+          metadata: {
+            periodId: input.periodId,
+            queued: false,
+            continueAi: true,
+            unmetEscalation: true,
+            reason: queueDecision.reason,
+            acceptReadyTutorCount: capacity.acceptReadyTutorCount,
+          },
+        });
+      }
       continue;
     }
 
@@ -258,6 +296,22 @@ export async function assignHumanSupportStudent(input: {
       ok: false as const,
       status: 409,
       error: "You already have an active human support session.",
+    };
+  }
+
+  const shiftEligibility = await resolveTutorShiftEligibility({
+    schoolId: input.schoolId,
+    schoolTeacherId: input.schoolTeacherId,
+    presenceStatus: presence.status,
+    lastHeartbeatAt: presence.lastHeartbeatAt,
+    hasActiveSupportSession: Boolean(presence.activeSessionId),
+    now,
+  });
+  if (!shiftEligibility.canAcceptStudent) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: shiftEligibility.reason || "You can only accept students while on an active published support shift.",
     };
   }
 
@@ -560,6 +614,25 @@ export async function acceptHumanSupportAssignment(input: {
       ok: false as const,
       status: 409,
       error: "No tutors online — student remains on AI-only support.",
+    };
+  }
+
+  const prePresence = await prisma.tutorPresence.findUnique({
+    where: { schoolTeacherId: input.schoolTeacherId },
+  });
+  const shiftEligibility = await resolveTutorShiftEligibility({
+    schoolId: input.schoolId,
+    schoolTeacherId: input.schoolTeacherId,
+    presenceStatus: prePresence?.status ?? "offline",
+    lastHeartbeatAt: prePresence?.lastHeartbeatAt ?? null,
+    hasActiveSupportSession: Boolean(prePresence?.activeSessionId),
+    now,
+  });
+  if (!shiftEligibility.canAcceptStudent) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: shiftEligibility.reason || "You can only accept students while on an active published support shift.",
     };
   }
 
@@ -1030,29 +1103,54 @@ export async function endHumanSupportSession(input: {
     });
   }
 
-  // Escalation: preserve snapshot+notes and create a new waiting entry linked to prior session.
+  // Escalation: only re-queue when on-shift tutor capacity exists; otherwise continue AI.
   let escalatedQueueEntryId: string | null = null;
   if (input.outcome === "escalated" && session.periodId) {
-    const queue = await prisma.humanSupportQueueEntry.create({
-      data: {
-        schoolId: input.schoolId,
-        childId: session.childId,
-        classroomId: meta.supportContextSnapshot?.classroomId ?? null,
-        periodId: session.periodId,
-        assignmentId: meta.supportContextSnapshot?.assignmentId ?? null,
-        questionKey: meta.supportContextSnapshot?.questionKey ?? null,
-        status: "waiting",
-        priority: 10,
-        budgetMinutes: session.budgetMinutes,
-        expiresAt: session.plannedEndsAt ?? new Date(now.getTime() + 15 * 60_000),
-        metadataJson: JSON.stringify({
-          priorSessionId: session.id,
-          escalatedAt: now.toISOString(),
-          preservedSnapshot: true,
-        }),
-      },
+    const capacity = await countShiftEligibleTutorCapacity({
+      schoolId: input.schoolId,
+      now,
     });
-    escalatedQueueEntryId = queue.id;
+    if (capacity.hasEligibleCapacity) {
+      const queue = await prisma.humanSupportQueueEntry.create({
+        data: {
+          schoolId: input.schoolId,
+          childId: session.childId,
+          classroomId: meta.supportContextSnapshot?.classroomId ?? null,
+          periodId: session.periodId,
+          assignmentId: meta.supportContextSnapshot?.assignmentId ?? null,
+          questionKey: meta.supportContextSnapshot?.questionKey ?? null,
+          status: "waiting",
+          priority: 10,
+          budgetMinutes: session.budgetMinutes,
+          expiresAt: session.plannedEndsAt ?? new Date(now.getTime() + 15 * 60_000),
+          metadataJson: JSON.stringify({
+            priorSessionId: session.id,
+            escalatedAt: now.toISOString(),
+            preservedSnapshot: true,
+          }),
+        },
+      });
+      escalatedQueueEntryId = queue.id;
+    } else {
+      await writeSchoolAuditLog({
+        schoolId: input.schoolId,
+        actorUserId: input.actorUserId,
+        actorSchoolTeacherId: input.schoolTeacherId,
+        actorType: "school_staff",
+        source: "api",
+        action: "human_support_eligible",
+        entityType: "student",
+        entityId: session.childId,
+        metadata: {
+          periodId: session.periodId,
+          priorSessionId: session.id,
+          queued: false,
+          continueAi: true,
+          unmetEscalation: true,
+          acceptReadyTutorCount: capacity.acceptReadyTutorCount,
+        },
+      });
+    }
   }
 
   // Auto-ASSIGN (not accept) next waiting student to this freed tutor.

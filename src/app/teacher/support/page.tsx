@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { TeacherSupportDashboard } from "@/lib/schools/teacher-support-dashboard";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 function presenceLabel(status: string): string {
   switch (status) {
@@ -41,7 +42,7 @@ export default function TeacherSupportPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/teacher/support", {
+      const response = await fetchWithRefreshRetry("/api/teacher/support", {
         credentials: "include",
         cache: "no-store",
       });
@@ -73,7 +74,7 @@ export default function TeacherSupportPage() {
     setBusyId(queueEntryId);
     setMessage(null);
     try {
-      const response = await fetch("/api/teacher/support/release", {
+      const response = await fetchWithRefreshRetry("/api/teacher/support/release", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

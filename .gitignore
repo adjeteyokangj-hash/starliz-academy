@@ -50,3 +50,13 @@ next-env.d.ts
 # local workspace artifacts
 .eslintcache
 .vscode/mcp.json
+
+# Generated launch-verification evidence (regenerate via npm scripts)
+/artifacts/uat/**
+!/artifacts/uat/.gitkeep
+/artifacts/screenshots/**
+!/artifacts/screenshots/.gitkeep
+/artifacts/generated/**
+!/artifacts/generated/.gitkeep
+scripts/.uat-*.json
+scripts/.verify-*-evidence.json

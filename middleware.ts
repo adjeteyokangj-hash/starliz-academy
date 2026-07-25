@@ -22,6 +22,7 @@ const PUBLIC_PATHS = [
   "/forgot-password",
   "/login",
   "/pricing",
+  "/short-learning",
   "/reset-password",
   "/signup",
   "/policies",
@@ -29,6 +30,12 @@ const PUBLIC_PATHS = [
   "/auth/login",
   "/auth/signup",
   "/privacy",
+  "/faq",
+  "/cookies",
+  "/safeguarding-policy",
+  "/data-retention",
+  "/ai-use",
+  "/knowledge-centre",
   "/offline",
   "/manifest.webmanifest",
   "/sw.js",
@@ -115,6 +122,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/_next")
     || pathname === "/api/branding"
     || pathname.startsWith("/api/auth")
+    || pathname.startsWith("/api/cron")
     || pathname === "/api/billing/stripe/webhook"
     || pathname === "/api/webhooks/stripe-school"
     || pathname.startsWith("/icons")
@@ -136,7 +144,15 @@ export async function middleware(request: NextRequest) {
   const session = await getSessionPayload(request);
   const authenticated = session !== null;
   const hasRefreshToken = Boolean(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
-  const shouldAttemptRefresh = hasRefreshToken && request.method === "GET" && isDocumentNavigation && !isPrefetch;
+  // Soft App Router navigations (RSC) often omit sec-fetch-mode=navigate; still refresh
+  // when a refresh cookie exists so active users are not bounced to login.
+  const isSoftNavigation = request.headers.has("rsc") || request.headers.has("next-router-state-tree");
+  const shouldAttemptRefresh =
+    hasRefreshToken
+    && request.method === "GET"
+    && !isPrefetch
+    && !pathname.startsWith("/api/")
+    && (isDocumentNavigation || isSoftNavigation);
   const adminLoginTarget = request.nextUrl.searchParams.get("next")?.startsWith("/admin") ?? false;
   const shouldClearParentUnlock = Boolean(
     authenticated
@@ -214,6 +230,17 @@ export async function middleware(request: NextRequest) {
     return finalize(NextResponse.redirect(new URL(launchScopeRedirect, request.url)));
   }
 
+  if (authenticated && session.role === "teacher") {
+    if (
+      pathname === "/profiles"
+      || pathname === "/dashboard"
+      || pathname.startsWith("/student")
+      || pathname.startsWith("/parent")
+    ) {
+      return finalize(NextResponse.redirect(new URL("/teacher", request.url)));
+    }
+  }
+
   if (authenticated && session.role === "student") {
     if (pathname === "/my-profile") {
       return finalize(NextResponse.redirect(new URL("/student/profile", request.url)));
@@ -246,9 +273,17 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Teacher portal: must be authenticated (role check happens in each page/layout)
-  if (pathname.startsWith("/teacher") && !authenticated) {
+  // Teacher / school-admin portal: must be authenticated (role check happens in each page/layout)
+  if ((pathname.startsWith("/teacher") || pathname.startsWith("/school-admin")) && !authenticated) {
     return finalize(NextResponse.redirect(new URL(`/auth/login?next=${encodeURIComponent(pathname)}`, request.url)));
+  }
+
+  if (authenticated && pathname.startsWith("/school-admin") && session.role !== "teacher" && session.role !== "admin") {
+    const fallback =
+      session.role === "parent" ? "/parent/profiles"
+      : session.role === "student" ? "/student/dashboard"
+      : "/";
+    return finalize(NextResponse.redirect(new URL(fallback, request.url)));
   }
 
   const parentProtectedRoute =
@@ -257,7 +292,10 @@ export async function middleware(request: NextRequest) {
 
   if (authenticated && parentProtectedRoute) {
     if (session.role !== "parent") {
-      const fallback = session.role === "admin" ? "/admin" : "/student/dashboard";
+      const fallback =
+        session.role === "admin" ? "/admin"
+        : session.role === "teacher" ? "/teacher"
+        : "/student/dashboard";
       return finalize(NextResponse.redirect(new URL(fallback, request.url)));
     }
 

@@ -1385,7 +1385,7 @@ export default function StudentDashboardPage() {
             {schoolEnrolment ? (
               <section className="mb-6 overflow-hidden rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-5 shadow-sm">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-700">
-                  {schoolEnrolment.schoolName}
+                  Day School · {schoolEnrolment.schoolName}
                 </p>
                 <h2 className="mt-2 text-2xl font-black text-slate-900">
                   {greetingForHour(new Date().getHours())}
@@ -1450,7 +1450,13 @@ export default function StudentDashboardPage() {
                     href="/student/today"
                     className="rounded-xl border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-800 hover:bg-sky-100"
                   >
-                    Today&apos;s timetable
+                    Day School timetable
+                  </Link>
+                  <Link
+                    href="/student/short-learning"
+                    className="rounded-xl border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-900 hover:bg-violet-100"
+                  >
+                    Short Learning
                   </Link>
                   <Link
                     href="/student/attendance"
@@ -1492,6 +1498,20 @@ export default function StudentDashboardPage() {
                 </div>
               </section>
             ) : null}
+
+            <section className="mb-6 rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-5 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Short Learning · AI-led</p>
+              <h2 className="mt-2 text-lg font-black text-slate-900">After-hours sessions</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Parent-booked AI coaching outside Day School — not your classroom timetable or attendance.
+              </p>
+              <Link
+                href="/student/short-learning"
+                className="mt-4 inline-flex rounded-2xl bg-violet-700 px-4 py-2.5 text-sm font-black text-white hover:bg-violet-600"
+              >
+                View Short Learning sessions
+              </Link>
+            </section>
 
             {dashboardExperience ? (
               <div className="mb-6">

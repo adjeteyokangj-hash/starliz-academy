@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AdminSecondaryModuleBanner from "@/components/admin/schools/AdminSecondaryModuleBanner";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
 import SchoolProfileEditor from "@/components/admin/schools/SchoolProfileEditor";
 
@@ -16,6 +17,7 @@ export default async function SchoolProfilePage({ params }: PageProps) {
       title="School Profile & Settings"
       subtitle="School-level profile, status, and settings for operations workflows."
     >
+      <AdminSecondaryModuleBanner schoolId={schoolId} />
       <div className="grid gap-3 lg:grid-cols-2">
         <SchoolProfileEditor schoolId={schoolId} />
         <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">

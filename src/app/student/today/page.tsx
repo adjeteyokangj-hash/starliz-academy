@@ -18,6 +18,7 @@ import {
   resolvePeriodState,
 } from "@/lib/schools/school-day-period";
 import { isPlayableDaytimeLessonType } from "@/lib/schools/start-daytime-period";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 type BoardPeriod = {
   id: string;
@@ -113,11 +114,11 @@ export default function StudentTodayPage() {
       setError(null);
       try {
         const [timetableRes, summaryRes] = await Promise.all([
-          fetch("/api/student/daytime-timetable", {
+          fetchWithRefreshRetry("/api/student/daytime-timetable", {
             credentials: "include",
             cache: "no-store",
           }),
-          fetch("/api/student/dashboard-summary", {
+          fetchWithRefreshRetry("/api/student/dashboard-summary", {
             credentials: "include",
             cache: "no-store",
           }),
@@ -152,7 +153,7 @@ export default function StudentTodayPage() {
     setStartingId(periodId);
     setStartError(null);
     try {
-      const response = await fetch(`/api/student/daytime-period/${encodeURIComponent(periodId)}/start`, {
+      const response = await fetchWithRefreshRetry(`/api/student/daytime-period/${encodeURIComponent(periodId)}/start`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -201,7 +202,7 @@ export default function StudentTodayPage() {
       <Navbar />
       <main className="mx-auto max-w-2xl space-y-6 px-4 py-6">
         <header className="space-y-3">
-          <p className="text-xs uppercase tracking-[0.14em] text-foreground/45">My school day</p>
+          <p className="text-xs uppercase tracking-[0.14em] text-foreground/45">Day School · My school day</p>
           <div>
             <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
               {greeting}

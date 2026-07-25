@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AdminSecondaryModuleBanner from "@/components/admin/schools/AdminSecondaryModuleBanner";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
 
 type PageProps = {
@@ -15,6 +16,7 @@ export default async function SchoolRolesPage({ params }: PageProps) {
       title="Role & Permission Management"
       subtitle="Role matrix, permission conflict checks, and governance access controls."
     >
+      <AdminSecondaryModuleBanner schoolId={schoolId} />
       <div className="grid gap-3 lg:grid-cols-2">
         <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
           <h2 className="text-sm font-semibold text-white">Role Matrix</h2>

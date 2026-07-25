@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import type { ChildProfile } from "@/lib/store";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import { VOICE_STYLE_OPTIONS } from "@/lib/voice_options";
 
 type AuthMePayload = {
@@ -84,7 +85,7 @@ export default function StudentProfile() {
 
     const load = async () => {
       try {
-        const authRes = await fetch("/api/auth/me", { credentials: "include" });
+        const authRes = await fetchWithRefreshRetry("/api/auth/me", { credentials: "include" });
         if (!authRes.ok) {
           router.replace("/login");
           return;
@@ -96,7 +97,7 @@ export default function StudentProfile() {
           return;
         }
 
-        const childRes = await fetch("/api/children/active", { credentials: "include" });
+        const childRes = await fetchWithRefreshRetry("/api/children/active", { credentials: "include" });
         if (!childRes.ok) {
           throw new Error("Unable to load student profile.");
         }
@@ -125,7 +126,7 @@ export default function StudentProfile() {
           setPreferences(initialPreferences);
         }
 
-        const badgesRes = await fetch(`/api/shop/owned?childId=${encodeURIComponent(childPayload.child.id)}`, { credentials: "include" });
+        const badgesRes = await fetchWithRefreshRetry(`/api/shop/owned?childId=${encodeURIComponent(childPayload.child.id)}`, { credentials: "include" });
         if (badgesRes.ok) {
           const badgesPayload = (await badgesRes.json()) as ShopOwnedPayload;
           if (active) {

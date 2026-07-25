@@ -37,7 +37,10 @@ export function resolveLaunchScopeRedirect(input: {
 
   const pathname = input.pathname;
   const role = input.role ?? null;
-  const schoolPortalRoute = pathname.startsWith("/teacher") || pathname.startsWith("/school");
+  const schoolPortalRoute =
+    pathname.startsWith("/teacher")
+    || pathname.startsWith("/school")
+    || pathname.startsWith("/school-admin");
 
   if (schoolPortalRoute && !isSchoolPortalLaunchEnabled()) {
     if (!input.authenticated) return "/auth/login";

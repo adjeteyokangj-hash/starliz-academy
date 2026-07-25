@@ -1,0 +1,40 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "incremental": false,
+    "plugins": []
+  },
+  "include": [
+    "src/lib/policies/**/*.ts",
+    "src/lib/knowledge/**/*.ts",
+    "src/lib/cron-auth.ts",
+    "src/lib/schools/short-learning-bookings.ts",
+    "src/lib/schools/short-learning-coverage.ts",
+    "src/lib/schools/short-learning-notifications.ts",
+    "src/lib/schools/tutor-support-shifts.ts",
+    "src/lib/schools/support-eligibility.ts",
+    "src/lib/schools/portal-routing.ts",
+    "src/lib/schools/admin-short-learning-oversight.ts",
+    "src/lib/schools/human-support-timing.ts",
+    "src/lib/schools/human-support-presence.ts",
+    "src/lib/schools/human-support-scheduler.ts",
+    "src/app/api/cron/short-learning-reminders/route.ts",
+    "src/app/api/parent/short-learning/**/*.ts",
+    "src/app/api/school-admin/short-learning/**/*.ts",
+    "src/app/api/admin/short-learning/**/*.ts",
+    "src/app/api/portal/mode/route.ts",
+    "tests/phase6_policies.test.ts",
+    "tests/portal_routing.test.ts",
+    "tests/short_learning_access.test.ts",
+    "tests/short_learning_booking_rules.test.ts",
+    "tests/short_learning_cron.test.ts",
+    "tests/support_eligibility.test.ts",
+    "tests/tutor_shift_eligibility.test.ts",
+    "tests/human_support_timing.test.ts",
+    "scripts/uat/local-fixtures.ts",
+    "scripts/verify-short-learning-cron.ts"
+  ],
+  "exclude": ["node_modules", ".next"]
+}

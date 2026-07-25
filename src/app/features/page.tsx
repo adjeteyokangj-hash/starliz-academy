@@ -1,5 +1,6 @@
 import Link from "next/link"
 import PublicShell from "@/components/layout/PublicShell"
+import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings"
 
 const featureList = [
   {
@@ -42,6 +43,11 @@ const featureList = [
     title: "Certificates & Achievements",
     desc: "Celebrate progress with certificates, milestones and visible achievement tracking for children and parents.",
   },
+  {
+    icon: "🌙",
+    title: "Short Learning (AI-led)",
+    desc: "Parent-booked after-hours sessions (90/120 min). AI teaching is guaranteed; human tutors join only when on shift and available.",
+  },
 ]
 
 export default function Features() {
@@ -67,6 +73,10 @@ export default function Features() {
         </div>
 
         <div className="mt-16 text-center">
+          <p className="mx-auto mb-6 max-w-2xl text-sm text-violet-300/90">{SHORT_LEARNING_PROMISE}</p>
+          <Link href="/short-learning" className="mr-4 inline-flex rounded-xl border border-violet-700 px-6 py-3 font-bold text-violet-200 hover:bg-violet-950">
+            Short Learning explainer
+          </Link>
           <Link href="/pricing" className="inline-flex rounded-xl bg-blue-600 px-8 py-4 font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-500">
             View pricing and platform options
           </Link>

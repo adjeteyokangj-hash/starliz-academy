@@ -21,8 +21,7 @@ test("no online tutors → ai-only and no queue", () => {
   assert.equal(
     shouldEnqueueStudent({
       humanTutorEligible: true,
-      onlineTutorCount: 0,
-      availableTutorCount: 0,
+      acceptReadyTutorCount: 0,
     }),
     false,
   );
@@ -36,7 +35,7 @@ test("no online tutors → ai-only and no queue", () => {
   );
 });
 
-test("eligible + available tutor → assign immediately, do not queue", () => {
+test("eligible + accept-ready tutor → queue when policy allows assignment", () => {
   assert.equal(
     canAssignImmediately({ humanTutorEligible: true, availableTutorCount: 2 }),
     true,
@@ -44,21 +43,19 @@ test("eligible + available tutor → assign immediately, do not queue", () => {
   assert.equal(
     shouldEnqueueStudent({
       humanTutorEligible: true,
-      onlineTutorCount: 2,
-      availableTutorCount: 1,
+      acceptReadyTutorCount: 1,
     }),
-    false,
+    true,
   );
 });
 
-test("eligible + tutors busy → queue open", () => {
+test("eligible + tutors busy/off-shift → continue AI, no queue", () => {
   assert.equal(
     shouldEnqueueStudent({
       humanTutorEligible: true,
-      onlineTutorCount: 2,
-      availableTutorCount: 0,
+      acceptReadyTutorCount: 0,
     }),
-    true,
+    false,
   );
   const summary = deriveHumanSupportSummary({
     onlineTutorCount: 2,

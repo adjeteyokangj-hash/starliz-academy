@@ -1,6 +1,7 @@
 import Link from "next/link"
 import PublicPricingSection from "@/components/pricing/PublicPricingSection"
 import PublicShell from "@/components/layout/PublicShell"
+import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings"
 
 export default function PricingPage() {
   return (
@@ -17,6 +18,10 @@ export default function PricingPage() {
           <p className="mx-auto mt-5 max-w-2xl text-lg text-slate-300">
             Flexible options for families, tutors and schools that need child learning, parent controls,
             billing, rewards, reports, support messaging, safeguarding and organisation support in one place.
+          </p>
+          <p className="mx-auto mt-4 max-w-2xl text-sm text-violet-300/90">
+            Short Learning (after-hours, AI-led) is included with eligible subscriptions —{" "}
+            {SHORT_LEARNING_PROMISE.toLowerCase()} No cancellation fees on bookings.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link href="/signup" className="rounded-xl bg-blue-600 px-7 py-3 font-bold transition hover:bg-blue-500">

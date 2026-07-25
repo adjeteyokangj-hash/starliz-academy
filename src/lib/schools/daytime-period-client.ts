@@ -1,3 +1,5 @@
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
+
 export type ContinueDaytimePeriodResponse = {
   ok: true;
   href: string;
@@ -15,7 +17,7 @@ export async function continueDaytimePeriodFromClient(input: {
   dayLessonId: string;
   completedContentId?: string | null;
 }): Promise<ContinueDaytimePeriodResponse> {
-  const response = await fetch(
+  const response = await fetchWithRefreshRetry(
     `/api/student/daytime-period/${encodeURIComponent(input.dayLessonId)}/continue`,
     {
       method: "POST",

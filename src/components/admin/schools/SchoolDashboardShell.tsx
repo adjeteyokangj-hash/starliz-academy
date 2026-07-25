@@ -27,6 +27,7 @@ type TabKey =
   | "parent-onboarding"
   | "safeguarding"
   | "support"
+  | "short-learning"
   | "communications"
   | "audit"
   | "readiness"
@@ -88,6 +89,9 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
       { key: "attendance-activity", label: "Attendance Intelligence", href: `/admin/schools/${schoolId}/attendance-activity` },
       { key: "safeguarding", label: "Safeguarding", href: `/admin/schools/${schoolId}/safeguarding` },
       { key: "support", label: "Support", href: `/admin/schools/${schoolId}/support` },
+      { key: "short-learning", label: "Short Learning", href: `/admin/schools/${schoolId}/short-learning` },
+      { key: "audit", label: "Audit", href: `/admin/schools/${schoolId}/audit` },
+      { key: "communications", label: "Communications", href: `/admin/schools/${schoolId}/communications` },
       { key: "governance", label: "Governance", href: `/admin/schools/${schoolId}/governance` },
       { key: "compliance", label: "Compliance", href: `/admin/schools/${schoolId}/compliance` },
       { key: "billing-licence", label: "Billing / Licence", href: `/admin/schools/${schoolId}/billing-licence` },
@@ -113,12 +117,15 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
       if (tab.key === "attendance-activity") return canDo(viewAsRole, "viewReports") || canDo(viewAsRole, "viewDashboard");
       if (tab.key === "safeguarding") return canDo(viewAsRole, "manageSafeguarding");
       if (tab.key === "support") return canDo(viewAsRole, "viewHumanSupport");
+      if (tab.key === "short-learning") return canDo(viewAsRole, "viewDashboard") || canDo(viewAsRole, "viewHumanSupport");
+      if (tab.key === "audit") return canDo(viewAsRole, "viewAuditLog");
+      if (tab.key === "communications") return canDo(viewAsRole, "viewDashboard") || canDo(viewAsRole, "manageSchoolSettings");
       if (tab.key === "governance") return canDo(viewAsRole, "manageSchoolSettings") || canDo(viewAsRole, "viewAuditLog");
       if (tab.key === "compliance") return canDo(viewAsRole, "viewAuditLog");
       if (tab.key === "billing-licence") return canDo(viewAsRole, "viewDashboard");
       if (tab.key === "reports") return canDo(viewAsRole, "viewReports");
       if (tab.key === "settings") return canDo(viewAsRole, "manageSchoolSettings") || canDo(viewAsRole, "viewDashboard");
-      return true;
+      return false;
     });
   }, [tabs, viewAsRole]);
 

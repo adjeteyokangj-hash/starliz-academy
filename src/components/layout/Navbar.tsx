@@ -53,7 +53,8 @@ export function buildPrimaryNavLinks(input: {
     { href: input.dashboardHref, label: input.isStudentContext ? "Home" : "Dashboard" },
   ];
   if (input.isStudentContext) {
-    links.push({ href: "/student/today", label: "Today" });
+    links.push({ href: "/student/today", label: "Day School" });
+    links.push({ href: "/student/short-learning", label: "Short Learning" });
     links.push({ href: "/student/attendance", label: "Attendance" });
     links.push({ href: input.gaLearningHubHref, label: "Ga Learning Hub" });
   }

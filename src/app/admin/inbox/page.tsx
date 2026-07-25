@@ -9,8 +9,15 @@ export default function AdminInboxPage() {
           For now, manage support@starlizacademy.com directly in Microsoft Outlook while we complete the inbox sync.
         </p>
 
-        <p className="mt-3 text-sm text-slate-400">Email inbox coming soon.</p>
-        <p className="mt-1 text-sm text-slate-400">Use Microsoft 365 directly for now.</p>
+        <p className="mt-3 text-sm text-slate-400">Email inbox sync is in beta and not required for launch.</p>
+        <p className="mt-1 text-sm text-slate-400">Use Microsoft 365 / Outlook for support@starlizacademy.com for now.</p>
+        <p className="mt-3 text-sm text-slate-400">
+          Prefer in-platform tickets? Open{" "}
+          <a href="/admin/support" className="font-semibold text-indigo-300 underline hover:text-indigo-200">
+            Support
+          </a>
+          .
+        </p>
 
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <a

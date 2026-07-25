@@ -122,14 +122,10 @@ export function deriveHumanSupportSummary(input: {
 
 export function shouldEnqueueStudent(input: {
   humanTutorEligible: boolean;
-  onlineTutorCount: number;
-  availableTutorCount: number;
+  /** On-shift tutors who can accept a student right now. */
+  acceptReadyTutorCount: number;
 }): boolean {
-  return (
-    input.humanTutorEligible
-    && input.onlineTutorCount > 0
-    && input.availableTutorCount === 0
-  );
+  return input.humanTutorEligible && input.acceptReadyTutorCount > 0;
 }
 
 export function canAssignImmediately(input: {

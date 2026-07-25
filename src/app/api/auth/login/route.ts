@@ -14,6 +14,7 @@ import { checkRateLimit, getRequestIp } from "@/lib/api_guard";
 import { evaluateUserSchoolLoginAccess } from "@/lib/schools/licensing";
 import { writeSchoolAuditLog, writeSchoolLoginHistory } from "@/lib/schools/audit";
 import { buildDeviceFingerprint, detectSuspiciousLogin, issueRefreshToken } from "@/lib/auth_sessions";
+import { PORTAL_MODE_COOKIE, resolveStaffLanding } from "@/lib/schools/portal-routing";
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -164,9 +165,24 @@ export async function POST(request: Request) {
       console.error("Failed to issue refresh token; continuing with access token only", error);
     }
 
+    const portalMode = request.headers.get("cookie")
+      ?.split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${PORTAL_MODE_COOKIE}=`))
+      ?.slice(PORTAL_MODE_COOKIE.length + 1) ?? null;
+    const landing = await resolveStaffLanding({
+      userId: user.id,
+      userRole: user.role,
+      portalMode,
+    });
+
     const response = NextResponse.json({
       ok: true,
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      landingPath: landing.path,
+      ...(landing.kind === "school_admin" || landing.kind === "teacher"
+        ? { schoolRole: landing.schoolRole, schoolId: landing.schoolId || undefined }
+        : {}),
     });
     response.cookies.set(getAuthCookieName(), token, {
       httpOnly: true,

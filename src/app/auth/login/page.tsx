@@ -32,19 +32,27 @@ export default function LoginPage() {
         return;
       }
       const nextPath = new URLSearchParams(window.location.search).get("next");
+      const landingPath =
+        typeof payload.landingPath === "string" && payload.landingPath.startsWith("/") && !payload.landingPath.startsWith("//")
+          ? payload.landingPath
+          : null;
       if (payload.user?.role === "admin") {
-        window.location.assign(nextPath?.startsWith("/admin") ? nextPath : "/admin");
+        window.location.assign(nextPath?.startsWith("/admin") ? nextPath : (landingPath ?? "/admin"));
         return;
       }
       if (payload.user?.role === "teacher") {
-        window.location.assign(nextPath?.startsWith("/teacher") ? nextPath : "/teacher");
+        const teacherNext =
+          nextPath?.startsWith("/teacher") || nextPath?.startsWith("/school-admin")
+            ? nextPath
+            : null;
+        window.location.assign(teacherNext ?? landingPath ?? "/teacher");
         return;
       }
       if (nextPath?.startsWith("/") && !nextPath.startsWith("//")) {
         window.location.assign(nextPath);
         return;
       }
-      window.location.assign("/parent/profiles");
+      window.location.assign(landingPath ?? "/parent/profiles");
     } catch {
       setError("Unable to login right now.");
     } finally {

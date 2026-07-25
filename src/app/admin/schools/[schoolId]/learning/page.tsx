@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AdminSecondaryModuleBanner from "@/components/admin/schools/AdminSecondaryModuleBanner";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
 import SchoolLearningInsights from "@/components/admin/schools/SchoolLearningInsights";
 
@@ -16,6 +17,7 @@ export default async function SchoolLearningPage({ params }: PageProps) {
       title="Learning Intelligence"
       subtitle="Curriculum, vocabulary graph coverage, and learning performance by pathway."
     >
+      <AdminSecondaryModuleBanner schoolId={schoolId} />
       <SchoolLearningInsights schoolId={schoolId} />
 
       <div className="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/60 p-4 text-xs text-slate-300">

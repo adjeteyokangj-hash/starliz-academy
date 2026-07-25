@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import { createInitialTutorRuntimeContext, createTutorEngineStore } from "@/hooks/useTutorEngine";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -677,7 +678,7 @@ export default function DailyLessonGamePage() {
         return;
       }
       try {
-        const response = await fetch(`/api/student/assignments?id=${encodeURIComponent(assignmentId)}`, { credentials: "include" });
+        const response = await fetchWithRefreshRetry(`/api/student/assignments?id=${encodeURIComponent(assignmentId)}`, { credentials: "include" });
         const payload = (await response.json()) as LessonAssignment & { error?: string };
         if (!response.ok) throw new Error(payload.error ?? "Unable to load lesson.");
         setAssignment(payload);
@@ -758,7 +759,7 @@ export default function DailyLessonGamePage() {
     if (!online || !assignmentId) return;
     const pending = window.localStorage.getItem(pendingProgressKey(assignmentId));
     if (!pending) return;
-    fetch("/api/student/progress", {
+    fetchWithRefreshRetry("/api/student/progress", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -1566,7 +1567,7 @@ export default function DailyLessonGamePage() {
   async function completeBossBattle(finalCorrect: number, finalHearts: number, answeredCount: number) {
     setBossSubmitting(true);
     try {
-      const response = await fetch("/api/student/boss-battle", {
+      const response = await fetchWithRefreshRetry("/api/student/boss-battle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2249,7 +2250,7 @@ export default function DailyLessonGamePage() {
         setOfflineNotice("Progress saved on this device. It will sync when you are back online.");
         return;
       }
-      const response = await fetch("/api/student/progress", {
+      const response = await fetchWithRefreshRetry("/api/student/progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -3057,7 +3058,7 @@ export default function DailyLessonGamePage() {
                     setContinuingDaytime(true);
                     void (async () => {
                       if (assignmentId) {
-                        await fetch(`/api/assignments/${encodeURIComponent(assignmentId)}`, {
+                        await fetchWithRefreshRetry(`/api/assignments/${encodeURIComponent(assignmentId)}`, {
                           method: "PATCH",
                           credentials: "include",
                           headers: { "content-type": "application/json" },

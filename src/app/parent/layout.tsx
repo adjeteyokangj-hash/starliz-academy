@@ -10,7 +10,11 @@ export default async function ParentLayout({ children }: { children: React.React
   }
 
   if (session.role !== "parent") {
-    redirect(session.role === "admin" ? "/admin" : "/student/dashboard");
+    redirect(
+      session.role === "admin" ? "/admin"
+      : session.role === "teacher" ? "/teacher"
+      : "/student/dashboard"
+    );
   }
 
   return (

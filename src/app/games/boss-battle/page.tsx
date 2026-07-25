@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
@@ -22,7 +23,7 @@ export default function BossBattlePage() {
 
     const redirectIntoLessonRuntime = async () => {
       try {
-        const response = await fetch("/api/student/boss-battle", { credentials: "include" });
+        const response = await fetchWithRefreshRetry("/api/student/boss-battle", { credentials: "include" });
         const payload = (await response.json()) as BossStatusPayload;
         if (!response.ok) {
           throw new Error(payload.error ?? payload.lockReason ?? "Boss Battle is locked right now.");

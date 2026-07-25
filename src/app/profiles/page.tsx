@@ -47,5 +47,9 @@ export default async function ProfilesPage() {
     redirect("/admin");
   }
 
+  if (user!.role === "teacher") {
+    redirect("/teacher");
+  }
+
   redirect("/dashboard");
 }

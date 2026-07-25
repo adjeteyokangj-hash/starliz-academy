@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LiveClassroomBoard, LiveStudentCard } from "@/lib/schools/live-classroom";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 const POLL_MS = 10_000;
 
@@ -76,7 +77,7 @@ export default function LiveClassroomBoard({ dayLessonId }: Props) {
     if (!opts?.silent) setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/teacher/live/${dayLessonId}${supportingQuery}`, {
+      const response = await fetchWithRefreshRetry(`/api/teacher/live/${dayLessonId}${supportingQuery}`, {
         credentials: "include",
         cache: "no-store",
       });
@@ -114,7 +115,7 @@ export default function LiveClassroomBoard({ dayLessonId }: Props) {
     let cancelled = false;
     async function beat() {
       try {
-        await fetch("/api/teacher/presence", {
+        await fetchWithRefreshRetry("/api/teacher/presence", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -168,7 +169,7 @@ export default function LiveClassroomBoard({ dayLessonId }: Props) {
     setJoining(true);
     setJoinMessage(null);
     try {
-      const response = await fetch(`/api/teacher/live/${dayLessonId}`, {
+      const response = await fetchWithRefreshRetry(`/api/teacher/live/${dayLessonId}`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -191,7 +192,7 @@ export default function LiveClassroomBoard({ dayLessonId }: Props) {
     setJoining(true);
     setJoinMessage(null);
     try {
-      const response = await fetch(`/api/teacher/live/${dayLessonId}`, {
+      const response = await fetchWithRefreshRetry(`/api/teacher/live/${dayLessonId}`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -220,7 +221,7 @@ export default function LiveClassroomBoard({ dayLessonId }: Props) {
     setJoining(true);
     setJoinMessage(null);
     try {
-      const response = await fetch(`/api/teacher/live/${dayLessonId}`, {
+      const response = await fetchWithRefreshRetry(`/api/teacher/live/${dayLessonId}`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -247,7 +248,7 @@ export default function LiveClassroomBoard({ dayLessonId }: Props) {
     if (!mySession) return;
     setSessionBusy(true);
     try {
-      const response = await fetch(`/api/teacher/human-support/sessions/${mySession.sessionId}`, {
+      const response = await fetchWithRefreshRetry(`/api/teacher/human-support/sessions/${mySession.sessionId}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -267,7 +268,7 @@ export default function LiveClassroomBoard({ dayLessonId }: Props) {
     if (!mySession) return;
     setSessionBusy(true);
     try {
-      const response = await fetch(`/api/teacher/human-support/sessions/${mySession.sessionId}`, {
+      const response = await fetchWithRefreshRetry(`/api/teacher/human-support/sessions/${mySession.sessionId}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -303,7 +304,7 @@ export default function LiveClassroomBoard({ dayLessonId }: Props) {
           urgency: unresolvedUrgency,
         };
       }
-      const response = await fetch(`/api/teacher/human-support/sessions/${mySession.sessionId}/end`, {
+      const response = await fetchWithRefreshRetry(`/api/teacher/human-support/sessions/${mySession.sessionId}/end`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

@@ -1,4 +1,5 @@
-import { queueOfflineEvent } from "@/lib/offline_queue";
+import { enqueueOfflineEvent } from "@/lib/offline_queue";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 const ATTEMPT_QUEUE_KEY = "starliz.offlineAttemptQueue";
 let attemptSyncUnauthorized = false;
@@ -58,7 +59,7 @@ export type ProgressEventPayload = {
 export async function syncProgressEventToServer(payload: ProgressEventPayload): Promise<void> {
   if (typeof window === "undefined") return;
   try {
-    const response = await fetch("/api/progress/event", {
+    const response = await fetchWithRefreshRetry("/api/progress/event", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -108,12 +109,12 @@ export async function syncAttemptToServer(payload: AttemptPayload): Promise<Atte
   }
 
   if (attemptSyncUnauthorized) {
-    queueOfflineAttempt(payload, "paused");
-    return { ok: false, status: "unauthorized_paused" };
+    // Soft pause only briefly — keep-alive may restore the session.
+    attemptSyncUnauthorized = false;
   }
 
   try {
-    const response = await fetch("/api/attempts", {
+    const response = await fetchWithRefreshRetry("/api/attempts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -121,6 +122,7 @@ export async function syncAttemptToServer(payload: AttemptPayload): Promise<Atte
     });
 
     if (response.ok) {
+      attemptSyncUnauthorized = false;
       return { ok: true, status: "synced" };
     }
 

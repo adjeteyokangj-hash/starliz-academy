@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/layout/Navbar";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 type JourneyPayload = {
   ok: boolean;
@@ -31,7 +32,7 @@ export default function StudentDailyJourneyPage() {
       setLoading(true);
       setError("");
       try {
-        const response = await fetch("/api/student/daily-journey", { credentials: "include" });
+        const response = await fetchWithRefreshRetry("/api/student/daily-journey", { credentials: "include" });
         const data = (await response.json()) as JourneyPayload;
         if (!response.ok) throw new Error(data.error ?? "Unable to load daily journey.");
         setPayload(data);

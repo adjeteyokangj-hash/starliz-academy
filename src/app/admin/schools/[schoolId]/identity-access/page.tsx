@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AdminSecondaryModuleBanner from "@/components/admin/schools/AdminSecondaryModuleBanner";
 import SchoolDashboardShell from "@/components/admin/schools/SchoolDashboardShell";
 
 type PageProps = {
@@ -15,6 +16,7 @@ export default async function SchoolIdentityAccessPage({ params }: PageProps) {
       title="Identity Access Integrations"
       subtitle="API keys, scopes, webhook, rate limits, and emergency controls."
     >
+      <AdminSecondaryModuleBanner schoolId={schoolId} />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {[
           { title: "API key management per external app", section: "api-keys" },

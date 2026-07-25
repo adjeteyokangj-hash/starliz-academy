@@ -102,6 +102,7 @@ const moduleGroups = [
   {
     label: "Operations",
     items: [
+      { title: "Short Learning", description: "Cross-school AI-led session bookings, shifts and coverage gaps.", href: "/admin/short-learning" },
       { title: "Reports", description: "Progress, weak topics and exports.", href: "/admin/reports" },
       { title: "System Health", description: "OpenAI, Stripe, database and jobs.", href: "/admin/system-health" },
       { title: "API Keys", description: "Provider keys and connection status.", href: "/admin/settings/integrations" },

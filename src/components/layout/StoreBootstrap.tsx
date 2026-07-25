@@ -16,6 +16,8 @@ function shouldSkipStoreBootstrap(pathname: string): boolean {
     || pathname.startsWith("/privacy")
     || pathname.startsWith("/auth/")
     || pathname.startsWith("/admin")
+    || pathname.startsWith("/teacher")
+    || pathname.startsWith("/school")
     || pathname.startsWith("/parent")
     || pathname === "/"
     || pathname.startsWith("/about")
@@ -60,6 +62,32 @@ export default function StoreBootstrap({ children }: Props) {
     }, 5000);
 
     const bootstrap = async () => {
+      // Teachers/staff are not parents/learners — never require a child profile.
+      try {
+        const meRes = await fetchWithRefreshRetry("/api/auth/me", { credentials: "include" });
+        if (meRes.ok) {
+          const me = await meRes.json() as { user?: { role?: string } };
+          const role = me.user?.role;
+          if (role === "teacher" || role === "admin") {
+            if (
+              pathname.startsWith("/profiles")
+              || pathname === "/dashboard"
+              || pathname.startsWith("/student")
+            ) {
+              window.location.replace(role === "admin" ? "/admin" : "/teacher");
+              return;
+            }
+            if (mounted) {
+              window.clearTimeout(timeoutId);
+              setReady(true);
+            }
+            return;
+          }
+        }
+      } catch {
+        // Fall through to parent/learner bootstrap if session probe fails.
+      }
+
       const isProfilesPage = pathname.startsWith("/profiles") || pathname.startsWith("/parent/profiles");
       const needsActiveProfile = !isProfilesPage;
 

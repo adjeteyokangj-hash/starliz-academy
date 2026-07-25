@@ -37,7 +37,7 @@ export function getAiUseDisclosureSummary(): AiUseDisclosure {
     policyLinks: {
       privacy: "/privacy",
       terms: "/terms",
-      cookiePolicy: "/policies#cookie-policy",
+      cookiePolicy: "/cookies#cookie-policy",
     },
     reviewedAt: "2026-06-01",
     reviewStatus: "legal_review_required",

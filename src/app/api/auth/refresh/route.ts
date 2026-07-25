@@ -19,16 +19,16 @@ import {
   verifyRefreshToken,
 } from "@/lib/auth_sessions";
 import { getRequestIp } from "@/lib/api_guard";
+import { PORTAL_MODE_COOKIE, resolveStaffLanding } from "@/lib/schools/portal-routing";
 
 function withNoStore<T extends NextResponse>(response: T): T {
   response.headers.set("Cache-Control", "no-store");
   return response;
 }
 
-function defaultPathForRole(role: string): string {
-  if (role === "admin") return "/admin";
-  if (role === "student") return "/student/dashboard";
-  return "/parent/profiles";
+async function defaultPathForRole(userId: string, role: string, portalMode?: string | null): Promise<string> {
+  const landing = await resolveStaffLanding({ userId, userRole: role, portalMode });
+  return landing.path;
 }
 
 function resolveRefreshNextPath(nextPath: string | null | undefined, role: string): string | null {
@@ -132,7 +132,10 @@ async function refreshSession(request: Request, nextPath?: string | null) {
     getAccessTokenMaxAgeSeconds()
   );
 
-  const safeNext = resolveRefreshNextPath(nextPath, user.role) ?? defaultPathForRole(user.role);
+  const portalMode = (await cookies()).get(PORTAL_MODE_COOKIE)?.value ?? null;
+  const safeNext =
+    resolveRefreshNextPath(nextPath, user.role)
+    ?? await defaultPathForRole(user.id, user.role, portalMode);
   const response = hasRedirect
     ? NextResponse.redirect(new URL(safeNext, request.url))
     : NextResponse.json({

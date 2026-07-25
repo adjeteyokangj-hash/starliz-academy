@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 export type DaytimeTutorIntent =
   | "explain-question"
@@ -75,7 +76,7 @@ function DaytimeTutorPanelInner({
     setError(null);
     setOpen(true);
     try {
-      const response = await fetch("/api/student/daytime-tutor", {
+      const response = await fetchWithRefreshRetry("/api/student/daytime-tutor", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

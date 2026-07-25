@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
@@ -346,7 +347,7 @@ export default function SpellingQuestPage() {
       });
       const completedAt = getTimestampNow();
       const startedAt = questionStartedAt || completedAt;
-      const response = await fetch("/api/student/progress", {
+      const response = await fetchWithRefreshRetry("/api/student/progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -391,7 +392,7 @@ export default function SpellingQuestPage() {
   const loadSpellingSession = useCallback(async (studentId: string, difficulty: number) => {
     setSessionPlanLoading(true);
     try {
-      const response = await fetch(`/api/spelling/session?studentId=${studentId}&level=${difficulty}`);
+      const response = await fetchWithRefreshRetry(`/api/spelling/session?studentId=${studentId}&level=${difficulty}`);
       if (!response.ok) return;
       const payload = await response.json() as SpellingSessionPlan;
       setSessionPlan(payload);
@@ -410,7 +411,7 @@ export default function SpellingQuestPage() {
 
   const updateWordMemory = useCallback(async (studentId: string, word: string, input: string) => {
     try {
-      const response = await fetch("/api/spelling/progress", {
+      const response = await fetchWithRefreshRetry("/api/spelling/progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId, word, input }),
@@ -441,7 +442,7 @@ export default function SpellingQuestPage() {
       }
       const usageUpdated = trackUsage(p, 1);
 
-      void fetch("/api/student/skills", { credentials: "include" })
+      void fetchWithRefreshRetry("/api/student/skills", { credentials: "include" })
         .then((response) => response.ok ? response.json() as Promise<StudentSkillRow[]> : Promise.resolve([] as StudentSkillRow[]))
         .then((skills) => {
           const masteryLevel = chooseSpellingDifficultyFromMastery(Array.isArray(skills) ? skills : []);
@@ -2585,7 +2586,7 @@ export default function SpellingQuestPage() {
                     setContinuingDaytime(true);
                     void (async () => {
                       if (assignedAssignmentId) {
-                        await fetch(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
+                        await fetchWithRefreshRetry(`/api/assignments/${encodeURIComponent(assignedAssignmentId)}`, {
                           method: "PATCH",
                           credentials: "include",
                           headers: { "content-type": "application/json" },

@@ -18,6 +18,8 @@ export const adminNavGroups: readonly AdminNavGroup[] = [
       { title: "Students", href: "/admin/students", icon: "S", launchTag: null },
       { title: "Parents", href: "/admin/parents", icon: "P", launchTag: null },
       { title: "Schools", href: "/admin/schools", icon: "SC", launchTag: null },
+      { title: "Short Learning", href: "/admin/short-learning", icon: "SL", launchTag: null },
+      { title: "Policy library", href: "/admin/policy-library", icon: "PL", launchTag: null },
       { title: "Reports", href: "/admin/reports", icon: "RP", launchTag: null },
     ],
   },
@@ -46,7 +48,8 @@ export const adminNavGroups: readonly AdminNavGroup[] = [
   {
     title: "Communication",
     items: [
-      { title: "Inbox", href: "/admin/inbox", icon: "IN", launchTag: null },
+      // Inbox UI is not launch-ready — kept as beta and secondary to Support / Messages.
+      { title: "Inbox", href: "/admin/inbox", icon: "IN", launchTag: "beta" },
       { title: "Messages", href: "/admin/messages", icon: "MS", launchTag: null },
       { title: "Notifications", href: "/admin/notifications", icon: "N", launchTag: null },
       { title: "Support", href: "/admin/support", icon: "T", launchTag: null },

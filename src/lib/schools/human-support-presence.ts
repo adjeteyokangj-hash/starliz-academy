@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { TutorAvailabilityStatus } from "@prisma/client";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
+import { resolveTutorShiftEligibility } from "@/lib/schools/tutor-support-shifts";
 
 export type SupportPolicy = {
   id: string;
@@ -11,6 +12,7 @@ export type SupportPolicy = {
   heartbeatIntervalSec: number;
   staleAfterSec: number;
   transitionMinutes: number;
+  shiftEndGraceMinutes: number;
 };
 
 export async function getOrCreateSupportPolicy(schoolId: string): Promise<SupportPolicy> {
@@ -166,6 +168,43 @@ export async function heartbeatTutorPresence(input: {
     return { status: updated.status, lastHeartbeatAt: updated.lastHeartbeatAt, changed: false };
   }
 
+  const eligibility = await resolveTutorShiftEligibility({
+    schoolId: input.schoolId,
+    schoolTeacherId: input.schoolTeacherId,
+    presenceStatus: existing?.status ?? "offline",
+    lastHeartbeatAt: now,
+    hasActiveSupportSession: Boolean(existing?.activeSessionId),
+    now,
+  });
+
+  if (!eligibility.canBecomeAvailable) {
+    const forcedStatus: TutorAvailabilityStatus = existing?.status === "paused" ? "paused" : "offline";
+    const updated = await prisma.tutorPresence.upsert({
+      where: { schoolTeacherId: input.schoolTeacherId },
+      create: {
+        schoolId: input.schoolId,
+        schoolTeacherId: input.schoolTeacherId,
+        status: forcedStatus,
+        lastHeartbeatAt: now,
+        pausedAt: forcedStatus === "paused" ? now : null,
+        dayLessonId: input.dayLessonId ?? null,
+      },
+      update: {
+        status: forcedStatus,
+        lastHeartbeatAt: now,
+        availableSince: null,
+        pausedAt: forcedStatus === "paused" ? (existing?.pausedAt ?? now) : null,
+        busySince: null,
+        dayLessonId: input.dayLessonId ?? existing?.dayLessonId ?? null,
+      },
+    });
+    return {
+      status: updated.status,
+      lastHeartbeatAt: updated.lastHeartbeatAt,
+      changed: existing?.status !== forcedStatus,
+    };
+  }
+
   const becomingAvailable = !existing || existing.status === "offline" || existing.status === "paused";
   const updated = await prisma.tutorPresence.upsert({
     where: { schoolTeacherId: input.schoolTeacherId },
@@ -196,7 +235,11 @@ export async function heartbeatTutorPresence(input: {
       action: existing?.status === "offline" || !existing ? "tutor_online" : "tutor_available",
       entityType: "teacher",
       entityId: input.schoolTeacherId,
-      metadata: { dayLessonId: input.dayLessonId ?? null, previousStatus: existing?.status ?? "offline" },
+      metadata: {
+        dayLessonId: input.dayLessonId ?? null,
+        previousStatus: existing?.status ?? "offline",
+        shiftId: eligibility.activeShift?.id ?? null,
+      },
     });
   }
 

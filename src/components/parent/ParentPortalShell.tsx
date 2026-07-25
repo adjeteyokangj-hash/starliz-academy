@@ -16,6 +16,7 @@ import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumM
 import { resolveDashboardTier, dashboardTierLabel, isProfileComplete } from "@/lib/dashboardResolver";
 import { persistParentActiveChild } from "@/lib/parent-active-child-client";
 import { percentageHeightClass, percentageWidthClass } from "@/lib/progress-class";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import type { CoverageEntry, QuickLevelFinderBaselineDiagnostic, SchoolWeekday } from "@/lib/academic-intelligence/types";
 import type { RankedCertificateType, RankingMethod } from "@/lib/ranked-certificates";
 
@@ -28,7 +29,8 @@ type PortalSection =
   | "rewards"
   | "consent"
   | "messages"
-  | "support";
+  | "support"
+  | "short-learning";
 
 type AccountPayload = {
   account: {
@@ -396,6 +398,7 @@ const sections: Array<{ id: PortalSection; label: string }> = [
   { id: "billing", label: "Billing" },
   { id: "progress", label: "Progress" },
   { id: "tutor-history", label: "Tutor history" },
+  { id: "short-learning", label: "Short Learning" },
   { id: "rewards", label: "Rewards" },
   { id: "consent", label: "Consent" },
   { id: "messages", label: "Messages" },
@@ -408,6 +411,7 @@ const sectionHref: Record<PortalSection, string> = {
   billing: "/parent/billing",
   progress: "/parent/progress",
   "tutor-history": "/parent/tutor-history",
+  "short-learning": "/parent/short-learning",
   rewards: "/parent/rewards",
   consent: "/parent/consent",
   messages: "/parent/messages",
@@ -542,7 +546,10 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     let cancelled = false;
 
     async function load() {
-      const pinStatusResponse = await fetch("/api/pin/status", { credentials: "include", cache: "no-store" });
+      const pinStatusResponse = await fetchWithRefreshRetry("/api/pin/status", {
+        credentials: "include",
+        cache: "no-store",
+      });
       if (cancelled) return;
       if (pinStatusResponse.status === 401) {
         router.replace("/auth/login");
@@ -564,10 +571,10 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
       setLoading(true);
       const [accountRes, childrenRes, subscriptionRes, consentRes] = await Promise.all([
-        fetch("/api/account", { credentials: "include" }),
-        fetch("/api/children", { credentials: "include" }),
-        fetch("/api/subscription", { credentials: "include" }),
-        fetch("/api/consent", { credentials: "include" }),
+        fetchWithRefreshRetry("/api/account", { credentials: "include" }),
+        fetchWithRefreshRetry("/api/children", { credentials: "include" }),
+        fetchWithRefreshRetry("/api/subscription", { credentials: "include" }),
+        fetchWithRefreshRetry("/api/consent", { credentials: "include" }),
       ]);
 
       if (cancelled) return;
@@ -728,7 +735,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     let cancelled = false;
 
     async function loadSupportTickets() {
-      const refreshed = await fetch("/api/parent/support", { credentials: "include" });
+      const refreshed = await fetchWithRefreshRetry("/api/parent/support", { credentials: "include" });
       if (!refreshed.ok || cancelled) return;
       const payload = (await refreshed.json()) as { tickets: SupportTicket[] };
       if (!cancelled) {
@@ -753,7 +760,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     let cancelled = false;
 
     async function loadMessages() {
-      const response = await fetch("/api/parent/messages", { credentials: "include" });
+      const response = await fetchWithRefreshRetry("/api/parent/messages", { credentials: "include" });
       if (!response.ok || cancelled) return;
       const payload = (await response.json()) as MessagesPayload;
       if (!cancelled) {
@@ -791,7 +798,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
     let cancelled = false;
     async function loadProgressPack() {
-      const response = await fetch(
+      if (!selectedChildId) return;
+      const response = await fetchWithRefreshRetry(
         `/api/parent/progress-report?childId=${encodeURIComponent(selectedChildId)}&range=30d`,
         { credentials: "include" },
       );
@@ -835,7 +843,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         ? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
         : null;
 
-      const response = await fetch("/api/parent/academic-intelligence/catch-up-tasks", {
+      const response = await fetchWithRefreshRetry("/api/parent/academic-intelligence/catch-up-tasks", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -853,7 +861,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         throw new Error(payload?.error ?? "Unable to update catch-up task.");
       }
 
-      const refresh = await fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId)}&includeSync=1`, { credentials: "include" });
+      const refresh = await fetchWithRefreshRetry(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId)}&includeSync=1`, { credentials: "include" });
       if (refresh.ok) {
         setAcademicIntelligence((await refresh.json()) as ParentAcademicIntelligencePayload);
       }
@@ -869,7 +877,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     setSchoolWeekSaving(true);
     setSchoolWeekMessage(null);
     try {
-      const response = await fetch(`/api/parent/students/${encodeURIComponent(selectedChildId)}/school-week-settings`, {
+      const response = await fetchWithRefreshRetry(`/api/parent/students/${encodeURIComponent(selectedChildId)}/school-week-settings`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -885,7 +893,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         setSchoolWeekSettings(payload.settings);
       }
 
-      const refresh = await fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId)}&includeSync=1`, { credentials: "include" });
+      const refresh = await fetchWithRefreshRetry(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId)}&includeSync=1`, { credentials: "include" });
       if (refresh.ok) {
         setAcademicIntelligence((await refresh.json()) as ParentAcademicIntelligencePayload);
       }
@@ -949,7 +957,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       setGoingToDashboard(false);
     }, 2500);
     try {
-      await fetch("/api/children/active", {
+      await fetchWithRefreshRetry("/api/children/active", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -967,7 +975,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     if (!selectedChildId) return;
     setReportDownloading(true);
     try {
-      const response = await fetch(
+      const response = await fetchWithRefreshRetry(
         `/api/parent/reports/export?childId=${encodeURIComponent(selectedChildId)}&range=30d&format=${format}`,
         { credentials: "include" },
       );
@@ -1001,7 +1009,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     if (!supportSubject.trim() || !supportBody.trim()) return;
     setSaving(true);
     try {
-      await fetch("/api/parent/support", {
+      await fetchWithRefreshRetry("/api/parent/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -1009,7 +1017,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       });
       setSupportSubject("");
       setSupportBody("");
-      const refreshed = await fetch("/api/parent/support", { credentials: "include" });
+      const refreshed = await fetchWithRefreshRetry("/api/parent/support", { credentials: "include" });
       if (refreshed.ok) {
         const payload = (await refreshed.json()) as { tickets: SupportTicket[] };
         setTickets(payload.tickets ?? []);
@@ -1038,7 +1046,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     setAccountError(null);
     setAccountMessage(null);
     try {
-      const response = await fetch("/api/account", {
+      const response = await fetchWithRefreshRetry("/api/account", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -1056,7 +1064,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         return;
       }
 
-      const accountRefresh = await fetch("/api/account", { credentials: "include" });
+      const accountRefresh = await fetchWithRefreshRetry("/api/account", { credentials: "include" });
       if (accountRefresh.ok) {
         const refreshed = (await accountRefresh.json()) as AccountPayload;
         setAccount(refreshed);
@@ -2212,7 +2220,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     setSendingMessage(true);
                     setMessageError(null);
                     try {
-                      const res = await fetch("/api/parent/messages", {
+                      const res = await fetchWithRefreshRetry("/api/parent/messages", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         credentials: "include",
@@ -2226,7 +2234,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       setComposeSubject("");
                       setComposeBody("");
                       // Reload messages
-                      const refreshed = await fetch("/api/parent/messages", { credentials: "include" });
+                      const refreshed = await fetchWithRefreshRetry("/api/parent/messages", { credentials: "include" });
                       if (refreshed.ok) {
                         const payload = (await refreshed.json()) as MessagesPayload;
                         setThreads(payload.threads ?? []);
@@ -2269,7 +2277,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                           key={t.id}
                           onClick={async () => {
                             setActiveThreadId(t.id);
-                            const res = await fetch(`/api/parent/messages?threadId=${t.id}`, { credentials: "include" });
+                            const res = await fetchWithRefreshRetry(`/api/parent/messages?threadId=${t.id}`, { credentials: "include" });
                             if (res.ok) {
                               const payload = (await res.json()) as MessagesPayload;
                               setThreadMessages(payload.messages ?? []);
