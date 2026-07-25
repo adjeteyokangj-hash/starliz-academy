@@ -1,6 +1,7 @@
-import { jwtVerify } from "jose";
+﻿import { jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { resolvePlatformAdminGate } from "@/lib/admin-auth-gate";
 import { resolveLaunchScopeRedirect } from "@/lib/launch-scope";
 
 const COOKIE_NAME = "starliz_session";
@@ -47,13 +48,6 @@ const PUBLIC_PATHS = [
 ];
 
 type DecodedSession = { userId: string; email: string; role: string };
-
-function safeAdminNextPath(value: string | null): string | null {
-  if (!value) return null;
-  if (!value.startsWith("/admin")) return null;
-  if (value.startsWith("//")) return null;
-  return value;
-}
 
 function withSecurityHeaders(response: NextResponse): NextResponse {
   response.headers.set("X-Frame-Options", "DENY");
@@ -174,26 +168,14 @@ export async function middleware(request: NextRequest) {
     return withSecurityHeaders(response);
   };
 
-  if (pathname.startsWith("/admin")) {
-    const requestedAdminNext = safeAdminNextPath(request.nextUrl.searchParams.get("next"));
-    if (!authenticated) {
-      // Allow unauthenticated access to /admin/login, redirect all other admin routes there.
-      // Do NOT bounce through /api/auth/refresh first — a stale/parent refresh token against
-      // /admin caused redirect loops (refresh → /admin → refresh) stuck on "Loading page".
-      if (pathname !== "/admin/login") {
-        const next = `${pathname}${request.nextUrl.search}`;
-        const target = new URL(`/admin/login?next=${encodeURIComponent(next)}`, request.url);
-        return finalize(NextResponse.redirect(target));
-      }
-    } else if (session.role === "admin" && pathname === "/admin/login") {
-      return finalize(NextResponse.redirect(new URL(requestedAdminNext ?? "/admin", request.url)));
-    } else if (session.role !== "admin" && pathname !== "/admin/login") {
-      // Non-admins may open /admin/login to switch into an admin account.
-      // Other /admin routes stay blocked — send them to admin login, not a blank fallback.
-      const next = `${pathname}${request.nextUrl.search}`;
-      const target = new URL(`/admin/login?next=${encodeURIComponent(next)}&reason=switch`, request.url);
-      return finalize(NextResponse.redirect(target));
-    }
+  // Platform admin gate (Next.js request interceptor): hard-redirect before any admin UI.
+  const adminGate = resolvePlatformAdminGate({
+    pathname,
+    search: request.nextUrl.search,
+    session: authenticated ? { role: session!.role } : null,
+  });
+  if (adminGate.action === "redirect") {
+    return finalize(NextResponse.redirect(new URL(adminGate.to, request.url), adminGate.status));
   }
 
   if (!authenticated && !isPublic) {
@@ -335,6 +317,9 @@ export async function middleware(request: NextRequest) {
   return finalize(NextResponse.next({ request: { headers: requestHeaders } }));
 }
 
+// Next.js AST-extracts only a literal `config` export for matchers (not a re-export).
 export const config = {
-  matcher: ["/:path*"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)",
+  ],
 };

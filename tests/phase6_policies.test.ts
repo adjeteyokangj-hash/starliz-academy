@@ -298,8 +298,8 @@ test("canonical public routes exist as page modules", () => {
     "src/app/knowledge-centre/page.tsx",
     "src/app/school-admin/knowledge-library/page.tsx",
     "src/app/school-admin/knowledge-library/[slug]/page.tsx",
-    "src/app/admin/policy-library/page.tsx",
-    "src/app/admin/policy-library/[slug]/page.tsx",
+    "src/app/admin/(secure)/policy-library/page.tsx",
+    "src/app/admin/(secure)/policy-library/[slug]/page.tsx",
   ];
   for (const route of routes) {
     const raw = readFileSync(resolve(process.cwd(), route), "utf8");
@@ -309,7 +309,18 @@ test("canonical public routes exist as page modules", () => {
 });
 
 test("middleware allowlists policy public paths", () => {
-  const raw = readFileSync(resolve(process.cwd(), "middleware.ts"), "utf8");
+  const interceptorPath = ["proxy.ts", "middleware.ts"]
+    .map((name) => resolve(process.cwd(), name))
+    .find((path) => {
+      try {
+        readFileSync(path, "utf8");
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  assert.ok(interceptorPath, "expected proxy.ts or middleware.ts");
+  const raw = readFileSync(interceptorPath!, "utf8");
   for (const path of [
     "/policies",
     "/privacy",

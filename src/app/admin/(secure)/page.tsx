@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AdminEmptyState from "@/components/admin/AdminEmptyState";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
 import AdminStatCard from "@/components/admin/AdminStatCard";
@@ -134,6 +135,7 @@ function statusTone(value: string): string {
 }
 
 export default function AdminDashboardPage() {
+  const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -150,9 +152,11 @@ export default function AdminDashboardPage() {
     fetchWithRefreshRetry("/api/admin/stats", { credentials: "include", signal: controller.signal })
       .then(async (response) => {
         if (response.status === 401 || response.status === 403) {
-          const body = await response.json().catch(() => null);
-          const message = body?.error ?? (response.status === 401 ? "Unauthorized" : "Forbidden: admin only");
-          throw new Error(message);
+          // Hard navigation — never paint an Unauthorized dashboard card.
+          if (!cancelled) {
+            window.location.replace("/admin/login?next=/admin&reason=switch");
+          }
+          return null;
         }
         if (!response.ok) {
           const body = await response.json().catch(() => null);
@@ -162,7 +166,7 @@ export default function AdminDashboardPage() {
         return response.json() as Promise<Stats>;
       })
       .then((payload) => {
-        if (cancelled) return;
+        if (cancelled || !payload) return;
         setStats(payload);
         setLoading(false);
       })
@@ -187,7 +191,13 @@ export default function AdminDashboardPage() {
       controller.abort("unmount");
       window.clearTimeout(timeout);
     };
-  }, []);
+  }, [router]);
+
+  useEffect(() => {
+    if (!error) return;
+    if (!/unauthorized|session expired|sign in|forbidden|admin only/i.test(error)) return;
+    window.location.replace("/admin/login?next=/admin&reason=switch");
+  }, [error]);
 
   const activityByType = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -213,33 +223,13 @@ export default function AdminDashboardPage() {
     const isUnauthorized = /unauthorized|session expired|sign in/i.test(error);
     const isForbidden = /forbidden|admin only/i.test(error);
     const needsAdminLogin = isUnauthorized || isForbidden;
+    if (needsAdminLogin) {
+      // Never render an Unauthorized card — stay blank while hard-redirect runs.
+      return null;
+    }
     return (
       <AdminSectionCard title="Dashboard unavailable">
         <p className="admin-body">{error}</p>
-        {needsAdminLogin ? (
-          <div className="mt-4 space-y-3">
-            <p className="text-sm text-slate-700">
-              {isForbidden && !isUnauthorized
-                ? "You are signed in as a parent or non-admin account. Refresh will not fix this — switch to an admin login."
-                : "Your admin session is missing or expired. Sign in again to open the dashboard."}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <AdminButtonLink
-                href="/admin/login?next=/admin&reason=switch"
-                className="!bg-indigo-600 !text-white hover:!bg-indigo-500"
-              >
-                Sign in as admin
-              </AdminButtonLink>
-              <AdminButtonLink
-                href="/parent/profiles"
-                variant="secondary"
-                className="!border-slate-300 !bg-white !text-slate-800"
-              >
-                Go to parent portal
-              </AdminButtonLink>
-            </div>
-          </div>
-        ) : null}
       </AdminSectionCard>
     );
   }

@@ -96,6 +96,18 @@ npm run uat:admin-portal
 
 ---
 
+## Known runtime limitations
+
+### Platform admin auth gate (App Router is authoritative)
+
+**Authoritative gate:** `/admin/**` (except login) is protected by the App Router route group `src/app/admin/(secure)/layout.tsx`. Anonymous visits redirect server-side to `/admin/login` before the console renders. Login lives structurally outside that layout at `(public)/login`.
+
+**Request interceptor limitation (Next.js 16.2.7 local):** root `middleware.ts` compiles and registers a matcher, but in current local Turbopack/webpack runs it has been observed **not to apply** on the wire (no `Location` / `X-Frame-Options` on responses). Treat this as a runtime limitation, not a product blocker: layout redirect is the launch-safe gate. Focused coverage: `tests/admin_auth_gate.test.ts` (plus Phase 6 / portal routing suite).
+
+Keep the admin auth redirect fix as an **uncommitted post-checkpoint launch bug fix** until the Product Owner requests a separate commit.
+
+---
+
 ## Related docs
 
 - [`docs/assurance/README.md`](./assurance/README.md)
