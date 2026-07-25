@@ -1,0 +1,6 @@
+{
+  "status": 400,
+  "json": {
+    "error": "You must acknowledge that Short Learning is AI-led."
+  }
+}

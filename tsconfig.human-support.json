@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "incremental": false,
+    "plugins": []
+  },
+  "include": [
+    "src/lib/schools/human-support-timing.ts",
+    "src/lib/schools/human-support-presence.ts",
+    "src/lib/schools/human-support-scheduler.ts",
+    "src/app/api/teacher/presence/route.ts",
+    "src/app/api/teacher/human-support/sessions/[sessionId]/end/route.ts",
+    "src/app/api/cron/tutor-presence-sweep/route.ts",
+    "tests/human_support_timing.test.ts"
+  ],
+  "exclude": ["node_modules", ".next"]
+}

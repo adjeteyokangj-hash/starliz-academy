@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/lib/schools/human-support-session.ts",
+    "src/lib/schools/human-support-scheduler.ts",
+    "src/lib/schools/live-classroom.ts",
+    "src/app/api/teacher/live/[dayLessonId]/route.ts",
+    "src/app/api/teacher/human-support/sessions/[sessionId]/route.ts",
+    "src/app/api/teacher/human-support/sessions/[sessionId]/end/route.ts",
+    "src/app/api/student/human-support/guidance/route.ts",
+    "src/components/teacher/LiveClassroomBoard.tsx",
+    "tests/human_tutor_sessions.test.ts"
+  ]
+}

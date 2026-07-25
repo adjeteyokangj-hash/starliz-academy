@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/lib/schools/weekly-curriculum-memory.ts",
+    "src/lib/schools/daytime-ai-stage-generator.ts",
+    "src/lib/schools/generate-daytime-lesson-content.ts",
+    "src/lib/schools/daytime-lesson-health.ts",
+    "src/lib/schools/daytime-lesson-review.ts",
+    "src/lib/schools/school-admin-payload.ts",
+    "src/components/admin/schools/LessonReviewModal.tsx",
+    "src/components/admin/schools/SchoolTodayTimetable.tsx",
+    "src/app/api/admin/schools/route.ts",
+    "tests/weekly_curriculum_memory.test.ts"
+  ]
+}

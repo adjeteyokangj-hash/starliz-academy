@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "incremental": false,
+    "plugins": []
+  },
+  "include": [
+    "src/lib/schools/live-classroom-signals.ts",
+    "src/lib/schools/live-classroom.ts",
+    "src/app/api/teacher/live/[dayLessonId]/route.ts",
+    "src/components/teacher/LiveClassroomBoard.tsx",
+    "src/app/teacher/live/[dayLessonId]/page.tsx",
+    "tests/live_classroom_signals.test.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next"
+  ]
+}

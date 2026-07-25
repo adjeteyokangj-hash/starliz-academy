@@ -1,0 +1,13 @@
+{
+  "studentElig": {
+    "humanTutorEligible": true,
+    "continueAi": false,
+    "reason": "Short Learning AI exhausted with active booking."
+  },
+  "noTutor": {
+    "shouldEnqueue": false,
+    "continueAi": true,
+    "unmetEscalation": true,
+    "reason": "No on-shift, available tutor capacity — continue AI tutoring."
+  }
+}

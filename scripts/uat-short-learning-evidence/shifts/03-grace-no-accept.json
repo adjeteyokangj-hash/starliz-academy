@@ -1,0 +1,29 @@
+{
+  "derivedState": "finished",
+  "activeShift": {
+    "id": "cms0h2tvg002ksksk8iy8vyct",
+    "schoolId": "cmpgzr6nc000jskjob867guo7",
+    "schoolTeacherId": "cmrx2hi4s0018sk1w44qqs37i",
+    "startsAt": "2026-07-25T14:35:57.315Z",
+    "endsAt": "2026-07-25T14:36:28.008Z",
+    "breakStartsAt": null,
+    "breakEndsAt": null,
+    "status": "finished",
+    "yearGroupScopeJson": null,
+    "subjectScopeJson": null,
+    "notes": "UAT short-learning shift",
+    "published": true,
+    "createdByTeacherId": "cmph09wr30012skjoedmud9e0",
+    "cancelledAt": null,
+    "cancellationReason": null,
+    "metadataJson": null,
+    "createdAt": "2026-07-25T14:36:41.018Z",
+    "updatedAt": "2026-07-25T14:36:58.014Z"
+  },
+  "nextShift": null,
+  "canBecomeAvailable": false,
+  "canAcceptStudent": false,
+  "graceActive": true,
+  "graceEndsAt": "2026-07-25T14:46:28.008Z",
+  "reason": "Shift ended — finish current session only (grace)."
+}

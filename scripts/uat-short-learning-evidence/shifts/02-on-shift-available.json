@@ -1,0 +1,29 @@
+{
+  "derivedState": "on-shift",
+  "activeShift": {
+    "id": "cms0h2tvg002ksksk8iy8vyct",
+    "schoolId": "cmpgzr6nc000jskjob867guo7",
+    "schoolTeacherId": "cmrx2hi4s0018sk1w44qqs37i",
+    "startsAt": "2026-07-25T14:35:57.315Z",
+    "endsAt": "2026-07-25T15:36:57.315Z",
+    "breakStartsAt": null,
+    "breakEndsAt": null,
+    "status": "on_shift",
+    "yearGroupScopeJson": null,
+    "subjectScopeJson": null,
+    "notes": "UAT short-learning shift",
+    "published": true,
+    "createdByTeacherId": "cmph09wr30012skjoedmud9e0",
+    "cancelledAt": null,
+    "cancellationReason": null,
+    "metadataJson": null,
+    "createdAt": "2026-07-25T14:36:41.018Z",
+    "updatedAt": "2026-07-25T14:36:57.318Z"
+  },
+  "nextShift": null,
+  "canBecomeAvailable": true,
+  "canAcceptStudent": true,
+  "graceActive": false,
+  "graceEndsAt": null,
+  "reason": "Tutor is on shift."
+}

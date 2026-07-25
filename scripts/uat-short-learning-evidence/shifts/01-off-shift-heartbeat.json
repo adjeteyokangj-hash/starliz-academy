@@ -1,0 +1,29 @@
+{
+  "derivedState": "scheduled",
+  "activeShift": null,
+  "nextShift": {
+    "id": "cms0h2tvg002ksksk8iy8vyct",
+    "schoolId": "cmpgzr6nc000jskjob867guo7",
+    "schoolTeacherId": "cmrx2hi4s0018sk1w44qqs37i",
+    "startsAt": "2026-07-25T15:36:56.491Z",
+    "endsAt": "2026-07-25T16:36:56.492Z",
+    "breakStartsAt": null,
+    "breakEndsAt": null,
+    "status": "scheduled",
+    "yearGroupScopeJson": null,
+    "subjectScopeJson": null,
+    "notes": "UAT short-learning shift",
+    "published": true,
+    "createdByTeacherId": "cmph09wr30012skjoedmud9e0",
+    "cancelledAt": null,
+    "cancellationReason": null,
+    "metadataJson": null,
+    "createdAt": "2026-07-25T14:36:41.018Z",
+    "updatedAt": "2026-07-25T14:36:56.494Z"
+  },
+  "canBecomeAvailable": false,
+  "canAcceptStudent": false,
+  "graceActive": false,
+  "graceEndsAt": null,
+  "reason": "Next shift is scheduled."
+}

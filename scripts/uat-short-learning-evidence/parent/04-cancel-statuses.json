@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "booking": {
+    "id": "cms0h3fky002wskske1clcr7n",
+    "status": "cancelled",
+    "cancelledAt": "2026-07-25T14:37:09.794Z",
+    "cancellationCategory": "free"
+  }
+}
