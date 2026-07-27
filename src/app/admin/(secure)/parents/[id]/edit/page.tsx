@@ -26,8 +26,8 @@ type ParentDetail = {
     curriculum: string | null;
     trialStatus: string | null;
     subscriptionPlan: string | null;
-    stripeCustomerId: string | null;
-    paystackCustomerId: string | null;
+    hasStripeCustomer?: boolean;
+    hasPaystackCustomer?: boolean;
     forcePasswordReset: boolean;
     mfaEnabled: boolean;
     lastLoginAt: string | null;
@@ -56,10 +56,6 @@ export default function EditParentPage() {
   const [preferredLearningFocus, setPreferredLearningFocus] = useState("");
   const [schoolType, setSchoolType] = useState("");
   const [curriculum, setCurriculum] = useState("");
-  const [trialStatus, setTrialStatus] = useState("");
-  const [subscriptionPlan, setSubscriptionPlan] = useState("");
-  const [stripeCustomerId, setStripeCustomerId] = useState("");
-  const [paystackCustomerId, setPaystackCustomerId] = useState("");
   const [forcePasswordReset, setForcePasswordReset] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [lastLoginAt, setLastLoginAt] = useState("");
@@ -90,10 +86,6 @@ export default function EditParentPage() {
           setPreferredLearningFocus(payload.parent.parentProfile?.preferredLearningFocus ?? "");
           setSchoolType(payload.parent.parentProfile?.schoolType ?? "");
           setCurriculum(payload.parent.parentProfile?.curriculum ?? "");
-          setTrialStatus(payload.parent.parentProfile?.trialStatus ?? "");
-          setSubscriptionPlan(payload.parent.parentProfile?.subscriptionPlan ?? "");
-          setStripeCustomerId(payload.parent.parentProfile?.stripeCustomerId ?? "");
-          setPaystackCustomerId(payload.parent.parentProfile?.paystackCustomerId ?? "");
           setForcePasswordReset(Boolean(payload.parent.parentProfile?.forcePasswordReset));
           setMfaEnabled(Boolean(payload.parent.parentProfile?.mfaEnabled));
           setLastLoginAt(payload.parent.parentProfile?.lastLoginAt ? payload.parent.parentProfile.lastLoginAt.slice(0, 16) : "");
@@ -126,10 +118,6 @@ export default function EditParentPage() {
         preferredLearningFocus: preferredLearningFocus || null,
         schoolType: schoolType || null,
         curriculum: curriculum || null,
-        trialStatus: trialStatus || null,
-        subscriptionPlan: subscriptionPlan || null,
-        stripeCustomerId: stripeCustomerId || null,
-        paystackCustomerId: paystackCustomerId || null,
         forcePasswordReset,
         mfaEnabled,
         lastLoginAt: lastLoginAt ? new Date(lastLoginAt).toISOString() : null,
@@ -215,25 +203,17 @@ export default function EditParentPage() {
             <input value={curriculum} onChange={(event) => setCurriculum(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
           </label>
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-bold text-slate-300">
-            Trial status
-            <input value={trialStatus} onChange={(event) => setTrialStatus(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
-          </label>
-          <label className="block text-sm font-bold text-slate-300">
-            Subscription plan
-            <input value={subscriptionPlan} onChange={(event) => setSubscriptionPlan(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
-          </label>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-bold text-slate-300">
-            Stripe customer ID
-            <input value={stripeCustomerId} onChange={(event) => setStripeCustomerId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
-          </label>
-          <label className="block text-sm font-bold text-slate-300">
-            Paystack customer ID
-            <input value={paystackCustomerId} onChange={(event) => setPaystackCustomerId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
-          </label>
+        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-sm text-amber-100">
+          <p className="font-semibold">Billing is payment-provider truth</p>
+          <p className="mt-1 text-xs text-amber-100/90">
+            Trial/plan/customer identifiers cannot be edited here. Manage cancel/reactivate and payment notices from{" "}
+            <a className="underline" href={`/admin/subscriptions?parentId=${params.id}`}>Subscriptions</a>.
+          </p>
+          <p className="mt-2 text-xs text-slate-300">
+            Mirrored plan label: {parent.parentProfile?.subscriptionPlan ?? "—"} · Trial label:{" "}
+            {parent.parentProfile?.trialStatus ?? "—"} · Provider customer:{" "}
+            {parent.parentProfile?.hasStripeCustomer || parent.parentProfile?.hasPaystackCustomer ? "Linked" : "Not linked"}
+          </p>
         </div>
         <label className="block text-sm font-bold text-slate-300">
           Last login

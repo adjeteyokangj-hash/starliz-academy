@@ -37,7 +37,7 @@ test("invoice.payment_succeeded keeps cancelled when cancellation period already
   assert.equal(value, "cancelled");
 });
 
-test("subscription updated with cancel_at_period_end keeps active until period end", () => {
+test("subscription updated with cancel_at_period_end stores cancelled until period end", () => {
   const value = resolveStripeWebhookStatus({
     eventType: "customer.subscription.updated",
     rawStatus: "active",
@@ -45,7 +45,7 @@ test("subscription updated with cancel_at_period_end keeps active until period e
     currentPeriodEnd: new Date("2026-06-01T00:00:00.000Z"),
     now: new Date("2026-05-25T00:00:00.000Z"),
   });
-  assert.equal(value, "active");
+  assert.equal(value, "cancelled");
 });
 
 test("subscription updated maps unpaid to past_due", () => {

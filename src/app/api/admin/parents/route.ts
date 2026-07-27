@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { hashPassword } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
 
@@ -163,7 +163,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("parents:write");
   if (!session) return response;
 
   try {
@@ -188,6 +188,36 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: message }, { status: 400 });
       }
       throw parseError;
+    }
+
+    if (
+      (body.stripeCustomerId && body.stripeCustomerId.trim())
+      || (body.paystackCustomerId && body.paystackCustomerId.trim())
+      || (body.subscriptionPlan && body.subscriptionPlan.trim() && body.subscriptionPlan.trim().toLowerCase() !== "free")
+      || (body.trialStatus && body.trialStatus.trim() && body.trialStatus.trim().toLowerCase() !== "none")
+    ) {
+      await writeAuditLog({
+        actorUserId: session.userId,
+        action: "admin_subscription_change_rejected",
+        entityType: "parent",
+        entityId: "create",
+        metadata: {
+          reason: "payment_derived_field_tamper_on_create",
+          fields: ["trialStatus", "subscriptionPlan", "stripeCustomerId", "paystackCustomerId"].filter((field) => {
+            if (field === "trialStatus") return Boolean(body.trialStatus && body.trialStatus !== "none");
+            if (field === "subscriptionPlan") return Boolean(body.subscriptionPlan && body.subscriptionPlan !== "free");
+            if (field === "stripeCustomerId") return Boolean(body.stripeCustomerId);
+            return Boolean(body.paystackCustomerId);
+          }),
+        },
+      });
+      return NextResponse.json(
+        {
+          error:
+            "Payment-derived fields cannot be set when creating a parent. Billing state comes from verified payment workflows only.",
+        },
+        { status: 403 },
+      );
     }
 
     // Check if email already exists
@@ -226,10 +256,10 @@ export async function POST(request: Request) {
             preferredLearningFocus: body.preferredLearningFocus || null,
             schoolType: body.schoolType || null,
             curriculum: body.curriculum || null,
-            trialStatus: body.trialStatus || "none",
-            subscriptionPlan: body.subscriptionPlan || null,
-            stripeCustomerId: body.stripeCustomerId || null,
-            paystackCustomerId: body.paystackCustomerId || null,
+            trialStatus: "none",
+            subscriptionPlan: null,
+            stripeCustomerId: null,
+            paystackCustomerId: null,
             forcePasswordReset: body.forcePasswordReset ?? false,
             mfaEnabled: body.mfaEnabled ?? false,
             lastLoginAt: body.lastLoginAt ? new Date(body.lastLoginAt) : null,

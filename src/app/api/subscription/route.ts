@@ -6,10 +6,17 @@ import { prisma } from "@/lib/db";
 import { canAddChild } from "@/lib/subscriptions/enforcement";
 import { getPublicPricingPlans, planKeyFromPricingPlan, resolveCurrentPricingPlan } from "@/lib/pricing/service";
 import { resolvePaymentProvider } from "@/lib/billing/payment-routing";
+import {
+  auditSubscriptionRejection,
+  formatParentSubscriptionStatus,
+} from "@/lib/subscriptions/parent-subscription-access";
+import {
+  requestCancelAtPeriodEnd,
+  requestReactivateSubscription,
+} from "@/lib/subscriptions/parent-subscription-actions";
 
 const updateSchema = z.object({
-  pricingPlanId: z.string().min(1).optional(),
-  status: z.enum(["active", "trialing", "cancelled", "past_due", "blocked", "expired", "payment_failed", "manual_review", "inactive"]).optional(),
+  action: z.enum(["cancel_at_period_end", "reactivate"]),
 });
 
 export async function GET() {
@@ -31,7 +38,7 @@ export async function GET() {
   ]);
   const parentProfile = await prisma.parentProfile.findUnique({
     where: { userId: parentScope.parentId },
-    select: { country: true },
+    select: { country: true, stripeCustomerId: true },
   });
 
   const currentPricingPlan = await resolveCurrentPricingPlan({
@@ -42,6 +49,11 @@ export async function GET() {
   const currentPricePence = currentPricingPlan ? Math.round(currentPricingPlan.price * 100) : 0;
   const currentInterval = currentPricingPlan?.interval ?? "custom";
   const currentChildLimit = currentPricingPlan?.childLimit ?? 1;
+  const statusMeta = formatParentSubscriptionStatus({
+    status: subscription?.status ?? "inactive",
+    currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
+    graceEndsAt: subscription?.graceEndsAt ?? null,
+  });
 
   return NextResponse.json({
     accountCountry: parentProfile?.country ?? "United Kingdom",
@@ -50,19 +62,37 @@ export async function GET() {
       pricingPlanId: currentPricingPlan?.id ?? subscription?.pricingPlanId ?? null,
       planKey: subscription?.planKey ?? (currentPricingPlan ? planKeyFromPricingPlan(currentPricingPlan) : "free"),
       planName: currentPricingPlan?.name ?? "Free",
-      status: subscription?.status ?? "active",
+      status: subscription?.status ?? "inactive",
+      statusLabel: statusMeta.label,
+      statusTone: statusMeta.tone,
+      statusDetail: statusMeta.detail,
+      cancelScheduled: statusMeta.cancelScheduled,
+      accessEndsAt: statusMeta.accessEndsAt,
+      canManageBilling: statusMeta.canManageBilling,
       badge: currentPricingPlan?.badge ?? currentPricingPlan?.name ?? "Free",
       provider: subscription?.provider ?? resolvePaymentProvider(parentProfile?.country ?? "UK"),
+      hasProviderCustomer: Boolean(subscription?.providerCustomerId ?? parentProfile?.stripeCustomerId),
       childLimit: currentChildLimit,
       childrenUsed,
       upgradeRequired: !access.allowed,
       reason: access.reason ?? null,
       trialEndsAt: subscription?.trialEndsAt?.toISOString() ?? null,
       renewalDate: subscription?.currentPeriodEnd?.toISOString() ?? null,
-      paymentFailed: (subscription?.status ?? "").toLowerCase() === "past_due",
+      graceEndsAt: subscription?.graceEndsAt?.toISOString() ?? null,
+      paymentFailed: ["past_due", "unpaid", "incomplete", "payment_failed"].includes(
+        (subscription?.status ?? "").toLowerCase(),
+      ),
       currentPricePence,
       currentInterval,
       currentCurrency: currentPricingPlan?.currency ?? "GBP",
+      includesShortLearning:
+        "Eligible plans include AI-led Short Learning (90/120 min). Human support is availability-based, not guaranteed, and not private 1:1 tutoring.",
+      commercialNotes: [
+        "Cancel in the Parent Portal — access continues until the end of the current billing period.",
+        "There is no cancellation fee.",
+        "There is no automatic pro-rata refund for unused days.",
+        "Cancel booking is not cancel subscription.",
+      ],
     },
     plans: pricingPlans.map((entry) => ({
       id: entry.id,
@@ -93,6 +123,10 @@ export async function GET() {
   });
 }
 
+/**
+ * Parent self-service only: cancel_at_period_end or reactivate.
+ * Plan/status privilege escalation is rejected and audited.
+ */
 export async function PATCH(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
@@ -102,39 +136,68 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
   }
 
-  try {
-    const body = updateSchema.parse(await request.json());
-    const current = await prisma.subscription.findFirst({ where: { parentId: parentScope.parentId }, orderBy: { updatedAt: "desc" } });
+  const raw = await request.json().catch(() => null);
+  const parsed = updateSchema.safeParse(raw);
+  if (!parsed.success) {
+    const attempted = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    await auditSubscriptionRejection({
+      actorUserId: session.userId,
+      parentId: parentScope.parentId,
+      reason: "unsupported_patch_payload",
+      metadata: {
+        keys: Object.keys(attempted),
+        hasStatus: "status" in attempted,
+        hasPricingPlanId: "pricingPlanId" in attempted,
+      },
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Parents cannot change plan or payment status directly. Use checkout, the billing portal, or cancel at period end.",
+      },
+      { status: 403 },
+    );
+  }
 
-    let pricingPlanId = current?.pricingPlanId ?? null;
-    let planKey = current?.planKey ?? "free";
-    if (body.pricingPlanId) {
-      const selected = await prisma.pricingPlan.findFirst({
-        where: { id: body.pricingPlanId, isActive: true },
+  if (parsed.data.action === "cancel_at_period_end") {
+    try {
+      const result = await requestCancelAtPeriodEnd({
+        parentId: parentScope.parentId,
+        actorUserId: session.userId,
       });
-      if (!selected) {
-        return NextResponse.json({ error: "Selected pricing plan is unavailable." }, { status: 404 });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
       }
-      pricingPlanId = selected.id;
-      planKey = planKeyFromPricingPlan({ id: selected.id, name: selected.name });
+      return NextResponse.json({
+        ok: true,
+        action: "cancel_at_period_end",
+        status: result.status,
+        accessEndsAt: result.accessEndsAt,
+        idempotent: result.idempotent,
+        message:
+          "Cancellation scheduled. Access continues until the end of the current billing period. No cancellation fee and no automatic pro-rata refund.",
+      });
+    } catch {
+      return NextResponse.json({ error: "Unable to cancel subscription right now." }, { status: 502 });
     }
-    const status = body.status ?? current?.status ?? "active";
+  }
 
-    const payload = {
-      pricingPlanId,
-      planKey,
-      status,
-      provider: current?.provider ?? "stripe",
-    };
-
-    if (current) {
-      await prisma.subscription.update({ where: { id: current.id }, data: payload });
-    } else {
-      await prisma.subscription.create({ data: { parentId: parentScope.parentId, ...payload } });
+  try {
+    const result = await requestReactivateSubscription({
+      parentId: parentScope.parentId,
+      actorUserId: session.userId,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
-
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      action: "reactivate",
+      status: result.status,
+      renewalDate: result.renewalDate,
+      message: "Cancellation withdrawn. Your subscription will renew as scheduled.",
+    });
   } catch {
-    return NextResponse.json({ error: "Invalid subscription payload." }, { status: 400 });
+    return NextResponse.json({ error: "Unable to reactivate subscription right now." }, { status: 502 });
   }
 }

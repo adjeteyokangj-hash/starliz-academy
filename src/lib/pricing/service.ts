@@ -296,6 +296,35 @@ export async function resolveCurrentPricingPlan(options: {
   return inferPlanFromLegacyKey(plans, options.legacyPlanKey)
 }
 
+export type PricingPlanResolver = (options: {
+  pricingPlanId?: string | null
+  legacyPlanKey?: string | null
+}) => PricingPlanView | null
+
+/**
+ * Batched equivalent of {@link resolveCurrentPricingPlan}. Loads every plan once
+ * and returns a synchronous resolver, avoiding the per-row N+1 that occurs when
+ * resolving pricing for a large parent/subscription list.
+ */
+export async function createPricingPlanResolver(): Promise<PricingPlanResolver> {
+  await ensurePricingPlansSeeded()
+
+  const plans = await prisma.pricingPlan.findMany({
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  })
+  const mapped = plans.map(mapPlan)
+  const byId = new Map(mapped.map((plan) => [plan.id, plan]))
+  const activePlans = mapped.filter((plan) => plan.isActive).map(sanitizePublicPricingPlan)
+
+  return ({ pricingPlanId, legacyPlanKey }) => {
+    if (pricingPlanId) {
+      const direct = byId.get(pricingPlanId)
+      if (direct) return direct
+    }
+    return inferPlanFromLegacyKey(activePlans, legacyPlanKey)
+  }
+}
+
 export function toPricingFeaturesStorage(input: {
   features: string[]
   childLimit: number

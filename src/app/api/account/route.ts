@@ -167,6 +167,7 @@ export async function GET() {
         planKey: true,
         status: true,
         provider: true,
+        providerCustomerId: true,
         currentPeriodEnd: true,
       },
     }),
@@ -206,6 +207,7 @@ export async function GET() {
   const resolvedPlanName = currentPricingPlan?.name ?? "Free";
   const resolvedPlanBadge = currentPricingPlan?.badge ?? resolvedPlanName;
   const resolvedChildLimit = currentPricingPlan?.childLimit ?? 1;
+  const subscriptionState = subscription?.status ?? "inactive";
 
   return NextResponse.json({
     account: {
@@ -215,14 +217,16 @@ export async function GET() {
       role: account.role,
       createdAt: account.createdAt.toISOString(),
       linkedChildrenCount: childrenCount,
-      subscriptionStatus: resolvedPlanBadge,
-      subscriptionState: subscription?.status ?? "active",
+      subscriptionStatus: subscriptionState,
+      subscriptionState,
+      subscriptionPlanName: resolvedPlanName,
+      subscriptionPlanBadge: resolvedPlanBadge,
       subscriptionPlanKey: subscription?.planKey ?? "free",
       subscriptionProvider: subscription?.provider ?? "stripe",
       childLimit: resolvedChildLimit,
       trialUsed: account.trialSessionsUsed,
       renewalDate: subscription?.currentPeriodEnd?.toISOString() ?? null,
-      stripeCustomerId: parentProfile?.stripeCustomerId ?? null,
+      hasStripeCustomer: Boolean(parentProfile?.stripeCustomerId ?? subscription?.providerCustomerId),
       security: {
         lastPasswordChangedAt,
       },

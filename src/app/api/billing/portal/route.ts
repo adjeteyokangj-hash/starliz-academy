@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { prisma } from "@/lib/db";
 import { getStripeClient } from "@/lib/stripe";
+import { writeAuditLog } from "@/lib/audit";
 
 const schema = z.object({
   returnUrl: z.string().url().optional(),
@@ -54,6 +55,14 @@ export async function POST(request: Request) {
     const portal = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: parsed.data.returnUrl ?? `${appOrigin(request)}/parent/billing`,
+    });
+
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "billing_portal_opened",
+      entityType: "Subscription",
+      entityId: parentScope.parentId,
+      metadata: { provider: "stripe" },
     });
 
     return NextResponse.json({ url: portal.url });

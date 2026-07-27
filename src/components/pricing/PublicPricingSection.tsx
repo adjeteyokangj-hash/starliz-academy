@@ -41,6 +41,20 @@ function intervalLabel(interval: PricingInterval): string {
   return ""
 }
 
+function publicPlanCta(plan: PricingPlan): { href: string; label: string } {
+  const trialEnabled = ["1", "true", "yes", "on"].includes(
+    String(process.env.NEXT_PUBLIC_LAUNCH_ENABLE_PUBLIC_TRIAL_CTA ?? "").trim().toLowerCase(),
+  )
+  const configuredHref = plan.ctaHref?.trim()
+  if (configuredHref === "/trial" && !trialEnabled) {
+    return { href: "/signup", label: "Create account" }
+  }
+  return {
+    href: configuredHref || "/signup",
+    label: plan.ctaLabel?.trim() || "Create account",
+  }
+}
+
 const familyPricingHighlights = [
   "Secure parent portal with child profiles and PIN protection",
   "Daily lessons, assignments, spelling, maths and reading with voice-friendly practice",
@@ -106,7 +120,8 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
       <div className="mx-auto max-w-[1900px] text-center">
         <h2 className={`${headingSize} font-black`}>Simple pricing for a full learning platform.</h2>
         <p className="mx-auto mt-4 max-w-3xl text-slate-400">
-          Start with a free trial. Plans support learning, parent oversight, reports, rewards, billing and secure access.
+          Create a parent account, choose an eligible plan, then book Short Learning from the Parent Portal.
+          Plans support learning, parent oversight, reports, rewards, billing and secure access.
         </p>
         <p className="mx-auto mt-3 max-w-3xl text-sm text-slate-500">
           Best experience: StarLiz Academy works best on the latest version of Google Chrome. Other modern browsers may work, but Chrome is recommended for the smoothest learning experience, voice-friendly activities and dashboard use.
@@ -173,10 +188,10 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
 
               <div className="mt-8">
                 <Link
-                  href={plan.ctaHref || "/trial"}
+                  href={publicPlanCta(plan).href}
                   className="block w-full rounded-xl bg-blue-600 px-6 py-3 text-center text-sm font-bold text-white transition hover:bg-blue-500"
                 >
-                  {plan.ctaLabel || "Start Free Trial"}
+                  {publicPlanCta(plan).label}
                 </Link>
               </div>
             </article>

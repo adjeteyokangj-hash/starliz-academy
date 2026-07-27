@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { requireAdmin } from "@/lib/api_guard"
+import { requireAdminPermission } from "@/lib/api_guard"
 import {
   isProviderAvailableForCountry,
   resolveCurrencyForCountry,
@@ -8,7 +8,7 @@ import {
 import { PUBLIC_COUNTRY_PROFILES } from "@/lib/public-country-profiles"
 
 export async function GET() {
-  const { session, response } = await requireAdmin()
+  const { session, response } = await requireAdminPermission("MANAGE_BILLING")
   if (!session) return response
 
   const countries = [PUBLIC_COUNTRY_PROFILES.uk, PUBLIC_COUNTRY_PROFILES.ghana, PUBLIC_COUNTRY_PROFILES.nigeria].map((profile) => {

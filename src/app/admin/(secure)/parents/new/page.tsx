@@ -17,8 +17,6 @@ const COUNTRY_OPTIONS = ["United Kingdom", "United States", "Ghana", "Nigeria", 
 const TIMEZONE_OPTIONS = ["Europe/London", "Africa/Accra", "Africa/Lagos", "America/New_York"];
 const SCHOOL_TYPE_OPTIONS = ["Public", "Private", "Homeschool", "International"];
 const CURRICULUM_OPTIONS = ["British", "IB", "American", "Cambridge", "Nigerian", "Ghanaian"];
-const TRIAL_OPTIONS = ["trial", "active", "expired", "none"];
-const PLAN_OPTIONS = ["free", "monthly", "yearly"];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
 
@@ -40,9 +38,6 @@ export default function NewParentPage() {
   const [preferredLearningFocus, setPreferredLearningFocus] = useState("");
   const [schoolType, setSchoolType] = useState("");
   const [curriculum, setCurriculum] = useState("");
-  const [trialStatus, setTrialStatus] = useState("trial");
-  const [subscriptionPlan, setSubscriptionPlan] = useState("free");
-  const [stripeCustomerId, setStripeCustomerId] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [parentNotes, setParentNotes] = useState("");
   const [emergencyContactName, setEmergencyContactName] = useState("");
@@ -134,9 +129,6 @@ export default function NewParentPage() {
           preferredLearningFocus,
           schoolType,
           curriculum,
-          trialStatus,
-          subscriptionPlan,
-          stripeCustomerId,
           avatarUrl,
           parentNotes,
           emergencyContactName,
@@ -494,49 +486,12 @@ export default function NewParentPage() {
           </div>
         </fieldset>
 
-        <fieldset className="space-y-4 rounded-xl border border-slate-700 bg-slate-900/50 p-4">
-          <legend className="text-sm font-bold uppercase tracking-wide text-slate-400">Billing</legend>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block text-sm font-bold text-slate-300">
-              Trial Status
-              <select
-                value={trialStatus}
-                onChange={(event) => setTrialStatus(event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-              >
-                {TRIAL_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm font-bold text-slate-300">
-              Subscription Plan
-              <select
-                value={subscriptionPlan}
-                onChange={(event) => setSubscriptionPlan(event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-              >
-                {PLAN_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="grid gap-4 md:grid-cols-1">
-            <label className="block text-sm font-bold text-slate-300">
-              Stripe Customer ID
-              <input
-                value={stripeCustomerId}
-                onChange={(event) => setStripeCustomerId(event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white"
-              />
-            </label>
-            <p className="text-xs text-slate-500">Paystack operations are hidden for now and managed internally.</p>
-          </div>
+        <fieldset className="space-y-4 rounded-xl border border-amber-500/30 bg-amber-950/20 p-4">
+          <legend className="text-sm font-bold uppercase tracking-wide text-amber-200">Billing</legend>
+          <p className="text-sm text-amber-100">
+            New parents start with no paid subscription. Plan, trial and provider customer state come from verified
+            checkout and webhooks only. Use Subscriptions for cancel-at-period-end, reactivation and payment notices.
+          </p>
         </fieldset>
 
         <fieldset className="space-y-4 rounded-xl border border-slate-700 bg-slate-900/50 p-4">

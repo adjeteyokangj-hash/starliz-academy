@@ -10,11 +10,11 @@ export default function SubscriptionSuccessPage() {
           <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Billing</p>
           <h1 className="mt-2 text-3xl font-black text-slate-900">Payment Successful</h1>
           <p className="mt-3 text-slate-700">
-            Your subscription has been updated with Stripe for the UK launch.
+            Thank you. Stripe has confirmed checkout. Your subscription unlocks after the verified webhook updates your account — the browser redirect alone does not grant paid access.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/subscription" className="rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-black text-white hover:bg-teal-500">
-              Back to Subscription
+            <Link href="/parent/billing" className="rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-black text-white hover:bg-teal-500">
+              Back to Billing
             </Link>
             <Link href="/parent" className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50">
               Go to Parent Area

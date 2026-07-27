@@ -326,18 +326,25 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
       ? await prisma.subscription.update({ where: { id: existing.id }, data })
       : await prisma.subscription.create({ data: { parentId: parent.id, ...data } });
 
+    const accessUntilPeriodEnd =
+      status === "cancelled"
+      && currentPeriodEnd
+      && currentPeriodEnd.getTime() > Date.now();
+    const profileStatus =
+      status === "past_due" || (status === "cancelled" && !accessUntilPeriodEnd) ? "suspended" : "active";
+
     await prisma.parentProfile.upsert({
       where: { userId: parent.id },
       create: {
         userId: parent.id,
         phone: "Not set",
-        status: status === "past_due" || status === "cancelled" ? "suspended" : "active",
+        status: profileStatus,
         trialStatus: status === "trialing" ? "trial" : status,
         subscriptionPlan: planKey,
         stripeCustomerId: resolvedProvider === "stripe" ? providerCustomerId ?? null : null,
       },
       update: {
-        status: status === "past_due" || status === "cancelled" ? "suspended" : "active",
+        status: profileStatus,
         trialStatus: status === "trialing" ? "trial" : status,
         subscriptionPlan: planKey,
         stripeCustomerId: resolvedProvider === "stripe" ? providerCustomerId ?? undefined : undefined,
@@ -361,6 +368,23 @@ export async function handlePaymentWebhook(event: PaymentEvent) {
       });
     } catch {
       // Financial sync should not block subscription updates.
+    }
+
+    try {
+      const { enqueueParentSubscriptionLifecycleNotice } = await import(
+        "@/lib/subscriptions/parent-subscription-lifecycle-notices"
+      );
+      await enqueueParentSubscriptionLifecycleNotice({
+        parentId: parent.id,
+        eventType,
+        previousStatus: existing?.status ?? null,
+        nextStatus: status,
+        currentPeriodEnd: currentPeriodEnd ?? null,
+        graceEndsAt: graceEndsAt ?? null,
+        providerEventId: eventId ?? null,
+      });
+    } catch {
+      // Lifecycle notices must not block billing sync.
     }
 
     if (eventId) await markPaymentWebhookEventProcessed(eventId);

@@ -1,40 +1,93 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
-import { addDays, getPlan, normalizePlanKey } from "@/lib/subscriptions/plans";
-import { planKeyFromPricingPlan, resolveCurrentPricingPlan } from "@/lib/pricing/service";
-import { adminPlanKeyFromPricingPlan, normalizeAdminPlanKey, toStoredPlanKey } from "@/lib/subscriptions/adminPlanKeys";
+import { requireAdminPermission } from "@/lib/api_guard";
+import { getPlan, normalizePlanKey } from "@/lib/subscriptions/plans";
+import { createPricingPlanResolver } from "@/lib/pricing/service";
+import { adminPlanKeyFromPricingPlan, normalizeAdminPlanKey } from "@/lib/subscriptions/adminPlanKeys";
 import { writeAuditLog } from "@/lib/audit";
+import {
+  formatParentSubscriptionStatus,
+  getLatestParentSubscription,
+} from "@/lib/subscriptions/parent-subscription-access";
+import {
+  requestCancelAtPeriodEnd,
+  requestReactivateSubscription,
+} from "@/lib/subscriptions/parent-subscription-actions";
+import { enqueueAdminPaymentLifecycleReminder } from "@/lib/subscriptions/admin-payment-reminder";
 
-const actionSchema = z.enum([
+const ALLOWED_ACTIONS = [
+  "cancel_at_period_end",
+  "reactivate",
+  "send_payment_reminder",
+  "record_operational_note",
+] as const;
+
+const REJECTED_ACTIONS = [
   "change_plan",
   "cancel_subscription",
   "pause_subscription",
   "resume_subscription",
   "extend_trial",
-  "send_payment_reminder",
-]);
+  "set_status",
+  "set_renewal",
+  "activate",
+] as const;
 
-const updateSchema = z.object({
-  parentId: z.string().min(1),
-  action: actionSchema,
-  planKey: z.string().trim().min(1).optional(),
-  status: z
-    .enum(["active", "trialing", "cancelled", "past_due", "blocked", "failed_payment", "suspended"])
-    .optional(),
-  renewalDate: z.string().datetime().nullable().optional(),
-  trialDays: z.number().int().min(1).max(60).optional(),
-});
+const actionSchema = z.enum([...ALLOWED_ACTIONS, ...REJECTED_ACTIONS]);
+
+const updateSchema = z
+  .object({
+    parentId: z.string().min(1),
+    action: actionSchema,
+    note: z.string().trim().min(3).max(500).optional(),
+    // Intentionally ignored payment-derived fields — presence triggers rejection audit.
+    planKey: z.string().optional(),
+    status: z.string().optional(),
+    renewalDate: z.string().nullable().optional(),
+    trialDays: z.number().optional(),
+    pricingPlanId: z.string().optional(),
+    subscriptionId: z.string().optional(),
+    currentPeriodEnd: z.string().nullable().optional(),
+    cancelAtPeriodEnd: z.boolean().optional(),
+    graceEndsAt: z.string().nullable().optional(),
+    providerCustomerId: z.string().optional(),
+    providerSubId: z.string().optional(),
+    stripeCustomerId: z.string().optional(),
+  })
+  .strict();
+
+const PAYMENT_DERIVED_BODY_KEYS = [
+  "planKey",
+  "status",
+  "renewalDate",
+  "trialDays",
+  "pricingPlanId",
+  "subscriptionId",
+  "currentPeriodEnd",
+  "cancelAtPeriodEnd",
+  "graceEndsAt",
+  "providerCustomerId",
+  "providerSubId",
+  "stripeCustomerId",
+] as const;
 
 export function toUiStatus(status: string | null | undefined) {
   const normalized = (status ?? "active").toLowerCase();
-  if (normalized === "failed_payment") return "failed_payment";
+  if (normalized === "failed_payment" || normalized === "payment_failed") return "failed_payment";
   if (normalized === "blocked" || normalized === "suspended") return "suspended";
   if (normalized === "trialing") return "trialing";
   if (normalized === "cancelled") return "cancelled";
-  if (normalized === "past_due") return "past_due";
+  if (normalized === "past_due" || normalized === "unpaid" || normalized === "incomplete") return "past_due";
+  if (normalized === "expired" || normalized === "inactive") return "expired";
   return "active";
+}
+
+function currency(valuePence: number) {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+  }).format((valuePence || 0) / 100);
 }
 
 function amountForPlan(planKey: string, billingCycle: "monthly" | "yearly") {
@@ -45,114 +98,115 @@ function amountForPlan(planKey: string, billingCycle: "monthly" | "yearly") {
   return plan.monthlyPricePence;
 }
 
-function currency(valuePence: number) {
-  return `GBP ${((valuePence || 0) / 100).toFixed(2)}`;
-}
-
+/** @deprecated retained for existing unit tests; parent profile status is no longer mutated by Admin overrides. */
 export function accountStatusFromSubscription(status: string) {
   if (status === "past_due" || status === "cancelled" || status === "blocked") return "suspended";
   return "active";
 }
 
-async function canAdminManageSubscriptions(userId: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      adminProfile: {
-        select: {
-          role: { select: { name: true, permissions: true } },
-        },
-      },
+async function auditRejection(input: {
+  actorUserId: string;
+  parentId: string;
+  action: string;
+  reason: string;
+  metadata?: Record<string, unknown>;
+}) {
+  await writeAuditLog({
+    actorUserId: input.actorUserId,
+    action: "admin_subscription_change_rejected",
+    entityType: "Subscription",
+    entityId: input.parentId,
+    metadata: {
+      action: input.action,
+      reason: input.reason,
+      ...(input.metadata ?? {}),
     },
   });
-
-  const role = user?.adminProfile?.role;
-  const normalizedRoleName = String(role?.name ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-  if (!role) return false;
-  if (normalizedRoleName === "SUPER_ADMIN") return true;
-
-  try {
-    const parsed = JSON.parse(role.permissions);
-    const permissions = Array.isArray(parsed) ? parsed.map(String) : [];
-    return permissions.includes("parents:write");
-  } catch {
-    return false;
-  }
 }
 
 export async function GET() {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_SUBSCRIPTIONS");
   if (!session) return response;
 
-  const canManagePlans = await canAdminManageSubscriptions(session.userId);
+  const canManagePlans = true;
 
-  const parents = await prisma.user.findMany({
-    where: { role: "parent" },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      updatedAt: true,
-      parentProfile: {
-        select: {
-          stripeCustomerId: true,
-          trialStatus: true,
-          subscriptionPlan: true,
-          status: true,
-          paystackCustomerId: true,
+  const [parents, resolvePricingPlan] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: "parent" },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        updatedAt: true,
+        parentProfile: {
+          select: {
+            trialStatus: true,
+            subscriptionPlan: true,
+            status: true,
+          },
+        },
+        subscriptions: {
+          orderBy: { updatedAt: "desc" },
+          take: 1,
         },
       },
-      subscriptions: {
-        orderBy: { updatedAt: "desc" },
-        take: 1,
-      },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
+      orderBy: { updatedAt: "desc" },
+    }),
+    createPricingPlanResolver(),
+  ]);
 
-  const rows = await Promise.all(parents.map(async (parent) => {
+  const rows = parents.map((parent) => {
     const subscription = parent.subscriptions[0] ?? null;
     const rawPlan = subscription?.planKey ?? parent.parentProfile?.subscriptionPlan ?? "free";
     const normalizedPlan = normalizePlanKey(rawPlan);
-    const uiStatus = toUiStatus(subscription?.status ?? parent.parentProfile?.status ?? "active");
-    const currentPricingPlan = await resolveCurrentPricingPlan({
+    const currentPricingPlan = resolvePricingPlan({
       pricingPlanId: subscription?.pricingPlanId,
       legacyPlanKey: rawPlan,
     });
-    const renewalDate = subscription?.currentPeriodEnd?.toISOString() ?? null;
-    const trialEndDate = subscription?.trialEndsAt?.toISOString() ?? null;
-    const paymentProvider = subscription?.provider === "paystack" ? "paystack" : "stripe";
-    const billingCycle: "monthly" | "yearly" = currentPricingPlan?.interval === "year" || normalizedPlan === "yearly" ? "yearly" : "monthly";
-    const amountPence = currentPricingPlan ? Math.round(currentPricingPlan.price * 100) : amountForPlan(normalizedPlan, billingCycle);
-    const adminPlanKey = currentPricingPlan
-      ? adminPlanKeyFromPricingPlan(currentPricingPlan)
-      : normalizeAdminPlanKey(rawPlan);
+      const billingCycle: "monthly" | "yearly" =
+        currentPricingPlan?.interval === "year" || normalizedPlan === "yearly" ? "yearly" : "monthly";
+      const amountPence = currentPricingPlan
+        ? Math.round(currentPricingPlan.price * 100)
+        : amountForPlan(normalizedPlan, billingCycle);
+      const adminPlanKey = currentPricingPlan
+        ? adminPlanKeyFromPricingPlan(currentPricingPlan)
+        : normalizeAdminPlanKey(rawPlan);
+      const statusMeta = formatParentSubscriptionStatus({
+        status: subscription?.status ?? parent.parentProfile?.status ?? "inactive",
+        currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
+        graceEndsAt: subscription?.graceEndsAt ?? null,
+      });
+      const paymentProvider = subscription?.provider === "paystack" ? "paystack" : "stripe";
 
-    return {
-      parentId: parent.id,
-      parentName: parent.name,
-      parentEmail: parent.email,
-      planKey: adminPlanKey,
-      planName: currentPricingPlan?.name ?? getPlan(normalizedPlan).name,
-      status: uiStatus,
-      trialStatus: parent.parentProfile?.trialStatus ?? null,
-      trialEndDate,
-      renewalDate,
-      amountLabel: currency(amountPence),
-      amountPence,
-      billingCycle,
-      childLimit: currentPricingPlan?.childLimit ?? getPlan(normalizedPlan).childLimit,
-      paymentProvider,
-      paymentMethod: paymentProvider === "stripe" ? "Card (Stripe)" : "Paystack",
-      stripeCustomerId: subscription?.providerCustomerId ?? parent.parentProfile?.stripeCustomerId ?? null,
-      paystackCustomerId: parent.parentProfile?.paystackCustomerId ?? null,
-      lastPaymentDate: subscription?.updatedAt?.toISOString() ?? parent.updatedAt.toISOString(),
-      createdAt: parent.updatedAt.toISOString(),
-    };
-  }));
+      return {
+        parentId: parent.id,
+        parentName: parent.name,
+        parentEmail: parent.email,
+        subscriptionId: subscription?.id ?? null,
+        planKey: adminPlanKey,
+        planName: currentPricingPlan?.name ?? getPlan(normalizedPlan).name,
+        status: toUiStatus(subscription?.status ?? parent.parentProfile?.status ?? "inactive"),
+        statusCode: statusMeta.code,
+        statusLabel: statusMeta.label,
+        statusTone: statusMeta.tone,
+        statusDetail: statusMeta.detail,
+        cancelScheduled: statusMeta.cancelScheduled,
+        accessEndsAt: statusMeta.accessEndsAt,
+        graceEndsAt: subscription?.graceEndsAt?.toISOString() ?? null,
+        trialStatus: parent.parentProfile?.trialStatus ?? null,
+        trialEndDate: subscription?.trialEndsAt?.toISOString() ?? null,
+        renewalDate: subscription?.currentPeriodEnd?.toISOString() ?? null,
+        amountLabel: currency(amountPence),
+        amountPence,
+        billingCycle,
+        childLimit: currentPricingPlan?.childLimit ?? getPlan(normalizedPlan).childLimit,
+        paymentProvider,
+        paymentMethod: paymentProvider === "stripe" ? "Card" : "Paystack",
+        hasProviderCustomer: Boolean(subscription?.providerCustomerId),
+        lastUpdatedAt: subscription?.updatedAt?.toISOString() ?? parent.updatedAt.toISOString(),
+        createdAt: parent.updatedAt.toISOString(),
+      };
+  });
 
   const monthlyRecurringRevenuePence = rows
     .filter((row) => row.status === "active" || row.status === "trialing")
@@ -165,132 +219,231 @@ export async function GET() {
     totalParents: rows.length,
     activeSubscriptions: rows.filter((row) => row.status === "active").length,
     trialSubscriptions: rows.filter((row) => row.status === "trialing").length,
-    churnedSubscriptions: rows.filter((row) => row.status === "cancelled").length,
+    churnedSubscriptions: rows.filter((row) => row.status === "cancelled" || row.status === "expired").length,
     failedPayments: rows.filter((row) => row.status === "past_due" || row.status === "failed_payment").length,
     mrrLabel: currency(monthlyRecurringRevenuePence),
-    monthRevenueLabel: currency(rows.reduce((sum, row) => sum + row.amountPence, 0)),
+    monthRevenueLabel: currency(
+      rows
+        .filter((row) => row.status === "active" || row.status === "trialing")
+        .reduce((sum, row) => sum + row.amountPence, 0),
+    ),
   };
 
-  return NextResponse.json({ rows, metrics, canManagePlans });
+  return NextResponse.json({
+    rows,
+    metrics,
+    canManagePlans,
+    allowedActions: ALLOWED_ACTIONS,
+    commercialNotes: [
+      "Payment status is payment-provider truth. Admin cannot activate paid access locally.",
+      "Cancel at period end keeps access until the paid period ends.",
+      "There is no cancellation fee and no automatic pro-rata refund.",
+    ],
+  });
 }
 
 export async function PATCH(request: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_SUBSCRIPTIONS");
   if (!session) return response;
 
-  const canManagePlans = await canAdminManageSubscriptions(session.userId);
+  const canManagePlans = true;
   if (!canManagePlans) {
+    await auditRejection({
+      actorUserId: session.userId,
+      parentId: "unknown",
+      action: "forbidden",
+      reason: "missing_subscription_management_permission",
+    });
     return NextResponse.json({ error: "Forbidden: missing subscription management permission" }, { status: 403 });
   }
 
+  let rawBody: unknown;
   try {
-    const body = updateSchema.parse(await request.json());
-
-    const parent = await prisma.user.findUnique({
-      where: { id: body.parentId },
-      select: { id: true, role: true },
-    });
-    if (!parent || parent.role !== "parent") {
-      return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
-    }
-
-    const current = await prisma.subscription.findFirst({
-      where: { parentId: body.parentId },
-      orderBy: { updatedAt: "desc" },
-    });
-
-    if (body.action === "send_payment_reminder") {
-      return NextResponse.json({ ok: true, message: "Payment reminder queued." });
-    }
-
-    const existingPlan = normalizeAdminPlanKey(current?.planKey ?? "free");
-    let nextPlan = existingPlan;
-    let nextStatus = toUiStatus(current?.status ?? "active");
-    let nextTrialEndsAt = current?.trialEndsAt ?? null;
-
-    if (body.action === "change_plan") {
-      nextPlan = normalizeAdminPlanKey(body.planKey ?? existingPlan);
-    }
-    if (body.action === "cancel_subscription") {
-      nextStatus = "cancelled";
-    }
-    if (body.action === "pause_subscription") {
-      nextStatus = "suspended";
-    }
-    if (body.action === "resume_subscription") {
-      nextStatus = "active";
-    }
-    if (body.action === "extend_trial") {
-      nextStatus = "trialing";
-      nextTrialEndsAt = addDays(new Date(), body.trialDays ?? 7);
-    }
-    if (body.status) {
-      nextStatus = toUiStatus(body.status);
-    }
-
-    const databaseStatus = nextStatus === "suspended" ? "blocked" : nextStatus === "failed_payment" ? "past_due" : nextStatus;
-
-    let selectedPricingPlanId = current?.pricingPlanId ?? null;
-    if (body.action === "change_plan") {
-      const planMatcher = nextPlan;
-      const candidate = await resolveCurrentPricingPlan({ legacyPlanKey: planMatcher });
-      selectedPricingPlanId = candidate?.id ?? current?.pricingPlanId ?? null;
-    }
-
-    const resolvedNextPricingPlan = selectedPricingPlanId
-      ? await resolveCurrentPricingPlan({ pricingPlanId: selectedPricingPlanId, legacyPlanKey: nextPlan })
-      : null;
-    const storedPlanKey = resolvedNextPricingPlan ? planKeyFromPricingPlan(resolvedNextPricingPlan) : toStoredPlanKey(nextPlan);
-
-    const data = {
-      planKey: storedPlanKey,
-      pricingPlanId: selectedPricingPlanId,
-      status: databaseStatus,
-      provider: current?.provider === "paystack" ? "paystack" : "stripe",
-      currentPeriodEnd: body.renewalDate ? new Date(body.renewalDate) : current?.currentPeriodEnd ?? null,
-      trialEndsAt: nextTrialEndsAt,
-      graceEndsAt: databaseStatus === "past_due" ? addDays(new Date(), 7) : null,
-    };
-
-    if (current) {
-      await prisma.subscription.update({ where: { id: current.id }, data });
-    } else {
-      await prisma.subscription.create({ data: { parentId: body.parentId, ...data } });
-    }
-
-    await prisma.parentProfile.upsert({
-      where: { userId: body.parentId },
-      create: {
-        userId: body.parentId,
-        phone: "Not set",
-        status: accountStatusFromSubscription(databaseStatus),
-        trialStatus: nextStatus === "trialing" ? "trial" : nextStatus,
-        subscriptionPlan: storedPlanKey,
-      },
-      update: {
-        status: accountStatusFromSubscription(databaseStatus),
-        trialStatus: nextStatus === "trialing" ? "trial" : nextStatus,
-        subscriptionPlan: storedPlanKey,
-      },
-    });
-
-    await writeAuditLog({
-      actorUserId: session.userId,
-      action: "admin.subscription.override",
-      entityType: "subscription",
-      entityId: current?.id,
-      metadata: {
-        parentId: body.parentId,
-        action: body.action,
-        oldPlan: existingPlan,
-        newPlan: nextPlan,
-        oldStatus: toUiStatus(current?.status ?? "active"),
-        newStatus: nextStatus,
-      },
-    });
-
-    return NextResponse.json({ ok: true });
+    rawBody = await request.json();
   } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const parsed = updateSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    await auditRejection({
+      actorUserId: session.userId,
+      parentId: typeof (rawBody as { parentId?: unknown })?.parentId === "string"
+        ? (rawBody as { parentId: string }).parentId
+        : "unknown",
+      action: "invalid_payload",
+      reason: "schema_validation_failed",
+    });
     return NextResponse.json({ error: "Invalid subscription action payload." }, { status: 400 });
   }
+
+  const body = parsed.data;
+  const tamperKeys = PAYMENT_DERIVED_BODY_KEYS.filter((key) => body[key] !== undefined);
+
+  // Unsafe legacy actions — fail closed, never convert into another action.
+  if ((REJECTED_ACTIONS as readonly string[]).includes(body.action)) {
+    await auditRejection({
+      actorUserId: session.userId,
+      parentId: body.parentId,
+      action: body.action,
+      reason: "unsafe_local_override_disabled",
+      metadata: { tamperKeys },
+    });
+    return NextResponse.json(
+      {
+        error:
+          "This Admin action is disabled. Paid access and plan changes come from verified billing workflows only.",
+      },
+      { status: 403 },
+    );
+  }
+
+  // Approved actions must not smuggle payment-derived field writes.
+  if (tamperKeys.length > 0) {
+    await auditRejection({
+      actorUserId: session.userId,
+      parentId: body.parentId,
+      action: body.action,
+      reason: "payment_derived_field_tamper",
+      metadata: { tamperKeys },
+    });
+    return NextResponse.json(
+      {
+        error: "Payment-derived fields cannot be changed through Admin. Request was rejected.",
+      },
+      { status: 403 },
+    );
+  }
+
+  const parent = await prisma.user.findUnique({
+    where: { id: body.parentId },
+    select: { id: true, role: true },
+  });
+  if (!parent || parent.role !== "parent") {
+    await auditRejection({
+      actorUserId: session.userId,
+      parentId: body.parentId,
+      action: body.action,
+      reason: "parent_not_found",
+    });
+    return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
+  }
+
+  const before = await getLatestParentSubscription(body.parentId);
+
+  if (body.action === "send_payment_reminder") {
+    const result = await enqueueAdminPaymentLifecycleReminder({
+      parentId: body.parentId,
+      actorUserId: session.userId,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "admin_billing_action_requested",
+      entityType: "Subscription",
+      entityId: before?.id ?? body.parentId,
+      metadata: { action: body.action, parentId: body.parentId, kind: result.kind, noticeEventId: result.eventId },
+    });
+    return NextResponse.json({ ok: true, message: result.message, eventId: result.eventId, kind: result.kind });
+  }
+
+  if (body.action === "record_operational_note") {
+    if (!body.note) {
+      await auditRejection({
+        actorUserId: session.userId,
+        parentId: body.parentId,
+        action: body.action,
+        reason: "note_required",
+      });
+      return NextResponse.json({ error: "A note of at least 3 characters is required." }, { status: 400 });
+    }
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "admin_billing_action_requested",
+      entityType: "Subscription",
+      entityId: before?.id ?? body.parentId,
+      metadata: { action: body.action, parentId: body.parentId, note: body.note },
+    });
+    return NextResponse.json({ ok: true, message: "Operational billing note recorded." });
+  }
+
+  if (body.action === "cancel_at_period_end") {
+    const result = await requestCancelAtPeriodEnd({
+      parentId: body.parentId,
+      actorUserId: session.userId,
+    });
+    if (!result.ok) {
+      await auditRejection({
+        actorUserId: session.userId,
+        parentId: body.parentId,
+        action: body.action,
+        reason: result.error,
+      });
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "admin_subscription_cancel_requested",
+      entityType: "Subscription",
+      entityId: before?.id ?? body.parentId,
+      metadata: {
+        parentId: body.parentId,
+        idempotent: result.idempotent,
+        accessEndsAt: result.accessEndsAt,
+      },
+    });
+    return NextResponse.json({
+      ok: true,
+      message: result.idempotent
+        ? "Cancellation was already scheduled at period end."
+        : "Cancellation requested at period end. Access continues until the paid period ends.",
+      accessEndsAt: result.accessEndsAt,
+      status: result.status,
+    });
+  }
+
+  if (body.action === "reactivate") {
+    const result = await requestReactivateSubscription({
+      parentId: body.parentId,
+      actorUserId: session.userId,
+    });
+    if (!result.ok) {
+      await auditRejection({
+        actorUserId: session.userId,
+        parentId: body.parentId,
+        action: body.action,
+        reason: result.error,
+      });
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "admin_subscription_reactivation_requested",
+      entityType: "Subscription",
+      entityId: before?.id ?? body.parentId,
+      metadata: {
+        parentId: body.parentId,
+        idempotent: result.idempotent,
+        renewalDate: result.renewalDate,
+      },
+    });
+    return NextResponse.json({
+      ok: true,
+      message: result.idempotent
+        ? "Subscription is already active."
+        : "Reactivation requested. Billing will continue at the next renewal.",
+      renewalDate: result.renewalDate,
+      status: result.status,
+    });
+  }
+
+  await auditRejection({
+    actorUserId: session.userId,
+    parentId: body.parentId,
+    action: body.action,
+    reason: "unsupported_action",
+  });
+  return NextResponse.json({ error: "Unsupported Admin billing action." }, { status: 400 });
 }

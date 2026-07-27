@@ -1,7 +1,14 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import PublicPricingSection from "@/components/pricing/PublicPricingSection"
 import PublicShell from "@/components/layout/PublicShell"
 import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings"
+
+export const metadata: Metadata = {
+  title: "Pricing and Subscriptions | StarLiz Academy",
+  description:
+    "Compare eligible StarLiz plans for AI-led learning, parent progress visibility and Short Learning booking access.",
+}
 
 export default function PricingPage() {
   return (

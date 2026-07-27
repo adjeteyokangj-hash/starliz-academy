@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/db"
-import { requireAdmin } from "@/lib/api_guard"
+import { requireAdminPermission } from "@/lib/api_guard"
 import { getAdminPricingPlans, toPricingFeaturesStorage } from "@/lib/pricing/service"
 
 const pricingPlanInput = z.object({
@@ -24,7 +24,7 @@ const pricingPlanInput = z.object({
 })
 
 export async function GET() {
-  const { session, response } = await requireAdmin()
+  const { session, response } = await requireAdminPermission("MANAGE_BILLING")
   if (!session) return response
 
   const plans = await getAdminPricingPlans()
@@ -32,7 +32,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAdmin()
+  const { session, response } = await requireAdminPermission("MANAGE_BILLING")
   if (!session) return response
 
   try {

@@ -22,8 +22,8 @@ type ParentDetail = {
     status: string;
     trialStatus: string | null;
     subscriptionPlan: string | null;
-    stripeCustomerId: string | null;
-    paystackCustomerId: string | null;
+    hasStripeCustomer?: boolean;
+    hasPaystackCustomer?: boolean;
     mfaEnabled: boolean;
   } | null;
   subscription: {
@@ -32,6 +32,7 @@ type ParentDetail = {
     planKey: string;
     currentPeriodEnd: string | null;
     updatedAt: string;
+    hasProviderCustomer?: boolean;
   } | null;
   consentVersion: string | null;
   consentAcceptedAt: string | null;

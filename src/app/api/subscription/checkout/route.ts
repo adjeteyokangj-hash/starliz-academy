@@ -71,8 +71,14 @@ async function upsertPendingSubscription(parentId: string, payload: {
     status: payload.status,
     pricingPlanId: payload.planId,
     planKey: payload.planKey,
-    providerCustomerId: payload.providerCustomerId ?? existing?.providerCustomerId ?? null,
-    providerSubId: payload.providerSubId ?? existing?.providerSubId ?? null,
+    providerCustomerId:
+      payload.providerCustomerId !== undefined
+        ? payload.providerCustomerId
+        : (existing?.providerCustomerId ?? null),
+    providerSubId:
+      payload.providerSubId !== undefined
+        ? payload.providerSubId
+        : (existing?.providerSubId ?? null),
   }
 
   if (existing) {
@@ -105,17 +111,27 @@ async function startStripeCheckout(input: {
   }
 
   const origin = getOrigin(input.request)
+  const planKey = planKeyFromPricingPlan(input.plan)
   const form = new URLSearchParams({
     mode: "subscription",
     "line_items[0][price]": input.plan.stripePriceId,
     "line_items[0][quantity]": "1",
-    success_url: `${origin}/subscription/success`,
+    success_url: `${origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: normalizeReturnUrl(input.request, input.returnUrl),
     customer_email: input.parentEmail,
+    client_reference_id: input.parentId,
     "metadata[parentId]": input.parentId,
-    "metadata[planKey]": planKeyFromPricingPlan(input.plan),
+    "metadata[userId]": input.parentId,
+    "metadata[planKey]": planKey,
     "metadata[pricingPlanId]": input.plan.id,
     "metadata[provider]": "stripe",
+    "metadata[planName]": input.plan.name,
+    "metadata[planInterval]": input.plan.interval,
+    "subscription_data[metadata][parentId]": input.parentId,
+    "subscription_data[metadata][userId]": input.parentId,
+    "subscription_data[metadata][planKey]": planKey,
+    "subscription_data[metadata][pricingPlanId]": input.plan.id,
+    "subscription_data[metadata][provider]": "stripe",
   })
 
   const checkout = await fetch("https://api.stripe.com/v1/checkout/sessions", {
@@ -132,13 +148,15 @@ async function startStripeCheckout(input: {
   }
 
   const payload = await checkout.json() as { url?: string; id?: string; customer?: string }
+  // Keep local subscription pending until the verified webhook establishes payment truth.
+  // Do not store the Checkout session id as providerSubId — that id is not the Stripe subscription.
   await upsertPendingSubscription(input.parentId, {
     provider: "stripe",
     status: "pending",
     planId: input.plan.id,
-    planKey: planKeyFromPricingPlan(input.plan),
+    planKey,
     providerCustomerId: payload.customer ? String(payload.customer) : null,
-    providerSubId: payload.id ? String(payload.id) : null,
+    providerSubId: null,
   })
 
   return NextResponse.json({ ok: true, provider: "stripe", checkoutUrl: payload.url ?? null })

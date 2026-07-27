@@ -40,9 +40,13 @@ type AccountPayload = {
     linkedChildrenCount: number;
     subscriptionStatus: string;
     subscriptionState: string;
+    subscriptionPlanName?: string;
+    subscriptionPlanBadge?: string;
     childLimit: number;
     renewalDate: string | null;
-    stripeCustomerId: string | null;
+    hasStripeCustomer?: boolean;
+    /** @deprecated Prefer hasStripeCustomer — raw Stripe IDs must not reach the client. */
+    stripeCustomerId?: string | null;
     security?: {
       lastPasswordChangedAt: string | null;
     };
@@ -92,6 +96,14 @@ type SubscriptionPayload = {
     planName: string;
     badge: string;
     status: string;
+    statusLabel?: string;
+    statusTone?: "ok" | "warning" | "danger" | "neutral";
+    statusDetail?: string;
+    cancelScheduled?: boolean;
+    accessEndsAt?: string | null;
+    canManageBilling?: boolean;
+    paymentFailed?: boolean;
+    commercialNotes?: string[];
     provider: string;
     currentPricePence: number;
     currentCurrency: string;
@@ -1103,7 +1115,17 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <StatCard label="Children" value={account?.account.linkedChildrenCount ?? 0} />
-              <StatCard label="Subscription" value={account?.account.subscriptionStatus ?? "loading"} />
+              <StatCard
+                label="Subscription"
+                value={
+                  loading
+                    ? "…"
+                    : (subscription?.subscription.statusLabel
+                      ?? account?.account.subscriptionState
+                      ?? account?.account.subscriptionStatus
+                      ?? "Unavailable")
+                }
+              />
               <StatCard label="Consent" value={consent?.accepted ? "Accepted" : "Pending"} />
             </div>
             <div className="flex justify-start lg:justify-end">
@@ -1198,9 +1220,10 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                 </Panel>
                 <Panel title="Plan and billing" description="Check renewal status and available child limit.">
                   <div className="space-y-3 text-sm text-slate-300">
-                    <p>Plan: <span className="font-semibold text-white">{subscription?.subscription.planName ?? account?.account.subscriptionStatus ?? "Loading"}</span></p>
+                    <p>Plan: <span className="font-semibold text-white">{subscription?.subscription.planName ?? account?.account.subscriptionPlanName ?? "Loading"}</span></p>
+                    <p>Status: <span className="font-semibold text-white">{subscription?.subscription.statusLabel ?? account?.account.subscriptionState ?? "Loading"}</span></p>
                     <p>Children used: <span className="font-semibold text-white">{subscription?.subscription.childrenUsed ?? 0}/{subscription?.subscription.childLimit ?? account?.account.childLimit ?? 0}</span></p>
-                    <p>Renewal: <span className="font-semibold text-white">{subscription?.subscription.renewalDate ? new Date(subscription.subscription.renewalDate).toLocaleDateString() : "No renewal set"}</span></p>
+                    <p>Renewal: <span className="font-semibold text-white">{subscription?.subscription.renewalDate ? new Date(subscription.subscription.renewalDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "No renewal set"}</span></p>
                   </div>
                 </Panel>
               </div>
@@ -2034,13 +2057,28 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                   currentCurrency={subscription.subscription.currentCurrency}
                   currentInterval={subscription.subscription.currentInterval}
                   status={subscription.subscription.status}
+                  statusLabel={subscription.subscription.statusLabel}
+                  statusTone={subscription.subscription.statusTone}
+                  statusDetail={subscription.subscription.statusDetail}
+                  cancelScheduled={subscription.subscription.cancelScheduled}
+                  accessEndsAt={subscription.subscription.accessEndsAt}
+                  canManageBilling={subscription.subscription.canManageBilling}
+                  paymentFailed={subscription.subscription.paymentFailed}
+                  commercialNotes={subscription.subscription.commercialNotes}
                   childrenUsed={subscription.subscription.childrenUsed}
                   childLimit={subscription.subscription.childLimit}
                   upgradeRequired={subscription.subscription.upgradeRequired}
                   reason={subscription.subscription.reason}
                   renewalDate={subscription.subscription.renewalDate}
                   trialEndsAt={subscription.subscription.trialEndsAt}
-                  stripeCustomerId={account.account.stripeCustomerId}
+                  stripeCustomerId={account.account.hasStripeCustomer ? "present" : null}
+                  onSubscriptionChanged={() => {
+                    void fetchWithRefreshRetry("/api/subscription", { credentials: "include" })
+                      .then((res) => (res.ok ? res.json() : null))
+                      .then((payload) => {
+                        if (payload) setSubscription(payload as SubscriptionPayload);
+                      });
+                  }}
                   plans={subscription.plans.map((plan) => ({
                     id: plan.id,
                     key: plan.key,
@@ -2151,7 +2189,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
           {activeSection === "rewards" ? (
             <>
-              <Panel title="Rewards" description="Wallet balance and purchases for the selected child.">
+              <Panel title="Rewards" description="Server-sourced reward balances for the selected child. Standalone wallet top-ups are disabled pending a secure billing-grade redesign.">
                 {childDetail ? (
                   <div className="grid gap-3 md:grid-cols-3">
                     <Metric label="Balance" value={currency(childDetail.walletSummary.balance)} />
@@ -2161,6 +2199,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                 ) : (
                   <EmptyState text="Select a child to see rewards and wallet history." />
                 )}
+                <p className="mt-4 text-xs text-slate-400">
+                  Balances come from the server for the selected child. The standalone client wallet page is disabled for launch.
+                </p>
               </Panel>
 
               {childDetail && childDetail.purchaseHistory.some((p) => p.approvalStatus === "pending") ? (

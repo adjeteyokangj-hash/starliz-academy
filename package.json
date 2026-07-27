@@ -14,6 +14,7 @@
     "verify:short-learning-cron": "tsx scripts/verify-short-learning-cron.ts",
     "test:phase6-policies": "tsx --test tests/phase6_policies.test.ts",
     "typecheck:launch-modules": "tsc -p tsconfig.launch-modules.json --noEmit",
+    "apply:stripe-price-ids": "tsx scripts/apply-stripe-price-ids.ts",
     "uat:short-learning": "tsx scripts/uat-short-learning.ts",
     "uat:admin-portal": "tsx scripts/uat-admin-portal-launch.ts",
     "test:curriculum-coverage": "tsx --test tests/curriculum_coverage.test.ts",

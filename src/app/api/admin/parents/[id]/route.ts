@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { getAiUseDisclosureSummary } from "@/lib/privacy/ai-disclosure";
 
@@ -23,6 +23,7 @@ const updateParentSchema = z.object({
   preferredLearningFocus: z.string().trim().nullable().optional(),
   schoolType: z.string().trim().nullable().optional(),
   curriculum: z.string().trim().nullable().optional(),
+  // Payment-derived fields are rejected below — kept optional only so clients receive an explicit 403.
   trialStatus: z.string().trim().nullable().optional(),
   subscriptionPlan: z.string().trim().nullable().optional(),
   stripeCustomerId: z.string().trim().nullable().optional(),
@@ -119,6 +120,8 @@ export async function GET(_request: Request, context: Context) {
           id: true,
           status: true,
           planKey: true,
+          pricingPlanId: true,
+          providerCustomerId: true,
           currentPeriodEnd: true,
           updatedAt: true,
         },
@@ -188,6 +191,10 @@ export async function GET(_request: Request, context: Context) {
       parentProfile: parent.parentProfile
         ? {
             ...parent.parentProfile,
+            stripeCustomerId: undefined,
+            paystackCustomerId: undefined,
+            hasStripeCustomer: Boolean(parent.parentProfile.stripeCustomerId),
+            hasPaystackCustomer: Boolean(parent.parentProfile.paystackCustomerId),
             lastLoginAt: parent.parentProfile.lastLoginAt?.toISOString() ?? null,
             createdAt: parent.parentProfile.createdAt.toISOString(),
             updatedAt: parent.parentProfile.updatedAt.toISOString(),
@@ -195,9 +202,13 @@ export async function GET(_request: Request, context: Context) {
         : null,
       subscription: latestSubscription
         ? {
-            ...latestSubscription,
+            id: latestSubscription.id,
+            status: latestSubscription.status,
+            planKey: latestSubscription.planKey,
+            pricingPlanId: latestSubscription.pricingPlanId,
             currentPeriodEnd: latestSubscription.currentPeriodEnd?.toISOString() ?? null,
             updatedAt: latestSubscription.updatedAt.toISOString(),
+            hasProviderCustomer: Boolean(latestSubscription.providerCustomerId),
           }
         : null,
       notificationPreferences: parent.notificationPreferences.map((pref) => ({
@@ -218,7 +229,7 @@ export async function GET(_request: Request, context: Context) {
 }
 
 export async function PATCH(request: Request, context: Context) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("parents:write");
   if (!session) return response;
 
   const { id } = await context.params;
@@ -231,6 +242,32 @@ export async function PATCH(request: Request, context: Context) {
 
     if (!current || current.role !== "parent") {
       return NextResponse.json({ error: "Parent not found." }, { status: 404 });
+    }
+
+    const paymentDerivedAttempted = [
+      body.trialStatus !== undefined ? "trialStatus" : null,
+      body.subscriptionPlan !== undefined ? "subscriptionPlan" : null,
+      body.stripeCustomerId !== undefined ? "stripeCustomerId" : null,
+      body.paystackCustomerId !== undefined ? "paystackCustomerId" : null,
+    ].filter(Boolean);
+    if (paymentDerivedAttempted.length > 0) {
+      await writeAuditLog({
+        actorUserId: session.userId,
+        action: "admin_subscription_change_rejected",
+        entityType: "parent",
+        entityId: id,
+        metadata: {
+          reason: "payment_derived_field_tamper",
+          fields: paymentDerivedAttempted,
+        },
+      });
+      return NextResponse.json(
+        {
+          error:
+            "Payment-derived parent fields cannot be changed through Admin. Use verified billing workflows or Subscriptions cancel/reactivate actions.",
+        },
+        { status: 403 },
+      );
     }
 
     const shouldRebuildDeviceJson =
@@ -259,10 +296,6 @@ export async function PATCH(request: Request, context: Context) {
       ...(body.preferredLearningFocus !== undefined ? { preferredLearningFocus: body.preferredLearningFocus } : {}),
       ...(body.schoolType !== undefined ? { schoolType: body.schoolType } : {}),
       ...(body.curriculum !== undefined ? { curriculum: body.curriculum } : {}),
-      ...(body.trialStatus !== undefined ? { trialStatus: body.trialStatus } : {}),
-      ...(body.subscriptionPlan !== undefined ? { subscriptionPlan: body.subscriptionPlan } : {}),
-      ...(body.stripeCustomerId !== undefined ? { stripeCustomerId: body.stripeCustomerId } : {}),
-      ...(body.paystackCustomerId !== undefined ? { paystackCustomerId: body.paystackCustomerId } : {}),
       ...(body.forcePasswordReset !== undefined ? { forcePasswordReset: body.forcePasswordReset } : {}),
       ...(body.mfaEnabled !== undefined ? { mfaEnabled: body.mfaEnabled } : {}),
       ...(body.lastLoginAt !== undefined ? { lastLoginAt: body.lastLoginAt ? new Date(body.lastLoginAt) : null } : {}),
@@ -312,7 +345,11 @@ export async function PATCH(request: Request, context: Context) {
       action: "updated",
       entityType: "parent",
       entityId: parent.id,
-      metadata: body,
+      metadata: {
+        fields: Object.keys(body).filter(
+          (key) => !["stripeCustomerId", "paystackCustomerId", "password", "deviceTrackingJson"].includes(key),
+        ),
+      },
     });
 
     return NextResponse.json({ parent });

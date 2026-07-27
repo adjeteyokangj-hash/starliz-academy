@@ -54,8 +54,10 @@ export function resolveStripeWebhookStatus(input: StripeWebhookStatusInput): str
     return "active";
   }
 
+  // Local model: cancel_at_period_end with paid time remaining is stored as cancelled
+  // while currentPeriodEnd remains in the future (access continues until then).
   if (cancelAtPeriodEnd && (normalizedRaw === "active" || normalizedRaw === "trialing") && currentPeriodEnd && currentPeriodEnd.getTime() > now.getTime()) {
-    return normalizedRaw;
+    return "cancelled";
   }
 
   return normalizedRaw ?? normalizedExisting;
