@@ -15,7 +15,7 @@ function badgeClass(score: number) {
 
 export default async function AttendanceRiskStudentsPage({ params }: PageProps) {
   const { schoolId } = await params;
-  const students = [...getAttendanceStudentSignals()].sort((left, right) => right.attendanceRiskScore - left.attendanceRiskScore);
+  const students = [...(await getAttendanceStudentSignals(schoolId))].sort((left, right) => right.attendanceRiskScore - left.attendanceRiskScore);
 
   return (
     <SchoolDashboardShell
@@ -36,6 +36,14 @@ export default async function AttendanceRiskStudentsPage({ params }: PageProps) 
           </div>
         </section>
         <section className="grid gap-3">
+          {students.length === 0 ? (
+            <article className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-50">
+              <p className="font-semibold">No live risk signals</p>
+              <p className="mt-1 text-amber-100/90">
+                Sample risk students are hidden when this school has enrolments, so demo data is not shown as real attendance.
+              </p>
+            </article>
+          ) : null}
           {students.map((student) => (
             <article key={student.id} className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4 text-xs text-slate-200">
               <div className="flex flex-wrap items-start justify-between gap-2">

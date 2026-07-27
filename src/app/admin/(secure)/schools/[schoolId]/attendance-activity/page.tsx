@@ -9,8 +9,10 @@ type PageProps = {
 
 export default async function SchoolAttendanceActivityPage({ params }: PageProps) {
   const { schoolId } = await params;
-  const overview = getAttendanceOverview();
-  const priorityStudents = getAttendanceStudentSignals().slice(0, 3);
+  const overview = await getAttendanceOverview(schoolId);
+  const priorityStudents = (await getAttendanceStudentSignals(schoolId)).slice(0, 3);
+  const isSample = overview.mode === "sample";
+  const isUnavailable = overview.mode === "unavailable";
 
   return (
     <SchoolDashboardShell
@@ -26,25 +28,47 @@ export default async function SchoolAttendanceActivityPage({ params }: PageProps
           <p className="mt-1">Attendance stays education-intelligence focused. This area does not implement full timetable systems, room scheduling, payroll links, registration infrastructure, or government census workflows.</p>
         </section>
 
+        {isUnavailable ? (
+          <section className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-50">
+            <p className="font-semibold">Attendance intelligence unavailable</p>
+            <p className="mt-1 text-amber-100/90">
+              This school has enrolled students. Sample attendance metrics are hidden so they are not mistaken for live data.
+              Use the school attendance register for operational truth until intelligence wiring is complete.
+            </p>
+            <Link
+              href={`/admin/schools/${schoolId}/attendance`}
+              className="mt-3 inline-flex rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-50 transition hover:bg-amber-500/20"
+            >
+              Open attendance register
+            </Link>
+          </section>
+        ) : null}
+
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
             <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Attendance Summary</p>
-            <p className="mt-2 text-2xl font-black text-white">{overview.averageAttendance}%</p>
-            <p className="mt-1 text-xs text-slate-400">Average attendance across monitored intelligence cohort.</p>
+            <p className="mt-2 text-2xl font-black text-white">
+              {overview.averageAttendance === null ? "—" : `${overview.averageAttendance}%`}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              {isSample ? "Sample average (empty school)." : "Live intelligence not wired yet."}
+            </p>
           </article>
           <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
             <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Engagement Score</p>
-            <p className="mt-2 text-2xl font-black text-white">{overview.averageEngagement}</p>
-            <p className="mt-1 text-xs text-slate-400">Attendance linked to learning engagement and class insight scoring.</p>
+            <p className="mt-2 text-2xl font-black text-white">{overview.averageEngagement ?? "—"}</p>
+            <p className="mt-1 text-xs text-slate-400">
+              {isSample ? "Sample engagement score." : "Unavailable until intelligence is wired."}
+            </p>
           </article>
           <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
             <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Risk Students</p>
-            <p className="mt-2 text-2xl font-black text-amber-200">{overview.highRiskCount}</p>
+            <p className="mt-2 text-2xl font-black text-amber-200">{isUnavailable ? "—" : overview.highRiskCount}</p>
             <p className="mt-1 text-xs text-slate-400">High-priority learners needing attendance intelligence action.</p>
           </article>
           <article className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
             <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Safeguarding Links</p>
-            <p className="mt-2 text-2xl font-black text-rose-200">{overview.safeguardingLinkedCount}</p>
+            <p className="mt-2 text-2xl font-black text-rose-200">{isUnavailable ? "—" : overview.safeguardingLinkedCount}</p>
             <p className="mt-1 text-xs text-slate-400">Attendance concerns already feeding safeguarding review.</p>
           </article>
         </section>
@@ -74,28 +98,25 @@ export default async function SchoolAttendanceActivityPage({ params }: PageProps
 
         <section className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4">
           <h2 className="text-sm font-semibold text-white">Priority Signals Feeding Intelligence</h2>
-          <div className="mt-3 grid gap-3 lg:grid-cols-3">
-            {priorityStudents.map((student) => (
-              <article key={student.id} className="rounded-lg border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-200">
-                <p className="font-semibold text-white">{student.studentName}</p>
-                <p className="mt-1 text-slate-400">Risk {student.attendanceRiskScore} · Attendance {student.attendancePct}% · Engagement {student.engagementScore}</p>
-                <p className="mt-2"><span className="text-slate-400">AI concern:</span> {student.aiConcernIndicator}</p>
-                <p className="mt-1"><span className="text-slate-400">Parent prompt:</span> {student.parentContactPrompt}</p>
-                <p className="mt-1"><span className="text-slate-400">Safeguarding prompt:</span> {student.safeguardingEscalationPrompt}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4 text-xs text-cyan-100">
-          <p className="font-semibold">Intelligence Feeds</p>
-          <ul className="mt-2 grid gap-1 md:grid-cols-2">
-            <li>Student intelligence</li>
-            <li>Safeguarding</li>
-            <li>AI intervention engine</li>
-            <li>Parent communication</li>
-            <li>Class insight scoring</li>
-          </ul>
+          {priorityStudents.length === 0 ? (
+            <p className="mt-3 text-xs text-slate-400">
+              {isUnavailable
+                ? "No fabricated priority signals are shown for schools with enrolments."
+                : "No sample priority signals available."}
+            </p>
+          ) : (
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              {priorityStudents.map((student) => (
+                <article key={student.id} className="rounded-lg border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-200">
+                  <p className="font-semibold text-white">{student.studentName}</p>
+                  <p className="mt-1 text-slate-400">Risk {student.attendanceRiskScore} · Attendance {student.attendancePct}% · Engagement {student.engagementScore}</p>
+                  <p className="mt-2"><span className="text-slate-400">AI concern:</span> {student.aiConcernIndicator}</p>
+                  <p className="mt-1"><span className="text-slate-400">Parent prompt:</span> {student.parentContactPrompt}</p>
+                  <p className="mt-1"><span className="text-slate-400">Safeguarding prompt:</span> {student.safeguardingEscalationPrompt}</p>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </SchoolDashboardShell>

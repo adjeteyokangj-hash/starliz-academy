@@ -1,3 +1,5 @@
+import { prisma } from "@/lib/db";
+
 export type AttendanceRiskFlag = "persistent-absence" | "safeguarding-watch" | "engagement-drop" | "parent-contact-needed" | "ai-support";
 
 export type AttendanceStudentSignal = {
@@ -38,7 +40,24 @@ export type AttendanceIntervention = {
   status: "planned" | "in-progress" | "monitoring";
 };
 
-const STUDENT_SIGNALS: AttendanceStudentSignal[] = [
+export type AttendanceIntelligenceMode = "sample" | "unavailable";
+
+export type AttendanceOverview = {
+  mode: AttendanceIntelligenceMode;
+  averageAttendance: number | null;
+  averageEngagement: number | null;
+  highRiskCount: number;
+  safeguardingLinkedCount: number;
+  persistentAbsenceCount: number;
+  anomalyCount: number;
+  interventionCount: number;
+};
+
+/**
+ * Sample fixtures for empty schools in development/demo only.
+ * Never return these as live production attendance when a school has enrolments.
+ */
+const SAMPLE_STUDENT_SIGNALS: AttendanceStudentSignal[] = [
   {
     id: "att-1001",
     studentName: "A. Robinson",
@@ -101,7 +120,7 @@ const STUDENT_SIGNALS: AttendanceStudentSignal[] = [
   },
 ];
 
-const ANOMALIES: AttendanceAnomaly[] = [
+const SAMPLE_ANOMALIES: AttendanceAnomaly[] = [
   {
     id: "an-1",
     title: "Monday drift in Year 5",
@@ -131,7 +150,7 @@ const ANOMALIES: AttendanceAnomaly[] = [
   },
 ];
 
-const INTERVENTIONS: AttendanceIntervention[] = [
+const SAMPLE_INTERVENTIONS: AttendanceIntervention[] = [
   {
     id: "int-1",
     studentName: "A. Robinson",
@@ -167,32 +186,57 @@ const INTERVENTIONS: AttendanceIntervention[] = [
   },
 ];
 
-export function getAttendanceStudentSignals() {
-  return STUDENT_SIGNALS;
+export async function getAttendanceIntelligenceMode(schoolId: string): Promise<AttendanceIntelligenceMode> {
+  const enrolled = await prisma.schoolStudent.count({
+    where: { schoolId, status: "active" },
+  });
+  // Sample fixtures are only allowed for empty schools. Enrolled schools must not
+  // see fabricated attendance as live operational data.
+  return enrolled > 0 ? "unavailable" : "sample";
 }
 
-export function getAttendanceAnomalies() {
-  return ANOMALIES;
+export async function getAttendanceStudentSignals(schoolId: string): Promise<AttendanceStudentSignal[]> {
+  const mode = await getAttendanceIntelligenceMode(schoolId);
+  return mode === "sample" ? SAMPLE_STUDENT_SIGNALS : [];
 }
 
-export function getAttendanceInterventions() {
-  return INTERVENTIONS;
+export async function getAttendanceAnomalies(schoolId: string): Promise<AttendanceAnomaly[]> {
+  const mode = await getAttendanceIntelligenceMode(schoolId);
+  return mode === "sample" ? SAMPLE_ANOMALIES : [];
 }
 
-export function getAttendanceOverview() {
-  const students = getAttendanceStudentSignals();
-  const anomalies = getAttendanceAnomalies();
-  const interventions = getAttendanceInterventions();
+export async function getAttendanceInterventions(schoolId: string): Promise<AttendanceIntervention[]> {
+  const mode = await getAttendanceIntelligenceMode(schoolId);
+  return mode === "sample" ? SAMPLE_INTERVENTIONS : [];
+}
+
+export async function getAttendanceOverview(schoolId: string): Promise<AttendanceOverview> {
+  const mode = await getAttendanceIntelligenceMode(schoolId);
+  if (mode === "unavailable") {
+    return {
+      mode,
+      averageAttendance: null,
+      averageEngagement: null,
+      highRiskCount: 0,
+      safeguardingLinkedCount: 0,
+      persistentAbsenceCount: 0,
+      anomalyCount: 0,
+      interventionCount: 0,
+    };
+  }
+
+  const students = SAMPLE_STUDENT_SIGNALS;
+  const anomalies = SAMPLE_ANOMALIES;
+  const interventions = SAMPLE_INTERVENTIONS;
   const averageAttendance = Math.round(students.reduce((sum, item) => sum + item.attendancePct, 0) / students.length);
   const averageEngagement = Math.round(students.reduce((sum, item) => sum + item.engagementScore, 0) / students.length);
-  const highRiskCount = students.filter((item) => item.attendanceRiskScore >= 70).length;
-  const safeguardingLinkedCount = students.filter((item) => item.safeguardingLinked).length;
 
   return {
+    mode,
     averageAttendance,
     averageEngagement,
-    highRiskCount,
-    safeguardingLinkedCount,
+    highRiskCount: students.filter((item) => item.attendanceRiskScore >= 70).length,
+    safeguardingLinkedCount: students.filter((item) => item.safeguardingLinked).length,
     persistentAbsenceCount: students.filter((item) => item.persistentAbsence).length,
     anomalyCount: anomalies.length,
     interventionCount: interventions.length,

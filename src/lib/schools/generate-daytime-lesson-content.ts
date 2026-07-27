@@ -6,6 +6,10 @@ import {
   preferredContentTypesForPeriod,
 } from "@/lib/schools/start-daytime-period";
 import {
+  isEnglishCurriculumSubject,
+  resolvePlayableLessonType,
+} from "@/lib/schools/playable-lesson-type";
+import {
   clearBlackBoxStaleMetadata,
   mergeBlackBoxGateMetadata,
   parseContentMetadataJson,
@@ -96,6 +100,15 @@ function yearLevel(yearGroup: string | null | undefined): number {
 }
 
 function resolveContentType(subject: string, skillFocus: string | null): string {
+  // English (and reading-labelled) slots share the Daytime/Short Learning playable mapper.
+  if (
+    isEnglishCurriculumSubject(subject)
+    || /\bread/i.test(subject)
+    || /\bread|comprehension|english/i.test(skillFocus ?? "")
+  ) {
+    return resolvePlayableLessonType({ subject, skillFocus }).playableContentType;
+  }
+  // Preserve established Daytime preferred types for maths/science/practical slots.
   const preferred = preferredContentTypesForPeriod(subject, skillFocus)[0] ?? "lesson";
   if (preferred === "maths") return "math";
   if (preferred === "english-language") return "reading";

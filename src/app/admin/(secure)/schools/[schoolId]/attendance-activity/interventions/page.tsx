@@ -15,7 +15,7 @@ function badgeClass(status: string) {
 
 export default async function AttendanceInterventionsPage({ params }: PageProps) {
   const { schoolId } = await params;
-  const interventions = getAttendanceInterventions();
+  const interventions = await getAttendanceInterventions(schoolId);
 
   return (
     <SchoolDashboardShell
@@ -36,6 +36,14 @@ export default async function AttendanceInterventionsPage({ params }: PageProps)
           </div>
         </section>
         <section className="grid gap-3">
+          {interventions.length === 0 ? (
+            <article className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-50">
+              <p className="font-semibold">No live interventions</p>
+              <p className="mt-1 text-amber-100/90">
+                Sample intervention lists are hidden when this school has enrolments, so demo data is not shown as real attendance.
+              </p>
+            </article>
+          ) : null}
           {interventions.map((item) => (
             <article key={item.id} className="rounded-xl border border-slate-700/70 bg-slate-950/60 p-4 text-xs text-slate-200">
               <div className="flex items-start justify-between gap-2">

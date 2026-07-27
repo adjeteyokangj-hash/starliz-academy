@@ -10,6 +10,7 @@ import {
   questionKindRequiresFixedAnswer,
 } from "@/lib/schools/daytime-activity-kind";
 import type { DaytimeSubjectMode } from "@/lib/schools/daytime-subject-mode";
+import { validateShortLearningInstructionalDepth } from "@/lib/schools/short-learning-instructional-depth";
 
 const INTERNAL_ID_LEAK = /(?:^|[^a-z0-9])(?:(?:warmup|core|stretch)-)?c[a-z0-9]{20,}(?:[^a-z0-9]|$)/i;
 const PLACEHOLDER_MARKERS = [
@@ -20,6 +21,33 @@ const PLACEHOLDER_MARKERS = [
   "todo:",
   "FIXME",
 ];
+
+/** Common US spellings that should be British English in pupil-facing Daytime content. */
+const AMERICAN_SPELLING_MARKERS: Array<{ label: string; us: RegExp; ukPresent?: RegExp }> = [
+  { label: "color", us: /\bcolors?\b/i, ukPresent: /\bcolours?\b/i },
+  { label: "favorite", us: /\bfavorites?\b/i, ukPresent: /\bfavourites?\b/i },
+  { label: "organize", us: /\borganize[sd]?\b/i, ukPresent: /\borganise[sd]?\b/i },
+  { label: "center", us: /\bcenters?\b/i, ukPresent: /\bcentres?\b/i },
+  { label: "analyze", us: /\banalyze[sd]?\b/i, ukPresent: /\banalyse[sd]?\b/i },
+];
+
+/**
+ * Returns US spelling / currency markers found in pupil-facing text.
+ * Exported for focused British English tests.
+ */
+export function findAmericanEnglishMarkers(text: string): string[] {
+  const hits: string[] = [];
+  const sample = text ?? "";
+  for (const marker of AMERICAN_SPELLING_MARKERS) {
+    if (marker.us.test(sample) && !(marker.ukPresent?.test(sample))) {
+      hits.push(marker.label);
+    }
+  }
+  if (/\$/.test(sample) || /\bdollars?\b/i.test(sample)) {
+    hits.push("dollar/$");
+  }
+  return hits;
+}
 
 export type DaytimeStageValidationIssue = {
   code: string;
@@ -61,6 +89,11 @@ export type NormalizedDaytimeStagePack = {
   explanation?: string;
   workedExamples?: Array<{ question: string; steps: string[]; answer: string }>;
   scenarioOrObservation?: string;
+  /** Short Learning depth fields (optional; Day School may omit). */
+  priorLearningWarmup?: string;
+  misconceptions?: string[];
+  reflectionCheck?: string;
+  transitionNote?: string;
   generationStatus?: "ok" | "failed";
   failureReason?: string | null;
   raw?: Record<string, unknown>;
@@ -93,6 +126,8 @@ function collectText(pack: NormalizedDaytimeStagePack): string {
     chunks.push(pack.passage.title, pack.passage.text, ...pack.passage.paragraphs);
   }
   chunks.push(pack.explanation ?? "", pack.ruleExplanation ?? "", pack.scenarioOrObservation ?? "");
+  chunks.push(pack.priorLearningWarmup ?? "", pack.reflectionCheck ?? "", pack.transitionNote ?? "");
+  for (const misconception of pack.misconceptions ?? []) chunks.push(misconception);
   for (const word of pack.vocabulary ?? []) {
     chunks.push(word.word, word.childFriendlyMeaning, word.example ?? "");
   }
@@ -199,7 +234,13 @@ export function normalizeDaytimeStagePack(raw: unknown, fallbackMode: DaytimeSub
         passage: asString(item.passage) || undefined,
         kind: (() => {
           const rawKind = asString(item.kind);
-          if (!rawKind) return undefined;
+          if (!rawKind) {
+            // Infer open reasoning from prompt so "Explain why…" is not treated as closed short-answer.
+            if (/\b(explain why|explain how|why do|why is|justify|discuss|reflect)\b/i.test(prompt)) {
+              return "reasoning";
+            }
+            return undefined;
+          }
           const normalized = normalizeDaytimeActivityKind(rawKind);
           return normalized.ok ? normalized.kind : rawKind;
         })(),
@@ -254,11 +295,18 @@ export function normalizeDaytimeStagePack(raw: unknown, fallbackMode: DaytimeSub
   const workedExamples = Array.isArray(row.workedExamples)
     ? row.workedExamples
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
-      .map((item) => ({
-        question: asString(item.question),
-        steps: Array.isArray(item.steps) ? item.steps.map((s) => asString(s)).filter(Boolean) : [],
-        answer: asString(item.answer),
-      }))
+      .map((item) => {
+        const rawAnswer = item.answer;
+        const answer =
+          typeof rawAnswer === "number" && Number.isFinite(rawAnswer)
+            ? String(rawAnswer)
+            : asString(rawAnswer);
+        return {
+          question: asString(item.question) || asString(item.prompt),
+          steps: Array.isArray(item.steps) ? item.steps.map((s) => asString(s)).filter(Boolean) : [],
+          answer,
+        };
+      })
       .filter((item) => item.question && item.answer)
     : undefined;
 
@@ -283,6 +331,12 @@ export function normalizeDaytimeStagePack(raw: unknown, fallbackMode: DaytimeSub
     explanation: asString(row.explanation) || undefined,
     workedExamples,
     scenarioOrObservation: asString(row.scenarioOrObservation) || undefined,
+    priorLearningWarmup: asString(row.priorLearningWarmup) || undefined,
+    misconceptions: Array.isArray(row.misconceptions)
+      ? row.misconceptions.map((item) => asString(item)).filter(Boolean)
+      : undefined,
+    reflectionCheck: asString(row.reflectionCheck) || undefined,
+    transitionNote: asString(row.transitionNote) || undefined,
     generationStatus: row.generationStatus === "failed" ? "failed" : "ok",
     failureReason: asString(row.failureReason) || null,
     raw: {
@@ -298,6 +352,9 @@ export function validateDaytimeStagePack(input: {
   stage: "warmup" | "core" | "stretch";
   targetMinutes: number;
   lessonTitle: string;
+  /** When "short-learning", apply additive instructional-depth checks. Day School leaves this unset. */
+  instructionalDepthProfile?: "day-school" | "short-learning";
+  stageLabel?: string;
 }): DaytimeStageValidationIssue[] {
   const issues: DaytimeStageValidationIssue[] = [];
   const { pack, mode, stage, targetMinutes } = input;
@@ -310,6 +367,13 @@ export function validateDaytimeStagePack(input: {
   const text = collectText(pack);
   if (INTERNAL_ID_LEAK.test(text)) {
     issues.push({ code: "internal_id_leak", message: "Internal IDs appear in pupil-facing content." });
+  }
+  const american = findAmericanEnglishMarkers(text);
+  if (american.length) {
+    issues.push({
+      code: "american_english",
+      message: `Use British English (found US forms: ${american.join(", ")}). Prefer UK spelling and £/pence for money.`,
+    });
   }
   const lower = text.toLowerCase();
   for (const marker of PLACEHOLDER_MARKERS) {
@@ -332,10 +396,35 @@ export function validateDaytimeStagePack(input: {
   if (!pack.activities.length) {
     issues.push({ code: "missing_activities", message: "Stage has no timed activities." });
   } else if (!activitiesSupportTargetMinutes(pack.activities, targetMinutes)) {
-    issues.push({
-      code: "duration_mismatch",
-      message: `Activity minutes (~${estimateMinutesFromActivities(pack.activities, pack.questions.length)}m) do not support target ${targetMinutes}m.`,
-    });
+    // Short Learning teaching fields (warm-up / explanation / worked examples / reflection)
+    // are part of the minute budget even when not listed as timed activities.
+    const shortLearningDurationOk =
+      input.instructionalDepthProfile === "short-learning"
+      && activitiesSupportTargetMinutes(
+        [
+          ...((pack.priorLearningWarmup ?? "").trim()
+            ? [{ kind: "fluency" as const, estimatedMinutes: Math.max(1, Math.round(targetMinutes * 0.11)) }]
+            : []),
+          ...((pack.explanation ?? "").trim()
+            ? [{ kind: "teacher-explanation" as const, estimatedMinutes: Math.max(2, Math.round(targetMinutes * 0.22)) }]
+            : []),
+          ...((pack.workedExamples?.length ?? 0) > 0
+            ? [{ kind: "worked-example" as const, estimatedMinutes: Math.max(2, Math.round(targetMinutes * 0.17)) }]
+            : []),
+          ...((pack.reflectionCheck ?? "").trim()
+            ? [{ kind: "reflection" as const, estimatedMinutes: Math.max(1, Math.round(targetMinutes * 0.1)) }]
+            : []),
+          ...pack.activities,
+        ],
+        targetMinutes,
+        0.4,
+      );
+    if (!shortLearningDurationOk) {
+      issues.push({
+        code: "duration_mismatch",
+        message: `Activity minutes (~${estimateMinutesFromActivities(pack.activities, pack.questions.length)}m) do not support target ${targetMinutes}m.`,
+      });
+    }
   }
 
   const prompts = pack.questions.map((q) => q.prompt.toLowerCase());
@@ -345,7 +434,8 @@ export function validateDaytimeStagePack(input: {
   }
 
   for (const q of pack.questions) {
-    const needsFixedAnswer = questionKindRequiresFixedAnswer(q.kind);
+    const openPrompt = /\b(explain why|explain how|why do|why is|justify|discuss|reflect)\b/i.test(q.prompt);
+    const needsFixedAnswer = !openPrompt && questionKindRequiresFixedAnswer(q.kind);
     if (needsFixedAnswer && !String(q.answer ?? "").trim() && q.answer !== 0) {
       issues.push({ code: "missing_answer", message: `Missing answer for: ${q.prompt.slice(0, 60)}` });
     }
@@ -498,6 +588,18 @@ export function validateDaytimeStagePack(input: {
     }
   }
 
+  if (input.instructionalDepthProfile === "short-learning") {
+    issues.push(
+      ...validateShortLearningInstructionalDepth({
+        pack,
+        mode,
+        stage,
+        stageLabel: input.stageLabel || input.lessonTitle || pack.title,
+        targetMinutes,
+      }),
+    );
+  }
+
   return issues;
 }
 
@@ -552,6 +654,10 @@ export function serializeDaytimeStageContentJson(pack: NormalizedDaytimeStagePac
     explanation: pack.explanation,
     workedExamples: pack.workedExamples,
     scenarioOrObservation: pack.scenarioOrObservation,
+    priorLearningWarmup: pack.priorLearningWarmup,
+    misconceptions: pack.misconceptions,
+    reflectionCheck: pack.reflectionCheck,
+    transitionNote: pack.transitionNote,
     generationStatus: pack.generationStatus ?? "ok",
     failureReason: pack.failureReason ?? null,
     questions,
