@@ -6,6 +6,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/cron/tutor-presence-sweep",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/short-learning-lifecycle",
       "schedule": "*/5 * * * *"
     }

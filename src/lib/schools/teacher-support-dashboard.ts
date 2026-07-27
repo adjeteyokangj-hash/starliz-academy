@@ -9,6 +9,28 @@ import {
   schoolDayOfWeek,
   weekdayLabel,
 } from "@/lib/schools/school-day-period";
+import { displayFromQueueMetadata } from "@/lib/schools/short-learning-support-accept";
+
+export type TeacherSupportQueueRow = {
+  queueEntryId: string;
+  childId: string;
+  studentName: string;
+  periodId: string | null;
+  subject: string | null;
+  questionKey: string | null;
+  budgetMinutes: number | null;
+  assignedAt: string | null;
+  expiresAt: string | null;
+  enqueuedAt: string | null;
+  liveHref: string | null;
+  supportMode: "SHORT_LEARNING" | "DAY_SCHOOL";
+  yearGroup: string | null;
+  shortLearningBookingId: string | null;
+  shortLearningBlockId: string | null;
+  bookingWindowLabel: string | null;
+  currentBlockLabel: string | null;
+  status: string;
+};
 
 export type TeacherSupportDashboard = {
   schoolId: string;
@@ -43,18 +65,8 @@ export type TeacherSupportDashboard = {
       liveHref: string;
     }>;
   };
-  assigned: Array<{
-    queueEntryId: string;
-    childId: string;
-    studentName: string;
-    periodId: string | null;
-    subject: string | null;
-    questionKey: string | null;
-    budgetMinutes: number | null;
-    assignedAt: string | null;
-    expiresAt: string | null;
-    liveHref: string | null;
-  }>;
+  waiting: TeacherSupportQueueRow[];
+  assigned: TeacherSupportQueueRow[];
   activeSession: {
     sessionId: string;
     childId: string;
@@ -64,6 +76,11 @@ export type TeacherSupportDashboard = {
     plannedEndsAt: string | null;
     startedAt: string;
     liveHref: string | null;
+    supportMode: "SHORT_LEARNING" | "DAY_SCHOOL";
+    subject: string | null;
+    yearGroup: string | null;
+    shortLearningBookingId: string | null;
+    shortLearningBlockId: string | null;
   } | null;
   recentHistory: Array<{
     sessionId: string;
@@ -97,7 +114,7 @@ export async function getTeacherSupportDashboard(input: {
   const dayStart = startOfLocalDay(now);
 
   const policy = await getOrCreateSupportPolicy(input.schoolId);
-  const [presence, tutorCounts, waitingCount, assignedRows, activeSession, completedToday, unresolvedNeeded, periods, history] =
+  const [presence, tutorCounts, waitingRows, assignedRows, activeSession, completedToday, unresolvedNeeded, periods, history] =
     await Promise.all([
       prisma.tutorPresence.findUnique({
         where: { schoolTeacherId: input.schoolTeacherId },
@@ -112,10 +129,25 @@ export async function getTeacherSupportDashboard(input: {
         staleAfterSec: policy.staleAfterSec,
         now,
       }),
-      prisma.humanSupportQueueEntry.count({
+      prisma.humanSupportQueueEntry.findMany({
         where: {
           schoolId: input.schoolId,
           status: "waiting",
+        },
+        orderBy: [{ priority: "desc" }, { enqueuedAt: "asc" }],
+        take: 30,
+        select: {
+          id: true,
+          childId: true,
+          periodId: true,
+          questionKey: true,
+          assignmentId: true,
+          budgetMinutes: true,
+          assignedAt: true,
+          expiresAt: true,
+          enqueuedAt: true,
+          metadataJson: true,
+          status: true,
         },
       }),
       prisma.humanSupportQueueEntry.findMany({
@@ -131,9 +163,13 @@ export async function getTeacherSupportDashboard(input: {
           childId: true,
           periodId: true,
           questionKey: true,
+          assignmentId: true,
           budgetMinutes: true,
           assignedAt: true,
           expiresAt: true,
+          enqueuedAt: true,
+          metadataJson: true,
+          status: true,
         },
       }),
       prisma.humanSupportSession.findFirst({
@@ -150,6 +186,8 @@ export async function getTeacherSupportDashboard(input: {
           budgetMinutes: true,
           plannedEndsAt: true,
           startedAt: true,
+          metadataJson: true,
+          queueEntryId: true,
         },
       }),
       prisma.humanSupportSession.count({
@@ -209,19 +247,23 @@ export async function getTeacherSupportDashboard(input: {
 
   const childIds = Array.from(
     new Set([
+      ...waitingRows.map((row) => row.childId),
       ...assignedRows.map((row) => row.childId),
       ...(activeSession ? [activeSession.childId] : []),
       ...history.map((row) => row.childId),
     ]),
   );
   const periodIds = Array.from(
-    new Set([
-      ...assignedRows.map((row) => row.periodId).filter((id): id is string => Boolean(id)),
-      ...(activeSession?.periodId ? [activeSession.periodId] : []),
-    ]),
+    new Set(
+      [
+        ...waitingRows.map((row) => row.periodId),
+        ...assignedRows.map((row) => row.periodId),
+        activeSession?.periodId,
+      ].filter((id): id is string => typeof id === "string" && !id.startsWith("sl:")),
+    ),
   );
 
-  const [children, periodMeta] = await Promise.all([
+  const [children, periodMeta, activeQueueMeta] = await Promise.all([
     childIds.length
       ? prisma.childProfile.findMany({
           where: { id: { in: childIds } },
@@ -234,9 +276,67 @@ export async function getTeacherSupportDashboard(input: {
           select: { id: true, subject: true, title: true },
         })
       : Promise.resolve([] as Array<{ id: string; subject: string; title: string }>),
+    activeSession?.queueEntryId
+      ? prisma.humanSupportQueueEntry.findUnique({
+          where: { id: activeSession.queueEntryId },
+          select: { metadataJson: true, questionKey: true, assignmentId: true, periodId: true },
+        })
+      : Promise.resolve(null),
   ]);
   const nameById = new Map(children.map((row) => [row.id, row.name]));
   const periodById = new Map(periodMeta.map((row) => [row.id, row]));
+
+  function mapQueueRow(row: {
+    id: string;
+    childId: string;
+    periodId: string | null;
+    questionKey: string | null;
+    assignmentId: string | null;
+    budgetMinutes: number | null;
+    assignedAt: Date | null;
+    expiresAt: Date | null;
+    enqueuedAt: Date;
+    metadataJson: string | null;
+    status: string;
+  }): TeacherSupportQueueRow {
+    const display = displayFromQueueMetadata({
+      periodId: row.periodId,
+      questionKey: row.questionKey,
+      assignmentId: row.assignmentId,
+      metadataJson: row.metadataJson,
+    });
+    const dayMeta = row.periodId && !row.periodId.startsWith("sl:") ? periodById.get(row.periodId) : null;
+    const subject = display.subject ?? dayMeta?.subject ?? dayMeta?.title ?? null;
+    return {
+      queueEntryId: row.id,
+      childId: row.childId,
+      studentName: nameById.get(row.childId) ?? "Student",
+      periodId: row.periodId,
+      subject,
+      questionKey: display.questionKey,
+      budgetMinutes: row.budgetMinutes,
+      assignedAt: row.assignedAt?.toISOString() ?? null,
+      expiresAt: row.expiresAt?.toISOString() ?? null,
+      enqueuedAt: row.enqueuedAt.toISOString(),
+      liveHref: display.supportMode === "SHORT_LEARNING" ? null : display.workspaceHref,
+      supportMode: display.supportMode,
+      yearGroup: display.yearGroup,
+      shortLearningBookingId: display.shortLearningBookingId,
+      shortLearningBlockId: display.shortLearningBlockId,
+      bookingWindowLabel: display.bookingWindowLabel,
+      currentBlockLabel: display.currentBlockLabel,
+      status: row.status,
+    };
+  }
+
+  const activeDisplay = activeSession
+    ? displayFromQueueMetadata({
+        periodId: activeSession.periodId,
+        questionKey: activeQueueMeta?.questionKey ?? null,
+        assignmentId: activeQueueMeta?.assignmentId ?? null,
+        metadataJson: activeQueueMeta?.metadataJson ?? activeSession.metadataJson,
+      })
+    : null;
 
   return {
     schoolId: input.schoolId,
@@ -253,7 +353,7 @@ export async function getTeacherSupportDashboard(input: {
       available: tutorCounts.availableTutorCount,
       busy: tutorCounts.busyTutorCount,
       paused: tutorCounts.pausedTutorCount,
-      waiting: waitingCount,
+      waiting: waitingRows.length,
       assignedToMe: assignedRows.length,
       activeMine: activeSession ? 1 : 0,
       completedToday,
@@ -276,21 +376,8 @@ export async function getTeacherSupportDashboard(input: {
         };
       }),
     },
-    assigned: assignedRows.map((row) => {
-      const meta = row.periodId ? periodById.get(row.periodId) : null;
-      return {
-        queueEntryId: row.id,
-        childId: row.childId,
-        studentName: nameById.get(row.childId) ?? "Student",
-        periodId: row.periodId,
-        subject: meta?.subject ?? meta?.title ?? null,
-        questionKey: row.questionKey,
-        budgetMinutes: row.budgetMinutes,
-        assignedAt: row.assignedAt?.toISOString() ?? null,
-        expiresAt: row.expiresAt?.toISOString() ?? null,
-        liveHref: row.periodId ? `/teacher/live/${row.periodId}` : null,
-      };
-    }),
+    waiting: waitingRows.map(mapQueueRow),
+    assigned: assignedRows.map(mapQueueRow),
     activeSession: activeSession
       ? {
           sessionId: activeSession.id,
@@ -300,7 +387,17 @@ export async function getTeacherSupportDashboard(input: {
           budgetMinutes: activeSession.budgetMinutes,
           plannedEndsAt: activeSession.plannedEndsAt?.toISOString() ?? null,
           startedAt: activeSession.startedAt.toISOString(),
-          liveHref: activeSession.periodId ? `/teacher/live/${activeSession.periodId}` : null,
+          liveHref:
+            activeDisplay?.supportMode === "SHORT_LEARNING"
+              ? `/teacher/support`
+              : activeSession.periodId
+                ? `/teacher/live/${activeSession.periodId}`
+                : null,
+          supportMode: activeDisplay?.supportMode ?? "DAY_SCHOOL",
+          subject: activeDisplay?.subject ?? null,
+          yearGroup: activeDisplay?.yearGroup ?? null,
+          shortLearningBookingId: activeDisplay?.shortLearningBookingId ?? null,
+          shortLearningBlockId: activeDisplay?.shortLearningBlockId ?? null,
         }
       : null,
     recentHistory: history.map((row) => ({

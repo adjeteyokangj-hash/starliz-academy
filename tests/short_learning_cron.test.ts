@@ -16,6 +16,19 @@ test("vercel.json schedules Short Learning reminders every 10 minutes", () => {
   assert.equal(entry.schedule, "*/10 * * * *");
 });
 
+test("vercel.json also schedules tutor-presence-sweep and short-learning-lifecycle", () => {
+  const raw = readFileSync(resolve(process.cwd(), "vercel.json"), "utf8");
+  const config = JSON.parse(raw) as {
+    crons?: Array<{ path?: string; schedule?: string }>;
+  };
+  const presence = config.crons?.find((c) => c.path === "/api/cron/tutor-presence-sweep");
+  const lifecycle = config.crons?.find((c) => c.path === "/api/cron/short-learning-lifecycle");
+  assert.ok(presence, "expected tutor-presence-sweep cron entry");
+  assert.equal(presence.schedule, "* * * * *");
+  assert.ok(lifecycle, "expected short-learning-lifecycle cron entry");
+  assert.equal(lifecycle.schedule, "*/5 * * * *");
+});
+
 test("hasCronAccess rejects missing Authorization when CRON_SECRET is set", () => {
   const prev = process.env.CRON_SECRET;
   process.env.CRON_SECRET = "test-cron-secret";

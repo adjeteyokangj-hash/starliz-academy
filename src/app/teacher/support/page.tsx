@@ -93,6 +93,29 @@ export default function TeacherSupportPage() {
     }
   }
 
+  async function accept(queueEntryId: string) {
+    setBusyId(queueEntryId);
+    setMessage(null);
+    try {
+      const response = await fetchWithRefreshRetry("/api/teacher/support/accept", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ queueEntryId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Unable to accept support request.");
+      }
+      setMessage(typeof data.message === "string" ? data.message : "Support session started.");
+      await load();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Unable to accept support request.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const currentPeriod = dashboard?.today.periods.find((row) => row.isNow) ?? null;
 
   return (
@@ -137,12 +160,21 @@ export default function TeacherSupportPage() {
                   Active with {dashboard.activeSession.studentName}
                 </p>
                 <p className="mt-1 text-sm text-slate-600">
-                  Budget {dashboard.activeSession.budgetMinutes} min
+                  {dashboard.activeSession.supportMode === "SHORT_LEARNING" ? "Short Learning · " : ""}
+                  {dashboard.activeSession.subject ?? "Support"}
+                  {dashboard.activeSession.yearGroup ? ` · ${dashboard.activeSession.yearGroup}` : ""}
+                  {" · "}Budget {dashboard.activeSession.budgetMinutes} min
                   {dashboard.activeSession.plannedEndsAt
                     ? ` · ends ${new Date(dashboard.activeSession.plannedEndsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
                     : ""}
                 </p>
-                {dashboard.activeSession.liveHref ? (
+                {dashboard.activeSession.supportMode === "SHORT_LEARNING" ? (
+                  <p className="mt-2 text-xs text-slate-600">
+                    AI was exhausted first. Human support is not guaranteed and is not private one-to-one tutoring.
+                    Return the student to the same Short Learning block when finished.
+                  </p>
+                ) : null}
+                {dashboard.activeSession.liveHref && dashboard.activeSession.supportMode !== "SHORT_LEARNING" ? (
                   <Link
                     href={dashboard.activeSession.liveHref}
                     className="mt-3 inline-flex rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white hover:bg-sky-500"
@@ -171,11 +203,65 @@ export default function TeacherSupportPage() {
               </div>
             ) : (
               <div className="mt-2">
-                <p className="text-sm text-slate-700">No active period assigned to you right now.</p>
-                <Link href="/teacher/timetable" className="mt-3 inline-flex text-sm font-semibold text-sky-700 hover:underline">
-                  Open timetable →
-                </Link>
+                <p className="text-sm text-slate-700">
+                  No active Day School period. Short Learning requests can still be accepted from the waiting list when you are available on shift.
+                </p>
               </div>
+            )}
+          </section>
+
+          <section className="mb-6 rounded-2xl border border-border bg-card p-5" data-testid="teacher-support-waiting">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">Waiting</h2>
+              <span className="text-xs text-foreground/50">{dashboard.counts.waiting}</span>
+            </div>
+            {dashboard.waiting.length === 0 ? (
+              <p className="text-sm text-foreground/55">
+                No students waiting. AI stays first — requests appear only after AI support is exhausted and a tutor is available.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {dashboard.waiting.map((row) => (
+                  <li key={row.queueEntryId} className="rounded-xl border border-border px-4 py-3" data-support-mode={row.supportMode}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-violet-700">
+                          {row.supportMode === "SHORT_LEARNING" ? "Short Learning" : "Day School"}
+                        </p>
+                        <p className="mt-1 font-semibold text-foreground">{row.studentName}</p>
+                        <p className="mt-0.5 text-xs text-foreground/55">
+                          {row.subject ?? "Lesson"}
+                          {row.yearGroup ? ` · ${row.yearGroup}` : ""}
+                          {row.budgetMinutes != null ? ` · ~${row.budgetMinutes} min budget` : ""}
+                        </p>
+                        {row.supportMode === "SHORT_LEARNING" ? (
+                          <p className="mt-1 text-xs text-foreground/45">
+                            {row.currentBlockLabel ?? "Current Short Learning block"}
+                            {" · "}
+                            {row.bookingWindowLabel ?? "Short Learning booking window"}
+                            {row.questionKey ? ` · question ${row.questionKey}` : ""}
+                            . AI already attempted. Human support is not guaranteed.
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-foreground/45">
+                            AI support exhausted — accept to start timed support.
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={busyId === row.queueEntryId || dashboard.presence.status === "busy"}
+                          onClick={() => void accept(row.queueEntryId)}
+                          className="rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-600 disabled:opacity-50"
+                        >
+                          {busyId === row.queueEntryId ? "Accepting…" : "Accept"}
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
 
@@ -186,7 +272,7 @@ export default function TeacherSupportPage() {
             </div>
             {dashboard.assigned.length === 0 ? (
               <p className="text-sm text-foreground/55">
-                No claimed assignments waiting for accept. Open Live Classroom when a student needs human help after AI.
+                No claimed assignments waiting for accept.
               </p>
             ) : (
               <ul className="space-y-3">
@@ -194,9 +280,13 @@ export default function TeacherSupportPage() {
                   <li key={row.queueEntryId} className="rounded-xl border border-border px-4 py-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-foreground">{row.studentName}</p>
+                        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-violet-700">
+                          {row.supportMode === "SHORT_LEARNING" ? "Short Learning" : "Day School"}
+                        </p>
+                        <p className="mt-1 font-semibold text-foreground">{row.studentName}</p>
                         <p className="mt-0.5 text-xs text-foreground/55">
                           {row.subject ?? "Lesson"}
+                          {row.yearGroup ? ` · ${row.yearGroup}` : ""}
                           {row.budgetMinutes != null ? ` · ~${row.budgetMinutes} min budget` : ""}
                         </p>
                         <p className="mt-1 text-xs text-foreground/45">
@@ -204,12 +294,20 @@ export default function TeacherSupportPage() {
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={busyId === row.queueEntryId}
+                          onClick={() => void accept(row.queueEntryId)}
+                          className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-sky-500 disabled:opacity-50"
+                        >
+                          {busyId === row.queueEntryId ? "Accepting…" : "Accept"}
+                        </button>
                         {row.liveHref ? (
                           <Link
                             href={row.liveHref}
-                            className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-sky-500"
+                            className="rounded-lg border border-sky-300 px-3 py-1.5 text-xs font-bold text-sky-800 hover:bg-sky-50"
                           >
-                            Accept in Live Classroom
+                            Open Live Classroom
                           </Link>
                         ) : null}
                         <button
@@ -233,7 +331,7 @@ export default function TeacherSupportPage() {
               <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground/45">Waiting</p>
               <p className="mt-2 text-3xl font-black">{dashboard.counts.waiting}</p>
               <p className="mt-1 text-xs text-foreground/55">
-                Students eligible after AI exhaustion. Claim from Live Classroom.
+                Students eligible after AI exhaustion. Accept only when online and available.
               </p>
             </article>
             <article className="rounded-2xl border border-border bg-card p-4">

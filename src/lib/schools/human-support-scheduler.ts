@@ -239,6 +239,226 @@ export async function syncEligibleStudentQueue(input: {
 }
 
 /**
+ * Short Learning escalation sync — same AI-first / no-tutor-AI-only rules.
+ * Uses synthetic periodId = supportScopeKey (sl:booking:block) and stores SL ids in metadataJson.
+ * Does not create a waiting queue when no tutor capacity exists.
+ */
+export async function syncShortLearningEligibleQueue(input: {
+  schoolId: string;
+  classroomId: string | null;
+  supportScopeKey: string;
+  minutesUntilBookingEnd: number;
+  childId: string;
+  humanTutorEligible: boolean;
+  assignmentId: string | null;
+  questionKey: string | null;
+  metadata: Record<string, unknown>;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const policy = await getOrCreateSupportPolicy(input.schoolId);
+  const [counts, capacity] = await Promise.all([
+    countOnlineTutors({
+      schoolId: input.schoolId,
+      staleAfterSec: policy.staleAfterSec,
+      now,
+    }),
+    countShiftEligibleTutorCapacity({ schoolId: input.schoolId, now }),
+  ]);
+  const budgetMinutes = calculateSessionBudgetMinutes({
+    minutesUntilPeriodEnd: input.minutesUntilBookingEnd,
+    eligibleStudentCount: 1,
+    onlineTutorCount: Math.max(counts.onlineTutorCount, capacity.acceptReadyTutorCount),
+    policy,
+  });
+
+  if (!input.humanTutorEligible) {
+    await prisma.humanSupportQueueEntry.updateMany({
+      where: {
+        schoolId: input.schoolId,
+        periodId: input.supportScopeKey,
+        childId: input.childId,
+        status: { in: ["waiting", "paused_ai_only"] },
+      },
+      data: { status: "recovered" },
+    });
+    return {
+      counts,
+      enqueued: 0,
+      humanSupportState: "ai-only" as const,
+      queued: false,
+      continueAi: true,
+      unmetEscalation: false,
+    };
+  }
+
+  const existingOpen = await prisma.humanSupportQueueEntry.findFirst({
+    where: {
+      schoolId: input.schoolId,
+      periodId: input.supportScopeKey,
+      childId: input.childId,
+      status: { in: ["waiting", "assigned", "in_session"] },
+    },
+  });
+  if (existingOpen) {
+    if (existingOpen.status === "in_session") {
+      const activeSession = await prisma.humanSupportSession.findFirst({
+        where: { queueEntryId: existingOpen.id, status: "active" },
+        select: { id: true },
+      });
+      if (!activeSession) {
+        // Stale/abandoned session left an orphaned in_session row — clear so student returns to AI.
+        await prisma.humanSupportQueueEntry.update({
+          where: { id: existingOpen.id },
+          data: { status: "expired" },
+        });
+        await writeSchoolAuditLog({
+          schoolId: input.schoolId,
+          actorType: "system",
+          source: "api",
+          action: "human_support_recovered",
+          entityType: "student",
+          entityId: input.childId,
+          metadata: {
+            ...input.metadata,
+            periodId: input.supportScopeKey,
+            queueEntryId: existingOpen.id,
+            reason: "orphaned_in_session_cleared",
+          },
+        });
+      } else {
+        return {
+          counts,
+          enqueued: 0,
+          humanSupportState: "human-session-active" as const,
+          queued: false,
+          continueAi: false,
+          unmetEscalation: false,
+          queueEntryId: existingOpen.id,
+        };
+      }
+    } else {
+      return {
+        counts,
+        enqueued: 0,
+        humanSupportState: "queued" as const,
+        queued: true,
+        continueAi: false,
+        unmetEscalation: false,
+        queueEntryId: existingOpen.id,
+      };
+    }
+  }
+
+  const student = {
+    humanTutorEligible: true,
+    continueAi: false,
+    reason: "Short Learning AI exhausted with active booking.",
+  };
+  const queueDecision = resolveEscalationQueueDecision({ student, capacity });
+  if (
+    !shouldEnqueueStudent({
+      humanTutorEligible: true,
+      acceptReadyTutorCount: capacity.acceptReadyTutorCount,
+    })
+    || !queueDecision.shouldEnqueue
+  ) {
+    await writeSchoolAuditLog({
+      schoolId: input.schoolId,
+      actorType: "system",
+      source: "api",
+      action: "human_support_eligible",
+      entityType: "student",
+      entityId: input.childId,
+      metadata: {
+        ...input.metadata,
+        periodId: input.supportScopeKey,
+        queued: false,
+        continueAi: true,
+        unmetEscalation: true,
+        reason: queueDecision.reason,
+        acceptReadyTutorCount: capacity.acceptReadyTutorCount,
+        humanSupportSummary: "ai-only",
+      },
+    });
+    return {
+      counts,
+      enqueued: 0,
+      humanSupportState: "ai-only" as const,
+      queued: false,
+      continueAi: true,
+      unmetEscalation: true,
+    };
+  }
+
+  const estimatedWaitSec = estimateWaitSeconds({
+    waitingAhead: 0,
+    onlineTutorCount: counts.onlineTutorCount,
+    sessionBudgetMinutes: budgetMinutes,
+    minutesUntilPeriodEnd: input.minutesUntilBookingEnd,
+  });
+
+  const entry = await prisma.humanSupportQueueEntry.create({
+    data: {
+      schoolId: input.schoolId,
+      childId: input.childId,
+      classroomId: input.classroomId,
+      periodId: input.supportScopeKey,
+      assignmentId: input.assignmentId,
+      questionKey: input.questionKey,
+      status: "waiting",
+      expiresAt: new Date(now.getTime() + Math.max(1, input.minutesUntilBookingEnd) * 60_000),
+      estimatedWaitSec,
+      budgetMinutes,
+      metadataJson: JSON.stringify({
+        ...input.metadata,
+        supportMode: "SHORT_LEARNING",
+        humanSupportSummary: "waiting",
+      }),
+    },
+  });
+
+  await writeSchoolAuditLog({
+    schoolId: input.schoolId,
+    actorType: "system",
+    source: "api",
+    action: "human_support_enqueued",
+    entityType: "student",
+    entityId: input.childId,
+    metadata: {
+      ...input.metadata,
+      periodId: input.supportScopeKey,
+      queueEntryId: entry.id,
+      estimatedWaitSec,
+    },
+  });
+  await writeSchoolAuditLog({
+    schoolId: input.schoolId,
+    actorType: "system",
+    source: "api",
+    action: "human_support_eligible",
+    entityType: "student",
+    entityId: input.childId,
+    metadata: {
+      ...input.metadata,
+      periodId: input.supportScopeKey,
+      queued: true,
+      queueEntryId: entry.id,
+    },
+  });
+
+  return {
+    counts,
+    enqueued: 1,
+    humanSupportState: "queued" as const,
+    queued: true,
+    continueAi: false,
+    unmetEscalation: false,
+    queueEntryId: entry.id,
+  };
+}
+
+/**
  * ASSIGNMENT only — does not create a session or mark the tutor busy.
  * Tutor must ACCEPT separately to freeze snapshot and start the timed session.
  */

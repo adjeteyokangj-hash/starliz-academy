@@ -355,7 +355,7 @@ export async function sweepStaleTutorPresence(input?: { now?: Date }) {
     });
 
     if (row.status === "busy" && row.activeSessionId) {
-      await prisma.humanSupportSession.updateMany({
+      const abandoned = await prisma.humanSupportSession.updateMany({
         where: { id: row.activeSessionId, status: "active" },
         data: {
           status: "abandoned",
@@ -363,6 +363,35 @@ export async function sweepStaleTutorPresence(input?: { now?: Date }) {
           endedAt: now,
         },
       });
+      if (abandoned.count > 0) {
+        const session = await prisma.humanSupportSession.findUnique({
+          where: { id: row.activeSessionId },
+          select: { queueEntryId: true, childId: true, periodId: true },
+        });
+        if (session?.queueEntryId) {
+          const cleared = await prisma.humanSupportQueueEntry.updateMany({
+            where: { id: session.queueEntryId, status: "in_session" },
+            data: { status: "expired" },
+          });
+          if (cleared.count > 0) {
+            await writeSchoolAuditLog({
+              schoolId: row.schoolId,
+              actorType: "system",
+              source: "worker",
+              action: "human_support_recovered",
+              entityType: "student",
+              entityId: session.childId,
+              metadata: {
+                reason: "tutor_stale_session_abandoned",
+                queueEntryId: session.queueEntryId,
+                sessionId: row.activeSessionId,
+                periodId: session.periodId,
+                returnToAi: true,
+              },
+            });
+          }
+        }
+      }
     }
   }
 

@@ -29,10 +29,23 @@ type TutorApiResponse = {
   needsTeacher?: boolean;
   error?: string;
   code?: string;
+  humanSupport?: {
+    state?: string;
+    summary?: string;
+    wording?: {
+      aiAvailable?: string;
+      humanMayBeOffered?: string;
+      notGuaranteed?: string;
+      notPrivate?: string;
+    };
+  };
 };
 
 type Props = {
-  periodId: string;
+  periodId?: string;
+  shortLearningBookingId?: string;
+  shortLearningSessionId?: string;
+  shortLearningBlockId?: string;
   assignmentId: string;
   contentId: string;
   questionId?: string;
@@ -53,6 +66,9 @@ const ACTIONS: Array<{ intent: DaytimeTutorIntent; label: string; needsWord?: bo
 
 function DaytimeTutorPanelInner({
   periodId,
+  shortLearningBookingId,
+  shortLearningSessionId,
+  shortLearningBlockId,
   assignmentId,
   contentId,
   questionId,
@@ -64,14 +80,20 @@ function DaytimeTutorPanelInner({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsTeacher, setNeedsTeacher] = useState(false);
+  const [humanSupportSummary, setHumanSupportSummary] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [history, setHistory] = useState<TutorTurn[]>([]);
   const [word, setWord] = useState("");
   const [wordPromptOpen, setWordPromptOpen] = useState(false);
   const premium = variant === "premium";
+  const isShortLearning = Boolean(shortLearningBookingId);
 
   async function ask(intent: DaytimeTutorIntent, wordValue?: string) {
     if (loading) return;
+    if (!isShortLearning && !periodId) {
+      setError("Tutor context is missing.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setOpen(true);
@@ -80,18 +102,35 @@ function DaytimeTutorPanelInner({
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          aiTutorScope: "daytime-school",
-          periodId,
-          assignmentId,
-          contentId,
-          questionId,
-          questionIndex,
-          intent,
-          word: wordValue?.trim() || undefined,
-          studentAttempt: studentAttempt?.trim() || undefined,
-          conversationId,
-        }),
+        body: JSON.stringify(
+          isShortLearning
+            ? {
+                aiTutorScope: "short-learning",
+                shortLearningBookingId,
+                shortLearningSessionId,
+                shortLearningBlockId,
+                assignmentId,
+                contentId,
+                questionId,
+                questionIndex,
+                intent,
+                word: wordValue?.trim() || undefined,
+                studentAttempt: studentAttempt?.trim() || undefined,
+                conversationId,
+              }
+            : {
+                aiTutorScope: "daytime-school",
+                periodId,
+                assignmentId,
+                contentId,
+                questionId,
+                questionIndex,
+                intent,
+                word: wordValue?.trim() || undefined,
+                studentAttempt: studentAttempt?.trim() || undefined,
+                conversationId,
+              },
+        ),
       });
       const payload = (await response.json().catch(() => ({}))) as TutorApiResponse;
       if (!response.ok) {
@@ -100,7 +139,7 @@ function DaytimeTutorPanelInner({
             ? payload.error
             : "I’m not able to explain this clearly enough. Please ask your teacher.",
         );
-        if (payload.code === "PERIOD_ENDED") {
+        if (payload.code === "PERIOD_ENDED" || payload.code === "BOOKING_WINDOW_CLOSED") {
           setNeedsTeacher(true);
         }
         return;
@@ -117,6 +156,7 @@ function DaytimeTutorPanelInner({
       ]);
       if (payload.needsTeacher) {
         setNeedsTeacher(true);
+        setHumanSupportSummary(payload.humanSupport?.summary ?? payload.humanSupport?.state ?? null);
       }
     } catch {
       setError("I’m not able to explain this clearly enough. Please ask your teacher.");
@@ -127,10 +167,10 @@ function DaytimeTutorPanelInner({
   }
 
   return (
-    <div data-testid="daytime-tutor-panel" data-variant={variant}>
+    <div data-testid="daytime-tutor-panel" data-variant={variant} data-support-mode={isShortLearning ? "SHORT_LEARNING" : "DAY_SCHOOL"}>
       {!premium ? (
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-          School AI Tutor
+          {isShortLearning ? "Short Learning AI Tutor" : "School AI Tutor"}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
@@ -220,9 +260,21 @@ function DaytimeTutorPanelInner({
           ))}
           {error ? <p className={`text-sm ${premium ? "text-rose-700" : "text-rose-200"}`}>{error}</p> : null}
           {needsTeacher && !error ? (
-            <p className={`text-xs ${premium ? "text-amber-800" : "text-amber-200"}`}>
-              You may need help from your teacher with this question.
-            </p>
+            <div className={`space-y-1 text-xs ${premium ? "text-amber-800" : "text-amber-200"}`}>
+              <p>You may need extra help with this question.</p>
+              {isShortLearning ? (
+                <>
+                  <p>AI support is available throughout.</p>
+                  <p>Human support may be offered when available. Human support is not guaranteed.</p>
+                  <p>This is not a private one-to-one tutor booking.</p>
+                  {humanSupportSummary === "ai-only" ? (
+                    <p data-testid="short-learning-ai-only">Human support: AI only — continue with AI help.</p>
+                  ) : null}
+                </>
+              ) : (
+                <p>You may need help from your teacher with this question.</p>
+              )}
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -232,6 +284,9 @@ function DaytimeTutorPanelInner({
 
 export default function DaytimeTutorPanel({
   periodId,
+  shortLearningBookingId,
+  shortLearningSessionId,
+  shortLearningBlockId,
   assignmentId,
   contentId,
   questionId,
@@ -240,12 +295,15 @@ export default function DaytimeTutorPanel({
   className,
   variant = "default",
 }: Props) {
-  const questionKey = `${assignmentId}:${contentId}:${questionId ?? ""}:${questionIndex ?? ""}`;
+  const questionKey = `${shortLearningBookingId ?? periodId ?? ""}:${assignmentId}:${contentId}:${questionId ?? ""}:${questionIndex ?? ""}`;
   return (
     <div className={className}>
       <DaytimeTutorPanelInner
         key={questionKey}
         periodId={periodId}
+        shortLearningBookingId={shortLearningBookingId}
+        shortLearningSessionId={shortLearningSessionId}
+        shortLearningBlockId={shortLearningBlockId}
         assignmentId={assignmentId}
         contentId={contentId}
         questionId={questionId}
