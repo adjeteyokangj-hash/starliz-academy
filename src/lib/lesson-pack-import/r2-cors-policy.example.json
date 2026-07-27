@@ -1,0 +1,18 @@
+[
+  {
+    "AllowedOrigins": [
+      "https://REPLACE_WITH_DEPLOYED_ADMIN_ORIGIN"
+    ],
+    "AllowedMethods": ["PUT", "GET", "HEAD", "DELETE"],
+    "AllowedHeaders": [
+      "Content-Type",
+      "Content-Length",
+      "x-amz-content-sha256",
+      "x-amz-date",
+      "x-amz-security-token",
+      "authorization"
+    ],
+    "ExposeHeaders": ["ETag", "Content-Length", "Content-Type"],
+    "MaxAgeSeconds": 3600
+  }
+]
