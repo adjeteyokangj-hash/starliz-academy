@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { prisma } from "@/lib/db";
 
 const schema = z.object({
@@ -43,7 +43,7 @@ const defaults: Omit<SecuritySettingsRow, "id"> = {
 };
 
 export async function GET() {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_SECURITY");
   if (!session) return response!;
 
   const model = getModel();
@@ -54,7 +54,7 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_SECURITY");
   if (!session) return response!;
 
   const body = await req.json();

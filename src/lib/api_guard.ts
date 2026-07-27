@@ -2,12 +2,31 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { readParentUnlockFromCookie, readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import {
+  auditAdminAccessDenial,
+  contextHasPermission,
+  deniedAdminResponse,
+  loadAdminAuthContext,
+} from "@/lib/admin-permissions";
+import type { AdminAuthContext } from "@/lib/admin-permissions";
 
 type SessionLike = {
   userId: string;
   email: string;
   role: string;
 };
+
+/**
+ * Placeholder response for the authorised path of the require* guards.
+ * Callers use these guards as `if (!session) return response;`, so `response` is
+ * only ever returned when the request is rejected. Typing it as a non-null
+ * `NextResponse` keeps every route handler's inferred return type as
+ * `Promise<NextResponse>` (required by the Next.js 16 route type contract).
+ * The runtime value remains null on the authorised path and is never dereferenced.
+ */
+function nullGuardResponse(): NextResponse {
+  return null as unknown as NextResponse;
+}
 
 type RateLimitRecord = {
   count: number;
@@ -60,7 +79,10 @@ export function checkRateLimit(input: {
 export async function requireSession() {
   const session = await readSessionFromCookie();
   if (session) {
-    return { session, response: null as NextResponse | null };
+    // `response` is only ever consumed via `if (!session) return response;` early-returns.
+    // Typing it non-null keeps route handlers' return type `Promise<NextResponse>` (Next 16 route contract);
+    // the runtime value stays null on the authorised path and is never dereferenced.
+    return { session, response: nullGuardResponse() };
   }
 
   // Local development fallback only.
@@ -103,7 +125,7 @@ export async function requireSession() {
         email: devAdmin.email,
         role: devAdmin.role,
       };
-      return { session: devSession, response: null as NextResponse | null };
+      return { session: devSession, response: nullGuardResponse() };
     }
 
     return { session: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
@@ -112,78 +134,122 @@ export async function requireSession() {
   if (!session) {
     return { session: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
-  return { session, response: null as NextResponse | null };
+  return { session, response: nullGuardResponse() };
 }
 
-export async function requireAdmin() {
+export async function requireAdmin(): Promise<{
+  session: SessionLike | null;
+  response: NextResponse;
+  context?: AdminAuthContext;
+}> {
   const { session, response } = await requireSession();
   if (!session) return { session: null, response };
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: {
-      role: true,
-      adminProfile: {
-        select: {
-          active: true,
-        },
-      },
-    },
-  });
-
-  if (!user || user.role !== "admin" || user.adminProfile?.active === false) {
+  const context = await loadAdminAuthContext(session.userId);
+  if (!context) {
+    await auditAdminAccessDenial({
+      actorUserId: session.userId,
+      action: "admin_access_denied",
+      reason: "not_platform_admin",
+    });
     return {
       session: null,
       response: NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 }),
     };
   }
-  return { session, response: null as NextResponse | null };
-}
 
-export async function requireAdminPermission(permission: string) {
-  const { session, response } = await requireAdmin();
-  if (!session) return { session: null, response };
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: {
-      adminProfile: {
-        select: {
-          role: { select: { name: true, permissions: true } },
-        },
-      },
-    },
-  });
-
-  const role = user?.adminProfile?.role;
-  const normalizedRoleName = String(role?.name ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-  if (!role) {
-    // Admin user with no AdminProfile row (e.g. seed-created admins) → treat as Super Admin
-    return { session, response: null as NextResponse | null };
-  }
-  if (normalizedRoleName === "SUPER_ADMIN") {
-    return { session, response: null as NextResponse | null };
-  }
-
-  let perms: string[] = [];
-  try {
-    const parsed = JSON.parse(role.permissions);
-    perms = Array.isArray(parsed) ? parsed.map(String) : [];
-  } catch {
-    perms = [];
-  }
-
-  if (!perms.includes(permission)) {
+  if (!context.active || context.isLocked) {
+    await auditAdminAccessDenial({
+      actorUserId: session.userId,
+      action: "admin_access_denied",
+      reason: context.isLocked ? "admin_locked" : "admin_inactive",
+    });
     return {
       session: null,
-      response: NextResponse.json({ error: `Forbidden: missing permission ${permission}` }, { status: 403 }),
+      response: NextResponse.json({ error: "Forbidden: admin account is inactive." }, { status: 403 }),
     };
   }
 
-  return { session, response: null as NextResponse | null };
+  return { session, response: nullGuardResponse(), context };
+}
+
+/**
+ * Canonical Admin permission gate.
+ * Accepts canonical MANAGE_* tokens or legacy colon aliases; maps centrally.
+ * Missing/invalid role assignment fails closed (no Super Admin bypass).
+ */
+export async function requireAdminPermission(permission: string): Promise<{
+  session: SessionLike | null;
+  response: NextResponse;
+  context?: AdminAuthContext;
+}> {
+  const { session, response } = await requireSession();
+  if (!session) return { session: null, response };
+
+  const context = await loadAdminAuthContext(session.userId);
+  if (!context) {
+    await auditAdminAccessDenial({
+      actorUserId: session.userId,
+      action: "admin_access_denied",
+      reason: "not_platform_admin",
+      permission,
+    });
+    return {
+      session: null,
+      response: NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 }),
+    };
+  }
+
+  if (!context.active || context.isLocked) {
+    await auditAdminAccessDenial({
+      actorUserId: session.userId,
+      action: "admin_access_denied",
+      reason: context.isLocked ? "admin_locked" : "admin_inactive",
+      permission,
+    });
+    return {
+      session: null,
+      response: NextResponse.json({ error: "Forbidden: admin account is inactive." }, { status: 403 }),
+    };
+  }
+
+  if (!context.roleId || !context.roleName) {
+    await auditAdminAccessDenial({
+      actorUserId: session.userId,
+      action: "admin_permission_denied",
+      reason: "missing_or_invalid_role",
+      permission,
+    });
+    return {
+      session: null,
+      response: deniedAdminResponse("Your Admin account has no valid role assignment. Contact a Super Admin."),
+    };
+  }
+
+  if (!contextHasPermission(context, permission)) {
+    await auditAdminAccessDenial({
+      actorUserId: session.userId,
+      action: "admin_permission_denied",
+      reason: "missing_permission",
+      permission,
+      metadata: { roleName: context.roleName },
+    });
+    if (permission === "MANAGE_SAFEGUARDING") {
+      await auditAdminAccessDenial({
+        actorUserId: session.userId,
+        action: "safeguarding_access_denied",
+        reason: "missing_permission",
+        permission,
+        metadata: { roleName: context.roleName },
+      });
+    }
+    return {
+      session: null,
+      response: deniedAdminResponse(),
+    };
+  }
+
+  return { session, response: nullGuardResponse(), context };
 }
 
 export async function requireParentUnlocked() {
@@ -197,5 +263,5 @@ export async function requireParentUnlocked() {
     return { session: null, response: NextResponse.json({ error: "Parent PIN required." }, { status: 403 }) };
   }
 
-  return { session, response: null as NextResponse | null };
+  return { session, response: nullGuardResponse() };
 }

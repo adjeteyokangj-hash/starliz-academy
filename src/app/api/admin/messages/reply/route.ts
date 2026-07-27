@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { hasPermission } from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
 import type { AdminPermission } from "@prisma/client";
@@ -12,7 +12,7 @@ const replySchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_INBOX");
   if (!session) return response!;
 
   const adminProfile = await prisma.adminUser.findUnique({ where: { userId: session.userId } });

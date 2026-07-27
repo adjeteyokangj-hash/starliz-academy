@@ -87,7 +87,7 @@ const settingsModules = [
   { title: "System Health",       icon: "📡", desc: "Uptime, queues, diagnostics",        href: "/admin/settings/system-health" },
   { title: "Backup / Export",     icon: "💾", desc: "Data exports and backups",           href: "/admin/settings/backup" },
   { title: "Admin Users & Roles", icon: "👤", desc: "Access control & permissions",       href: "/admin/settings/admin-users" },
-  { title: "AI Configuration",    icon: "🤖", desc: "Models, prompts, limits",            href: "/admin/ai" },
+  { title: "AI Configuration",    icon: "🤖", desc: "Models, prompts, limits",            href: "/admin/ai-generator" },
 ];
 
 const VOICE_TEST_TEXT_DEFAULT = "Hello, this is a live OpenAI voice test from StarLiz Academy.";
@@ -128,6 +128,7 @@ export default function SettingsPage() {
 
   const [admins, setAdmins] = useState<AdminUserRow[]>([]);
   const [roles, setRoles] = useState<RoleRow[]>([]);
+  const [canManageAdmins, setCanManageAdmins] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
@@ -158,7 +159,13 @@ export default function SettingsPage() {
   const loadAdmins = useCallback(async () => {
     const res = await fetch("/api/admin/users");
     if (handleUnauthorized(res)) return;
+    if (res.status === 403) {
+      setCanManageAdmins(false);
+      setAdmins([]);
+      return;
+    }
     const payload = await res.json();
+    setCanManageAdmins(true);
     setAdmins(payload.admins ?? []);
   }, [handleUnauthorized]);
 
@@ -383,7 +390,9 @@ export default function SettingsPage() {
       >
         <SectionHeader eyebrow="Platform control" title="Settings" subtitle="Manage all platform configuration from one place." />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {settingsModules.map((m) => (
+          {settingsModules
+            .filter((m) => canManageAdmins || m.href !== "/admin/settings/admin-users")
+            .map((m) => (
             <a
               key={m.title}
               href={m.href}
@@ -522,6 +531,7 @@ export default function SettingsPage() {
       </section>
 
       {/* ── Admin Users & Roles ── */}
+      {canManageAdmins ? (
       <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 backdrop-blur">
         <SectionHeader eyebrow="Access control" title="Admin Users & Roles" subtitle="Create and manage admin accounts with full portal access." />
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
@@ -566,7 +576,7 @@ export default function SettingsPage() {
                     onChange={(e) => setAdminRoleId(e.target.value)}
                     className={inputCls}
                   >
-                    <option value="">No role assigned</option>
+                    <option value="">Select a role</option>
                     {roles.map(r => (
                       <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
@@ -643,9 +653,10 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+      ) : null}
 
       {/* ── Edit modal ── */}
-      {editing ? (
+      {editing && canManageAdmins ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-7 shadow-2xl">
             <div className="mb-6 flex items-center justify-between">

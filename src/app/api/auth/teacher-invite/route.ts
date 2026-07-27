@@ -119,6 +119,18 @@ export async function POST(request: Request) {
     severity: "info",
   });
 
+  const { writeAuditLog } = await import("@/lib/audit");
+  await writeAuditLog({
+    actorUserId: userId,
+    action: "admin_invite_accepted",
+    entityType: "teacher_invite",
+    entityId: schoolTeacher.id,
+    metadata: {
+      schoolId,
+      role: schoolTeacher.role,
+    },
+  });
+
   // Issue session cookie
   const sessionToken = await createSessionToken({
     userId,

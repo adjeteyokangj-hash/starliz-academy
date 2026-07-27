@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import type { AdminPermission } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { hashPassword } from "@/lib/auth";
 import { sendEmail } from "@/lib/email-provider";
 import { createPasswordResetToken, getPasswordResetExpiry, PASSWORD_RESET_TTL_MINUTES } from "@/lib/password-reset";
 import { writeAuditLog } from "@/lib/audit";
-import { hasPermission } from "@/lib/rbac";
+import { auditAdminAccessDenial } from "@/lib/admin-permissions";
 
 const RESET_URL_ORIGIN = "https://www.starlizacademy.com";
 
@@ -25,7 +24,7 @@ function buildResetEmail(resetUrl: string, adminName: string | null) {
     subject: "Reset your StarLiz Academy admin password",
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a">
-        <h1 style="font-size:24px">Reset your admin password</h1>
+        <h1 style="font-size:24px">Reset your StarLiz Academy admin password</h1>
         <p>Hello ${name},</p>
         <p>An administrator has requested that you reset your StarLiz Academy admin password.</p>
         <p>
@@ -55,15 +54,8 @@ function buildResetEmail(resetUrl: string, adminName: string | null) {
 type Context = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, context: Context) {
-  const { session, response } = await requireAdmin();
-  if (!session) return response!;
-
-  const actorProfile = await prisma.adminUser.findUnique({ where: { userId: session.userId } });
-  if (!actorProfile) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-  if (actorProfile.roleId && !(await hasPermission(actorProfile.id, "MANAGE_ADMINS" as AdminPermission))) {
-    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
-  }
+  const { session, response, context: authContext } = await requireAdminPermission("MANAGE_ADMINS");
+  if (!session || !authContext) return response!;
 
   try {
     const { id } = await context.params;
@@ -80,11 +72,22 @@ export async function POST(request: Request, context: Context) {
       where: { id },
       include: {
         user: { select: { id: true, email: true, name: true, role: true } },
+        role: { select: { name: true } },
       },
     });
 
     if (!target || target.user.role !== "admin") {
       return NextResponse.json({ error: "Admin user not found" }, { status: 404 });
+    }
+
+    if (target.role?.name === "SUPER_ADMIN" && !authContext.isSuperAdmin) {
+      await auditAdminAccessDenial({
+        actorUserId: session.userId,
+        action: "admin_permission_denied",
+        reason: "restricted_admin_cannot_reset_super_admin",
+        targetUserId: target.userId,
+      });
+      return NextResponse.json({ error: "You cannot reset a Super Admin password." }, { status: 403 });
     }
 
     if (body.mode === "set") {

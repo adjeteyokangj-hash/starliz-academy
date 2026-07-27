@@ -91,6 +91,7 @@ function incidentFromRow(row: {
 export async function createIncident(
   schoolId: string,
   incident: Omit<SafeguardingIncident, "id" | "schoolId">,
+  actorUserId?: string | null,
 ): Promise<SafeguardingIncident> {
   const created = await prisma.safeguardingIncident.create({
     data: {
@@ -100,6 +101,7 @@ export async function createIncident(
       status: incident.status,
       description: incident.concernSummary,
       actionTaken: incident.immediateActionTaken,
+      reportedByUserId: actorUserId ?? null,
       metadataJson: JSON.stringify({
         student: incident.student,
         reportedBy: incident.reportedBy,
@@ -116,6 +118,7 @@ export async function createIncident(
         escalatedAt: incident.escalatedAt,
         resolvedAt: incident.resolvedAt,
         closedAt: incident.closedAt,
+        actorUserId: actorUserId ?? null,
       }),
     },
   });
@@ -196,12 +199,13 @@ export async function appendTimelineEvent(
   schoolId: string,
   incidentId: string,
   event: TimelineEvent,
+  actorUserId?: string | null,
 ): Promise<TimelineEvent> {
   await prisma.safeguardingWorkflowEvent.create({
     data: {
       schoolId,
       incidentId,
-      actorUserId: null,
+      actorUserId: actorUserId ?? null,
       eventType: "timeline.added",
       note: event.note,
       metadataJson: JSON.stringify({
@@ -210,7 +214,7 @@ export async function appendTimelineEvent(
       }),
     },
   });
-  return event;
+  return { ...event, actor: actorUserId ?? event.actor };
 }
 
 export async function listTimelineEvents(schoolId: string, incidentId: string): Promise<TimelineEvent[]> {
@@ -241,24 +245,28 @@ export async function appendEscalationRecord(
   schoolId: string,
   incidentId: string,
   escalation: EscalationRecord,
+  actorUserId?: string | null,
 ): Promise<EscalationRecord> {
   await prisma.safeguardingWorkflowEvent.create({
     data: {
       schoolId,
       incidentId,
-      actorUserId: null,
+      actorUserId: actorUserId ?? null,
       eventType: "escalation.updated",
       note: escalation.rationale,
       metadataJson: JSON.stringify({
         escalationLevel: escalation.escalationLevel,
         actionPlan: escalation.actionPlan,
         agencyReferralStatus: escalation.agencyReferralStatus,
-        escalatedBy: escalation.escalatedBy,
+        escalatedBy: actorUserId ?? escalation.escalatedBy,
         nextReviewDate: escalation.nextReviewDate,
       }),
     },
   });
-  return escalation;
+  return {
+    ...escalation,
+    escalatedBy: actorUserId ?? escalation.escalatedBy,
+  };
 }
 
 export async function listEscalations(schoolId: string, incidentId: string): Promise<EscalationRecord[]> {
@@ -281,19 +289,24 @@ export async function listEscalations(schoolId: string, incidentId: string): Pro
       rationale: row.note ?? "",
       actionPlan: metadata.actionPlan ?? "",
       agencyReferralStatus: (metadata.agencyReferralStatus ?? "Not Referred") as EscalationRecord["agencyReferralStatus"],
-      escalatedBy: metadata.escalatedBy ?? (row.actorUserId ?? "system"),
+      escalatedBy: row.actorUserId ?? metadata.escalatedBy ?? "system",
       nextReviewDate: metadata.nextReviewDate ?? null,
       createdAt: row.createdAt.toISOString(),
     };
   });
 }
 
-export async function appendAuditEvent(schoolId: string, incidentId: string, event: AuditEvent): Promise<AuditEvent> {
+export async function appendAuditEvent(
+  schoolId: string,
+  incidentId: string,
+  event: AuditEvent,
+  actorUserId?: string | null,
+): Promise<AuditEvent> {
   await prisma.safeguardingWorkflowEvent.create({
     data: {
       schoolId,
       incidentId,
-      actorUserId: null,
+      actorUserId: actorUserId ?? null,
       eventType: event.actionType,
       note: event.notes,
       metadataJson: JSON.stringify({
@@ -303,7 +316,10 @@ export async function appendAuditEvent(schoolId: string, incidentId: string, eve
       }),
     },
   });
-  return event;
+  return {
+    ...event,
+    actor: actorUserId ?? event.actor,
+  };
 }
 
 export async function listAuditEvents(schoolId: string, incidentId: string): Promise<AuditEvent[]> {

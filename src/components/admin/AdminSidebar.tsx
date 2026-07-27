@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
-import { adminNavGroups, type AdminNavItem } from "@/lib/admin-nav";
+import type { AdminNavGroup, AdminNavItem } from "@/lib/admin-nav";
 
 const VISIBILITY_STORAGE_KEY = "starliz.admin.sidebar.visible.v1";
 const COLLAPSED_GROUPS_STORAGE_KEY = "starliz.admin.sidebar.collapsed-groups.v1";
@@ -26,13 +26,16 @@ export default function AdminSidebar() {
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
   const [isVisible, setIsVisible] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [navGroups, setNavGroups] = useState<readonly AdminNavGroup[]>([]);
 
   useEffect(() => {
     try {
       const visibilityRaw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY);
       if (visibilityRaw !== null) {
         const parsed = JSON.parse(visibilityRaw);
-        if (typeof parsed === "boolean") setIsVisible(parsed);
+        if (typeof parsed === "boolean") {
+          queueMicrotask(() => setIsVisible(parsed));
+        }
       }
     } catch {
       // Ignore storage read errors.
@@ -43,7 +46,8 @@ export default function AdminSidebar() {
       if (collapsedRaw) {
         const parsed = JSON.parse(collapsedRaw);
         if (Array.isArray(parsed)) {
-          setCollapsedGroups(parsed.filter((value): value is string => typeof value === "string"));
+          const groups = parsed.filter((value): value is string => typeof value === "string");
+          queueMicrotask(() => setCollapsedGroups(groups));
         }
       }
     } catch {
@@ -61,6 +65,25 @@ export default function AdminSidebar() {
 
     return () => {
       media.removeEventListener("change", updateDesktopState);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/me", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.visibleNav)) {
+          setNavGroups(data.visibleNav as AdminNavGroup[]);
+        }
+      } catch {
+        // Fail closed: leave navigation empty if permission truth cannot load.
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -159,11 +182,14 @@ export default function AdminSidebar() {
     <>
       {!sidebarVisible && (
         <button
+          type="button"
           onClick={toggleVisibility}
+          aria-label="Show admin sidebar"
+          aria-expanded={false}
           className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-[var(--admin-radius)] bg-[var(--admin-primary)] text-white shadow-[var(--admin-shadow-sm)] hover:bg-[var(--admin-primary-hover)]"
           title="Show sidebar"
         >
-          ☰
+          <span aria-hidden="true">☰</span>
         </button>
       )}
       {sidebarVisible && !isDesktop && (
@@ -180,6 +206,8 @@ export default function AdminSidebar() {
             : "pointer-events-none -translate-x-full lg:translate-x-0 lg:w-0 lg:border-r-0 lg:px-0 lg:py-0 lg:opacity-0 lg:pointer-events-none"
         } fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col overflow-hidden border-[var(--admin-border)] transition-all duration-300`}
         style={{ background: "var(--admin-rail)" }}
+        aria-label="Admin sidebar"
+        aria-hidden={!sidebarVisible}
       >
         <div className="relative px-1">
           <div className="flex items-center gap-3">
@@ -191,11 +219,14 @@ export default function AdminSidebar() {
           </div>
 
           <button
+            type="button"
             onClick={toggleVisibility}
+            aria-label="Hide admin sidebar"
+            aria-expanded={true}
             className="absolute right-0 top-1 rounded-lg p-1.5 text-[var(--admin-muted)] hover:bg-white/5 hover:text-[var(--admin-text)]"
             title="Hide sidebar"
           >
-            ×
+            <span aria-hidden="true">×</span>
           </button>
         </div>
 
@@ -206,7 +237,7 @@ export default function AdminSidebar() {
             </div>
           )}
           <nav aria-label="Admin navigation" className="space-y-3">
-            {adminNavGroups.map((group) => {
+            {navGroups.map((group) => {
               const activeGroup = group.items.some((item) => isActiveHref(pathname, item.href));
               const collapsed = collapsedGroups.includes(group.title) && !activeGroup;
               return (
@@ -219,6 +250,7 @@ export default function AdminSidebar() {
                     type="button"
                     onClick={() => toggleGroup(group.title)}
                     aria-controls={groupDomId(group.title)}
+                    aria-expanded={!collapsed}
                     className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-[11px] font-bold uppercase tracking-[0.12em] transition ${
                       activeGroup
                         ? "text-[var(--admin-primary-hover)]"

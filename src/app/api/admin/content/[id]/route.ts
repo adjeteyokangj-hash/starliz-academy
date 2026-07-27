@@ -116,7 +116,7 @@ async function defaultUpdateContent(id: string, data: PatchUpdateInput): Promise
 }
 
 const defaultPatchDeps: AdminContentPatchDeps = {
-  requireAdmin,
+  requireAdmin: (() => requireAdminPermission("MANAGE_CONTENT")) as typeof requireAdmin,
   findContentForPatch: defaultFindContentForPatch,
   updateContent: defaultUpdateContent,
   writeAuditLog,

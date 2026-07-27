@@ -1,11 +1,12 @@
 import { buildResponse } from "../../_lib/response";
-import { canAccessDetail, canManageSafeguarding, computeSlaState, isValidTransition, makeAuditEvent, normalizeRole } from "../../_lib/governance";
+import { computeSlaState, isValidTransition, makeAuditEvent } from "../../_lib/governance";
 import { appendAuditEvent, getIncident, updateIncident } from "../../_lib/store";
 import { patchIncidentSchema, toValidationErrors } from "../../_lib/validation";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireSafeguardingAdmin } from "../../_lib/auth";
+import { writeAuditLog } from "@/lib/audit";
 
 type Context = { params: Promise<{ schoolId: string; incidentId: string }> };
-type AdminDeps = { requireAdmin: typeof requireAdmin };
+type AdminDeps = { requireSafeguardingAdmin: typeof requireSafeguardingAdmin };
 
 export async function GET(request: Request, context: Context) {
   return handleAdminSafeguardingIncidentDetailGet(request, context);
@@ -14,23 +15,12 @@ export async function GET(request: Request, context: Context) {
 export async function handleAdminSafeguardingIncidentDetailGet(
   request: Request,
   context: Context,
-  deps: AdminDeps = { requireAdmin },
+  deps: AdminDeps = { requireSafeguardingAdmin },
 ) {
   const requestedAt = new Date().toISOString();
   const { schoolId, incidentId } = await context.params;
-  const { session, response } = await deps.requireAdmin();
+  const { session, response } = await deps.requireSafeguardingAdmin();
   if (!session) return response!;
-  const role = normalizeRole("dsl");
-
-  if (!canAccessDetail(role)) {
-    return buildResponse({
-      success: false,
-      data: null,
-      error: { code: "FORBIDDEN", message: "Role is not allowed to access safeguarding incident detail." },
-      requestedAt,
-      status: 403,
-    });
-  }
 
   const incident = await getIncident(schoolId, incidentId);
   if (!incident) {
@@ -63,24 +53,13 @@ export async function PATCH(request: Request, context: Context) {
 export async function handleAdminSafeguardingIncidentPatch(
   request: Request,
   context: Context,
-  deps: AdminDeps = { requireAdmin },
+  deps: AdminDeps = { requireSafeguardingAdmin },
 ) {
   const requestedAt = new Date().toISOString();
   const { schoolId, incidentId } = await context.params;
-  const { session, response } = await deps.requireAdmin();
+  const { session, response } = await deps.requireSafeguardingAdmin();
   if (!session) return response!;
-  const actor = session.email || session.userId;
-  const role = normalizeRole("dsl");
-
-  if (!canManageSafeguarding(role)) {
-    return buildResponse({
-      success: false,
-      data: null,
-      error: { code: "FORBIDDEN", message: "Only DSL/Deputy DSL/Head Teacher/Safeguarding Officer can update incidents." },
-      requestedAt,
-      status: 403,
-    });
-  }
+  const actorUserId = session.userId;
 
   const existing = await getIncident(schoolId, incidentId);
   if (!existing) {
@@ -162,13 +141,42 @@ export async function handleAdminSafeguardingIncidentPatch(
       schoolId,
       incidentId,
       actionType: statusChanged ? "incident.status_changed" : "incident.updated",
-      actor,
+      actor: actorUserId,
       previousStatus: existing.status,
       newStatus: updated.status,
       notes: parsed.data.notes ?? "Incident updated.",
       timestamp: nowIso,
     }),
+    actorUserId,
   );
+
+  if (statusChanged) {
+    const action =
+      updated.status === "Closed"
+        ? "safeguarding_case_closed"
+        : parsed.data.assignedOwner !== undefined && parsed.data.assignedOwner !== existing.assignedOwner
+          ? "safeguarding_case_assigned"
+          : "safeguarding_status_changed";
+    await writeAuditLog({
+      actorUserId,
+      action,
+      entityType: "safeguarding_incident",
+      entityId: incidentId,
+      metadata: {
+        schoolId,
+        previousStatus: existing.status,
+        newStatus: updated.status,
+      },
+    });
+  } else if (parsed.data.assignedOwner !== undefined && parsed.data.assignedOwner !== existing.assignedOwner) {
+    await writeAuditLog({
+      actorUserId,
+      action: "safeguarding_case_assigned",
+      entityType: "safeguarding_incident",
+      entityId: incidentId,
+      metadata: { schoolId, assignedOwner: updated.assignedOwner },
+    });
+  }
 
   return buildResponse({
     success: true,
@@ -181,5 +189,35 @@ export async function handleAdminSafeguardingIncidentPatch(
     auditEvent,
     requestedAt,
     status: 200,
+  });
+}
+
+/** Safeguarding cases are retained; ordinary Admin routes must not hard-delete them. */
+export async function DELETE(_request: Request, context: Context) {
+  const requestedAt = new Date().toISOString();
+  const { schoolId, incidentId } = await context.params;
+  const { session, response } = await requireSafeguardingAdmin();
+  if (!session) return response!;
+
+  await writeAuditLog({
+    actorUserId: session.userId,
+    action: "safeguarding_access_denied",
+    entityType: "safeguarding_incident",
+    entityId: incidentId,
+    metadata: {
+      schoolId,
+      reason: "hard_delete_forbidden",
+    },
+  });
+
+  return buildResponse({
+    success: false,
+    data: null,
+    error: {
+      code: "HARD_DELETE_FORBIDDEN",
+      message: "Safeguarding cases cannot be hard-deleted. Close or archive them through the workflow.",
+    },
+    requestedAt,
+    status: 405,
   });
 }

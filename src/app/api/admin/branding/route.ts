@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { requireAdmin } from "@/lib/api_guard"
+import { requireAdminPermission } from "@/lib/api_guard"
 import { writeAuditLog } from "@/lib/audit"
 import { defaultBranding, isBrandAssetUrl } from "@/lib/branding"
 import { prisma } from "@/lib/db"
@@ -29,7 +29,7 @@ const brandingSchema = z.object({
 })
 
 export async function GET() {
-  const { session, response } = await requireAdmin()
+  const { session, response } = await requireAdminPermission("MANAGE_BRANDING")
   if (!session) return response
 
   const brandingSettings = (prisma as unknown as { brandingSettings?: BrandingSettingsDelegate }).brandingSettings
@@ -45,7 +45,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const { session, response } = await requireAdmin()
+  const { session, response } = await requireAdminPermission("MANAGE_BRANDING")
   if (!session) return response
 
   const brandingSettings = (prisma as unknown as { brandingSettings?: BrandingSettingsDelegate }).brandingSettings

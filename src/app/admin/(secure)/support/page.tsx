@@ -97,10 +97,22 @@ export default function AdminSupportPage() {
     }
   }
 
-  async function deleteTicket(id: string) {
-    await fetch(`/api/admin/resources/support/${id}`, { method: "DELETE", credentials: "include" });
-    setSelected(null);
-    setTickets(prev => prev.filter(t => t.id !== id));
+  async function archiveTicket(id: string) {
+    const res = await fetch(`/api/admin/resources/support/${id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "closed" }),
+    });
+    if (!res.ok) {
+      setSaveMsg("Could not archive ticket.");
+      return;
+    }
+    // Retention: tickets are closed/archived, never hard-deleted, so history is preserved.
+    setTickets(prev => prev.map(t => (t.id === id ? { ...t, status: "closed" } : t)));
+    setSelected(prev => (prev ? { ...prev, status: "closed" } : prev));
+    setEditStatus("closed");
+    setSaveMsg("Ticket closed and archived. History preserved.");
   }
 
   async function createTicket() {
@@ -303,10 +315,10 @@ export default function AdminSupportPage() {
                   {saving ? "Saving…" : "Save Changes"}
                 </button>
                 <button
-                  onClick={() => { if (confirm("Delete this ticket?")) void deleteTicket(selected.id); }}
-                  className="rounded-xl border border-red-900/50 px-4 py-2.5 text-sm font-bold text-red-400 hover:bg-red-950/50 hover:text-red-300 transition"
+                  onClick={() => { if (confirm("Close and archive this ticket? Its history is preserved.")) void archiveTicket(selected.id); }}
+                  className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-bold text-slate-300 hover:bg-slate-800 transition"
                 >
-                  Delete
+                  Close &amp; archive
                 </button>
               </div>
               {saveMsg && <p className="text-xs text-center text-slate-400">{saveMsg}</p>}

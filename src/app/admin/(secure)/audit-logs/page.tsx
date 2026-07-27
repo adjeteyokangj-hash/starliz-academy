@@ -41,23 +41,53 @@ export default function AuditLogsPage() {
   const [actorUserId, setActorUserId] = useState("");
   const [action, setAction] = useState("");
   const [entityType, setEntityType] = useState("");
+  const [entityId, setEntityId] = useState("");
+  const [result, setResult] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const quickActionKey = action === "ai_content.unpublished" ? "content-unpublished" : action ? "custom" : "all";
 
-  async function loadLogs(actionOverride?: string) {
+  function currentParams(actionOverride?: string) {
     const params = new URLSearchParams();
     if (actorUserId) params.set("actorUserId", actorUserId);
     const effectiveAction = actionOverride ?? action;
     if (effectiveAction) params.set("action", effectiveAction);
     if (entityType) params.set("entityType", entityType);
+    if (entityId) params.set("entityId", entityId);
+    if (result) params.set("result", result);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
+    return params;
+  }
 
-    const response = await fetch(`/api/admin/audit-logs?${params.toString()}`, { credentials: "include" });
-    if (!response.ok) return;
-    const data = await response.json();
-    setLogs(data.logs ?? []);
+  async function loadLogs(actionOverride?: string) {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = currentParams(actionOverride);
+      const response = await fetch(`/api/admin/audit-logs?${params.toString()}`, { credentials: "include" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setError(body?.error ?? `Unable to load audit logs (${response.status}).`);
+        return;
+      }
+      const data = await response.json();
+      setLogs(data.logs ?? []);
+      setLoaded(true);
+    } catch {
+      setError("Unable to load audit logs right now.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function exportCsv() {
+    const params = currentParams();
+    params.set("format", "csv");
+    window.open(`/api/admin/audit-logs?${params.toString()}`, "_blank");
   }
 
   useEffect(() => {
@@ -74,12 +104,18 @@ export default function AuditLogsPage() {
       </div>
 
       <AdminSectionCard title="Filters">
-        <div className="grid gap-3 md:grid-cols-5">
-          <input className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" placeholder="Admin user ID" value={actorUserId} onChange={(event) => setActorUserId(event.target.value)} />
-          <input className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" placeholder="Action type" value={action} onChange={(event) => setAction(event.target.value)} />
-          <input className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" placeholder="Resource" value={entityType} onChange={(event) => setEntityType(event.target.value)} />
-          <input aria-label="From date" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-          <input aria-label="To date" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+        <div className="grid gap-3 md:grid-cols-4">
+          <input aria-label="Admin user ID" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" placeholder="Admin user ID" value={actorUserId} onChange={(event) => setActorUserId(event.target.value)} />
+          <input aria-label="Action type" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" placeholder="Action type" value={action} onChange={(event) => setAction(event.target.value)} />
+          <input aria-label="Resource or entity type" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" placeholder="Resource / entity type" value={entityType} onChange={(event) => setEntityType(event.target.value)} />
+          <input aria-label="Record or entity ID" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none" placeholder="Record / entity ID" value={entityId} onChange={(event) => setEntityId(event.target.value)} />
+          <select aria-label="Result" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none [color-scheme:dark]" value={result} onChange={(event) => setResult(event.target.value)}>
+            <option value="">Any result</option>
+            <option value="success">Success</option>
+            <option value="denied">Denied / rejected</option>
+          </select>
+          <input aria-label="From date" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none [color-scheme:dark]" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+          <input aria-label="To date" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none [color-scheme:dark]" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {quickActionFilters.map((filter) => (
@@ -96,9 +132,17 @@ export default function AuditLogsPage() {
             </button>
           ))}
         </div>
-        <button type="button" onClick={() => void loadLogs()} className="mt-4 rounded-2xl bg-violet-500 px-5 py-3 font-bold text-white">
-          Apply Filters
-        </button>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button type="button" onClick={() => void loadLogs()} disabled={loading} className="rounded-2xl bg-violet-500 px-5 py-3 font-bold text-white disabled:opacity-60">
+            {loading ? "Loading…" : "Apply Filters"}
+          </button>
+          <button type="button" onClick={exportCsv} className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold text-white hover:bg-white/10">
+            Export CSV
+          </button>
+        </div>
+        {error ? (
+          <p role="alert" className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">{error}</p>
+        ) : null}
       </AdminSectionCard>
 
       <AdminSectionCard title="Recent Events">
@@ -125,7 +169,15 @@ export default function AuditLogsPage() {
               ))}
               {!logs.length ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-8 text-center text-slate-500">No audit events found.</td>
+                  <td colSpan={5} className="px-3 py-8 text-center text-slate-500">
+                    {loading
+                      ? "Loading audit events…"
+                      : error
+                        ? "Audit events unavailable — adjust filters or retry."
+                        : loaded
+                          ? "No audit events match these filters."
+                          : "Apply filters to load audit events."}
+                  </td>
                 </tr>
               ) : null}
             </tbody>

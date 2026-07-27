@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { encryptSecret, maskSecret } from "@/lib/secrets";
 
@@ -14,7 +14,7 @@ const saveKeySchema = z.object({
 });
 
 export async function GET() {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_API_KEYS");
   if (!session) return response;
 
   const keys = await prisma.apiKeyConfig.findMany({
@@ -41,7 +41,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_API_KEYS");
   if (!session) return response;
 
   try {
@@ -86,7 +86,7 @@ const patchLabelSchema = z.object({
 
 /** Update just the label (e.g. from address) without touching the stored key. */
 export async function PATCH(request: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_API_KEYS");
   if (!session) return response;
 
   try {

@@ -2847,4 +2847,49 @@ model ShortLearningBlock {
   @@index([contentId])
 }
 
+/// Operational complaints workflow (Gate 2). Distinct from safeguarding, which
+/// is never routed through the ordinary complaints SLA. School/parent/actor
+/// references are stored as plain ids to keep this model fully additive.
+model Complaint {
+  id                       String          @id @default(cuid())
+  reference                String          @unique
+  subject                  String
+  summary                  String?
+  channel                  String          @default("admin") // admin | email | phone | portal
+  priority                 String          @default("normal") // low | normal | high | urgent
+  status                   String          @default("received") // received | acknowledged | investigating | awaiting_information | resolved | closed
+  schoolId                 String?
+  parentUserId             String?
+  assignedToUserId         String?
+  createdByUserId          String?
+  receivedAt               DateTime        @default(now())
+  acknowledgedAt           DateTime?
+  substantiveRespondedAt   DateTime?
+  acknowledgementDueAt     DateTime?
+  substantiveResponseDueAt DateTime?
+  resolution               String?
+  resolvedAt               DateTime?
+  closedAt                 DateTime?
+  metadataJson             String?
+  notes                    ComplaintNote[]
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  @@index([status, substantiveResponseDueAt])
+  @@index([assignedToUserId, status])
+  @@index([schoolId, status])
+  @@index([priority, status])
+}
+
+model ComplaintNote {
+  id          String    @id @default(cuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  kind        String    @default("internal") // investigation | response | internal | status_change
+  body        String
+  createdAt   DateTime  @default(now())
+
+  @@index([complaintId, createdAt])
+}
 

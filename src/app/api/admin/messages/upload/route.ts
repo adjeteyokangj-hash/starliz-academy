@@ -1,9 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import type { AdminPermission } from "@prisma/client";
-import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
-import { hasPermission } from "@/lib/rbac";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { uploadFileToR2 } from "@/lib/r2-upload";
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -21,18 +18,14 @@ const ALLOWED: Record<string, string> = {
 };
 
 type AdminMessageUploadDeps = {
-  requireAdmin: typeof requireAdmin;
-  findAdminUser: (userId: string) => Promise<{ id: string; roleId: string | null } | null>;
-  hasPermission: (adminUserId: string, permission: AdminPermission) => Promise<boolean>;
+  requireAdminPermission: typeof requireAdminPermission;
   uploadFileToR2: typeof uploadFileToR2;
   now: () => Date;
   randomUUID: () => string;
 };
 
 const defaultDeps: AdminMessageUploadDeps = {
-  requireAdmin,
-  findAdminUser: (userId) => prisma.adminUser.findUnique({ where: { userId }, select: { id: true, roleId: true } }),
-  hasPermission: (adminUserId, permission) => hasPermission(adminUserId, permission),
+  requireAdminPermission,
   uploadFileToR2,
   now: () => new Date(),
   randomUUID,
@@ -50,19 +43,8 @@ function isPublicHttpsUrl(raw: string): boolean {
 }
 
 async function requireMessagingUploadAccess(deps: AdminMessageUploadDeps) {
-  const { session, response } = await deps.requireAdmin();
+  const { session, response } = await deps.requireAdminPermission("MANAGE_INBOX");
   if (!session) return response!;
-
-  const adminProfile = await deps.findAdminUser(session.userId);
-  if (!adminProfile) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  // Match the admin message send/list route: seeded legacy admins without a role retain access.
-  if (adminProfile.roleId && !(await deps.hasPermission(adminProfile.id, "MANAGE_INBOX" as AdminPermission))) {
-    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
-  }
-
   return null;
 }
 
@@ -131,6 +113,6 @@ export async function handleAdminMessageUpload(request: Request, deps: AdminMess
   });
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   return handleAdminMessageUpload(request);
 }

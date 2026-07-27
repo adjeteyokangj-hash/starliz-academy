@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { fromDbRecord } from "@/lib/child_profile_db";
 import { parseWalletMetadata, summarizeWalletTransactions } from "@/lib/wallet_ledger";
@@ -248,7 +248,7 @@ export async function GET(_request: Request, context: Context) {
 }
 
 export async function PATCH(request: Request, context: Context) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("students:write");
   if (!session) return response;
 
   const { id } = await context.params;

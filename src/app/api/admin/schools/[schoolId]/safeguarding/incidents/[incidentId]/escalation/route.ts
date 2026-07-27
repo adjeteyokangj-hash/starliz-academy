@@ -1,12 +1,13 @@
 import { randomUUID } from "crypto";
 import { buildResponse } from "../../../_lib/response";
-import { canManageSafeguarding, computeSlaState, isValidTransition, makeAuditEvent, normalizeRole } from "../../../_lib/governance";
+import { computeSlaState, isValidTransition, makeAuditEvent } from "../../../_lib/governance";
 import { appendAuditEvent, appendEscalationRecord, getIncident, listEscalations, updateIncident } from "../../../_lib/store";
 import { escalationSchema, toValidationErrors } from "../../../_lib/validation";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireSafeguardingAdmin } from "../../../_lib/auth";
+import { writeAuditLog } from "@/lib/audit";
 
 type Context = { params: Promise<{ schoolId: string; incidentId: string }> };
-type AdminDeps = { requireAdmin: typeof requireAdmin };
+type AdminDeps = { requireSafeguardingAdmin: typeof requireSafeguardingAdmin };
 
 export async function POST(request: Request, context: Context) {
   return handleAdminSafeguardingIncidentEscalationPost(request, context);
@@ -15,24 +16,13 @@ export async function POST(request: Request, context: Context) {
 export async function handleAdminSafeguardingIncidentEscalationPost(
   request: Request,
   context: Context,
-  deps: AdminDeps = { requireAdmin },
+  deps: AdminDeps = { requireSafeguardingAdmin },
 ) {
   const requestedAt = new Date().toISOString();
   const { schoolId, incidentId } = await context.params;
-  const { session, response } = await deps.requireAdmin();
+  const { session, response } = await deps.requireSafeguardingAdmin();
   if (!session) return response!;
-  const actor = session.email || session.userId;
-  const role = normalizeRole("dsl");
-
-  if (!canManageSafeguarding(role)) {
-    return buildResponse({
-      success: false,
-      data: null,
-      error: { code: "FORBIDDEN", message: "Only safeguarding leads can escalate incidents." },
-      requestedAt,
-      status: 403,
-    });
-  }
+  const actorUserId = session.userId;
 
   const incident = await getIncident(schoolId, incidentId);
   if (!incident) {
@@ -85,18 +75,23 @@ export async function handleAdminSafeguardingIncidentEscalationPost(
   }
 
   const nowIso = new Date().toISOString();
-  const escalation = await appendEscalationRecord(schoolId, incidentId, {
-    id: randomUUID(),
+  const escalation = await appendEscalationRecord(
     schoolId,
     incidentId,
-    escalationLevel: parsed.data.escalationLevel,
-    rationale: parsed.data.rationale,
-    actionPlan: parsed.data.actionPlan,
-    agencyReferralStatus: parsed.data.agencyReferralStatus,
-    escalatedBy: parsed.data.escalatedBy,
-    nextReviewDate: parsed.data.nextReviewDate ?? null,
-    createdAt: nowIso,
-  });
+    {
+      id: randomUUID(),
+      schoolId,
+      incidentId,
+      escalationLevel: parsed.data.escalationLevel,
+      rationale: parsed.data.rationale,
+      actionPlan: parsed.data.actionPlan,
+      agencyReferralStatus: parsed.data.agencyReferralStatus,
+      escalatedBy: actorUserId,
+      nextReviewDate: parsed.data.nextReviewDate ?? null,
+      createdAt: nowIso,
+    },
+    actorUserId,
+  );
 
   const updated = await updateIncident(schoolId, incidentId, {
     status: parsed.data.status,
@@ -124,13 +119,27 @@ export async function handleAdminSafeguardingIncidentEscalationPost(
       schoolId,
       incidentId,
       actionType: "escalation.updated",
-      actor,
+      actor: actorUserId,
       previousStatus: incident.status,
       newStatus: updated.status,
-      notes: parsed.data.rationale,
+      notes: "Escalation recorded.",
       timestamp: nowIso,
     }),
+    actorUserId,
   );
+
+  await writeAuditLog({
+    actorUserId,
+    action: "safeguarding_case_escalated",
+    entityType: "safeguarding_incident",
+    entityId: incidentId,
+    metadata: {
+      schoolId,
+      previousStatus: incident.status,
+      newStatus: updated.status,
+      escalationLevel: parsed.data.escalationLevel,
+    },
+  });
 
   return buildResponse({
     success: true,

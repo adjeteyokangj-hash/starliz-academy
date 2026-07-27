@@ -5,7 +5,7 @@ import { handleAdminSafeguardingIncidentTimelinePost } from "../src/app/api/admi
 import type { SafeguardingIncident, TimelineEvent, AuditEvent } from "../src/app/api/admin/schools/[schoolId]/safeguarding/_lib/contracts";
 
 const adminDeps = {
-  requireAdmin: async () => ({
+  requireSafeguardingAdmin: async () => ({
     session: { email: "dsl@example.com", userId: "admin-1", role: "admin" },
     response: null,
   }),
@@ -50,15 +50,22 @@ function buildTimelineDeps(incident: SafeguardingIncident | null) {
   let incidentState = incident;
 
   return {
-    requireAdmin: adminDeps.requireAdmin,
+    requireSafeguardingAdmin: adminDeps.requireSafeguardingAdmin,
+    writeAuditLog: async () => undefined,
     getIncident: async (schoolId: string, incidentId: string) => {
       if (!incidentState) return null;
       if (incidentState.schoolId !== schoolId || incidentState.id !== incidentId) return null;
       return incidentState;
     },
-    appendTimelineEvent: async (_schoolId: string, _incidentId: string, event: TimelineEvent) => {
-      timeline.unshift(event);
-      return event;
+    appendTimelineEvent: async (
+      _schoolId: string,
+      _incidentId: string,
+      event: TimelineEvent,
+      actorUserId?: string | null,
+    ) => {
+      const stored = { ...event, actor: actorUserId ?? event.actor };
+      timeline.unshift(stored);
+      return stored;
     },
     updateIncident: async (_schoolId: string, _incidentId: string, patch: Partial<SafeguardingIncident>) => {
       if (!incidentState) return null;
@@ -68,9 +75,15 @@ function buildTimelineDeps(incident: SafeguardingIncident | null) {
       };
       return incidentState;
     },
-    appendAuditEvent: async (_schoolId: string, _incidentId: string, event: AuditEvent) => {
-      audits.unshift(event);
-      return event;
+    appendAuditEvent: async (
+      _schoolId: string,
+      _incidentId: string,
+      event: AuditEvent,
+      actorUserId?: string | null,
+    ) => {
+      const stored = { ...event, actor: actorUserId ?? event.actor };
+      audits.unshift(stored);
+      return stored;
     },
     listTimelineEvents: async () => timeline,
     getAuditEvents: () => audits,
@@ -105,15 +118,15 @@ test("safeguarding timeline append records event, audit entry, and chronology no
   };
 
   assert.equal(response.status, 201);
-  assert.equal(payload.data?.timelineEvent.actor, "dsl@example.com");
+  assert.equal(payload.data?.timelineEvent.actor, "admin-1");
   assert.equal(payload.data?.timelineEvent.action, "parent-contact");
   assert.equal(payload.data?.timelineEvent.timestamp, "2026-06-03T10:30:00.000Z");
   assert.equal(payload.data?.timeline.length, 1);
   assert.match(payload.data?.incident?.chronologyNotes ?? "", /Initial concern recorded\.\n2026-06-03T10:30:00\.000Z: Parent contacted/);
   assert.equal(payload.data?.incident?.status, "New");
   assert.equal(payload.auditEvent?.actionType, "timeline.added");
-  assert.equal(payload.auditEvent?.actor, "dsl@example.com");
-  assert.equal(payload.auditEvent?.notes, "Parent contacted and follow-up review booked.");
+  assert.equal(payload.auditEvent?.actor, "admin-1");
+  assert.equal(payload.auditEvent?.notes, "Timeline note added.");
 });
 
 test("safeguarding timeline rejects invalid payloads", async () => {
@@ -157,4 +170,30 @@ test("safeguarding timeline returns not found for unknown incident", async () =>
 
   assert.equal(response.status, 404);
   assert.equal(payload.error?.code, "NOT_FOUND");
+});
+
+test("safeguarding timeline denies callers without MANAGE_SAFEGUARDING", async () => {
+  const schoolId = `school-timeline-denied-${Date.now()}`;
+  const incident = buildIncident(schoolId, `incident-${Date.now()}`);
+  const deps = {
+    ...buildTimelineDeps(incident),
+    requireSafeguardingAdmin: async () => ({
+      session: null,
+      response: new Response(JSON.stringify({ error: "You do not have permission to perform this action." }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }),
+    }),
+  };
+
+  const response = await handleAdminSafeguardingIncidentTimelinePost(
+    new Request(`http://localhost/api/admin/schools/${schoolId}/safeguarding/incidents/${incident.id}/timeline`, {
+      method: "POST",
+      body: JSON.stringify({ action: "review", note: "Should fail." }),
+    }),
+    incidentContext(schoolId, incident.id),
+    deps,
+  );
+
+  assert.equal(response.status, 403);
 });

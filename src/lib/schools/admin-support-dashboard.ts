@@ -798,7 +798,7 @@ export async function getAdminSupportOperations(input: {
         waitingEntries.length,
         tutorCounts.busyTutorCount,
       ),
-      safeguardingAlertsLabel: "No safeguarding alerts",
+      safeguardingAlertsLabel: "Safeguarding alerts are managed in Safeguarding — not summarised here",
     },
     glance: {
       learningNormally,

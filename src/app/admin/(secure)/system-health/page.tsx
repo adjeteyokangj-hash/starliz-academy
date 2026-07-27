@@ -1,1 +1,5 @@
-export { default } from "@/app/admin/settings/system-health/page";
+import { redirect } from "next/navigation";
+
+export default function AdminSystemHealthAliasPage() {
+  redirect("/admin/settings/system-health");
+}

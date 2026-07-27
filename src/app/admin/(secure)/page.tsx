@@ -16,11 +16,11 @@ type Stats = {
   avgAccuracy: number;
   lessonsCompleted: number;
   wordsGenerated: number;
-  subscriptions: number;
-  lessons: number;
-  rewards: number;
-  storeItems: number;
-  supportTickets: number;
+  subscriptions: number | null;
+  lessons: number | null;
+  rewards: number | null;
+  storeItems: number | null;
+  supportTickets: number | null;
   inboxUnread: number;
   messageThreadsWithUnread: number;
   messagesUnread: number;
@@ -66,12 +66,58 @@ type Stats = {
     arr: number;
     churn: number;
     taxLiabilityEstimate: number;
+  } | null;
+  partialData?: boolean;
+};
+
+type OpsAlert = {
+  id: string;
+  label: string;
+  count: number | null;
+  error: boolean;
+  tone: "critical" | "warning" | "info";
+  href: string;
+};
+
+type OpsCron = {
+  job: string;
+  label: string;
+  status: "ok" | "stale" | "failed" | "never_run" | "misconfigured";
+  lastRunAt: string | null;
+  ageMinutes: number | null;
+};
+
+type OpsHealth = {
+  generatedAt: string;
+  integrations: {
+    database: { status: string };
+    openai: { status: string };
+    payments: { status: string };
+    email: { status: string };
   };
+  crons: OpsCron[];
+  alerts: OpsAlert[];
 };
 
 function formatGbp(value: number): string {
   return `GBP ${value.toFixed(2)}`;
 }
+
+const INTEGRATION_LABELS: Record<string, { label: string; tone: string }> = {
+  ok: { label: "Operational", tone: "text-emerald-300" },
+  degraded: { label: "Degraded", tone: "text-amber-300" },
+  unavailable: { label: "Unavailable", tone: "text-red-300" },
+  misconfigured: { label: "Not configured", tone: "text-amber-300" },
+  unknown: { label: "Unknown", tone: "text-slate-400" },
+};
+
+const CRON_STATUS_LABELS: Record<string, { label: string; tone: string }> = {
+  ok: { label: "Healthy", tone: "text-emerald-300" },
+  stale: { label: "Stale", tone: "text-amber-300" },
+  failed: { label: "Failed", tone: "text-red-300" },
+  never_run: { label: "No runs yet", tone: "text-slate-400" },
+  misconfigured: { label: "Missing secret", tone: "text-amber-300" },
+};
 
 const moduleGroups = [
   {
@@ -85,8 +131,8 @@ const moduleGroups = [
   {
     label: "Learning",
     items: [
-      { title: "AI Generator", description: "Generate, validate and approve learning content.", href: "/admin/ai" },
-      { title: "Content Library", description: "Publish spelling, maths and reading assets.", href: "/admin/content" },
+      { title: "AI Generator", description: "Generate, validate and approve learning content.", href: "/admin/ai-generator" },
+      { title: "Content Library", description: "Publish spelling, maths and reading assets.", href: "/admin/content-library" },
       { title: "Assignments", description: "Assign targeted work from weak areas.", href: "/admin/assignments" },
       { title: "Dictionary", description: "Child-friendly word bank for Coach and lessons.", href: "/admin/dictionary" },
     ],
@@ -104,8 +150,9 @@ const moduleGroups = [
     label: "Operations",
     items: [
       { title: "Short Learning", description: "Cross-school AI-led session bookings, shifts and coverage gaps.", href: "/admin/short-learning" },
+      { title: "Complaints", description: "Operational complaints with working-day SLA tracking.", href: "/admin/complaints" },
       { title: "Reports", description: "Progress, weak topics and exports.", href: "/admin/reports" },
-      { title: "System Health", description: "OpenAI, Stripe, database and jobs.", href: "/admin/system-health" },
+      { title: "System Health", description: "OpenAI, Stripe, database and jobs.", href: "/admin/settings/system-health" },
       { title: "API Keys", description: "Provider keys and connection status.", href: "/admin/settings/integrations" },
       { title: "Audit Logs", description: "Admin, billing and security events.", href: "/admin/audit-logs" },
       { title: "Production Checklist", description: "Launch readiness before go-live.", href: "/admin/settings/production-checklist" },
@@ -123,31 +170,18 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function statusTone(value: string): string {
-  const normalized = value.toLowerCase();
-  if (normalized.includes("connected") || normalized === "online" || normalized === "protected") {
-    return "text-emerald-300";
-  }
-  if (normalized.includes("not") || normalized.includes("fail") || normalized.includes("error")) {
-    return "text-amber-300";
-  }
-  return "text-slate-200";
-}
-
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const openAiStatus = stats?.apiKeyStatuses.openai ?? "not saved";
+  const [health, setHealth] = useState<OpsHealth | null>(null);
+  const [healthError, setHealthError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort("timeout"), 45_000);
-
-    setLoading(true);
-    setError(null);
 
     fetchWithRefreshRetry("/api/admin/stats", { credentials: "include", signal: controller.signal })
       .then(async (response) => {
@@ -199,6 +233,30 @@ export default function AdminDashboardPage() {
     window.location.replace("/admin/login?next=/admin&reason=switch");
   }, [error]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    fetchWithRefreshRetry("/api/admin/ops/health", { credentials: "include", signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`health ${res.status}`);
+        return res.json() as Promise<OpsHealth>;
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        setHealth(payload);
+        setHealthError(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Never paint fake healthy state — surface that health is unavailable.
+        setHealthError(true);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort("unmount");
+    };
+  }, []);
+
   const activityByType = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const item of stats?.recentActivity ?? []) {
@@ -243,7 +301,7 @@ export default function AdminDashboardPage() {
         actions={
           <>
             <AdminButtonLink href="/admin/schools">Open Schools</AdminButtonLink>
-            <AdminButtonLink href="/admin/ai" variant="secondary">AI Generator</AdminButtonLink>
+            <AdminButtonLink href="/admin/ai-generator" variant="secondary">AI Generator</AdminButtonLink>
           </>
         }
       />
@@ -259,8 +317,69 @@ export default function AdminDashboardPage() {
           <AdminStatCard title="Active today" value={stats?.activeToday ?? "…"} detail="Unique learners" href="/admin/reports" />
           <AdminStatCard title="Avg accuracy" value={stats ? `${stats.avgAccuracy}%` : "…"} href="/admin/reports" tone="green" />
           <AdminStatCard title="Need support" value={stats?.studentsNeedingSupport ?? "…"} href="/admin/students?filter=support" tone="amber" />
-          <AdminStatCard title="Subscriptions" value={stats?.subscriptions ?? "…"} href="/admin/subscriptions" />
+          <AdminStatCard title="Subscriptions" value={stats?.subscriptions ?? (stats ? "Unavailable" : "…")} href="/admin/subscriptions" />
         </div>
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h3 className="admin-section-title">Operational alerts</h3>
+          <p className="admin-body text-xs">
+            {healthError
+              ? "Health checks unavailable"
+              : !health
+                ? "Checking platform health…"
+                : "Live server signals"}
+          </p>
+        </div>
+        {healthError ? (
+          <div className="rounded-[var(--admin-radius)] border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            Operational health checks are unavailable right now. Treat platform status as unknown, not healthy.
+          </div>
+        ) : !health ? (
+          <div className="rounded-[var(--admin-radius)] border border-[var(--admin-border)] px-4 py-3 text-sm text-[var(--admin-muted)]">
+            Loading operational alerts…
+          </div>
+        ) : health.alerts.filter((a) => a.error || (a.count ?? 0) > 0).length === 0 ? (
+          <div className="rounded-[var(--admin-radius)] border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+            No operational alerts. All monitored signals are clear.
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {health.alerts
+              .filter((a) => a.error || (a.count ?? 0) > 0)
+              .map((alert) => (
+                <Link
+                  key={alert.id}
+                  href={alert.href}
+                  className={`block rounded-[var(--admin-radius)] border px-4 py-3 transition hover:opacity-90 ${
+                    alert.error
+                      ? "border-amber-500/30 bg-amber-500/10"
+                      : alert.tone === "critical"
+                        ? "border-red-500/30 bg-red-500/10"
+                        : alert.tone === "warning"
+                          ? "border-amber-500/25 bg-amber-500/10"
+                          : "border-[var(--admin-border)] bg-white/[0.03]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold text-[var(--admin-text)]">{alert.label}</span>
+                    <span
+                      className={`text-lg font-black ${
+                        alert.error
+                          ? "text-amber-200"
+                          : alert.tone === "critical"
+                            ? "text-red-200"
+                            : "text-amber-200"
+                      }`}
+                    >
+                      {alert.error ? "Unavailable" : alert.count}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+          </div>
+        )}
       </section>
 
       <section className="grid gap-3 lg:grid-cols-4">
@@ -282,10 +401,20 @@ export default function AdminDashboardPage() {
         />
         <AdminStatCard
           title="Support tickets"
-          value={stats?.supportTickets ?? "…"}
+          value={stats?.supportTickets ?? (stats ? "Unavailable" : "…")}
           href="/admin/support"
         />
       </section>
+
+      {stats?.partialData ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-[var(--admin-radius)] border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+        >
+          Some dashboard signals could not be loaded. Unavailable values are shown explicitly — they are not zeros.
+        </div>
+      ) : null}
 
       <AdminCard padding="lg">
         <div className="mb-6">
@@ -360,7 +489,7 @@ export default function AdminDashboardPage() {
                 title="No weak areas yet"
                 description="Spelling and maths gaps will surface after more learner activity."
                 actionLabel="Open AI Generator"
-                href="/admin/ai"
+                href="/admin/ai-generator"
               />
             )}
           </AdminSectionCard>
@@ -384,25 +513,53 @@ export default function AdminDashboardPage() {
           </AdminSectionCard>
 
           <AdminSectionCard title="Platform status">
-            <div className="space-y-2.5 text-sm">
-              {[
-                ["Database", "Online"],
-                ["Admin access", "Protected"],
-                ["OpenAI", openAiStatus],
-                ["Payments", stats?.apiKeyStatuses.payment ?? "not saved"],
-                ["Email", stats?.apiKeyStatuses.email ?? "not saved"],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between gap-3">
-                  <span className="text-[var(--admin-muted)]">{label}</span>
-                  <span className={`font-semibold capitalize ${statusTone(value)}`}>{value}</span>
-                </div>
-              ))}
-            </div>
-            {openAiStatus !== "connected" ? (
-              <p className="mt-4 rounded-[var(--admin-radius)] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                OpenAI is {openAiStatus}. Configure it in API Keys for reliable generation.
+            {healthError ? (
+              <p className="rounded-[var(--admin-radius)] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                Platform status is unavailable. Do not assume services are healthy.
               </p>
-            ) : null}
+            ) : !health ? (
+              <p className="text-sm text-[var(--admin-muted)]">Checking platform status…</p>
+            ) : (
+              <div className="space-y-2.5 text-sm">
+                {[
+                  ["Database", health.integrations.database.status],
+                  ["OpenAI", health.integrations.openai.status],
+                  ["Payments", health.integrations.payments.status],
+                  ["Email", health.integrations.email.status],
+                ].map(([label, status]) => {
+                  const meta = INTEGRATION_LABELS[status] ?? INTEGRATION_LABELS.unknown;
+                  return (
+                    <div key={label} className="flex items-center justify-between gap-3">
+                      <span className="text-[var(--admin-muted)]">{label}</span>
+                      <span className={`font-semibold ${meta.tone}`}>{meta.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </AdminSectionCard>
+
+          <AdminSectionCard title="Cron & jobs">
+            {healthError ? (
+              <p className="text-sm text-amber-200">Cron health unavailable.</p>
+            ) : !health ? (
+              <p className="text-sm text-[var(--admin-muted)]">Checking cron health…</p>
+            ) : (
+              <div className="space-y-2.5 text-sm">
+                {health.crons.map((cron) => {
+                  const meta = CRON_STATUS_LABELS[cron.status] ?? CRON_STATUS_LABELS.never_run;
+                  return (
+                    <div key={cron.job} className="flex items-center justify-between gap-3">
+                      <span className="text-[var(--admin-muted)]">{cron.label}</span>
+                      <span className={`font-semibold ${meta.tone}`}>
+                        {meta.label}
+                        {cron.ageMinutes !== null ? ` · ${cron.ageMinutes}m` : ""}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </AdminSectionCard>
 
           <AdminSectionCard title="Recent activity">

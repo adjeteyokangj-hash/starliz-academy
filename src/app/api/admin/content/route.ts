@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { validateAiContentQuality } from "@/lib/ai/content-quality";
 import { runContentBlackBoxTest, type BlackBoxContentTestResult } from "@/lib/ai/content-black-box-test";
@@ -204,7 +204,7 @@ function attachSelectedMetadataToItems(
 }
 
 export async function GET(req: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_CONTENT");
   if (!session) return response;
 
   const { searchParams } = new URL(req.url);
@@ -259,7 +259,7 @@ export async function GET(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_CONTENT");
   if (!session) return response;
 
   const { id } = await req.json();
@@ -272,7 +272,7 @@ export async function DELETE(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_CONTENT");
   if (!session) return response;
 
   try {

@@ -1,1 +1,5 @@
-export { default } from "@/app/admin/content-library/page";
+import { redirect } from "next/navigation";
+
+export default function AdminContentAliasPage() {
+  redirect("/admin/content-library");
+}

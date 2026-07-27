@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import {
   isBlackBoxStale,
@@ -105,7 +105,7 @@ async function defaultUpdateContent(id: string, data: ContentVerificationUpdate)
 }
 
 const defaultDeps: AdminContentVerificationDeps = {
-  requireAdmin,
+  requireAdmin: (() => requireAdminPermission("APPROVE_CONTENT")) as typeof requireAdmin,
   findContent: defaultFindContent,
   updateContent: defaultUpdateContent,
   writeAuditLog,

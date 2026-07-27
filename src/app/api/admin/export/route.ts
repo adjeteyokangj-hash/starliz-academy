@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { prisma } from "@/lib/db";
 
 function toCSV(rows: Record<string, unknown>[]): string {
@@ -18,7 +18,7 @@ function toCSV(rows: Record<string, unknown>[]): string {
 }
 
 export async function GET(req: NextRequest) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("EXPORT_DATA");
   if (!session) return response!;
 
   const type = req.nextUrl.searchParams.get("type") ?? "users";

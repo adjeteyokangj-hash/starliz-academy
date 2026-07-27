@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { keyStageForYearGroup } from "@/lib/curriculum";
 import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
@@ -67,7 +67,7 @@ function toQuestionCount(contentJson: string | null): number {
 }
 
 export async function GET(request: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("students:write");
   if (!session) return response;
 
   const context = new URL(request.url).searchParams.get("context")?.trim();

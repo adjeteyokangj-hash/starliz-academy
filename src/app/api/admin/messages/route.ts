@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { AdminPermission } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { hasPermission } from "@/lib/rbac";
 
 type MessageDb = typeof prisma & {
@@ -85,7 +85,7 @@ async function ensureMessagingAccess(userId: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_INBOX");
   if (!session) return response!;
 
   const access = await ensureMessagingAccess(session.userId);
@@ -185,7 +185,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_INBOX");
   if (!session) return response!;
 
   const access = await ensureMessagingAccess(session.userId);
@@ -361,7 +361,7 @@ const markReadSchema = z.object({
 });
 
 export async function PATCH(request: NextRequest) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_INBOX");
   if (!session) return response!;
 
   const access = await ensureMessagingAccess(session.userId);

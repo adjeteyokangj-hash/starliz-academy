@@ -70,6 +70,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ re
       entityType: resource,
       entityId: id,
     });
+
+    const nextStatus =
+      typeof (parsed as { status?: unknown }).status === "string"
+        ? (parsed as { status: string }).status.toLowerCase()
+        : null;
+    if (resource === "support" && nextStatus && ["archived", "closed", "resolved"].includes(nextStatus)) {
+      await writeAuditLog({
+        actorUserId: session.userId,
+        action: "support_ticket_archived",
+        entityType: resource,
+        entityId: id,
+        metadata: { status: nextStatus },
+      });
+    }
     return NextResponse.json({ record });
   } catch (error) {
     console.error(`[admin/${resource}] PATCH failed`, error);
@@ -80,6 +94,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ re
   }
 }
 
+/**
+ * Resources whose records must be retained rather than hard-deleted. Support
+ * tickets carry communication history that must survive for audit/retention, so
+ * they are closed/archived through PATCH (status) instead of destructive delete.
+ */
+const RETENTION_PROTECTED_RESOURCES = new Set(["support"]);
+
 export async function DELETE(_: Request, { params }: { params: Promise<{ resource: string; id: string }> }) {
   const { session, response } = await requireAdminPermission("content:delete");
   if (!session) return response;
@@ -87,6 +108,23 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ resourc
   const { resource, id } = await params;
   const delegate = getDelegate(resource);
   if (!delegate) return NextResponse.json({ error: "Unknown admin resource." }, { status: 404 });
+
+  if (RETENTION_PROTECTED_RESOURCES.has(resource)) {
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "support_ticket_delete_rejected",
+      entityType: resource,
+      entityId: id,
+      metadata: { reason: "retention_protected" },
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Support tickets cannot be permanently deleted. Close or archive the ticket to preserve its history.",
+      },
+      { status: 409 },
+    );
+  }
 
   await delegate.delete({ where: { id } });
   await writeAuditLog({

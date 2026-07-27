@@ -7,6 +7,7 @@ import { hashPassword } from "@/lib/auth";
 import { canAddSchoolStudent } from "@/lib/schools/licensing";
 import { createInviteToken, resendInviteToken } from "@/lib/schools/invite";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
+import { writeAuditLog } from "@/lib/audit";
 import { enrolSchoolStudent } from "@/lib/schools/enrol-student";
 import { bootstrapDaytimeSchool } from "@/lib/schools/bootstrap-daytime-school";
 import { assignSchoolLesson } from "@/lib/schools/assign-school-lesson";
@@ -88,6 +89,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("updateClassroom"),
     payload: z.object({
+      schoolId: z.string().min(1),
       classroomId: z.string().min(1),
       name: z.string().trim().min(1).optional(),
       yearGroup: z.string().trim().max(40).optional().nullable(),
@@ -122,6 +124,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("updateTeacher"),
     payload: z.object({
+      schoolId: z.string().min(1),
       teacherId: z.string().min(1),
       role: z.enum(["owner", "admin", "teacher", "support", "staff_observer", "finance"]).optional(),
       status: z.enum(["invited", "active", "suspended", "archived"]).optional(),
@@ -573,6 +576,22 @@ export async function POST(request: Request) {
         break;
       }
       case "updateClassroom": {
+        const ownedClassroom = await prisma.classroom.findFirst({
+          where: { id: parsed.payload.classroomId, schoolId: parsed.payload.schoolId },
+          select: { id: true },
+        });
+        if (!ownedClassroom) {
+          await writeSchoolAuditLog({
+            schoolId: parsed.payload.schoolId,
+            actorUserId: session.userId,
+            action: "school_classroom_update_rejected",
+            entityType: "classroom",
+            entityId: parsed.payload.classroomId,
+            metadata: { reason: "cross_school_or_not_found" },
+            severity: "warning",
+          });
+          return NextResponse.json({ error: "Classroom not found for this school." }, { status: 404 });
+        }
         await prisma.classroom.update({
           where: { id: parsed.payload.classroomId },
           data: {
@@ -637,19 +656,37 @@ export async function POST(request: Request) {
           },
         });
 
-        // Generate secure invite token
+        // Generate secure invite token (never persist raw token in audits).
         const inviteToken = await createInviteToken(schoolTeacher.id);
         const inviteUrl = `${getBaseUrl()}/invite/accept?token=${inviteToken}`;
+        const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
-        // Audit trail
         await writeSchoolAuditLog({
           schoolId: parsed.payload.schoolId,
           actorUserId: session.userId,
           action: "invite_sent",
           entityType: "teacher",
           entityId: schoolTeacher.id,
-          metadata: { role: parsed.payload.role, email, inviteToken },
+          metadata: {
+            role: parsed.payload.role,
+            email,
+            expiresAt,
+            deliveryResult: "api_fallback_url",
+          },
           severity: "info",
+        });
+
+        await writeAuditLog({
+          actorUserId: session.userId,
+          action: "admin_invite_created",
+          entityType: "teacher_invite",
+          entityId: schoolTeacher.id,
+          metadata: {
+            schoolId: parsed.payload.schoolId,
+            role: parsed.payload.role,
+            email,
+            expiresAt,
+          },
         });
 
         inviteFallback = {
@@ -674,6 +711,7 @@ export async function POST(request: Request) {
 
         const newToken = await resendInviteToken(teacher.id);
         const inviteUrl = `${getBaseUrl()}/invite/accept?token=${newToken}`;
+        const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
         const teacherUser = await prisma.user.findUnique({
           where: { id: teacher.userId },
@@ -686,8 +724,24 @@ export async function POST(request: Request) {
           action: "invite_resent",
           entityType: "teacher",
           entityId: teacher.id,
-          metadata: { newToken },
+          metadata: {
+            email: teacherUser?.email ?? null,
+            expiresAt,
+            deliveryResult: "api_fallback_url",
+          },
           severity: "info",
+        });
+
+        await writeAuditLog({
+          actorUserId: session.userId,
+          action: "admin_invite_resent",
+          entityType: "teacher_invite",
+          entityId: teacher.id,
+          metadata: {
+            schoolId: teacher.schoolId,
+            email: teacherUser?.email ?? null,
+            expiresAt,
+          },
         });
 
         inviteFallback = {
@@ -730,6 +784,22 @@ export async function POST(request: Request) {
         break;
       }
       case "updateTeacher": {
+        const ownedTeacher = await prisma.schoolTeacher.findFirst({
+          where: { id: parsed.payload.teacherId, schoolId: parsed.payload.schoolId },
+          select: { id: true },
+        });
+        if (!ownedTeacher) {
+          await writeSchoolAuditLog({
+            schoolId: parsed.payload.schoolId,
+            actorUserId: session.userId,
+            action: "school_teacher_update_rejected",
+            entityType: "teacher",
+            entityId: parsed.payload.teacherId,
+            metadata: { reason: "cross_school_or_not_found" },
+            severity: "warning",
+          });
+          return NextResponse.json({ error: "Teacher not found for this school." }, { status: 404 });
+        }
         await prisma.schoolTeacher.update({
           where: { id: parsed.payload.teacherId },
           data: {

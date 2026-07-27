@@ -51,6 +51,13 @@ export type SchoolAuditAction =
   | "tutor_busy"
   | "tutor_offline"
   | "tutor_offline_stale"
+  | "short_learning_booking_active"
+  | "short_learning_booking_attended"
+  | "short_learning_booking_completed"
+  | "short_learning_booking_no_show"
+  | "short_learning_booking_expired"
+  | "school_teacher_update_rejected"
+  | "school_classroom_update_rejected"
   | "human_support_eligible"
   | "human_support_enqueued"
   | "human_support_left_queue"
@@ -111,7 +118,34 @@ type SchoolAuditInput = {
   severity?: SchoolAuditSeverity;
 };
 
+export function sanitizeSchoolAuditMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!metadata) return undefined;
+  const sensitiveExact = new Set([
+    "inviteToken",
+    "newToken",
+    "token",
+    "rawToken",
+    "inviteSecret",
+  ]);
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (sensitiveExact.has(key) || /token/i.test(key) && typeof value === "string" && !key.toLowerCase().includes("expires")) {
+      out[key] = "[redacted]";
+      continue;
+    }
+    if (typeof value === "string" && /[?&]token=/i.test(value)) {
+      out[key] = value.replace(/([?&]token=)[^&]+/gi, "$1[redacted]");
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
 export async function writeSchoolAuditLog(input: SchoolAuditInput): Promise<void> {
+  const safeMetadata = sanitizeSchoolAuditMetadata(input.metadata);
   await prisma.schoolAuditLog.create({
     data: {
       schoolId: input.schoolId,
@@ -130,7 +164,7 @@ export async function writeSchoolAuditLog(input: SchoolAuditInput): Promise<void
       actorSchoolTeacherId: input.actorSchoolTeacherId,
       actorEmail: input.actorEmail,
       impersonatedByUserId: input.impersonatedByUserId,
-      metadataJson: input.metadata ? JSON.stringify(input.metadata) : undefined,
+      metadataJson: safeMetadata ? JSON.stringify(safeMetadata) : undefined,
       beforeJson: input.before ? JSON.stringify(input.before) : undefined,
       afterJson: input.after ? JSON.stringify(input.after) : undefined,
       diffJson: input.diff ? JSON.stringify(input.diff) : undefined,

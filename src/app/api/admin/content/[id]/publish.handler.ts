@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
 import { buildBlackBoxGateFailure, hasPassedBlackBoxGate } from "@/lib/ai/content-black-box-gate";
 import { analyzeContentSessionSlots, getIncompleteSlotsReason } from "@/lib/session-slot-validation";
 import { analyzeSessionSlotDuplicates } from "@/lib/session-slot-duplicates";
@@ -66,7 +66,7 @@ async function defaultUpdateContentToPublished(id: string): Promise<PublishedCon
 }
 
 const defaultDeps: AdminContentPublishDeps = {
-  requireAdmin,
+  requireAdmin: (() => requireAdminPermission("APPROVE_CONTENT")) as typeof requireAdmin,
   findContent: defaultFindContent,
   findHistoricalContent: defaultFindHistoricalContent,
   updateContentToPublished: defaultUpdateContentToPublished,
@@ -100,7 +100,7 @@ export async function handleAdminContentPublishPost(
   deps: AdminContentPublishDeps = defaultDeps,
 ) {
   const { session, response } = await deps.requireAdmin();
-  if (!session) return response;
+  if (!session) return response ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await context.params;
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { createDictionaryWord, getDictionaryDashboardMetrics, listDictionaryWords } from "@/lib/dictionary";
 
@@ -76,7 +76,7 @@ function serializeWord(word: Awaited<ReturnType<typeof listDictionaryWords>>["it
 }
 
 export async function GET(request: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_CONTENT");
   if (!session) return response;
 
   const { searchParams } = new URL(request.url);
@@ -108,7 +108,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_CONTENT");
   if (!session) return response;
 
   try {

@@ -298,9 +298,9 @@ export async function PATCH(request: Request) {
     userAgent: request.headers.get("user-agent") ?? undefined,
     metadata: {
       targetEmail: invite.targetEmail,
-      inviteUrl,
       emailDelivery: delivery.ok ? "sent" : "failed",
       emailDeliveryReason: delivery.ok ? null : delivery.reason,
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
     },
     severity: "info",
   });

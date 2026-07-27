@@ -49,11 +49,17 @@ export default async function SecureAdminLayout({ children }: { children: React.
     redirect(buildAdminLoginUrl(requestedPath));
   }
 
-  let user: { role: string; adminProfile: { active: boolean } | null } | null = null;
+  let user: {
+    role: string;
+    adminProfile: { active: boolean; isLocked: boolean; roleId: string | null } | null;
+  } | null = null;
   try {
     user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { role: true, adminProfile: { select: { active: true } } },
+      select: {
+        role: true,
+        adminProfile: { select: { active: true, isLocked: true, roleId: true } },
+      },
     });
   } catch (error) {
     if (isTransientDbSaturationError(error)) {
@@ -69,7 +75,14 @@ export default async function SecureAdminLayout({ children }: { children: React.
     throw error;
   }
 
-  const isActiveAdmin = Boolean(user && user.role === "admin" && user.adminProfile?.active !== false);
+  const isActiveAdmin = Boolean(
+    user
+    && user.role === "admin"
+    && user.adminProfile
+    && user.adminProfile.active
+    && !user.adminProfile.isLocked
+    && Boolean(user.adminProfile.roleId),
+  );
   if (!isActiveAdmin) {
     redirect(buildAdminLoginUrl(requestedPath, "", "switch"));
   }

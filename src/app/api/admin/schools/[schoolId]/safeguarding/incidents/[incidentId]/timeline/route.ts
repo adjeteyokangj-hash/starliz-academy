@@ -1,18 +1,20 @@
 import { randomUUID } from "crypto";
 import { buildResponse } from "../../../_lib/response";
-import { canAccessDetail, makeAuditEvent, normalizeRole } from "../../../_lib/governance";
+import { makeAuditEvent } from "../../../_lib/governance";
 import { appendAuditEvent, appendTimelineEvent, getIncident, listTimelineEvents, updateIncident } from "../../../_lib/store";
 import { timelineSchema, toValidationErrors } from "../../../_lib/validation";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireSafeguardingAdmin } from "../../../_lib/auth";
+import { writeAuditLog as defaultWriteAuditLog } from "@/lib/audit";
 
 type Context = { params: Promise<{ schoolId: string; incidentId: string }> };
 type AdminDeps = {
-  requireAdmin: typeof requireAdmin;
+  requireSafeguardingAdmin: typeof requireSafeguardingAdmin;
   getIncident?: typeof getIncident;
   appendTimelineEvent?: typeof appendTimelineEvent;
   updateIncident?: typeof updateIncident;
   appendAuditEvent?: typeof appendAuditEvent;
   listTimelineEvents?: typeof listTimelineEvents;
+  writeAuditLog?: typeof defaultWriteAuditLog;
 };
 
 export async function POST(request: Request, context: Context) {
@@ -23,35 +25,26 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
   request: Request,
   context: Context,
   deps: AdminDeps = {
-    requireAdmin,
+    requireSafeguardingAdmin,
     getIncident,
     appendTimelineEvent,
     updateIncident,
     appendAuditEvent,
     listTimelineEvents,
+    writeAuditLog: defaultWriteAuditLog,
   },
 ) {
   const requestedAt = new Date().toISOString();
   const { schoolId, incidentId } = await context.params;
-  const { session, response } = await deps.requireAdmin();
+  const { session, response } = await deps.requireSafeguardingAdmin();
   if (!session) return response!;
-  const actor = session.email || session.userId;
-  const role = normalizeRole("dsl");
+  const actorUserId = session.userId;
   const getIncidentFn = deps.getIncident ?? getIncident;
   const appendTimelineEventFn = deps.appendTimelineEvent ?? appendTimelineEvent;
   const updateIncidentFn = deps.updateIncident ?? updateIncident;
   const appendAuditEventFn = deps.appendAuditEvent ?? appendAuditEvent;
   const listTimelineEventsFn = deps.listTimelineEvents ?? listTimelineEvents;
-
-  if (!canAccessDetail(role)) {
-    return buildResponse({
-      success: false,
-      data: null,
-      error: { code: "FORBIDDEN", message: "Role is not allowed to add safeguarding timeline events." },
-      requestedAt,
-      status: 403,
-    });
-  }
+  const writeAuditLogFn = deps.writeAuditLog ?? defaultWriteAuditLog;
 
   const incident = await getIncidentFn(schoolId, incidentId);
   if (!incident) {
@@ -90,15 +83,20 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
   }
 
   const timestamp = parsed.data.timestamp ?? new Date().toISOString();
-  const event = await appendTimelineEventFn(schoolId, incidentId, {
-    id: randomUUID(),
+  const event = await appendTimelineEventFn(
     schoolId,
     incidentId,
-    actor,
-    action: parsed.data.action,
-    note: parsed.data.note,
-    timestamp,
-  });
+    {
+      id: randomUUID(),
+      schoolId,
+      incidentId,
+      actor: actorUserId,
+      action: parsed.data.action,
+      note: parsed.data.note,
+      timestamp,
+    },
+    actorUserId,
+  );
 
   const updated = await updateIncidentFn(schoolId, incidentId, {
     chronologyNotes: `${incident.chronologyNotes}\n${timestamp}: ${parsed.data.note}`,
@@ -112,13 +110,22 @@ export async function handleAdminSafeguardingIncidentTimelinePost(
       schoolId,
       incidentId,
       actionType: "timeline.added",
-      actor,
+      actor: actorUserId,
       previousStatus: incident.status,
       newStatus: incident.status,
-      notes: parsed.data.note,
+      notes: "Timeline note added.",
       timestamp,
     }),
+    actorUserId,
   );
+
+  await writeAuditLogFn({
+    actorUserId,
+    action: "safeguarding_note_added",
+    entityType: "safeguarding_incident",
+    entityId: incidentId,
+    metadata: { schoolId, action: parsed.data.action },
+  });
 
   return buildResponse({
     success: true,

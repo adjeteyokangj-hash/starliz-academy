@@ -53,6 +53,7 @@ export const adminNavGroups: readonly AdminNavGroup[] = [
       { title: "Messages", href: "/admin/messages", icon: "MS", launchTag: null },
       { title: "Notifications", href: "/admin/notifications", icon: "N", launchTag: null },
       { title: "Support", href: "/admin/support", icon: "T", launchTag: null },
+      { title: "Complaints", href: "/admin/complaints", icon: "CP", launchTag: null },
       { title: "Voice & Media", href: "/admin/voice-media", icon: "VM", launchTag: "beta" },
     ],
   },

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { getOpenAiApiKeyWithSource } from "@/lib/api-key-config";
@@ -2990,7 +2990,7 @@ Regenerate ONLY replacement items. Keep the same JSON schema, command words, mar
 }
 
 export async function POST(req: Request) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_CONTENT");
   if (!session) return response;
 
   if (!checkGenerationRateLimit(session.userId)) {

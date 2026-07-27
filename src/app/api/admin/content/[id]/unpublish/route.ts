@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 
 type Context = { params: Promise<{ id: string }> };
@@ -18,7 +18,7 @@ type UnpublishedContentRecord = {
 };
 
 export async function POST(_request: Request, context: Context) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("APPROVE_CONTENT");
   if (!session) return response;
 
   const { id } = await context.params;

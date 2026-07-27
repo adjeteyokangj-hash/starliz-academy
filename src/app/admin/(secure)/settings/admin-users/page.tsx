@@ -62,6 +62,10 @@ export default function AdminUsersPage() {
       const data = await res.json();
       if (res.ok) {
         setAdmins(data.admins);
+        setError(null);
+      } else if (res.status === 403) {
+        setAdmins([]);
+        setError(data.error || 'You do not have permission to manage Admin users.');
       } else {
         setError(data.error || 'Failed to fetch admins');
       }
@@ -251,9 +255,11 @@ export default function AdminUsersPage() {
         title="Admin Users & Roles"
         subtitle="Manage admin access and role assignments"
         actions={
+          error?.toLowerCase().includes('permission') ? undefined : (
           <AdminButton onClick={() => setShowForm(!showForm)}>
             {showForm ? 'Cancel' : 'Add Admin User'}
           </AdminButton>
+          )
         }
       />
 

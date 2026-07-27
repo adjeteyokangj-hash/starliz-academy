@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { getInboxConnection } from "@/lib/inbox-connection";
 import { fetchMessages } from "@/lib/imap-client";
 
 export async function GET(req: NextRequest) {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_INBOX");
   if (!session) return response!;
 
   let conn;

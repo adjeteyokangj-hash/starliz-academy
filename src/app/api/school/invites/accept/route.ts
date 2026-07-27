@@ -156,6 +156,19 @@ export async function POST(request: Request) {
     severity: "info",
   });
 
+  const { writeAuditLog } = await import("@/lib/audit");
+  await writeAuditLog({
+    actorUserId: userId,
+    action: "admin_invite_accepted",
+    entityType: "school_invite",
+    entityId: schoolTeacherId,
+    metadata: {
+      schoolId: token.schoolId,
+      role: token.targetRole,
+      inviteType: token.inviteType,
+    },
+  });
+
   // Issue session
   const sessionToken = await createSessionToken({
     userId,

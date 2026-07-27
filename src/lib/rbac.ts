@@ -78,35 +78,23 @@ export const DEFAULT_ROLES: Record<string, {
 };
 
 /**
- * Check if an admin user has a specific permission
+ * Check if an admin user has a specific permission.
+ * Uses the Gate 1B canonical mapping (Super Admin = full access; missing role = deny).
  */
 export async function hasPermission(
   adminUserId: string,
-  permission: AdminPermission
+  permission: AdminPermission | string
 ): Promise<boolean> {
   try {
+    const { contextHasPermission, loadAdminAuthContext } = await import("./admin-permissions");
     const admin = await prisma.adminUser.findUnique({
       where: { id: adminUserId },
-      include: { role: true },
+      select: { userId: true },
     });
-
-    if (!admin || !admin.active || admin.isLocked) {
-      return false;
-    }
-
-    if (!admin.role) {
-      return false;
-    }
-
-    // Parse permissions from the stored JSON string
-    let permissions: AdminPermission[] = [];
-    try {
-      permissions = JSON.parse(admin.role.permissions);
-    } catch {
-      permissions = [];
-    }
-
-    return permissions.includes(permission);
+    if (!admin) return false;
+    const context = await loadAdminAuthContext(admin.userId);
+    if (!context) return false;
+    return contextHasPermission(context, permission);
   } catch {
     return false;
   }

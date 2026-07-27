@@ -1,11 +1,12 @@
 import { buildResponse } from "../_lib/response";
-import { canCreateConcern, canManageSafeguarding, computeSlaState, makeAuditEvent, normalizeRole } from "../_lib/governance";
+import { computeSlaState, makeAuditEvent } from "../_lib/governance";
 import { appendAuditEvent, createIncident, listIncidents } from "../_lib/store";
 import { createIncidentSchema, toValidationErrors } from "../_lib/validation";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireSafeguardingAdmin } from "../_lib/auth";
+import { writeAuditLog } from "@/lib/audit";
 
 type Context = { params: Promise<{ schoolId: string }> };
-type AdminDeps = { requireAdmin: typeof requireAdmin };
+type AdminDeps = { requireSafeguardingAdmin: typeof requireSafeguardingAdmin };
 
 export async function GET(request: Request, context: Context) {
   return handleAdminSafeguardingIncidentListGet(request, context);
@@ -14,23 +15,12 @@ export async function GET(request: Request, context: Context) {
 export async function handleAdminSafeguardingIncidentListGet(
   request: Request,
   context: Context,
-  deps: AdminDeps = { requireAdmin },
+  deps: AdminDeps = { requireSafeguardingAdmin },
 ) {
   const requestedAt = new Date().toISOString();
   const { schoolId } = await context.params;
-  const { session, response } = await deps.requireAdmin();
+  const { session, response } = await deps.requireSafeguardingAdmin();
   if (!session) return response!;
-  const role = normalizeRole("dsl");
-
-  if (!canManageSafeguarding(role)) {
-    return buildResponse({
-      success: false,
-      data: null,
-      error: { code: "FORBIDDEN", message: "Only safeguarding leads can access safeguarding incident lists." },
-      requestedAt,
-      status: 403,
-    });
-  }
 
   const incidents = (await listIncidents(schoolId)).map((incident) => ({
     ...incident,
@@ -52,24 +42,14 @@ export async function POST(request: Request, context: Context) {
 export async function handleAdminSafeguardingIncidentCreatePost(
   request: Request,
   context: Context,
-  deps: AdminDeps = { requireAdmin },
+  deps: AdminDeps = { requireSafeguardingAdmin },
 ) {
   const requestedAt = new Date().toISOString();
   const { schoolId } = await context.params;
-  const { session, response } = await deps.requireAdmin();
+  const { session, response } = await deps.requireSafeguardingAdmin();
   if (!session) return response!;
-  const actor = session.email || session.userId;
-  const role = normalizeRole("dsl");
-
-  if (!canCreateConcern(role)) {
-    return buildResponse({
-      success: false,
-      data: null,
-      error: { code: "FORBIDDEN", message: "Role is not allowed to create safeguarding concerns." },
-      requestedAt,
-      status: 403,
-    });
-  }
+  const actorUserId = session.userId;
+  const actorLabel = session.email || session.userId;
 
   let rawBody: unknown;
   try {
@@ -109,30 +89,34 @@ export async function handleAdminSafeguardingIncidentCreatePost(
     });
   }
 
-  const incident = await createIncident(schoolId, {
-    student: parsed.data.student,
-    concernType: parsed.data.concernType,
-    riskLevel: parsed.data.riskLevel,
-    reportedBy: parsed.data.reportedBy,
-    reportedAt: parsed.data.reportedAt,
-    concernSummary: parsed.data.concernSummary,
-    immediateActionTaken: parsed.data.immediateActionTaken,
-    assignedOwner: parsed.data.assignedOwner ?? null,
-    status: "New",
-    nextReviewDate: parsed.data.nextReviewDate ?? null,
-    parentContacted: parsed.data.parentContacted ?? false,
-    externalAgencyInvolved: parsed.data.externalAgencyInvolved ?? false,
-    chronologyNotes: parsed.data.chronologyNotes,
-    closureSummary: parsed.data.closureSummary ?? "",
-    parentContactNotes: parsed.data.parentContactNotes ?? "",
-    agencyReferralStatus: parsed.data.agencyReferralStatus ?? "Not Referred",
-    createdAt: nowIso,
-    updatedAt: nowIso,
-    triagedAt: null,
-    escalatedAt: null,
-    resolvedAt: null,
-    closedAt: null,
-  });
+  const incident = await createIncident(
+    schoolId,
+    {
+      student: parsed.data.student,
+      concernType: parsed.data.concernType,
+      riskLevel: parsed.data.riskLevel,
+      reportedBy: parsed.data.reportedBy,
+      reportedAt: parsed.data.reportedAt,
+      concernSummary: parsed.data.concernSummary,
+      immediateActionTaken: parsed.data.immediateActionTaken,
+      assignedOwner: parsed.data.assignedOwner ?? null,
+      status: "New",
+      nextReviewDate: parsed.data.nextReviewDate ?? null,
+      parentContacted: parsed.data.parentContacted ?? false,
+      externalAgencyInvolved: parsed.data.externalAgencyInvolved ?? false,
+      chronologyNotes: parsed.data.chronologyNotes,
+      closureSummary: parsed.data.closureSummary ?? "",
+      parentContactNotes: parsed.data.parentContactNotes ?? "",
+      agencyReferralStatus: parsed.data.agencyReferralStatus ?? "Not Referred",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      triagedAt: null,
+      escalatedAt: null,
+      resolvedAt: null,
+      closedAt: null,
+    },
+    actorUserId,
+  );
 
   const auditEvent = await appendAuditEvent(
     schoolId,
@@ -141,13 +125,22 @@ export async function handleAdminSafeguardingIncidentCreatePost(
       schoolId,
       incidentId: incident.id,
       actionType: "incident.created",
-      actor,
+      actor: actorUserId,
       previousStatus: null,
       newStatus: incident.status,
-      notes: `Concern created by ${actor}.`,
+      notes: `Concern created by authorised Admin (${actorLabel}).`,
       timestamp: nowIso,
     }),
+    actorUserId,
   );
+
+  await writeAuditLog({
+    actorUserId,
+    action: "safeguarding_case_created",
+    entityType: "safeguarding_incident",
+    entityId: incident.id,
+    metadata: { schoolId, status: incident.status, riskLevel: incident.riskLevel },
+  });
 
   return buildResponse({
     success: true,

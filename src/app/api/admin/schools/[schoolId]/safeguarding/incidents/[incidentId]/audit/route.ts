@@ -1,10 +1,9 @@
 import { buildResponse } from "../../../_lib/response";
-import { canAccessDetail, normalizeRole } from "../../../_lib/governance";
 import { getIncident, listAuditEvents } from "../../../_lib/store";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireSafeguardingAdmin } from "../../../_lib/auth";
 
 type Context = { params: Promise<{ schoolId: string; incidentId: string }> };
-type AdminDeps = { requireAdmin: typeof requireAdmin };
+type AdminDeps = { requireSafeguardingAdmin: typeof requireSafeguardingAdmin };
 
 export async function GET(request: Request, context: Context) {
   return handleAdminSafeguardingIncidentAuditGet(request, context);
@@ -13,23 +12,12 @@ export async function GET(request: Request, context: Context) {
 export async function handleAdminSafeguardingIncidentAuditGet(
   request: Request,
   context: Context,
-  deps: AdminDeps = { requireAdmin },
+  deps: AdminDeps = { requireSafeguardingAdmin },
 ) {
   const requestedAt = new Date().toISOString();
   const { schoolId, incidentId } = await context.params;
-  const { session, response } = await deps.requireAdmin();
+  const { session, response } = await deps.requireSafeguardingAdmin();
   if (!session) return response!;
-  const role = normalizeRole("dsl");
-
-  if (!canAccessDetail(role)) {
-    return buildResponse({
-      success: false,
-      data: null,
-      error: { code: "FORBIDDEN", message: "Role is not allowed to access safeguarding audit events." },
-      requestedAt,
-      status: 403,
-    });
-  }
 
   const incident = await getIncident(schoolId, incidentId);
   if (!incident) {

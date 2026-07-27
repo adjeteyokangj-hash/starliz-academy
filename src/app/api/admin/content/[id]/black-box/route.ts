@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdmin, requireAdminPermission } from "@/lib/api_guard";
 import { writeAuditLog } from "@/lib/audit";
 import { runContentBlackBoxTest } from "@/lib/ai/content-black-box-test";
 import {
@@ -66,7 +66,7 @@ async function defaultUpdateContentMetadata(id: string, metadataJson: string): P
 }
 
 const defaultDeps: AdminContentBlackBoxDeps = {
-  requireAdmin,
+  requireAdmin: (() => requireAdminPermission("MANAGE_CONTENT")) as typeof requireAdmin,
   findContent: defaultFindContent,
   updateContentMetadata: defaultUpdateContentMetadata,
   runContentBlackBoxTest,

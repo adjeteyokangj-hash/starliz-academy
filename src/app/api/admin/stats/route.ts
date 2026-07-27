@@ -24,15 +24,16 @@ function isMissingTableError(error: unknown): boolean {
   return message.includes("does not exist") || message.includes("not found in the current database");
 }
 
-async function safeQuery<T>(label: string, query: () => Promise<T>, fallback: T): Promise<T> {
+async function safeQuery<T>(label: string, query: () => Promise<T>, fallback: T): Promise<{ value: T; error: boolean }> {
   try {
-    return await query();
+    return { value: await query(), error: false };
   } catch (error) {
     if (isMissingTableError(error)) {
       console.warn(`Admin stats fallback for ${label}:`, error);
-      return fallback;
+      return { value: fallback, error: false };
     }
-    throw error;
+    console.error(`Admin stats failed for ${label}:`, error);
+    return { value: fallback, error: true };
   }
 }
 
@@ -54,13 +55,13 @@ export async function GET() {
       contentItems,
       recentRecords,
       recentAttemptRecords,
-      rewards,
+      rewardsResult,
       storeItems,
       supportTickets,
       subscriptions,
       lessons,
       apiKeys,
-      activeWeakAreas,
+      weakAreaResult,
       inboxUnread,
       messageThreadsWithUnread,
       unreadMessagesAggregate,
@@ -80,6 +81,8 @@ export async function GET() {
       prisma.childProfile.findMany({
         where: { archived: false },
         select: { snapshotJson: true },
+        take: 500,
+        orderBy: { updatedAt: "desc" },
       }),
       prisma.progressRecord.count({ where: { completed: true } }),
       prisma.aIContentCache.findMany({
@@ -104,7 +107,10 @@ export async function GET() {
       Promise.all([
         safeQuery("rewardItem", () => prisma.rewardItem.count(), 0),
         safeQuery("rewardRule", () => prisma.rewardRule.count(), 0),
-      ]).then(([items, rules]) => items + rules),
+      ]).then(([items, rules]) => ({
+        value: (items.error || rules.error) ? null : items.value + rules.value,
+        error: items.error || rules.error,
+      })),
       safeQuery("storeItem", () => prisma.storeItem.count(), 0),
       safeQuery("supportTicket", () => prisma.supportTicket.count(), 0),
       safeQuery("subscription", () => prisma.subscription.count(), 0),
@@ -133,18 +139,7 @@ export async function GET() {
       safeQuery(
         "financialDashboard",
         () => getFinancialDashboardSnapshot(),
-        {
-          todayRevenue: 0,
-          monthlyRevenue: 0,
-          vatCollected: 0,
-          failedPayments: 0,
-          pendingSyncs: 0,
-          reconciliationStatus: "unavailable",
-          mrr: 0,
-          arr: 0,
-          churn: 0,
-          taxLiabilityEstimate: 0,
-        },
+        null as Awaited<ReturnType<typeof getFinancialDashboardSnapshot>> | null,
       ),
     ]);
 
@@ -173,6 +168,7 @@ export async function GET() {
     });
     const activeToday = [...todayActivity.values()].filter((summary) => summary.activeToday).length;
 
+    // Bound snapshot scan — sample recent children only for pattern signals.
     const patternCounts: Record<string, number> = {};
     for (const child of allChildren) {
       if (!child.snapshotJson) continue;
@@ -194,15 +190,16 @@ export async function GET() {
       .slice(0, 5)
       .map(([pattern, count]) => ({ pattern, count }));
 
+    // Bound accuracy aggregation — recent window only, not unbounded table scans.
     const [allProgressForAccuracy, allAttemptsForAccuracy] = await Promise.all([
       prisma.progressRecord.findMany({
         select: { id: true, childId: true, activityType: true, activityName: true, correct: true, completed: true, score: true, accuracy: true, createdAt: true },
-        take: 5000,
+        take: 1000,
         orderBy: { createdAt: "desc" },
       }),
       prisma.attempt.findMany({
         select: { id: true, studentId: true, subject: true, skillFocus: true, correct: true, createdAt: true },
-        take: 5000,
+        take: 1000,
         orderBy: { createdAt: "desc" },
       }),
     ]);
@@ -312,6 +309,18 @@ export async function GET() {
     const frustrationTrend = frustrationHighCount > 6 ? "High" : frustrationHighCount > 2 ? "Medium" : "Low";
     const engagementTrend = engagementHighCount > 10 ? "High" : engagementHighCount > 4 ? "Medium" : "Low";
 
+    const activeWeakAreas = weakAreaResult.value;
+    const partialErrors = [
+      rewardsResult.error,
+      storeItems.error,
+      supportTickets.error,
+      subscriptions.error,
+      lessons.error,
+      apiKeys.error,
+      weakAreaResult.error,
+      financialDashboard.error,
+    ].filter(Boolean).length;
+
     return NextResponse.json({
       totalUsers,
       totalChildren,
@@ -319,15 +328,15 @@ export async function GET() {
       avgAccuracy,
       lessonsCompleted,
       wordsGenerated,
-      subscriptions,
-      lessons,
-      rewards,
-      storeItems,
-      supportTickets,
+      subscriptions: subscriptions.error ? null : subscriptions.value,
+      lessons: lessons.error ? null : lessons.value,
+      rewards: rewardsResult.error ? null : rewardsResult.value,
+      storeItems: storeItems.error ? null : storeItems.value,
+      supportTickets: supportTickets.error ? null : supportTickets.value,
       inboxUnread,
       messageThreadsWithUnread,
       messagesUnread: unreadMessagesAggregate?._sum?.unreadCount ?? 0,
-      apiKeyStatuses: Object.fromEntries(apiKeys.map((key) => [key.provider, key.status])),
+      apiKeyStatuses: Object.fromEntries(apiKeys.value.map((key) => [key.provider, key.status])),
       weakestPatterns,
       generatedContent,
       recentActivity,
@@ -355,7 +364,9 @@ export async function GET() {
         orphanedParentsCount,
         orphanedParentsStatus: orphanedParentsCount === 0 ? "healthy" : "warning",
       },
-      financialDashboard,
+      financialDashboard: financialDashboard.value,
+      partialData: partialErrors > 0,
+      partialErrors,
     });
   } catch (error) {
     console.error("Admin stats error:", error);

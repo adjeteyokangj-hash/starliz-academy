@@ -1,20 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { AdminPermission } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/api_guard";
+import { requireAdminPermission } from "@/lib/api_guard";
 import { hashPassword } from "@/lib/auth";
-import { DEFAULT_ROLES, hasPermission } from "@/lib/rbac";
+import { writeAuditLog } from "@/lib/audit";
+import { DEFAULT_ROLES } from "@/lib/rbac";
+import {
+  auditAdminAccessDenial,
+  loadAdminAuthContext,
+  mutateAdminWithLastSuperAdminProtection,
+} from "@/lib/admin-permissions";
 
 const createAdminSchema = z.object({
   name: z.string().trim().min(1),
   email: z.string().trim().email(),
   password: z.string().min(8),
-  roleId: z.string().optional(),
+  roleId: z.string().min(1).optional(),
 });
 
 const updateAdminSchema = z.object({
-  roleId: z.string().optional(),
+  roleId: z.string().nullable().optional(),
   active: z.boolean().optional(),
   title: z.string().optional(),
   isLocked: z.boolean().optional(),
@@ -22,16 +27,8 @@ const updateAdminSchema = z.object({
 });
 
 export async function GET() {
-  const { session, response } = await requireAdmin();
+  const { session, response } = await requireAdminPermission("MANAGE_ADMINS");
   if (!session) return response!;
-
-  const adminProfile = await prisma.adminUser.findUnique({ where: { userId: session.userId } });
-  if (!adminProfile) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-  // Bypass permission check for admins with no role (seed/original admin)
-  if (adminProfile.roleId && !(await hasPermission(adminProfile.id, 'MANAGE_ADMINS' as AdminPermission))) {
-    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
-  }
 
   try {
     const admins = await prisma.adminUser.findMany({
@@ -49,7 +46,7 @@ export async function GET() {
     });
 
     return NextResponse.json({
-      admins: admins.map(a => ({
+      admins: admins.map((a) => ({
         id: a.id,
         userId: a.userId,
         email: a.user.email,
@@ -65,24 +62,13 @@ export async function GET() {
     });
   } catch (err) {
     console.error("Error fetching admin users:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAdmin();
-  if (!session) return response!;
-
-  const adminProfile = await prisma.adminUser.findUnique({ where: { userId: session.userId } });
-  if (!adminProfile) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-  // Bypass permission check for admins with no role (seed/original admin)
-  if (adminProfile.roleId && !(await hasPermission(adminProfile.id, 'MANAGE_ADMINS' as AdminPermission))) {
-    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
-  }
+  const { session, response, context } = await requireAdminPermission("MANAGE_ADMINS");
+  if (!session || !context) return response!;
 
   try {
     const body = createAdminSchema.parse(await request.json());
@@ -114,17 +100,25 @@ export async function POST(request: Request) {
           isBuiltIn: true,
         },
       });
-
       effectiveRoleId = superAdminRole.id;
       effectiveRoleName = superAdminRole.name;
     } else if (body.roleId) {
-      // Verify role exists if provided.
       const role = await prisma.adminRole.findUnique({ where: { id: body.roleId } });
       if (!role) {
         return NextResponse.json({ error: "Invalid role" }, { status: 400 });
       }
+      if (role.name === "SUPER_ADMIN" && !context.isSuperAdmin) {
+        await auditAdminAccessDenial({
+          actorUserId: session.userId,
+          action: "admin_role_change_rejected",
+          reason: "restricted_admin_cannot_create_super_admin",
+        });
+        return NextResponse.json({ error: "Only Super Admins can create Super Admin accounts." }, { status: 403 });
+      }
       effectiveRoleId = role.id;
       effectiveRoleName = role.name;
+    } else {
+      return NextResponse.json({ error: "roleId is required." }, { status: 400 });
     }
 
     const passwordHash = await hashPassword(body.password);
@@ -137,10 +131,10 @@ export async function POST(request: Request) {
       },
     });
 
-    const adminProfile = await prisma.adminUser.create({
+    const created = await prisma.adminUser.create({
       data: {
         userId: user.id,
-        ...(effectiveRoleId ? { roleId: effectiveRoleId } : {}),
+        roleId: effectiveRoleId,
         active: true,
       },
       include: {
@@ -151,29 +145,30 @@ export async function POST(request: Request) {
       },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        actorUserId: session.userId,
-        action: "CREATE_ADMIN_USER",
-        entityType: "admin_user",
-        entityId: adminProfile.id,
-        metadataJson: JSON.stringify({
-          email: user.email,
-          role: effectiveRoleName,
-          firstAdminBootstrap: isFirstAdmin,
-        }),
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "admin_user_created",
+      entityType: "admin_user",
+      entityId: created.id,
+      metadata: {
+        email: user.email,
+        role: effectiveRoleName,
+        firstAdminBootstrap: isFirstAdmin,
       },
     });
 
-    return NextResponse.json({
-      admin: {
-        id: adminProfile.id,
-        email: adminProfile.user.email,
-        name: adminProfile.user.name,
-        role: adminProfile.role?.name,
-        active: adminProfile.active,
+    return NextResponse.json(
+      {
+        admin: {
+          id: created.id,
+          email: created.user.email,
+          name: created.user.name,
+          role: created.role?.name,
+          active: created.active,
+        },
       },
-    }, { status: 201 });
+      { status: 201 },
+    );
   } catch (err) {
     console.error("Error creating admin user:", err);
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -181,79 +176,105 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(req: NextRequest) {
-  const { session, response } = await requireAdmin();
-  if (!session) return response!;
-
-  const adminProfile = await prisma.adminUser.findUnique({ where: { userId: session.userId } });
-  if (!adminProfile) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-  // Bypass permission check for admins with no role (seed/original admin)
-  if (adminProfile.roleId && !(await hasPermission(adminProfile.id, 'MANAGE_ADMINS' as AdminPermission))) {
-    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
-  }
+  const { session, response, context } = await requireAdminPermission("MANAGE_ADMINS");
+  if (!session || !context) return response!;
 
   try {
     const body = await req.json();
     const { adminId, ...updates } = body;
 
-    if (!adminId) {
-      return NextResponse.json(
-        { error: "adminId required" },
-        { status: 400 }
-      );
+    if (!adminId || typeof adminId !== "string") {
+      return NextResponse.json({ error: "adminId required" }, { status: 400 });
     }
 
     const validated = updateAdminSchema.parse(updates);
-
-    // Prevent self-deletion of Super Admin if it's the last one
     const targetAdmin = await prisma.adminUser.findUnique({
       where: { id: adminId },
       include: { role: true },
     });
 
     if (!targetAdmin) {
-      return NextResponse.json(
-        { error: "Admin user not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Admin user not found" }, { status: 404 });
     }
 
-    // If deactivating and target is the only Super Admin, deny
-    if (
-      validated.active === false &&
-      targetAdmin.role?.name === "SUPER_ADMIN"
-    ) {
-      const activeSuperAdmins = await prisma.adminUser.count({
-        where: { roleId: targetAdmin.roleId, active: true, isLocked: false },
-      });
+    if (validated.roleId !== undefined) {
+      if (targetAdmin.userId === session.userId) {
+        await auditAdminAccessDenial({
+          actorUserId: session.userId,
+          action: "admin_self_escalation_rejected",
+          reason: "cannot_change_own_role",
+          targetUserId: targetAdmin.userId,
+        });
+        return NextResponse.json({ error: "You cannot change your own role." }, { status: 403 });
+      }
 
-      if (activeSuperAdmins <= 1) {
-        return NextResponse.json(
-          { error: "Cannot deactivate the last Super Admin" },
-          { status: 400 }
-        );
+      if (validated.roleId) {
+        const nextRole = await prisma.adminRole.findUnique({ where: { id: validated.roleId } });
+        if (!nextRole) {
+          return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+        }
+        if (nextRole.name === "SUPER_ADMIN" && !context.isSuperAdmin) {
+          await auditAdminAccessDenial({
+            actorUserId: session.userId,
+            action: "admin_role_change_rejected",
+            reason: "restricted_admin_cannot_assign_super_admin",
+            targetUserId: targetAdmin.userId,
+          });
+          return NextResponse.json({ error: "Only Super Admins can assign the Super Admin role." }, { status: 403 });
+        }
       }
     }
 
-    const updated = await prisma.adminUser.update({
-      where: { id: adminId },
-      data: validated,
-      include: {
-        user: {
-          select: { email: true, name: true },
-        },
-        role: true,
-      },
-    });
-
-    // Log to audit
-    await prisma.auditLog.create({
-      data: {
+    if (targetAdmin.role?.name === "SUPER_ADMIN" && !context.isSuperAdmin && targetAdmin.userId !== session.userId) {
+      await auditAdminAccessDenial({
         actorUserId: session.userId,
-        action: "UPDATE_ADMIN_USER",
-        entityType: "admin_user",
-        entityId: adminId,
-        metadataJson: JSON.stringify(validated),
+        action: "admin_role_change_rejected",
+        reason: "restricted_admin_cannot_modify_super_admin",
+        targetUserId: targetAdmin.userId,
+      });
+      return NextResponse.json({ error: "Restricted Admins cannot modify Super Admins." }, { status: 403 });
+    }
+
+    const mutation = await mutateAdminWithLastSuperAdminProtection({
+      actorUserId: session.userId,
+      targetAdminUserId: targetAdmin.id,
+      nextActive: validated.active,
+      nextLocked: validated.isLocked,
+      nextRoleId: validated.roleId,
+      mutate: (tx) => tx.adminUser.update({
+        where: { id: adminId },
+        data: validated,
+        include: {
+          user: {
+            select: { email: true, name: true },
+          },
+          role: true,
+        },
+      }),
+    });
+    if (!mutation.ok) {
+      return NextResponse.json({ error: mutation.reason }, { status: 400 });
+    }
+    const updated = mutation.value;
+
+    const action =
+      validated.active === false
+        ? "admin_user_disabled"
+        : validated.active === true
+          ? "admin_user_reactivated"
+          : validated.roleId !== undefined
+            ? "admin_user_role_changed"
+            : "UPDATE_ADMIN_USER";
+
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action,
+      entityType: "admin_user",
+      entityId: adminId,
+      metadata: {
+        fields: Object.keys(validated),
+        role: updated.role?.name ?? null,
+        active: updated.active,
       },
     });
 
@@ -267,23 +288,13 @@ export async function PUT(req: NextRequest) {
     });
   } catch (err) {
     console.error("Error updating admin user:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
 export async function DELETE(req: NextRequest) {
-  const { session, response } = await requireAdmin();
-  if (!session) return response!;
-
-  const adminProfile = await prisma.adminUser.findUnique({ where: { userId: session.userId } });
-  if (!adminProfile) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-  if (adminProfile.roleId && !(await hasPermission(adminProfile.id, 'MANAGE_ADMINS' as AdminPermission))) {
-    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
-  }
+  const { session, response, context } = await requireAdminPermission("MANAGE_ADMINS");
+  if (!session || !context) return response!;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -293,16 +304,25 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "id required" }, { status: 400 });
     }
 
-    if (targetId === adminProfile.id) {
+    const actor = await loadAdminAuthContext(session.userId);
+    if (!actor) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (targetId === actor.adminUserId) {
+      await auditAdminAccessDenial({
+        actorUserId: session.userId,
+        action: "admin_self_escalation_rejected",
+        reason: "cannot_delete_self",
+      });
       return NextResponse.json({ error: "You cannot delete your own admin account." }, { status: 400 });
     }
 
-    // Always keep at least one admin
     const totalAdmins = await prisma.adminUser.count();
     if (totalAdmins <= 1) {
       return NextResponse.json(
         { error: "Cannot delete the only admin. There must always be at least one admin account." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -311,17 +331,34 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Admin user not found" }, { status: 404 });
     }
 
-    await prisma.auditLog.create({
-      data: {
+    if (target.role?.name === "SUPER_ADMIN" && !context.isSuperAdmin) {
+      await auditAdminAccessDenial({
         actorUserId: session.userId,
-        action: "DELETE_ADMIN_USER",
-        entityType: "admin_user",
-        entityId: targetId,
-        metadataJson: JSON.stringify({ role: target.role?.name }),
-      },
-    });
+        action: "admin_role_change_rejected",
+        reason: "restricted_admin_cannot_delete_super_admin",
+        targetUserId: target.userId,
+      });
+      return NextResponse.json({ error: "Only Super Admins can delete Super Admins." }, { status: 403 });
+    }
 
-    await prisma.adminUser.delete({ where: { id: targetId } });
+    const mutation = await mutateAdminWithLastSuperAdminProtection({
+      actorUserId: session.userId,
+      targetAdminUserId: target.id,
+      nextActive: false,
+      nextRoleId: null,
+      mutate: (tx) => tx.adminUser.delete({ where: { id: targetId } }),
+    });
+    if (!mutation.ok) {
+      return NextResponse.json({ error: mutation.reason }, { status: 400 });
+    }
+
+    await writeAuditLog({
+      actorUserId: session.userId,
+      action: "admin_user_deleted",
+      entityType: "admin_user",
+      entityId: targetId,
+      metadata: { role: target.role?.name ?? null, userId: target.userId },
+    });
 
     return NextResponse.json({ success: true });
   } catch (err) {
