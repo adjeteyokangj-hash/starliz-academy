@@ -60,7 +60,8 @@
     "react-dom": "19.2.4",
     "resend": "^6.12.2",
     "stripe": "^22.1.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@aws-sdk/s3-request-presigner": "^3.1095.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
