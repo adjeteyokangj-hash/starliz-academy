@@ -15,11 +15,31 @@ export async function GET(request: Request) {
   }
 
   const summaryMode = new URL(request.url).searchParams.get("summary") === "1";
+  const requestedChildId = new URL(request.url).searchParams.get("childId")?.trim() || null;
 
   const childrenForParent = await prisma.childProfile.findMany({
-    where: { parentId: parentScope.parentId, archived: false },
+    where: {
+      parentId: parentScope.parentId,
+      archived: false,
+      ...(requestedChildId ? { id: requestedChildId } : {}),
+    },
     select: { id: true, name: true },
   });
+
+  // If a childId was requested but is not owned, return empty rather than leaking another child's data.
+  if (requestedChildId && childrenForParent.length === 0) {
+    return NextResponse.json({
+      strengths: [],
+      weaknesses: [],
+      averageAccuracy: 0,
+      totalAttempts: 0,
+      learningMode: null,
+      activity: [],
+      lastActivityAt: null,
+      learningDna: [],
+      scopedChildId: requestedChildId,
+    });
+  }
 
   const brainRows = await Promise.all(childrenForParent.map(async (child) => {
     const brain = await getStudentLearningBrain(child.id, { includeCoachSignals: !summaryMode });
@@ -152,5 +172,6 @@ export async function GET(request: Request) {
     activity,
     lastActivityAt: lastActivityAt?.toISOString() ?? null,
     learningDna,
+    scopedChildId: requestedChildId ?? (childrenForParent.length === 1 ? childrenForParent[0]?.id ?? null : null),
   });
 }

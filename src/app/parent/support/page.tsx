@@ -89,7 +89,20 @@ export default function ParentSupportPage() {
         <div>
           <h1 className="text-3xl font-black tracking-tight text-white">Help &amp; Support</h1>
           <p className="mt-1.5 text-slate-400 text-sm leading-relaxed">
-            Having trouble? Submit a request below and our team will get back to you within 1–2 business days.
+            Ordinary support and complaints: we aim to acknowledge within 2 working days and provide a substantive response within 10 working days (Monday–Friday, excluding UK bank holidays). Urgent account-access or payment-blocking issues: acknowledge within 1 working day. These are service targets, not guaranteed outcomes.
+          </p>
+          <p className="mt-3 text-slate-400 text-sm leading-relaxed">
+            Human learning support is availability-based and not guaranteed. Short Learning is AI-led and is not private one-to-one tutoring.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3 text-sm">
+            <Link href="/knowledge-centre" className="text-cyan-300 hover:underline">Help Centre</Link>
+            <Link href="/policies/complaints" className="text-cyan-300 hover:underline">Complaints</Link>
+            <Link href="/safeguarding-policy" className="text-cyan-300 hover:underline">Safeguarding</Link>
+          </div>
+          <p className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+            Child welfare and safeguarding concerns are outside ordinary support timelines. Email{" "}
+            <a className="underline" href="mailto:safeguarding@starlizacademy.com">safeguarding@starlizacademy.com</a>{" "}
+            immediately, or contact emergency services if there is immediate danger.
           </p>
         </div>
 
@@ -97,19 +110,24 @@ export default function ParentSupportPage() {
         <div className="rounded-3xl border border-white/10 bg-white/3 p-7">
           <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">Subject *</label>
+              <label htmlFor="support-subject" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">Subject *</label>
               <input
+                id="support-subject"
                 className={inputCls}
                 placeholder="e.g. My child can't log in"
                 value={subject}
                 onChange={e => setSubject(e.target.value)}
                 maxLength={255}
+                required
+                aria-required="true"
+                aria-invalid={Boolean(error && !subject.trim())}
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">Priority</label>
+              <label htmlFor="support-priority" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">Priority</label>
               <select
+                id="support-priority"
                 className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-violet-500 transition"
                 value={priority}
                 onChange={e => setPriority(e.target.value)}
@@ -122,8 +140,9 @@ export default function ParentSupportPage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">Message (optional)</label>
+              <label htmlFor="support-message" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-500">Message (optional)</label>
               <textarea
+                id="support-message"
                 className={`${inputCls} min-h-32 resize-none`}
                 placeholder="Please describe the issue with as much detail as possible…"
                 value={message}
@@ -133,13 +152,13 @@ export default function ParentSupportPage() {
             </div>
 
             {error && (
-              <div className="rounded-xl bg-red-950/50 border border-red-800/50 px-4 py-3 text-sm text-red-300">
+              <div role="alert" className="rounded-xl bg-red-950/50 border border-red-800/50 px-4 py-3 text-sm text-red-300">
                 {error}
               </div>
             )}
 
             {submitSuccess && (
-              <div className="rounded-xl bg-green-950/50 border border-green-800/50 px-4 py-3 text-sm text-green-300">
+              <div role="status" aria-live="polite" className="rounded-xl bg-green-950/50 border border-green-800/50 px-4 py-3 text-sm text-green-300">
                 ✓ Your request has been submitted. We&apos;ll be in touch soon.
               </div>
             )}

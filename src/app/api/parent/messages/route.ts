@@ -20,59 +20,54 @@ const sendSchema = z.object({
   body: z.string().trim().min(1).max(2000),
 });
 
-export async function GET(request: NextRequest) {
-  const { session, response } = await requireSession();
-  if (!session) return response;
+type SessionResult = Awaited<ReturnType<typeof requireSession>>;
+type ParentScope = Awaited<ReturnType<typeof resolveParentScope>>;
 
-  const parentScope = await resolveParentScope(session);
-  if (!parentScope) {
-    return NextResponse.json({ threads: [], messages: [] });
-  }
-
-  const threadId = request.nextUrl.searchParams.get("threadId")?.trim() ?? "";
-
-  const threads = (await prisma.parentMessageThread.findMany({
-    where: { parentId: parentScope.parentId },
-    orderBy: { lastMessageAt: "desc" },
-    take: 25,
-  })) as ParentThread[];
-
-  // Mark parent's unread as 0 when they visit their thread
-  if (threadId && threads.some((t) => t.id === threadId)) {
-    await prisma.parentMessageThread.update({
-      where: { id: threadId },
-      data: { parentUnreadCount: 0 },
-    });
-  }
-
-  const latestMessages = new Map<string, { body: string; direction: "inbound" | "outbound" }>();
-  if (threads.length) {
-    const msgs = await prisma.parentMessage.findMany({
-      where: { threadId: { in: threads.map((t) => t.id) } },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-    });
-
-    for (const msg of msgs as Array<{ threadId: string; body: string; direction: "inbound" | "outbound" }>) {
-      if (!latestMessages.has(msg.threadId)) {
-        latestMessages.set(msg.threadId, { body: msg.body, direction: msg.direction });
-      }
-    }
-  }
-
-  // Fetch full message history for the selected thread
-  let threadMessages: Array<{
+type ParentMessagesGetDeps = {
+  requireSession: () => Promise<SessionResult>;
+  resolveParentScope: (session: NonNullable<SessionResult["session"]>) => Promise<ParentScope>;
+  listThreads: (parentId: string) => Promise<ParentThread[]>;
+  clearParentUnread: (threadId: string) => Promise<void>;
+  listLatestMessages: (threadIds: string[]) => Promise<Array<{ threadId: string; body: string; direction: "inbound" | "outbound" }>>;
+  listThreadMessages: (input: { threadId: string; parentId: string }) => Promise<Array<{
     id: string;
     direction: "inbound" | "outbound";
     body: string;
     actorUserId: string | null;
-    createdAt: string;
-  }> = [];
+    createdAt: Date;
+  }>>;
+  writeAuditLog: typeof writeAuditLog;
+};
 
-  const activeThreadId = threadId || threads[0]?.id;
-  if (activeThreadId) {
-    const msgs = (await prisma.parentMessage.findMany({
-      where: { threadId: activeThreadId },
+const defaultGetDeps: ParentMessagesGetDeps = {
+  requireSession,
+  resolveParentScope,
+  listThreads: async (parentId) =>
+    (await prisma.parentMessageThread.findMany({
+      where: { parentId },
+      orderBy: { lastMessageAt: "desc" },
+      take: 25,
+    })) as ParentThread[],
+  clearParentUnread: async (threadId) => {
+    await prisma.parentMessageThread.update({
+      where: { id: threadId },
+      data: { parentUnreadCount: 0 },
+    });
+  },
+  listLatestMessages: async (threadIds) => {
+    if (!threadIds.length) return [];
+    return (await prisma.parentMessage.findMany({
+      where: { threadId: { in: threadIds } },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    })) as Array<{ threadId: string; body: string; direction: "inbound" | "outbound" }>;
+  },
+  listThreadMessages: async ({ threadId, parentId }) =>
+    (await prisma.parentMessage.findMany({
+      where: {
+        threadId,
+        thread: { parentId },
+      },
       orderBy: { createdAt: "asc" },
       take: 200,
     })) as Array<{
@@ -81,12 +76,70 @@ export async function GET(request: NextRequest) {
       body: string;
       actorUserId: string | null;
       createdAt: Date;
-    }>;
+    }>,
+  writeAuditLog,
+};
+
+export async function handleParentMessagesGet(
+  request: NextRequest,
+  deps: ParentMessagesGetDeps = defaultGetDeps,
+) {
+  const { session, response } = await deps.requireSession();
+  if (!session) return response!;
+
+  const parentScope = await deps.resolveParentScope(session);
+  if (!parentScope) {
+    return NextResponse.json({ threads: [], messages: [] });
+  }
+
+  const threadId = request.nextUrl.searchParams.get("threadId")?.trim() ?? "";
+  const threads = await deps.listThreads(parentScope.parentId);
+
+  if (threadId && threads.some((t) => t.id === threadId)) {
+    await deps.clearParentUnread(threadId);
+  }
+
+  const latestMessages = new Map<string, { body: string; direction: "inbound" | "outbound" }>();
+  const latestRows = await deps.listLatestMessages(threads.map((t) => t.id));
+  for (const msg of latestRows) {
+    if (!latestMessages.has(msg.threadId)) {
+      latestMessages.set(msg.threadId, { body: msg.body, direction: msg.direction });
+    }
+  }
+
+  let threadMessages: Array<{
+    id: string;
+    direction: "inbound" | "outbound";
+    body: string;
+    createdAt: string;
+  }> = [];
+
+  const requestedThreadId = threadId || threads[0]?.id || "";
+  const ownsRequestedThread = Boolean(
+    requestedThreadId && threads.some((t) => t.id === requestedThreadId),
+  );
+
+  if (threadId && !ownsRequestedThread) {
+    await deps.writeAuditLog({
+      actorUserId: session.userId,
+      action: "message_access_denied",
+      entityType: "ParentMessageThread",
+      entityId: threadId,
+      metadata: { parentId: parentScope.parentId },
+    });
+    return NextResponse.json({ error: "Thread not found." }, { status: 404 });
+  }
+
+  const activeThreadId = ownsRequestedThread ? requestedThreadId : null;
+  if (activeThreadId) {
+    const msgs = await deps.listThreadMessages({
+      threadId: activeThreadId,
+      parentId: parentScope.parentId,
+    });
     threadMessages = msgs.map((m) => ({
       id: m.id,
       direction: m.direction,
       body: m.body,
-      actorUserId: m.actorUserId,
       createdAt: m.createdAt.toISOString(),
     }));
   }
@@ -103,9 +156,13 @@ export async function GET(request: NextRequest) {
       lastMessage: latestMessages.get(t.id)?.body ?? "",
       lastDirection: latestMessages.get(t.id)?.direction ?? "outbound",
     })),
-    selectedThreadId: activeThreadId ?? null,
+    selectedThreadId: activeThreadId,
     messages: threadMessages,
   });
+}
+
+export async function GET(request: NextRequest) {
+  return handleParentMessagesGet(request);
 }
 
 export async function POST(request: NextRequest) {
@@ -126,7 +183,6 @@ export async function POST(request: NextRequest) {
   const { subject, body: messageBody } = parsed.data;
   const fullBody = subject ? `[${subject}]\n${messageBody}` : messageBody;
 
-  // Get parent email for contact address
   const parentUser = await prisma.user.findUnique({
     where: { id: parentScope.parentId },
     select: { email: true, name: true },
@@ -138,7 +194,6 @@ export async function POST(request: NextRequest) {
   const contactAddress = parentUser.email;
   const channel = "text" as const;
 
-  // Upsert the thread for this parent
   const thread = await prisma.parentMessageThread.upsert({
     where: { channel_contactAddress: { channel, contactAddress } },
     update: {

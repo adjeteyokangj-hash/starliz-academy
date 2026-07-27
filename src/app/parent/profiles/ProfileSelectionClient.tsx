@@ -165,6 +165,7 @@ export default function ProfileSelectionClient({
   useEffect(() => {
     // SSR already provided children — only load PIN status in the background.
     if (initialPayload && loadToken === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate from SSR payload once; frozen behaviour, advisory only
       setPayload(initialPayload);
       setLoading(false);
       setError(null);

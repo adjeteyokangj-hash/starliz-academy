@@ -13,11 +13,24 @@ type NotificationPrefs = {
 
 type NotificationPreferencesProps = {
   preferences: NotificationPrefs;
+  ready?: boolean;
   onUpdate: (prefs: NotificationPrefs) => void;
 };
 
+const ESSENTIAL_NOTICES = [
+  {
+    label: 'Billing and payment notices',
+    description: 'Payment failures, retries, grace periods, cancellations and access-end dates. These cannot be turned off.',
+  },
+  {
+    label: 'Security and account notices',
+    description: 'Sign-in, password and account-security alerts. These cannot be turned off.',
+  },
+];
+
 export default function NotificationPreferences({ 
   preferences, 
+  ready = true,
   onUpdate 
 }: NotificationPreferencesProps) {
   const [prefs, setPrefs] = useState(preferences);
@@ -26,6 +39,10 @@ export default function NotificationPreferences({
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
+    if (!ready) {
+      setError('Preferences are still loading. Please wait a moment and try again.');
+      return;
+    }
     setSaving(true);
     setSuccess(false);
     setError(null);
@@ -39,8 +56,11 @@ export default function NotificationPreferences({
       });
 
       if (response.ok) {
+        const payload = (await response.json().catch(() => null)) as { notifications?: NotificationPrefs } | null;
+        const saved = payload?.notifications ?? prefs;
+        setPrefs(saved);
         setSuccess(true);
-        onUpdate(prefs);
+        onUpdate(saved);
         setTimeout(() => setSuccess(false), 3000);
       } else {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -55,47 +75,67 @@ export default function NotificationPreferences({
 
   const notificationOptions = [
     {
-      key: 'emailWeeklyReport',
+      key: 'emailWeeklyReport' as const,
       label: 'Weekly progress report',
-      description: 'Receive a summary of your child\'s learning activity every Sunday',
+      description: 'Optional summary of your child\'s learning activity.',
     },
     {
-      key: 'assignmentAlerts',
+      key: 'assignmentAlerts' as const,
       label: 'Assignment alerts',
-      description: 'Get notified when new assignments are available',
+      description: 'Optional notice when new assignments are available.',
     },
     {
-      key: 'lessonReminders',
-      label: 'Lesson reminders',
-      description: 'Receive reminders for scheduled lessons',
+      key: 'lessonReminders' as const,
+      label: 'Lesson and Short Learning reminders',
+      description: 'Optional reminders for scheduled lessons and Short Learning sessions.',
     },
     {
-      key: 'rewardNotifications',
-      label: 'Reward milestones',
-      description: 'Celebrate when your child reaches rewards or achievements',
+      key: 'rewardNotifications' as const,
+      label: 'Reward and session milestones',
+      description: 'Optional notices for rewards and session-completion style updates.',
     },
     {
-      key: 'productUpdates',
+      key: 'productUpdates' as const,
       label: 'Product updates',
-      description: 'Learn about new features and improvements to StarLiz',
+      description: 'Optional product and feature announcements (marketing).',
     },
   ];
 
   return (
     <div className="space-y-4">
+      {!ready ? (
+        <p className="text-sm text-slate-400">Loading your saved preferences…</p>
+      ) : null}
+
       {success && (
-        <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-400">
-          ✓ Preferences saved successfully
+        <div role="status" aria-live="polite" className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-400">
+          Preferences saved successfully
         </div>
       )}
 
       {error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+        <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
           {error}
         </div>
       )}
 
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <p className="text-sm font-semibold text-white">Essential notices</p>
+        <p className="mt-1 text-xs text-slate-400">
+          These are always sent when relevant. Toggles below only control optional messages.
+        </p>
+        <ul className="mt-3 space-y-2">
+          {ESSENTIAL_NOTICES.map((item) => (
+            <li key={item.label} className="text-sm text-slate-300">
+              <span className="font-semibold text-white">{item.label}</span>
+              <span className="block text-xs text-slate-400">{item.description}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <div className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Optional notices</p>
         {notificationOptions.map((option) => (
           <label
             key={option.key}
@@ -103,9 +143,8 @@ export default function NotificationPreferences({
           >
             <input
               type="checkbox"
-              checked={
-                (prefs as Record<string, boolean>)[option.key] ?? false
-              }
+              disabled={!ready || saving}
+              checked={prefs[option.key]}
               onChange={(e) =>
                 setPrefs({
                   ...prefs,
@@ -124,7 +163,7 @@ export default function NotificationPreferences({
 
       <Button 
         onClick={handleSave} 
-        disabled={saving}
+        disabled={saving || !ready}
         className="w-full"
       >
         {saving ? 'Saving...' : 'Save preferences'}
