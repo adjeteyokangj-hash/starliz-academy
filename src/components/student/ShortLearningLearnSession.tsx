@@ -17,16 +17,23 @@ type Props = {
   learningFocus: string | null;
 };
 
-type AssignmentRow = {
+type SessionBlock = {
   id: string;
-  subject: string;
-  status: string;
+  order: number;
   title: string;
+  blockType: string;
+  estimatedMinutes: number;
+  contentId: string | null;
+  learningObjective: string | null;
+  status: string;
 };
 
-function normalizeSubject(value: string): string {
-  return value.trim().toLowerCase();
-}
+type SessionPayload = {
+  id: string;
+  status: string;
+  currentBlockOrder: number;
+  blocks: SessionBlock[];
+};
 
 function formatRemainingMs(ms: number): string {
   if (ms <= 0) return "Session ended";
@@ -37,11 +44,20 @@ function formatRemainingMs(ms: number): string {
   return `${hours}h ${minutes}m remaining`;
 }
 
+function blockTone(blockType: string): string {
+  if (blockType === "break") return "border-amber-200 bg-amber-50 text-amber-950";
+  if (blockType === "tutor_support") return "border-sky-200 bg-sky-50 text-sky-950";
+  if (blockType === "progress_report") return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  return "border-violet-200 bg-violet-50/70 text-violet-950";
+}
+
 export default function ShortLearningLearnSession(props: Props) {
   const router = useRouter();
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [starting, setStarting] = useState(false);
+  const [loadingPlan, setLoadingPlan] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [session, setSession] = useState<SessionPayload | null>(null);
 
   const startsAtMs = useMemo(() => new Date(props.startsAtIso).getTime(), [props.startsAtIso]);
   const endsAtMs = useMemo(() => new Date(props.endsAtIso).getTime(), [props.endsAtIso]);
@@ -51,65 +67,72 @@ export default function ShortLearningLearnSession(props: Props) {
     return () => window.clearInterval(tick);
   }, []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await fetchWithRefreshRetry(
+          `/api/student/short-learning/${encodeURIComponent(props.bookingId)}/session`,
+          { credentials: "include", cache: "no-store", signal: controller.signal },
+        );
+        const payload = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          throw new Error(typeof payload.error === "string" ? payload.error : "Unable to load session plan.");
+        }
+        setSession(payload.session ?? null);
+        setError(null);
+      } catch (cause) {
+        if (cancelled || controller.signal.aborted) return;
+        setError(cause instanceof Error ? cause.message : "Unable to load session plan.");
+      } finally {
+        if (!cancelled) setLoadingPlan(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [props.bookingId]);
+
   const windowOpen = nowMs >= startsAtMs - 10 * 60_000 && nowMs <= endsAtMs;
   const remainingLabel = formatRemainingMs(endsAtMs - nowMs);
+  const readyBlocks = (session?.blocks ?? []).filter((b) => b.contentId).length;
+  const generativeBlocks = (session?.blocks ?? []).filter((b) =>
+    ["welcome", "lesson", "recap", "challenge", "review"].includes(b.blockType),
+  ).length;
 
-  const startAiSession = useCallback(async () => {
+  const startAiSession = useCallback(async (blockOrder?: number) => {
     if (starting || !windowOpen) return;
     setStarting(true);
     setError(null);
     try {
-      const summaryRes = await fetchWithRefreshRetry("/api/student/dashboard-summary", {
-        credentials: "include",
-        cache: "no-store",
-      });
-      const summary = await summaryRes.json().catch(() => ({}));
-      if (!summaryRes.ok) {
-        throw new Error(typeof summary.error === "string" ? summary.error : "Unable to load your learning assignments.");
+      const res = await fetchWithRefreshRetry(
+        `/api/student/short-learning/${encodeURIComponent(props.bookingId)}/session`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ blockOrder }),
+        },
+      );
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof payload.error === "string" ? payload.error : "Unable to start this learning block.");
       }
-
-      const assignments = (Array.isArray(summary.assignments) ? summary.assignments : []) as AssignmentRow[];
-      const subjectNeedle = normalizeSubject(props.subject);
-      const match =
-        assignments.find(
-          (row) =>
-            row.status !== "completed" &&
-            (normalizeSubject(row.subject).includes(subjectNeedle) ||
-              subjectNeedle.includes(normalizeSubject(row.subject))),
-        ) ?? assignments.find((row) => row.status !== "completed");
-
-      if (match?.id) {
-        const params = new URLSearchParams({
-          assignmentId: match.id,
-          shortLearningBookingId: props.bookingId,
-        });
-        router.push(`/games/lesson?${params.toString()}`);
+      if (typeof payload.lessonHref === "string" && payload.lessonHref.startsWith("/")) {
+        router.push(payload.lessonHref);
         return;
       }
-
-      const journeyRes = await fetchWithRefreshRetry("/api/student/daily-journey?quick=1", {
-        credentials: "include",
-        cache: "no-store",
-      });
-      const journey = await journeyRes.json().catch(() => ({}));
-      if (!journeyRes.ok) {
-        throw new Error(typeof journey.error === "string" ? journey.error : "No lesson is ready for this Short Learning session yet.");
-      }
-      const assignmentId = journey.lesson?.assignmentId;
-      if (typeof assignmentId !== "string" || !assignmentId) {
-        throw new Error("No lesson assigned yet. Ask your parent or teacher to assign work, then try again.");
-      }
-
-      const params = new URLSearchParams({
-        assignmentId,
-        shortLearningBookingId: props.bookingId,
-      });
-      router.push(`/games/lesson?${params.toString()}`);
+      throw new Error("Session started but no lesson link was returned.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to start AI tutoring.");
       setStarting(false);
     }
-  }, [props.bookingId, props.subject, router, starting, windowOpen]);
+  }, [props.bookingId, router, starting, windowOpen]);
 
   return (
     <main className="min-h-screen bg-background">
@@ -123,11 +146,11 @@ export default function ShortLearningLearnSession(props: Props) {
         </Link>
 
         <div className="mt-6 rounded-2xl border border-violet-200 bg-violet-50/80 p-5">
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700">Short Learning · AI-led</p>
-          <h1 className="mt-1 text-2xl font-bold text-foreground">Your AI tutoring session</h1>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700">Short Learning · AI-led journey</p>
+          <h1 className="mt-1 text-2xl font-bold text-foreground">Your guided learning session</h1>
           <p className="mt-2 text-sm text-foreground/70">
-            This is not Day School. Day School follows your school timetable and classroom attendance. Short Learning is
-            parent-booked, after-hours, and led by AI coaching.
+            Same Daytime AI engine — sequenced into a {props.durationMinutes}-minute journey with lessons, recaps,
+            challenge, and AI Tutor support.
           </p>
           <p className="mt-3 text-sm font-medium text-violet-950">{SHORT_LEARNING_PROMISE}</p>
         </div>
@@ -144,6 +167,60 @@ export default function ShortLearningLearnSession(props: Props) {
               ) : null}
             </div>
             <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-800">{remainingLabel}</span>
+          </div>
+
+          <div className="mt-5 rounded-xl border border-border bg-muted/30 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-foreground">Session plan</p>
+              <p className="text-xs font-medium text-foreground/60">
+                {loadingPlan
+                  ? "Preparing…"
+                  : session
+                    ? `${readyBlocks}/${Math.max(generativeBlocks, readyBlocks)} content blocks ready · status ${session.status}`
+                    : "Not generated yet"}
+              </p>
+            </div>
+            {loadingPlan ? (
+              <div className="mt-3 space-y-2">
+                <div className="h-10 animate-pulse rounded-lg bg-slate-200/80" />
+                <div className="h-10 animate-pulse rounded-lg bg-slate-200/80" />
+                <div className="h-10 animate-pulse rounded-lg bg-slate-200/80" />
+              </div>
+            ) : session?.blocks?.length ? (
+              <ol className="mt-3 space-y-2">
+                {session.blocks.map((block) => (
+                  <li
+                    key={block.id}
+                    className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm ${blockTone(block.blockType)}`}
+                  >
+                    <div>
+                      <p className="font-semibold">
+                        {block.order + 1}. {block.title}
+                      </p>
+                      <p className="text-xs opacity-80">
+                        {block.estimatedMinutes > 0 ? `${block.estimatedMinutes} min` : "Wrap-up"}
+                        {block.learningObjective ? ` · ${block.learningObjective}` : ""}
+                        {block.contentId ? " · content ready" : block.blockType === "break" || block.blockType === "tutor_support" || block.blockType === "progress_report" ? "" : " · waiting"}
+                      </p>
+                    </div>
+                    {block.contentId && windowOpen ? (
+                      <button
+                        type="button"
+                        disabled={starting}
+                        onClick={() => void startAiSession(block.order)}
+                        className="rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-600 disabled:opacity-60"
+                      >
+                        Open
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="mt-3 text-sm text-foreground/70">
+                No session plan yet. Starting will build the journey from the Daytime AI engine.
+              </p>
+            )}
           </div>
 
           <div className="mt-5 space-y-3 rounded-xl bg-muted/40 p-4 text-sm text-foreground/80">
@@ -178,7 +255,7 @@ export default function ShortLearningLearnSession(props: Props) {
                 disabled={starting}
                 className="inline-flex rounded-xl bg-violet-700 px-5 py-3 text-sm font-bold text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {starting ? "Starting AI tutor…" : "Continue with AI Tutor"}
+                {starting ? "Starting learning block…" : "Continue with next learning block"}
               </button>
             </div>
           )}

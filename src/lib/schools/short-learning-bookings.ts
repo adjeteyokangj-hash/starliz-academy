@@ -226,14 +226,24 @@ export async function listAvailableSlots(input: {
 }
 
 export async function parentHasShortLearningEntitlement(parentUserId: string): Promise<boolean> {
-  const sub = await prisma.subscription.findFirst({
-    where: {
-      parentId: parentUserId,
-      status: { in: ["active", "trialing"] },
-    },
-    select: { id: true },
+  const now = new Date();
+  const subs = await prisma.subscription.findMany({
+    where: { parentId: parentUserId },
+    orderBy: { updatedAt: "desc" },
+    take: 5,
+    select: { status: true, currentPeriodEnd: true, graceEndsAt: true },
   });
-  if (sub) return true;
+  for (const sub of subs) {
+    const status = (sub.status ?? "").toLowerCase();
+    if (status === "active" || status === "trialing") return true;
+    if (status === "cancelled" && sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() > now.getTime()) {
+      return true;
+    }
+    if (status === "past_due") {
+      // Align with learning enforcement: past_due only grants access inside an active grace window.
+      if (sub.graceEndsAt && sub.graceEndsAt.getTime() >= now.getTime()) return true;
+    }
+  }
 
   // School-linked students under an active school licence also entitle Short Learning access.
   const schoolLink = await prisma.parentSchoolLink.findFirst({
@@ -245,6 +255,107 @@ export async function parentHasShortLearningEntitlement(parentUserId: string): P
     select: { id: true },
   });
   return Boolean(schoolLink);
+}
+
+/**
+ * Bookable school students for a parent:
+ * - active ParentSchoolLink rows (school-linked / hybrid), and
+ * - active SchoolStudent rows for the parent's own ChildProfile (direct subscribers),
+ * without inventing fake school relationships.
+ */
+export async function listParentBookableShortLearningStudents(parentUserId: string) {
+  const [links, ownedMemberships, childCount] = await Promise.all([
+    prisma.parentSchoolLink.findMany({
+      where: { parentUserId, status: "active" },
+      include: {
+        school: { select: { id: true, name: true } },
+        schoolStudent: { include: { child: { select: { id: true, name: true } } } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.schoolStudent.findMany({
+      where: {
+        status: "active",
+        child: { parentId: parentUserId, archived: false },
+      },
+      include: {
+        child: { select: { id: true, name: true } },
+        school: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.childProfile.count({ where: { parentId: parentUserId, archived: false } }),
+  ]);
+
+  const bySchoolStudentId = new Map<string, {
+    schoolId: string;
+    schoolName: string;
+    schoolStudentId: string;
+    studentName: string;
+    childId: string;
+    source: "school_link" | "owned_child";
+  }>();
+
+  for (const link of links) {
+    bySchoolStudentId.set(link.schoolStudentId, {
+      schoolId: link.schoolId,
+      schoolName: link.school.name,
+      schoolStudentId: link.schoolStudentId,
+      studentName: link.schoolStudent.child.name,
+      childId: link.schoolStudent.child.id,
+      source: "school_link",
+    });
+  }
+
+  for (const membership of ownedMemberships) {
+    if (bySchoolStudentId.has(membership.id)) continue;
+    bySchoolStudentId.set(membership.id, {
+      schoolId: membership.schoolId,
+      schoolName: membership.school.name,
+      schoolStudentId: membership.id,
+      studentName: membership.child.name,
+      childId: membership.child.id,
+      source: "owned_child",
+    });
+  }
+
+  const students = Array.from(bySchoolStudentId.values());
+  let emptyReason: string | null = null;
+  if (students.length === 0) {
+    if (childCount === 0) {
+      emptyReason =
+        "Add a child profile in the Parent Portal before booking Short Learning. A direct subscription does not require a school link, but a child must exist first.";
+    } else {
+      emptyReason =
+        "Your child is not yet enrolled at a school that offers Short Learning slots. School linkage is not required for a direct subscription purchase itself, but booking uses school capacity — contact support if you need help completing enrolment.";
+    }
+  }
+
+  return { students, childCount, emptyReason };
+}
+
+/**
+ * True when the parent may book for this school student:
+ * active ParentSchoolLink OR the student child belongs to this parent.
+ */
+export async function parentOwnsBookableSchoolStudent(input: {
+  parentUserId: string;
+  schoolId: string;
+  schoolStudentId: string;
+}): Promise<boolean> {
+  const membership = await prisma.schoolStudent.findFirst({
+    where: {
+      id: input.schoolStudentId,
+      schoolId: input.schoolId,
+      status: "active",
+      OR: [
+        { parentLinks: { some: { parentUserId: input.parentUserId, status: "active" } } },
+        { child: { parentId: input.parentUserId, archived: false } },
+      ],
+    },
+    select: { id: true },
+  });
+  return Boolean(membership);
 }
 
 /**
@@ -340,7 +451,10 @@ export async function createStudentLearningBooking(input: {
       id: input.schoolStudentId,
       schoolId: input.schoolId,
       status: "active",
-      parentLinks: { some: { parentUserId: input.parentUserId, status: "active" } },
+      OR: [
+        { parentLinks: { some: { parentUserId: input.parentUserId, status: "active" } } },
+        { child: { parentId: input.parentUserId, archived: false } },
+      ],
     },
   });
   if (!membership) {
@@ -386,7 +500,7 @@ export async function createStudentLearningBooking(input: {
     where: { schoolId: input.schoolId, active: true, weekday },
   });
 
-  return prisma.studentLearningBooking.create({
+  const booking = await prisma.studentLearningBooking.create({
     data: {
       schoolId: input.schoolId,
       schoolStudentId: input.schoolStudentId,
@@ -405,6 +519,16 @@ export async function createStudentLearningBooking(input: {
       source: "parent_portal",
     },
   });
+
+  // Pre-build session plan + Daytime-engine content in the background so the
+  // student journey is ready when the window opens (best-effort; learn path re-ensures).
+  void import("@/lib/schools/short-learning-session-content")
+    .then(({ ensureShortLearningSessionContent }) =>
+      ensureShortLearningSessionContent({ bookingId: booking.id }),
+    )
+    .catch(() => undefined);
+
+  return booking;
 }
 
 export async function cancelStudentLearningBooking(input: {

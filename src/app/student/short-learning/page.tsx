@@ -68,7 +68,15 @@ export default async function StudentShortLearningListPage() {
 
         },
 
-        include: { school: { select: { name: true } } },
+        include: {
+          school: { select: { name: true } },
+          shortLearningSession: {
+            select: {
+              status: true,
+              _count: { select: { blocks: true } },
+            },
+          },
+        },
 
         orderBy: { startsAt: "asc" },
 
@@ -161,6 +169,14 @@ export default async function StudentShortLearningListPage() {
                       <p className="text-sm text-foreground/60">
 
                         {booking.school.name} · {new Date(booking.startsAt).toLocaleString()} · {booking.durationMinutes} min
+
+                      </p>
+
+                      <p className="mt-1 text-xs font-medium text-violet-800">
+
+                        {booking.shortLearningSession
+                          ? `Journey ${booking.shortLearningSession.status} · ${booking.shortLearningSession._count.blocks} blocks`
+                          : "Journey will generate from Daytime AI before you join"}
 
                       </p>
 

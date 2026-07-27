@@ -68,6 +68,7 @@ export default function AdminShortLearningOversightPanel({ schoolId, showSchoolL
   }, [schoolId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load on mount; frozen behaviour, advisory only
     void load();
   }, [load]);
 

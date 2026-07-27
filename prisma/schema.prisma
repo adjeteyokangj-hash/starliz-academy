@@ -678,6 +678,8 @@ model AuditLog {
   entityType   String
   entityId     String?
   metadataJson String?
+  journeyId                String?
+  journey                  ShortLearningJourney?        @relation(fields: [journeyId], references: [id], onDelete: SetNull)
   createdAt    DateTime @default(now())
 
   @@index([entityType, entityId])
@@ -1289,6 +1291,7 @@ model School {
   tutorSupportShifts              TutorSupportShift[]
   learningWindows                 SchoolLearningWindow[]
   learningBookings                StudentLearningBooking[]
+  shortLearningJourneys           ShortLearningJourney[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2742,10 +2745,106 @@ model StudentLearningBooking {
   metadataJson             String?
   createdAt                DateTime                     @default(now())
   updatedAt                DateTime                     @updatedAt
+  shortLearningSession     ShortLearningSession?
 
   @@index([schoolId, startsAt])
   @@index([schoolStudentId, startsAt])
   @@index([parentUserId, startsAt])
   @@index([schoolId, status, startsAt])
   @@index([learningWindowId])
+  @@index([journeyId])
 }
+
+/// Admin-authored Short Learning journey (review → publish) before student booking use.
+/// Uses the same Daytime OpenAI stage engine as Day School — not a second generator.
+model ShortLearningJourney {
+  id              String                     @id @default(cuid())
+  schoolId        String
+  school          School                     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  subject         String
+  yearGroup       String
+  durationMinutes Int
+  topic           String                     @default("")
+  skillFocus      String?
+  status          String                     @default("draft")
+  // draft | generating | awaiting_review | changes_requested | approved | published | failed | archived | legacy_generated
+  version         Int                        @default(1)
+  createdBy       String?
+  publishedBy     String?
+  publishedAt     DateTime?
+  metadataJson    String?
+  blocks          ShortLearningJourneyBlock[]
+  bookings        StudentLearningBooking[]
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  @@index([schoolId, subject, yearGroup, durationMinutes, status])
+  @@index([status, publishedAt])
+  @@index([schoolId, createdAt])
+}
+
+model ShortLearningJourneyBlock {
+  id                String              @id @default(cuid())
+  journeyId         String
+  journey           ShortLearningJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  order             Int
+  title             String
+  blockType         String
+  estimatedMinutes  Int
+  daytimeStage      String?
+  contentId         String?
+  learningObjective String?
+  reviewStatus      String              @default("pending")
+  // pending | awaiting_review | approved | changes_requested | failed | structural
+  metadataJson      String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([journeyId, order])
+  @@index([journeyId, order])
+  @@index([contentId])
+}
+
+/// Orchestrated multi-block journey for one Short Learning booking.
+/// Content packs are Daytime-engine AIContentCache rows (not a second generator).
+model ShortLearningSession {
+  id               String                   @id @default(cuid())
+  bookingId        String                   @unique
+  booking          StudentLearningBooking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  subject          String
+  yearGroup        String
+  durationMinutes  Int
+  status           String                   @default("planned") // planned | generating | awaiting_review | ready | failed
+  currentBlockOrder Int                     @default(0)
+  generatedAt      DateTime?
+  regeneratedAt    DateTime?
+  metadataJson     String?
+  blocks           ShortLearningBlock[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@index([status, generatedAt])
+}
+
+model ShortLearningBlock {
+  id                   String               @id @default(cuid())
+  sessionId            String
+  session              ShortLearningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  order                Int
+  title                String
+  blockType            String
+  estimatedMinutes     Int
+  daytimeStage         String?
+  contentId            String?
+  learningObjective    String?
+  status               String               @default("pending") // pending | ready | skipped | completed
+  metadataJson         String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@unique([sessionId, order])
+  @@index([sessionId, order])
+  @@index([contentId])
+}
+
+

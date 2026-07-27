@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api_guard";
-import { prisma } from "@/lib/db";
 import {
   listAvailableSlots,
   parentHasShortLearningEntitlement,
+  parentOwnsBookableSchoolStudent,
 } from "@/lib/schools/short-learning-bookings";
 
 export async function GET(request: Request) {
@@ -15,6 +15,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const schoolId = url.searchParams.get("schoolId")?.trim() || null;
+  const schoolStudentId = url.searchParams.get("schoolStudentId")?.trim() || null;
   const dateIso = url.searchParams.get("date")?.trim() || null;
   const durationMinutes = Number(url.searchParams.get("durationMinutes") ?? "90");
 
@@ -27,16 +28,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "An active subscription or school entitlement is required." }, { status: 403 });
   }
 
-  const link = await prisma.parentSchoolLink.findFirst({
-    where: {
+  if (session.role !== "admin") {
+    if (!schoolStudentId) {
+      return NextResponse.json({ error: "schoolStudentId is required." }, { status: 400 });
+    }
+    const owns = await parentOwnsBookableSchoolStudent({
       parentUserId: session.userId,
       schoolId,
-      status: "active",
-    },
-    select: { id: true },
-  });
-  if (!link && session.role !== "admin") {
-    return NextResponse.json({ error: "No active link to this school." }, { status: 403 });
+      schoolStudentId,
+    });
+    if (!owns) {
+      return NextResponse.json({ error: "No access to this school student." }, { status: 403 });
+    }
   }
 
   const slots = await listAvailableSlots({

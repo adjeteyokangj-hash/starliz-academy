@@ -30,9 +30,35 @@ export default async function StudentShortLearningSessionPage({ params }: Params
       schoolStudent: { childId, status: "active" },
       status: { in: ["booked", "confirmed", "attended"] },
     },
-    include: { school: { select: { name: true } } },
+    include: {
+      school: { select: { name: true } },
+      shortLearningSession: {
+        include: {
+          blocks: {
+            orderBy: { order: "asc" },
+            select: {
+              order: true,
+              title: true,
+              blockType: true,
+              estimatedMinutes: true,
+              contentId: true,
+              status: true,
+            },
+          },
+        },
+      },
+    },
   });
   if (!booking) notFound();
+
+  // Best-effort: prepare Daytime-engine content before the student opens Learn.
+  if (!booking.shortLearningSession || booking.shortLearningSession.status !== "ready") {
+    void import("@/lib/schools/short-learning-session-content")
+      .then(({ ensureShortLearningSessionContent }) =>
+        ensureShortLearningSessionContent({ bookingId: booking.id }),
+      )
+      .catch(() => undefined);
+  }
 
   const now = new Date();
   const active = isShortLearningBookingActive({
@@ -46,11 +72,18 @@ export default async function StudentShortLearningSessionPage({ params }: Params
   if (active && !booking.joinedAt) {
     await prisma.studentLearningBooking.update({
       where: { id: booking.id },
-      data: { joinedAt: now, status: booking.status === "booked" ? "attended" : booking.status },
+      data: {
+        joinedAt: now,
+        status: "attended",
+        ...(booking.status === "booked" && !booking.confirmedAt ? { confirmedAt: now } : {}),
+      },
     });
   }
 
   const learnHref = `/student/short-learning/${encodeURIComponent(booking.id)}/learn`;
+  const learningSession = booking.shortLearningSession;
+  const readyCount = learningSession?.blocks.filter((b) => b.contentId).length ?? 0;
+  const totalBlocks = learningSession?.blocks.length ?? 0;
 
   return (
     <main className="min-h-screen bg-background">
@@ -78,6 +111,30 @@ export default async function StudentShortLearningSessionPage({ params }: Params
           {booking.learningFocus ? (
             <p className="mt-3 text-sm text-foreground/80">Focus: {booking.learningFocus}</p>
           ) : null}
+
+          <div className="mt-5 rounded-xl border border-border bg-muted/30 p-4">
+            <p className="text-sm font-semibold text-foreground">Generated session journey</p>
+            {learningSession && totalBlocks > 0 ? (
+              <>
+                <p className="mt-1 text-xs text-foreground/60">
+                  Status: {learningSession.status} · {readyCount} content packs ready · {booking.durationMinutes} minute plan
+                </p>
+                <ol className="mt-3 space-y-1.5 text-sm text-foreground/80">
+                  {learningSession.blocks.map((block) => (
+                    <li key={`${block.order}-${block.title}`}>
+                      {block.order + 1}. {block.title}
+                      {block.estimatedMinutes > 0 ? ` (${block.estimatedMinutes} min)` : ""}
+                      {block.contentId ? " · ready" : ""}
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-foreground/70">
+                Your multi-block journey is being prepared from the Daytime AI engine. Open Learn to finish setup.
+              </p>
+            )}
+          </div>
 
           {!active ? (
             <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">

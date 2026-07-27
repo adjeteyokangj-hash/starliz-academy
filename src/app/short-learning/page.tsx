@@ -1,9 +1,22 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import PublicShell from "@/components/layout/PublicShell";
 import {
   SHORT_LEARNING_CHECKBOX,
   SHORT_LEARNING_PROMISE,
 } from "@/lib/schools/short-learning-bookings";
+
+export const metadata: Metadata = {
+  title: "Short Learning | AI-Led 90 and 120 Minute Sessions",
+  description:
+    "Parent-booked, AI-led 90- or 120-minute Maths and English sessions with progress tracking and availability-based human support through the Support desk.",
+  openGraph: {
+    title: "StarLiz Short Learning | AI-Led Sessions",
+    description:
+      "Understand the AI-first model, booking windows, 90/120-minute journeys and availability-based human support.",
+    images: ["/brand/starliz-logo.png"],
+  },
+};
 
 const highlights = [
   "AI-led sessions — human tutors are a safety net when on shift, not a private booking.",
@@ -28,7 +41,7 @@ const faq = [
   },
   {
     q: "How is this different from Day School?",
-    a: "Day School follows your school timetable and Live Classroom periods. Short Learning is parent-booked, after-hours, and AI-led.",
+    a: "Day School follows your school timetable and Live Classroom periods. Short Learning is parent-booked, after-hours, and AI-led. If AI help is exhausted, availability-based human support uses the separate Support desk rather than the Day School Live Classroom.",
   },
 ];
 

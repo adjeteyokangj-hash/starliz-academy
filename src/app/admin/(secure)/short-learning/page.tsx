@@ -12,6 +12,15 @@ export default function AdminShortLearningPage() {
         subtitle="Cross-school read-only view of AI-led session bookings, published tutor shifts, and coverage gaps. No auto-publishing."
         actions={
           <>
+            <AdminButtonLink href="/admin/ai-generator?deliveryMode=SHORT_LEARNING">
+              Create Short Learning Content
+            </AdminButtonLink>
+            <AdminButtonLink href="/admin/short-learning/journeys?status=draft">Drafts</AdminButtonLink>
+            <AdminButtonLink href="/admin/short-learning/journeys?status=awaiting_review">
+              Awaiting Review
+            </AdminButtonLink>
+            <AdminButtonLink href="/admin/short-learning/journeys?status=published">Published</AdminButtonLink>
+            <AdminButtonLink href="/admin/short-learning/journeys?status=failed">Failed</AdminButtonLink>
             <AdminButtonLink href="/admin/schools">Schools</AdminButtonLink>
             <AdminButtonLink href="/school-admin/short-learning" variant="secondary">
               School-admin portal

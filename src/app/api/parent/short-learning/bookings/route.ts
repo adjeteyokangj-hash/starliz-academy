@@ -5,6 +5,7 @@ import {
   SHORT_LEARNING_CHECKBOX,
   SHORT_LEARNING_PROMISE,
   createStudentLearningBooking,
+  listParentBookableShortLearningStudents,
   parentHasShortLearningEntitlement,
 } from "@/lib/schools/short-learning-bookings";
 import { enqueueShortLearningBookingConfirmation } from "@/lib/schools/short-learning-notifications";
@@ -16,7 +17,7 @@ export async function GET() {
     return NextResponse.json({ error: "Parent access required." }, { status: 403 });
   }
 
-  const [bookings, links, entitled] = await Promise.all([
+  const [bookings, bookable, entitled] = await Promise.all([
     prisma.studentLearningBooking.findMany({
       where: { parentUserId: session.userId },
       include: {
@@ -25,14 +26,7 @@ export async function GET() {
       orderBy: { startsAt: "desc" },
       take: 100,
     }),
-    prisma.parentSchoolLink.findMany({
-      where: { parentUserId: session.userId, status: "active" },
-      include: {
-        school: { select: { id: true, name: true } },
-        schoolStudent: { include: { child: { select: { id: true, name: true } } } },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
+    listParentBookableShortLearningStudents(session.userId),
     parentHasShortLearningEntitlement(session.userId),
   ]);
 
@@ -41,12 +35,15 @@ export async function GET() {
     entitled,
     promise: SHORT_LEARNING_PROMISE,
     honestyCheckbox: SHORT_LEARNING_CHECKBOX,
-    students: links.map((link) => ({
-      schoolId: link.schoolId,
-      schoolName: link.school.name,
-      schoolStudentId: link.schoolStudentId,
-      studentName: link.schoolStudent.child.name,
-      childId: link.schoolStudent.child.id,
+    childCount: bookable.childCount,
+    emptyReason: entitled ? bookable.emptyReason : null,
+    students: bookable.students.map((student) => ({
+      schoolId: student.schoolId,
+      schoolName: student.schoolName,
+      schoolStudentId: student.schoolStudentId,
+      studentName: student.studentName,
+      childId: student.childId,
+      source: student.source,
     })),
     bookings: bookings.map((row) => ({
       id: row.id,
@@ -134,6 +131,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create booking.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const safe =
+      message.length <= 200
+      && !/prisma|sql|stack|ECONN|timeout|internal/i.test(message)
+        ? message
+        : "Unable to create booking right now. Please try again.";
+    return NextResponse.json({ error: safe }, { status: 400 });
   }
 }

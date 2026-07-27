@@ -30,7 +30,14 @@ export async function POST(_request: Request, context: Params) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to cancel booking.";
-    const status = message === "Booking not found." ? 404 : 400;
-    return NextResponse.json({ error: message }, { status });
+    if (message === "Booking not found.") {
+      return NextResponse.json({ error: message }, { status: 404 });
+    }
+    const safe =
+      message.length <= 200
+      && !/prisma|sql|stack|ECONN|timeout|internal/i.test(message)
+        ? message
+        : "Unable to cancel booking right now. Please try again.";
+    return NextResponse.json({ error: safe }, { status: 400 });
   }
 }

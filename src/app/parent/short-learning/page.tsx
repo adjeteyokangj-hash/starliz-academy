@@ -29,11 +29,48 @@ type SlotRow = {
   lateBooking: boolean;
 };
 
+function formatBookingStatus(status: string): string {
+  switch (status) {
+    case "booked":
+      return "Requested";
+    case "confirmed":
+      return "Confirmed";
+    case "attended":
+      return "Attended";
+    case "completed":
+      return "Completed";
+    case "cancelled":
+      return "Cancelled";
+    case "late_cancelled":
+      return "Cancelled (late)";
+    case "no_show":
+      return "Missed (no-show)";
+    case "expired":
+      return "Expired";
+    case "generation_failed":
+    case "failed":
+      return "Content preparation failed";
+    default:
+      return status.replaceAll("_", " ");
+  }
+}
+
+function formatSessionWhen(iso: string): string {
+  return new Date(iso).toLocaleString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function ParentShortLearningPage() {
   const [promise, setPromise] = useState("");
   const [honestyCheckbox, setHonestyCheckbox] = useState("");
   const [entitled, setEntitled] = useState(false);
   const [students, setStudents] = useState<StudentOption[]>([]);
+  const [emptyReason, setEmptyReason] = useState<string | null>(null);
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [slots, setSlots] = useState<SlotRow[]>([]);
   const [schoolStudentId, setSchoolStudentId] = useState("");
@@ -60,19 +97,21 @@ export default function ParentShortLearningPage() {
     setHonestyCheckbox(payload.honestyCheckbox ?? "");
     setEntitled(Boolean(payload.entitled));
     setStudents(payload.students ?? []);
+    setEmptyReason(typeof payload.emptyReason === "string" ? payload.emptyReason : null);
     setBookings(payload.bookings ?? []);
     if (!schoolStudentId && payload.students?.[0]?.schoolStudentId) {
       setSchoolStudentId(payload.students[0].schoolStudentId);
     }
   }
 
-  async function loadSlots(nextSchoolId: string, nextDate: string, nextDuration: number) {
-    if (!nextSchoolId || !nextDate) {
+  async function loadSlots(nextSchoolId: string, nextSchoolStudentId: string, nextDate: string, nextDuration: number) {
+    if (!nextSchoolId || !nextSchoolStudentId || !nextDate) {
       setSlots([]);
       return;
     }
     const qs = new URLSearchParams({
       schoolId: nextSchoolId,
+      schoolStudentId: nextSchoolStudentId,
       date: nextDate,
       durationMinutes: String(nextDuration),
     });
@@ -111,11 +150,11 @@ export default function ParentShortLearningPage() {
   useEffect(() => {
     if (!selectedStudent) return;
     const boot = window.setTimeout(() => {
-      void loadSlots(selectedStudent.schoolId, dateIso, durationMinutes);
+      void loadSlots(selectedStudent.schoolId, selectedStudent.schoolStudentId, dateIso, durationMinutes);
     }, 0);
     return () => window.clearTimeout(boot);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStudent?.schoolId, dateIso, durationMinutes]);
+  }, [selectedStudent?.schoolId, selectedStudent?.schoolStudentId, dateIso, durationMinutes]);
 
   async function onBook(event: FormEvent) {
     event.preventDefault();
@@ -144,7 +183,7 @@ export default function ParentShortLearningPage() {
       setHonestyAcknowledged(false);
       setStartsAt("");
       await loadBookings();
-      await loadSlots(selectedStudent.schoolId, dateIso, durationMinutes);
+      await loadSlots(selectedStudent.schoolId, selectedStudent.schoolStudentId, dateIso, durationMinutes);
     } catch {
       setError("Unable to book right now.");
     } finally {
@@ -154,13 +193,17 @@ export default function ParentShortLearningPage() {
 
   async function onCancel(bookingId: string) {
     setError(null);
-    const res = await fetch(`/api/parent/short-learning/bookings/${bookingId}/cancel`, { method: "POST" });
-    const payload = await res.json();
-    if (!res.ok) {
-      setError(payload.error ?? "Cancel failed.");
-      return;
+    try {
+      const res = await fetch(`/api/parent/short-learning/bookings/${bookingId}/cancel`, { method: "POST" });
+      const payload = await res.json();
+      if (!res.ok) {
+        setError(payload.error ?? "Cancel failed.");
+        return;
+      }
+      await loadBookings();
+    } catch {
+      setError("Unable to cancel right now. Please try again.");
     }
-    await loadBookings();
   }
 
   return (
@@ -175,12 +218,18 @@ export default function ParentShortLearningPage() {
 
         {!entitled ? (
           <p className="mt-6 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            An active subscription or school entitlement is required to book Short Learning.
+            An active subscription or school entitlement is required to book Short Learning. Short Learning is AI-led; human support is availability-based and is not private one-to-one tutoring.
           </p>
         ) : null}
 
-        {error ? <p className="mt-4 text-sm font-semibold text-rose-300">{error}</p> : null}
-        {loading ? <p className="mt-6 text-sm text-slate-400">Loading…</p> : null}
+        {entitled && students.length === 0 && emptyReason ? (
+          <p className="mt-6 rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-50">
+            {emptyReason}
+          </p>
+        ) : null}
+
+        {error ? <p className="mt-4 text-sm font-semibold text-rose-300" role="alert">{error}</p> : null}
+        {loading ? <p className="mt-6 text-sm text-slate-400" aria-live="polite">Loading…</p> : null}
 
         <form onSubmit={onBook} className="mt-8 space-y-4 rounded-[2rem] border border-slate-800 bg-slate-900 p-6">
           <h2 className="text-xl font-bold">Book a session</h2>
@@ -289,8 +338,13 @@ export default function ParentShortLearningPage() {
                     <div>
                       <p className="font-semibold">{booking.studentName} · {booking.subject}</p>
                       <p className="text-sm text-slate-400">
-                        {new Date(booking.startsAt).toLocaleString()} · {booking.durationMinutes} min · {booking.status}
+                        {formatSessionWhen(booking.startsAt)} · {booking.durationMinutes} min · {formatBookingStatus(booking.status)}
                       </p>
+                      {booking.status === "no_show" ? (
+                        <p className="mt-1 text-xs text-amber-200/90">
+                          Repeated no-shows may temporarily limit future bookings. There is no cancellation fee.
+                        </p>
+                      ) : null}
                     </div>
                     {["booked", "confirmed"].includes(booking.status) ? (
                       <button

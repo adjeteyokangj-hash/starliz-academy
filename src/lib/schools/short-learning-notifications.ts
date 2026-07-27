@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db";
 import { emitNotificationEvent } from "@/lib/notifications/dispatcher";
 import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
+import {
+  PARENT_OPTIONAL_NOTIFICATION_TYPES,
+  parentAllowsOptionalNotification,
+} from "@/lib/notifications/parent-preference-gate";
 
 type BookingNotificationRow = {
   id: string;
@@ -148,6 +152,13 @@ export async function enqueueShortLearningSessionReminder(input: {
 
   const recipient = await parentEmail(booking.parentUserId);
   if (!recipient) return { ok: false as const, reason: "parent_email_missing" };
+
+  const allowed = await parentAllowsOptionalNotification({
+    parentUserId: booking.parentUserId,
+    preferenceEventType: PARENT_OPTIONAL_NOTIFICATION_TYPES.lessonReminders,
+    defaultEnabled: true,
+  });
+  if (!allowed) return { ok: false as const, reason: "preference_disabled" };
 
   const { studentName, when } = bookingPayload(booking);
 

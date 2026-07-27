@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/short-learning-reminders",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/short-learning-lifecycle",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
