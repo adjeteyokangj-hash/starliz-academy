@@ -9,7 +9,7 @@ import {
 
 function makeDeps(overrides: Partial<EnrolStudentDeps> = {}): EnrolStudentDeps {
   return {
-    canAddSchoolStudent: async () => ({ allowed: true, reason: "ok", seatLimit: 100, seatsUsed: 0 }),
+    canAddSchoolStudent: async (schoolId) => ({ schoolId, allowed: true, seatsUsed: 0, seatsAllowed: 100, seatsAvailable: 100 }),
     hashPassword: async () => "hashed",
     writeSchoolAuditLog: async () => undefined,
     findSchool: async () => ({ id: "school-1", name: "UI Drill School" }),
@@ -83,12 +83,7 @@ test("enrolSchoolStudent returns 402 when seats are blocked", async () => {
       actorUserId: "admin-1",
     },
     makeDeps({
-      canAddSchoolStudent: async () => ({
-        allowed: false,
-        reason: "seat_limit",
-        seatLimit: 1,
-        seatsUsed: 1,
-      }),
+      canAddSchoolStudent: async (schoolId) => ({ schoolId, allowed: false, reason: "SEAT_LIMIT_REACHED", seatsUsed: 1, seatsAllowed: 1, seatsAvailable: 0 }),
       createParentUser: async () => {
         throw new Error("should not create parent");
       },

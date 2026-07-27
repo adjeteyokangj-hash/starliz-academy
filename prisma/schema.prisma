@@ -2480,3 +2480,39 @@ model NotificationPreference {
   @@index([schoolId, userId])
   @@index([trustId, userId])
 }
+
+model LessonPackImport {
+  id                      String   @id @default(cuid())
+  status                  String   @default("uploaded") // uploaded | analysing | needs_input | analysis_failed | draft_created | awaiting_review | changes_requested | approved | published | rejected
+  createdByUserId         String?
+  sessionType             String   @default("school_day") // school_day | short_learning_90 | short_learning_120 | general_library
+  sourceName              String?
+  sourceUrl               String?
+  licenceType             String?
+  attribution             String?
+  notes                   String?
+  yearGroupOverride       String?
+  subjectOverride         String?
+  difficultyOverride      Int?
+  detectedYearGroup       String?
+  detectedSubject         String?
+  detectedDifficulty      Int?
+  yearConfidence          Float?
+  subjectConfidence       Float?
+  difficultyConfidence    Float?
+  sourceFingerprint       String?
+  filesJson               String? // uploaded file metadata + classifications (no student PII)
+  analysisJson            String? // full analysis / previews
+  previewJson             String? // selected lesson preview
+  contentId               String? // linked AIContentCache draft id
+  duplicateOverrideReason String?
+  thirdPartyDecisionsJson String? // admin include/exclude decisions
+  errorJson               String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([status])
+  @@index([sourceFingerprint])
+  @@index([createdByUserId])
+  @@index([contentId])
+}

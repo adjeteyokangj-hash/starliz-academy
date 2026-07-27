@@ -150,7 +150,7 @@ function makeBrain(input: {
   qlfComplete?: boolean;
   dataState?: "active_with_qlf" | "qlf_completed_no_activity" | "new_no_activity";
   checklistStatus?: "pass" | "warning" | "fail";
-}) {
+}): any {
   const dataState = input.dataState ?? "active_with_qlf";
   return {
     studentId: input.studentId,

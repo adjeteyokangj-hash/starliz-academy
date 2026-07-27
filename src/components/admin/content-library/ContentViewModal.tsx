@@ -413,6 +413,22 @@ function ContentViewModalBody({
   const [workingAction, setWorkingAction] = useState<VerificationAction | null>(null);
   const [blackBoxRetesting, setBlackBoxRetesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [academicRevalidating, setAcademicRevalidating] = useState(false);
+
+  async function revalidateImportedLesson() {
+    setAcademicRevalidating(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/content/${content.id}/revalidate-import`, { method: "POST" });
+      const payload = await response.json() as { error?: string; result?: { readiness?: string; issues?: unknown[]; version?: string } };
+      if (!response.ok) throw new Error(payload.error || "Revalidation failed");
+      setMessage(`Academic validation ${payload.result?.version ?? "1.0.0"}: ${payload.result?.readiness ?? "complete"}; ${payload.result?.issues?.length ?? 0} issue(s). Refresh to view the stored result.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Revalidation failed");
+    } finally {
+      setAcademicRevalidating(false);
+    }
+  }
   const [slotCountInput, setSlotCountInput] = useState("");
   const currentItem = items[selectedItemIndex] ?? null;
   const approvalProgress = useMemo(() => {
@@ -1618,13 +1634,23 @@ function ContentViewModalBody({
             <h2 className="truncate text-lg font-black text-white sm:text-xl">{meta.title}</h2>
             <p className="mt-1 text-xs text-slate-400">{meta.subject} | {meta.topic || "General"}</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 text-sm font-bold text-slate-400 hover:text-white"
-          >
-            ✕
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              disabled={academicRevalidating}
+              onClick={() => void revalidateImportedLesson()}
+              className="rounded-lg border border-cyan-500/40 px-3 py-1.5 text-xs font-bold text-cyan-100 hover:bg-cyan-500/10 disabled:opacity-50"
+            >
+              {academicRevalidating ? "Revalidating…" : "Revalidate imported content"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 text-sm font-bold text-slate-400 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">

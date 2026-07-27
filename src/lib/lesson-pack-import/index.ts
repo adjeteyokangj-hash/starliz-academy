@@ -1,0 +1,14 @@
+export * from "@/lib/lesson-pack-import/types";
+export * from "@/lib/lesson-pack-import/upload-limits";
+export * from "@/lib/lesson-pack-import/security";
+export * from "@/lib/lesson-pack-import/classification";
+export * from "@/lib/lesson-pack-import/year-detection";
+export * from "@/lib/lesson-pack-import/subject-detection";
+export * from "@/lib/lesson-pack-import/difficulty-detection";
+export * from "@/lib/lesson-pack-import/content-extraction";
+export * from "@/lib/lesson-pack-import/third-party";
+export * from "@/lib/lesson-pack-import/transform";
+export * from "@/lib/lesson-pack-import/duplicates";
+export * from "@/lib/lesson-pack-import/pipeline";
+export { extractZipEntries, extractZipEntriesSafe } from "@/lib/lesson-pack-import/zip-extract";
+export { extractDocumentText } from "@/lib/lesson-pack-import/text-extraction";
