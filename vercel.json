@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/lesson-pack-upload-cleanup",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/academic-year-rollover",
+      "schedule": "15 5 * * *"
     }
   ]
 }

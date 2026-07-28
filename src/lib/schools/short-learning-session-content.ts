@@ -15,6 +15,11 @@ import {
   type ShortLearningBlockBlueprint,
   type ShortLearningDaytimeStage,
 } from "@/lib/schools/short-learning-session-plan";
+import {
+  resolveStudentYearContext,
+  toShortLearningYearGuidance,
+  type ShortLearningYearGuidance,
+} from "@/lib/schools/student-year-context";
 
 export type EnsureShortLearningSessionOptions = {
   bookingId: string;
@@ -58,19 +63,22 @@ function parseMetadata(raw: string | null | undefined): Record<string, unknown> 
   }
 }
 
-async function resolveYearGroup(schoolStudentId: string): Promise<string> {
+async function resolveYearGroup(schoolStudentId: string): Promise<ShortLearningYearGuidance> {
   const membership = await prisma.schoolStudent.findUnique({
     where: { id: schoolStudentId },
     select: {
       child: { select: { yearGroup: true } },
-      classroom: { select: { yearGroup: true } },
+      classroom: { select: { yearGroup: true, name: true, academicYear: true } },
     },
   });
-  const fromChild = membership?.child.yearGroup?.trim();
-  if (fromChild) return fromChild;
-  const fromClass = membership?.classroom?.yearGroup?.trim();
-  if (fromClass) return fromClass;
-  return "Year 4";
+  const ctx = resolveStudentYearContext({
+    officialYearGroup: membership?.child.yearGroup ?? null,
+    classroomYearGroup: membership?.classroom?.yearGroup ?? null,
+    classroomName: membership?.classroom?.name ?? null,
+    classroomAcademicYear: membership?.classroom?.academicYear ?? null,
+    surface: "short-learning",
+  });
+  return toShortLearningYearGuidance(ctx);
 }
 
 /**
@@ -396,7 +404,15 @@ export async function ensureShortLearningSessionContent(
   }
 
   let existing = booking.shortLearningSession;
-  const yearGroup = await resolveYearGroup(booking.schoolStudentId);
+  const yearGuidance = await resolveYearGroup(booking.schoolStudentId);
+  const yearGroup = yearGuidance.yearGroup;
+  const summerYearMeta = {
+    officialYearGroup: yearGuidance.officialYearGroup,
+    incomingYearGroup: yearGuidance.incomingYearGroup,
+    isSummerTransition: yearGuidance.isSummerTransition,
+    yearMode: yearGuidance.mode,
+    teachingIntent: yearGuidance.teachingIntent,
+  };
 
   // Prefer an Admin-published journey (school + subject + year + duration).
   if (!options.forceRegenerate) {
@@ -436,6 +452,7 @@ export async function ensureShortLearningSessionContent(
                   source: "published_journey",
                   journeyId: published.id,
                   studentPlayable: true,
+                  ...summerYearMeta,
                 }),
               },
             })
@@ -451,6 +468,7 @@ export async function ensureShortLearningSessionContent(
                   source: "published_journey",
                   journeyId: published.id,
                   studentPlayable: true,
+                  ...summerYearMeta,
                 }),
               },
             });
@@ -644,6 +662,7 @@ export async function ensureShortLearningSessionContent(
               planDuration: plan.durationMinutes,
               generativeBlockCount: plan.generativeBlockCount,
               forceRegenerate: Boolean(options.forceRegenerate),
+              ...summerYearMeta,
             }),
           },
         })
@@ -657,6 +676,7 @@ export async function ensureShortLearningSessionContent(
             metadataJson: JSON.stringify({
               planDuration: plan.durationMinutes,
               generativeBlockCount: plan.generativeBlockCount,
+              ...summerYearMeta,
             }),
           },
         });
@@ -764,6 +784,7 @@ export async function ensureShortLearningSessionContent(
         safeReason: generatedOk
           ? "Content is awaiting Admin review and publication. Students cannot start until a matching journey is published."
           : "Session content could not be prepared for learning. Please try again or ask a parent to regenerate.",
+        ...summerYearMeta,
       }),
     },
     include: { blocks: { orderBy: { order: "asc" } } },

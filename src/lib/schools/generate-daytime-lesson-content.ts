@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { keyStageForYearGroup } from "@/lib/curriculum";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
+import { resolveStudentYearContext } from "@/lib/schools/student-year-context";
 import {
   isPlayableDaytimeLessonType,
   preferredContentTypesForPeriod,
@@ -1106,7 +1107,7 @@ export async function generateDaytimeLessonContent(
           reviewStatus: true,
         },
       },
-      classroom: { select: { yearGroup: true } },
+      classroom: { select: { yearGroup: true, name: true } },
     },
     orderBy: [{ dayOfWeek: "asc" }, { periodIndex: "asc" }],
   });
@@ -1130,10 +1131,14 @@ export async function generateDaytimeLessonContent(
 
   for (const period of playable) {
     let lesson = period.lesson;
-    const yearGroup = period.yearGroup
-      ?? lesson?.yearGroup
-      ?? period.classroom?.yearGroup
-      ?? "Year 5";
+    const yearCtx = resolveStudentYearContext({
+      officialYearGroup: period.yearGroup ?? lesson?.yearGroup ?? null,
+      classroomYearGroup: period.classroom?.yearGroup ?? null,
+      classroomName: period.classroom?.name ?? null,
+      surface: "day-school",
+    });
+    // Day School stays on official/classroom timetable year — never retarget to incoming.
+    const yearGroup = yearCtx.targetLearningYearGroup;
     const skillFocus = period.skillFocus ?? lesson?.skillFocus ?? period.subject;
     const keyStage = period.keyStage ?? lesson?.keyStage ?? keyStageForYearGroup(yearGroup);
 

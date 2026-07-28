@@ -8,6 +8,12 @@ import { createSchoolInviteToken } from "@/lib/schools/invite_tokens";
 import { requireSchoolPermission } from "@/lib/schools/guards";
 import { sendEmail } from "@/lib/email-provider";
 import { buildSchoolInviteEmail } from "@/lib/emails/school-invite";
+import {
+  earlyPromoteStudent,
+  listStudentYearChanges,
+  recordManualYearChange,
+  setStudentHoldBack,
+} from "@/lib/schools/academic-year-rollover";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -28,12 +34,15 @@ const patchSchema = z.object({
     "setPrimaryGuardian",
     "recordConsent",
     "resendGuardianInvite",
+    "setHoldBack",
+    "earlyPromote",
   ]),
   name: z.string().trim().min(1).max(120).optional(),
   yearGroup: z.string().trim().max(40).optional().nullable(),
   externalRef: z.string().trim().max(80).optional().nullable(),
   classroomId: z.string().min(1).optional().nullable(),
   dateOfBirth: z.string().datetime().optional().nullable(),
+  holdBackFromPromotion: z.boolean().optional(),
   guardianEmail: z.string().email().optional(),
   guardianFirstName: z.string().trim().max(80).optional(),
   guardianLastName: z.string().trim().max(80).optional(),
@@ -108,6 +117,7 @@ function serialize(student: NonNullable<Awaited<ReturnType<typeof loadStudent>>>
     schoolId: student.schoolId,
     status: student.status,
     externalRef: student.externalRef,
+    holdBackFromPromotion: student.holdBackFromPromotion,
     joinedAt: student.joinedAt.toISOString(),
     leftAt: student.leftAt?.toISOString() ?? null,
     createdAt: student.createdAt.toISOString(),
@@ -170,7 +180,7 @@ export async function GET(request: Request, context: RouteContext) {
   const student = await loadStudent(id, schoolId);
   if (!student) return NextResponse.json({ error: "Student not found." }, { status: 404 });
 
-  const [classrooms, pendingInvites, auditLogs] = await Promise.all([
+  const [classrooms, pendingInvites, auditLogs, yearChanges] = await Promise.all([
     prisma.classroom.findMany({
       where: { schoolId, status: "active" },
       select: { id: true, name: true, yearGroup: true },
@@ -192,11 +202,19 @@ export async function GET(request: Request, context: RouteContext) {
       orderBy: { createdAt: "desc" },
       take: 30,
     }),
+    listStudentYearChanges({ schoolId, childId: student.childId, take: 20 }),
   ]);
 
   return NextResponse.json({
     item: serialize(student),
     classrooms,
+    yearChanges: yearChanges.map((r) => ({
+      id: r.id,
+      fromYearGroup: r.fromYearGroup,
+      toYearGroup: r.toYearGroup,
+      reason: r.reason,
+      createdAt: r.createdAt.toISOString(),
+    })),
     pendingInvites: pendingInvites.map((i) => ({
       id: i.id,
       targetEmail: i.targetEmail,
@@ -233,9 +251,35 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const student = await prisma.schoolStudent.findFirst({
     where: { id, schoolId: body.schoolId },
-    include: { child: { select: { id: true, parentId: true, name: true } } },
+    include: {
+      child: { select: { id: true, parentId: true, name: true, yearGroup: true } },
+    },
   });
   if (!student) return NextResponse.json({ error: "Student not found." }, { status: 404 });
+
+  if (body.action === "setHoldBack") {
+    if (typeof body.holdBackFromPromotion !== "boolean") {
+      return NextResponse.json({ error: "holdBackFromPromotion is required." }, { status: 400 });
+    }
+    const result = await setStudentHoldBack({
+      schoolId: body.schoolId,
+      schoolStudentId: id,
+      holdBack: body.holdBackFromPromotion,
+      actorUserId: access.userId,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json({ ok: true, holdBackFromPromotion: body.holdBackFromPromotion });
+  }
+
+  if (body.action === "earlyPromote") {
+    const result = await earlyPromoteStudent({
+      schoolId: body.schoolId,
+      schoolStudentId: id,
+      actorUserId: access.userId,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json({ ok: true, from: result.from, to: result.to });
+  }
 
   if (body.action === "archive" || body.action === "transfer") {
     const nextStatus = body.action === "archive" ? "archived" : "transferred";
@@ -303,9 +347,29 @@ export async function PATCH(request: Request, context: RouteContext) {
       await prisma.childProfile.update({ where: { id: student.childId }, data: { name: body.name } });
     }
     if (body.yearGroup !== undefined) {
+      const nextYear = body.yearGroup?.trim() || null;
+      const fromYear = student.child.yearGroup ?? null;
       await prisma.childProfile.update({
         where: { id: student.childId },
-        data: { yearGroup: body.yearGroup },
+        data: { yearGroup: nextYear },
+      });
+      if (nextYear && nextYear !== fromYear) {
+        await recordManualYearChange({
+          schoolId: body.schoolId,
+          childId: student.childId,
+          schoolStudentId: id,
+          fromYearGroup: fromYear,
+          toYearGroup: nextYear,
+          actorUserId: access.userId,
+        });
+      }
+    }
+    if (body.holdBackFromPromotion !== undefined) {
+      await setStudentHoldBack({
+        schoolId: body.schoolId,
+        schoolStudentId: id,
+        holdBack: body.holdBackFromPromotion,
+        actorUserId: access.userId,
       });
     }
     if (body.externalRef !== undefined) {

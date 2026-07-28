@@ -99,7 +99,14 @@ export async function ensureSchoolYearClasses(
     return { ok: false, status: 404, error: "School not found." };
   }
 
-  const academicYear = input.academicYear?.trim() || currentAcademicYearLabel();
+  const configured = await prisma.schoolAcademicYearConfig.findUnique({
+    where: { schoolId: input.schoolId },
+    select: { currentAcademicYear: true },
+  });
+  const academicYear =
+    input.academicYear?.trim() ||
+    configured?.currentAcademicYear?.trim() ||
+    currentAcademicYearLabel();
   const existing = await deps.findClassrooms({ schoolId: input.schoolId, academicYear });
 
   const created: EnsureYearClassesResult["created"] = [];

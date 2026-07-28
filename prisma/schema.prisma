@@ -242,6 +242,7 @@ model ChildProfile {
   homeworkAnswers       HomeworkAnswer[]
   studentSkills         StudentSkill[]
   schoolLinks           SchoolStudent[]
+  yearChanges           StudentYearChange[]
   safeguardingAlerts    SchoolSafeguardingAlert[]
   safeguardingIncidents SafeguardingIncident[]
   studentProfile        StudentProfile?
@@ -1264,6 +1265,8 @@ model School {
   staffAbsences                   StaffAbsence[]
   classrooms                      Classroom[]
   students                        SchoolStudent[]
+  academicYearConfig              SchoolAcademicYearConfig?
+  studentYearChanges              StudentYearChange[]
   licence                         SchoolLicence?
   licenceEvents                   LicenceEvent[]
   auditLogs                       SchoolAuditLog[]
@@ -1397,6 +1400,48 @@ model StaffAbsence {
   @@index([schoolTeacherId, startsOn])
 }
 
+/// School-controlled academic calendar + rollover (not DOB-driven promotion).
+model SchoolAcademicYearConfig {
+  id                   String    @id @default(cuid())
+  schoolId             String    @unique
+  school               School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  currentAcademicYear  String
+  nextAcademicYear     String
+  promotionDate        DateTime  @db.Date
+  /// waiting | ready | applied
+  status               String    @default("waiting")
+  appliedAt            DateTime?
+  appliedByUserId      String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([status, promotionDate])
+}
+
+/// Audit history of official year-group changes (rollover, hold-back, early promote, manual).
+model StudentYearChange {
+  id              String   @id @default(cuid())
+  schoolId        String
+  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  childId         String
+  child           ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+  schoolStudentId String?
+  schoolStudent   SchoolStudent? @relation(fields: [schoolStudentId], references: [id], onDelete: SetNull)
+  fromYearGroup   String?
+  toYearGroup     String
+  /// rollover | hold_back | early_promote | manual_override | admin_edit
+  reason          String
+  academicYearFrom String?
+  academicYearTo   String?
+  actorUserId     String?
+  metadataJson    String?
+  createdAt       DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([childId, createdAt])
+  @@index([schoolStudentId])
+}
+
 model SchoolStudent {
   id          String              @id @default(cuid())
   schoolId    String
@@ -1409,10 +1454,13 @@ model SchoolStudent {
   externalRef String?
   joinedAt    DateTime            @default(now())
   leftAt      DateTime?
+  /// When true, school academic-year rollover skips this enrolment (admin hold-back).
+  holdBackFromPromotion Boolean   @default(false)
 
   parentLinks      ParentSchoolLink[]
   dayAttendance    SchoolDayAttendance[]
   learningBookings StudentLearningBooking[]
+  yearChanges      StudentYearChange[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

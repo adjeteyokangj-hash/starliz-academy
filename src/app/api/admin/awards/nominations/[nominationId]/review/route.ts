@@ -25,6 +25,7 @@ import {
   parseAwardReviewDecisions,
   upsertAwardReviewDecision,
 } from "@/lib/award-review-state";
+import { currentAcademicYearLabel } from "@/lib/schools/ensure-year-classes";
 
 function normalize(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
@@ -42,15 +43,19 @@ function resolveAcademicTerm(raw: string | null): "Autumn" | "Spring" | "Summer"
   return "Summer";
 }
 
+function expandAcademicYearLabel(label: string): string {
+  const match = /^(\d{4})\s*\/\s*(\d{2}|\d{4})$/.exec(label.trim());
+  if (!match) return label.trim();
+  const start = Number(match[1]);
+  const endRaw = match[2];
+  const end = endRaw.length === 2 ? start + 1 : Number(endRaw);
+  return `${start}/${end}`;
+}
+
 function resolveAcademicYear(raw: string | null): string {
   const value = String(raw ?? "").trim();
-  if (/^\d{4}\/\d{4}$/.test(value)) return value;
-
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const start = month >= 9 ? year : year - 1;
-  return `${start}/${start + 1}`;
+  if (/^\d{4}\/\d{2,4}$/.test(value)) return expandAcademicYearLabel(value);
+  return expandAcademicYearLabel(currentAcademicYearLabel());
 }
 
 function termWindow(input: { term: "Autumn" | "Spring" | "Summer"; academicYear: string }): { start: Date; end: Date } {

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { canDo, getSchoolRoleLabel } from "@/lib/schools/permissions";
 import { requireSchoolAdminContext } from "@/lib/schools/portal-routing";
 import CollapsibleCard from "@/components/school-admin/CollapsibleCard";
+import AcademicYearRolloverPanel from "@/components/school-admin/AcademicYearRolloverPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,8 @@ export default async function SchoolAdminSettingsPage() {
   const seatsDisplay = seatLimit === 0 ? `${seatsUsed} / unlimited` : `${seatsUsed} / ${seatLimit}`;
   const canSeeBilling = canDo(ctx.role, "viewBilling") || canDo(ctx.role, "manageLicence");
   const canManageOwnership = ctx.role === "owner";
+
+  const canManageSettings = canDo(ctx.role, "manageSchoolSettings");
 
   const shortcuts = [
     { href: "/school-admin/day-school/classes", label: "Classes", hint: "Manage classrooms" },
@@ -162,6 +165,12 @@ export default async function SchoolAdminSettingsPage() {
               </dd>
             </div>
           </dl>
+        </CollapsibleCard>
+      ) : null}
+
+      {canManageSettings ? (
+        <CollapsibleCard title="Academic year & student promotion" defaultOpen bodyClassName="p-0">
+          <AcademicYearRolloverPanel />
         </CollapsibleCard>
       ) : null}
 

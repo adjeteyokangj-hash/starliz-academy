@@ -11,6 +11,7 @@ import {
   getChildSelectionCookieName,
   getChildSelectionMaxAgeSeconds,
 } from "@/lib/auth";
+import { resolveStudentYearContext } from "@/lib/schools/student-year-context";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -93,13 +94,21 @@ export async function GET(request: Request) {
         id: true,
         schoolId: true,
         classroomId: true,
-        classroom: { select: { name: true, yearGroup: true } },
+        classroom: { select: { name: true, yearGroup: true, academicYear: true } },
         school: { select: { name: true } },
       },
       orderBy: { joinedAt: "desc" },
     }),
   ]);
   if (!dashboardBrain) return NextResponse.json({ error: "Student not found." }, { status: 404 });
+
+  const yearContext = resolveStudentYearContext({
+    officialYearGroup: child.yearGroup,
+    classroomYearGroup: schoolEnrolment?.classroom?.yearGroup ?? null,
+    classroomName: schoolEnrolment?.classroom?.name ?? null,
+    classroomAcademicYear: schoolEnrolment?.classroom?.academicYear ?? null,
+    surface: "dashboard",
+  });
 
   const reply = NextResponse.json({
     ok: true,
@@ -121,6 +130,23 @@ export async function GET(request: Request) {
         dateOfBirth: child.studentProfile?.dateOfBirth?.toISOString() ?? null,
       }),
     },
+    yearContext: {
+      officialYearGroup: yearContext.officialYearGroup,
+      administrativeYearGroup: yearContext.administrativeYearGroup,
+      classroomYearGroup: yearContext.classroomYearGroup,
+      classroomName: yearContext.classroomName,
+      incomingYearGroup: yearContext.incomingYearGroup,
+      targetYearGroup: yearContext.targetYearGroup,
+      learningYearGroup: yearContext.learningYearGroup,
+      targetLearningYearGroup: yearContext.targetLearningYearGroup,
+      academicYearLabel: yearContext.academicYearLabel,
+      isSummerTransition: yearContext.isSummerTransition,
+      yearDisplayLabel: yearContext.yearDisplayLabel,
+      summerPreparationLabel: yearContext.summerPreparationLabel,
+      summerSupportingCopy: yearContext.isSummerTransition && yearContext.incomingYearGroup && yearContext.officialYearGroup
+        ? `Your summer learning will review important ${yearContext.officialYearGroup} knowledge and introduce ${yearContext.incomingYearGroup} topics.`
+        : null,
+    },
     schoolEnrolment: schoolEnrolment?.classroomId
       ? {
           schoolStudentId: schoolEnrolment.id,
@@ -129,6 +155,11 @@ export async function GET(request: Request) {
           classroomId: schoolEnrolment.classroomId,
           classroomName: schoolEnrolment.classroom?.name ?? null,
           yearGroup: schoolEnrolment.classroom?.yearGroup ?? null,
+          yearDisplayLabel: yearContext.yearDisplayLabel,
+          officialYearGroup: yearContext.officialYearGroup,
+          incomingYearGroup: yearContext.incomingYearGroup,
+          isSummerTransition: yearContext.isSummerTransition,
+          summerPreparationLabel: yearContext.summerPreparationLabel,
         }
       : null,
     currentLevelSummary: {

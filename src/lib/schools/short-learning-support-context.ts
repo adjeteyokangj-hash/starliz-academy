@@ -4,6 +4,7 @@
  */
 import { prisma } from "@/lib/db";
 import { isShortLearningBookingActive } from "@/lib/schools/support-eligibility";
+import { resolveStudentYearContext } from "@/lib/schools/student-year-context";
 
 export const AI_TUTOR_SCOPE_SHORT_LEARNING = "short-learning" as const;
 export const SHORT_LEARNING_SUPPORT_MODE = "SHORT_LEARNING" as const;
@@ -102,7 +103,7 @@ export async function resolveShortLearningSupportContext(input: {
         select: {
           classroomId: true,
           child: { select: { yearGroup: true } },
-          classroom: { select: { yearGroup: true } },
+          classroom: { select: { yearGroup: true, name: true } },
         },
       },
       shortLearningSession: {
@@ -188,9 +189,15 @@ export async function resolveShortLearningSupportContext(input: {
 
   const yearGroup =
     session.yearGroup?.trim()
-    || booking.schoolStudent.child.yearGroup?.trim()
-    || booking.schoolStudent.classroom?.yearGroup?.trim()
-    || "Year 4";
+    || (() => {
+      const ctx = resolveStudentYearContext({
+        officialYearGroup: booking.schoolStudent.child.yearGroup ?? null,
+        classroomYearGroup: booking.schoolStudent.classroom?.yearGroup ?? null,
+        classroomName: booking.schoolStudent.classroom?.name ?? null,
+        surface: "short-learning",
+      });
+      return ctx.targetLearningYearGroup;
+    })();
 
   return {
     ok: true,

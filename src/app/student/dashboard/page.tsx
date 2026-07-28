@@ -158,6 +158,22 @@ type DashboardSummaryPayload = {
     classroomId: string;
     classroomName: string | null;
     yearGroup: string | null;
+    yearDisplayLabel?: string | null;
+    officialYearGroup?: string | null;
+    incomingYearGroup?: string | null;
+    isSummerTransition?: boolean;
+    summerPreparationLabel?: string | null;
+  } | null;
+  yearContext?: {
+    officialYearGroup: string | null;
+    classroomYearGroup: string | null;
+    classroomName: string | null;
+    incomingYearGroup: string | null;
+    targetLearningYearGroup: string;
+    isSummerTransition: boolean;
+    yearDisplayLabel: string;
+    summerPreparationLabel: string | null;
+    summerSupportingCopy: string | null;
   } | null;
   assignments?: StudentAssignment[];
   activeLanguageModules?: Array<{
@@ -1392,10 +1408,31 @@ export default function StudentDashboardPage() {
                   {childName && childName !== "Learner" ? `, ${childName.split(/\s+/)[0]}` : ""}
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  {schoolEnrolment.yearGroup ? `${schoolEnrolment.yearGroup}` : "School"}
-                  {schoolEnrolment.classroomName ? ` · ${schoolEnrolment.classroomName}` : ""}
+                  {schoolEnrolment.yearDisplayLabel
+                    ?? schoolEnrolment.officialYearGroup
+                    ?? schoolEnrolment.yearGroup
+                    ?? "School"}
                   {schoolDaySnapshot?.weekdayLabel ? ` · ${schoolDaySnapshot.weekdayLabel}` : ""}
                 </p>
+                {schoolEnrolment.isSummerTransition && schoolEnrolment.summerPreparationLabel ? (
+                  <div className="mt-2">
+                    <p className="text-sm font-semibold text-sky-800">
+                      {schoolEnrolment.summerPreparationLabel}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      Your summer learning will review important{" "}
+                      {schoolEnrolment.officialYearGroup ?? schoolEnrolment.yearGroup ?? "year"} knowledge
+                      and introduce {schoolEnrolment.incomingYearGroup} topics.
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Official year group stays {schoolEnrolment.officialYearGroup ?? schoolEnrolment.yearGroup} until your school applies academic-year promotion.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Official year group is managed by your school.
+                  </p>
+                )}
 
                 <div className="mt-5 rounded-2xl border border-sky-200/80 bg-white/80 p-4">
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-sky-700">

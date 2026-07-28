@@ -363,16 +363,36 @@ export function SchoolStudentsRegistry({ schoolId }: { schoolId: string }) {
                   <th className="px-2 py-2">Class</th>
                   <th className="px-2 py-2">Parent email</th>
                   <th className="px-2 py-2">Joined</th>
+                  <th className="px-2 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {students.map((student) => (
+                {students.map((student) => {
+                  const detailHref = student.childId
+                    ? `/admin/students/${encodeURIComponent(student.childId)}`
+                    : null;
+                  const nameLabel = student.childName ?? "Unnamed student";
+                  return (
                   <tr key={student.id} className="border-t border-slate-800 text-slate-200">
                     <td className="px-2 py-2 font-semibold text-white">
-                      {student.childName ?? "Unnamed student"}
+                      {detailHref ? (
+                        <Link
+                          href={detailHref}
+                          className="text-sky-300 underline-offset-2 hover:text-sky-200 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+                        >
+                          {nameLabel}
+                        </Link>
+                      ) : (
+                        nameLabel
+                      )}
                       {student.childId ? (
                         <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                           {formatStudentId(student.childId)}
+                        </span>
+                      ) : null}
+                      {student.status === "archived" || student.status === "transferred" ? (
+                        <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-400/90">
+                          {student.status} — view still available
                         </span>
                       ) : null}
                     </td>
@@ -382,8 +402,21 @@ export function SchoolStudentsRegistry({ schoolId }: { schoolId: string }) {
                     <td className="px-2 py-2">{student.classroomName ?? (student.classroomId ? "Assigned" : "Unassigned")}</td>
                     <td className="px-2 py-2">{student.parentEmail ?? "-"}</td>
                     <td className="px-2 py-2">{shortDate(student.joinedAt ?? student.updatedAt)}</td>
+                    <td className="px-2 py-2">
+                      {detailHref ? (
+                        <Link
+                          href={detailHref}
+                          className="inline-flex rounded-lg border border-slate-600 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+                        >
+                          Manage
+                        </Link>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

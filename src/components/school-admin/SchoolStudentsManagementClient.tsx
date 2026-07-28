@@ -136,7 +136,14 @@ export default function SchoolStudentsManagementClient({ schoolId, schoolName }:
               <tbody className="divide-y divide-border">
                 {filtered.map((r) => (
                   <tr key={r.id} className="hover:bg-muted/20">
-                    <td className="px-4 py-3 font-medium">{r.child.name}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <Link
+                        href={`/school-admin/day-school/students/${r.id}`}
+                        className="text-primary underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        {r.child.name}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-foreground/70">{r.child.yearGroup ?? "—"}</td>
                     <td className="px-4 py-3 text-foreground/70">{r.classroom?.name ?? <span className="text-amber-700">No class</span>}</td>
                     <td className="px-4 py-3 capitalize text-foreground/70">{r.status}</td>
