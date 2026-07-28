@@ -115,6 +115,7 @@ export default function StorePage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load on mount; frozen behaviour, advisory only
     void loadRecords("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

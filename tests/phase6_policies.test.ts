@@ -32,6 +32,8 @@ const REQUIRED_LEGAL_SLUGS = [
   "data-protection",
   "data-retention",
   "account-suspension",
+  "communications-policy",
+  "security-incident-response",
 ] as const;
 
 const REQUIRED_PRODUCT_SLUGS = [
@@ -84,8 +86,8 @@ function allText(docId: string): string {
     .toLowerCase();
 }
 
-test("Phase 6 registry contains the full 46-document set", () => {
-  assert.equal(ALL_POLICY_DOCUMENTS.length, 46);
+test("Phase 6 registry contains the full launch document set", () => {
+  assert.equal(ALL_POLICY_DOCUMENTS.length, 48);
   for (const slug of [...REQUIRED_LEGAL_SLUGS, ...REQUIRED_PRODUCT_SLUGS, ...REQUIRED_STAFF_SLUGS]) {
     assert.ok(getPolicyBySlug(slug), `missing ${slug}`);
   }
@@ -139,7 +141,8 @@ test("Day School and Short Learning remain distinct", () => {
   const short = allText("short-learning-policy");
   assert.match(day, /parents do not book day school/);
   assert.match(day, /schooldaylesson|timetable/);
-  assert.match(short, /studentlearningbooking|parent-booked/);
+  assert.match(short, /parent-booked/);
+  assert.doesNotMatch(short, /studentlearningbooking/);
   assert.match(short, /16:00/);
   assert.match(short, /90 or 120/);
 });

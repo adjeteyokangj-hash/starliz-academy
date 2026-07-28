@@ -29,6 +29,7 @@ export default function AdminStoreItemPreview({ item, onClose }: Props) {
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset preview state when selected item changes; frozen behaviour, advisory only
     setVoiceMessage(null);
     setPlaying(false);
   }, [item?.id]);

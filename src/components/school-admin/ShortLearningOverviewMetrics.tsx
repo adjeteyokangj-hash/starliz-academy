@@ -1,13 +1,32 @@
 "use client";
 
+import CollapsibleCard from "@/components/school-admin/CollapsibleCard";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type BookingRow = {
   id: string;
+  bookingRef?: string;
   startsAt: string;
   endsAt: string;
   status: string;
+  studentName?: string | null;
+  subject?: string;
+  changeIndicator?: {
+    label: string;
+    summary: string;
+    requiresReview: boolean;
+  } | null;
+  lastChangedAt?: string | null;
+};
+
+type RecentChange = {
+  id: string;
+  summary: string;
+  actorLabel: string;
+  createdAt: string;
+  requiresReview: boolean;
 };
 
 type ShiftRow = {
@@ -42,8 +61,19 @@ function isActiveShift(shift: ShiftRow, now: Date): boolean {
   return shift.status === "on_shift" && end >= now;
 }
 
+function formatWhen(iso: string): string {
+  return new Date(iso).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function ShortLearningOverviewMetrics() {
   const [bookings, setBookings] = useState<BookingRow[]>([]);
+  const [recentChanges, setRecentChanges] = useState<RecentChange[]>([]);
+  const [changesRequiringReview, setChangesRequiringReview] = useState(0);
   const [shifts, setShifts] = useState<ShiftRow[]>([]);
   const [coverage, setCoverage] = useState<CoveragePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +104,8 @@ export default function ShortLearningOverviewMetrics() {
         }
 
         setBookings(Array.isArray(bookingsPayload.bookings) ? bookingsPayload.bookings : []);
+        setRecentChanges(Array.isArray(bookingsPayload.recentChanges) ? bookingsPayload.recentChanges : []);
+        setChangesRequiringReview(Number(bookingsPayload.changesRequiringReview ?? 0));
         setShifts(Array.isArray(shiftsPayload.shifts) ? shiftsPayload.shifts : []);
         setCoverage(coverageRes.ok ? (coveragePayload.coverage ?? null) : null);
 
@@ -145,14 +177,9 @@ export default function ShortLearningOverviewMetrics() {
     );
   }
 
-  const allEmpty =
-    metrics.todayBookings === 0 &&
-    metrics.upcomingBookings === 0 &&
-    metrics.activeShifts === 0;
-
   return (
     <div className="mt-6 space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <CollapsibleCard title="Short Learning summary" bodyClassName="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-2xl border border-border bg-card p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Today&apos;s bookings</p>
           <p className="mt-2 text-3xl font-bold text-foreground">{metrics.todayBookings}</p>
@@ -168,34 +195,53 @@ export default function ShortLearningOverviewMetrics() {
           <p className="mt-2 text-3xl font-bold text-foreground">{metrics.activeShifts}</p>
           <p className="mt-1 text-xs text-foreground/60">Published tutor support windows now</p>
         </div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Changes needing review</p>
+          <p className="mt-2 text-3xl font-bold text-amber-950">{changesRequiringReview}</p>
+          <p className="mt-1 text-xs text-amber-900/80">Parent late cancels or near-session changes (7 days)</p>
+        </div>
         <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4 sm:col-span-2 lg:col-span-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Coverage note</p>
           <p className="mt-2 text-sm leading-snug text-violet-950">{metrics.coverageNote}</p>
         </div>
-      </div>
+      </CollapsibleCard>
 
-      {allEmpty ? (
-        <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-5">
-          <p className="text-sm font-semibold text-foreground">No Short Learning activity yet</p>
-          <p className="mt-1 text-sm text-foreground/60">
-            When parents book after-hours sessions or you publish tutor shifts, counts will appear here.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href="/school-admin/short-learning/bookings"
-              className="rounded-xl border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/40"
-            >
-              View bookings
-            </Link>
-            <Link
-              href="/school-admin/short-learning/shifts"
-              className="rounded-xl border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/40"
-            >
-              Publish shifts
-            </Link>
+      <CollapsibleCard title="Recent booking changes" count={recentChanges.length} bodyClassName="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs text-foreground/50">Parent and staff updates from the last 7 days</p>
           </div>
+          <Link
+            href="/school-admin/short-learning/bookings"
+            className="text-xs font-semibold text-primary hover:underline"
+          >
+            View all bookings
+          </Link>
         </div>
-      ) : null}
+        {recentChanges.length === 0 ? (
+          <p className="mt-4 text-sm text-foreground/60">No booking changes recorded in the last 7 days.</p>
+        ) : (
+          <ul className="mt-4 divide-y divide-border">
+            {recentChanges.slice(0, 6).map((change) => (
+              <li key={change.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{change.summary}</p>
+                  <p className="text-xs text-foreground/50">{formatWhen(change.createdAt)}</p>
+                </div>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    change.requiresReview
+                      ? "border border-amber-300 bg-amber-50 text-amber-900"
+                      : "border border-sky-200 bg-sky-50 text-sky-900"
+                  }`}
+                >
+                  {change.actorLabel}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CollapsibleCard>
     </div>
   );
 }

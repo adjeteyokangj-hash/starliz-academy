@@ -316,7 +316,7 @@ test.describe("Phase 6 Release QA Foundation", () => {
     expect(resetPin.ok()).toBe(true);
   });
 
-  test("subscription lifecycle is validated with safe status mocks", async ({ page }) => {
+  test("subscription privilege escalation via PATCH is rejected", async ({ page }) => {
     await apiLogin(page.request, PARENT_EMAIL, PARENT_PASSWORD);
     await acceptConsent(page.request);
 
@@ -324,29 +324,20 @@ test.describe("Phase 6 Release QA Foundation", () => {
       data: { status: "active" },
       failOnStatusCode: false,
     });
-    expect(setActive.ok()).toBe(true);
+    expect(setActive.status()).toBe(403);
 
-    const setCancelled = await page.request.patch("/api/subscription", {
-      data: { status: "cancelled" },
+    const setPlan = await page.request.patch("/api/subscription", {
+      data: { pricingPlanId: "plan-attacker" },
       failOnStatusCode: false,
     });
-    expect(setCancelled.ok()).toBe(true);
+    expect(setPlan.status()).toBe(403);
 
-    const cancelledAccess = await page.request.get("/api/subscription/access?feature=learning", {
+    const cancel = await page.request.patch("/api/subscription", {
+      data: { action: "cancel_at_period_end" },
       failOnStatusCode: false,
     });
-    expect([200, 402]).toContain(cancelledAccess.status());
-
-    const setExpired = await page.request.patch("/api/subscription", {
-      data: { status: "expired" },
-      failOnStatusCode: false,
-    });
-    expect(setExpired.ok()).toBe(true);
-
-    const expiredAccess = await page.request.get("/api/subscription/access?feature=learning", {
-      failOnStatusCode: false,
-    });
-    expect(expiredAccess.status()).toBe(402);
+    // 200 when an active sub exists; 404/409 when none — never privilege-escalation success for status mocks
+    expect([200, 404, 409, 502, 503]).toContain(cancel.status());
   });
 
   test("teacher and school scoped access check when teacher creds are provided", async ({ page }) => {

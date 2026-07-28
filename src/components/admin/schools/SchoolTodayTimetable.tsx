@@ -15,10 +15,13 @@ import {
   sortPeriodsByTime,
   weekdayLabel,
 } from "@/lib/schools/school-day-period";
+import { findDaySchoolConflicts } from "@/lib/schools/day-school-conflicts";
 import { isPlayableDaytimeLessonType } from "@/lib/schools/start-daytime-period";
 
 type Props = {
   schoolId: string;
+  /** School Portal uses membership-scoped APIs and hides platform-admin-only links. */
+  portalMode?: "platform-admin" | "school-portal";
 };
 
 type EditableLesson = {
@@ -32,27 +35,173 @@ type EditableLesson = {
   lessonId: string | null;
 };
 
-function reviewBadge(status: string | null | undefined, hasPacks: boolean): {
+function reviewBadge(
+  status: string | null | undefined,
+  hasPacks: boolean,
+  light = false,
+): {
   label: string;
   className: string;
 } {
   if (!hasPacks) {
-    return { label: "Draft", className: "border-sky-500/40 bg-sky-500/15 text-sky-100" };
+    return {
+      label: "Draft",
+      className: light
+        ? "border-sky-600/35 bg-sky-500/15 text-sky-900"
+        : "border-sky-500/40 bg-sky-500/15 text-sky-100",
+    };
   }
   if (status === "approved") {
-    return { label: "Approved", className: "border-emerald-500/40 bg-emerald-500/15 text-emerald-100" };
+    return {
+      label: "Approved",
+      className: light
+        ? "border-emerald-600/35 bg-emerald-500/15 text-emerald-900"
+        : "border-emerald-500/40 bg-emerald-500/15 text-emerald-100",
+    };
   }
   if (status === "machine_failed") {
-    return { label: "Machine failed", className: "border-rose-500/40 bg-rose-500/15 text-rose-100" };
+    return {
+      label: "Machine failed",
+      className: light
+        ? "border-rose-600/35 bg-rose-500/15 text-rose-900"
+        : "border-rose-500/40 bg-rose-500/15 text-rose-100",
+    };
   }
   if (status === "awaiting_review") {
-    return { label: "Awaiting review", className: "border-amber-500/40 bg-amber-500/15 text-amber-100" };
+    return {
+      label: "Awaiting review",
+      className: light
+        ? "border-amber-600/40 bg-amber-500/15 text-amber-950"
+        : "border-amber-500/40 bg-amber-500/15 text-amber-100",
+    };
   }
-  return { label: "Draft", className: "border-sky-500/40 bg-sky-500/15 text-sky-100" };
+  return {
+    label: "Draft",
+    className: light
+      ? "border-sky-600/35 bg-sky-500/15 text-sky-900"
+      : "border-sky-500/40 bg-sky-500/15 text-sky-100",
+  };
 }
 
-export default function SchoolTodayTimetable({ schoolId }: Props) {
-  const { school, loading, error, refresh } = useSchoolDashboardRecord(schoolId);
+export default function SchoolTodayTimetable({ schoolId, portalMode = "platform-admin" }: Props) {
+  const isPortal = portalMode === "school-portal";
+  const dataMode = isPortal ? "school-portal" : "platform-admin";
+  const actionsEndpoint = isPortal
+    ? "/api/school-admin/day-school/actions"
+    : "/api/admin/schools";
+  /** School Portal is light (`bg-card`); platform admin sits under `[data-admin-theme]` dark surfaces. */
+  const ui = isPortal
+    ? {
+        pulseSection: "animate-pulse rounded-xl border border-border bg-card p-5",
+        pulseBar: "h-5 w-48 rounded bg-muted",
+        pulseBlock: "mt-4 h-40 rounded bg-muted",
+        errorSection: "rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900",
+        section: "rounded-2xl border border-border bg-card p-5",
+        eyebrow: "text-[11px] uppercase tracking-[0.12em] text-primary",
+        heading: "mt-1 text-xl font-black text-foreground",
+        subtitle: "mt-1 text-xs text-foreground/60",
+        dayActive: "border-sky-500/50 bg-sky-100 text-sky-950",
+        dayIdle: "border-border bg-background text-foreground/70 hover:border-border hover:bg-muted/50 hover:text-foreground",
+        fieldLabel: "min-w-[220px] flex-1 text-xs text-foreground/70",
+        fieldControl: "mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground",
+        linkBtn: "rounded-lg border border-border bg-muted px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/80",
+        generateBanner: "mt-4 scroll-mt-24 rounded-xl border border-violet-300 bg-violet-50 px-4 py-3",
+        generateTitle: "text-sm font-semibold text-violet-950",
+        generateBody: "mt-1 text-xs text-violet-900/80",
+        forceBtn: "rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-semibold text-violet-900 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60",
+        dayBanner: "mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3",
+        dayTitle: "text-sm font-semibold text-emerald-950",
+        dayBody: "mt-1 text-xs text-emerald-900/80",
+        dayBlockers: "mt-1 text-[11px] text-amber-900",
+        dayReady: "mt-1 text-[11px] text-emerald-900/80",
+        statCard: "rounded-xl border border-border bg-background p-3",
+        statLabel: "text-[11px] uppercase tracking-[0.1em] text-foreground/55",
+        statValue: "mt-1 text-sm font-semibold text-foreground",
+        actionError: "rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900",
+        actionSuccess: "rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900",
+        reviewSection: "overflow-hidden rounded-xl border border-violet-300 bg-violet-50",
+        reviewHeader: "border-b border-violet-200 px-4 py-3",
+        reviewEyebrow: "text-xs font-semibold uppercase tracking-[0.1em] text-violet-800",
+        reviewHint: "mt-1 text-xs text-violet-900/75",
+        reviewDivider: "divide-y divide-violet-200",
+        reviewTitle: "font-semibold text-foreground",
+        reviewTime: "font-mono text-xs text-violet-800",
+        reviewMeta: "mt-1 text-xs text-violet-900/75",
+        typeChip: "rounded border border-violet-400/50 bg-violet-100 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-violet-950",
+        openLessonBtn: "shrink-0 rounded-md border border-violet-400/50 bg-violet-100 px-2.5 py-1.5 text-[11px] font-semibold text-violet-950 hover:bg-violet-200",
+        warnSection: "rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-950",
+        warnBody: "mt-1 text-amber-900/85",
+        emptySection: "rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-950",
+        boardSection: "overflow-hidden rounded-xl border border-border bg-card",
+        boardHeader: "border-b border-border px-4 py-3",
+        boardEyebrow: "text-xs font-semibold uppercase tracking-[0.1em] text-foreground/55",
+        boardDivider: "divide-y divide-border",
+        rowNow: "bg-sky-500/10",
+        timeCell: "font-mono text-xs text-foreground/70",
+        nowChip: "ml-2 rounded border border-sky-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-sky-900",
+        periodTitle: "font-semibold text-foreground",
+        periodMeta: "text-xs text-foreground/60",
+        openPeriodLink: "mt-1 inline-flex text-[11px] font-semibold text-violet-700 hover:text-violet-900",
+        teacherCell: "text-xs text-foreground/80",
+        roomCell: "text-xs text-foreground/60",
+        editBtn: "rounded-md border border-border bg-muted px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-muted/80",
+      }
+    : {
+        pulseSection: "animate-pulse rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-5",
+        pulseBar: "h-5 w-48 rounded bg-slate-800",
+        pulseBlock: "mt-4 h-40 rounded bg-slate-800",
+        errorSection: "rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-100",
+        section: "rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-5",
+        eyebrow: "text-[11px] uppercase tracking-[0.12em] text-[var(--admin-primary-hover)]",
+        heading: "mt-1 text-xl font-black text-white",
+        subtitle: "mt-1 text-xs text-slate-400",
+        dayActive: "border-sky-400/60 bg-sky-500/20 text-sky-50",
+        dayIdle: "border-slate-600 bg-slate-900 text-slate-300 hover:border-slate-500 hover:text-white",
+        fieldLabel: "min-w-[220px] flex-1 text-xs text-slate-300",
+        fieldControl: "mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white",
+        linkBtn: "rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-500 hover:text-white",
+        generateBanner: "mt-4 scroll-mt-24 rounded-xl border border-violet-400/50 bg-violet-500/15 px-4 py-3",
+        generateTitle: "text-sm font-semibold text-violet-50",
+        generateBody: "mt-1 text-xs text-violet-100/85",
+        forceBtn: "rounded-lg border border-violet-400/40 bg-violet-950/60 px-3 py-2 text-xs font-semibold text-violet-100 transition hover:bg-violet-900/80 disabled:cursor-not-allowed disabled:opacity-60",
+        dayBanner: "mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3",
+        dayTitle: "text-sm font-semibold text-emerald-50",
+        dayBody: "mt-1 text-xs text-emerald-100/85",
+        dayBlockers: "mt-1 text-[11px] text-amber-100/90",
+        dayReady: "mt-1 text-[11px] text-emerald-100/80",
+        statCard: "rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-3",
+        statLabel: "text-[11px] uppercase tracking-[0.1em] text-slate-400",
+        statValue: "mt-1 text-sm font-semibold text-white",
+        actionError: "rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100",
+        actionSuccess: "rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100",
+        reviewSection: "overflow-hidden rounded-xl border border-violet-500/30 bg-violet-500/10",
+        reviewHeader: "border-b border-violet-500/20 px-4 py-3",
+        reviewEyebrow: "text-xs font-semibold uppercase tracking-[0.1em] text-violet-200",
+        reviewHint: "mt-1 text-xs text-violet-100/80",
+        reviewDivider: "divide-y divide-violet-500/20",
+        reviewTitle: "font-semibold text-white",
+        reviewTime: "font-mono text-xs text-violet-200/90",
+        reviewMeta: "mt-1 text-xs text-violet-100/80",
+        typeChip: "rounded border border-violet-400/40 bg-violet-500/20 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-violet-50",
+        openLessonBtn: "shrink-0 rounded-md border border-violet-400/40 bg-violet-500/20 px-2.5 py-1.5 text-[11px] font-semibold text-violet-50 hover:bg-violet-500/30",
+        warnSection: "rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-50",
+        warnBody: "mt-1 text-amber-100/90",
+        emptySection: "rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs text-amber-50",
+        boardSection: "overflow-hidden rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)]",
+        boardHeader: "border-b border-slate-800 px-4 py-3",
+        boardEyebrow: "text-xs font-semibold uppercase tracking-[0.1em] text-slate-400",
+        boardDivider: "divide-y divide-slate-800",
+        rowNow: "bg-sky-500/10",
+        timeCell: "font-mono text-xs text-slate-300",
+        nowChip: "ml-2 rounded border border-sky-400/50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-sky-200",
+        periodTitle: "font-semibold text-white",
+        periodMeta: "text-xs text-slate-400",
+        openPeriodLink: "mt-1 inline-flex text-[11px] font-semibold text-violet-300 hover:text-violet-100",
+        teacherCell: "text-xs text-slate-300",
+        roomCell: "text-xs text-slate-400",
+        editBtn: "rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:border-slate-500",
+      };
+  const { school, loading, error, refresh } = useSchoolDashboardRecord(schoolId, dataMode);
   const [bootstrapping, setBootstrapping] = useState(false);
   const [generatingContent, setGeneratingContent] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -88,6 +237,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
     const year4 = school.classrooms.find((row) => row.status === "active" && /year\s*4/i.test(`${row.name ?? ""} ${row.yearGroup ?? ""}`));
     const withStudents = school.classrooms.find((row) => row.status === "active" && (row.studentsCount ?? 0) > 0);
     const preferred = year4 ?? withStudents ?? school.classrooms.find((row) => row.status === "active");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- default classroom selection derived from data; frozen behaviour, advisory only
     if (preferred?.id) setSelectedClassroomId(preferred.id);
   }, [school, selectedClassroomId]);
 
@@ -151,6 +301,25 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
     };
   }, [school?.dayLessons, selectedClassroomId, selectedDay]);
 
+  const dayConflicts = useMemo(() => {
+    const rows = (school?.dayLessons ?? [])
+      .filter((row) => row.dayOfWeek === selectedDay && row.status !== "cancelled")
+      .map((row) => ({
+        id: row.id,
+        dayOfWeek: row.dayOfWeek,
+        startsAt: row.startsAt,
+        endsAt: row.endsAt,
+        teacherId: row.teacherId,
+        classroomId: row.classroomId,
+        room: row.room,
+        status: row.status,
+        lessonType: row.lessonType,
+      }));
+    return findDaySchoolConflicts(rows);
+  }, [school?.dayLessons, selectedDay]);
+  const blockingConflictCount = dayConflicts.filter((c) => c.severity === "blocking").length;
+  const roomWarningCount = dayConflicts.filter((c) => c.kind === "room").length;
+
   const reviewingLesson = useMemo((): LessonReviewModalLesson | null => {
     if (!reviewingId) return null;
     const row = board.lessons.find((lesson) => lesson.id === reviewingId);
@@ -177,7 +346,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
     setBootstrapping(true);
     setActionError(null);
     setActionSuccess(null);
-    const result = await postSchoolAction("bootstrapDaytimeSchool", { schoolId });
+    const result = await postSchoolAction("bootstrapDaytimeSchool", { schoolId }, { endpoint: actionsEndpoint });
     setBootstrapping(false);
     if (!result.ok) {
       setActionError(result.error);
@@ -202,7 +371,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
       classroomId: selectedClassroomId === "all" ? null : selectedClassroomId,
       dayOfWeek: selectedDay,
       force,
-    });
+    }, { endpoint: actionsEndpoint });
     setGeneratingContent(false);
     if (!result.ok) {
       setActionError(result.error);
@@ -237,7 +406,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
     setReviewBusy(true);
     setActionError(null);
     setActionSuccess(null);
-    const result = await postSchoolAction("approveDaytimeLesson", { schoolId, dayLessonId });
+    const result = await postSchoolAction("approveDaytimeLesson", { schoolId, dayLessonId }, { endpoint: actionsEndpoint });
     setReviewBusy(false);
     if (!result.ok) {
       setActionError(result.error);
@@ -261,7 +430,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
       dayLessonId,
       ...(regenerateReason ? { regenerateReason } : {}),
       ...(options?.allowWeeklyReview ? { allowWeeklyReview: true, reviewReason: regenerateReason ?? "intentional_review" } : {}),
-    });
+    }, { endpoint: actionsEndpoint });
     setReviewBusy(false);
     if (!result.ok) {
       setActionError(result.error);
@@ -283,7 +452,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
       schoolId,
       classroomId: selectedClassroomId,
       dayOfWeek: selectedDay,
-    });
+    }, { endpoint: actionsEndpoint });
     setReviewBusy(false);
     if (!result.ok) {
       const blockerText = result.blockers?.length
@@ -321,29 +490,38 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
       subject: String(form.get("subject") ?? "").trim(),
       title: String(form.get("title") ?? "").trim(),
       lessonId: editing.lessonId,
-    });
+    }, { endpoint: actionsEndpoint });
     setSavingEdit(false);
     if (!result.ok) {
       setActionError(result.error);
       return;
     }
-    setActionSuccess("Period updated.");
+    const warningLabels = Array.isArray(result.data.warnings)
+      ? (result.data.warnings as Array<{ label?: string }>)
+          .map((w) => (typeof w.label === "string" ? w.label : ""))
+          .filter(Boolean)
+      : [];
+    setActionSuccess(
+      warningLabels.length
+        ? `Period updated. Room warning: ${warningLabels[0]}`
+        : "Period updated.",
+    );
     setEditing(null);
     refresh();
   }
 
   if (loading) {
     return (
-      <section className="animate-pulse rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-5">
-        <div className="h-5 w-48 rounded bg-slate-800" />
-        <div className="mt-4 h-40 rounded bg-slate-800" />
+      <section className={ui.pulseSection}>
+        <div className={ui.pulseBar} />
+        <div className={ui.pulseBlock} />
       </section>
     );
   }
 
   if (error || !school) {
     return (
-      <section className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-100">
+      <section className={ui.errorSection}>
         {error ?? "Unable to load school day timetable."}
       </section>
     );
@@ -355,12 +533,12 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-5">
+      <section className={ui.section}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--admin-primary-hover)]">School day</p>
-            <h2 className="mt-1 text-xl font-black text-white">{weekdayLabel(selectedDay)} timetable</h2>
-            <p className="mt-1 text-xs text-slate-400">
+            <p className={ui.eyebrow}>School day</p>
+            <h2 className={ui.heading}>{weekdayLabel(selectedDay)} timetable</h2>
+            <p className={ui.subtitle}>
               Edit one class at a time. Changes save to that class&apos;s day periods.
             </p>
           </div>
@@ -371,9 +549,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
                 type="button"
                 onClick={() => setSelectedDay(day)}
                 className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
-                  selectedDay === day
-                    ? "border-sky-400/60 bg-sky-500/20 text-sky-50"
-                    : "border-slate-600 bg-slate-900 text-slate-300 hover:border-slate-500 hover:text-white"
+                  selectedDay === day ? ui.dayActive : ui.dayIdle
                 }`}
               >
                 {weekdayLabel(day).slice(0, 3)}
@@ -382,13 +558,30 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
           </div>
         </div>
 
+        {(blockingConflictCount > 0 || roomWarningCount > 0) ? (
+          <div className="mt-3 space-y-2">
+            {blockingConflictCount > 0 ? (
+              <p className={ui.errorSection}>
+                {blockingConflictCount} teacher/class overlap{blockingConflictCount === 1 ? "" : "s"} on this day — edits that keep these clashes are blocked.
+              </p>
+            ) : null}
+            {roomWarningCount > 0 ? (
+              <p className={isPortal
+                ? "rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+                : "rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-100"}>
+                {roomWarningCount} room-string overlap warning{roomWarningCount === 1 ? "" : "s"} (informational only).
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="mt-4 flex flex-wrap items-end gap-3">
-          <label className="min-w-[220px] flex-1 text-xs text-slate-300">
+          <label className={ui.fieldLabel}>
             Class
             <select
               value={selectedClassroomId}
               onChange={(event) => setSelectedClassroomId(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white"
+              className={ui.fieldControl}
             >
               <option value="all">All classes (long list)</option>
               {classrooms.map((classroom) => (
@@ -401,7 +594,11 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
             disabled={bootstrapping}
             onClick={() => void handleBootstrap()}
             title="Builds Mon–Fri periods with different lessons each day, and creates a Lesson for each teaching slot."
-            className="rounded-lg border border-emerald-400/50 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-500/30 disabled:opacity-60"
+            className={
+              isPortal
+                ? "rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-950 transition hover:bg-emerald-500/25 disabled:opacity-60"
+                : "rounded-lg border border-emerald-400/50 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-500/30 disabled:opacity-60"
+            }
           >
             {bootstrapping ? "Building varied week…" : "Build week timetable"}
           </button>
@@ -413,19 +610,28 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
           >
             {generatingContent ? "Generating lessons…" : "Generate lesson content"}
           </button>
-          <Link
-            href={`/admin/schools/${schoolId}/assignments/new`}
-            className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-slate-500 hover:text-white"
-          >
-            Add one lesson
-          </Link>
+          {portalMode === "platform-admin" ? (
+            <Link
+              href={`/admin/schools/${schoolId}/assignments/new`}
+              className={ui.linkBtn}
+            >
+              Add one lesson
+            </Link>
+          ) : (
+            <Link
+              href="/school-admin/day-school/lessons"
+              className={ui.linkBtn}
+            >
+              School lessons
+            </Link>
+          )}
         </div>
 
-        <div id="generate-lesson-content" className="mt-4 scroll-mt-24 rounded-xl border border-violet-400/50 bg-violet-500/15 px-4 py-3">
+        <div id="generate-lesson-content" className={ui.generateBanner}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-violet-50">Create class lessons</p>
-              <p className="mt-1 text-xs text-violet-100/85">
+              <p className={ui.generateTitle}>Create class lessons</p>
+              <p className={ui.generateBody}>
                 Builds staged packs for this day/class, runs Lesson Health automatically, then open a period to preview and approve.
               </p>
             </div>
@@ -443,7 +649,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
                 disabled={generatingContent || empty}
                 onClick={() => void handleGenerateContent(true)}
                 title="Replace existing linked packs and re-run Lesson Health."
-                className="rounded-lg border border-violet-400/40 bg-violet-950/60 px-3 py-2 text-xs font-semibold text-violet-100 transition hover:bg-violet-900/80 disabled:cursor-not-allowed disabled:opacity-60"
+                className={ui.forceBtn}
               >
                 Force regenerate
               </button>
@@ -452,24 +658,24 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
         </div>
 
         {!empty && selectedClassroomId !== "all" && board.teachable.length > 0 ? (
-          <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+          <div className={ui.dayBanner}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-emerald-50">
+                <p className={ui.dayTitle}>
                   Day approval · {weekdayLabel(selectedDay)} · {selectedClassLabel}
                 </p>
-                <p className="mt-1 text-xs text-emerald-100/85">
+                <p className={ui.dayBody}>
                   {board.approvedCount} of {board.teachable.length} lessons approved
                   {board.awaitingCount ? ` · ${board.awaitingCount} awaiting review` : ""}
                   {board.failedCount ? ` · ${board.failedCount} machine failed` : ""}
                 </p>
                 {board.dayBlockers.length ? (
-                  <p className="mt-1 text-[11px] text-amber-100/90">
+                  <p className={ui.dayBlockers}>
                     Needs attention: {board.dayBlockers.slice(0, 3).join(" · ")}
                     {board.dayBlockers.length > 3 ? "…" : ""}
                   </p>
                 ) : board.awaitingCount > 0 ? (
-                  <p className="mt-1 text-[11px] text-emerald-100/80">
+                  <p className={ui.dayReady}>
                     {board.awaitingCount} lesson(s) ready to approve.
                   </p>
                 ) : null}
@@ -491,9 +697,9 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
         ) : null}
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-3">
-            <p className="text-[11px] uppercase tracking-[0.1em] text-slate-400">Now</p>
-            <p className="mt-1 text-sm font-semibold text-white">
+          <article className={ui.statCard}>
+            <p className={ui.statLabel}>Now</p>
+            <p className={ui.statValue}>
               {current
                 ? `${current.startsAt}–${current.endsAt} · ${current.title}`
                 : board.clock.phase === "before_school"
@@ -503,41 +709,42 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
                     : "Outside lesson periods"}
             </p>
           </article>
-          <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-3">
-            <p className="text-[11px] uppercase tracking-[0.1em] text-slate-400">Next</p>
-            <p className="mt-1 text-sm font-semibold text-white">
+          <article className={ui.statCard}>
+            <p className={ui.statLabel}>Next</p>
+            <p className={ui.statValue}>
               {board.clock.next
                 ? `${board.lessons.find((row) => row.id === board.clock.next?.id)?.title ?? "Next period"}`
                 : "—"}
             </p>
           </article>
-          <article className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-3">
-            <p className="text-[11px] uppercase tracking-[0.1em] text-slate-400">Viewing</p>
-            <p className="mt-1 text-sm font-semibold text-white">{selectedClassLabel}</p>
+          <article className={ui.statCard}>
+            <p className={ui.statLabel}>Viewing</p>
+            <p className={ui.statValue}>{selectedClassLabel}</p>
           </article>
         </div>
       </section>
 
-      {actionError ? <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{actionError}</p> : null}
-      {actionSuccess ? <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">{actionSuccess}</p> : null}
+      {actionError ? <p className={ui.actionError}>{actionError}</p> : null}
+      {actionSuccess ? <p className={ui.actionSuccess}>{actionSuccess}</p> : null}
 
       {!empty && board.playableLessons.length > 0 ? (
-        <section className="overflow-hidden rounded-xl border border-violet-500/30 bg-violet-500/10">
-          <div className="border-b border-violet-500/20 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-violet-200">
+        <section className={ui.reviewSection}>
+          <div className={ui.reviewHeader}>
+            <p className={ui.reviewEyebrow}>
               Lesson review centre · {board.playableLessons.length}
             </p>
-            <p className="mt-1 text-xs text-violet-100/80">
+            <p className={ui.reviewHint}>
               Open a lesson to preview stages, check Lesson Health, and approve for students.
             </p>
           </div>
-          <ul className="divide-y divide-violet-500/20">
+          <ul className={ui.reviewDivider}>
             {board.playableLessons.map((lesson) => {
               const content = lesson.playableContent;
               const session = lesson.playableSession;
               const badge = reviewBadge(
                 lesson.lessonReview?.reviewStatus,
                 Boolean(session?.stages.length || content),
+                isPortal,
               );
               const stageSummary = session
                 ? session.stages
@@ -548,15 +755,15 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
               return (
                 <li key={`${lesson.id}-${content?.id ?? session?.stages[0]?.id ?? "pack"}`} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm">
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-white">
-                      <span className="font-mono text-xs text-violet-200/90">{lesson.startsAt}–{lesson.endsAt}</span>
+                    <p className={ui.reviewTitle}>
+                      <span className={ui.reviewTime}>{lesson.startsAt}–{lesson.endsAt}</span>
                       <span className="ml-2">{lesson.title}</span>
                       <span className={`ml-2 inline-flex rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badge.className}`}>
                         {badge.label}
                       </span>
                     </p>
-                    <p className="mt-1 text-xs text-violet-100/80">
-                      <span className="rounded border border-violet-400/40 bg-violet-500/20 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-violet-50">
+                    <p className={ui.reviewMeta}>
+                      <span className={ui.typeChip}>
                         {typeLabel}
                       </span>
                       {session ? (
@@ -574,7 +781,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
                   <button
                     type="button"
                     onClick={() => setReviewingId(lesson.id)}
-                    className="shrink-0 rounded-md border border-violet-400/40 bg-violet-500/20 px-2.5 py-1.5 text-[11px] font-semibold text-violet-50 hover:bg-violet-500/30"
+                    className={ui.openLessonBtn}
                   >
                     Open lesson
                   </button>
@@ -586,9 +793,9 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
       ) : null}
 
       {!empty && board.playableLessons.length === 0 ? (
-        <section className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-50">
+        <section className={ui.warnSection}>
           <p className="font-semibold">No class lessons generated for this view yet</p>
-          <p className="mt-1 text-amber-100/90">
+          <p className={ui.warnBody}>
             Use <span className="font-semibold">Generate lesson content</span> to create staged packs, then open each period to preview and approve.
           </p>
           <button
@@ -603,40 +810,41 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
       ) : null}
 
       {empty ? (
-        <section className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs text-amber-50">
+        <section className={ui.emptySection}>
           <p className="font-semibold">No periods for this class on {weekdayLabel(selectedDay)}</p>
-          <p className="mt-1 text-amber-100/90">
+          <p className={ui.warnBody}>
             Use <span className="font-semibold">Build week timetable</span> to create Mon–Fri periods and matching Lesson records for each teaching slot.
           </p>
         </section>
       ) : (
-        <section className="overflow-hidden rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)]">
-          <div className="border-b border-slate-800 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-400">
+        <section className={ui.boardSection}>
+          <div className={ui.boardHeader}>
+            <p className={ui.boardEyebrow}>
               Period board · {board.lessons.length} periods
             </p>
           </div>
-          <ul className="divide-y divide-slate-800">
+          <ul className={ui.boardDivider}>
             {board.lessons.map((lesson) => {
               const state = resolvePeriodState(lesson.startsAt, lesson.endsAt, board.now);
               const playable = isPlayableDaytimeLessonType(lesson.lessonType);
               const badge = reviewBadge(
                 lesson.lessonReview?.reviewStatus,
                 Boolean(lesson.playableSession?.stages.length || lesson.playableContent),
+                isPortal,
               );
               return (
                 <li
                   key={lesson.id}
                   className={`grid gap-2 px-4 py-3 text-sm md:grid-cols-[7rem_1fr_10rem_7rem_8rem] md:items-center ${
-                    state === "now" ? "bg-sky-500/10" : state === "past" ? "opacity-70" : ""
+                    state === "now" ? ui.rowNow : state === "past" ? "opacity-70" : ""
                   }`}
                 >
-                  <div className="font-mono text-xs text-slate-300">
+                  <div className={ui.timeCell}>
                     {lesson.startsAt}–{lesson.endsAt}
-                    {state === "now" ? <span className="ml-2 rounded border border-sky-400/50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-sky-200">Now</span> : null}
+                    {state === "now" ? <span className={ui.nowChip}>Now</span> : null}
                   </div>
                   <div>
-                    <p className="font-semibold text-white">
+                    <p className={ui.periodTitle}>
                       {lesson.title}
                       {playable ? (
                         <span className={`ml-2 inline-flex rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badge.className}`}>
@@ -644,7 +852,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
                         </span>
                       ) : null}
                     </p>
-                    <p className="text-xs text-slate-400">
+                    <p className={ui.periodMeta}>
                       {lesson.subject}
                       {lesson.skillFocus ? ` · ${lesson.skillFocus}` : ""}
                       {lesson.classroomName ? ` · ${lesson.classroomName}` : ""}
@@ -662,14 +870,14 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
                       <button
                         type="button"
                         onClick={() => setReviewingId(lesson.id)}
-                        className="mt-1 inline-flex text-[11px] font-semibold text-violet-300 hover:text-violet-100"
+                        className={ui.openPeriodLink}
                       >
                         Open lesson →
                       </button>
                     ) : null}
                   </div>
-                  <p className="text-xs text-slate-300">{lesson.teacherName ?? "Unassigned tutor"}</p>
-                  <p className="text-xs text-slate-400">{lesson.room ?? "—"}</p>
+                  <p className={ui.teacherCell}>{lesson.teacherName ?? "Unassigned tutor"}</p>
+                  <p className={ui.roomCell}>{lesson.room ?? "—"}</p>
                   <button
                     type="button"
                     onClick={() => setEditing({
@@ -682,7 +890,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
                       endsAt: lesson.endsAt,
                       lessonId: lesson.lessonId,
                     })}
-                    className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:border-slate-500"
+                    className={ui.editBtn}
                   >
                     Edit
                   </button>
@@ -765,6 +973,7 @@ export default function SchoolTodayTimetable({ schoolId }: Props) {
         <LessonReviewModal
           lesson={reviewingLesson}
           busy={reviewBusy}
+          hideContentLibrary={portalMode === "school-portal"}
           onClose={() => {
             if (!reviewBusy) setReviewingId(null);
           }}

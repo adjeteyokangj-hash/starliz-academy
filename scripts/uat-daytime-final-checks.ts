@@ -140,8 +140,8 @@ async function main() {
 
   const adminJar: CookieJar = new Map();
   const adminLogin = await api(adminJar, "POST", "/api/auth/login", {
-    email: process.env.UAT_ADMIN_EMAIL || "ops-owner@starliz.dev",
-    password: process.env.UAT_ADMIN_PASSWORD || "OpsAdmin#2026",
+    email: process.env.UAT_ADMIN_EMAIL || "platform-admin@starliz.dev",
+    password: process.env.UAT_ADMIN_PASSWORD || "PlatformAdmin#2026",
   }, 30_000);
   if (!adminLogin.ok) throw new Error("Admin login failed");
 

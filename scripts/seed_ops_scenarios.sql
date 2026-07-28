@@ -2,7 +2,7 @@ PRAGMA foreign_keys = ON;
 
 -- Users
 INSERT INTO User (id, email, passwordHash, name, role, createdAt, updatedAt)
-VALUES ('ops-owner-user', 'ops-owner@starliz.dev', '$2b$12$tsDvr0Ru1qae/MKuDx41luefo9aTDRPAq3afOHWnWtsA2VvtemJNS', 'Ops Owner', 'admin', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+VALUES ('platform-admin-user', 'platform-admin@starliz.dev', '$2b$12$tsDvr0Ru1qae/MKuDx41luefo9aTDRPAq3afOHWnWtsA2VvtemJNS', 'Platform Admin', 'admin', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT(email) DO UPDATE SET
   name = excluded.name,
   role = excluded.role,
@@ -39,7 +39,7 @@ ON CONFLICT(email) DO UPDATE SET name = excluded.name, role = excluded.role, upd
 
 -- Schools
 INSERT INTO School (id, name, slug, status, type, contactEmail, notes, ownerUserId, createdAt, updatedAt)
-VALUES ('ops-school-active', 'Ops Active Academy', 'ops-active-academy', 'active', 'school', 'active@starliz.dev', 'Ops scenario fixture', 'ops-owner-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+VALUES ('ops-school-active', 'Ops Active Academy', 'ops-active-academy', 'active', 'school', 'active@starliz.dev', 'Ops scenario fixture', 'platform-admin-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT(slug) DO UPDATE SET
   name = excluded.name,
   status = excluded.status,
@@ -49,7 +49,7 @@ ON CONFLICT(slug) DO UPDATE SET
   updatedAt = CURRENT_TIMESTAMP;
 
 INSERT INTO School (id, name, slug, status, type, contactEmail, notes, ownerUserId, createdAt, updatedAt)
-VALUES ('ops-school-suspended', 'Ops Suspended Academy', 'ops-suspended-academy', 'suspended', 'school', 'suspended@starliz.dev', 'Ops scenario fixture', 'ops-owner-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+VALUES ('ops-school-suspended', 'Ops Suspended Academy', 'ops-suspended-academy', 'suspended', 'school', 'suspended@starliz.dev', 'Ops scenario fixture', 'platform-admin-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT(slug) DO UPDATE SET
   name = excluded.name,
   status = excluded.status,
@@ -59,7 +59,7 @@ ON CONFLICT(slug) DO UPDATE SET
   updatedAt = CURRENT_TIMESTAMP;
 
 INSERT INTO School (id, name, slug, status, type, contactEmail, notes, ownerUserId, createdAt, updatedAt)
-VALUES ('ops-school-no-teacher', 'Ops No Teacher Academy', 'ops-no-teacher-academy', 'active', 'school', 'noteacher@starliz.dev', 'Ops scenario fixture', 'ops-owner-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+VALUES ('ops-school-no-teacher', 'Ops No Teacher Academy', 'ops-no-teacher-academy', 'active', 'school', 'noteacher@starliz.dev', 'Ops scenario fixture', 'platform-admin-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT(slug) DO UPDATE SET
   name = excluded.name,
   status = excluded.status,
@@ -69,7 +69,7 @@ ON CONFLICT(slug) DO UPDATE SET
   updatedAt = CURRENT_TIMESTAMP;
 
 INSERT INTO School (id, name, slug, status, type, contactEmail, notes, ownerUserId, createdAt, updatedAt)
-VALUES ('ops-school-capacity', 'Ops Capacity Risk Academy', 'ops-capacity-risk-academy', 'active', 'school', 'capacity@starliz.dev', 'Ops scenario fixture', 'ops-owner-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+VALUES ('ops-school-capacity', 'Ops Capacity Risk Academy', 'ops-capacity-risk-academy', 'active', 'school', 'capacity@starliz.dev', 'Ops scenario fixture', 'platform-admin-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT(slug) DO UPDATE SET
   name = excluded.name,
   status = excluded.status,
@@ -79,7 +79,7 @@ ON CONFLICT(slug) DO UPDATE SET
   updatedAt = CURRENT_TIMESTAMP;
 
 INSERT INTO School (id, name, slug, status, type, contactEmail, notes, ownerUserId, createdAt, updatedAt)
-VALUES ('ops-school-safeguarding', 'Ops Safeguarding Academy', 'ops-safeguarding-academy', 'active', 'school', 'safeguarding@starliz.dev', 'Ops scenario fixture', 'ops-owner-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+VALUES ('ops-school-safeguarding', 'Ops Safeguarding Academy', 'ops-safeguarding-academy', 'active', 'school', 'safeguarding@starliz.dev', 'Ops scenario fixture', 'platform-admin-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT(slug) DO UPDATE SET
   name = excluded.name,
   status = excluded.status,
@@ -251,7 +251,7 @@ INSERT INTO SafeguardingIncident (
 VALUES (
   'ops-safeguarding-incident-1',
   'ops-school-safeguarding',
-  'ops-owner-user',
+  'platform-admin-user',
   'tier_2',
   'behaviour',
   'high',
@@ -263,7 +263,7 @@ VALUES (
 )
 ON CONFLICT(id) DO UPDATE SET
   schoolId = 'ops-school-safeguarding',
-  reportedByUserId = 'ops-owner-user',
+  reportedByUserId = 'platform-admin-user',
   escalationLevel = 'tier_2',
   category = 'behaviour',
   severity = 'high',

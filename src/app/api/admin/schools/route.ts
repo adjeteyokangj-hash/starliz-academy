@@ -427,7 +427,7 @@ export async function POST(request: Request) {
     let bootstrapResult: Record<string, unknown> | null = null;
     let ensureYearClassesResult: Record<string, unknown> | null = null;
     let assignLessonResult: { dayLessonId: string; lessonId: string } | null = null;
-    let updateDayLessonResult: { dayLessonId: string } | null = null;
+    let updateDayLessonResult: { dayLessonId: string; warnings?: unknown[] } | null = null;
     let generateContentResult: Record<string, unknown> | null = null;
     let approveLessonResult: Record<string, unknown> | null = null;
     let regenerateLessonResult: Record<string, unknown> | null = null;
@@ -1194,9 +1194,15 @@ export async function POST(request: Request) {
           lessonId: parsed.payload.lessonId,
         });
         if (!updated.ok) {
-          return NextResponse.json({ error: updated.error }, { status: updated.status });
+          return NextResponse.json(
+            { error: updated.error, conflicts: updated.conflicts ?? [] },
+            { status: updated.status },
+          );
         }
-        updateDayLessonResult = { dayLessonId: updated.dayLessonId };
+        updateDayLessonResult = {
+          dayLessonId: updated.dayLessonId,
+          warnings: updated.warnings ?? [],
+        };
         break;
       }
       case "generateDaytimeLessonContent": {

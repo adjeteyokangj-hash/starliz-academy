@@ -24,6 +24,7 @@ export default function SessionKeepAlive({
   refreshPin = false,
 }: Props) {
   const runningRef = useRef(false);
+  // eslint-disable-next-line react-hooks/purity -- seed inactivity timer at mount; frozen behaviour, advisory only
   const lastActivityRef = useRef(Date.now());
   const lastActivityWriteRef = useRef(0);
   const loggingOutRef = useRef(false);

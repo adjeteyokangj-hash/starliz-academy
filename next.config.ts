@@ -5,6 +5,16 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   allowedDevOrigins: ["127.0.0.1"],
   serverExternalPackages: ["imapflow", "nodemailer"],
+  // Production build type-checks shipped code only. Non-shipped test/UAT tooling
+  // (tests/, scripts/) is type-checked separately via `npm run typecheck:full`.
+  typescript: { tsconfigPath: "tsconfig.build.json" },
+  experimental: {
+    // Lesson-pack bulk import accepts up to 300MB combined multipart uploads.
+    serverActions: {
+      bodySizeLimit: "300mb",
+    },
+    proxyClientMaxBodySize: "300mb",
+  },
   async headers() {
     return [
       {

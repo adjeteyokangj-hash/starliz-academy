@@ -25,7 +25,20 @@ function asItems(contentJson: string): RuntimeItem[] {
   try {
     const parsed = JSON.parse(contentJson) as unknown;
     if (Array.isArray(parsed)) return parsed.filter((item): item is RuntimeItem => Boolean(item && typeof item === "object" && !Array.isArray(item)));
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return [parsed as RuntimeItem];
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const envelope = parsed as Record<string, unknown>;
+      const nested = Array.isArray(envelope.items)
+        ? envelope.items
+        : Array.isArray(envelope.questions)
+          ? envelope.questions
+          : null;
+      if (nested) {
+        return nested.filter(
+          (item): item is RuntimeItem => Boolean(item && typeof item === "object" && !Array.isArray(item)),
+        );
+      }
+      return [envelope];
+    }
   } catch {
     return [];
   }

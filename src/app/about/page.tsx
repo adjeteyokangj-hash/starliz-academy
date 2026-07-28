@@ -1,5 +1,12 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import PublicShell from "@/components/layout/PublicShell"
+
+export const metadata: Metadata = {
+  title: "About StarLiz Academy",
+  description:
+    "Learn about StarLiz Academy's AI-supported learning platform, parent visibility and curriculum-aware pathways from Reception to GCSE.",
+}
 
 export default function About() {
   return (

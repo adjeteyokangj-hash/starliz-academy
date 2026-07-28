@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   KNOWLEDGE_ARTICLES,
   type KnowledgeArticle,
@@ -46,13 +46,65 @@ function matchesQuery(article: KnowledgeArticle, query: string): boolean {
 export default function KnowledgeCentreClient() {
   const [query, setQuery] = useState("")
   const [category, setCategory] = useState<string>("All")
+  const [cmsArticles, setCmsArticles] = useState<KnowledgeArticle[] | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch("/api/help", { cache: "no-store" })
+        const data = await res.json().catch(() => ({}))
+        if (cancelled) return
+        const rows = Array.isArray(data.articles) ? data.articles : []
+        if (rows.length > 0) {
+          setCmsArticles(
+            rows.map((row: {
+              id: string
+              slug: string
+              title: string
+              summary: string
+              category: string
+              audience: string
+              keywords?: string[]
+              body?: string[]
+              relatedPolicySlug?: string | null
+            }) => ({
+              id: row.slug || row.id,
+              title: row.title,
+              summary: row.summary,
+              category: row.category as KnowledgeArticle["category"],
+              audience: row.audience as KnowledgeArticle["audience"],
+              keywords: row.keywords ?? [],
+              body: row.body,
+              href: row.relatedPolicySlug ? `/policies/${row.relatedPolicySlug}` : undefined,
+            })),
+          )
+          setStatusMessage("Showing published Help Centre articles.")
+        } else {
+          setCmsArticles(null)
+          setStatusMessage("Showing launch help articles.")
+        }
+      } catch {
+        if (!cancelled) {
+          setCmsArticles(null)
+          setStatusMessage("Showing launch help articles.")
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const source = cmsArticles ?? KNOWLEDGE_ARTICLES.filter((a) => a.audience !== "Platform Admin")
 
   const filtered = useMemo(() => {
-    return KNOWLEDGE_ARTICLES.filter((article) => {
+    return source.filter((article) => {
       if (category !== "All" && article.category !== category) return false
       return matchesQuery(article, query)
     })
-  }, [query, category])
+  }, [query, category, source])
 
   const grouped = useMemo(() => {
     return AUDIENCES.map((audience) => ({
@@ -75,7 +127,7 @@ export default function KnowledgeCentreClient() {
           placeholder="Search by title or keyword…"
           className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-5 py-4 text-base text-white placeholder:text-slate-500 focus:border-violet-500/60 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
         />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Help categories">
           <button
             type="button"
             onClick={() => setCategory("All")}
@@ -98,8 +150,13 @@ export default function KnowledgeCentreClient() {
             </button>
           ))}
         </div>
+        {statusMessage ? (
+          <p className="text-xs text-slate-500" role="status" aria-live="polite">
+            {statusMessage}
+          </p>
+        ) : null}
         {query.trim() || category !== "All" ? (
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-slate-400" role="status" aria-live="polite">
             {filtered.length} article{filtered.length === 1 ? "" : "s"}
             {query.trim() ? <> matching &ldquo;{query}&rdquo;</> : null}
           </p>

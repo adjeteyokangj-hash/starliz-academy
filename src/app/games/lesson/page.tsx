@@ -66,6 +66,7 @@ import {
   DaytimeSchoolLessonShell,
   DaytimePracticalPanel,
 } from "@/components/student/daytime-lesson";
+import DaytimeTutorPanel from "@/components/games/DaytimeTutorPanel";
 import { useDaytimeStagePack } from "@/components/student/daytime-lesson/useDaytimeStagePack";
 import { isPracticalPePack } from "@/lib/schools/daytime-lesson-ui";
 
@@ -527,6 +528,9 @@ export default function DailyLessonGamePage() {
   const searchParams = useSearchParams();
   const assignmentId = searchParams.get("assignmentId");
   const daytimePeriodId = searchParams.get("daytimePeriodId");
+  const shortLearningBookingId = searchParams.get("shortLearningBookingId");
+  const shortLearningSessionId = searchParams.get("shortLearningSessionId");
+  const shortLearningBlockId = searchParams.get("shortLearningBlockId");
   const urlContentId = searchParams.get("contentId");
   const interventionEnabled = searchParams.get("intervention") === "1";
   const requestedPhase = searchParams.get("phase");
@@ -556,6 +560,7 @@ export default function DailyLessonGamePage() {
     assignmentId,
   });
   const isDaytimeSchool = Boolean(daytimePeriodId && assignmentId && daytimeContentId);
+  const isShortLearning = Boolean(shortLearningBookingId && assignmentId && daytimeContentId);
   const isPracticalDaytime = isDaytimeSchool && isPracticalPePack(daytimeStagePack, assignment?.subject);
   const [loading, setLoading] = useState(true);
   const [sessionHydrated, setSessionHydrated] = useState(false);
@@ -3366,6 +3371,25 @@ export default function DailyLessonGamePage() {
                     ? (tutorState === "thinking" ? tutorPrompt : decodeLessonText(voiceLine))
                     : tutorPrompt}
                 </p>
+                {isShortLearning && assignmentId && daytimeContentId ? (
+                  <div className="mt-4 rounded-2xl bg-white/10 p-3 text-left" data-testid="short-learning-tutor-mount">
+                    <DaytimeTutorPanel
+                      shortLearningBookingId={shortLearningBookingId!}
+                      shortLearningSessionId={shortLearningSessionId ?? undefined}
+                      shortLearningBlockId={shortLearningBlockId ?? undefined}
+                      assignmentId={assignmentId}
+                      contentId={daytimeContentId}
+                      questionId={currentItem?.id}
+                      questionIndex={index}
+                      studentAttempt={answer || undefined}
+                      variant="default"
+                    />
+                    <p className="mt-3 text-[11px] leading-relaxed text-indigo-100/90">
+                      AI support is available throughout. Human support may be offered when available.
+                      Human support is not guaranteed. This is not a private one-to-one tutor booking.
+                    </p>
+                  </div>
+                ) : null}
                 <div className="mt-6 rounded-2xl bg-white/10 p-4 text-sm">
                   {practicingNow
                     ? "Progress: practising"

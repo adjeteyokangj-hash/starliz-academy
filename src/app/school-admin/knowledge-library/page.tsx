@@ -1,3 +1,4 @@
+import CollapsibleCard from "@/components/school-admin/CollapsibleCard";
 import Link from "next/link";
 import { listDocumentsForAudience, policyDocumentHref } from "@/lib/policies/registry";
 
@@ -32,7 +33,8 @@ export default function SchoolAdminKnowledgeLibraryPage() {
         Draft for legal/internal review — not formal legal advice. AI teaching is guaranteed; human support is a safety net when available.
       </p>
 
-      <ul className="mt-8 space-y-3">
+      <CollapsibleCard title="Documents" count={docs.length} className="mt-8" bodyClassName="p-4">
+      <ul className="space-y-3">
         {docs.map((doc) => (
           <li key={doc.id} className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -54,6 +56,7 @@ export default function SchoolAdminKnowledgeLibraryPage() {
           </li>
         ))}
       </ul>
+      </CollapsibleCard>
     </div>
   );
 }

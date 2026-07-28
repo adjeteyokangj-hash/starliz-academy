@@ -50,6 +50,16 @@ next-env.d.ts
 # local workspace artifacts
 .eslintcache
 .vscode/mcp.json
+.dev-port-check.txt
+/tmp/
+package.json.full-backup.json
+package.json.surgical-backup.json
+package.json.tmp.defect.json
+run-playable-report.mts
+scripts/_direct_storage_uat.mts
+scripts/_disposition_uat_draft.mts
+scripts/_oak_diagnose.mts
+scripts/uat/_tmp-*
 
 # Generated launch-verification evidence (regenerate via npm scripts)
 /artifacts/uat/**

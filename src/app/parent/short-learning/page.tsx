@@ -13,6 +13,8 @@ type StudentOption = {
 
 type BookingRow = {
   id: string;
+  schoolId: string;
+  schoolStudentId?: string;
   schoolName: string;
   studentName: string;
   startsAt: string;
@@ -347,14 +349,29 @@ export default function ParentShortLearningPage() {
                       ) : null}
                     </div>
                     {["booked", "confirmed"].includes(booking.status) ? (
-                      <button
-                        type="button"
-                        onClick={() => void onCancel(booking.id)}
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          href={`/parent/short-learning/bookings/${booking.id}`}
+                          className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 hover:bg-cyan-500/20"
+                        >
+                          Open booking
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => void onCancel(booking.id)}
+                          className="rounded-xl border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <Link
+                        href={`/parent/short-learning/bookings/${booking.id}`}
                         className="rounded-xl border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800"
                       >
-                        Cancel
-                      </button>
-                    ) : null}
+                        Open booking
+                      </Link>
+                    )}
                   </div>
                 </li>
               ))}

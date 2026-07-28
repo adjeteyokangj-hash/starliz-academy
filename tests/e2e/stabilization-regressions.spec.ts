@@ -475,58 +475,42 @@ test.describe("Stabilization regressions", () => {
     expect(subjects.has("science")).toBe(true);
   });
 
-  test("Parent plan override updates limits and writes audit log", async ({ page }) => {
+  test("Parent plan override is rejected and audited as disabled", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
 
-    const planFlow = ["free", "starter", "standard", "pro"];
-    const childLimits: number[] = [];
+    const before = await prisma.subscription.findFirst({
+      where: { parentId: seeded.parentId },
+      orderBy: { updatedAt: "desc" },
+    });
 
-    for (const planKey of planFlow) {
-      const patch = await page.request.patch("/api/admin/subscriptions", {
-        data: {
-          parentId: seeded.parentId,
-          action: "change_plan",
-          planKey,
-          status: "active",
-        },
-      });
-      expect(patch.ok()).toBe(true);
+    const patch = await page.request.patch("/api/admin/subscriptions", {
+      data: {
+        parentId: seeded.parentId,
+        action: "change_plan",
+        planKey: "pro",
+        status: "active",
+      },
+    });
+    expect(patch.status()).toBe(403);
+    const payload = await patch.json();
+    expect(String(payload.error ?? "")).toMatch(/disabled|verified billing/i);
 
-      const parentPage = await page.context().newPage();
-      await loginAs(parentPage, PARENT_EMAIL, PARENT_PASSWORD);
-
-      const subscriptionRes = await parentPage.request.get("/api/subscription");
-      expect(subscriptionRes.ok()).toBe(true);
-      const subscriptionPayload = await subscriptionRes.json();
-      const childLimit = Number(subscriptionPayload.subscription?.childLimit ?? 0);
-      childLimits.push(childLimit);
-      expect(childLimit).toBeGreaterThan(0);
-
-      const accountRes = await parentPage.request.get("/api/account");
-      expect(accountRes.ok()).toBe(true);
-      const accountPayload = await accountRes.json();
-      expect(Number(accountPayload.account?.childLimit ?? 0)).toBe(childLimit);
-
-      if (planKey === "free") {
-        expect(subscriptionPayload.subscription?.upgradeRequired).toBe(true);
-      }
-
-      await parentPage.close();
-    }
-
-    expect(childLimits[0]).toBeLessThanOrEqual(childLimits[1]);
-    expect(childLimits[1]).toBeLessThanOrEqual(childLimits[2]);
-    expect(childLimits[2]).toBeLessThanOrEqual(childLimits[3]);
+    const after = await prisma.subscription.findFirst({
+      where: { parentId: seeded.parentId },
+      orderBy: { updatedAt: "desc" },
+    });
+    expect(after?.status).toBe(before?.status);
+    expect(after?.planKey).toBe(before?.planKey);
 
     const logs = await prisma.auditLog.findMany({
       where: {
-        action: "admin.subscription.override",
+        action: "admin_subscription_change_rejected",
         actorUserId: seeded.adminId,
         metadataJson: { contains: seeded.parentId },
       },
       orderBy: { createdAt: "desc" },
-      take: 4,
+      take: 1,
     });
-    expect(logs.length).toBeGreaterThanOrEqual(4);
+    expect(logs.length).toBeGreaterThanOrEqual(1);
   });
 });

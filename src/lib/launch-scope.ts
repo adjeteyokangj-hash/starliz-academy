@@ -55,7 +55,7 @@ export function resolveLaunchScopeRedirect(input: {
 const ADMIN_BETA_TAGS: Record<string, AdminLaunchTag> = {
   "/admin/knowledge-graph": "beta",
   "/admin/recovery-governance": "beta",
-  "/admin/ai": "beta",
+  "/admin/ai-generator": "beta",
   "/admin/trial-leads": "beta",
   "/admin/voice-media": "beta",
   "/admin/integrations/truenumeris": "beta",

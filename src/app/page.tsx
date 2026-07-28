@@ -1,5 +1,6 @@
 import Link from "next/link"
 import Logo from "@/components/Logo"
+import PublicMiniFooter from "@/components/public/PublicMiniFooter"
 import { PUBLIC_COUNTRY_PROFILES } from "@/lib/public-country-profiles"
 
 const countryCards = [
@@ -63,6 +64,8 @@ export default function CountrySelectionPage() {
           </div>
         </div>
       </section>
+
+      <PublicMiniFooter className="border-t border-slate-800/80" />
     </main>
   )
 }

@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import PublicMiniFooter from "@/components/public/PublicMiniFooter";
 import Button from "@/components/ui/Button";
 
 export default function ResetPasswordPage() {
@@ -46,7 +47,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-4 py-4 sm:py-10">
+    <main className="relative flex min-h-screen items-center justify-center bg-background px-4 py-4 pb-24 sm:py-10 sm:pb-24">
       <section className="w-full max-w-md rounded-2xl sm:rounded-3xl bg-white/90 p-6 sm:p-8 shadow-xl ring-1 ring-slate-200">
         <p className="text-xs sm:text-sm font-bold uppercase tracking-[0.18em] text-primary">Parent Account</p>
         <h1 className="mt-2 font-heading text-3xl sm:text-4xl font-black text-slate-900">Choose New Password</h1>
@@ -96,6 +97,8 @@ export default function ResetPasswordPage() {
           Need a fresh link? <Link href="/auth/forgot-password" className="font-bold text-primary">Request another</Link>
         </p>
       </section>
+
+      <PublicMiniFooter tone="light" className="absolute inset-x-0 bottom-0" />
     </main>
   );
 }

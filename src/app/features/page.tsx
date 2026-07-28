@@ -1,6 +1,13 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import PublicShell from "@/components/layout/PublicShell"
 import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings"
+
+export const metadata: Metadata = {
+  title: "Learning Features | StarLiz Academy",
+  description:
+    "Explore adaptive lessons, AI Tutor guidance, Short Learning, parent progress visibility and safeguarding-focused controls.",
+}
 
 const featureList = [
   {

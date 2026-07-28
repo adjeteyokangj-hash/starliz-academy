@@ -33,7 +33,10 @@ test("3. /admin/login loads without a loop", () => {
     pathname: "/admin/login",
     session: { role: "parent" },
   });
-  assert.equal(parentOnLogin.action, "allow");
+  assert.equal(parentOnLogin.action, "redirect");
+  if (parentOnLogin.action === "redirect") {
+    assert.equal(parentOnLogin.to, "/parent/profiles");
+  }
 
   // Login must never redirect back to itself.
   const loginUrl = buildAdminLoginUrl("/admin");
@@ -59,6 +62,12 @@ test("4. authenticated admin → /admin (login redirects into console)", () => {
 });
 
 test("5. authenticated non-admin cannot access platform admin", () => {
+  const expectedByRole: Record<string, string> = {
+    parent: "/parent/profiles",
+    student: "/student/dashboard",
+    teacher: "/school-admin",
+  };
+
   for (const role of ["parent", "student", "teacher"] as const) {
     const decision = resolvePlatformAdminGate({
       pathname: "/admin",
@@ -66,17 +75,27 @@ test("5. authenticated non-admin cannot access platform admin", () => {
     });
     assert.equal(decision.action, "redirect");
     if (decision.action !== "redirect") continue;
-    assert.match(decision.to, /reason=switch/);
-    assert.match(decision.to, /^\/admin\/login\?/);
+    assert.equal(decision.to, expectedByRole[role]);
+    assert.doesNotMatch(decision.to, /reason=switch/);
+    assert.doesNotMatch(decision.to, /^\/admin\/login/);
   }
 
   const schools = resolvePlatformAdminGate({
     pathname: "/admin/schools",
-    session: { role: "parent" },
+    session: { role: "teacher" },
   });
   assert.equal(schools.action, "redirect");
   if (schools.action === "redirect") {
-    assert.match(schools.to, /reason=switch/);
+    assert.equal(schools.to, "/school-admin");
+  }
+
+  const teacherOnAdminLogin = resolvePlatformAdminGate({
+    pathname: "/admin/login",
+    session: { role: "teacher" },
+  });
+  assert.equal(teacherOnAdminLogin.action, "redirect");
+  if (teacherOnAdminLogin.action === "redirect") {
+    assert.equal(teacherOnAdminLogin.to, "/school-admin");
   }
 });
 

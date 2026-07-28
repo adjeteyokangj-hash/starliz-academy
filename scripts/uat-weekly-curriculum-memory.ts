@@ -47,10 +47,10 @@ const prisma = new PrismaClient();
 const BASE = process.env.UAT_BASE_URL ?? "http://localhost:3000";
 const ADMIN_EMAIL = process.env.UAT_ADMIN_EMAIL
   ?? process.env.E2E_OPS_ADMIN_EMAIL
-  ?? "ops-owner@starliz.dev";
+  ?? "platform-admin@starliz.dev";
 const ADMIN_PASSWORD = process.env.UAT_ADMIN_PASSWORD
   ?? process.env.E2E_OPS_ADMIN_PASSWORD
-  ?? "OpsAdmin#2026";
+  ?? "PlatformAdmin#2026";
 
 type Step = { id: string; ok: boolean; detail: string };
 

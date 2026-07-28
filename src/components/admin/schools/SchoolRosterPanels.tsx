@@ -131,6 +131,7 @@ function LinkExistingStudentsPanel({ schoolId }: { schoolId: string }) {
   useEffect(() => {
     if (!selectedStudent?.yearGroup) return;
     if (matchingClassrooms.length === 1) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-select sole matching classroom; frozen behaviour, advisory only
       setClassroomId(matchingClassrooms[0].id);
     }
   }, [selectedChildId, selectedStudent?.yearGroup, matchingClassrooms]);

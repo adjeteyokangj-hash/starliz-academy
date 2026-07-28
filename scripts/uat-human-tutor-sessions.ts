@@ -2,7 +2,7 @@
  * Human Tutor Queue & Sessions v1 — authenticated / service UAT.
  * No migration reset. Evidence: scripts/.uat-human-tutor-sessions-evidence.json
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 function loadEnvLocal() {
@@ -48,8 +48,8 @@ async function main() {
   const prisma = new PrismaClient();
   const BASE = process.env.UAT_BASE_URL ?? "http://localhost:3000";
   const SCHOOL_ID = process.env.UAT_SCHOOL_ID ?? "cmpgzr6nc000jskjob867guo7";
-  const ADMIN_EMAIL = process.env.UAT_ADMIN_EMAIL ?? process.env.E2E_OPS_ADMIN_EMAIL ?? "ops-owner@starliz.dev";
-  const ADMIN_PASSWORD = process.env.UAT_ADMIN_PASSWORD ?? process.env.E2E_OPS_ADMIN_PASSWORD ?? "OpsAdmin#2026";
+  const ADMIN_EMAIL = process.env.UAT_ADMIN_EMAIL ?? process.env.E2E_OPS_ADMIN_EMAIL ?? "platform-admin@starliz.dev";
+  const ADMIN_PASSWORD = process.env.UAT_ADMIN_PASSWORD ?? process.env.E2E_OPS_ADMIN_PASSWORD ?? "PlatformAdmin#2026";
   const TEACHER_EMAIL = process.env.UAT_LIVE_TEACHER_EMAIL ?? "uat.live.classroom.teacher@starliz.dev";
   const TEACHER_PASSWORD = process.env.UAT_LIVE_TEACHER_PASSWORD ?? "UatLiveTeacher#2026";
 

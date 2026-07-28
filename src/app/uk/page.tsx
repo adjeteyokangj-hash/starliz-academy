@@ -1,11 +1,27 @@
 import Link from "next/link"
+import type { Metadata } from "next"
 import Logo from "@/components/Logo"
 import PublicPricingSection from "@/components/pricing/PublicPricingSection"
+import CompanyIdentity from "@/components/public/CompanyIdentity"
+import OkangGroupMark from "@/components/public/OkangGroupMark"
 import { getPublicPricingPlans } from "@/lib/pricing/service"
 import CountryPreferenceSync from "@/components/public/CountryPreferenceSync"
 import { isPublicTrialCtaEnabled, isRoadmapPublicEnabled } from "@/lib/launch-scope"
+import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings"
 
 export const dynamic = "force-dynamic"
+
+export const metadata: Metadata = {
+  title: "StarLiz Academy UK | AI-Led Short Learning for Children",
+  description:
+    "Book AI-led 90- or 120-minute Short Learning sessions, follow progress in the Parent Portal, and access availability-based human support when tutors are on shift.",
+  openGraph: {
+    title: "StarLiz Academy UK | AI-Led Short Learning for Children",
+    description:
+      "Understand how StarLiz Short Learning works: AI-led 90- or 120-minute sessions, parent booking, progress visibility, and availability-based human support.",
+    images: ["/brand/starliz-logo.png"],
+  },
+}
 
 const features = [
   {
@@ -157,20 +173,26 @@ const subjects = [
 const steps = [
   {
     step: "1",
-    title: "Create the right profile",
-    desc: "Parents create child profiles, choose the active learner and keep each profile protected with parent controls.",
-    icon: "👤",
+    title: "Understand the offer",
+    desc: "Review the AI-led model, session lengths, availability-based human support and subscription terms.",
+    icon: "🧭",
   },
   {
     step: "2",
-    title: "Learn with guided support",
-    desc: "Children complete daily journeys, assigned tasks and English, maths, reading and writing support with guided learning.",
-    icon: "📝",
+    title: "Create an account and choose a plan",
+    desc: "Set up the parent and child profiles, then choose an eligible subscription in the Parent Portal.",
+    icon: "👤",
   },
   {
     step: "3",
-    title: "Review, report and improve",
-    desc: "Parents, tutors, admins and schools use reports, rewards, messaging and governance tools to support the next step.",
+    title: "Book Short Learning",
+    desc: "Choose a 90- or 120-minute Maths or English session from the available booking windows.",
+    icon: "🗓️",
+  },
+  {
+    step: "4",
+    title: "Learn and follow progress",
+    desc: "Your child completes the AI-led journey while you retain booking, billing and progress visibility.",
     icon: "📊",
   },
 ]
@@ -204,6 +226,7 @@ export default async function PublicHomePage() {
           <Logo variant="header" size={24} />
 
           <nav className="hidden items-center gap-5 sm:gap-7 text-xs sm:text-sm text-slate-400 md:flex">
+            <Link href="/short-learning" className="transition hover:text-white">Short Learning</Link>
             <Link href="#features" className="transition hover:text-white">Platform</Link>
             <Link href="#subjects" className="transition hover:text-white">Subjects</Link>
             <Link href="#portals" className="transition hover:text-white">Portals</Link>
@@ -229,6 +252,7 @@ export default async function PublicHomePage() {
             Menu
           </summary>
           <nav className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
+            <Link href="/short-learning" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Short Learning</Link>
             <Link href="#features" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Platform</Link>
             <Link href="#subjects" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Subjects</Link>
             <Link href="#portals" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Portals</Link>
@@ -238,7 +262,6 @@ export default async function PublicHomePage() {
             <Link href="/" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Change country</Link>
             {showRoadmap ? <Link href="/roadmap" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Roadmap</Link> : null}
             <Link href="/auth/login" className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">Login</Link>
-            <Link href="/signup" className="rounded-lg border border-blue-500/50 bg-blue-500/10 px-3 py-2 text-center font-semibold text-blue-200 transition hover:bg-blue-500/20">Create Account</Link>
             <Link href={showTrialCta ? "/trial" : "/signup"} className="rounded-lg border border-slate-700 px-3 py-2 text-center transition hover:text-white">{showTrialCta ? "Free Trial" : "Create Account"}</Link>
           </nav>
         </details>
@@ -262,7 +285,9 @@ export default async function PublicHomePage() {
             </h1>
 
             <p className="mt-4 sm:mt-6 max-w-xl text-sm sm:text-base lg:text-lg leading-6 sm:leading-8 text-slate-300">
-              StarLiz Academy helps children learn with adaptive lessons, smart catch-up, guided practice, parent visibility, and curriculum-aware progress tracking from EYFS and primary stages through KS3 and GCSE pathways.
+              StarLiz Academy combines adaptive learning with parent-booked Short Learning:
+              focused 90- or 120-minute sessions led by AI teaching, with clear progress
+              visibility for families.
             </p>
 
             <div className="mt-6 sm:mt-9 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
@@ -281,7 +306,7 @@ export default async function PublicHomePage() {
             </div>
 
             <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-slate-500">
-              No credit card required &middot; Parent-friendly controls &middot; Built for trust
+              AI-led &middot; Parent-booked &middot; Human support is availability-based
             </p>
           </div>
 
@@ -310,6 +335,50 @@ export default async function PublicHomePage() {
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Short Learning launch offer */}
+      <section id="short-learning" className="mx-auto max-w-[1900px] px-4 py-10 sm:px-6 sm:py-16 lg:px-10 2xl:px-16">
+        <div className="grid gap-8 border-y border-blue-500/25 py-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:py-14">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-300">
+              Short Learning
+            </p>
+            <h2 className="mt-3 text-3xl font-black sm:text-4xl">
+              Focused learning time, led by AI and booked by parents.
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+              Choose a 90- or 120-minute journey in Maths or English. Your child follows
+              an ordered lesson, uses the AI Tutor for progressive help, and can resume
+              saved progress after a refresh or break.
+            </p>
+            <p className="mt-4 max-w-2xl text-sm font-semibold leading-6 text-blue-200">
+              {SHORT_LEARNING_PROMISE}
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link href="/short-learning" className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold transition hover:bg-blue-500">
+                How Short Learning works
+              </Link>
+              <Link href="/pricing" className="rounded-xl border border-slate-700 px-6 py-3 text-sm font-bold text-slate-200 transition hover:bg-slate-900">
+                View eligible plans
+              </Link>
+            </div>
+          </div>
+          <div className="space-y-5 text-sm text-slate-300">
+            <div className="border-l-2 border-blue-500 pl-5">
+              <p className="font-bold text-white">What parents receive</p>
+              <p className="mt-1 leading-6">Booking management, session progress, learning history, billing controls, and clear support information in the Parent Portal.</p>
+            </div>
+            <div className="border-l-2 border-cyan-500 pl-5">
+              <p className="font-bold text-white">How human support works</p>
+              <p className="mt-1 leading-6">A tutor may join through the Support desk after AI help is exhausted, but only when an eligible tutor is on shift and available.</p>
+            </div>
+            <div className="border-l-2 border-indigo-500 pl-5">
+              <p className="font-bold text-white">What it is not</p>
+              <p className="mt-1 leading-6">Short Learning is not private one-to-one tutoring and does not reserve a named human tutor.</p>
             </div>
           </div>
         </div>
@@ -442,10 +511,10 @@ export default async function PublicHomePage() {
       <section id="how-it-works" className="mx-auto max-w-[1900px] px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
         <div className="text-center">
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black">How it works</h2>
-          <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">Up and running in under 5 minutes.</p>
+          <p className="mt-2 sm:mt-4 text-sm sm:text-base text-slate-400">A clear path from understanding the service to booking a session.</p>
         </div>
 
-        <div className="mt-10 sm:mt-14 grid gap-6 sm:gap-8 md:grid-cols-3">
+        <div className="mt-10 sm:mt-14 grid gap-6 sm:gap-8 md:grid-cols-2 xl:grid-cols-4">
           {steps.map((step) => (
             <div key={step.step} className="relative text-center">
               <div className="mx-auto mb-4 sm:mb-5 flex h-14 sm:h-16 w-14 sm:w-16 items-center justify-center rounded-lg sm:rounded-2xl bg-blue-600/20 text-2xl sm:text-3xl ring-1 ring-blue-600/40">
@@ -478,7 +547,7 @@ export default async function PublicHomePage() {
             ))}
           </div>
 
-          <Link href="/trial" className="mt-6 sm:mt-8 inline-flex rounded-lg sm:rounded-xl bg-blue-600 px-5 sm:px-7 py-3 sm:py-4 text-sm sm:text-base font-bold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500">
+          <Link href={showTrialCta ? "/trial" : "/features"} className="mt-6 sm:mt-8 inline-flex rounded-lg sm:rounded-xl bg-blue-600 px-5 sm:px-7 py-3 sm:py-4 text-sm sm:text-base font-bold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500">
             Explore platform features
           </Link>
         </div>
@@ -538,21 +607,22 @@ export default async function PublicHomePage() {
 
       <PublicPricingSection compact initialPlans={plans} />
 
-      {/* Roadmap teaser */}
-      <section className="mx-auto max-w-[1900px] px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
-        <div className="text-center">
-          <h2 className="text-4xl font-black">What&apos;s coming next</h2>
-          <p className="mt-4 text-slate-400">
-            We&apos;re constantly improving StarLiz.{" "}
-            <Link href="/roadmap" className="text-blue-400 hover:text-blue-300">See the full roadmap &#8594;</Link>
-          </p>
-        </div>
-        <div className="mt-10 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {roadmapItems.map((item) => (
-            <div key={item} className="rounded-2xl border border-slate-800 bg-slate-900 px-5 py-4 text-sm text-slate-300">{item}</div>
-          ))}
-        </div>
-      </section>
+      {showRoadmap ? (
+        <section className="mx-auto max-w-[1900px] px-4 sm:px-6 lg:px-10 2xl:px-16 py-10 sm:py-16">
+          <div className="text-center">
+            <h2 className="text-4xl font-black">What&apos;s coming next</h2>
+            <p className="mt-4 text-slate-400">
+              We&apos;re constantly improving StarLiz.{" "}
+              <Link href="/roadmap" className="text-blue-400 hover:text-blue-300">See the full roadmap &#8594;</Link>
+            </p>
+          </div>
+          <div className="mt-10 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {roadmapItems.map((item) => (
+              <div key={item} className="rounded-2xl border border-slate-800 bg-slate-900 px-5 py-4 text-sm text-slate-300">{item}</div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {/* Final CTA */}
       <section className="px-6 pb-24">
@@ -562,23 +632,60 @@ export default async function PublicHomePage() {
             Explore Reception to GCSE support with pathway aligned learning, exam-board aligned revision guidance and parent progress visibility.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <Link href="/trial" className="rounded-xl bg-white px-8 py-4 font-bold text-blue-700 shadow-lg transition hover:bg-blue-50">
+            <Link href={showTrialCta ? "/trial" : "/signup"} className="rounded-xl bg-white px-8 py-4 font-bold text-blue-700 shadow-lg transition hover:bg-blue-50">
               Start your child&apos;s learning journey
             </Link>
             <Link href="/pricing" className="rounded-xl border border-white/30 bg-white/10 px-8 py-4 font-bold text-white transition hover:bg-white/20">
               Choose a plan
             </Link>
           </div>
-          <p className="mt-4 text-sm text-blue-200">No credit card required &middot; Cancel anytime</p>
+          <p className="mt-4 text-sm text-blue-200">
+            Booking cancellation is free &middot; Subscription cancellation takes effect at the end of the current billing period
+          </p>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white px-3 py-1 text-slate-600 sm:px-4">
-        <div className="mx-auto flex max-w-[1900px] flex-col items-center justify-between gap-1 text-center text-[9px] font-medium leading-none sm:flex-row sm:text-left">
-          <p>&#169; 2026 StarLiz Academy. All rights reserved.</p>
-          <p>StarLiz Academy - Learn, Grow, Shine</p>
-          <p className="text-slate-500">Best viewed on the latest version of Google Chrome.</p>
+      <footer className="border-t border-slate-800 bg-slate-950 px-4 py-10 text-slate-400 sm:px-6">
+        <div className="mx-auto grid max-w-[1900px] gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="sm:col-span-2 lg:col-span-1">
+            <Logo variant="footer" size={44} />
+            <p className="mt-3 max-w-xs text-sm leading-6">
+              AI-led learning with parent visibility and clear support boundaries.
+            </p>
+            <OkangGroupMark className="mt-4" />
+          </div>
+
+          <nav aria-labelledby="uk-footer-legal">
+            <h2 id="uk-footer-legal" className="text-xs font-bold uppercase tracking-[0.14em] text-slate-300">Legal</h2>
+            <ul className="mt-3 space-y-2 text-sm">
+              <li><Link href="/privacy" className="hover:text-white">Privacy notice</Link></li>
+              <li><Link href="/terms" className="hover:text-white">Terms of service</Link></li>
+              <li><Link href="/cookies" className="hover:text-white">Cookie policy</Link></li>
+              <li><Link href="/ai-use" className="hover:text-white">AI use</Link></li>
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="uk-footer-trust">
+            <h2 id="uk-footer-trust" className="text-xs font-bold uppercase tracking-[0.14em] text-slate-300">Trust and safety</h2>
+            <ul className="mt-3 space-y-2 text-sm">
+              <li><Link href="/safeguarding-policy" className="hover:text-white">Safeguarding</Link></li>
+              <li><Link href="/policies" className="hover:text-white">Policy centre</Link></li>
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="uk-footer-help">
+            <h2 id="uk-footer-help" className="text-xs font-bold uppercase tracking-[0.14em] text-slate-300">Help</h2>
+            <ul className="mt-3 space-y-2 text-sm">
+              <li><Link href="/faq" className="hover:text-white">FAQ</Link></li>
+              <li><Link href="/contact" className="hover:text-white">Contact us</Link></li>
+            </ul>
+          </nav>
+        </div>
+
+        <div className="mx-auto mt-8 max-w-[1900px] border-t border-slate-800 pt-5">
+          <CompanyIdentity compact />
+          <p className="mt-3 text-xs text-slate-500">&#169; 2026 StarLiz Academy. All rights reserved.</p>
         </div>
       </footer>
     </main>

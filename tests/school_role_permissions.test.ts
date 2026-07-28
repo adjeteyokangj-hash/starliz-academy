@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { canDo, getSchoolRoleLabel, requiresOwnerInviteConfirmation } from "../src/lib/schools/permissions";
+import { canDo, getSchoolRoleLabel, requiresOwnerInviteConfirmation, canAssignSchoolRole, canManageSchoolOwnership } from "../src/lib/schools/permissions";
 
 test("staff observer is read-only and cannot perform write actions", () => {
   assert.equal(canDo("staff_observer", "viewDashboard"), true);
@@ -41,11 +41,18 @@ test("owner invite confirmation helper enforces confirmation requirement", () =>
   assert.equal(requiresOwnerInviteConfirmation("teacher"), false);
 });
 
+test("only school owner may assign or transfer ownership", () => {
+  assert.equal(canManageSchoolOwnership("owner"), true);
+  assert.equal(canManageSchoolOwnership("admin"), false);
+  assert.equal(canAssignSchoolRole("admin", "owner"), false);
+  assert.equal(canAssignSchoolRole("owner", "owner"), true);
+});
+
 test("role labels stay consistent for dropdown and table rendering", () => {
   assert.equal(getSchoolRoleLabel("owner"), "School Owner");
   assert.equal(getSchoolRoleLabel("admin"), "School Admin");
   assert.equal(getSchoolRoleLabel("teacher"), "Teacher");
-  assert.equal(getSchoolRoleLabel("support"), "Support Staff");
+  assert.equal(getSchoolRoleLabel("support"), "Tutor / Support");
   assert.equal(getSchoolRoleLabel("staff_observer"), "Staff Observer");
   assert.equal(getSchoolRoleLabel("finance"), "Finance");
 });

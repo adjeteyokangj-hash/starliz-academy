@@ -7,7 +7,7 @@
  *
  * Auth (first match wins):
  *   UAT_ADMIN_EMAIL + UAT_ADMIN_PASSWORD
- *   E2E_OPS_ADMIN_EMAIL + E2E_OPS_ADMIN_PASSWORD (defaults: ops-owner@starliz.dev / OpsAdmin#2026)
+ *   E2E_OPS_ADMIN_EMAIL + E2E_OPS_ADMIN_PASSWORD (defaults: platform-admin@starliz.dev / PlatformAdmin#2026)
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -246,12 +246,12 @@ async function main() {
   const adminEmail = (
     process.env.UAT_ADMIN_EMAIL
     || process.env.E2E_OPS_ADMIN_EMAIL
-    || "ops-owner@starliz.dev"
+    || "platform-admin@starliz.dev"
   ).trim().toLowerCase();
   const adminPassword = (
     process.env.UAT_ADMIN_PASSWORD
     || process.env.E2E_OPS_ADMIN_PASSWORD
-    || "OpsAdmin#2026"
+    || "PlatformAdmin#2026"
   );
 
   evidence.authAttempt = {

@@ -1,5 +1,19 @@
 import { buildPolicy, s } from "../build";
 import type { PolicyDocument } from "../types";
+import { getPublicCompanyIdentity } from "@/lib/public-company";
+
+const publicCompany = getPublicCompanyIdentity();
+const publicCompanyIdentityLines = publicCompany.completeForPayments
+  ? [
+      `${publicCompany.tradingName} is operated by ${publicCompany.legalName}.`,
+      `Company number: ${publicCompany.companyNumber}.`,
+      `Registered office: ${publicCompany.registeredOffice}.`,
+      ...(publicCompany.vatNumber ? [`VAT number: ${publicCompany.vatNumber}.`] : []),
+    ]
+  : [
+      "StarLiz Academy is the trading name used for this service.",
+      "Legal entity, company registration and registered office details must be configured and published before paid subscriptions open.",
+    ];
 
 /** Phase 6 draft set — aligned to shipped product behaviour. */
 export const LEGAL_POLICIES: PolicyDocument[] = [
@@ -30,13 +44,13 @@ export const LEGAL_POLICIES: PolicyDocument[] = [
         "Day School follows a fixed school timetable with school-led attendance.",
         "Day School is teacher-led and AI-first during the school day.",
         "Parents do not book Day School periods.",
-        "Day School uses SchoolDayLesson records and must not be confused with Short Learning bookings.",
+        "Day School uses school timetable lesson records and must not be confused with Short Learning bookings.",
         "Short Learning is parent-booked learning time outside Day School hours.",
         "Sessions are AI-led and are not named-tutor bookings.",
         "AI teaching is guaranteed. Human support is a safety net when available — not a private 1:1 tutor booking.",
         "Session lengths are 90 or 120 minutes, starting every 30 minutes where capacity permits.",
         "Weekday window: 16:00–20:00. Weekend window: 09:00–18:00.",
-        "Short Learning uses SchoolLearningWindow capacity and StudentLearningBooking records.",
+        "Short Learning bookings use published after-hours capacity windows.",
       ),
       s("3. AI and human support",
         "AI teaching is guaranteed. Human support is a safety net when available — not a private 1:1 tutor booking.",
@@ -84,6 +98,7 @@ export const LEGAL_POLICIES: PolicyDocument[] = [
     sections: [
       s("1. Who we are",
         "StarLiz Academy operates learning platforms for families and schools. Draft for legal review — not formal legal advice.",
+        ...publicCompanyIdentityLines,
         "Contact for privacy queries: support@starlizacademy.com.",
       ),
       s("2. Controllers and processors (summary)",
@@ -143,9 +158,9 @@ export const LEGAL_POLICIES: PolicyDocument[] = [
         "This document reflects shipped behaviour and is subject to review.",
       ),
       s("Policy rules",
-        "Essential cookies support authentication and security.",
-        "Functional cookies may store preferences.",
-        "Analytics cookies are optional where enabled.",
+        "StarLiz currently uses essential cookies for authentication, security and reliable operation.",
+        "An essential preference cookie (starliz_cookie_notice_v1) records that a visitor has acknowledged the public cookie notice. Local storage may also retain country, interface and cookie-notice preferences on the device.",
+        "The public website does not currently set optional advertising cookies. Optional analytics cookies must not be enabled without updating this policy and adding an appropriate opt-in choice.",
         "Blocking essential cookies may break login or booking.",
       ),
       s("Reporting",
@@ -759,5 +774,72 @@ export const LEGAL_POLICIES: PolicyDocument[] = [
         "Contact support@starlizacademy.com. For child welfare concerns use safeguarding@starlizacademy.com.",
       ),
     ],
-  })
+  }),
+  buildPolicy({
+    id: "communications-policy",
+    slug: "communications-policy",
+    title: "Communications Policy",
+    category: "legal",
+    audience: ["Public", "Parent", "School Admin"],
+    purpose: "Explain how StarLiz sends essential and optional communications.",
+    scope: "Emails, in-app notices and essential service messages for UK launch.",
+    summary:
+      "Essential billing, safeguarding and service notices are not suppressed by marketing preferences. Optional updates can be managed in account settings.",
+    legalReviewRequired: true,
+    status: "Draft",
+    publicVisible: true,
+    publicPath: "/policies/communications-policy",
+    reportingRoute: "support@starlizacademy.com",
+    sections: [
+      s("Purpose and scope",
+        "This policy describes how StarLiz Academy communicates with parents, schools and users about the learning service.",
+        "It does not create marketing promises beyond the locked commercial model.",
+      ),
+      s("Essential service notices",
+        "Essential notices include failed payments, payment recovery, subscription cancellation at period end, safeguarding contacts and security alerts.",
+        "Essential billing notices are not suppressed by optional notification preferences.",
+      ),
+      s("Optional communications",
+        "Optional product updates and non-essential tips may be controlled through account preferences where available.",
+        "Withdrawing marketing consent does not cancel a paid subscription or remove access to Short Learning bookings while the subscription remains active.",
+      ),
+      s("Channels and contacts",
+        `Service support: support@starlizacademy.com. Safeguarding: safeguarding@starlizacademy.com.`,
+        "School Day School communications may be directed by the partner school under school instructions.",
+      ),
+    ],
+  }),
+  buildPolicy({
+    id: "security-incident-response",
+    slug: "security-incident-response",
+    title: "Security and Incident Response Policy",
+    category: "legal",
+    audience: ["Public", "Parent", "School Admin", "Platform Admin"],
+    purpose: "Describe StarLiz security expectations and how security incidents are handled.",
+    scope: "Platform security, personal data incidents and user reporting for UK launch.",
+    summary:
+      "StarLiz applies access controls, monitoring and incident response for platform security. Personal data incidents are assessed and notified under applicable UK law.",
+    legalReviewRequired: true,
+    status: "Draft",
+    publicVisible: true,
+    publicPath: "/policies/security-incident-response",
+    reportingRoute: "support@starlizacademy.com",
+    sections: [
+      s("Purpose and scope",
+        "This policy summarises how StarLiz protects accounts and personal data and how security incidents are handled.",
+        "It is not a certification claim and remains subject to legal review.",
+      ),
+      s("Security controls",
+        "Controls include authenticated access, role-based Admin permissions, audit logging of sensitive actions, and encrypted transport for web traffic.",
+        "Parents, students and staff must keep login credentials confidential and report suspected account compromise promptly.",
+      ),
+      s("Incident response",
+        "Suspected security or personal-data incidents are triaged, contained where practical, investigated and recorded.",
+        "Where UK GDPR notification duties apply, StarLiz assesses risk and notifies regulators and affected individuals as required by law.",
+      ),
+      s("Reporting",
+        "Report suspected security issues to support@starlizacademy.com. For child welfare concerns use safeguarding@starlizacademy.com or emergency services if there is immediate danger.",
+      ),
+    ],
+  }),
 ];

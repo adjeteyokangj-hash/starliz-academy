@@ -1,5 +1,7 @@
 "use client";
 
+import CollapsibleCard from "@/components/school-admin/CollapsibleCard";
+
 import { FormEvent, useEffect, useState } from "react";
 import ShortLearningSubNav from "@/components/school-admin/ShortLearningSubNav";
 
@@ -101,8 +103,8 @@ export default function SchoolAdminShiftsPage() {
       </p>
       <ShortLearningSubNav />
 
-      <form onSubmit={onCreate} className="mt-8 space-y-3 rounded-2xl border border-border bg-card p-5">
-        <h2 className="text-lg font-semibold text-foreground">Create shift</h2>
+      <CollapsibleCard title="Create shift" className="mt-8" bodyClassName="p-5">
+      <form onSubmit={onCreate} className="space-y-3">
         <label className="block text-sm font-semibold text-foreground/80">
           Tutor
           <select
@@ -159,15 +161,15 @@ export default function SchoolAdminShiftsPage() {
           {saving ? "Saving…" : "Create shift"}
         </button>
       </form>
+      </CollapsibleCard>
 
-      <section className="mt-8">
-        <h2 className="mb-3 text-lg font-semibold text-foreground">Upcoming & recent</h2>
+      <CollapsibleCard title="Upcoming & recent" className="mt-8" count={loading ? null : shifts.length}>
         {loading ? (
           <p className="text-sm text-foreground/60">Loading…</p>
         ) : shifts.length === 0 ? (
           <p className="text-sm text-foreground/60">No shifts yet.</p>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-xs text-foreground/60">
                 <tr>
@@ -190,7 +192,7 @@ export default function SchoolAdminShiftsPage() {
             </table>
           </div>
         )}
-      </section>
+      </CollapsibleCard>
     </div>
   );
 }

@@ -5,8 +5,10 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { defaultBranding, normalizeBranding, type BrandingSettingsPayload } from "@/lib/branding"
 
+type LogoVariant = "icon" | "wordmark" | "full" | "header" | "footer"
+
 type Props = {
-  variant?: "icon" | "wordmark" | "full" | "header"
+  variant?: LogoVariant
   size?: number
   animation?: boolean
   className?: string
@@ -14,8 +16,7 @@ type Props = {
   textClassName?: string
 }
 
-function imageForVariant(branding: BrandingSettingsPayload, variant: "icon" | "wordmark" | "full" | "header") {
-  if (variant === "full") return branding.logoUrl
+function imageForVariant(branding: BrandingSettingsPayload, variant: LogoVariant) {
   if (variant === "icon") return branding.iconUrl
   return branding.logoUrl
 }
@@ -49,14 +50,20 @@ export default function Logo({
 
   const imageSrc = useMemo(() => imageForVariant(branding, variant), [branding, variant])
   const showText = false
-  const imageWidth = variant === "full"
-    ? Math.max(size * 6, 260)
-    : variant === "header"
-      ? Math.max(size * 4, 150)
-    : variant === "wordmark"
-      ? Math.max(size * 4, 160)
-      : size
-  const imageHeight = variant === "icon" ? size : variant === "header" ? Math.max(size * 2, 130) : Math.round(imageWidth / 3.15)
+  // The brand asset is square, so the footer lock-up is a square box pinned with an inline
+  // style: globals.css declares an unlayered `img { height: auto }` rule that outranks every
+  // Tailwind height utility and would otherwise stretch the mark toward its intrinsic 1254px.
+  const isFooter = variant === "footer"
+  const imageWidth = isFooter
+    ? size
+    : variant === "full"
+      ? Math.max(size * 6, 260)
+      : variant === "header"
+        ? Math.max(size * 4, 150)
+      : variant === "wordmark"
+        ? Math.max(size * 4, 160)
+        : size
+  const imageHeight = variant === "icon" || isFooter ? size : variant === "header" ? Math.max(size * 2, 130) : Math.round(imageWidth / 3.15)
 
   return (
     <Link
@@ -71,7 +78,8 @@ export default function Logo({
         height={imageHeight}
         priority
         unoptimized
-        className={`bg-white object-contain ${variant === "icon" ? "rounded-xl p-1.5" : variant === "header" ? "h-11 w-12 rounded-lg px-2 py-1 sm:h-14 sm:w-16 sm:px-2.5 sm:py-1.5" : "rounded-xl px-3 py-2"} ${animation ? "transition duration-200 group-hover:drop-shadow-[0_0_10px_rgba(99,102,241,0.6)]" : ""}`}
+        style={isFooter ? { width: size, height: size } : undefined}
+        className={`bg-white object-contain ${variant === "icon" ? "rounded-xl p-1.5" : isFooter ? "rounded-lg p-1" : variant === "header" ? "h-11 w-12 rounded-lg px-2 py-1 sm:h-14 sm:w-16 sm:px-2.5 sm:py-1.5" : "rounded-xl px-3 py-2"} ${animation ? "transition duration-200 group-hover:drop-shadow-[0_0_10px_rgba(99,102,241,0.6)]" : ""}`}
       />
 
       {showText && (

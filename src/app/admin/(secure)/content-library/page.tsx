@@ -169,6 +169,7 @@ export default function ContentLibraryPage() {
     if (viewModalContent?.id === viewId) return;
     const match = items.find((item) => item.id === viewId);
     if (!match) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deep-link view sync from URL param; frozen behaviour, advisory only
     setViewModalContent(match);
     setSelectedContentId(match.id);
     void refreshDuplicateSummaryForContent(match.id).then((summary) => {

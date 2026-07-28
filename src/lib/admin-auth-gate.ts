@@ -3,6 +3,9 @@
  * Shared by the root request interceptor (`proxy.ts`) and focused unit tests.
  */
 
+/** Keep in sync with SCHOOL_ADMIN_HOME — do not import portal-routing (pulls Prisma into edge). */
+const SCHOOL_ADMIN_HOME = "/school-admin";
+
 export type AdminGateSession = {
   role: string;
 } | null;
@@ -37,6 +40,18 @@ export function buildAdminLoginUrl(pathname: string, search = "", reason?: "swit
 }
 
 /**
+ * Where authenticated non-platform-admins go when they hit /admin*.
+ * School staff (User.role === "teacher", including school owners) go to the
+ * school portal — never to an admin "role switch" login.
+ */
+export function nonPlatformAdminFallbackPath(role: string | null | undefined): string {
+  if (role === "teacher") return SCHOOL_ADMIN_HOME;
+  if (role === "parent") return "/parent/profiles";
+  if (role === "student") return "/student/dashboard";
+  return "/";
+}
+
+/**
  * Decide whether a request to an /admin* path may proceed.
  * Non-admin paths return allow (caller should ignore).
  */
@@ -57,6 +72,15 @@ export function resolvePlatformAdminGate(input: {
       const next = safeAdminNextPath(new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("next"));
       return { action: "redirect", to: next ?? "/admin", status: 307 };
     }
+    // Authenticated school/parent/student users must not enter the admin login
+    // "switch" flow — send them to their own portal instead.
+    if (session) {
+      return {
+        action: "redirect",
+        to: nonPlatformAdminFallbackPath(session.role),
+        status: 307,
+      };
+    }
     return { action: "allow" };
   }
 
@@ -71,7 +95,7 @@ export function resolvePlatformAdminGate(input: {
   if (session.role !== "admin") {
     return {
       action: "redirect",
-      to: buildAdminLoginUrl(pathname, search, "switch"),
+      to: nonPlatformAdminFallbackPath(session.role),
       status: 307,
     };
   }

@@ -96,7 +96,7 @@ test.describe("Admin Schools Operations Data Hygiene", () => {
     inviteCount = querySqlCount("SELECT COUNT(*) FROM SchoolInviteToken WHERE schoolId LIKE 'ops-%';");
     expect(inviteCount).toBe(0);
 
-    const opsUserCount = querySqlCount("SELECT COUNT(*) FROM User WHERE email IN ('ops-owner@starliz.dev', 'active.teacher@starliz.dev', 'invite.only@starliz.dev', 'capacity.teacher@starliz.dev', 'safeguarding.teacher@starliz.dev', 'capacity-parent-1@starliz.dev', 'capacity-parent-2@starliz.dev', 'capacity-parent-3@starliz.dev');");
+    const opsUserCount = querySqlCount("SELECT COUNT(*) FROM User WHERE email IN ('platform-admin@starliz.dev', 'active.teacher@starliz.dev', 'invite.only@starliz.dev', 'capacity.teacher@starliz.dev', 'safeguarding.teacher@starliz.dev', 'capacity-parent-1@starliz.dev', 'capacity-parent-2@starliz.dev', 'capacity-parent-3@starliz.dev');");
     expect(opsUserCount).toBe(0);
 
     const opsChildCount = querySqlCount("SELECT COUNT(*) FROM ChildProfile WHERE id LIKE 'ops-%';");

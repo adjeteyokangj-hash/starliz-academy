@@ -4,6 +4,11 @@
  * These are intentionally non-production fixture credentials for local/dev UAT only.
  * Prefer overriding via environment variables (see docs/LAUNCH_VERIFICATION.md).
  * Never use these values in production. Never commit real production secrets.
+ *
+ * Access model:
+ * - platform admin: platform-admin@starliz.dev (User.role=admin + AdminUser)
+ * - school owner: ops-owner@starliz.dev (User.role=teacher + SchoolTeacher.role=owner for StarLiz Academy School only)
+ * - school admin: admin@starlizacademy.com (User.role=teacher + SchoolTeacher.role=admin for StarLiz Academy School only)
  */
 export const UAT_FIXTURES = {
   baseUrl: process.env.UAT_BASE_URL ?? "http://localhost:3000",
@@ -14,11 +19,19 @@ export const UAT_FIXTURES = {
   otherTeacherEmail: process.env.UAT_OTHER_TEACHER_EMAIL ?? "uat.live.other.teacher@starliz.dev",
   otherTeacherPassword: process.env.UAT_OTHER_TEACHER_PASSWORD ?? "UatOtherTeacher#2026",
   adminEmail:
-    process.env.UAT_ADMIN_EMAIL ?? process.env.E2E_OPS_ADMIN_EMAIL ?? "ops-owner@starliz.dev",
+    process.env.UAT_ADMIN_EMAIL ?? process.env.E2E_OPS_ADMIN_EMAIL ?? "platform-admin@starliz.dev",
   adminPassword:
-    process.env.UAT_ADMIN_PASSWORD ?? process.env.E2E_OPS_ADMIN_PASSWORD ?? "OpsAdmin#2026",
-  schoolAdminEmail: process.env.UAT_SCHOOL_ADMIN_EMAIL ?? "admin@starlizacademy.com",
-  schoolAdminPassword: process.env.UAT_SCHOOL_ADMIN_PASSWORD ?? "Admin#2026",
+    process.env.UAT_ADMIN_PASSWORD ?? process.env.E2E_OPS_ADMIN_PASSWORD ?? "PlatformAdmin#2026",
+  /** School Owner fixture (ops-owner). Prefer schoolOwner* aliases for clarity. */
+  schoolOwnerEmail:
+    process.env.UAT_SCHOOL_OWNER_EMAIL ?? "ops-owner@starliz.dev",
+  schoolOwnerPassword:
+    process.env.UAT_SCHOOL_OWNER_PASSWORD ?? "OpsAdmin#2026",
+  /** School Admin fixture (admin@starlizacademy.com) — not platform admin. */
+  schoolAdminEmail:
+    process.env.UAT_SCHOOL_ADMIN_EMAIL ?? "admin@starlizacademy.com",
+  schoolAdminPassword:
+    process.env.UAT_SCHOOL_ADMIN_PASSWORD ?? "Admin#2026",
 } as const;
 
 /** Generated bulky evidence root (gitignored). Permanent summaries live under docs/assurance/. */

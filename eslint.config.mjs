@@ -19,6 +19,17 @@ const eslintConfig = defineConfig([
     "*.tsbuildinfo",
     ".eslintcache",
     ".vercel/**",
+    // Local / temporary artefacts (not committed):
+    "tmp/**",
+    ".dev-port-check.txt",
+    "package.json.full-backup.json",
+    "package.json.surgical-backup.json",
+    "package.json.tmp.defect.json",
+    "run-playable-report.mts",
+    "scripts/_direct_storage_uat.mts",
+    "scripts/_disposition_uat_draft.mts",
+    "scripts/_oak_diagnose.mts",
+    "scripts/uat/_tmp-*",
   ]),
 ]);
 

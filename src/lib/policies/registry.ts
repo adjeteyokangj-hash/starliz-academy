@@ -76,6 +76,8 @@ export const POLICY_HUB_GROUPS: Array<{
       "data-protection",
       "data-retention",
       "account-suspension",
+      "communications-policy",
+      "security-incident-response",
     ],
   },
   {

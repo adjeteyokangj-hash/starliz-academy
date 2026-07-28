@@ -48,6 +48,8 @@ import {
   legacyPrefillFromQueryMap,
   resolveUniversalPrefill,
 } from "@/lib/ai-prefill-contract";
+import ShortLearningDeliveryModePanel from "@/components/admin/ShortLearningDeliveryModePanel";
+import LessonPackBulkImporter from "@/components/admin/LessonPackBulkImporter";
 
 type GeneratedPreviewItem = Record<string, unknown> & {
   id?: string;
@@ -747,6 +749,12 @@ function recommendItemCount(input: {
 
 export default function AiGeneratorPage() {
   const searchParams = useSearchParams();
+  const [shortLearningMode, setShortLearningMode] = useState(
+    searchParams.get("deliveryMode") === "SHORT_LEARNING",
+  );
+  const [lessonPackImportMode, setLessonPackImportMode] = useState(
+    searchParams.get("deliveryMode") === "LESSON_PACK_IMPORT",
+  );
   const serializedPrefillContract = searchParams.get("prefillContract");
   const prefillSubject = searchParams.get("subject");
   const prefillSkill = searchParams.get("skill");
@@ -2334,6 +2342,23 @@ export default function AiGeneratorPage() {
   }
 
   return (
+    <div className="space-y-6">
+      <ShortLearningDeliveryModePanel
+        onDaySchoolSelected={() => {
+          setShortLearningMode(false);
+          setLessonPackImportMode(false);
+        }}
+        onShortLearningSelected={() => {
+          setShortLearningMode(true);
+          setLessonPackImportMode(false);
+        }}
+        onLessonPackImportSelected={() => {
+          setShortLearningMode(false);
+          setLessonPackImportMode(true);
+        }}
+      />
+      {lessonPackImportMode ? <LessonPackBulkImporter /> : null}
+      {shortLearningMode || lessonPackImportMode ? null : (
     <div className="relative z-0 grid items-start gap-6 xl:grid-cols-[32rem_minmax(0,1fr)]">
       <div className="xl:sticky xl:top-24 xl:z-20 xl:max-h-[calc(100vh-96px)] xl:overflow-y-auto">
       <AdminSectionCard title="Manual Curriculum Generator" eyebrow="Manual AI generator">
@@ -3502,6 +3527,8 @@ export default function AiGeneratorPage() {
       </AdminSectionCard>
       </div>
       </div>
+    </div>
+      )}
     </div>
   );
 }

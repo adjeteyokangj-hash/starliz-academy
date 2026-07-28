@@ -653,7 +653,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         try {
           const [childRes, insightsRes, assignmentsRes, academicRes, certificatesRes, schoolWeekRes, ticketsRes, messagesRes] = await Promise.all([
             fetch(`/api/children/${selectedChildId}/data${summaryMode ? "?summary=1" : ""}`, { credentials: "include" }),
-            fetch(`/api/parent/insights${summaryMode ? "?summary=1" : ""}`, { credentials: "include" }),
+            fetch(`/api/parent/insights?childId=${encodeURIComponent(selectedChildId ?? "")}${summaryMode ? "&summary=1" : ""}`, { credentials: "include" }),
             fetch(`/api/assignments?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
             fetch(`/api/parent/academic-intelligence?childId=${encodeURIComponent(selectedChildId ?? "")}`, { credentials: "include" }),
             fetch(`/api/parent/students/${encodeURIComponent(selectedChildId ?? "")}/certificates`, { credentials: "include" }),
@@ -804,6 +804,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   useEffect(() => {
     if (loading) return;
     if (activeSection !== "progress" || !selectedChildId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset progress summary when leaving section; frozen behaviour, advisory only
       setProgressPackSummary(null);
       return;
     }
@@ -1021,12 +1022,17 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     if (!supportSubject.trim() || !supportBody.trim()) return;
     setSaving(true);
     try {
-      await fetchWithRefreshRetry("/api/parent/support", {
+      const created = await fetchWithRefreshRetry("/api/parent/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ subject: supportSubject, message: supportBody }),
       });
+      if (!created.ok) {
+        const payload = (await created.json().catch(() => null)) as { error?: string } | null;
+        window.alert(payload?.error ?? "Unable to send your support message. Please try again.");
+        return;
+      }
       setSupportSubject("");
       setSupportBody("");
       const refreshed = await fetchWithRefreshRetry("/api/parent/support", { credentials: "include" });
@@ -1034,6 +1040,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         const payload = (await refreshed.json()) as { tickets: SupportTicket[] };
         setTickets(payload.tickets ?? []);
       }
+    } catch {
+      window.alert("Unable to send your support message. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -1114,7 +1122,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <StatCard label="Children" value={account?.account.linkedChildrenCount ?? 0} />
+              <StatCard label="Children" value={loading ? "…" : (account?.account.linkedChildrenCount ?? 0)} />
               <StatCard
                 label="Subscription"
                 value={
@@ -1126,7 +1134,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       ?? "Unavailable")
                 }
               />
-              <StatCard label="Consent" value={consent?.accepted ? "Accepted" : "Pending"} />
+              <StatCard label="Consent" value={loading ? "…" : (consent?.accepted ? "Accepted" : "Not accepted")} />
             </div>
             <div className="flex justify-start lg:justify-end">
               <Button
@@ -1315,6 +1323,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
                 <Panel title="Notification Preferences" description="Choose what updates you receive from StarLiz.">
                   <NotificationPreferences
+                    key={[
+                      notificationsDraft.emailWeeklyReport,
+                      notificationsDraft.assignmentAlerts,
+                      notificationsDraft.lessonReminders,
+                      notificationsDraft.rewardNotifications,
+                      notificationsDraft.productUpdates,
+                      Boolean(account),
+                    ].join(":")}
+                    ready={Boolean(account)}
                     preferences={notificationsDraft}
                     onUpdate={(prefs) => {
                       setNotificationsDraft(prefs);
@@ -1878,15 +1895,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                   <div className="grid gap-3 md:grid-cols-3">
                     <Metric label="Average accuracy" value={`${insights.averageAccuracy}%`} />
                     <Metric label="Total attempts" value={String(insights.totalAttempts)} />
-                    <Metric label="Learning mode" value={insights.learningMode ?? "Standard"} />
+                    <Metric label="Learning mode" value={insights.learningMode ?? "Not enough data yet"} />
                   </div>
                   <div className="mt-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
                     <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-300">Adaptive tutor</p>
                     {activeLearningDna?.enoughHistory ? (
                       <div className="mt-3 grid gap-3 md:grid-cols-3">
-                        <Metric label="Status" value={activeLearningDna.readinessLabel ?? "Active"} />
+                        <Metric label="Status" value={activeLearningDna.readinessLabel ?? "Available"} />
                         <Metric label="Confidence trend" value={`${activeLearningDna.confidenceTrend ?? 0}%`} />
-                        <Metric label="Best pace" value={activeLearningDna.preferredPace ?? "Balanced"} />
+                        <Metric label="Best pace" value={activeLearningDna.preferredPace ?? "Not enough data yet"} />
                       </div>
                     ) : (
                       <p className="mt-2 text-sm text-slate-200">
@@ -2252,7 +2269,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
           {activeSection === "messages" ? (
             <div className="space-y-4">
-              <Panel title="Message Support" description="Send a message to the StarLiz team. We'll reply within 1 business day.">
+              <Panel title="Message Support" description="Send a message to the StarLiz team. Ordinary messages are acknowledged within 2 working days; urgent account-access or payment-blocking issues within 1 working day.">
                 <form
                   className="space-y-3"
                   onSubmit={async (event) => {

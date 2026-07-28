@@ -1,4 +1,4 @@
-import { enqueueOfflineEvent } from "@/lib/offline_queue";
+import { queueOfflineEvent } from "@/lib/offline_queue";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 const ATTEMPT_QUEUE_KEY = "starliz.offlineAttemptQueue";

@@ -29,6 +29,7 @@ export async function GET(request: Request) {
   const action = url.searchParams.get("action") ?? undefined;
   const severity = url.searchParams.get("severity") ?? undefined;
   const entityType = url.searchParams.get("entityType") ?? undefined;
+  const entityId = url.searchParams.get("entityId") ?? undefined;
 
   const [logs, total] = await Promise.all([
     prisma.schoolAuditLog.findMany({
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
         ...(action ? { action } : {}),
         ...(severity ? { severity } : {}),
         ...(entityType ? { entityType } : {}),
+        ...(entityId ? { entityId } : {}),
       }),
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
@@ -46,6 +48,7 @@ export async function GET(request: Request) {
         ...(action ? { action } : {}),
         ...(severity ? { severity } : {}),
         ...(entityType ? { entityType } : {}),
+        ...(entityId ? { entityId } : {}),
       }),
     }),
   ]);

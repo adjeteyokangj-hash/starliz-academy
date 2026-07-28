@@ -4,6 +4,7 @@ import { FormEvent, Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Logo from "@/components/Logo";
+import PublicMiniFooter from "@/components/public/PublicMiniFooter";
 import Button from "@/components/ui/Button";
 import { getLoginDisabledReason } from "@/lib/login-utils";
 
@@ -225,7 +226,7 @@ function ParentBrandPanel() {
 
 export default function LoginPage() {
   return (
-    <main className="parent-login-shell relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-[#0f0a18] px-4 py-8 sm:py-12">
+    <main className="parent-login-shell relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-[#0f0a18] px-4 py-8 pb-24 sm:py-12 sm:pb-24">
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
         <div className="absolute inset-0 bg-[linear-gradient(160deg,#1a0f2e_0%,#0f0a18_45%,#140c22_100%)]" />
         <div className="absolute -left-24 top-0 h-80 w-80 rounded-full bg-primary/25 blur-3xl" />
@@ -240,6 +241,8 @@ export default function LoginPage() {
           </Suspense>
         </div>
       </div>
+
+      <PublicMiniFooter className="absolute inset-x-0 bottom-0" />
 
       <style jsx global>{`
         .parent-login-brand {

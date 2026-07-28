@@ -22,7 +22,7 @@ export default async function SchoolAdminLayout({
     <div className="flex min-h-screen bg-background">
       <SessionKeepAlive loginPath="/auth/login" />
       <SchoolAdminNav schoolName={ctx.schoolName} role={ctx.role} />
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="min-w-0 flex-1 overflow-auto">{children}</main>
     </div>
   );
 }

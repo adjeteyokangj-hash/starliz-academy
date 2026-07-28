@@ -26,6 +26,7 @@ import {
   yearGroupFromLearningLevel,
 } from "@/lib/curriculum-level-targets";
 import { analyzeContentSessionSlots, getIncompleteSlotsReason } from "@/lib/session-slot-validation";
+import { isPlayableSubjectContentTypeCompatible } from "@/lib/schools/playable-lesson-type";
 
 export class SchoolLicenceAccessError extends Error {
   reason: SchoolLicenceBlockedReason;
@@ -537,11 +538,15 @@ export async function getAssignmentSafetyAndRecommendation(input: {
   if (contentSubject !== "unknown") {
     const inferredLegacyType = mapSubjectToLegacyContentType(contentSubject);
     if (inferredLegacyType && contentLegacyType && inferredLegacyType !== contentLegacyType) {
-      return {
-        safe: false,
-        reason: `Content subject/type mismatch detected (${contentSubject} vs ${content.contentType}).`,
-        meta,
-      };
+      // Allow curriculum English (english-language) with playable English strands (reading, etc.)
+      // via the shared Daytime/Short Learning playable-type contract.
+      if (!isPlayableSubjectContentTypeCompatible(contentSubject, content.contentType)) {
+        return {
+          safe: false,
+          reason: `Content subject/type mismatch detected (${contentSubject} vs ${content.contentType}).`,
+          meta,
+        };
+      }
     }
   }
 

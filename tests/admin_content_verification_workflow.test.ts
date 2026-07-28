@@ -191,3 +191,61 @@ test("runtime black box simulation passes well-formed lesson content", () => {
   assert.equal(result.status, "passed");
   assert.equal(result.score >= 82, true);
 });
+test("needs_changes records academic validation reason and syncs LessonPackImport status", async () => {
+  const REASON = "Imported title, objective and question pairing failed academic validation.";
+  let contentMeta = "";
+  const response = await handleAdminContentVerifyPost(
+    makeRequest({ action: "needs_changes", notes: REASON }),
+    context,
+    deps({
+      findContent: async () => ({
+        id: "content-1",
+        contentType: "maths",
+        level: 4,
+        topic: "Decimals",
+        contentJson: JSON.stringify([{
+          question: "Complete the part-part-whole model for 103.2",
+          answer: "guided",
+          explanation: "Partition into wholes and tenths.",
+        }]),
+        status: "generated",
+        skillFocus: "Decimals",
+        metadataJson: JSON.stringify({
+          importId: "import-oak-bad-1",
+          subject: "maths",
+          blackBoxContentTest: {
+            decision: "APPROVE",
+            passRate: 0.94,
+            score: 94,
+            maxScore: 100,
+            reasons: [],
+          },
+        }),
+      }),
+      updateContent: async (_id, data) => {
+        contentMeta = data.metadataJson;
+        return {
+          id: "content-1",
+          status: data.status,
+          metadataJson: data.metadataJson,
+          reviewedAt: data.reviewedAt ?? null,
+          approvedAt: null,
+        };
+      },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const meta = JSON.parse(contentMeta) as {
+    blackBoxAdminVerification?: { status?: string; notes?: string };
+    reviewHistory?: Array<{ action?: string; notes?: string }>;
+  };
+  assert.equal(meta.blackBoxAdminVerification?.status, "needs_changes");
+  assert.equal(meta.blackBoxAdminVerification?.notes, REASON);
+  assert.ok(meta.reviewHistory?.some((h) => h.action === "needs_changes" && h.notes === REASON));
+
+  const { readFileSync } = await import("node:fs");
+  const routeSrc = readFileSync("src/app/api/admin/content/[id]/verify/route.ts", "utf8");
+  assert.match(routeSrc, /status:\s*"changes_requested"/);
+  assert.match(routeSrc, /lesson_pack_import\.changes_requested/);
+});

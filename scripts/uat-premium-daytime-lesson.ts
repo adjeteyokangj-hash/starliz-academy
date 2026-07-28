@@ -197,8 +197,8 @@ async function shot(page: Page, name: string) {
 
 async function adminLogin(): Promise<CookieJar> {
   const jar: CookieJar = new Map();
-  const email = process.env.UAT_ADMIN_EMAIL || "ops-owner@starliz.dev";
-  const password = process.env.UAT_ADMIN_PASSWORD || "OpsAdmin#2026";
+  const email = process.env.UAT_ADMIN_EMAIL || "platform-admin@starliz.dev";
+  const password = process.env.UAT_ADMIN_PASSWORD || "PlatformAdmin#2026";
   const login = await api(jar, "POST", "/api/auth/login", { email, password }, 30_000);
   if (!login.ok) throw new Error(`Admin login failed: ${login.status}`);
   return jar;

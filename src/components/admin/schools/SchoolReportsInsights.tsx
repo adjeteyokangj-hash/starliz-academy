@@ -16,6 +16,7 @@ export default function SchoolReportsInsights({ schoolId }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear error before refetch on schoolId change; frozen behaviour, advisory only
     setPackError(null);
     fetch(`/api/school/progress-report?schoolId=${encodeURIComponent(schoolId)}&windowDays=30`, {
       credentials: "include",

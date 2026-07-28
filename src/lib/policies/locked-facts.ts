@@ -10,15 +10,17 @@ export const DAY_SCHOOL_FACTS = [
   "Day School follows a fixed school timetable with school-led attendance.",
   "Day School is teacher-led and AI-first during the school day.",
   "Parents do not book Day School periods.",
-  "Day School uses SchoolDayLesson records and is separate from Short Learning bookings.",
+  "Day School uses school timetable lesson records and is separate from Short Learning bookings.",
 ] as const;
 
 export const SHORT_LEARNING_FACTS = [
   "Short Learning is parent-booked learning time outside Day School hours.",
   "Sessions are AI-led and are not named-tutor bookings.",
   "Session lengths are 90 or 120 minutes, starting every 30 minutes where capacity permits.",
+  "105-minute sessions are unavailable for new bookings and Admin authoring.",
   "Weekday window: 16:00–20:00. Weekend window: 09:00–18:00.",
-  "Short Learning uses SchoolLearningWindow and StudentLearningBooking.",
+  "Short Learning bookings use published after-hours capacity windows.",
+  "AI support is available throughout the session. Human tutors are an availability-based safety net and are not guaranteed.",
 ] as const;
 
 export const BOOKING_RULES_FACTS = [

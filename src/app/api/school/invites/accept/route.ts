@@ -92,6 +92,75 @@ export async function POST(request: Request) {
     // ignore
   }
 
+  // Parent invite acceptance
+  if (token.inviteType === "parent") {
+    const parentUserId = typeof meta.parentUserId === "string" ? meta.parentUserId : null;
+    const linkId = typeof meta.linkId === "string" ? meta.linkId : null;
+    const schoolStudentId =
+      token.targetSchoolStudentId ??
+      (typeof meta.schoolStudentId === "string" ? meta.schoolStudentId : null);
+
+    const parentUser = parentUserId
+      ? await prisma.user.findUnique({ where: { id: parentUserId }, select: { id: true, email: true, role: true } })
+      : await prisma.user.findUnique({ where: { email: token.targetEmail.toLowerCase() }, select: { id: true, email: true, role: true } });
+
+    if (!parentUser || parentUser.role !== "parent") {
+      return NextResponse.json({ error: "Parent account not found for this invite." }, { status: 404 });
+    }
+
+    const parentPasswordHash = await hashPassword(body.password);
+    await prisma.user.update({
+      where: { id: parentUser.id },
+      data: {
+        passwordHash: parentPasswordHash,
+        ...(body.name ? { name: body.name } : {}),
+        role: "parent",
+      },
+    });
+
+    if (schoolStudentId) {
+      const link = linkId
+        ? await prisma.parentSchoolLink.findFirst({ where: { id: linkId, schoolId: token.schoolId } })
+        : await prisma.parentSchoolLink.findFirst({
+            where: { schoolId: token.schoolId, parentUserId: parentUser.id, schoolStudentId },
+          });
+      if (link && link.status !== "active") {
+        await prisma.parentSchoolLink.update({
+          where: { id: link.id },
+          data: { status: "pending_consent" },
+        });
+      }
+    }
+
+    await consumeSchoolInviteToken(token.id, parentUser.id);
+    await writeSchoolAuditLog({
+      schoolId: token.schoolId,
+      actorUserId: parentUser.id,
+      action: "invite_accepted",
+      entityType: "student",
+      entityId: schoolStudentId ?? parentUser.id,
+      ipAddress: ip,
+      userAgent: request.headers.get("user-agent") ?? undefined,
+      metadata: { inviteType: "parent", parentUserId: parentUser.id, schoolStudentId },
+      severity: "info",
+    });
+
+    const parentSession = await createSessionToken({
+      userId: parentUser.id,
+      email: parentUser.email,
+      role: "parent",
+    });
+    const parentRes = NextResponse.json({ ok: true, redirectTo: "/parent", inviteType: "parent" });
+    parentRes.cookies.set(getAuthCookieName(), parentSession, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: getSessionMaxAgeSeconds(),
+      path: "/",
+    });
+    return parentRes;
+  }
+
   const schoolTeacherId = typeof meta.schoolTeacherId === "string" ? meta.schoolTeacherId : null;
   const userId = typeof meta.userId === "string" ? meta.userId : null;
 

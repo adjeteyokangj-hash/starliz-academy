@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/db";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
+import {
+  findDaySchoolConflicts,
+  formatBlockingConflictError,
+  type DaySchoolConflict,
+  type DaySchoolPeriodForConflict,
+} from "@/lib/schools/day-school-conflicts";
 import { isValidTimeRange } from "@/lib/schools/school-day-period";
 
 export type UpdateSchoolDayLessonInput = {
@@ -16,13 +22,15 @@ export type UpdateSchoolDayLessonInput = {
 };
 
 export type UpdateSchoolDayLessonResult =
-  | { ok: true; dayLessonId: string }
-  | { ok: false; status: number; error: string };
+  | { ok: true; dayLessonId: string; warnings: DaySchoolConflict[] }
+  | { ok: false; status: number; error: string; conflicts?: DaySchoolConflict[] };
 
 export type UpdateSchoolDayLessonDeps = {
   findDayLesson: (input: { dayLessonId: string; schoolId: string }) => Promise<{
     id: string;
     schoolId: string;
+    dayOfWeek: number;
+    classroomId: string | null;
     teacherId: string | null;
     room: string | null;
     startsAt: string;
@@ -30,7 +38,14 @@ export type UpdateSchoolDayLessonDeps = {
     subject: string;
     title: string;
     lessonId: string | null;
+    lessonType: string;
+    status: string;
   } | null>;
+  findSiblingPeriods: (input: {
+    schoolId: string;
+    dayOfWeek: number;
+    excludeId: string;
+  }) => Promise<DaySchoolPeriodForConflict[]>;
   findTeacherInSchool: (input: { teacherId: string; schoolId: string }) => Promise<{ id: string } | null>;
   findLesson: (lessonId: string) => Promise<{ id: string } | null>;
   updateDayLesson: (input: {
@@ -53,6 +68,8 @@ export function createDefaultUpdateSchoolDayLessonDeps(): UpdateSchoolDayLessonD
       select: {
         id: true,
         schoolId: true,
+        dayOfWeek: true,
+        classroomId: true,
         teacherId: true,
         room: true,
         startsAt: true,
@@ -60,6 +77,27 @@ export function createDefaultUpdateSchoolDayLessonDeps(): UpdateSchoolDayLessonD
         subject: true,
         title: true,
         lessonId: true,
+        lessonType: true,
+        status: true,
+      },
+    }),
+    findSiblingPeriods: async ({ schoolId, dayOfWeek, excludeId }) => prisma.schoolDayLesson.findMany({
+      where: {
+        schoolId,
+        dayOfWeek,
+        id: { not: excludeId },
+        status: { not: "cancelled" },
+      },
+      select: {
+        id: true,
+        dayOfWeek: true,
+        startsAt: true,
+        endsAt: true,
+        teacherId: true,
+        classroomId: true,
+        room: true,
+        status: true,
+        lessonType: true,
       },
     }),
     findTeacherInSchool: async ({ teacherId, schoolId }) => prisma.schoolTeacher.findFirst({
@@ -124,10 +162,10 @@ export async function updateSchoolDayLesson(
   }
 
   const nextTeacherId = input.teacherId === undefined
-    ? undefined
+    ? existing.teacherId
     : (input.teacherId?.trim() || null);
   const nextRoom = input.room === undefined
-    ? undefined
+    ? existing.room
     : (input.room?.trim() || null);
   const nextSubject = input.subject?.trim();
   const nextTitle = input.title?.trim();
@@ -135,10 +173,39 @@ export async function updateSchoolDayLesson(
     ? undefined
     : (input.lessonId?.trim() || null);
 
+  const siblings = await deps.findSiblingPeriods({
+    schoolId: input.schoolId,
+    dayOfWeek: existing.dayOfWeek,
+    excludeId: existing.id,
+  });
+  const proposed: DaySchoolPeriodForConflict = {
+    id: existing.id,
+    dayOfWeek: existing.dayOfWeek,
+    startsAt: nextStartsAt,
+    endsAt: nextEndsAt,
+    teacherId: nextTeacherId,
+    classroomId: existing.classroomId,
+    room: nextRoom,
+    status: existing.status,
+    lessonType: existing.lessonType,
+  };
+  const conflicts = findDaySchoolConflicts([...siblings, proposed]);
+  const involving = conflicts.filter((c) => c.periodIds.includes(existing.id));
+  const blocking = involving.filter((c) => c.severity === "blocking");
+  if (blocking.length > 0) {
+    return {
+      ok: false,
+      status: 409,
+      error: formatBlockingConflictError(blocking),
+      conflicts: blocking,
+    };
+  }
+  const warnings = involving.filter((c) => c.severity === "warning");
+
   await deps.updateDayLesson({
     dayLessonId: existing.id,
-    ...(nextTeacherId !== undefined ? { teacherId: nextTeacherId } : {}),
-    ...(nextRoom !== undefined ? { room: nextRoom } : {}),
+    ...(input.teacherId !== undefined ? { teacherId: nextTeacherId } : {}),
+    ...(input.room !== undefined ? { room: nextRoom } : {}),
     ...(input.startsAt !== undefined ? { startsAt: nextStartsAt } : {}),
     ...(input.endsAt !== undefined ? { endsAt: nextEndsAt } : {}),
     ...(nextSubject ? { subject: nextSubject } : {}),
@@ -164,17 +231,18 @@ export async function updateSchoolDayLesson(
         lessonId: existing.lessonId,
       },
       after: {
-        teacherId: nextTeacherId === undefined ? existing.teacherId : nextTeacherId,
-        room: nextRoom === undefined ? existing.room : nextRoom,
+        teacherId: nextTeacherId,
+        room: nextRoom,
         startsAt: nextStartsAt,
         endsAt: nextEndsAt,
         subject: nextSubject || existing.subject,
         title: nextTitle || existing.title,
         lessonId: nextLessonId === undefined ? existing.lessonId : nextLessonId,
       },
+      roomWarnings: warnings.map((w) => w.label),
     },
     severity: "info",
   });
 
-  return { ok: true, dayLessonId: existing.id };
+  return { ok: true, dayLessonId: existing.id, warnings };
 }

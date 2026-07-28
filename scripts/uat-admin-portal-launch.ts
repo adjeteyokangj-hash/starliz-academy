@@ -5,7 +5,7 @@
  * Usage: npm run uat:admin-portal
  * Generated: artifacts/uat/admin-portal/
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";
 import { loadEnvLocal } from "./uat/load-env-local";

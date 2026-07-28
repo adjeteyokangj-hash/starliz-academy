@@ -65,6 +65,8 @@ type Props = {
   onClose: () => void;
   onApprove: () => void;
   onRegenerate: (reason: string, options?: { allowWeeklyReview?: boolean }) => void;
+  /** School Portal must not deep-link into platform Content Library admin. */
+  hideContentLibrary?: boolean;
 };
 
 const REGENERATE_REASONS = [
@@ -85,6 +87,7 @@ export default function LessonReviewModal({
   onClose,
   onApprove,
   onRegenerate,
+  hideContentLibrary = false,
 }: Props) {
   const stages = lesson.playableSession?.stages ?? [];
   const [stageIndex, setStageIndex] = useState(0);
@@ -253,12 +256,14 @@ export default function LessonReviewModal({
                       Finish preview
                     </button>
                   ) : null}
-                  <Link
-                    href={`/admin/content-library?view=${encodeURIComponent(current.id)}`}
-                    className="rounded-md border border-violet-500/40 px-3 py-1.5 text-xs font-semibold text-violet-100 hover:bg-violet-500/15"
-                  >
-                    Edit stage in Content Library
-                  </Link>
+                  {hideContentLibrary ? null : (
+                    <Link
+                      href={`/admin/content-library?view=${encodeURIComponent(current.id)}`}
+                      className="rounded-md border border-violet-500/40 px-3 py-1.5 text-xs font-semibold text-violet-100 hover:bg-violet-500/15"
+                    >
+                      Edit stage in Content Library
+                    </Link>
+                  )}
                 </div>
               </>
             ) : (

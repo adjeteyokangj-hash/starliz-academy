@@ -379,7 +379,8 @@ async function main() {
     data: { teacherId: periodTeacher.schoolTeacherId },
   });
 
-  const otherTeacher = await ensureTeacherUser({
+  // Ensure cross-teacher fixture exists for isolation checks (login handled later by email).
+  await ensureTeacherUser({
     email: "uat.live.other.teacher@starliz.dev",
     name: "UAT Other Teacher",
     password: OTHER_TEACHER_PASSWORD,
@@ -709,7 +710,7 @@ async function main() {
     const attempts = Array.isArray(exhausted?.attempts) ? exhausted!.attempts as Array<Record<string, unknown>> : [];
     const stages = Array.isArray(exhausted?.stages) ? exhausted!.stages as Array<Record<string, unknown>> : [];
     const wrongAttempts = attempts.filter((a) => a.correct === false).length;
-    const leakedPeriod = history.some((h) => {
+    const leakedPeriod = history.some(() => {
       // history items don't include other period ids in skillFocus path; messages only
       return false;
     });

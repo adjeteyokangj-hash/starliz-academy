@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/db";
 import type { StudentLearningBookingStatus } from "@prisma/client";
+import {
+  resolveBookingActorKind,
+  writeShortLearningBookingAudit,
+  type BookingSnapshot,
+} from "@/lib/schools/short-learning-booking-audit";
 
 export const SHORT_LEARNING_HONESTY_POLICY_VERSION = "short-learning-ai-led-v1";
 
@@ -520,6 +525,30 @@ export async function createStudentLearningBooking(input: {
     },
   });
 
+  const afterSnap: BookingSnapshot = {
+    startsAt: booking.startsAt.toISOString(),
+    endsAt: booking.endsAt.toISOString(),
+    durationMinutes: booking.durationMinutes,
+    subject: booking.subject,
+    status: booking.status,
+    learningFocus: booking.learningFocus,
+  };
+  void writeShortLearningBookingAudit({
+    schoolId: booking.schoolId,
+    bookingId: booking.id,
+    actorUserId: input.parentUserId,
+    action: "short_learning_booking_created",
+    actorKind: resolveBookingActorKind({
+      source: "parent_portal",
+      actorUserId: input.parentUserId,
+      parentUserId: input.parentUserId,
+    }),
+    parentUserId: input.parentUserId,
+    schoolStudentId: input.schoolStudentId,
+    after: afterSnap,
+    source: "api",
+  }).catch(() => undefined);
+
   // Pre-build session plan + Daytime-engine content in the background so the
   // student journey is ready when the window opens (best-effort; learn path re-ensures).
   void import("@/lib/schools/short-learning-session-content")
@@ -543,9 +572,18 @@ export async function cancelStudentLearningBooking(input: {
   if (["cancelled", "late_cancelled", "completed", "expired", "no_show"].includes(booking.status)) {
     throw new Error("Booking cannot be cancelled.");
   }
+  const beforeSnap: BookingSnapshot = {
+    startsAt: booking.startsAt.toISOString(),
+    endsAt: booking.endsAt.toISOString(),
+    durationMinutes: booking.durationMinutes,
+    subject: booking.subject,
+    status: booking.status,
+    learningFocus: booking.learningFocus,
+    cancellationCategory: booking.cancellationCategory,
+  };
   const { late } = canCancelFreely({ sessionStartsAt: booking.startsAt, now: input.now });
   const status: StudentLearningBookingStatus = late ? "late_cancelled" : "cancelled";
-  return prisma.studentLearningBooking.update({
+  const updated = await prisma.studentLearningBooking.update({
     where: { id: booking.id },
     data: {
       status,
@@ -554,4 +592,173 @@ export async function cancelStudentLearningBooking(input: {
       // Explicitly no fee fields — subscription model has no cancellation charge.
     },
   });
+
+  const afterSnap: BookingSnapshot = {
+    startsAt: updated.startsAt.toISOString(),
+    endsAt: updated.endsAt.toISOString(),
+    durationMinutes: updated.durationMinutes,
+    subject: updated.subject,
+    status: updated.status,
+    learningFocus: updated.learningFocus,
+    cancellationCategory: updated.cancellationCategory,
+  };
+  void writeShortLearningBookingAudit({
+    schoolId: updated.schoolId,
+    bookingId: updated.id,
+    actorUserId: input.parentUserId,
+    action: "short_learning_booking_cancelled",
+    actorKind: resolveBookingActorKind({
+      source: "parent_portal",
+      actorUserId: input.parentUserId,
+      parentUserId: input.parentUserId,
+    }),
+    parentUserId: input.parentUserId,
+    schoolStudentId: updated.schoolStudentId,
+    before: beforeSnap,
+    after: afterSnap,
+    source: "api",
+  }).catch(() => undefined);
+
+  return updated;
+}
+
+export async function changeStudentLearningBooking(input: {
+  bookingId: string;
+  parentUserId: string;
+  startsAt?: Date;
+  durationMinutes?: number;
+  subject?: string;
+  learningFocus?: string | null;
+  now?: Date;
+}) {
+  const booking = await prisma.studentLearningBooking.findFirst({
+    where: { id: input.bookingId, parentUserId: input.parentUserId },
+  });
+  if (!booking) throw new Error("Booking not found.");
+  if (!["booked", "confirmed"].includes(booking.status)) {
+    throw new Error("Only upcoming bookings can be changed.");
+  }
+
+  const nextStartsAt = input.startsAt ?? booking.startsAt;
+  const nextDuration = input.durationMinutes ?? booking.durationMinutes;
+  const nextSubject = (input.subject ?? booking.subject).trim();
+  const nextFocus =
+    input.learningFocus !== undefined
+      ? (input.learningFocus?.trim() || null)
+      : booking.learningFocus;
+
+  if (!ALLOWED_DURATIONS.includes(nextDuration as 90 | 120)) {
+    throw new Error("Duration must be 90 or 120 minutes.");
+  }
+
+  const unchanged =
+    nextStartsAt.getTime() === booking.startsAt.getTime()
+    && nextDuration === booking.durationMinutes
+    && nextSubject === booking.subject
+    && nextFocus === booking.learningFocus;
+  if (unchanged) {
+    return booking;
+  }
+
+  const beforeSnap: BookingSnapshot = {
+    startsAt: booking.startsAt.toISOString(),
+    endsAt: booking.endsAt.toISOString(),
+    durationMinutes: booking.durationMinutes,
+    subject: booking.subject,
+    status: booking.status,
+    learningFocus: booking.learningFocus,
+  };
+
+  // Validate new slot availability (exclude this booking from capacity).
+  const endsAt = new Date(nextStartsAt.getTime() + nextDuration * 60_000);
+  const now = input.now ?? new Date();
+  const windowCheck = isWithinStandardBookingWindow({ sessionStartsAt: nextStartsAt, now });
+  if (!windowCheck.ok) {
+    throw new Error(windowCheck.reason ?? "Outside booking window.");
+  }
+
+  const dateIso = nextStartsAt.toISOString().slice(0, 10);
+  const slots = await listAvailableSlots({
+    schoolId: booking.schoolId,
+    dateIso,
+    durationMinutes: nextDuration,
+    now,
+  });
+  const match = slots.find((s) => s.startsAt.getTime() === nextStartsAt.getTime());
+  // Allow keeping the same start time even if capacity counts this booking.
+  const sameSlot = nextStartsAt.getTime() === booking.startsAt.getTime() && nextDuration === booking.durationMinutes;
+  if (!match && !sameSlot) {
+    throw new Error("Selected slot is not available.");
+  }
+
+  const overlap = await prisma.studentLearningBooking.findFirst({
+    where: {
+      schoolStudentId: booking.schoolStudentId,
+      id: { not: booking.id },
+      status: { in: ["booked", "confirmed", "attended"] },
+      startsAt: { lt: endsAt },
+      endsAt: { gt: nextStartsAt },
+    },
+  });
+  if (overlap) {
+    throw new Error("Student already has an overlapping Short Learning booking.");
+  }
+
+  const weekday = nextStartsAt.getUTCDay();
+  const learningWindow = await prisma.schoolLearningWindow.findFirst({
+    where: { schoolId: booking.schoolId, active: true, weekday },
+  });
+
+  const updated = await prisma.studentLearningBooking.update({
+    where: { id: booking.id },
+    data: {
+      startsAt: nextStartsAt,
+      endsAt,
+      durationMinutes: nextDuration,
+      subject: nextSubject,
+      learningFocus: nextFocus,
+      learningWindowId: learningWindow?.id ?? booking.learningWindowId,
+      metadataJson: JSON.stringify({
+        ...(safeParseJsonObject(booking.metadataJson) ?? {}),
+        lastChangedBy: "parent",
+        lastChangedAt: new Date().toISOString(),
+      }),
+    },
+  });
+
+  const afterSnap: BookingSnapshot = {
+    startsAt: updated.startsAt.toISOString(),
+    endsAt: updated.endsAt.toISOString(),
+    durationMinutes: updated.durationMinutes,
+    subject: updated.subject,
+    status: updated.status,
+    learningFocus: updated.learningFocus,
+  };
+
+  void writeShortLearningBookingAudit({
+    schoolId: updated.schoolId,
+    bookingId: updated.id,
+    actorUserId: input.parentUserId,
+    action: "short_learning_booking_changed",
+    actorKind: "parent",
+    parentUserId: input.parentUserId,
+    schoolStudentId: updated.schoolStudentId,
+    before: beforeSnap,
+    after: afterSnap,
+    source: "api",
+  }).catch(() => undefined);
+
+  return updated;
+}
+
+function safeParseJsonObject(raw: string | null | undefined): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }

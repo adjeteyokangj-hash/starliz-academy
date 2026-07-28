@@ -1,5 +1,7 @@
 import Link from "next/link"
 import Logo from "@/components/Logo"
+import CompanyIdentity from "@/components/public/CompanyIdentity"
+import OkangGroupMark from "@/components/public/OkangGroupMark"
 import { isPublicTrialCtaEnabled, isRoadmapPublicEnabled } from "@/lib/launch-scope"
 
 type PublicShellProps = {
@@ -88,27 +90,46 @@ export default function PublicShell({ children }: PublicShellProps) {
 
       {children}
 
-      <footer className="border-t border-slate-800/80 px-4 py-8 text-center text-sm text-slate-500 sm:px-6 lg:px-8">
-        <Logo variant="full" size={28} className="justify-center" />
-        <p className="mt-3 text-sm font-semibold text-slate-300">StarLiz Academy — Learn • Grow • Shine</p>
-        <nav className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-slate-400">
-          <Link href="/privacy" className="hover:text-white">
-            Privacy
-          </Link>
-          <Link href="/terms" className="hover:text-white">
-            Terms
-          </Link>
-          <Link href="/policies" className="hover:text-white">
-            Policies
-          </Link>
-          <Link href="/faq" className="hover:text-white">
-            FAQ
-          </Link>
-          <Link href="/knowledge-centre" className="hover:text-white">
-            Knowledge Centre
-          </Link>
-        </nav>
-        <p className="mt-4">© 2026 StarLiz Academy. All rights reserved.</p>
+      <footer className="border-t border-slate-800/80 px-4 py-10 text-sm text-slate-500 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-6xl gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="sm:col-span-2 lg:col-span-1">
+            <Logo variant="footer" size={44} />
+            <p className="mt-3 text-sm font-semibold text-slate-300">StarLiz Academy — Learn • Grow • Shine</p>
+            <OkangGroupMark className="mt-4" />
+          </div>
+
+          <nav aria-labelledby="shell-footer-legal">
+            <h2 id="shell-footer-legal" className="text-xs font-bold uppercase tracking-[0.14em] text-slate-300">Legal</h2>
+            <ul className="mt-3 space-y-2 text-slate-400">
+              <li><Link href="/privacy" className="hover:text-white">Privacy notice</Link></li>
+              <li><Link href="/terms" className="hover:text-white">Terms of service</Link></li>
+              <li><Link href="/cookies" className="hover:text-white">Cookie policy</Link></li>
+              <li><Link href="/ai-use" className="hover:text-white">AI use</Link></li>
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="shell-footer-trust">
+            <h2 id="shell-footer-trust" className="text-xs font-bold uppercase tracking-[0.14em] text-slate-300">Trust and safety</h2>
+            <ul className="mt-3 space-y-2 text-slate-400">
+              <li><Link href="/safeguarding-policy" className="hover:text-white">Safeguarding</Link></li>
+              <li><Link href="/policies" className="hover:text-white">Policy centre</Link></li>
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="shell-footer-help">
+            <h2 id="shell-footer-help" className="text-xs font-bold uppercase tracking-[0.14em] text-slate-300">Help</h2>
+            <ul className="mt-3 space-y-2 text-slate-400">
+              <li><Link href="/faq" className="hover:text-white">FAQ</Link></li>
+              <li><Link href="/knowledge-centre" className="hover:text-white">Knowledge Centre</Link></li>
+              <li><Link href="/contact" className="hover:text-white">Contact us</Link></li>
+            </ul>
+          </nav>
+        </div>
+
+        <div className="mx-auto mt-8 max-w-6xl border-t border-slate-800/80 pt-5">
+          <CompanyIdentity compact />
+          <p className="mt-3 text-xs text-slate-500">© 2026 StarLiz Academy. All rights reserved.</p>
+        </div>
       </footer>
     </main>
   )

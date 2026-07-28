@@ -48,6 +48,7 @@ export async function GET() {
     bookings: bookings.map((row) => ({
       id: row.id,
       schoolId: row.schoolId,
+      schoolStudentId: row.schoolStudentId,
       schoolName: row.schoolStudent.school.name,
       studentName: row.schoolStudent.child.name,
       startsAt: row.startsAt.toISOString(),

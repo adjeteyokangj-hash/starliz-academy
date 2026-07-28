@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { readSessionFromCookie } from "@/lib/auth";
 import { getSchoolRoleLabel } from "@/lib/schools/permissions";
+import { requireSchoolAdminContext } from "@/lib/schools/portal-routing";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,12 @@ export default async function SchoolDashboardPage() {
   const session = await readSessionFromCookie();
   if (!session) {
     redirect("/auth/login?next=/school");
+  }
+
+  // School Owner / School Admin should stay in the School Portal shell.
+  const schoolAdminCtx = await requireSchoolAdminContext(session.userId);
+  if (schoolAdminCtx) {
+    redirect("/school-admin/settings");
   }
 
   const school = await prisma.school.findFirst({
@@ -60,14 +67,16 @@ export default async function SchoolDashboardPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-indigo-300">School Dashboard</p>
           <h1 className="mt-2 text-3xl font-black text-white">No school workspace found</h1>
           <p className="mt-3 text-sm text-slate-400">
-            Your account is not linked to a school yet. Ask an admin to invite you, or visit the admin schools console.
+            Your account is not linked to a school yet. Ask a school administrator to invite you.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
-            <Link href="/admin/schools" className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-400">
-              Open Admin Schools
-            </Link>
-            <Link href="/dashboard" className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-200 hover:bg-slate-900">
-              Go to Dashboard
+            {session.role === "admin" ? (
+              <Link href="/admin/schools" className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-400">
+                Open Admin Schools
+              </Link>
+            ) : null}
+            <Link href="/school-admin" className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-200 hover:bg-slate-900">
+              Go to School Portal
             </Link>
           </div>
         </section>

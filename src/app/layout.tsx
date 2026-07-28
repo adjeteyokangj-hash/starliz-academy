@@ -7,6 +7,7 @@ import ThemeProvider from "@/components/layout/ThemeProvider";
 import OfflineBadge from "@/components/layout/OfflineBadge";
 import AppSplash from "@/components/layout/AppSplash";
 import StoreBootstrap from "@/components/layout/StoreBootstrap";
+import CookieNotice from "@/components/public/CookieNotice";
 
 export const metadata: Metadata = {
   title: "StarLiz Academy | AI-Supported Learning for Children",
@@ -44,9 +45,7 @@ export default function RootLayout({
         <ThemeProvider />
         <AppSplash />
         <StoreBootstrap>{children}</StoreBootstrap>
-        <footer className="mt-auto border-t border-slate-200/70 bg-white/80 px-3 py-1 text-center text-[9px] font-medium leading-none text-slate-500">
-          <p>StarLiz Academy — Learn • Grow • Shine</p>
-        </footer>
+        <CookieNotice />
         <OfflineBadge />
         <PwaInstaller />
       </body>

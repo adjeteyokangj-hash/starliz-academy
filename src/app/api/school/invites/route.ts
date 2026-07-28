@@ -18,12 +18,16 @@ import {
   buildSchoolInviteEmail,
   buildSchoolInviteRevokedEmail,
 } from "@/lib/emails/school-invite";
+import { canAssignSchoolRole, canManageSchoolOwnership } from "@/lib/schools/permissions";
 
 const createInviteSchema = z.object({
   schoolId: z.string().min(1),
   targetEmail: z.string().email(),
   inviteType: z.enum(["teacher", "school_admin"]),
   targetRole: z.enum(["owner", "admin", "teacher", "support", "staff_observer", "finance"]).optional(),
+  firstName: z.string().trim().min(1).max(80).optional(),
+  lastName: z.string().trim().min(1).max(80).optional(),
+  message: z.string().trim().max(1000).optional(),
 });
 
 const patchInviteSchema = z.object({
@@ -42,7 +46,7 @@ function roleLabel(role: string | null): string {
     owner: "School Owner",
     admin: "School Admin",
     teacher: "Teacher",
-    support: "Support Staff",
+    support: "Tutor / Support",
     staff_observer: "Staff Observer",
     finance: "Finance",
   };
@@ -81,6 +85,19 @@ export async function POST(request: Request) {
       ? "admin"
       : (body.targetRole ?? "teacher");
 
+  if (!canAssignSchoolRole(context.role, effectiveRole)) {
+    return NextResponse.json(
+      {
+        error: canManageSchoolOwnership(context.role)
+          ? "You cannot assign that role."
+          : "Only the School Owner can invite or assign another School Owner.",
+      },
+      { status: 403 },
+    );
+  }
+
+  const displayName = [body.firstName, body.lastName].filter(Boolean).join(" ").trim();
+
   // Find or create a placeholder user for the invitee
   let user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
@@ -89,12 +106,17 @@ export async function POST(request: Request) {
       data: {
         id: randomBytes(12).toString("hex"),
         email,
-        name: email.split("@")[0],
+        name: displayName || email.split("@")[0],
         // Keep app-level role as "teacher". Effective school permissions are
         // controlled by SchoolTeacher.role for this school membership.
         role: "teacher",
         passwordHash: "", // will be set on invite acceptance
       },
+    });
+  } else if (displayName && (!user.name || user.name === email.split("@")[0])) {
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { name: displayName },
     });
   }
 
@@ -153,12 +175,17 @@ export async function POST(request: Request) {
     select: { name: true },
   });
 
+  const inviter = await prisma.user.findUnique({
+    where: { id: context.userId },
+    select: { name: true },
+  });
+
   const emailTemplate = buildSchoolInviteEmail({
     schoolName: school?.name ?? "School",
     roleLabel: roleLabel(effectiveRole),
     inviteUrl,
     expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
-    invitedByName: null,
+    invitedByName: inviter?.name ?? null,
   });
   const emailResult = await sendEmail({
     to: email,
@@ -179,6 +206,9 @@ export async function POST(request: Request) {
       targetEmail: email,
       inviteType: body.inviteType,
       role: effectiveRole,
+      firstName: body.firstName ?? null,
+      lastName: body.lastName ?? null,
+      message: body.message ?? null,
       emailDelivery: emailResult.ok ? "sent" : "failed",
       emailDeliveryReason: emailResult.ok ? null : emailResult.reason,
     },
@@ -343,5 +373,24 @@ export async function GET(request: Request) {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ invites });
+  const inviterIds = [...new Set(invites.map((invite) => invite.createdByUserId).filter(Boolean))];
+  const inviters = inviterIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: inviterIds as string[] } },
+        select: { id: true, name: true, email: true },
+      })
+    : [];
+  const inviterById = new Map(inviters.map((user) => [user.id, user]));
+
+  return NextResponse.json({
+    invites: invites.map((invite) => ({
+      ...invite,
+      expiresAt: invite.expiresAt.toISOString(),
+      createdAt: invite.createdAt.toISOString(),
+      invitedBy: invite.createdByUserId
+        ? inviterById.get(invite.createdByUserId) ?? null
+        : null,
+      status: "pending",
+    })),
+  });
 }

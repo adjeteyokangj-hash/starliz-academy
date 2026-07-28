@@ -58,7 +58,7 @@ export const KNOWLEDGE_ARTICLES: KnowledgeArticle[] = [
     audience: "Parent",
     keywords: ["difference", "day school", "short learning"],
     summary:
-      "Day School uses SchoolDayLesson attendance on a timetable. Short Learning uses StudentLearningBooking for parent-booked 90/120-minute sessions.",
+      "Day School follows a fixed school timetable with attendance tracked against scheduled periods. Short Learning uses parent-booked 90/120-minute sessions outside school hours.",
   },
   {
     id: "create-manage-account",

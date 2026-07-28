@@ -2,7 +2,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { resolvePlatformAdminGate } from "@/lib/admin-auth-gate";
-import { resolveLaunchScopeRedirect } from "@/lib/launch-scope";
+import {
+  isPublicTrialCtaEnabled,
+  isRoadmapPublicEnabled,
+  resolveLaunchScopeRedirect,
+} from "@/lib/launch-scope";
 
 const COOKIE_NAME = "starliz_session";
 const REFRESH_COOKIE_NAME = "starliz_refresh";
@@ -41,6 +45,7 @@ const PUBLIC_PATHS = [
   "/manifest.webmanifest",
   "/sw.js",
   "/invite/accept",
+  "/school/invites/accept",
   // Country-specific public landing pages
   "/uk",
   "/ghana",
@@ -116,6 +121,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/_next")
     || pathname === "/api/branding"
     || pathname.startsWith("/api/auth")
+    || pathname === "/api/school/invites/accept"
     || pathname.startsWith("/api/cron")
     || pathname === "/api/billing/stripe/webhook"
     || pathname === "/api/webhooks/stripe-school"
@@ -134,7 +140,12 @@ export async function middleware(request: NextRequest) {
     return withSecurityHeaders(NextResponse.json({ error: "Forbidden" }, { status: 403 }));
   }
 
-  const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  const launchFlagPublicPaths = [
+    ...(isPublicTrialCtaEnabled() ? ["/trial"] : []),
+    ...(isRoadmapPublicEnabled() ? ["/roadmap"] : []),
+  ];
+  const isPublic = [...PUBLIC_PATHS, ...launchFlagPublicPaths]
+    .some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const session = await getSessionPayload(request);
   const authenticated = session !== null;
   const hasRefreshToken = Boolean(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
@@ -198,7 +209,8 @@ export async function middleware(request: NextRequest) {
       return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
     }
     if (session.role === "teacher") {
-      return finalize(NextResponse.redirect(new URL("/teacher", request.url)));
+      // School owners land on /school-admin; classroom-only teachers are bounced to /teacher by that layout.
+      return finalize(NextResponse.redirect(new URL("/school-admin", request.url)));
     }
     return finalize(NextResponse.redirect(new URL("/parent/profiles", request.url)));
   }

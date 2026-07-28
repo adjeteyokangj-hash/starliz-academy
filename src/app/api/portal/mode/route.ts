@@ -35,6 +35,10 @@ export async function GET(request: Request) {
   }
 
   if (mode === "school_admin") {
+    // Portal mode never elevates to platform Admin — membership check only.
+    if (session.role === "admin") {
+      return NextResponse.redirect(new URL("/admin", request.url));
+    }
     const ctx = await getSchoolTeacherContext(session.userId);
     if (!ctx || !isSchoolAdminRole(ctx.role)) {
       return NextResponse.redirect(new URL(TEACHER_HOME, request.url));
@@ -60,6 +64,9 @@ export async function POST(request: Request) {
   }
 
   if (mode === "school_admin") {
+    if (session.role === "admin") {
+      return NextResponse.json({ error: "Platform admins use /admin." }, { status: 403 });
+    }
     const ctx = await getSchoolTeacherContext(session.userId);
     if (!ctx || !isSchoolAdminRole(ctx.role)) {
       return NextResponse.json({ error: "School admin membership required." }, { status: 403 });

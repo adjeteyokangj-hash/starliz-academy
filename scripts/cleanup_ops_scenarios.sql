@@ -87,7 +87,7 @@ WHERE id IN ('ops-capacity-child-1', 'ops-capacity-child-2', 'ops-capacity-child
 
 DELETE FROM AuthSession
 WHERE userId IN (
-  'ops-owner-user',
+  'platform-admin-user',
   'ops-active-teacher-user',
   'ops-invited-teacher-user',
   'ops-capacity-teacher-user',
@@ -99,7 +99,7 @@ WHERE userId IN (
 
 DELETE FROM User
 WHERE email IN (
-  'ops-owner@starliz.dev',
+  'platform-admin@starliz.dev',
   'active.teacher@starliz.dev',
   'invite.only@starliz.dev',
   'capacity.teacher@starliz.dev',

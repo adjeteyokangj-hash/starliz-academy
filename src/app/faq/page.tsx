@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import PublicShell from "@/components/layout/PublicShell";
 import {
@@ -5,11 +6,17 @@ import {
   SHORT_LEARNING_PROMISE,
 } from "@/lib/schools/short-learning-bookings";
 
+export const metadata: Metadata = {
+  title: "Frequently Asked Questions | StarLiz Academy",
+  description:
+    "Answers for parents about AI-led Short Learning, 90- and 120-minute bookings, subscriptions, cancellations, human support and safeguarding.",
+};
+
 const faqItems = [
   {
     question: "What is the difference between Day School and Short Learning?",
     answer:
-      "Day School follows your child's school timetable with classroom periods, live teaching support, and attendance tracking during the school day. Parents do not book Day School periods. Short Learning is parent-booked, after-hours, and AI-led — extra focused learning outside normal school hours using StudentLearningBooking records.",
+      "Day School follows your child's school timetable with scheduled classroom periods and attendance tracking during the school day. Parents do not book Day School periods. Short Learning is parent-booked, after-hours, and AI-led: extra focused learning outside normal school hours in 90- or 120-minute sessions.",
   },
   {
     question: "Is AI teaching guaranteed?",
@@ -18,7 +25,7 @@ const faqItems = [
   {
     question: "What is the human tutor safety net?",
     answer:
-      "Human tutors on published support shifts may join when available if a child needs extra help after AI support is exhausted. They are not a private 1:1 tutor booking — AI coaching continues regardless, and children are never left waiting for an offline tutor.",
+      "Human tutors on published support shifts may join through the Short Learning Support desk when available if a child needs extra help after AI support is exhausted. This is separate from the Day School Live Classroom and is not a private 1:1 tutor booking. AI coaching continues regardless, and children are never left waiting for an offline tutor.",
   },
   {
     question: "Are there cancellation fees on Short Learning bookings?",

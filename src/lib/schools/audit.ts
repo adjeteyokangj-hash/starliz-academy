@@ -15,10 +15,18 @@ export type SchoolAuditAction =
   | "teacher_activated"
   | "teacher_suspended"
   | "teacher_archived"
+  | "teacher_password_reset"
+  | "staff_absence_created"
+  | "staff_absence_updated"
+  | "staff_absence_cleared"
   | "classroom_created"
+  | "classroom_updated"
+  | "classroom_archived"
+  | "classroom_reactivated"
   | "student_enrolled"
   | "student_transferred"
   | "student_archived"
+  | "student_updated"
   | "login"
   | "login_blocked"
   | "seat_upgraded"
@@ -56,6 +64,10 @@ export type SchoolAuditAction =
   | "short_learning_booking_completed"
   | "short_learning_booking_no_show"
   | "short_learning_booking_expired"
+  | "short_learning_booking_created"
+  | "short_learning_booking_cancelled"
+  | "short_learning_booking_changed"
+  | "short_learning_booking_rebooked"
   | "school_teacher_update_rejected"
   | "school_classroom_update_rejected"
   | "human_support_eligible"
@@ -89,7 +101,8 @@ export type SchoolEntityType =
   | "provisioning_job"
   | "compliance"
   | "system"
-  | "human_support";
+  | "human_support"
+  | "learning_booking";
 
 export type SchoolAuditSeverity = "info" | "warning" | "critical";
 

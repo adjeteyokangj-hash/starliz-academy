@@ -1,4 +1,11 @@
 import Link from "next/link"
+import type { Metadata } from "next"
+import { isPublicTrialCtaEnabled } from "@/lib/launch-scope"
+
+export const metadata: Metadata = {
+  title: "Product Roadmap | StarLiz Academy",
+  description: "Planned improvements to the StarLiz Academy learning platform.",
+}
 
 const items = [
   { icon: "🎤", title: "AI voice tutor feedback", desc: "Real-time spoken feedback to guide children through activities." },
@@ -10,6 +17,8 @@ const items = [
 ]
 
 export default function Roadmap() {
+  const showTrialCta = isPublicTrialCtaEnabled()
+
   return (
     <main className="min-h-screen bg-[#020617] text-white">
       <header className="border-b border-slate-800/80 px-6 py-4">
@@ -17,8 +26,8 @@ export default function Roadmap() {
           <Link href="/" className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-xl font-black text-transparent tracking-tight">
             StarLiz Academy
           </Link>
-          <Link href="/trial" className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
-            Start Free Trial
+          <Link href={showTrialCta ? "/trial" : "/signup"} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold hover:bg-blue-500">
+            {showTrialCta ? "Start Free Trial" : "Create account"}
           </Link>
         </div>
       </header>

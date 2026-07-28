@@ -678,8 +678,6 @@ model AuditLog {
   entityType   String
   entityId     String?
   metadataJson String?
-  journeyId                String?
-  journey                  ShortLearningJourney?        @relation(fields: [journeyId], references: [id], onDelete: SetNull)
   createdAt    DateTime @default(now())
 
   @@index([entityType, entityId])
@@ -1263,6 +1261,7 @@ model School {
   owner       User?   @relation("SchoolOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
 
   teachers                        SchoolTeacher[]
+  staffAbsences                   StaffAbsence[]
   classrooms                      Classroom[]
   students                        SchoolStudent[]
   licence                         SchoolLicence?
@@ -1369,6 +1368,7 @@ model SchoolTeacher {
   assignedQueueEntries      HumanSupportQueueEntry[] @relation("QueueAssignedTutor")
   tutorSupportShifts        TutorSupportShift[]
   tutorSupportShiftsCreated TutorSupportShift[]      @relation("TutorSupportShiftCreatedBy")
+  staffAbsences             StaffAbsence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1377,6 +1377,24 @@ model SchoolTeacher {
   @@index([schoolId, role])
   @@index([userId])
   @@index([status])
+}
+
+model StaffAbsence {
+  id              String   @id @default(cuid())
+  schoolId        String
+  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolTeacherId String
+  schoolTeacher   SchoolTeacher @relation(fields: [schoolTeacherId], references: [id], onDelete: Cascade)
+  startsOn        DateTime @db.Date
+  endsOn          DateTime @db.Date
+  reason          String // sick | leave | unavailable | other
+  note            String?
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([schoolId, startsOn, endsOn])
+  @@index([schoolTeacherId, startsOn])
 }
 
 model SchoolStudent {
@@ -2743,6 +2761,8 @@ model StudentLearningBooking {
   honestyAcknowledgedAt    DateTime?
   subscriptionSnapshotJson String?
   metadataJson             String?
+  journeyId                String?
+  journey                  ShortLearningJourney?        @relation(fields: [journeyId], references: [id], onDelete: SetNull)
   createdAt                DateTime                     @default(now())
   updatedAt                DateTime                     @updatedAt
   shortLearningSession     ShortLearningSession?
@@ -2893,3 +2913,107 @@ model ComplaintNote {
   @@index([complaintId, createdAt])
 }
 
+/// Gate 5 — version-controlled policy document (additive CMS).
+/// One logical document (slug) with many immutable versions after approval/publish.
+model PolicyDocumentRecord {
+  id               String          @id @default(cuid())
+  slug             String          @unique
+  title            String
+  category         String          @default("legal") // legal | product | operational | handbook | runbook | knowledge
+  audienceJson     String          @default("[\"Public\"]")
+  visibility       String          @default("public") // public | internal
+  currentVersionId String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  versions         PolicyVersion[]
+
+  @@index([visibility, category])
+}
+
+model PolicyVersion {
+  id                  String               @id @default(cuid())
+  documentId          String
+  document            PolicyDocumentRecord @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version             String
+  status              String               @default("draft") // draft | in_review | approved | published | superseded | archived
+  effectiveDate       DateTime?
+  lastUpdatedAt       DateTime             @default(now())
+  authorId            String?
+  approvedBy          String?
+  approvedAt          DateTime?
+  publishedAt         DateTime?
+  archivedAt          DateTime?
+  supersedesId        String?
+  contentJson         String
+  changeLog           String?
+  approvalHistoryJson String               @default("[]")
+  requiresAck         Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([documentId, version])
+  @@index([documentId, status])
+  @@index([status, publishedAt])
+}
+
+/// Gate 5 — Help / Knowledge Centre articles (public or internal).
+model HelpArticleRecord {
+  id                String    @id @default(cuid())
+  slug              String    @unique
+  title             String
+  summary           String
+  category          String
+  audience          String    @default("Parent")
+  visibility        String    @default("public") // public | internal
+  status            String    @default("draft") // draft | published | archived
+  bodyJson          String    @default("[]")
+  keywordsJson      String    @default("[]")
+  relatedPolicySlug String?
+  version           String    @default("1.0.0")
+  authorId          String?
+  publishedAt       DateTime?
+  archivedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([visibility, status, category])
+  @@index([status, publishedAt])
+}
+
+/// Bulk educational lesson-pack import jobs (Generator → Content Library draft).
+/// Additive only — does not alter AIContentCache / review / publish tables.
+model LessonPackImport {
+  id                      String   @id @default(cuid())
+  status                  String   @default("uploaded") // uploaded | analysing | needs_input | analysis_failed | draft_created | awaiting_review | changes_requested | approved | published | rejected
+  createdByUserId         String?
+  sessionType             String   @default("school_day") // school_day | short_learning_90 | short_learning_120 | general_library
+  sourceName              String?
+  sourceUrl               String?
+  licenceType             String?
+  attribution             String?
+  notes                   String?
+  yearGroupOverride       String?
+  subjectOverride         String?
+  difficultyOverride      Int?
+  detectedYearGroup       String?
+  detectedSubject         String?
+  detectedDifficulty      Int?
+  yearConfidence          Float?
+  subjectConfidence       Float?
+  difficultyConfidence    Float?
+  sourceFingerprint       String?
+  filesJson               String? // uploaded file metadata + classifications (no student PII)
+  analysisJson            String? // full analysis / previews
+  previewJson             String? // selected lesson preview
+  contentId               String? // linked AIContentCache draft id
+  duplicateOverrideReason String?
+  thirdPartyDecisionsJson String? // admin include/exclude decisions
+  errorJson               String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([status])
+  @@index([sourceFingerprint])
+  @@index([createdByUserId])
+  @@index([contentId])
+}

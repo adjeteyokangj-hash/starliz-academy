@@ -305,6 +305,40 @@ export async function handleAdminContentVerifyPost(
     },
   });
 
+  // Sync linked lesson-pack imports when Admin requests changes via Content Library review.
+  if (body.action === "needs_changes" || body.action === "send_back") {
+    const importId = typeof existingMetadata.importId === "string" ? existingMetadata.importId : null;
+    if (importId) {
+      try {
+        await prisma.lessonPackImport.updateMany({
+          where: { OR: [{ id: importId }, { contentId: content.id }] },
+          data: { status: "changes_requested" },
+        });
+        await deps.writeAuditLog({
+          actorUserId: session.userId,
+          action: "lesson_pack_import.changes_requested",
+          entityType: "LessonPackImport",
+          entityId: importId,
+          metadata: {
+            contentId: content.id,
+            reason: notes || null,
+          },
+        });
+      } catch {
+        // Content Library verification still succeeds even if import sync is unavailable.
+      }
+    } else {
+      try {
+        await prisma.lessonPackImport.updateMany({
+          where: { contentId: content.id },
+          data: { status: "changes_requested" },
+        });
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   return NextResponse.json({
     item: {
       id: updated.id,

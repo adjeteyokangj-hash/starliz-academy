@@ -1,10 +1,12 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 import { expect, test } from "@playwright/test";
 
 const prisma = new PrismaClient();
 
-const OPS_ADMIN_EMAIL = process.env.E2E_OPS_ADMIN_EMAIL ?? "ops-owner@starliz.dev";
-const OPS_ADMIN_PASSWORD = process.env.E2E_OPS_ADMIN_PASSWORD ?? "OpsAdmin#2026";
+const OPS_ADMIN_EMAIL = process.env.E2E_OPS_ADMIN_EMAIL ?? "platform-admin@starliz.dev";
+const OPS_ADMIN_PASSWORD = process.env.E2E_OPS_ADMIN_PASSWORD ?? "PlatformAdmin#2026";
+const OPS_OWNER_USER_ID = "platform-admin-user";
 
 const OPS_SCHOOL_IDS = [
   "ops-school-active",
@@ -15,7 +17,7 @@ const OPS_SCHOOL_IDS = [
 ] as const;
 
 const OPS_USER_IDS = [
-  "ops-owner-user",
+  OPS_OWNER_USER_ID,
   "ops-active-teacher-user",
   "ops-invited-teacher-user",
   "ops-capacity-teacher-user",
@@ -67,7 +69,7 @@ async function cleanupOpsScenarios() {
     where: {
       email: {
         in: [
-          "ops-owner@starliz.dev",
+          "platform-admin@starliz.dev",
           "active.teacher@starliz.dev",
           "invite.only@starliz.dev",
           "capacity.teacher@starliz.dev",
@@ -84,12 +86,23 @@ async function cleanupOpsScenarios() {
 async function seedOpsScenarios() {
   const now = new Date();
   const sevenDaysOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const platformAdminHash = await bcrypt.hash(OPS_ADMIN_PASSWORD, 12);
 
-  // Users
+  // Users — platform admin only (never ops-owner@starliz.dev; that is StarLiz Academy School Owner)
   await prisma.user.upsert({
-    where: { email: "ops-owner@starliz.dev" },
-    create: { id: "ops-owner-user", email: "ops-owner@starliz.dev", passwordHash: "$2b$12$tsDvr0Ru1qae/MKuDx41luefo9aTDRPAq3afOHWnWtsA2VvtemJNS", name: "Ops Owner", role: "admin" },
-    update: { name: "Ops Owner", role: "admin", passwordHash: "$2b$12$tsDvr0Ru1qae/MKuDx41luefo9aTDRPAq3afOHWnWtsA2VvtemJNS" },
+    where: { email: OPS_ADMIN_EMAIL },
+    create: {
+      id: OPS_OWNER_USER_ID,
+      email: OPS_ADMIN_EMAIL,
+      passwordHash: platformAdminHash,
+      name: "Platform Admin",
+      role: "admin",
+    },
+    update: {
+      name: "Platform Admin",
+      role: "admin",
+      passwordHash: platformAdminHash,
+    },
   });
   for (const [id, email, name, role] of [
     ["ops-active-teacher-user", "active.teacher@starliz.dev", "Active Teacher", "teacher"],
@@ -117,8 +130,8 @@ async function seedOpsScenarios() {
   ] as const) {
     await prisma.school.upsert({
       where: { slug },
-      create: { id, name, slug, status, type: "school", contactEmail: `${slug}@starliz.dev`, notes: "Ops scenario fixture", ownerUserId: "ops-owner-user" },
-      update: { name, status, ownerUserId: "ops-owner-user", notes: "Ops scenario fixture" },
+      create: { id, name, slug, status, type: "school", contactEmail: `${slug}@starliz.dev`, notes: "Ops scenario fixture", ownerUserId: OPS_OWNER_USER_ID },
+      update: { name, status, ownerUserId: OPS_OWNER_USER_ID, notes: "Ops scenario fixture" },
     });
   }
 
@@ -205,7 +218,7 @@ async function seedOpsScenarios() {
     create: {
       id: "ops-safeguarding-incident-1",
       schoolId: "ops-school-safeguarding",
-      reportedByUserId: "ops-owner-user",
+      reportedByUserId: OPS_OWNER_USER_ID,
       escalationLevel: "tier_2",
       category: "behaviour",
       severity: "high",

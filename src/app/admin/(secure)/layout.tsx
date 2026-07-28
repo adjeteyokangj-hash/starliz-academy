@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import AdminLayout from "@/components/admin/AdminLayout";
 import { prisma } from "@/lib/db";
 import { readSessionFromCookie } from "@/lib/auth";
-import { buildAdminLoginUrl } from "@/lib/admin-auth-gate";
+import { buildAdminLoginUrl, nonPlatformAdminFallbackPath } from "@/lib/admin-auth-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +84,10 @@ export default async function SecureAdminLayout({ children }: { children: React.
     && Boolean(user.adminProfile.roleId),
   );
   if (!isActiveAdmin) {
+    // School owners / teachers must not land on admin "role switch" login.
+    if (session.role !== "admin") {
+      redirect(nonPlatformAdminFallbackPath(session.role));
+    }
     redirect(buildAdminLoginUrl(requestedPath, "", "switch"));
   }
 

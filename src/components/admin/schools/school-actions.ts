@@ -21,15 +21,21 @@ export type SchoolActionName =
   | "regenerateDaytimeLesson"
   | "approveDaytimeDay";
 
+export type PostSchoolActionOptions = {
+  /** Defaults to platform admin schools API. School Portal uses membership-scoped day-school actions. */
+  endpoint?: string;
+};
+
 export async function postSchoolAction<TPayload extends Record<string, unknown>>(
   action: SchoolActionName,
   payload: TPayload,
+  options?: PostSchoolActionOptions,
 ): Promise<
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; error: string; status: number; blockers?: string[] }
 > {
   try {
-    const response = await fetch("/api/admin/schools", {
+    const response = await fetch(options?.endpoint ?? "/api/admin/schools", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -38,6 +44,7 @@ export async function postSchoolAction<TPayload extends Record<string, unknown>>
     const data = (await response.json().catch(() => ({}))) as {
       error?: string;
       blockers?: string[];
+      warnings?: Array<{ label?: string }>;
     };
     if (!response.ok) {
       return {

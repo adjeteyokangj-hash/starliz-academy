@@ -49,6 +49,7 @@ export default function StoreBootstrap({ children }: Props) {
     let mounted = true;
 
     if (skipBootstrap) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mark ready immediately when bootstrap is skipped; frozen behaviour, advisory only
       setReady(true);
       return () => {
         mounted = false;

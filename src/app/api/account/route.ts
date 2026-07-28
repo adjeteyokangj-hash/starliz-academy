@@ -321,7 +321,7 @@ export async function PATCH(request: Request) {
 
       await writeAuditLog({
         actorUserId: session.userId,
-        action: "parent.notifications.updated",
+        action: "notification_preferences_updated",
         entityType: "parent_account",
         entityId: parentScope.parentId,
         metadata: nextNotifications,
@@ -346,7 +346,13 @@ export async function PATCH(request: Request) {
     });
   } catch (error) {
     if (error instanceof Error && error.message) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      // Prefer curated validation messages; avoid leaking Prisma/runtime internals.
+      const safe =
+        error.message.length <= 200
+        && !/prisma|sql|stack|ECONN|timeout/i.test(error.message)
+          ? error.message
+          : "Unable to update account details.";
+      return NextResponse.json({ error: safe }, { status: 400 });
     }
     return NextResponse.json({ error: "Invalid account update payload." }, { status: 400 });
   }

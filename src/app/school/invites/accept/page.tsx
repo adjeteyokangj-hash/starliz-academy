@@ -80,6 +80,7 @@ export default function AcceptSchoolInvitePage() {
     support: "Support Staff",
     staff_observer: "Staff Observer",
     finance: "Finance",
+    parent: "Parent / Guardian",
   };
 
   if (missingToken || loadError) {

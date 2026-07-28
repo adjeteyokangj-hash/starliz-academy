@@ -164,11 +164,23 @@ type SchoolDashboardContextValue = {
 
 const SchoolDashboardContext = createContext<SchoolDashboardContextValue | null>(null);
 
-async function fetchSchoolDashboardRecord(schoolId: string): Promise<SchoolDashboardRecord> {
+export type SchoolDashboardDataMode = "platform-admin" | "school-portal";
+
+function dashboardUrlFor(schoolId: string, mode: SchoolDashboardDataMode): string {
+  if (mode === "school-portal") {
+    return "/api/school-admin/day-school/dashboard";
+  }
+  return `/api/admin/school-dashboard/${schoolId}`;
+}
+
+async function fetchSchoolDashboardRecord(
+  schoolId: string,
+  mode: SchoolDashboardDataMode = "platform-admin",
+): Promise<SchoolDashboardRecord> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 45000);
   try {
-    const response = await fetch(`/api/admin/school-dashboard/${schoolId}`, {
+    const response = await fetch(dashboardUrlFor(schoolId, mode), {
       credentials: "include",
       cache: "no-store",
       signal: controller.signal,
@@ -200,9 +212,11 @@ async function fetchSchoolDashboardRecord(schoolId: string): Promise<SchoolDashb
 export function SchoolDashboardProvider({
   schoolId,
   children,
+  dataMode = "platform-admin",
 }: {
   schoolId: string;
   children: ReactNode;
+  dataMode?: SchoolDashboardDataMode;
 }) {
   const [school, setSchool] = useState<SchoolDashboardRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -216,7 +230,7 @@ export function SchoolDashboardProvider({
       setLoading(true);
       setError(null);
       try {
-        const next = await fetchSchoolDashboardRecord(schoolId);
+        const next = await fetchSchoolDashboardRecord(schoolId, dataMode);
         if (!active) return;
         setSchool(next);
       } catch (cause) {
@@ -233,7 +247,7 @@ export function SchoolDashboardProvider({
     return () => {
       active = false;
     };
-  }, [schoolId, reloadToken]);
+  }, [schoolId, reloadToken, dataMode]);
 
   const value = useMemo<SchoolDashboardContextValue>(() => ({
     schoolId,
@@ -246,11 +260,15 @@ export function SchoolDashboardProvider({
   return createElement(SchoolDashboardContext.Provider, { value }, children);
 }
 
-export function useSchoolDashboardRecord(schoolId: string) {
+export function useSchoolDashboardRecord(
+  schoolId: string,
+  dataMode: SchoolDashboardDataMode = "platform-admin",
+) {
   const context = useContext(SchoolDashboardContext);
   const [school, setSchool] = useState<SchoolDashboardRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   const hasMatchingContext = Boolean(context && context.schoolId === schoolId);
 
@@ -263,7 +281,7 @@ export function useSchoolDashboardRecord(schoolId: string) {
       setLoading(true);
       setError(null);
       try {
-        const next = await fetchSchoolDashboardRecord(schoolId);
+        const next = await fetchSchoolDashboardRecord(schoolId, dataMode);
         if (!active) return;
         setSchool(next);
       } catch (cause) {
@@ -280,7 +298,7 @@ export function useSchoolDashboardRecord(schoolId: string) {
     return () => {
       active = false;
     };
-  }, [schoolId, hasMatchingContext]);
+  }, [schoolId, hasMatchingContext, dataMode, reloadToken]);
 
   if (hasMatchingContext && context) {
     return {
@@ -291,7 +309,12 @@ export function useSchoolDashboardRecord(schoolId: string) {
     };
   }
 
-  return { school, loading, error, refresh: () => undefined };
+  return {
+    school,
+    loading,
+    error,
+    refresh: () => setReloadToken((token) => token + 1),
+  };
 }
 
 export function useDerivedSchoolMetrics(school: SchoolDashboardRecord | null) {

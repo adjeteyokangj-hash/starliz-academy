@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS helper script executed directly by Node */
 const fs = require("fs");
 const { spawnSync } = require("child_process");
 

@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/email-provider";
 import { createPasswordResetToken, getPasswordResetExpiry, PASSWORD_RESET_TTL_MINUTES } from "@/lib/password-reset";
 
-const GENERIC_MESSAGE = "If an account exists, a reset link has been sent.";
+const GENERIC_MESSAGE =
+  "If an account exists for that email, a secure reset link is on its way. Please check your inbox and spam folder.";
 const RESET_URL_ORIGIN = "https://www.starlizacademy.com";
 
 function normalizeEmail(email: unknown) {
