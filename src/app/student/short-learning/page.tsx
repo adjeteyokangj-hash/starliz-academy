@@ -1,19 +1,12 @@
 import Link from "next/link";
-
 import { redirect } from "next/navigation";
-
 import Navbar from "@/components/layout/Navbar";
-
 import { readChildSelectionFromCookie, readSessionFromCookie } from "@/lib/auth";
-
 import { prisma } from "@/lib/db";
-
 import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
-
 import { resolveParentActiveChildId } from "@/lib/activeChild";
-
 import { resolveParentScope } from "@/lib/parent_scope";
-
+import { formatUkDateTime } from "@/lib/uk-datetime";
 
 
 export default async function StudentShortLearningListPage() {
@@ -168,7 +161,7 @@ export default async function StudentShortLearningListPage() {
 
                       <p className="text-sm text-foreground/60">
 
-                        {booking.school.name} · {new Date(booking.startsAt).toLocaleString()} · {booking.durationMinutes} min
+                        {booking.school.name} · {formatUkDateTime(booking.startsAt)} · {booking.durationMinutes} min
 
                       </p>
 

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
+import { formatUkDateTime } from "@/lib/uk-datetime";
 
 type Props = {
   bookingId: string;
@@ -160,7 +161,7 @@ export default function ShortLearningLearnSession(props: Props) {
             <div>
               <h2 className="text-lg font-semibold capitalize text-foreground">{props.subject}</h2>
               <p className="mt-1 text-sm text-foreground/60">
-                {props.schoolName} · {new Date(props.startsAtIso).toLocaleString()} · {props.durationMinutes} minutes
+                {props.schoolName} · {formatUkDateTime(props.startsAtIso)} · {props.durationMinutes} minutes
               </p>
               {props.learningFocus ? (
                 <p className="mt-2 text-sm text-foreground/80">Focus: {props.learningFocus}</p>
@@ -236,7 +237,7 @@ export default function ShortLearningLearnSession(props: Props) {
               {nowMs < startsAtMs ? (
                 <p>
                   You can enter from 10 minutes before the start (
-                  {new Date(startsAtMs - 10 * 60_000).toLocaleString()}).
+                  {formatUkDateTime(new Date(startsAtMs - 10 * 60_000).toISOString())}).
                 </p>
               ) : (
                 <p>This Short Learning window has ended.</p>

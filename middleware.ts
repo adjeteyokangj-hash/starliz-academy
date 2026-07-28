@@ -163,7 +163,10 @@ export async function middleware(request: NextRequest) {
     authenticated
       && session?.role === "parent"
       && request.cookies.get(PARENT_UNLOCK_COOKIE)?.value
-      && (pathname.startsWith("/parent/profiles") || !pathname.startsWith("/parent"))
+      // Keep unlock while parent browses child/student views so Parent Area can return
+      // without a fresh PIN. Still clear on profile re-selection and non-parent destinations
+      // that are not student/dashboard child-view surfaces.
+      && pathname.startsWith("/parent/profiles")
   );
 
   const finalize = (response: NextResponse): NextResponse => {

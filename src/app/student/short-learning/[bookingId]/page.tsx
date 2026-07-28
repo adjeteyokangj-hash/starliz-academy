@@ -7,6 +7,7 @@ import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
 import { isShortLearningBookingActive } from "@/lib/schools/support-eligibility";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { resolveParentScope } from "@/lib/parent_scope";
+import { formatUkDateTime } from "@/lib/uk-datetime";
 
 type Params = { params: Promise<{ bookingId: string }> };
 
@@ -106,7 +107,7 @@ export default async function StudentShortLearningSessionPage({ params }: Params
         <section className="mt-8 rounded-2xl border border-border bg-card p-6">
           <h2 className="text-lg font-semibold capitalize text-foreground">{booking.subject}</h2>
           <p className="mt-1 text-sm text-foreground/60">
-            {booking.school.name} · {new Date(booking.startsAt).toLocaleString()} · {booking.durationMinutes} minutes
+            {booking.school.name} · {formatUkDateTime(booking.startsAt)} · {booking.durationMinutes} minutes
           </p>
           {booking.learningFocus ? (
             <p className="mt-3 text-sm text-foreground/80">Focus: {booking.learningFocus}</p>
@@ -141,7 +142,7 @@ export default async function StudentShortLearningSessionPage({ params }: Params
               {now < booking.startsAt ? (
                 <p>
                   You can enter from 10 minutes before the start (
-                  {new Date(booking.startsAt.getTime() - 10 * 60_000).toLocaleString()}).
+                  {formatUkDateTime(new Date(booking.startsAt.getTime() - 10 * 60_000))}).
                 </p>
               ) : (
                 <p>This Short Learning window has ended.</p>

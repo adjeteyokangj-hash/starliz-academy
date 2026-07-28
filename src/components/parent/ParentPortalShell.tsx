@@ -10,6 +10,7 @@ import BillingCard from "./BillingCard";
 import SecuritySettings from "./SecuritySettings";
 import ConsentAuditView from "./ConsentAuditView";
 import NotificationPreferences from "./NotificationPreferences";
+import ParentShortLearningPanel from "./ParentShortLearningPanel";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
@@ -2201,6 +2202,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                   </div>
                 ))}
               </div>
+            </Panel>
+          ) : null}
+
+          {activeSection === "short-learning" ? (
+            <Panel
+              title="Short Learning"
+              description="Book AI-led after-hours sessions. Human tutor support depends on availability."
+            >
+              <ParentShortLearningPanel />
             </Panel>
           ) : null}
 

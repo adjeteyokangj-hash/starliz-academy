@@ -5,6 +5,20 @@ import {
   writeShortLearningBookingAudit,
   type BookingSnapshot,
 } from "@/lib/schools/short-learning-booking-audit";
+import {
+  UK_TIMEZONE,
+  formatUkDateIso,
+  getUkParts,
+  londonInstantFromDateAndHm,
+  zonedLocalToUtc,
+} from "@/lib/uk-datetime";
+import {
+  SHORT_LEARNING_STARLIZ_CHOOSE,
+  isManualShortLearningSubject,
+  normalizeShortLearningSubjectInput,
+  shortLearningSubjectLabel,
+} from "@/lib/schools/short-learning-subjects";
+import { recommendShortLearningSubject } from "@/lib/schools/short-learning-subject-recommendation";
 
 export const SHORT_LEARNING_HONESTY_POLICY_VERSION = "short-learning-ai-led-v1";
 
@@ -62,34 +76,45 @@ export function generateSlotStartMinutes(input: {
   return starts;
 }
 
-function atLocalMinutes(day: Date, minutes: number, timeZone = "Europe/London"): Date {
-  // Construct using UTC components approximating Europe/London for v1 ops; schools store timezone on window.
+/**
+ * Interpret `day` as a calendar date (UTC midnight placeholder for YYYY-MM-DD)
+ * plus minutes-from-midnight in the school window timezone → UTC instant.
+ */
+function atLocalMinutes(day: Date, minutes: number, timeZone = UK_TIMEZONE): Date {
   const y = day.getUTCFullYear();
-  const mo = day.getUTCMonth();
+  const mo = day.getUTCMonth() + 1;
   const d = day.getUTCDate();
   const h = Math.floor(minutes / 60);
   const mi = minutes % 60;
-  void timeZone;
-  return new Date(Date.UTC(y, mo, d, h, mi, 0, 0));
+  return zonedLocalToUtc({ year: y, month: mo, day: d, hour: h, minute: mi, timeZone });
 }
 
-function startOfUtcDay(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
-
-function isWeekend(date: Date): boolean {
-  const day = date.getUTCDay();
+function isWeekend(date: Date, timeZone = UK_TIMEZONE): boolean {
+  const day = getUkParts(date, timeZone).weekday;
   return day === 0 || day === 6;
 }
 
-/** Thursday 18:00 UTC for weekend deadline relative to session weekend. */
+/** Thursday 18:00 Europe/London for weekend deadline relative to session weekend. */
 function weekendDeadlineForSession(sessionDay: Date): Date {
-  // Find preceding Thursday of the week containing Saturday/Sunday session.
-  const day = sessionDay.getUTCDay();
-  const daysFromThursday = day === 0 ? 3 : day === 6 ? 2 : ((day - 4 + 7) % 7);
-  const thursday = new Date(sessionDay);
-  thursday.setUTCDate(sessionDay.getUTCDate() - daysFromThursday);
-  return atLocalMinutes(thursday, 18 * 60);
+  const parts = getUkParts(sessionDay);
+  const daysFromThursday = parts.weekday === 0 ? 3 : parts.weekday === 6 ? 2 : ((parts.weekday - 4 + 7) % 7);
+  const base = zonedLocalToUtc({
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+    hour: 12,
+    minute: 0,
+  });
+  base.setUTCDate(base.getUTCDate() - daysFromThursday);
+  const th = getUkParts(base);
+  return zonedLocalToUtc({ year: th.year, month: th.month, day: th.day, hour: 18, minute: 0 });
+}
+
+function addUkCalendarDays(dateIso: string, deltaDays: number): string {
+  const [y, m, d] = dateIso.split("-").map(Number);
+  const noon = zonedLocalToUtc({ year: y, month: m, day: d, hour: 12, minute: 0 });
+  noon.setUTCDate(noon.getUTCDate() + deltaDays);
+  return formatUkDateIso(noon);
 }
 
 export function isWithinStandardBookingWindow(input: {
@@ -99,11 +124,12 @@ export function isWithinStandardBookingWindow(input: {
   const now = input.now ?? new Date();
   const starts = input.sessionStartsAt;
   const weekend = isWeekend(starts);
+  const sessionDateIso = formatUkDateIso(starts);
 
   if (weekend) {
-    const openFrom = new Date(starts);
-    openFrom.setUTCDate(openFrom.getUTCDate() - 14);
-    if (now < startOfUtcDay(openFrom)) {
+    const openFromIso = addUkCalendarDays(sessionDateIso, -14);
+    const openFrom = londonInstantFromDateAndHm(openFromIso, "00:00");
+    if (openFrom && now < openFrom) {
       return { ok: false, lateBooking: false, reason: "Weekend bookings open 14 days ahead." };
     }
     const deadline = weekendDeadlineForSession(starts);
@@ -111,13 +137,13 @@ export function isWithinStandardBookingWindow(input: {
     return { ok: true, lateBooking: true };
   }
 
-  const openFrom = new Date(starts);
-  openFrom.setUTCDate(openFrom.getUTCDate() - 7);
-  if (now < startOfUtcDay(openFrom)) {
+  const openFromIso = addUkCalendarDays(sessionDateIso, -7);
+  const openFrom = londonInstantFromDateAndHm(openFromIso, "00:00");
+  if (openFrom && now < openFrom) {
     return { ok: false, lateBooking: false, reason: "Weekday bookings open 7 days ahead." };
   }
-  const noon = atLocalMinutes(starts, 12 * 60);
-  if (now <= noon) return { ok: true, lateBooking: false };
+  const noon = londonInstantFromDateAndHm(sessionDateIso, "12:00");
+  if (noon && now <= noon) return { ok: true, lateBooking: false };
   return { ok: true, lateBooking: true };
 }
 
@@ -128,10 +154,10 @@ export function canCancelFreely(input: {
   const now = input.now ?? new Date();
   const starts = input.sessionStartsAt;
   if (isWeekend(starts)) {
-    const prevDay = new Date(starts);
-    prevDay.setUTCDate(prevDay.getUTCDate() - 1);
-    const deadline = atLocalMinutes(prevDay, 18 * 60);
-    if (now <= deadline) return { free: true, late: false };
+    const sessionDateIso = formatUkDateIso(starts);
+    const prevDayIso = addUkCalendarDays(sessionDateIso, -1);
+    const deadline = londonInstantFromDateAndHm(prevDayIso, "18:00");
+    if (deadline && now <= deadline) return { free: true, late: false };
     return { free: true, late: true };
   }
   const freeUntil = new Date(starts.getTime() - 2 * 60 * 60 * 1000);
@@ -428,7 +454,7 @@ export async function createStudentLearningBooking(input: {
   parentUserId: string;
   startsAt: Date;
   durationMinutes: number;
-  subject: string;
+  subject?: string | null;
   learningFocus?: string | null;
   parentNote?: string | null;
   honestyAcknowledged: boolean;
@@ -466,6 +492,38 @@ export async function createStudentLearningBooking(input: {
     throw new Error("Student is not linked to this parent for this school.");
   }
 
+  const normalizedSubject = normalizeShortLearningSubjectInput(input.subject);
+  if (normalizedSubject == null) {
+    throw new Error("Subject must be an allowed Short Learning subject, or leave blank for StarLiz to choose.");
+  }
+
+  const requestedLearningFocus = input.learningFocus?.trim() || null;
+  let subjectSelectionMode: "parent_selected" | "starliz_selected" = "parent_selected";
+  let requestedSubject: string | null = null;
+  let selectedSubject: string;
+  let selectionReason = "parent_selected";
+  let resolvedLearningFocus = requestedLearningFocus;
+
+  if (normalizedSubject === SHORT_LEARNING_STARLIZ_CHOOSE) {
+    subjectSelectionMode = "starliz_selected";
+    requestedSubject = null;
+    const recommendation = await recommendShortLearningSubject({
+      schoolId: input.schoolId,
+      schoolStudentId: input.schoolStudentId,
+      parentUserId: input.parentUserId,
+      now: input.now,
+    });
+    selectedSubject = recommendation.subject;
+    selectionReason = recommendation.reason;
+    resolvedLearningFocus = requestedLearningFocus || recommendation.learningFocus;
+  } else if (isManualShortLearningSubject(normalizedSubject)) {
+    requestedSubject = normalizedSubject;
+    selectedSubject = normalizedSubject;
+    selectionReason = "parent_selected";
+  } else {
+    throw new Error("Subject must be an allowed Short Learning subject, or leave blank for StarLiz to choose.");
+  }
+
   const endsAt = new Date(input.startsAt.getTime() + input.durationMinutes * 60_000);
   const now = input.now ?? new Date();
   const windowCheck = isWithinStandardBookingWindow({ sessionStartsAt: input.startsAt, now });
@@ -473,7 +531,7 @@ export async function createStudentLearningBooking(input: {
     throw new Error(windowCheck.reason ?? "Outside booking window.");
   }
 
-  const dateIso = input.startsAt.toISOString().slice(0, 10);
+  const dateIso = formatUkDateIso(input.startsAt);
   const slots = await listAvailableSlots({
     schoolId: input.schoolId,
     dateIso,
@@ -500,10 +558,20 @@ export async function createStudentLearningBooking(input: {
     throw new Error("Student already has an overlapping Short Learning booking.");
   }
 
-  const weekday = input.startsAt.getUTCDay();
+  const weekday = getUkParts(input.startsAt).weekday;
   const learningWindow = await prisma.schoolLearningWindow.findFirst({
     where: { schoolId: input.schoolId, active: true, weekday },
   });
+
+  const metadata = {
+    subjectSelectionMode,
+    requestedSubject,
+    selectedSubject,
+    selectionReason,
+    requestedLearningFocus,
+    resolvedLearningFocus,
+    selectedSubjectLabel: shortLearningSubjectLabel(selectedSubject),
+  };
 
   const booking = await prisma.studentLearningBooking.create({
     data: {
@@ -514,14 +582,15 @@ export async function createStudentLearningBooking(input: {
       startsAt: input.startsAt,
       endsAt,
       durationMinutes: input.durationMinutes,
-      subject: input.subject.trim(),
-      learningFocus: input.learningFocus?.trim() || null,
+      subject: selectedSubject,
+      learningFocus: resolvedLearningFocus,
       parentNote: input.parentNote?.trim() || null,
       status: "booked",
       confirmedAt: new Date(),
       honestyPolicyVersion: SHORT_LEARNING_HONESTY_POLICY_VERSION,
       honestyAcknowledgedAt: new Date(),
       source: "parent_portal",
+      metadataJson: JSON.stringify(metadata),
     },
   });
 

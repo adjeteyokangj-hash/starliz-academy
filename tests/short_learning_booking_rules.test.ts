@@ -20,8 +20,8 @@ test("Short Learning honesty copy is present", () => {
 });
 
 test("weekday booking opens 7 days ahead and is late after noon", () => {
-  // Wednesday 2026-07-29 15:00 UTC session
-  const sessionStartsAt = new Date("2026-07-29T15:00:00.000Z");
+  // Wednesday 2026-07-29 16:00 UTC = 17:00 BST London
+  const sessionStartsAt = new Date("2026-07-29T16:00:00.000Z");
 
   const tooEarly = isWithinStandardBookingWindow({
     sessionStartsAt,
@@ -36,17 +36,18 @@ test("weekday booking opens 7 days ahead and is late after noon", () => {
   assert.equal(onTime.ok, true);
   assert.equal(onTime.lateBooking, false);
 
+  // After London noon (11:00 UTC during BST)
   const late = isWithinStandardBookingWindow({
     sessionStartsAt,
-    now: new Date("2026-07-29T13:00:00.000Z"),
+    now: new Date("2026-07-29T12:00:00.000Z"),
   });
   assert.equal(late.ok, true);
   assert.equal(late.lateBooking, true);
 });
 
 test("weekend booking opens 14 days ahead and is late after Thursday 18:00", () => {
-  // Saturday 2026-08-01
-  const sessionStartsAt = new Date("2026-08-01T10:00:00.000Z");
+  // Saturday 2026-08-01 09:00 UTC = 10:00 BST
+  const sessionStartsAt = new Date("2026-08-01T09:00:00.000Z");
 
   const tooEarly = isWithinStandardBookingWindow({
     sessionStartsAt,
@@ -63,7 +64,7 @@ test("weekend booking opens 14 days ahead and is late after Thursday 18:00", () 
 
   const late = isWithinStandardBookingWindow({
     sessionStartsAt,
-    now: new Date("2026-07-31T12:00:00.000Z"), // Friday after Thu 18:00
+    now: new Date("2026-07-31T12:00:00.000Z"), // Friday after Thu 18:00 London
   });
   assert.equal(late.ok, true);
   assert.equal(late.lateBooking, true);
@@ -170,30 +171,31 @@ test("weekend default window supports 90-min slots on 30-minute boundaries", () 
 });
 
 test("late booking flag is false before weekday noon deadline", () => {
-  const sessionStartsAt = new Date("2026-07-29T18:00:00.000Z");
+  // Session evening; noon Europe/London on 29 Jul 2026 is 11:00 UTC (BST).
+  const sessionStartsAt = new Date("2026-07-29T16:30:00.000Z"); // 17:30 London
   const onTime = isWithinStandardBookingWindow({
     sessionStartsAt,
-    now: new Date("2026-07-29T11:59:00.000Z"),
+    now: new Date("2026-07-29T10:59:00.000Z"),
   });
   assert.equal(onTime.ok, true);
   assert.equal(onTime.lateBooking, false);
 });
 
 test("late booking flag is true after weekday noon deadline", () => {
-  const sessionStartsAt = new Date("2026-07-29T18:00:00.000Z");
+  const sessionStartsAt = new Date("2026-07-29T16:30:00.000Z");
   const late = isWithinStandardBookingWindow({
     sessionStartsAt,
-    now: new Date("2026-07-29T12:01:00.000Z"),
+    now: new Date("2026-07-29T11:01:00.000Z"),
   });
   assert.equal(late.ok, true);
   assert.equal(late.lateBooking, true);
 });
 
 test("weekend late booking flag flips after Thursday 18:00", () => {
-  const sessionStartsAt = new Date("2026-08-01T10:00:00.000Z");
+  const sessionStartsAt = new Date("2026-08-01T09:00:00.000Z"); // 10:00 BST
   const onTime = isWithinStandardBookingWindow({
     sessionStartsAt,
-    now: new Date("2026-07-30T17:00:00.000Z"),
+    now: new Date("2026-07-30T16:00:00.000Z"), // Thu 17:00 BST — before 18:00 London
   });
   assert.equal(onTime.lateBooking, false);
 

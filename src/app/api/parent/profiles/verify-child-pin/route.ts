@@ -7,7 +7,6 @@ import {
   createChildSelectionToken,
   getChildSelectionCookieName,
   getChildSelectionMaxAgeSeconds,
-  getParentUnlockCookieName,
   verifyPassword,
 } from "@/lib/auth";
 import { readChildPinState } from "@/lib/child_pin";
@@ -68,13 +67,8 @@ export async function POST(request: Request) {
     path: "/",
     maxAge: getChildSelectionMaxAgeSeconds(),
   });
-  reply.cookies.set(getParentUnlockCookieName(), "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 0,
-  });
+  // Preserve parent PIN unlock so Parent Area can return to the Parent Portal
+  // without an unnecessary second PIN prompt during the same unlock window.
 
   return reply;
 }

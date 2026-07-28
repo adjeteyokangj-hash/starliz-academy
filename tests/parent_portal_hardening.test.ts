@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 test("parent Short Learning booking statuses are labelled for parents", () => {
-  const source = readFileSync(join(process.cwd(), "src/app/parent/short-learning/page.tsx"), "utf8");
+  const source = readFileSync(join(process.cwd(), "src/components/parent/ParentShortLearningPanel.tsx"), "utf8");
   assert.match(source, /function formatBookingStatus/);
   assert.match(source, /Missed \(no-show\)/);
   assert.match(source, /Cancelled \(late\)/);

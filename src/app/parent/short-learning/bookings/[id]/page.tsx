@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 
+import { formatUkDateTime, formatUkTime } from "@/lib/uk-datetime";
+
 type BookingDetail = {
   id: string;
   bookingRef: string;
@@ -31,13 +33,7 @@ type SlotRow = {
 type ChangeStep = "detail" | "edit" | "review" | "done";
 
 function formatSessionWhen(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatUkDateTime(iso);
 }
 
 function formatStatus(status: string): string {
@@ -283,12 +279,12 @@ export default function ParentBookingDetailPage() {
                 {booking.startsAt.slice(0, 10) === dateIso
                 && booking.durationMinutes === durationMinutes ? (
                   <option value={booking.startsAt}>
-                    Current · {new Date(booking.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    Current · {formatUkTime(booking.startsAt)}
                   </option>
                 ) : null}
                 {slots.map((slot) => (
                   <option key={slot.startsAt} value={slot.startsAt}>
-                    {new Date(slot.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {formatUkTime(slot.startsAt)}
                     {" · "}
                     {slot.capacityRemaining} places
                   </option>

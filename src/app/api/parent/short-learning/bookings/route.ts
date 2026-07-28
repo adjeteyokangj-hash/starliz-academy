@@ -45,19 +45,28 @@ export async function GET() {
       childId: student.childId,
       source: student.source,
     })),
-    bookings: bookings.map((row) => ({
-      id: row.id,
-      schoolId: row.schoolId,
-      schoolStudentId: row.schoolStudentId,
-      schoolName: row.schoolStudent.school.name,
-      studentName: row.schoolStudent.child.name,
-      startsAt: row.startsAt.toISOString(),
-      endsAt: row.endsAt.toISOString(),
-      durationMinutes: row.durationMinutes,
-      subject: row.subject,
-      status: row.status,
-      learningFocus: row.learningFocus,
-    })),
+    bookings: bookings.map((row) => {
+      let selectionMeta: Record<string, unknown> | null = null;
+      try {
+        selectionMeta = row.metadataJson ? JSON.parse(row.metadataJson) as Record<string, unknown> : null;
+      } catch {
+        selectionMeta = null;
+      }
+      return {
+        id: row.id,
+        schoolId: row.schoolId,
+        schoolStudentId: row.schoolStudentId,
+        schoolName: row.schoolStudent.school.name,
+        studentName: row.schoolStudent.child.name,
+        startsAt: row.startsAt.toISOString(),
+        endsAt: row.endsAt.toISOString(),
+        durationMinutes: row.durationMinutes,
+        subject: row.subject,
+        status: row.status,
+        learningFocus: row.learningFocus,
+        subjectSelectionMode: selectionMeta?.subjectSelectionMode ?? null,
+      };
+    }),
   });
 }
 
@@ -83,7 +92,7 @@ export async function POST(request: Request) {
     ? (body as { startsAt: string }).startsAt
     : null;
   const durationMinutes = Number((body as { durationMinutes?: unknown }).durationMinutes ?? 90);
-  const subject = typeof (body as { subject?: unknown }).subject === "string"
+  const subjectRaw = typeof (body as { subject?: unknown }).subject === "string"
     ? (body as { subject: string }).subject
     : "";
   const learningFocus = typeof (body as { learningFocus?: unknown }).learningFocus === "string"
@@ -94,9 +103,9 @@ export async function POST(request: Request) {
     : null;
   const honestyAcknowledged = Boolean((body as { honestyAcknowledged?: unknown }).honestyAcknowledged);
 
-  if (!schoolId || !schoolStudentId || !startsAtRaw || !subject.trim()) {
+  if (!schoolId || !schoolStudentId || !startsAtRaw) {
     return NextResponse.json(
-      { error: "schoolId, schoolStudentId, startsAt, and subject are required." },
+      { error: "schoolId, schoolStudentId, and startsAt are required." },
       { status: 400 },
     );
   }
@@ -113,12 +122,18 @@ export async function POST(request: Request) {
       parentUserId: session.userId,
       startsAt,
       durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : 90,
-      subject,
+      subject: subjectRaw,
       learningFocus,
       parentNote,
       honestyAcknowledged,
     });
     void enqueueShortLearningBookingConfirmation(booking.id).catch(() => null);
+    let selectionMeta: Record<string, unknown> | null = null;
+    try {
+      selectionMeta = booking.metadataJson ? JSON.parse(booking.metadataJson) as Record<string, unknown> : null;
+    } catch {
+      selectionMeta = null;
+    }
     return NextResponse.json({
       ok: true,
       booking: {
@@ -127,7 +142,10 @@ export async function POST(request: Request) {
         endsAt: booking.endsAt.toISOString(),
         status: booking.status,
         subject: booking.subject,
+        learningFocus: booking.learningFocus,
         durationMinutes: booking.durationMinutes,
+        subjectSelectionMode: selectionMeta?.subjectSelectionMode ?? null,
+        selectionReason: selectionMeta?.selectionReason ?? null,
       },
     });
   } catch (error) {

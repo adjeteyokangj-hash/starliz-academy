@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import ShortLearningSubNav from "@/components/school-admin/ShortLearningSubNav";
+import { formatUkDateTime, formatUkDateTimeShort, formatUkTime } from "@/lib/uk-datetime";
 
 type ChangeIndicator = {
   label: string;
@@ -35,28 +36,15 @@ function formatStatus(status: string): string {
 }
 
 function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatUkDateTime(iso);
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
+  return formatUkDateTimeShort(iso).replace(/,\s*\d{2}:\d{2}$/, "");
 }
 
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatUkTime(iso);
 }
 
 export default function SchoolAdminBookingsPage() {

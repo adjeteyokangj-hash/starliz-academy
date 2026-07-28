@@ -28,9 +28,18 @@ type ActiveChildPayload = {
 };
 
 type PrimaryNavLink = {
+  /** Stable unique id for React keys (href alone is not unique in parent-in-child nav). */
+  id: string;
   href: string;
   label: string;
 };
+
+function navLink(id: string, href: string, label: string): PrimaryNavLink | null {
+  const safeHref = typeof href === "string" ? href.trim() : "";
+  const safeLabel = typeof label === "string" ? label.trim() : "";
+  if (!safeHref || !safeLabel) return null;
+  return { id, href: safeHref, label: safeLabel };
+}
 
 export function buildPrimaryNavLinks(input: {
   showParentAccess: boolean;
@@ -40,26 +49,29 @@ export function buildPrimaryNavLinks(input: {
   gaLearningHubHref: string;
 }): PrimaryNavLink[] {
   if (input.showParentAccess) {
+    // Parent-in-child: keep student shell links usable under restricted/trial states.
+    // Parent Area must return to /parent/dashboard (not profiles?intent=parent).
+    // Do not reuse the same href for two labels — React keys must stay unique.
     return [
-      { href: "/parent/dashboard", label: "Dashboard" },
-      { href: "/dashboard", label: "Child Dashboard" },
-      { href: "/student/today", label: "Today" },
-      { href: "/student/attendance", label: "Attendance" },
-      { href: "/parent/profiles?intent=parent", label: "Parent Area" },
-    ];
+      navLink("child-dashboard", "/student/dashboard", "Child Dashboard"),
+      navLink("today", "/student/today", "Today"),
+      navLink("short-learning", "/student/short-learning", "Short Learning"),
+      navLink("attendance", "/student/attendance", "Attendance"),
+      navLink("parent-area", "/parent/dashboard", "Parent Area"),
+    ].filter((link): link is PrimaryNavLink => Boolean(link));
   }
 
-  const links: PrimaryNavLink[] = [
-    { href: input.dashboardHref, label: input.isStudentContext ? "Home" : "Dashboard" },
+  const links: Array<PrimaryNavLink | null> = [
+    navLink("home", input.dashboardHref, input.isStudentContext ? "Home" : "Dashboard"),
   ];
   if (input.isStudentContext) {
-    links.push({ href: "/student/today", label: "Day School" });
-    links.push({ href: "/student/short-learning", label: "Short Learning" });
-    links.push({ href: "/student/attendance", label: "Attendance" });
-    links.push({ href: input.gaLearningHubHref, label: "Ga Learning Hub" });
+    links.push(navLink("day-school", "/student/today", "Day School"));
+    links.push(navLink("short-learning", "/student/short-learning", "Short Learning"));
+    links.push(navLink("attendance", "/student/attendance", "Attendance"));
+    links.push(navLink("ga-learning-hub", input.gaLearningHubHref, "Ga Learning Hub"));
   }
-  links.push({ href: input.profileHref, label: "My Profile" });
-  return links;
+  links.push(navLink("profile", input.profileHref, "My Profile"));
+  return links.filter((link): link is PrimaryNavLink => Boolean(link));
 }
 
 export default function Navbar() {
@@ -189,7 +201,7 @@ export default function Navbar() {
 
           <nav className="hidden items-center gap-2 text-sm font-semibold text-slate-700 md:flex" aria-label="Primary">
             {primaryNavLinks.map((link) => (
-              <Link key={link.href} className="rounded-xl px-3 py-2 hover:bg-slate-100" href={link.href}>
+              <Link key={link.id} className="rounded-xl px-3 py-2 hover:bg-slate-100" href={link.href}>
                 {link.label}
               </Link>
             ))}
@@ -220,7 +232,7 @@ export default function Navbar() {
           aria-label="Primary"
         >
           {primaryNavLinks.map((link) => (
-            <Link key={link.href} className="rounded-xl px-3 py-2 hover:bg-slate-100" href={link.href} onClick={closeMobileMenu}>
+            <Link key={link.id} className="rounded-xl px-3 py-2 hover:bg-slate-100" href={link.href} onClick={closeMobileMenu}>
               {link.label}
             </Link>
           ))}

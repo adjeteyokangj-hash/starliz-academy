@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import ShortLearningSubNav from "@/components/school-admin/ShortLearningSubNav";
+import { formatUkDateTime } from "@/lib/uk-datetime";
 
 type HistoryEvent = {
   id: string;
@@ -44,14 +45,7 @@ type BookingDetail = {
 };
 
 function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatUkDateTime(iso);
 }
 
 export default function SchoolAdminBookingDetailPage() {
