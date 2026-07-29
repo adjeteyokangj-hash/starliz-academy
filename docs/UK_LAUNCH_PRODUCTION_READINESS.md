@@ -84,7 +84,7 @@ Use Admin → Settings → [Production Checklist](/admin/settings/production-che
 
 Critical before UK go-live:
 
-1. `LAUNCH_ENABLE_SCHOOL_PORTAL` (and public equivalents) set correctly in production env.
+1. `LAUNCH_ENABLE_SCHOOL_PORTAL=true` and `NEXT_PUBLIC_LAUNCH_ENABLE_SCHOOL_PORTAL=true` in production env when School Portal is live (missing values default to false; Teachers then land on `/school-portal-unavailable`, not `/student/dashboard`).
 2. Database migrations applied **forward only** — never `migrate reset` on production.
 3. Stripe webhooks + Resend/email + OpenAI keys verified.
 4. `CRON_SECRET` set in Vercel Production; Short Learning cron active after deploy (`*/10 * * * *` → GET `/api/cron/short-learning-reminders`).

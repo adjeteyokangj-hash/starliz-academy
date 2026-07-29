@@ -37,6 +37,12 @@ export function resolveLaunchScopeRedirect(input: {
 
   const pathname = input.pathname;
   const role = input.role ?? null;
+
+  // Stable unavailable page must never re-enter school-portal redirect rules.
+  if (pathname === "/school-portal-unavailable" || pathname.startsWith("/school-portal-unavailable/")) {
+    return null;
+  }
+
   const schoolPortalRoute =
     pathname.startsWith("/teacher")
     || pathname.startsWith("/school")
@@ -46,10 +52,38 @@ export function resolveLaunchScopeRedirect(input: {
     if (!input.authenticated) return "/auth/login";
     if (role === "admin") return null;
     if (role === "parent") return "/parent/dashboard";
+    // Teachers must NOT be sent to /student/dashboard (middleware would bounce them back → loop).
+    if (role === "teacher") return "/school-portal-unavailable";
     return "/student/dashboard";
   }
 
   return null;
+}
+
+/** Stable destination when School Portal is disabled for a teacher account. */
+export const SCHOOL_PORTAL_UNAVAILABLE_PATH = "/school-portal-unavailable";
+
+/**
+ * Teacher bounce away from learner/parent surfaces.
+ * When School Portal is off, bounce to the unavailable page — never /teacher (avoids loops).
+ */
+export function resolveTeacherPortalBounce(input: {
+  pathname: string;
+  role?: SessionRole | null;
+}): string | null {
+  if (input.role !== "teacher") return null;
+  const pathname = input.pathname;
+  if (pathname === SCHOOL_PORTAL_UNAVAILABLE_PATH || pathname.startsWith(`${SCHOOL_PORTAL_UNAVAILABLE_PATH}/`)) {
+    return null;
+  }
+  const shouldBounce =
+    pathname === "/profiles"
+    || pathname === "/dashboard"
+    || pathname.startsWith("/student")
+    || pathname.startsWith("/parent");
+  if (!shouldBounce) return null;
+  if (!isSchoolPortalLaunchEnabled()) return SCHOOL_PORTAL_UNAVAILABLE_PATH;
+  return "/teacher";
 }
 
 const ADMIN_BETA_TAGS: Record<string, AdminLaunchTag> = {

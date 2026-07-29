@@ -41,7 +41,7 @@ test("/school-admin is launch-scoped like other school portal routes", () => {
           authenticated: true,
           role: "teacher",
         }),
-        "/student/dashboard",
+        "/school-portal-unavailable",
       );
 
       assert.equal(

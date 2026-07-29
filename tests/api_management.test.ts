@@ -19,6 +19,10 @@ import {
   isApiScope,
 } from "../src/lib/api-management/scopes";
 import {
+  isExternalApiRoute,
+  isBrowserSessionApiRoute,
+} from "../src/lib/api-management/external-path";
+import {
   assertSafeExternalUrl,
   fetchSafeExternal,
   isPrivateOrBlockedIp,
@@ -416,4 +420,48 @@ test("no OpsWatch-specific wiring in api-management lib or routes", () => {
   for (const f of files) {
     assert.doesNotMatch(read(f), /opswatch/i, f);
   }
+});
+
+
+test("middleware allows /api/external through and still protects /api/admin", () => {
+  assert.equal(isExternalApiRoute("/api/external/v1/ping"), true);
+  assert.equal(isExternalApiRoute("/api/external"), true);
+  assert.equal(isExternalApiRoute("/api/admin/settings"), false);
+  assert.equal(isBrowserSessionApiRoute("/api/admin/settings/api-management/keys"), true);
+  assert.equal(isBrowserSessionApiRoute("/api/student/x"), true);
+  assert.equal(isBrowserSessionApiRoute("/api/teacher/x"), true);
+  assert.equal(isBrowserSessionApiRoute("/api/external/v1/ping"), false);
+
+  const mw = read("middleware.ts");
+  assert.match(mw, /isExternalApiRoute\(pathname\)/);
+  assert.match(mw, /api-management\/external-path/);
+  assert.doesNotMatch(mw, /pathname\.startsWith\("\/api\/admin"\)/);
+
+  const sw = read("public/sw.js");
+  assert.match(sw, /pathname\.startsWith\("\/api"\)/);
+});
+
+test("missing / invalid / valid / wrong-scope external key decisions", () => {
+  const base = {
+    keyPrefix: "sl_test_abcdefghijkl",
+    status: "active",
+    expiresAt: null,
+    scopes: ["api:read"],
+    requiredScopes: ["api:read"],
+    rateLimitAllowed: true,
+  };
+  assert.deepEqual(evaluateApiKeyAuth(base), { ok: true });
+  assert.equal(evaluateApiKeyAuth({ ...base, status: "revoked" }).httpStatus, 401);
+  assert.equal(evaluateApiKeyAuth({ ...base, expiresAt: new Date(Date.now() - 1000) }).httpStatus, 401);
+  assert.equal(
+    evaluateApiKeyAuth({ ...base, scopes: ["api:write"], requiredScopes: ["api:read"] }).httpStatus,
+    403,
+  );
+  assert.equal(evaluateApiKeyAuth({ ...base, status: "inactive" }).httpStatus, 401);
+});
+
+test("ping route keeps authenticateExternalApiKey guard after middleware bypass", () => {
+  const src = read("src/app/api/external/v1/ping/route.ts");
+  assert.match(src, /authenticateExternalApiKey/);
+  assert.match(src, /requiredScopes:\s*\["api:read"\]/);
 });

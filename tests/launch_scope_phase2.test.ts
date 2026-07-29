@@ -69,6 +69,15 @@ test("school/teacher routes are blocked for non-admin roles when school portal l
 
       assert.equal(
         resolveLaunchScopeRedirect({
+          pathname: "/teacher",
+          authenticated: true,
+          role: "teacher",
+        }),
+        "/school-portal-unavailable",
+      );
+
+      assert.equal(
+        resolveLaunchScopeRedirect({
           pathname: "/teacher/classrooms",
           authenticated: true,
           role: "parent",

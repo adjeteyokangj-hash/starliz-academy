@@ -36,3 +36,11 @@
 - Teacher and school operations/governance pages when `LAUNCH_ENABLE_SCHOOL_PORTAL` is eventually enabled
 - Student certificate issuing flow before setting `NEXT_PUBLIC_LAUNCH_ENABLE_STUDENT_CERTIFICATES=true`
 - Public trial funnel before setting `NEXT_PUBLIC_LAUNCH_ENABLE_PUBLIC_TRIAL_CTA=true`
+
+## School Portal production flags
+Production (School Portal live) must set:
+```text
+LAUNCH_ENABLE_SCHOOL_PORTAL=true
+NEXT_PUBLIC_LAUNCH_ENABLE_SCHOOL_PORTAL=true
+```
+If these are missing, they default to false. Teachers blocked from the School Portal are sent to `/school-portal-unavailable` (never `/student/dashboard`, which previously caused a Teacher redirect loop with middleware).

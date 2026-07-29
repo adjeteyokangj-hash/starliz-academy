@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminCollapsibleCard } from "@/components/admin/ui";
+
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 type AuthType = "bearer" | "api_key_header" | "basic" | "none";
@@ -120,6 +122,7 @@ export default function ApiManagementPage() {
         const cPayload = (await cRes.json()) as { connections?: ConnectionRow[] };
         const kPayload = (await kRes.json()) as { keys?: KeyRow[] };
         if (cancelled) return;
+        setLoadError(null);
         setConnections(cPayload.connections ?? []);
         setKeys(kPayload.keys ?? []);
       } catch {
@@ -387,15 +390,15 @@ export default function ApiManagementPage() {
       ) : null}
 
       {/* Connected APIs */}
-      <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 backdrop-blur">
-        <div className="mb-6">
-          <p className="mb-1 text-xs font-black uppercase tracking-widest text-indigo-400">Connected APIs</p>
-          <h2 className="text-xl font-black text-white">Connect API</h2>
-          <p className="mt-1 text-sm text-slate-400">Store and test credentials for an external API.</p>
-          <p className="mt-2 text-xs text-slate-500">
-            A successful connection test verifies reachability and authentication only. It does not mean StarLiz features work without separate code mapping.
-          </p>
-        </div>
+      <AdminCollapsibleCard
+        eyebrow="Connected APIs"
+        title="Connect API"
+        subtitle="Store and test credentials for an external API."
+        padding="lg"
+      >
+        <p className="mb-4 text-xs text-slate-500">
+          A successful connection test verifies reachability and authentication only. It does not mean StarLiz features work without separate code mapping.
+        </p>
 
         <form onSubmit={(e) => void saveConnection(e)} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -598,17 +601,15 @@ export default function ApiManagementPage() {
             ))
           )}
         </div>
-      </section>
+      </AdminCollapsibleCard>
 
       {/* Generated keys */}
-      <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 backdrop-blur">
-        <div className="mb-6">
-          <p className="mb-1 text-xs font-black uppercase tracking-widest text-indigo-400">Generated API Keys</p>
-          <h2 className="text-xl font-black text-white">Generate API Key</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Create credentials that another authorised system can use to access supported StarLiz API endpoints.
-          </p>
-        </div>
+      <AdminCollapsibleCard
+        eyebrow="Generated API Keys"
+        title="Generate API Key"
+        subtitle="Create credentials that another authorised system can use to access supported StarLiz API endpoints."
+        padding="lg"
+      >
 
         <form onSubmit={(e) => void generateKey(e)} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -723,7 +724,7 @@ export default function ApiManagementPage() {
         <div className="mt-8 overflow-x-auto">
           <p className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Issued keys</p>
           {keys.length === 0 ? (
-            <p className="text-sm text-slate-500">No generated keys yet.</p>
+            <p className="text-sm text-slate-500">No generated API keys yet.</p>
           ) : (
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
@@ -784,7 +785,7 @@ export default function ApiManagementPage() {
             </table>
           )}
         </div>
-      </section>
+      </AdminCollapsibleCard>
     </div>
   );
 }

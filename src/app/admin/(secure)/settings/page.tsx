@@ -1,17 +1,13 @@
 "use client";
 
+import { AdminCollapsibleCard } from "@/components/admin/ui";
+
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { generatePassword } from "@/lib/password";
+import { PlatformSchoolUsersPanel } from "@/components/admin/PlatformSchoolUsersPanel";
+import type { PlatformUserDto, SchoolUserDto } from "@/lib/admin/access-scope";
 
-type AdminUserRow = {
-  id: string;
-  name: string | null;
-  email: string;
-  role: string | null;
-  roleId: string | null;
-  active: boolean;
-  createdAt: string;
-};
+type AdminUserRow = PlatformUserDto;
 
 type RoleRow = {
   id: string;
@@ -94,16 +90,6 @@ const settingsModules = [
 const VOICE_TEST_TEXT_DEFAULT = "Hello, this is a live OpenAI voice test from StarLiz Academy.";
 const VOICE_TEST_VOICES: readonly VoiceTestVoice[] = ["alloy", "aria", "sage", "verse"];
 
-function SectionHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }) {
-  return (
-    <div className="mb-6">
-      <p className="mb-1 text-xs font-black uppercase tracking-widest text-indigo-400">{eyebrow}</p>
-      <h2 className="text-xl font-black text-white">{title}</h2>
-      {subtitle ? <p className="mt-1 text-sm text-slate-400">{subtitle}</p> : null}
-    </div>
-  );
-}
-
 function FieldInput({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block text-sm font-semibold text-slate-300">
@@ -128,6 +114,7 @@ export default function SettingsPage() {
   const [voiceFallbackUsed, setVoiceFallbackUsed] = useState(false);
 
   const [admins, setAdmins] = useState<AdminUserRow[]>([]);
+  const [schoolUsers, setSchoolUsers] = useState<SchoolUserDto[]>([]);
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [canManageAdmins, setCanManageAdmins] = useState(false);
   const [adminName, setAdminName] = useState("");
@@ -163,11 +150,13 @@ export default function SettingsPage() {
     if (res.status === 403) {
       setCanManageAdmins(false);
       setAdmins([]);
+      setSchoolUsers([]);
       return;
     }
     const payload = await res.json();
     setCanManageAdmins(true);
-    setAdmins(payload.admins ?? []);
+    setAdmins(payload.platformUsers ?? payload.admins ?? []);
+    setSchoolUsers(payload.schoolUsers ?? []);
   }, [handleUnauthorized]);
 
   const loadRoles = useCallback(async () => {
@@ -345,8 +334,8 @@ export default function SettingsPage() {
     });
     if (handleUnauthorized(res)) return;
     const payload = await res.json();
-    if (!res.ok) { setAdminError(payload.error ?? "Unable to create admin user."); return; }
-    setAdminMsg(`Admin account created for ${payload.admin.email}.`);
+    if (!res.ok) { setAdminError(payload.error ?? "Unable to create platform user."); return; }
+    setAdminMsg(`Platform user created for ${payload.admin.email}.`);
     setAdminName(""); setAdminEmail(""); setAdminPassword(""); setAdminRoleId("");
     await loadAdmins();
   }
@@ -366,8 +355,8 @@ export default function SettingsPage() {
     });
     if (handleUnauthorized(res)) return;
     const payload = await res.json();
-    if (!res.ok) { setEditError(payload.error ?? "Unable to update admin."); return; }
-    setEditMsg("Admin updated successfully.");
+    if (!res.ok) { setEditError(payload.error ?? "Unable to update platform user."); return; }
+    setEditMsg("Platform user updated successfully.");
     setEditing(null);
     await loadAdmins();
   }
@@ -376,7 +365,7 @@ export default function SettingsPage() {
     const res = await fetch(`/api/admin/users?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     if (handleUnauthorized(res)) return;
     const payload = await res.json();
-    if (!res.ok) { setAdminError(payload.error ?? "Unable to delete admin."); return; }
+    if (!res.ok) { setAdminError(payload.error ?? "Unable to delete platform user."); return; }
     setDeleteConfirmId(null);
     await loadAdmins();
   }
@@ -385,11 +374,12 @@ export default function SettingsPage() {
     <div className="space-y-8 pb-16">
 
       {/* ── Platform Modules ── */}
-      <section
-        className="rounded-[var(--admin-radius-lg)] border border-[var(--admin-border)] p-6"
-        style={{ background: "var(--admin-surface)", boxShadow: "var(--admin-shadow-sm)" }}
+      <AdminCollapsibleCard
+        eyebrow="Platform control"
+        title="Settings"
+        subtitle="Manage all platform configuration from one place."
+        padding="lg"
       >
-        <SectionHeader eyebrow="Platform control" title="Settings" subtitle="Manage all platform configuration from one place." />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {settingsModules
             .filter((m) => canManageAdmins || m.href !== "/admin/settings/admin-users")
@@ -408,18 +398,15 @@ export default function SettingsPage() {
             </a>
           ))}
         </div>
-      </section>
+      </AdminCollapsibleCard>
 
       {/* ── API Keys ── */}
-      <section
-        className="rounded-[var(--admin-radius-lg)] border border-[var(--admin-border)] p-6"
-        style={{ background: "var(--admin-surface)", boxShadow: "var(--admin-shadow-sm)" }}
+      <AdminCollapsibleCard
+        eyebrow="Encrypted secrets"
+        title="API Keys"
+        subtitle="Keys are AES-encrypted at rest and never displayed in full."
+        padding="lg"
       >
-        <SectionHeader
-          eyebrow="Encrypted secrets"
-          title="API Keys"
-          subtitle="Keys are AES-encrypted at rest and never displayed in full."
-        />
         {message ? (
           <div className="mb-5 flex items-center gap-3 rounded-2xl border border-indigo-500/20 bg-indigo-500/10 px-4 py-3 text-sm font-semibold text-indigo-200">
             <span>ℹ</span> {message}
@@ -529,17 +516,19 @@ export default function SettingsPage() {
             );
           })}
         </div>
-      </section>
+      </AdminCollapsibleCard>
 
-      {/* ── Admin Users & Roles ── */}
+      {/* ── Platform Users & School Users ── */}
       {canManageAdmins ? (
-      <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 backdrop-blur">
-        <SectionHeader eyebrow="Access control" title="Admin Users & Roles" subtitle="Create and manage admin accounts with full portal access." />
-        <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-
-          {/* Create form */}
+      <AdminCollapsibleCard
+        eyebrow="Access control"
+        title="Platform Users & School Users"
+        subtitle="Separate Operations Console access from school-scoped staff."
+        padding="lg"
+      >
+        <div className="mb-8 grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-            <p className="mb-5 text-sm font-black text-slate-200">New admin account</p>
+            <p className="mb-5 text-sm font-black text-slate-200">New platform user</p>
             <form onSubmit={(e) => void createAdmin(e)} className="space-y-4">
               <FieldInput label="Name">
                 <input value={adminName} onChange={(e) => setAdminName(e.target.value)} required placeholder="Full name" className={inputCls} />
@@ -571,20 +560,21 @@ export default function SettingsPage() {
                 </div>
               </FieldInput>
               {roles.length > 0 ? (
-                <FieldInput label="Role">
+                <FieldInput label="Platform role">
                   <select
                     value={adminRoleId}
                     onChange={(e) => setAdminRoleId(e.target.value)}
                     className={inputCls}
+                    aria-label="Platform role"
                   >
-                    <option value="">Select a role</option>
+                    <option value="">Select a platform role</option>
                     {roles.map(r => (
                       <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
                   </select>
                 </FieldInput>
               ) : (
-                <FieldInput label="Role">
+                <FieldInput label="Platform role">
                   <select disabled className={inputCls + " opacity-50 cursor-not-allowed"}>
                     <option>Loading roles...</option>
                   </select>
@@ -592,68 +582,46 @@ export default function SettingsPage() {
               )}
               {adminError ? <p className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">{adminError}</p> : null}
               {adminMsg  ? <p className="rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-300">{adminMsg}</p>  : null}
-              <button className="w-full rounded-xl bg-indigo-600 py-3 font-black text-white hover:bg-indigo-500 transition">Create admin account</button>
+              <button className="w-full rounded-xl bg-indigo-600 py-3 font-black text-white hover:bg-indigo-500 transition">Create platform user</button>
             </form>
           </div>
 
-          {/* Admins list */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-black text-slate-200">Existing admins <span className="ml-1.5 rounded-full bg-slate-800 px-2 py-0.5 text-xs font-bold text-slate-400">{admins.length}</span></p>
-            </div>
-            {admins.length === 0 ? (
-              <p className="rounded-2xl border border-slate-800 bg-slate-950/50 p-6 text-center text-sm text-slate-500">No admin accounts yet.</p>
-            ) : (
-              <ul className="space-y-2.5">
-                {admins.map((admin) => (
-                  <li key={admin.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3.5 transition hover:border-slate-700">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-sm font-black text-indigo-300">
-                          {(admin.name ?? admin.email).charAt(0).toUpperCase()}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-white">{admin.name ?? "—"}</p>
-                          <p className="truncate text-xs text-slate-400">{admin.email}</p>
-                          {admin.role && <p className="truncate text-xs text-indigo-400">{admin.role}</p>}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-black ${admin.active ? "bg-green-500/15 text-green-300" : "bg-slate-800 text-slate-500"}`}>
-                          {admin.active ? "active" : "inactive"}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => { setEditing({ id: admin.id, name: admin.name ?? "", email: admin.email, password: "" }); setEditMsg(null); setEditError(null); setShowEditPw(false); }}
-                          className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition"
-                        >
-                          Edit
-                        </button>
-                        {admins.length > 1 && (
-                          deleteConfirmId === admin.id ? (
-                            <div className="flex gap-1.5">
-                              <button type="button" onClick={() => void deleteAdmin(admin.id)} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-500 transition">Confirm</button>
-                              <button type="button" onClick={() => setDeleteConfirmId(null)} className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-400 hover:bg-slate-800 transition">Cancel</button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setDeleteConfirmId(admin.id)}
-                              className="rounded-lg border border-red-900/50 px-3 py-1.5 text-xs font-bold text-red-400 hover:bg-red-950/50 hover:text-red-300 transition"
-                            >
-                              Delete
-                            </button>
-                          )
-                        )}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">
+            <p className="font-semibold text-slate-200">How access is separated</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li><span className="text-slate-200">Platform Users</span> have AdminUser rows and Operations Console access.</li>
+              <li><span className="text-slate-200">School Users</span> are SchoolTeacher memberships scoped to one school.</li>
+              <li>This form only creates platform users. Manage school staff from each school&apos;s staff directory.</li>
+            </ul>
           </div>
         </div>
-      </section>
+
+        <PlatformSchoolUsersPanel
+          platformUsers={admins}
+          schoolUsers={schoolUsers}
+          roles={roles}
+          showDelete
+          deleteConfirmId={deleteConfirmId}
+          onRequestDelete={setDeleteConfirmId}
+          onCancelDelete={() => setDeleteConfirmId(null)}
+          onDelete={(id) => void deleteAdmin(id)}
+          onEdit={(admin) => { setEditing({ id: admin.id, name: admin.name ?? "", email: admin.email, password: "" }); setEditMsg(null); setEditError(null); setShowEditPw(false); }}
+          onToggleActive={async (adminId, currentActive) => {
+            const res = await fetch("/api/admin/users", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ adminId, active: !currentActive }),
+            });
+            if (handleUnauthorized(res)) return;
+            const payload = await res.json();
+            if (!res.ok) {
+              setAdminError(payload.error ?? "Unable to update platform user.");
+              return;
+            }
+            await loadAdmins();
+          }}
+        />
+      </AdminCollapsibleCard>
       ) : null}
 
       {/* ── Edit modal ── */}
@@ -661,7 +629,7 @@ export default function SettingsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-7 shadow-2xl">
             <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-lg font-black text-white">Edit admin</h2>
+              <h2 className="text-lg font-black text-white">Edit platform user</h2>
               <button type="button" onClick={() => setEditing(null)} className="rounded-full p-1 text-slate-400 hover:text-white transition">✕</button>
             </div>
             <form onSubmit={(e) => void saveEdit(e)} className="space-y-4">

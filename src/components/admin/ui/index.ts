@@ -1,5 +1,6 @@
 export { default as AdminPageHeader } from "@/components/admin/ui/AdminPageHeader";
 export { default as AdminCard } from "@/components/admin/ui/AdminCard";
+export { default as AdminCollapsibleCard } from "@/components/admin/ui/AdminCollapsibleCard";
 export { default as AdminButton, AdminButtonLink } from "@/components/admin/ui/AdminButton";
 export { AdminInput, AdminSelect, AdminTextarea, AdminFieldLabel } from "@/components/admin/ui/AdminInput";
 export {

@@ -2,10 +2,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { resolvePlatformAdminGate } from "@/lib/admin-auth-gate";
+import { isExternalApiRoute } from "@/lib/api-management/external-path";
 import {
   isPublicTrialCtaEnabled,
   isRoadmapPublicEnabled,
   resolveLaunchScopeRedirect,
+  resolveTeacherPortalBounce,
 } from "@/lib/launch-scope";
 
 const COOKIE_NAME = "starliz_session";
@@ -46,6 +48,7 @@ const PUBLIC_PATHS = [
   "/sw.js",
   "/invite/accept",
   "/school/invites/accept",
+  "/school-portal-unavailable",
   // Country-specific public landing pages
   "/uk",
   "/ghana",
@@ -117,10 +120,14 @@ export async function middleware(request: NextRequest) {
   const acceptsHtml = request.headers.get("accept")?.includes("text/html") ?? false;
   const isDocumentNavigation = request.headers.get("sec-fetch-mode") === "navigate" || acceptsHtml;
 
+  // External API routes authenticate via Authorization: Bearer (generated StarLiz keys).
+  // Do not require a browser session here — the route guard enforces key/scope checks.
+  // Still do NOT bypass /api/admin, /api/student, or /api/teacher.
   if (
     pathname.startsWith("/_next")
     || pathname === "/api/branding"
     || pathname.startsWith("/api/auth")
+    || isExternalApiRoute(pathname)
     || pathname === "/api/school/invites/accept"
     || pathname.startsWith("/api/cron")
     || pathname === "/api/billing/stripe/webhook"
@@ -228,13 +235,12 @@ export async function middleware(request: NextRequest) {
   }
 
   if (authenticated && session.role === "teacher") {
-    if (
-      pathname === "/profiles"
-      || pathname === "/dashboard"
-      || pathname.startsWith("/student")
-      || pathname.startsWith("/parent")
-    ) {
-      return finalize(NextResponse.redirect(new URL("/teacher", request.url)));
+    const bounce = resolveTeacherPortalBounce({
+      pathname,
+      role: session.role,
+    });
+    if (bounce) {
+      return finalize(NextResponse.redirect(new URL(bounce, request.url)));
     }
   }
 

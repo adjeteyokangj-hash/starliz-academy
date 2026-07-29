@@ -9,27 +9,9 @@ import {
   AdminModal,
   AdminPageHeader,
   AdminSelect,
-  AdminTable,
-  AdminTableBody,
-  AdminTableEmpty,
-  AdminTableHead,
-  AdminTd,
-  AdminTh,
-  AdminTr,
 } from '@/components/admin/ui';
-
-interface AdminUser {
-  id: string;
-  email: string;
-  name: string;
-  role: string | null;
-  roleId: string;
-  active: boolean;
-  isLocked: boolean;
-  title: string | null;
-  lastLoginAt: string | null;
-  createdAt: string;
-}
+import { PlatformSchoolUsersPanel } from '@/components/admin/PlatformSchoolUsersPanel';
+import type { PlatformUserDto, SchoolUserDto } from '@/lib/admin/access-scope';
 
 interface Role {
   id: string;
@@ -38,7 +20,8 @@ interface Role {
 }
 
 export default function AdminUsersPage() {
-  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [platformUsers, setPlatformUsers] = useState<PlatformUserDto[]>([]);
+  const [schoolUsers, setSchoolUsers] = useState<SchoolUserDto[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,27 +33,28 @@ export default function AdminUsersPage() {
     password: '',
     roleId: '',
   });
-  const [editingRole, setEditingRole] = useState<string | null>(null);
-  const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
+  const [resetTarget, setResetTarget] = useState<PlatformUserDto | null>(null);
   const [resetPassword, setResetPassword] = useState('');
   const [resetConfirm, setResetConfirm] = useState('');
   const [resetBusy, setResetBusy] = useState(false);
 
-  async function fetchAdmins() {
+  async function fetchUsers() {
     try {
       const res = await fetch('/api/admin/users');
       const data = await res.json();
       if (res.ok) {
-        setAdmins(data.admins);
+        setPlatformUsers(data.platformUsers ?? data.admins ?? []);
+        setSchoolUsers(data.schoolUsers ?? []);
         setError(null);
       } else if (res.status === 403) {
-        setAdmins([]);
+        setPlatformUsers([]);
+        setSchoolUsers([]);
         setError(data.error || 'You do not have permission to manage Admin users.');
       } else {
-        setError(data.error || 'Failed to fetch admins');
+        setError(data.error || 'Failed to fetch users');
       }
     } catch (err) {
-      setError('Error fetching admins');
+      setError('Error fetching users');
       console.error(err);
     } finally {
       setLoading(false);
@@ -91,7 +75,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void fetchAdmins();
+      void fetchUsers();
       void fetchRoles();
     }, 0);
     return () => window.clearTimeout(timer);
@@ -109,13 +93,13 @@ export default function AdminUsersPage() {
       if (res.ok) {
         setFormData({ name: '', email: '', password: '', roleId: '' });
         setShowForm(false);
-        fetchAdmins();
+        fetchUsers();
       } else {
         const data = await res.json();
-        setError(data.error || 'Failed to create admin');
+        setError(data.error || 'Failed to create platform user');
       }
     } catch (err) {
-      setError('Error creating admin');
+      setError('Error creating platform user');
       console.error(err);
     }
   };
@@ -129,8 +113,7 @@ export default function AdminUsersPage() {
       });
 
       if (res.ok) {
-        fetchAdmins();
-        setEditingRole(null);
+        fetchUsers();
       } else {
         const data = await res.json();
         setError(data.error || 'Failed to update role');
@@ -150,18 +133,18 @@ export default function AdminUsersPage() {
       });
 
       if (res.ok) {
-        fetchAdmins();
+        fetchUsers();
       } else {
         const data = await res.json();
-        setError(data.error || 'Failed to update admin');
+        setError(data.error || 'Failed to update platform user');
       }
     } catch (err) {
-      setError('Error updating admin');
+      setError('Error updating platform user');
       console.error(err);
     }
   };
 
-  function openResetPassword(admin: AdminUser) {
+  function openResetPassword(admin: PlatformUserDto) {
     setError(null);
     setSuccess(null);
     setResetTarget(admin);
@@ -243,7 +226,7 @@ export default function AdminUsersPage() {
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="admin-body">Loading admins...</p>
+        <p className="admin-body">Loading users...</p>
       </div>
     );
   }
@@ -252,12 +235,12 @@ export default function AdminUsersPage() {
     <div className="mx-auto max-w-7xl space-y-6">
       <AdminPageHeader
         eyebrow="Platform"
-        title="Admin Users & Roles"
-        subtitle="Manage admin access and role assignments"
+        title="Platform Users & School Users"
+        subtitle="Separate Operations Console access from school-scoped staff"
         actions={
           error?.toLowerCase().includes('permission') ? undefined : (
           <AdminButton onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancel' : 'Add Admin User'}
+            {showForm ? 'Cancel' : 'New platform user'}
           </AdminButton>
           )
         }
@@ -324,7 +307,7 @@ export default function AdminUsersPage() {
 
         {showForm && (
           <AdminCard className="mb-2">
-            <h2 className="admin-section-title mb-4">Create New Admin</h2>
+            <h2 className="admin-section-title mb-4">New platform user</h2>
             <form onSubmit={handleCreateAdmin} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <AdminInput
@@ -352,103 +335,32 @@ export default function AdminUsersPage() {
                 <AdminSelect
                   value={formData.roleId}
                   onChange={e => setFormData({ ...formData, roleId: e.target.value })}
-                  aria-label="Admin role"
+                  aria-label="Platform role"
                   required
                 >
-                  <option value="">Select Role</option>
+                  <option value="">Select platform role</option>
                   {roles.map(role => (
                     <option key={role.id} value={role.id}>{role.name}</option>
                   ))}
                 </AdminSelect>
               </div>
               <AdminButton type="submit" className="w-full">
-                Create Admin
+                Create platform user
               </AdminButton>
             </form>
           </AdminCard>
         )}
 
-        <div
-          className="overflow-hidden rounded-[var(--admin-radius-lg)] border border-[var(--admin-border)]"
-          style={{ background: "var(--admin-surface)", boxShadow: "var(--admin-shadow-sm)" }}
-        >
-          <AdminTable>
-            <AdminTableHead>
-              <AdminTh>Name</AdminTh>
-              <AdminTh>Email</AdminTh>
-              <AdminTh>Role</AdminTh>
-              <AdminTh>Status</AdminTh>
-              <AdminTh>Last Login</AdminTh>
-              <AdminTh>Actions</AdminTh>
-            </AdminTableHead>
-            <AdminTableBody>
-                {admins.length === 0 ? (
-                  <AdminTableEmpty colSpan={6} message="No admin users found" />
-                ) : (
-                  admins.map(admin => (
-                    <AdminTr key={admin.id}>
-                      <AdminTd>{admin.name || 'N/A'}</AdminTd>
-                      <AdminTd className="text-[var(--admin-muted)]">{admin.email}</AdminTd>
-                      <AdminTd>
-                        {editingRole === admin.id ? (
-                          <AdminSelect
-                            value={admin.roleId}
-                            onChange={e => handleUpdateRole(admin.id, e.target.value)}
-                            className="py-1 text-sm"
-                            aria-label={`Update role for ${admin.name || admin.email}`}
-                            onBlur={() => setEditingRole(null)}
-                            autoFocus
-                          >
-                            {roles.map(role => (
-                              <option key={role.id} value={role.id}>{role.name}</option>
-                            ))}
-                          </AdminSelect>
-                        ) : (
-                          <button
-                            onClick={() => setEditingRole(admin.id)}
-                            className="text-sm text-[var(--admin-primary-hover)] hover:underline"
-                          >
-                            {admin.role || 'No Role'}
-                          </button>
-                        )}
-                      </AdminTd>
-                      <AdminTd>
-                        <span
-                          className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
-                            admin.active && !admin.isLocked
-                              ? 'bg-emerald-900/30 text-emerald-300'
-                              : 'bg-rose-900/30 text-rose-300'
-                          }`}
-                        >
-                          {admin.isLocked ? 'Locked' : admin.active ? 'Active' : 'Inactive'}
-                        </span>
-                      </AdminTd>
-                      <AdminTd className="text-sm text-[var(--admin-muted)]">
-                        {admin.lastLoginAt
-                          ? new Date(admin.lastLoginAt).toLocaleDateString()
-                          : 'Never'}
-                      </AdminTd>
-                      <AdminTd>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <AdminButton type="button" size="sm" variant="secondary" onClick={() => openResetPassword(admin)}>
-                            Reset password
-                          </AdminButton>
-                          <AdminButton
-                            type="button"
-                            size="sm"
-                            variant={admin.active ? 'danger' : 'secondary'}
-                            onClick={() => handleToggleActive(admin.id, admin.active)}
-                          >
-                            {admin.active ? 'Deactivate' : 'Activate'}
-                          </AdminButton>
-                        </div>
-                      </AdminTd>
-                    </AdminTr>
-                  ))
-                )}
-            </AdminTableBody>
-          </AdminTable>
-        </div>
+        <PlatformSchoolUsersPanel
+          platformUsers={platformUsers}
+          schoolUsers={schoolUsers}
+          roles={roles}
+          showRoleEdit
+          showResetPassword
+          onUpdateRole={handleUpdateRole}
+          onToggleActive={handleToggleActive}
+          onResetPassword={openResetPassword}
+        />
     </div>
   );
 }

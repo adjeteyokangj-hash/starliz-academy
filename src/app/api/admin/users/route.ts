@@ -10,6 +10,10 @@ import {
   loadAdminAuthContext,
   mutateAdminWithLastSuperAdminProtection,
 } from "@/lib/admin-permissions";
+import {
+  toPlatformUserDto,
+  toSchoolUserDto,
+} from "@/lib/admin/access-scope";
 
 const createAdminSchema = z.object({
   name: z.string().trim().min(1),
@@ -31,22 +35,42 @@ export async function GET() {
   if (!session) return response!;
 
   try {
-    const admins = await prisma.adminUser.findMany({
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
+    const [admins, schoolMemberships] = await Promise.all([
+      prisma.adminUser.findMany({
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          role: true,
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.schoolTeacher.findMany({
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+          school: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
-        role: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+        orderBy: [{ school: { name: "asc" } }, { createdAt: "desc" }],
+      }),
+    ]);
 
-    return NextResponse.json({
-      admins: admins.map((a) => ({
+    const platformUsers = admins.map((a) =>
+      toPlatformUserDto({
         id: a.id,
         userId: a.userId,
         email: a.user.email,
@@ -58,7 +82,30 @@ export async function GET() {
         title: a.title,
         lastLoginAt: a.lastLoginAt,
         createdAt: a.createdAt,
-      })),
+      }),
+    );
+
+    const schoolUsers = schoolMemberships.map((m) =>
+      toSchoolUserDto({
+        membershipId: m.id,
+        userId: m.userId,
+        email: m.user.email,
+        name: m.user.name,
+        schoolId: m.schoolId,
+        schoolName: m.school.name,
+        schoolRole: m.role,
+        status: m.status,
+        title: m.title,
+        lastActiveAt: m.lastActiveAt,
+        createdAt: m.createdAt,
+      }),
+    );
+
+    return NextResponse.json({
+      platformUsers,
+      schoolUsers,
+      // Backward-compatible alias of platform users.
+      admins: platformUsers,
     });
   } catch (err) {
     console.error("Error fetching admin users:", err);
