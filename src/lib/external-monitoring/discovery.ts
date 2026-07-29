@@ -8,6 +8,10 @@ import {
   resolveAppInstanceId,
   resolveAppRuntimeEnvironment,
 } from "./app-meta";
+import {
+  buildOpsWatchTopologyManifest,
+  type OpsWatchTopologyManifest
+} from "./topology";
 
 export type DiscoveryDocument = {
   schemaVersion: "1.0";
@@ -32,12 +36,14 @@ export type DiscoveryDocument = {
     category: string;
     description: string;
   }>;
+  opswatchTopology: OpsWatchTopologyManifest;
 };
 
 export function buildDiscoveryDocument(): DiscoveryDocument {
   const environment = resolveAppRuntimeEnvironment();
   const version = resolveAppBuildVersion();
   const enabled = listEnabledCapabilities();
+  const topology = buildOpsWatchTopologyManifest();
 
   const requiredScopes: Record<string, "api:read"> = {};
   for (const capability of enabled) {
@@ -67,5 +73,6 @@ export function buildDiscoveryDocument(): DiscoveryDocument {
       category: capability.category,
       description: capability.description,
     })),
+    opswatchTopology: topology
   };
 }

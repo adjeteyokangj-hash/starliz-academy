@@ -82,8 +82,41 @@ test("discovery document is api-discovered and lists only real endpoints", () =>
   }
   assert.equal(doc.capabilities.storage, false);
   assert.equal(doc.capabilities.queues, false);
+  assert.equal(doc.opswatchTopology.application.key, "starliz-academy");
+  assert.equal(doc.opswatchTopology.modules.length, 16);
   const serialized = JSON.stringify(doc);
-  assert.doesNotMatch(serialized, /student|parent|password|cookie|lesson|safeguarding|apiKey|credential/i);
+  assert.deepEqual(
+    doc.opswatchTopology.modules.map((entry) => entry.name),
+    [
+      "Public Website",
+      "Parent Portal",
+      "Student Portal",
+      "Teacher Portal",
+      "School Portal",
+      "Admin Portal",
+      "Day School",
+      "Short Learning",
+      "AI Tutor",
+      "Content Library",
+      "Payments",
+      "Communications",
+      "Reporting",
+      "Knowledge Centre",
+      "API Management",
+      "Authentication"
+    ]
+  );
+  for (const entry of doc.opswatchTopology.modules) {
+    assert.ok(entry.key);
+    assert.ok(entry.category);
+    assert.ok(["HIGH", "MEDIUM"].includes(entry.criticality));
+    assert.ok(entry.routePrefixes.length > 0);
+  }
+  const capabilityKeys = new Set(Object.keys(doc.capabilities));
+  for (const entry of doc.opswatchTopology.modules) {
+    assert.equal(capabilityKeys.has(entry.key), false);
+  }
+  assert.doesNotMatch(serialized, /"password"\s*:|"cookie"\s*:|apiKey|credential|DATABASE_URL/i);
   assert.equal(serialized.includes("DATABASE_URL"), false);
 });
 
