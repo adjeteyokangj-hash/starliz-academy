@@ -560,6 +560,56 @@ model ApiKeyConfig {
   updatedAt      DateTime  @updatedAt
 }
 
+model ExternalApiConnection {
+  id                   String    @id @default(cuid())
+  name                 String
+  description          String?
+  baseUrl              String
+  authType             String // bearer | api_key_header | basic | none
+  encryptedCredential  String?
+  credentialHint       String?
+  headerName           String?
+  encryptedHeaders     String? // encrypted JSON string of additional headers
+  environment          String    @default("test") // test | live
+  status               String    @default("not_tested") // connected | auth_failed | unreachable | disabled | not_tested
+  enabled              Boolean   @default(true)
+  lastTestedAt         DateTime?
+  lastTestStatus       String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  createdByAdminId     String?
+
+  @@index([enabled])
+  @@index([environment])
+  @@index([createdByAdminId])
+}
+
+model GeneratedApiKey {
+  id               String    @id @default(cuid())
+  name             String
+  description      String?
+  keyPrefix        String
+  keyHash          String    @unique
+  environment      String // test | live
+  scopesJson       String // JSON array e.g. ["api:read"]
+  status           String    @default("active") // active | revoked | expired
+  expiresAt        DateTime?
+  lastUsedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  createdByAdminId String?
+  revokedAt        DateTime?
+  revokedByAdminId String?
+  rotationOfId     String?
+  rotationOf       GeneratedApiKey?  @relation("ApiKeyRotation", fields: [rotationOfId], references: [id], onDelete: SetNull)
+  rotations        GeneratedApiKey[] @relation("ApiKeyRotation")
+  rateLimit        Int       @default(60) // requests per minute
+
+  @@index([keyPrefix])
+  @@index([status])
+  @@index([environment])
+  @@index([createdByAdminId])
+}
+
 enum AdminPermission {
   // User Management
   MANAGE_USERS

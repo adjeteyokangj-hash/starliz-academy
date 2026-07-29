@@ -81,6 +81,7 @@ const settingsModules = [
   { title: "General",             icon: "⚙",  desc: "App name, timezone, locale",        href: "/admin/settings/general" },
   { title: "Branding",            icon: "🎨", desc: "Logo, colours, fonts",               href: "/admin/branding" },
   { title: "Integrations",        icon: "🔗", desc: "Third-party connections",            href: "/admin/settings/integrations" },
+  { title: "API Management",      icon: "🔑", desc: "Connected APIs & generated keys",    href: "/admin/settings/api-management" },
   { title: "Migration",           icon: "🔁", desc: "Local to production sync controls",  href: "/admin/settings/migration" },
   { title: "Security",            icon: "🔒", desc: "Auth, 2FA, session policy",          href: "/admin/settings/security" },
   { title: "AI Adaptation",       icon: "🧠", desc: "Frustration thresholds, warmup, pacing", href: "/admin/settings/adaptation" },
