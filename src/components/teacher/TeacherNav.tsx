@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import type { SchoolRole } from "@/lib/schools/permissions";
 import { canDo } from "@/lib/schools/permissions";
 
@@ -32,8 +33,20 @@ type Props = {
 
 export default function TeacherNav({ schoolName, role }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
 
   const visible = NAV_ITEMS.filter((item) => canDo(role, item.permission));
+
+  async function signOut() {
+    setSigningOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => undefined);
+    } finally {
+      router.replace("/auth/login");
+      setSigningOut(false);
+    }
+  }
 
   return (
     <aside className="hidden lg:flex w-56 shrink-0 flex-col border-r border-border bg-card">
@@ -68,12 +81,14 @@ export default function TeacherNav({ schoolName, role }: Props) {
 
       {/* Footer */}
       <div className="border-t border-border p-3">
-        <Link
-          href="/api/auth/logout"
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-foreground/50 hover:text-foreground hover:bg-muted/40 transition-colors"
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          disabled={signingOut}
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-foreground/50 hover:text-foreground hover:bg-muted/40 transition-colors disabled:opacity-60"
         >
-          <span>🚪</span> Sign out
-        </Link>
+          <span>🚪</span> {signingOut ? "Signing out..." : "Sign out"}
+        </button>
       </div>
     </aside>
   );

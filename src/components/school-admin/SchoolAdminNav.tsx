@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { getSchoolRoleLabel } from "@/lib/schools/permissions";
 
@@ -73,9 +73,11 @@ type Props = {
 
 export default function SchoolAdminNav({ schoolName, role }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const roleLabel = getSchoolRoleLabel(role);
   // Manual accordion override for the current route only; inactive route cards stay collapsed.
   const [override, setOverride] = useState<{ path: string; openId: string | null } | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
   const openId =
     override?.path === pathname
@@ -87,6 +89,16 @@ export default function SchoolAdminNav({ schoolName, role }: Props) {
       path: pathname,
       openId: openId === id ? null : id,
     });
+  }
+
+  async function signOut() {
+    setSigningOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => undefined);
+    } finally {
+      router.replace("/auth/login");
+      setSigningOut(false);
+    }
   }
 
   return (
@@ -186,12 +198,14 @@ export default function SchoolAdminNav({ schoolName, role }: Props) {
         >
           Switch to Teaching
         </Link>
-        <Link
-          href="/api/auth/logout"
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-foreground/50 transition-colors hover:bg-muted/40 hover:text-foreground"
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          disabled={signingOut}
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-foreground/50 transition-colors hover:bg-muted/40 hover:text-foreground disabled:opacity-60"
         >
-          Sign out
-        </Link>
+          {signingOut ? "Signing out..." : "Sign out"}
+        </button>
       </div>
     </aside>
   );

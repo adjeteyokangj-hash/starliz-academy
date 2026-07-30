@@ -127,6 +127,11 @@ function ParentLoginForm() {
             Password updated. Please sign in with your new password.
           </p>
         ) : null}
+        {searchParams.get("loggedOut") === "1" ? (
+          <p role="status" className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-800">
+            You have been signed out. Sign in again to continue.
+          </p>
+        ) : null}
 
         {loginDisabledReason ? (
           <p id="login-help" className="text-sm text-slate-500" aria-live="polite">
