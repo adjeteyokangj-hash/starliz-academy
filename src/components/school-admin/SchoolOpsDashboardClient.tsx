@@ -345,26 +345,21 @@ export default function SchoolOpsDashboardClient({ schoolName, actorRole }: Prop
             ) : (
               <ul className="space-y-2">
                 {overview.activity.map((item) => {
-                  const row = (
-                    <>
-                      <span className="font-medium text-foreground">{item.label}</span>
-                      <span className="shrink-0 text-xs text-foreground/45">{formatWhen(item.at)}</span>
-                    </>
-                  );
+                  const href = item.href || "/school-admin";
                   return (
                     <li key={item.id}>
-                      {item.href ? (
-                        <Link
-                          href={item.href}
-                          className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted/40"
-                        >
-                          {row}
-                        </Link>
-                      ) : (
-                        <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
-                          {row}
-                        </div>
-                      )}
+                      <Link
+                        href={href}
+                        className="group flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm transition-colors hover:bg-muted/40"
+                      >
+                        <span className="font-medium text-foreground group-hover:text-primary">{item.label}</span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span className="text-xs text-foreground/45">{formatWhen(item.at)}</span>
+                          <span className="text-xs font-semibold text-primary opacity-80 group-hover:opacity-100">
+                            Details
+                          </span>
+                        </span>
+                      </Link>
                     </li>
                   );
                 })}

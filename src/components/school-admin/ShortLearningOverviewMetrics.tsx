@@ -3,7 +3,7 @@
 import CollapsibleCard from "@/components/school-admin/CollapsibleCard";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 type BookingRow = {
   id: string;
@@ -23,6 +23,7 @@ type BookingRow = {
 
 type RecentChange = {
   id: string;
+  bookingId?: string | null;
   summary: string;
   actorLabel: string;
   createdAt: string;
@@ -68,6 +69,59 @@ function formatWhen(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function MetricCard(props: {
+  href: string;
+  title: string;
+  value?: string | number;
+  hint: string;
+  tone?: "default" | "amber" | "violet";
+  children?: ReactNode;
+}) {
+  const toneClass =
+    props.tone === "amber"
+      ? "border-amber-200 bg-amber-50/70 hover:bg-amber-50"
+      : props.tone === "violet"
+        ? "border-violet-200 bg-violet-50/60 hover:bg-violet-50"
+        : "border-border bg-card hover:bg-muted/30";
+  const titleClass =
+    props.tone === "amber"
+      ? "text-amber-800"
+      : props.tone === "violet"
+        ? "text-violet-700"
+        : "text-foreground/50";
+  const valueClass =
+    props.tone === "amber"
+      ? "text-amber-950"
+      : props.tone === "violet"
+        ? "text-violet-950"
+        : "text-foreground";
+  const hintClass =
+    props.tone === "amber"
+      ? "text-amber-900/80"
+      : props.tone === "violet"
+        ? "text-violet-950/80"
+        : "text-foreground/60";
+
+  return (
+    <Link
+      href={props.href}
+      className={`group block rounded-2xl border p-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${toneClass}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className={`text-xs font-semibold uppercase tracking-wide ${titleClass}`}>{props.title}</p>
+        <span className="text-xs text-foreground/35 transition group-hover:text-primary" aria-hidden>
+          →
+        </span>
+      </div>
+      {props.value !== undefined ? (
+        <p className={`mt-2 text-3xl font-bold ${valueClass}`}>{props.value}</p>
+      ) : null}
+      {props.children ? <div className={`mt-2 text-sm leading-snug ${valueClass}`}>{props.children}</div> : null}
+      <p className={`mt-1 text-xs ${hintClass}`}>{props.hint}</p>
+    </Link>
+  );
 }
 
 export default function ShortLearningOverviewMetrics() {
@@ -180,30 +234,39 @@ export default function ShortLearningOverviewMetrics() {
   return (
     <div className="mt-6 space-y-4">
       <CollapsibleCard title="Short Learning summary" bodyClassName="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Today&apos;s bookings</p>
-          <p className="mt-2 text-3xl font-bold text-foreground">{metrics.todayBookings}</p>
-          <p className="mt-1 text-xs text-foreground/60">Parent-booked sessions starting today</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Upcoming</p>
-          <p className="mt-2 text-3xl font-bold text-foreground">{metrics.upcomingBookings}</p>
-          <p className="mt-1 text-xs text-foreground/60">Future sessions not yet started</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Active shifts</p>
-          <p className="mt-2 text-3xl font-bold text-foreground">{metrics.activeShifts}</p>
-          <p className="mt-1 text-xs text-foreground/60">Published tutor support windows now</p>
-        </div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Changes needing review</p>
-          <p className="mt-2 text-3xl font-bold text-amber-950">{changesRequiringReview}</p>
-          <p className="mt-1 text-xs text-amber-900/80">Parent late cancels or near-session changes (7 days)</p>
-        </div>
-        <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4 sm:col-span-2 lg:col-span-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Coverage note</p>
-          <p className="mt-2 text-sm leading-snug text-violet-950">{metrics.coverageNote}</p>
-        </div>
+        <MetricCard
+          href="/school-admin/short-learning/bookings?scope=today"
+          title="Today's bookings"
+          value={metrics.todayBookings}
+          hint="Parent-booked sessions starting today"
+        />
+        <MetricCard
+          href="/school-admin/short-learning/bookings?scope=upcoming"
+          title="Upcoming"
+          value={metrics.upcomingBookings}
+          hint="Future sessions not yet started"
+        />
+        <MetricCard
+          href="/school-admin/short-learning/shifts"
+          title="Active shifts"
+          value={metrics.activeShifts}
+          hint="Published tutor support windows now"
+        />
+        <MetricCard
+          href="/school-admin/short-learning/bookings?review=1"
+          title="Changes needing review"
+          value={changesRequiringReview}
+          hint="Parent late cancels or near-session changes (7 days)"
+          tone="amber"
+        />
+        <MetricCard
+          href="/school-admin/short-learning/coverage?view=48h"
+          title="Coverage note"
+          hint="Open coverage planner for the next 48 hours"
+          tone="violet"
+        >
+          {metrics.coverageNote}
+        </MetricCard>
       </CollapsibleCard>
 
       <CollapsibleCard title="Recent booking changes" count={recentChanges.length} bodyClassName="p-5">
@@ -212,7 +275,7 @@ export default function ShortLearningOverviewMetrics() {
             <p className="text-xs text-foreground/50">Parent and staff updates from the last 7 days</p>
           </div>
           <Link
-            href="/school-admin/short-learning/bookings"
+            href="/school-admin/short-learning/bookings?review=1"
             className="text-xs font-semibold text-primary hover:underline"
           >
             View all bookings
@@ -222,23 +285,38 @@ export default function ShortLearningOverviewMetrics() {
           <p className="mt-4 text-sm text-foreground/60">No booking changes recorded in the last 7 days.</p>
         ) : (
           <ul className="mt-4 divide-y divide-border">
-            {recentChanges.slice(0, 6).map((change) => (
-              <li key={change.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{change.summary}</p>
-                  <p className="text-xs text-foreground/50">{formatWhen(change.createdAt)}</p>
-                </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                    change.requiresReview
-                      ? "border border-amber-300 bg-amber-50 text-amber-900"
-                      : "border border-sky-200 bg-sky-50 text-sky-900"
-                  }`}
-                >
-                  {change.actorLabel}
-                </span>
-              </li>
-            ))}
+            {recentChanges.slice(0, 6).map((change) => {
+              const href = change.bookingId
+                ? `/school-admin/short-learning/bookings/${change.bookingId}`
+                : "/school-admin/short-learning/bookings?review=1";
+              return (
+                <li key={change.id}>
+                  <Link
+                    href={href}
+                    className="group flex flex-wrap items-center justify-between gap-2 py-3 transition-colors hover:bg-muted/20"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground group-hover:text-primary">{change.summary}</p>
+                      <p className="text-xs text-foreground/50">{formatWhen(change.createdAt)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          change.requiresReview
+                            ? "border border-amber-300 bg-amber-50 text-amber-900"
+                            : "border border-sky-200 bg-sky-50 text-sky-900"
+                        }`}
+                      >
+                        {change.actorLabel}
+                      </span>
+                      <span className="text-xs font-semibold text-primary opacity-80 group-hover:opacity-100">
+                        Details
+                      </span>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         )}
       </CollapsibleCard>

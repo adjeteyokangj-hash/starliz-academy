@@ -16,6 +16,8 @@ export type BookingSnapshot = {
 
 export type BookingChangeEvent = {
   id: string;
+  /** Learning booking id (audit entityId). Use for detail links — not the audit row id. */
+  bookingId: string | null;
   action: string;
   actorUserId: string | null;
   actorKind: BookingChangeActorKind;
@@ -177,6 +179,7 @@ export async function writeShortLearningBookingAudit(input: {
 
 export function parseBookingChangeEvent(row: {
   id: string;
+  entityId?: string | null;
   action: string;
   actorUserId: string | null;
   createdAt: Date;
@@ -224,6 +227,7 @@ export function parseBookingChangeEvent(row: {
 
   return {
     id: row.id,
+    bookingId: row.entityId?.trim() || null,
     action: row.action,
     actorUserId: row.actorUserId,
     actorKind,

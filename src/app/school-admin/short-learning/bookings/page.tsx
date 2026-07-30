@@ -3,8 +3,8 @@
 import CollapsibleCard from "@/components/school-admin/CollapsibleCard";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import ShortLearningSubNav from "@/components/school-admin/ShortLearningSubNav";
 import { formatUkDateTime, formatUkDateTimeShort, formatUkTime } from "@/lib/uk-datetime";
 
@@ -47,8 +47,20 @@ function formatTime(iso: string): string {
   return formatUkTime(iso);
 }
 
-export default function SchoolAdminBookingsPage() {
+function sameCalendarDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function BookingsList() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const scope = searchParams.get("scope");
+  const reviewOnly = searchParams.get("review") === "1";
+
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,43 +92,78 @@ export default function SchoolAdminBookingsPage() {
     };
   }, []);
 
-  return (
-    <div className="mx-auto w-full min-w-0 max-w-6xl p-6 lg:p-10">
-      <h1 className="text-3xl font-bold text-foreground">Short Learning bookings</h1>
-      <p className="mt-2 text-sm text-foreground/60">Parent-booked AI-led sessions for this school.</p>
-      <ShortLearningSubNav />
+  const filtered = useMemo(() => {
+    const now = new Date();
+    const activeStatuses = new Set(["booked", "confirmed", "attended"]);
+    let rows = bookings;
 
-      {error ? <p className="mt-4 text-sm font-semibold text-rose-700">{error}</p> : null}
-      {loading ? (
-        <p className="mt-6 text-sm text-foreground/60">Loading…</p>
-      ) : bookings.length === 0 ? (
-        <p className="mt-6 text-sm text-foreground/60">No bookings yet.</p>
+    if (scope === "today") {
+      rows = rows.filter(
+        (row) => activeStatuses.has(row.status) && sameCalendarDay(new Date(row.startsAt), now),
+      );
+    } else if (scope === "upcoming") {
+      rows = rows.filter((row) => activeStatuses.has(row.status) && new Date(row.startsAt) > now);
+    }
+
+    if (reviewOnly) {
+      rows = rows.filter((row) => row.changeIndicator?.requiresReview);
+    }
+
+    return rows;
+  }, [bookings, reviewOnly, scope]);
+
+  const filterLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (scope === "today") parts.push("starting today");
+    if (scope === "upcoming") parts.push("upcoming");
+    if (reviewOnly) parts.push("needing review");
+    return parts.length ? parts.join(" · ") : null;
+  }, [reviewOnly, scope]);
+
+  if (error) return <p className="mt-4 text-sm font-semibold text-rose-700">{error}</p>;
+  if (loading) return <p className="mt-6 text-sm text-foreground/60">Loading…</p>;
+  if (bookings.length === 0) return <p className="mt-6 text-sm text-foreground/60">No bookings yet.</p>;
+
+  return (
+    <CollapsibleCard title="Bookings" count={filtered.length} className="mt-6 max-w-full" bodyClassName="p-0">
+      {filterLabel ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 text-xs text-foreground/60">
+          <p>
+            Showing <span className="font-semibold text-foreground">{filterLabel}</span>
+            {" "}({filtered.length} of {bookings.length})
+          </p>
+          <Link href="/school-admin/short-learning/bookings" className="font-semibold text-primary hover:underline">
+            Clear filters
+          </Link>
+        </div>
+      ) : null}
+      {filtered.length === 0 ? (
+        <p className="p-4 text-sm text-foreground/60">No bookings match this filter.</p>
       ) : (
-        <CollapsibleCard title="Bookings" count={bookings.length} className="mt-6 max-w-full">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[40rem] text-sm">
-              <thead className="bg-muted/30 text-xs text-foreground/60">
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium">Ref</th>
-                  <th className="px-3 py-2 text-left font-medium">Student</th>
-                  <th className="hidden px-3 py-2 text-left font-medium md:table-cell">Year</th>
-                  <th className="hidden px-3 py-2 text-left font-medium xl:table-cell">Parent</th>
-                  <th className="px-3 py-2 text-left font-medium">Subject</th>
-                  <th className="px-3 py-2 text-left font-medium">Session</th>
-                  <th className="hidden px-3 py-2 text-left font-medium lg:table-cell">Duration</th>
-                  <th className="px-3 py-2 text-left font-medium">Status</th>
-                  <th className="hidden px-3 py-2 text-left font-medium 2xl:table-cell">Last changed</th>
-                  <th className="hidden px-3 py-2 text-left font-medium sm:table-cell">Change</th>
-                  <th className="px-3 py-2 text-right font-medium"> </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {bookings.map((booking) => (
-                  <tr
-                    key={booking.id}
-                    className="cursor-pointer hover:bg-muted/30"
-                    onClick={() => router.push(`/school-admin/short-learning/bookings/${booking.id}`)}
-                  >
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[40rem] text-sm">
+            <thead className="bg-muted/30 text-xs text-foreground/60">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Ref</th>
+                <th className="px-3 py-2 text-left font-medium">Student</th>
+                <th className="hidden px-3 py-2 text-left font-medium md:table-cell">Year</th>
+                <th className="hidden px-3 py-2 text-left font-medium xl:table-cell">Parent</th>
+                <th className="px-3 py-2 text-left font-medium">Subject</th>
+                <th className="px-3 py-2 text-left font-medium">Session</th>
+                <th className="hidden px-3 py-2 text-left font-medium lg:table-cell">Duration</th>
+                <th className="px-3 py-2 text-left font-medium">Status</th>
+                <th className="hidden px-3 py-2 text-left font-medium 2xl:table-cell">Last changed</th>
+                <th className="hidden px-3 py-2 text-left font-medium sm:table-cell">Change</th>
+                <th className="px-3 py-2 text-right font-medium"> </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filtered.map((booking) => (
+                <tr
+                  key={booking.id}
+                  className="cursor-pointer hover:bg-muted/30"
+                  onClick={() => router.push(`/school-admin/short-learning/bookings/${booking.id}`)}
+                >
                     <td className="px-3 py-2 font-mono text-xs">{booking.bookingRef}</td>
                     <td className="px-3 py-2">
                       <div className="font-medium">{booking.studentName ?? "Student"}</div>
@@ -171,12 +218,24 @@ export default function SchoolAdminBookingsPage() {
                       </Link>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CollapsibleCard>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
+    </CollapsibleCard>
+  );
+}
+
+export default function SchoolAdminBookingsPage() {
+  return (
+    <div className="mx-auto w-full min-w-0 max-w-6xl p-6 lg:p-10">
+      <h1 className="text-3xl font-bold text-foreground">Short Learning bookings</h1>
+      <p className="mt-2 text-sm text-foreground/60">Parent-booked AI-led sessions for this school.</p>
+      <ShortLearningSubNav />
+      <Suspense fallback={<p className="mt-6 text-sm text-foreground/60">Loading…</p>}>
+        <BookingsList />
+      </Suspense>
     </div>
   );
 }

@@ -3,7 +3,8 @@
 import CollapsibleCard from "@/components/school-admin/CollapsibleCard";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import ShortLearningSubNav from "@/components/school-admin/ShortLearningSubNav";
 
 type View = "7d" | "48h" | "deadline" | "late-capacity-only";
@@ -36,11 +37,23 @@ const VIEW_OPTIONS: { value: View; label: string }[] = [
   { value: "late-capacity-only", label: "Late capacity only" },
 ];
 
-export default function SchoolAdminCoveragePage() {
-  const [view, setView] = useState<View>("7d");
+function normalizeView(value: string | null): View {
+  if (value === "7d" || value === "48h" || value === "deadline" || value === "late-capacity-only") {
+    return value;
+  }
+  return "7d";
+}
+
+function CoveragePlanner() {
+  const searchParams = useSearchParams();
+  const [view, setView] = useState<View>(() => normalizeView(searchParams.get("view")));
   const [coverage, setCoverage] = useState<CoveragePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setView(normalizeView(searchParams.get("view")));
+  }, [searchParams]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,13 +81,7 @@ export default function SchoolAdminCoveragePage() {
   }, [load]);
 
   return (
-    <div className="mx-auto max-w-5xl p-6 lg:p-10">
-      <h1 className="text-3xl font-bold text-foreground">Tutor coverage</h1>
-      <p className="mt-2 text-sm text-foreground/60">
-        Gaps between estimated tutor demand and published shift minutes. Recommendations are advisory only.
-      </p>
-      <ShortLearningSubNav />
-
+    <>
       <div className="mt-6 flex flex-wrap gap-2">
         {VIEW_OPTIONS.map((opt) => (
           <button
@@ -165,6 +172,21 @@ export default function SchoolAdminCoveragePage() {
           )}
         </>
       ) : null}
+    </>
+  );
+}
+
+export default function SchoolAdminCoveragePage() {
+  return (
+    <div className="mx-auto max-w-5xl p-6 lg:p-10">
+      <h1 className="text-3xl font-bold text-foreground">Tutor coverage</h1>
+      <p className="mt-2 text-sm text-foreground/60">
+        Gaps between estimated tutor demand and published shift minutes. Recommendations are advisory only.
+      </p>
+      <ShortLearningSubNav />
+      <Suspense fallback={<p className="mt-6 text-sm text-foreground/60">Loading…</p>}>
+        <CoveragePlanner />
+      </Suspense>
     </div>
   );
 }

@@ -204,7 +204,7 @@ export function auditActivityHref(
   entityType?: string | null,
   entityId?: string | null,
 ): string | undefined {
-  if (!entityType) return undefined;
+  if (!entityType) return "/school-admin";
   switch (entityType) {
     case "student":
       return entityId
@@ -218,15 +218,24 @@ export function auditActivityHref(
       return "/school-admin/day-school/teachers";
     case "lesson":
       return "/school-admin/day-school/lesson-review";
+    case "attendance":
+    case "register":
+      return "/school-admin/day-school/attendance";
+    case "timetable":
+    case "period":
+      return "/school-admin/day-school/timetable";
     case "learning_booking":
       return entityId
         ? `/school-admin/short-learning/bookings/${entityId}`
         : "/school-admin/short-learning/bookings";
+    case "tutor_shift":
+    case "shift":
+      return "/school-admin/short-learning/shifts";
     case "licence":
     case "school":
       return "/school-admin/settings";
     default:
-      return undefined;
+      return "/school-admin";
   }
 }
 
