@@ -66,7 +66,7 @@ export async function PATCH(request: Request) {
     const end = addMonths(base, body.months);
     const updated = await prisma.subscription.update({
       where: { id: current.id },
-      data: { provider: "manual", status: "active", currentPeriodEnd: end, cancelAtPeriodEnd: false, graceEndsAt: null },
+      data: { provider: "manual", status: "active", currentPeriodEnd: end, graceEndsAt: null },
     });
     await writeAuditLog({ actorUserId: session.userId, action: "admin_subscription_extended", entityType: "Subscription", entityId: updated.id, metadata: { parentId: body.parentId, months: body.months, previousEnd: current.currentPeriodEnd?.toISOString() ?? null, newEnd: end.toISOString(), provider: "manual" } });
     return NextResponse.json({ ok: true, message: `Subscription extended by ${body.months} month${body.months === 1 ? "" : "s"}.`, accessEndsAt: end.toISOString() });
@@ -83,7 +83,7 @@ export async function PATCH(request: Request) {
     const updated = await prisma.$transaction(async (tx) => {
       const subscription = await tx.subscription.update({
         where: { id: current.id },
-        data: { provider: "manual", pricingPlanId: plan.id, planKey, status: "active", cancelAtPeriodEnd: false, graceEndsAt: null },
+        data: { provider: "manual", pricingPlanId: plan.id, planKey, status: "active", graceEndsAt: null },
       });
       await tx.parentProfile.updateMany({ where: { userId: body.parentId }, data: { subscriptionPlan: planKey } });
       return subscription;
@@ -97,10 +97,10 @@ export async function PATCH(request: Request) {
     const saved = current
       ? await tx.subscription.update({
           where: { id: current.id },
-          data: { provider: "manual", providerCustomerId: null, providerSubId: null, pricingPlanId: plan.id, planKey, status: "active", trialEndsAt: null, currentPeriodEnd: end, cancelAtPeriodEnd: false, graceEndsAt: null },
+          data: { provider: "manual", providerCustomerId: null, providerSubId: null, pricingPlanId: plan.id, planKey, status: "active", trialEndsAt: null, currentPeriodEnd: end, graceEndsAt: null },
         })
       : await tx.subscription.create({
-          data: { parentId: body.parentId, provider: "manual", pricingPlanId: plan.id, planKey, status: "active", currentPeriodEnd: end, cancelAtPeriodEnd: false },
+          data: { parentId: body.parentId, provider: "manual", pricingPlanId: plan.id, planKey, status: "active", currentPeriodEnd: end },
         });
     await tx.parentProfile.updateMany({ where: { userId: body.parentId }, data: { subscriptionPlan: planKey, status: "active" } });
     return saved;
