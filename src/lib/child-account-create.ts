@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canAddChild } from "@/lib/subscriptions/enforcement";
@@ -59,11 +60,30 @@ export type CreateChildAccountFailure = {
 
 export type CreateChildAccountResult = CreateChildAccountSuccess | CreateChildAccountFailure;
 
-type CreateChildAccountDeps = {
-  canAddChild?: (parentId: string) => Promise<{ allowed: boolean }>;
+export type ResolvedChildLoginCredentials = {
+  ok: true;
+  mode: CreateChildAccountMode;
+  username: string;
+  password: string;
+  passwordHash: string;
+  email: string;
+};
+
+export type ResolveChildLoginCredentialsInput = {
+  mode: CreateChildAccountMode;
+  childName: string;
+  username?: string;
+  password?: string;
+};
+
+type CredentialDeps = {
   usernameTaken?: (username: string) => Promise<boolean>;
   hashPassword?: (password: string) => Promise<string>;
   generatePassword?: () => string;
+};
+
+type CreateChildAccountDeps = CredentialDeps & {
+  canAddChild?: (parentId: string) => Promise<{ allowed: boolean }>;
   createInTransaction?: (input: {
     parentId: string;
     childId: string;
@@ -115,99 +135,21 @@ function normalizeProfile(profile: CreateChildAccountProfileInput): CreateChildA
   };
 }
 
-async function defaultCreateInTransaction(input: {
-  parentId: string;
-  childId: string;
-  username: string;
-  email: string;
-  passwordHash: string;
-  profile: CreateChildAccountProfileInput;
-}): Promise<{ userId: string }> {
-  return prisma.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: {
-        email: input.email,
-        username: input.username,
-        passwordHash: input.passwordHash,
-        name: input.profile.name,
-        role: "student",
-      },
-      select: { id: true },
-    });
-
-    const parsedDob = input.profile.dateOfBirth ? new Date(input.profile.dateOfBirth) : null;
-    const validDob = parsedDob && !Number.isNaN(parsedDob.getTime()) ? parsedDob : null;
-
-    await tx.childProfile.create({
-      data: {
-        id: input.childId,
-        parentId: input.parentId,
-        userId: user.id,
-        name: input.profile.name,
-        age: input.profile.ageYears,
-        yearGroup: input.profile.yearGroup,
-        avatar: input.profile.avatar ?? "⭐",
-        snapshotJson: JSON.stringify({
-          onboarding: {
-            dateOfBirth: input.profile.dateOfBirth ?? null,
-            keyStage: input.profile.keyStageLevel ?? null,
-            selectedSubjects: input.profile.selectedSubjects ?? [],
-            startLevelChoice: input.profile.startLevelChoice ?? null,
-            learningGoals: input.profile.learningGoals ?? [],
-            senSupportNeeds: input.profile.senSupportNeeds ?? null,
-          },
-        }),
-      },
-    });
-
-    await tx.studentProfile.upsert({
-      where: { childId: input.childId },
-      create: {
-        childId: input.childId,
-        dateOfBirth: validDob ?? undefined,
-        keyStageLevel: input.profile.keyStageLevel,
-        learningLevel: input.profile.startLevelChoice,
-        subjectFocus: input.profile.selectedSubjects?.join(", ") ?? undefined,
-      },
-      update: {
-        dateOfBirth: validDob ?? undefined,
-        keyStageLevel: input.profile.keyStageLevel,
-        learningLevel: input.profile.startLevelChoice,
-        subjectFocus: input.profile.selectedSubjects?.join(", ") ?? undefined,
-      },
-    });
-
-    await tx.user.update({
-      where: { id: input.parentId },
-      data: { activeChildId: input.childId },
-    });
-
-    return { userId: user.id };
-  });
-}
-
 /**
- * Create a student User + linked ChildProfile for an authenticated parent.
- * Returns plaintext credentials only in the success payload — never persisted.
+ * Shared credential resolution for Slice 3 portal create and Slice 4 signup.
+ * Returns plaintext password only in-memory for the one-time response — never persist it.
  */
-export async function createChildLoginAccount(
-  input: CreateChildAccountInput,
-  deps: CreateChildAccountDeps = {},
-): Promise<CreateChildAccountResult> {
-  const profileOrError = normalizeProfile(input.profile);
-  if ("ok" in profileOrError && profileOrError.ok === false) {
-    return profileOrError;
-  }
-  const profile = profileOrError as CreateChildAccountProfileInput;
-
-  const canAdd = deps.canAddChild ?? canAddChild;
-  const access = await canAdd(input.parentId);
-  if (!access.allowed) {
+export async function resolveChildLoginCredentials(
+  input: ResolveChildLoginCredentialsInput,
+  deps: CredentialDeps = {},
+): Promise<ResolvedChildLoginCredentials | CreateChildAccountFailure> {
+  const childName = input.childName?.trim() ?? "";
+  if (!childName) {
     return {
       ok: false,
-      status: 402,
-      error: "Subscription upgrade required to add another child.",
-      code: "child_limit",
+      status: 400,
+      error: "Child name is required.",
+      fieldErrors: { name: ["Child name is required."] },
     };
   }
 
@@ -225,7 +167,7 @@ export async function createChildLoginAccount(
   let plaintextPassword: string;
 
   if (input.mode === "generated") {
-    const base = deriveUsernameBaseFromChildName(profile.name);
+    const base = deriveUsernameBaseFromChildName(childName);
     username = await allocateUniqueUsername(base, usernameTaken);
     plaintextPassword = (deps.generatePassword ?? generateChildPassword)();
   } else {
@@ -274,6 +216,150 @@ export async function createChildLoginAccount(
   const hasher = deps.hashPassword ?? hashPassword;
   const passwordHash = await hasher(plaintextPassword);
   const email = buildChildSyntheticEmail(username);
+
+  return {
+    ok: true,
+    mode: input.mode,
+    username,
+    password: plaintextPassword,
+    passwordHash,
+    email,
+  };
+}
+
+/** Create the student User row inside an existing transaction (signup or portal). */
+export async function createStudentUserInTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    username: string;
+    email: string;
+    passwordHash: string;
+    name: string;
+  },
+): Promise<{ userId: string }> {
+  const user = await tx.user.create({
+    data: {
+      email: input.email,
+      username: input.username,
+      passwordHash: input.passwordHash,
+      name: input.name,
+      role: "student",
+    },
+    select: { id: true },
+  });
+  return { userId: user.id };
+}
+
+async function defaultCreateInTransaction(input: {
+  parentId: string;
+  childId: string;
+  username: string;
+  email: string;
+  passwordHash: string;
+  profile: CreateChildAccountProfileInput;
+}): Promise<{ userId: string }> {
+  return prisma.$transaction(async (tx) => {
+    const { userId } = await createStudentUserInTx(tx, {
+      username: input.username,
+      email: input.email,
+      passwordHash: input.passwordHash,
+      name: input.profile.name,
+    });
+
+    const parsedDob = input.profile.dateOfBirth ? new Date(input.profile.dateOfBirth) : null;
+    const validDob = parsedDob && !Number.isNaN(parsedDob.getTime()) ? parsedDob : null;
+
+    await tx.childProfile.create({
+      data: {
+        id: input.childId,
+        parentId: input.parentId,
+        userId,
+        name: input.profile.name,
+        age: input.profile.ageYears,
+        yearGroup: input.profile.yearGroup,
+        avatar: input.profile.avatar ?? "⭐",
+        snapshotJson: JSON.stringify({
+          onboarding: {
+            dateOfBirth: input.profile.dateOfBirth ?? null,
+            keyStage: input.profile.keyStageLevel ?? null,
+            selectedSubjects: input.profile.selectedSubjects ?? [],
+            startLevelChoice: input.profile.startLevelChoice ?? null,
+            learningGoals: input.profile.learningGoals ?? [],
+            senSupportNeeds: input.profile.senSupportNeeds ?? null,
+          },
+        }),
+      },
+    });
+
+    await tx.studentProfile.upsert({
+      where: { childId: input.childId },
+      create: {
+        childId: input.childId,
+        dateOfBirth: validDob ?? undefined,
+        keyStageLevel: input.profile.keyStageLevel,
+        learningLevel: input.profile.startLevelChoice,
+        subjectFocus: input.profile.selectedSubjects?.join(", ") ?? undefined,
+      },
+      update: {
+        dateOfBirth: validDob ?? undefined,
+        keyStageLevel: input.profile.keyStageLevel,
+        learningLevel: input.profile.startLevelChoice,
+        subjectFocus: input.profile.selectedSubjects?.join(", ") ?? undefined,
+      },
+    });
+
+    await tx.user.update({
+      where: { id: input.parentId },
+      data: { activeChildId: input.childId },
+    });
+
+    return { userId };
+  });
+}
+
+/**
+ * Create a student User + linked ChildProfile for an authenticated parent.
+ * Returns plaintext credentials only in the success payload — never persisted.
+ */
+export async function createChildLoginAccount(
+  input: CreateChildAccountInput,
+  deps: CreateChildAccountDeps = {},
+): Promise<CreateChildAccountResult> {
+  const profileOrError = normalizeProfile(input.profile);
+  if ("ok" in profileOrError && profileOrError.ok === false) {
+    return profileOrError;
+  }
+  const profile = profileOrError as CreateChildAccountProfileInput;
+
+  const canAdd = deps.canAddChild ?? canAddChild;
+  const access = await canAdd(input.parentId);
+  if (!access.allowed) {
+    return {
+      ok: false,
+      status: 402,
+      error: "Subscription upgrade required to add another child.",
+      code: "child_limit",
+    };
+  }
+
+  const resolved = await resolveChildLoginCredentials(
+    {
+      mode: input.mode,
+      childName: profile.name,
+      username: input.username,
+      password: input.password,
+    },
+    {
+      usernameTaken: deps.usernameTaken,
+      hashPassword: deps.hashPassword,
+      generatePassword: deps.generatePassword,
+    },
+  );
+
+  if (!resolved.ok) {
+    return resolved;
+  }
+
   const childId = randomUUID();
   const createInTransaction = deps.createInTransaction ?? defaultCreateInTransaction;
 
@@ -281,9 +367,9 @@ export async function createChildLoginAccount(
     const { userId } = await createInTransaction({
       parentId: input.parentId,
       childId,
-      username,
-      email,
-      passwordHash,
+      username: resolved.username,
+      email: resolved.email,
+      passwordHash: resolved.passwordHash,
       profile,
     });
 
@@ -296,9 +382,9 @@ export async function createChildLoginAccount(
         userId,
       },
       credentials: {
-        username,
-        password: plaintextPassword,
-        mode: input.mode,
+        username: resolved.username,
+        password: resolved.password,
+        mode: resolved.mode,
       },
     };
   } catch (error) {
