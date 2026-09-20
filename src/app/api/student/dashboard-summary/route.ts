@@ -12,6 +12,7 @@ import {
   getChildSelectionMaxAgeSeconds,
 } from "@/lib/auth";
 import { resolveStudentYearContext } from "@/lib/schools/student-year-context";
+import { getNextShortLearningBookingForChild } from "@/lib/schools/short-learning-bookings";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -51,6 +52,7 @@ export async function GET(request: Request) {
       certificateProgressSummary: { issuedCount: 0, friendlyLabel: "Keep learning" },
       smartCoachSummary: { status: "pending", headline: "Choose a learner to begin.", weakCount: 0, masteredCount: 0 },
       snapshot: { available: false, refreshed: false, lastCalculatedAt: null },
+      nextShortLearning: null,
     });
   }
 
@@ -82,7 +84,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const [dashboardBrain, schoolEnrolment] = await Promise.all([
+  const [dashboardBrain, schoolEnrolment, nextShortLearning] = await Promise.all([
     getStudentLearningBrainForDashboard(studentId, { forceRefresh: manualRefresh }),
     prisma.schoolStudent.findFirst({
       where: {
@@ -99,6 +101,7 @@ export async function GET(request: Request) {
       },
       orderBy: { joinedAt: "desc" },
     }),
+    getNextShortLearningBookingForChild(studentId),
   ]);
   if (!dashboardBrain) return NextResponse.json({ error: "Student not found." }, { status: 404 });
 
@@ -191,6 +194,7 @@ export async function GET(request: Request) {
     quickLevelFinderBaseline: dashboardBrain.quickLevelFinderBaseline,
     languageReadiness: dashboardBrain.languageReadiness,
     snapshot: dashboardBrain.snapshot,
+    nextShortLearning,
   });
 
   // Sliding renewal: keep the learner on the student dashboard while actively learning

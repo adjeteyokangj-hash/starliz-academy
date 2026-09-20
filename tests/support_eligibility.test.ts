@@ -102,6 +102,24 @@ test("isShortLearningBookingActive respects early entry window", () => {
       startsAt,
       endsAt,
       status: "booked",
+      now: new Date("2026-07-25T17:54:00.000Z"),
+    }),
+    false,
+  );
+  assert.equal(
+    isShortLearningBookingActive({
+      startsAt,
+      endsAt,
+      status: "booked",
+      now: new Date("2026-07-25T17:55:00.000Z"),
+    }),
+    true,
+  );
+  assert.equal(
+    isShortLearningBookingActive({
+      startsAt,
+      endsAt,
+      status: "booked",
       now: new Date("2026-07-25T17:55:00.000Z"),
       earlyEntryMinutes: 10,
     }),

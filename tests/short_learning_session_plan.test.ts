@@ -16,8 +16,7 @@ test("session planning for 90, 105 and 120 minute bookings", () => {
       plan.totalEstimatedMinutes,
       plan.blocks.reduce((sum, b) => sum + b.estimatedMinutes, 0),
     );
-    // Allow small slack for wrap-up / progress report (0 min).
-    assert.ok(Math.abs(plan.totalEstimatedMinutes - duration) <= 5, `${duration} plan sum=${plan.totalEstimatedMinutes}`);
+    assert.equal(plan.totalEstimatedMinutes, duration, `${duration} plan must end at exactly ${duration} minutes`);
     assert.ok(plan.generativeBlockCount >= 5);
   }
   assert.equal(isShortLearningPlanDuration(60), false);

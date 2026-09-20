@@ -416,6 +416,11 @@ export function assignmentMismatchWarningFlags(input: {
   return Array.from(new Set(flags));
 }
 
+function isLiveShortLearningGeneratedContent(status: string, metadata: Record<string, unknown>): boolean {
+  if (status !== "generated") return false;
+  return metadata.source === "short_learning_session" || metadata.role === "short_learning_block";
+}
+
 export async function getAssignmentSafetyAndRecommendation(input: {
   studentId: string;
   contentId: string;
@@ -550,7 +555,7 @@ export async function getAssignmentSafetyAndRecommendation(input: {
     }
   }
 
-  if (!["reviewed", "published"].includes(content.status)) {
+  if (!["reviewed", "published"].includes(content.status) && !isLiveShortLearningGeneratedContent(content.status, parsedMetaObject)) {
     return {
       safe: false,
       reason: "Only Reviewed or Published content can be assigned. Use the Review action first.",

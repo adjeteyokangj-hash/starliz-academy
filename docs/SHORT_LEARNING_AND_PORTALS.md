@@ -57,7 +57,7 @@ Rules (library: `short-learning-bookings.ts`):
 
 Parent UI: `/parent/short-learning` with honesty checkbox (`SHORT_LEARNING_HONESTY_POLICY_VERSION`).
 
-Student UI: `/student/short-learning` — join only own booking, early entry ~10 minutes, during active window.
+Student UI: `/student/short-learning` — join only own booking, early entry 5 minutes, during active window.
 
 ## Shift lifecycle
 

@@ -132,10 +132,11 @@ test("student dashboard uses yearDisplayLabel and summer preparation copy", () =
   assert.doesNotMatch(page, /schoolEnrolment\.classroomName \? ` · \$\{schoolEnrolment\.classroomName\}`/);
 });
 
-test("admin review/publish path still demotes generated content to awaiting_review", () => {
+test("generated Short Learning live sessions stay student-playable without Admin publication", () => {
   const sl = read("src/lib/schools/short-learning-session-content.ts");
-  assert.match(sl, /awaiting_review/);
-  assert.match(sl, /studentPlayable: false/);
-  assert.match(sl, /Admin review/);
+  assert.match(sl, /canStudentStartShortLearningSession/);
+  assert.match(sl, /studentPlayable: generatedOk/);
+  assert.match(sl, /generatedOk \? "ready" : "failed"/);
+  assert.doesNotMatch(sl, /Students cannot start until a matching journey is published/);
 });
 

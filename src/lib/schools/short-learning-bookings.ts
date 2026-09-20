@@ -19,18 +19,21 @@ import {
   shortLearningSubjectLabel,
 } from "@/lib/schools/short-learning-subjects";
 import { recommendShortLearningSubject } from "@/lib/schools/short-learning-subject-recommendation";
+import {
+  SHORT_LEARNING_ALLOWED_DURATIONS,
+  SHORT_LEARNING_EARLY_ENTRY_MINUTES,
+} from "@/lib/schools/short-learning-constants";
 
-export const SHORT_LEARNING_HONESTY_POLICY_VERSION = "short-learning-ai-led-v1";
-
-export const SHORT_LEARNING_PROMISE =
-  "AI teaching is guaranteed. Human support is a safety net when available — not a private 1:1 tutor booking.";
-
-export const SHORT_LEARNING_CHECKBOX =
-  "I understand that Short Learning is AI-led and that human tutor support depends on availability.";
+export {
+  SHORT_LEARNING_ALLOWED_DURATIONS,
+  SHORT_LEARNING_CHECKBOX,
+  SHORT_LEARNING_EARLY_ENTRY_MINUTES,
+  SHORT_LEARNING_HONESTY_POLICY_VERSION,
+  SHORT_LEARNING_PROMISE,
+} from "@/lib/schools/short-learning-constants";
 
 const WEEKDAY_OPEN = { opensAt: "16:00", closesAt: "20:00" };
 const WEEKEND_OPEN = { opensAt: "09:00", closesAt: "18:00" };
-export const SHORT_LEARNING_ALLOWED_DURATIONS = [90, 120] as const;
 const ALLOWED_DURATIONS = SHORT_LEARNING_ALLOWED_DURATIONS;
 
 export type SlotCandidate = {
@@ -830,4 +833,50 @@ function safeParseJsonObject(raw: string | null | undefined): Record<string, unk
   } catch {
     return null;
   }
+}
+
+export type NextShortLearningBookingDto = {
+  id: string;
+  subject: string;
+  schoolName: string;
+  startsAt: string;
+  endsAt: string;
+  durationMinutes: number;
+  joinable: boolean;
+  opensAt: string;
+};
+
+export async function getNextShortLearningBookingForChild(
+  childId: string,
+  now = new Date(),
+): Promise<NextShortLearningBookingDto | null> {
+  const memberships = await prisma.schoolStudent.findMany({
+    where: { childId, status: "active" },
+    select: { id: true },
+  });
+  const schoolStudentIds = memberships.map((row) => row.id);
+  if (schoolStudentIds.length === 0) return null;
+
+  const booking = await prisma.studentLearningBooking.findFirst({
+    where: {
+      schoolStudentId: { in: schoolStudentIds },
+      status: { in: ["booked", "confirmed", "attended"] },
+      endsAt: { gt: now },
+    },
+    include: { school: { select: { name: true } } },
+    orderBy: { startsAt: "asc" },
+  });
+  if (!booking) return null;
+
+  const opensAt = new Date(booking.startsAt.getTime() - SHORT_LEARNING_EARLY_ENTRY_MINUTES * 60_000);
+  return {
+    id: booking.id,
+    subject: booking.subject,
+    schoolName: booking.school.name,
+    startsAt: booking.startsAt.toISOString(),
+    endsAt: booking.endsAt.toISOString(),
+    durationMinutes: booking.durationMinutes,
+    joinable: now.getTime() >= opensAt.getTime() && now.getTime() < booking.endsAt.getTime(),
+    opensAt: opensAt.toISOString(),
+  };
 }

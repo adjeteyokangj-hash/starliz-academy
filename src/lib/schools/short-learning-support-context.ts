@@ -5,6 +5,7 @@
 import { prisma } from "@/lib/db";
 import { isShortLearningBookingActive } from "@/lib/schools/support-eligibility";
 import { resolveStudentYearContext } from "@/lib/schools/student-year-context";
+import { canStudentStartShortLearningSession } from "@/lib/schools/short-learning-session-content";
 
 export const AI_TUTOR_SCOPE_SHORT_LEARNING = "short-learning" as const;
 export const SHORT_LEARNING_SUPPORT_MODE = "SHORT_LEARNING" as const;
@@ -141,7 +142,7 @@ export async function resolveShortLearningSupportContext(input: {
   if (input.sessionId && input.sessionId !== session.id) {
     return { ok: false, status: 403, code: "SESSION_MISMATCH", error: "Session does not belong to this booking." };
   }
-  if (session.status !== "ready") {
+  if (!canStudentStartShortLearningSession(session.status)) {
     return { ok: false, status: 409, code: "SESSION_NOT_READY", error: "Short Learning session is not ready yet." };
   }
 

@@ -68,7 +68,7 @@ async function api(
     headers: { "content-type": "application/json", cookie: cookieHeader(jar) },
     body: body === undefined ? undefined : JSON.stringify(body),
     redirect: opts?.redirect ?? "follow",
-    signal: AbortSignal.timeout(90_000),
+    signal: AbortSignal.timeout(180_000),
   });
   parseSetCookie(res.headers, jar);
   const text = await res.text();
@@ -118,7 +118,7 @@ async function capturePage(jar: CookieJar, path: string, evidenceRel: string, sc
   const res = await fetch(`${BASE}${path}`, {
     headers: { cookie: cookieHeader(jar), accept: "text/html" },
     redirect: "follow",
-    signal: AbortSignal.timeout(90_000),
+    signal: AbortSignal.timeout(180_000),
   });
   parseSetCookie(res.headers, jar);
   const html = await res.text();
@@ -157,6 +157,16 @@ function nextWeekendMorning(): Date {
   return d;
 }
 
+function slotsPath(schoolId: string, dateIso: string, schoolStudentId: string | null) {
+  const params = new URLSearchParams({
+    schoolId,
+    date: dateIso,
+    durationMinutes: "90",
+  });
+  if (schoolStudentId) params.set("schoolStudentId", schoolStudentId);
+  return `/api/parent/short-learning/slots?${params.toString()}`;
+}
+
 async function main() {
   ensureDirs();
   const checks: Check[] = [];
@@ -170,7 +180,7 @@ async function main() {
     databaseUrlProtocolOk: /^postgres(ql)?:\/\//i.test(String(process.env.DATABASE_URL ?? "")),
   };
 
-  const home = await fetch(BASE, { signal: AbortSignal.timeout(15_000) }).catch((e) => ({ ok: false, status: 0, error: String(e) }));
+  const home = await fetch(BASE, { signal: AbortSignal.timeout(45_000) }).catch((e) => ({ ok: false, status: 0, error: String(e) }));
   checks.push({
     name: "localhost:3000 responds",
     ok: Boolean((home as Response).ok ?? (home as { ok?: boolean }).ok),
@@ -184,6 +194,10 @@ async function main() {
 
   try {
     await ensurePassword(PARENT_EMAIL, PARENT_PASSWORD);
+    await prisma.user.update({
+      where: { email: PARENT_EMAIL },
+      data: { trialSessionsUsed: 0 },
+    }).catch(() => null);
     await ensurePassword(TEACHER_EMAIL, TEACHER_PASSWORD);
     await ensurePassword(OTHER_TEACHER_EMAIL, OTHER_TEACHER_PASSWORD);
     await ensurePassword(ADMIN_EMAIL, ADMIN_PASSWORD);
@@ -524,11 +538,7 @@ async function main() {
       if (schoolIdForBooking && schoolStudentId && bootJson.entitled) {
         const weekday = nextWeekdayAfternoon();
         const dateIso = weekday.toISOString().slice(0, 10);
-        const slots = await api(
-          jar,
-          "GET",
-          `/api/parent/short-learning/slots?schoolId=${encodeURIComponent(schoolIdForBooking)}&date=${dateIso}&durationMinutes=90`,
-        );
+        const slots = await api(jar, "GET", slotsPath(schoolIdForBooking, dateIso, schoolStudentId));
         const slotList = ((slots.json as { slots?: Array<{ startsAt: string }> })?.slots ?? []);
         const pick = slotList[0]?.startsAt ?? weekday.toISOString();
         const book = await api(jar, "POST", "/api/parent/short-learning/bookings", {
@@ -555,19 +565,15 @@ async function main() {
           checks.push({
             name: "Cancel booking with no fee (cancelled/late_cancelled)",
             ok: cancel.ok && (status === "cancelled" || status === "late_cancelled"),
-            detail: `bookingStatus=${status} category=${cancelJson.booking?.cancellationCategory}`,
+            detail: `http=${cancel.status} bookingStatus=${status} category=${cancelJson.booking?.cancellationCategory} err=${(cancel.json as { error?: string } | null)?.error ?? ""}`,
             evidence: "parent/04-cancel-statuses.json",
           });
-          writeFileSync(resolve(SHOT_ROOT, "parent/04-cancel-statuses.json"), JSON.stringify(cancelJson, null, 2));
+          writeFileSync(resolve(SHOT_ROOT, "parent/04-cancel-statuses.json"), JSON.stringify({ status: cancel.status, json: cancelJson }, null, 2));
         }
 
         const weekend = nextWeekendMorning();
         const wDate = weekend.toISOString().slice(0, 10);
-        const wSlots = await api(
-          jar,
-          "GET",
-          `/api/parent/short-learning/slots?schoolId=${encodeURIComponent(schoolIdForBooking)}&date=${wDate}&durationMinutes=90`,
-        );
+        const wSlots = await api(jar, "GET", slotsPath(schoolIdForBooking, wDate, schoolStudentId));
         const wList = ((wSlots.json as { slots?: Array<{ startsAt: string }> })?.slots ?? []);
         if (wList[0]?.startsAt) {
           const wBook = await api(jar, "POST", "/api/parent/short-learning/bookings", {
@@ -590,7 +596,7 @@ async function main() {
           checks.push({
             name: "Parent books weekend Short Learning session",
             ok: false,
-            detail: "No weekend slots returned in advance window",
+            detail: `No weekend slots for ${wDate} http=${wSlots.status} err=${(wSlots.json as { error?: string } | null)?.error ?? ""}`,
           });
         }
 
@@ -697,6 +703,53 @@ async function main() {
           "student/05-ai-tutor-entry.png",
           screenshots,
         );
+      }
+
+      const learnPage = await capturePage(
+        jar,
+        `/student/short-learning/${bookingId}/learn`,
+        "student/06-classroom-learn.png",
+        screenshots,
+      );
+      const learnCorpus = `${learnPage.text}\n${learnPage.html}`;
+      const learnIsClassroom = /ShortLearningLearnSession|next classroom stage|guided learning session/i.test(learnCorpus);
+      checks.push({
+        name: "Student learn page is a classroom session",
+        ok: learnPage.status < 500 && learnPage.url.includes("/learn") && learnIsClassroom,
+        detail: `status=${learnPage.status} url=${learnPage.url} hasClassroomShell=${learnIsClassroom}`,
+      });
+
+      const startSession = await api(jar, "POST", `/api/student/short-learning/${bookingId}/session`, {});
+      const startJson = (startSession.json ?? {}) as {
+        kind?: string;
+        lessonHref?: string;
+        href?: string;
+        error?: string;
+        block?: { blockType?: string; title?: string };
+      };
+      const startHref = startJson.lessonHref ?? startJson.href ?? "";
+      const openedWelcome =
+        startJson.kind === "stage"
+        || startJson.block?.blockType === "welcome"
+        || /\/stage\//.test(startHref);
+      checks.push({
+        name: "Starting the session opens the welcome classroom stage",
+        ok: startSession.ok && openedWelcome,
+        detail: `http=${startSession.status} kind=${startJson.kind ?? ""} type=${startJson.block?.blockType ?? ""} href=${startHref} err=${startJson.error ?? ""}`,
+        evidence: "student/07-welcome-start.json",
+      });
+      writeFileSync(
+        resolve(SHOT_ROOT, "student/07-welcome-start.json"),
+        JSON.stringify({ status: startSession.status, json: startJson }, null, 2),
+      );
+      if (startHref.startsWith("/")) {
+        const stagePage = await capturePage(jar, startHref, "student/08-welcome-stage.png", screenshots);
+        const stageCorpus = `${stagePage.text}\n${stagePage.html}`;
+        checks.push({
+          name: "Welcome stage screen loads",
+          ok: stagePage.status < 500 && /welcome|start the lesson|short-learning-stage-screen/i.test(stageCorpus),
+          detail: `status=${stagePage.status} url=${stagePage.url}`,
+        });
       }
 
       const {

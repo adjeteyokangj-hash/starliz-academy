@@ -220,6 +220,9 @@ export type DaytimeStagePackExtras = {
   explanation?: string;
   workedExamples?: Array<{ question: string; steps: string[]; answer: string }>;
   scenarioOrObservation?: string;
+  priorLearningWarmup?: string;
+  misconceptions?: string[];
+  reflectionCheck?: string;
   activities?: Array<{ kind: string; title?: string; estimatedMinutes?: number }>;
   subjectType?: string;
 };
@@ -304,6 +307,13 @@ export function extractStagePackExtras(raw: unknown): DaytimeStagePackExtras | n
     scenarioOrObservation: typeof row.scenarioOrObservation === "string"
       ? row.scenarioOrObservation.trim()
       : undefined,
+    priorLearningWarmup: typeof row.priorLearningWarmup === "string"
+      ? row.priorLearningWarmup.trim()
+      : undefined,
+    misconceptions: Array.isArray(row.misconceptions)
+      ? row.misconceptions.map((item) => String(item ?? "").trim()).filter(Boolean)
+      : undefined,
+    reflectionCheck: typeof row.reflectionCheck === "string" ? row.reflectionCheck.trim() : undefined,
     activities,
     subjectType: typeof row.subjectType === "string" ? row.subjectType.trim() : undefined,
   };
@@ -318,6 +328,9 @@ export function extractStagePackExtras(raw: unknown): DaytimeStagePackExtras | n
       || extras.explanation
       || extras.workedExamples?.length
       || extras.scenarioOrObservation
+      || extras.priorLearningWarmup
+      || extras.misconceptions?.length
+      || extras.reflectionCheck
       || extras.activities?.length,
   );
   return hasContent ? extras : null;

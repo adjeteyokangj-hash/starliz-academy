@@ -28,8 +28,8 @@ import { formatStudentId } from "@/lib/student-id";
 import { resolveRecoverySeverityChips } from "@/lib/recovery-task-severity";
 import { subjectGlyph } from "@/components/student/school-day/subjectGlyph";
 import { greetingForHour, minutesUntil } from "@/components/student/school-day/periodStatus";
-import { isPlayableDaytimeLessonType } from "@/lib/schools/start-daytime-period";
-import { minutesNow } from "@/lib/schools/school-day-period";
+import { isPlayableDaytimeLessonType, minutesNow } from "@/lib/schools/school-day-period";
+import { formatUkDateTime } from "@/lib/uk-datetime";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 import type { CoverageEntry, LearningTwinProfile } from "@/lib/academic-intelligence/types";
 
@@ -163,6 +163,16 @@ type DashboardSummaryPayload = {
     incomingYearGroup?: string | null;
     isSummerTransition?: boolean;
     summerPreparationLabel?: string | null;
+  } | null;
+  nextShortLearning?: {
+    id: string;
+    subject: string;
+    schoolName: string;
+    startsAt: string;
+    endsAt: string;
+    durationMinutes: number;
+    joinable: boolean;
+    opensAt: string;
   } | null;
   yearContext?: {
     officialYearGroup: string | null;
@@ -500,6 +510,7 @@ export default function StudentDashboardPage() {
   const [childName, setChildName] = useState("Learner");
   const [stats, setStats] = useState({ stars: 0, xp: 0, coins: 0, streak: 0 });
   const [schoolEnrolment, setSchoolEnrolment] = useState<NonNullable<DashboardSummaryPayload["schoolEnrolment"]> | null>(null);
+  const [nextShortLearning, setNextShortLearning] = useState<NonNullable<DashboardSummaryPayload["nextShortLearning"]> | null>(null);
   const [schoolDaySnapshot, setSchoolDaySnapshot] = useState<{
     weekdayLabel: string;
     phase: string;
@@ -611,6 +622,7 @@ export default function StudentDashboardPage() {
         setBossPlayedToday(false);
         setBossAssignmentId(null);
         setSchoolEnrolment(null);
+        setNextShortLearning(null);
         return;
       }
 
@@ -621,6 +633,7 @@ export default function StudentDashboardPage() {
       setBossPlayedToday(false);
       setBossAssignmentId(null);
       setSchoolEnrolment(summaryPayload.schoolEnrolment ?? null);
+      setNextShortLearning(summaryPayload.nextShortLearning ?? null);
       if (!summaryPayload.schoolEnrolment) {
         setSchoolDaySnapshot(null);
         setAttendancePresentRate(null);
@@ -1536,19 +1549,34 @@ export default function StudentDashboardPage() {
               </section>
             ) : null}
 
-            <section className="mb-6 rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-5 shadow-sm">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Short Learning · AI-led</p>
-              <h2 className="mt-2 text-lg font-black text-slate-900">After-hours sessions</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                Parent-booked AI coaching outside Day School — not your classroom timetable or attendance.
-              </p>
-              <Link
-                href="/student/short-learning"
-                className="mt-4 inline-flex rounded-2xl bg-violet-700 px-4 py-2.5 text-sm font-black text-white hover:bg-violet-600"
-              >
-                View Short Learning sessions
-              </Link>
-            </section>
+            {nextShortLearning ? (
+              <section className="mb-6 rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-5 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Short Learning · AI-led</p>
+                <h2 className="mt-2 text-lg font-black text-slate-900">Next session</h2>
+                <p className="mt-3 text-xl font-black capitalize text-slate-900">{nextShortLearning.subject}</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {nextShortLearning.schoolName} · {formatUkDateTime(nextShortLearning.startsAt)} · {nextShortLearning.durationMinutes} min
+                </p>
+                {nextShortLearning.joinable ? (
+                  <Link
+                    href={`/student/short-learning/${encodeURIComponent(nextShortLearning.id)}`}
+                    className="mt-4 inline-flex rounded-2xl bg-violet-700 px-4 py-2.5 text-sm font-black text-white hover:bg-violet-600"
+                  >
+                    Join session
+                  </Link>
+                ) : (
+                  <p className="mt-3 text-sm font-semibold text-violet-800">
+                    Opens 5 min before start · {formatUkDateTime(nextShortLearning.opensAt)}
+                  </p>
+                )}
+                <Link
+                  href="/student/short-learning"
+                  className="mt-3 block text-xs font-bold text-violet-800 hover:underline"
+                >
+                  View all Short Learning sessions
+                </Link>
+              </section>
+            ) : null}
 
             {dashboardExperience ? (
               <div className="mb-6">

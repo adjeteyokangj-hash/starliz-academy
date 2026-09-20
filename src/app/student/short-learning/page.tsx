@@ -3,11 +3,15 @@ import { redirect } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import { readChildSelectionFromCookie, readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
+import { SHORT_LEARNING_EARLY_ENTRY_MINUTES, SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
+import { isShortLearningBookingActive } from "@/lib/schools/support-eligibility";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { formatUkDateTime } from "@/lib/uk-datetime";
 
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function StudentShortLearningListPage() {
 
@@ -145,7 +149,14 @@ export default async function StudentShortLearningListPage() {
 
             {bookings.map((booking) => {
 
-              const joinable = booking.startsAt <= new Date(now.getTime() + 15 * 60_000);
+              const joinable = isShortLearningBookingActive({
+                startsAt: booking.startsAt,
+                endsAt: booking.endsAt,
+                status: booking.status,
+                now,
+              });
+              const opensAt = new Date(booking.startsAt.getTime() - SHORT_LEARNING_EARLY_ENTRY_MINUTES * 60_000);
+              const stillLive = now.getTime() <= booking.endsAt.getTime();
 
               return (
 
@@ -175,23 +186,32 @@ export default async function StudentShortLearningListPage() {
 
                     </div>
 
-                    {joinable ? (
+                    {stillLive ? (
 
-                      <Link
+                      <div className="flex flex-col items-end gap-1">
+                        <Link
 
-                        href={`/student/short-learning/${booking.id}`}
+                          href={`/student/short-learning/${booking.id}`}
 
-                        className="rounded-xl bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-600"
+                          className="rounded-xl bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-600"
 
-                      >
+                        >
 
-                        Join session
+                          {joinable ? "Join session" : "Open session"}
 
-                      </Link>
+                        </Link>
+                        {!joinable ? (
+                          <span className="text-xs font-semibold text-foreground/50">
+                            Enter from {formatUkDateTime(opensAt)}
+                          </span>
+                        ) : null}
+                      </div>
 
                     ) : (
 
-                      <span className="text-xs font-semibold text-foreground/50">Opens near start time</span>
+                      <span className="text-xs font-semibold text-foreground/50">
+                        Opens {SHORT_LEARNING_EARLY_ENTRY_MINUTES} min before start · {formatUkDateTime(opensAt)}
+                      </span>
 
                     )}
 

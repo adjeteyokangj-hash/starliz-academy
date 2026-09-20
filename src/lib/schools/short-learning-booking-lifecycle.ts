@@ -11,8 +11,9 @@
 
 import { prisma } from "@/lib/db";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
+import { SHORT_LEARNING_EARLY_ENTRY_MINUTES } from "@/lib/schools/short-learning-bookings";
 
-export const SHORT_LEARNING_EARLY_ENTRY_MINUTES = 10;
+export { SHORT_LEARNING_EARLY_ENTRY_MINUTES };
 
 const OPEN_STATUSES = ["booked", "confirmed", "attended"] as const;
 const PRE_ATTENDANCE = ["booked", "confirmed"] as const;
@@ -82,9 +83,9 @@ async function bookingWasStudentPlayable(bookingId: string): Promise<boolean> {
   if (booking.journey?.status === "published") return true;
   const session = booking.shortLearningSession;
   if (!session) return false;
-  if (session.status === "ready") {
+  if (session.status === "ready" || session.status === "awaiting_review") {
     const meta = parseMetadata(session.metadataJson);
-    return meta.source === "published_journey" || meta.studentPlayable === true;
+    return meta.source === "published_journey" || meta.studentPlayable === true || session.status === "ready";
   }
   return false;
 }
