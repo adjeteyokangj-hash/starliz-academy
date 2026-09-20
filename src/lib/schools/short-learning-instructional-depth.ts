@@ -3,6 +3,10 @@ import {
   type NormalizedDaytimeStagePack,
 } from "@/lib/schools/daytime-stage-validators";
 import type { DaytimeSubjectMode } from "@/lib/schools/daytime-subject-mode";
+import {
+  classifyEnglishSkillIntent,
+  englishSkillUsesPassageAsLanguageContext,
+} from "@/lib/schools/short-learning-curriculum";
 
 export type ShortLearningBlockIntent = "lesson" | "recap" | "challenge" | "final_review";
 
@@ -47,6 +51,105 @@ export function classifyShortLearningBlockIntent(stageLabel: string): ShortLearn
     return "final_review";
   }
   return "lesson";
+}
+
+/** Minimum closed practice questions the Short Learning depth validator requires. */
+export function shortLearningMinQuestionCount(stageLabel: string, targetMinutes: number): number {
+  const intent = classifyShortLearningBlockIntent(stageLabel);
+  if (intent === "recap") return 2;
+  if (intent === "final_review") return Math.max(4, Math.round(targetMinutes / 2.5));
+  if (intent === "challenge") return Math.max(4, Math.round(targetMinutes / 2));
+  return Math.max(8, Math.round(targetMinutes / 2));
+}
+
+const GENERIC_READING_COMPREHENSION_STEM =
+  /\b(main idea|main theme|how does the author|what can we infer|what do you think will happen|how did \w+ feel|what did \w+ (find|discover|notice|love|see|take)|author'?s (intent|purpose)|sense of mystery|what does the author want|which word in the passage means|what kind of cover|why did \w+ (enter|go|take|decide)|who (was|is) (the )?(owner|girl|boy|character)|what is the name of)\b/i;
+
+const LANGUAGE_SKILL_PRACTICE =
+  /\b(identify|find the (relative )?clause|rewrite|combine|complete the sentence|create a sentence|relative clause|fronted adverbial|formal|informal|punctuat|noun phrase|verb|clause|extra information|introduces|starts with (who|which|that|whose)|embedded|subordinate|using (who|which|that))\b/i;
+
+export function isGenericReadingComprehensionPrompt(prompt: string): boolean {
+  return GENERIC_READING_COMPREHENSION_STEM.test(prompt);
+}
+
+export function usesQuotedPassageSpan(text: string, passageText: string, minWords = 5): boolean {
+  const hay = text.toLowerCase().replace(/\s+/g, " ");
+  const sentences = passageText.split(/[.!?]/);
+  for (const sentence of sentences) {
+    const words = sentence
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    if (words.length < minWords) continue;
+    for (let i = 0; i <= words.length - minWords; i += 1) {
+      const span = words.slice(i, i + minWords).join(" ");
+      if (hay.includes(span)) return true;
+    }
+  }
+  return false;
+}
+
+export function pickPassageSentenceForModel(passageText: string): string | null {
+  const sentences = passageText
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim().replace(/\s+/g, " "))
+    .filter((part) => part.split(/\s+/).length >= 8);
+  if (!sentences.length) return null;
+  const featured = sentences.find((sentence) =>
+    /\b(who|which|that|whose|whom|where|when)\b/i.test(sentence),
+  );
+  return featured ?? sentences[0] ?? null;
+}
+
+export function ensureWorkedExampleFromPassage(
+  pack: NormalizedDaytimeStagePack,
+  skillFocus: string,
+): NormalizedDaytimeStagePack {
+  const passageText = pack.passage?.text ?? "";
+  if (!passageText.trim()) return pack;
+  const examples = pack.workedExamples ?? [];
+  const alreadyQuoted = examples.some((example) =>
+    usesQuotedPassageSpan(
+      `${example.question} ${(example.steps ?? []).join(" ")} ${example.answer ?? ""}`,
+      passageText,
+    ),
+  );
+  if (alreadyQuoted) return pack;
+  const sentence = pickPassageSentenceForModel(passageText);
+  if (!sentence) return pack;
+  const skill = skillFocus.trim() || "this skill";
+  pack.workedExamples = [
+    {
+      question: `Use this sentence from the passage to model ${skill}: "${sentence}"`,
+      steps: [
+        "Read the quoted sentence from the shared passage.",
+        `Find how ${skill} is used in that sentence.`,
+        "Say what extra information the feature adds.",
+      ],
+      answer: sentence,
+    },
+    ...examples,
+  ];
+  return pack;
+}
+
+export function promptPractisesEnglishSkill(prompt: string, skillFocus: string): boolean {
+  const hay = prompt.toLowerCase();
+  const tokens = skillFocus
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((word) => word.length > 4 && !["about", "from", "with", "using", "their", "reading"].includes(word));
+  if (tokens.some((token) => hay.includes(token))) return true;
+  const intent = classifyEnglishSkillIntent(skillFocus);
+  if (intent === "grammar" || intent === "writing") return LANGUAGE_SKILL_PRACTICE.test(hay);
+  return /\b(infer|evidence|according to|why might|how do we know|summar|retrieve|clue|author)\b/i.test(hay);
+}
+
+export function isSkillAlignedEnglishPrompt(prompt: string, skillFocus: string): boolean {
+  const practises = promptPractisesEnglishSkill(prompt, skillFocus);
+  if (isGenericReadingComprehensionPrompt(prompt) && !practises) return false;
+  return practises;
 }
 
 function hasScaffold(pack: NormalizedDaytimeStagePack): boolean {
@@ -128,6 +231,7 @@ export function validateShortLearningInstructionalDepth(input: {
   stage: "warmup" | "core" | "stretch";
   stageLabel: string;
   targetMinutes: number;
+  skillFocus?: string | null;
 }): DaytimeStageValidationIssue[] {
   const { pack, mode, targetMinutes } = input;
   const intent = classifyShortLearningBlockIntent(input.stageLabel);
@@ -145,15 +249,11 @@ export function validateShortLearningInstructionalDepth(input: {
   ).length;
   const practiceUnits = pack.questions.length + practiceActivityCount;
   const minPracticeUnits = intent === "recap"
-    ? 2
+    ? 4
     : intent === "final_review"
-      ? Math.max(3, Math.round(targetMinutes / 4))
-      : Math.max(4, Math.round(targetMinutes / 4));
-  const minPracticeQuestions = intent === "recap"
-    ? 2
-    : intent === "final_review"
-      ? Math.max(2, Math.round(targetMinutes / 5))
-      : Math.max(2, Math.round(targetMinutes / 8));
+      ? Math.max(5, Math.round(targetMinutes / 2.5))
+      : Math.max(8, Math.round(targetMinutes / 2));
+  const minPracticeQuestions = shortLearningMinQuestionCount(input.stageLabel, targetMinutes);
 
   if (!(pack.learningObjective ?? "").trim() && intent !== "recap") {
     issues.push({
@@ -355,6 +455,56 @@ export function validateShortLearningInstructionalDepth(input: {
     }
   }
 
+  if (
+    mode === "guided-reading"
+    && englishSkillUsesPassageAsLanguageContext(input.skillFocus)
+    && (input.skillFocus ?? "").trim()
+  ) {
+    const skillFocus = input.skillFocus!.trim();
+    const teachingBlob = `${pack.learningObjective ?? ""} ${pack.explanation ?? ""}`;
+    const skillTokens = skillFocus
+      .toLowerCase()
+      .split(/[^a-z]+/)
+      .filter((word) => word.length > 4 && word !== "reading");
+    if (skillTokens.length && !skillTokens.some((token) => teachingBlob.toLowerCase().includes(token))) {
+      issues.push({
+        code: "sl_skill_teaching_mismatch",
+        message: `Teaching must stay on the resolved skill (${skillFocus}), not a generic English blurb.`,
+      });
+    }
+
+    if (intent === "lesson" && pack.passage?.text && (pack.workedExamples?.length ?? 0) > 0) {
+      const modelled = pack.workedExamples!.some((example) =>
+        usesQuotedPassageSpan(
+          `${example.question} ${(example.steps ?? []).join(" ")} ${example.answer ?? ""}`,
+          pack.passage!.text,
+        ),
+      );
+      if (!modelled) {
+        issues.push({
+          code: "sl_model_not_from_passage",
+          message: "Worked examples must quote an actual sentence from the shared passage and model the skill on it.",
+        });
+      }
+    }
+
+    const practiceQuestions = pack.questions.filter((question) =>
+      question.kind !== "reflection"
+      && !/what have you learned|how confident|which part was|next time|reflect/i.test(question.prompt),
+    );
+    if (practiceQuestions.length >= 2) {
+      const aligned = practiceQuestions.filter((question) =>
+        isSkillAlignedEnglishPrompt(question.prompt, skillFocus),
+      );
+      if (aligned.length / practiceQuestions.length < 0.7) {
+        issues.push({
+          code: "sl_skill_practice_mismatch",
+          message: `Practice drifted away from ${skillFocus}. Use the shared passage as context for this skill — do not switch into generic reading comprehension.`,
+        });
+      }
+    }
+  }
+
   return issues;
 }
 
@@ -363,9 +513,13 @@ export function shortLearningDepthPromptGuidance(input: {
   mode: DaytimeSubjectMode;
   stageLabel: string;
   targetMinutes: number;
+  skillFocus?: string | null;
 }): string {
   const intent = classifyShortLearningBlockIntent(input.stageLabel);
   const budget = instructionalDepthBudget(input.targetMinutes);
+  const minQuestions = shortLearningMinQuestionCount(input.stageLabel, input.targetMinutes);
+  const languageSkill = input.mode === "guided-reading"
+    && englishSkillUsesPassageAsLanguageContext(input.skillFocus);
   const commonFields = `Also include these Short Learning depth fields when relevant:
 - priorLearningWarmup (string)
 - misconceptions (string array of common pupil mistakes)
@@ -383,9 +537,9 @@ export function shortLearningDepthPromptGuidance(input: {
   if (intent === "recap") {
     return `SHORT LEARNING RECAP CONTRACT (mandatory):
 ${budgetLine}
-- Restate the method briefly
-- One worked example revisiting prior learning
-- 2–3 focused checks
+- Restate the method briefly${languageSkill ? ` for skill "${input.skillFocus}"` : ""}
+- One worked example revisiting prior learning${languageSkill ? " using a quoted sentence from the shared passage" : ""}
+- 2–3 focused checks${languageSkill ? " that practise the same skill — not a plot quiz" : ""}
 - Address one likely misconception
 - Do NOT introduce a new topic
 ${commonFields}`;
@@ -396,18 +550,38 @@ ${budgetLine}
 - Deeper reasoning / application or real-world context
 - Explain method; compare approaches where suitable
 - Extension task
-- NOT only harder number substitutions
+${languageSkill
+  ? `- Independent application of "${input.skillFocus}" using the shared passage as context — not generic comprehension`
+  : "- NOT only harder number substitutions"}
 ${commonFields}`;
   }
   if (intent === "final_review") {
     return `SHORT LEARNING FINAL REVIEW CONTRACT (mandatory):
 ${budgetLine}
 - Summary of objectives covered
-- Mixed retrieval across the journey
+- At least ${minQuestions} mixed retrieval questions across the journey${languageSkill ? ` that practise "${input.skillFocus}" (identify, complete, rewrite/apply — not a plot recap)` : ""}
 - Reasoning/application
 - Confidence or reflection prompt
 - Misconception check
 - Next-step recommendation in transitionNote
+${commonFields}`;
+  }
+
+  if (input.mode === "guided-reading" && languageSkill) {
+    return `SHORT LEARNING LESSON DEPTH CONTRACT (mandatory for ${input.targetMinutes}m):
+${budgetLine}
+Required teaching cycle for language/grammar skill "${input.skillFocus}":
+1) Learning objective for THIS skill
+2) Prior-learning / vocabulary warm-up
+3) Keep the shared passage as context
+4) Teach the skill in explanation (what it is and how the feature works)
+5) Model using a quoted sentence from the shared passage
+6) Guided skill practice on passage sentences (identify / complete / manipulate)
+7) Independent and harder skill practice (rewrite / combine / apply)
+8) Discussion/reasoning prompt about the skill
+9) Reflection + transition
+Do NOT return a generic reading-comprehension quiz about plot, feelings, or main idea.
+Need about ${minQuestions}+ skill-practice questions for this block.
 ${commonFields}`;
   }
 
@@ -434,12 +608,12 @@ Required teaching cycle:
 3) Clear teaching explanation (substantial — not a one-liner)
 4) At least two workedExamples with steps
 5) Guided/scaffolded practice
-6) Independent practice
-7) Immediate feedback on closed items (explanation + hints)
+6) Independent practice — enough questions for the minutes (about one every 90 seconds of pupil work)
+7) Immediate feedback on closed items (explanation + hints + four answer choices)
 8) Common misconceptions[]
 9) Reasoning/discussion prompt
 10) Reflection/check for understanding
 11) Transition to the next block
 ${commonFields}
-Do NOT return: short explanation → one example → five similar questions.`;
+Do NOT return: short explanation → one example → two or three questions. A ${input.targetMinutes}m lesson block needs a full practice set.`;
 }
