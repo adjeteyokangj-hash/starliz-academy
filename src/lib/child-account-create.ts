@@ -405,3 +405,254 @@ export async function createChildLoginAccount(
     };
   }
 }
+
+/** Thrown inside a transaction when a concurrent request already linked the child. */
+export class ChildLoginLinkConflictError extends Error {
+  readonly code = "child_login_exists" as const;
+
+  constructor() {
+    super("child_login_exists");
+    this.name = "ChildLoginLinkConflictError";
+  }
+}
+
+export type LinkExistingChildLoginInput = {
+  parentId: string;
+  childId: string;
+  mode: CreateChildAccountMode;
+  username?: string;
+  password?: string;
+};
+
+export type LinkExistingChildLoginSuccess = {
+  ok: true;
+  child: {
+    id: string;
+    name: string;
+    yearGroup: string | null;
+    userId: string;
+  };
+  credentials: {
+    username: string;
+    password: string;
+    mode: CreateChildAccountMode;
+  };
+};
+
+export type LinkExistingChildLoginResult = LinkExistingChildLoginSuccess | CreateChildAccountFailure;
+
+export type OwnedChildForLoginLink = {
+  id: string;
+  name: string;
+  yearGroup: string | null;
+  userId: string | null;
+  hasSchoolLink: boolean;
+};
+
+type LinkExistingChildLoginDeps = CredentialDeps & {
+  findOwnedChild?: (input: {
+    parentId: string;
+    childId: string;
+  }) => Promise<OwnedChildForLoginLink | null>;
+  linkInTransaction?: (input: {
+    parentId: string;
+    childId: string;
+    childName: string;
+    username: string;
+    email: string;
+    passwordHash: string;
+  }) => Promise<{ userId: string; childId: string }>;
+};
+
+async function defaultFindOwnedChild(input: {
+  parentId: string;
+  childId: string;
+}): Promise<OwnedChildForLoginLink | null> {
+  const row = await prisma.childProfile.findFirst({
+    where: { id: input.childId, parentId: input.parentId },
+    select: {
+      id: true,
+      name: true,
+      yearGroup: true,
+      userId: true,
+      _count: { select: { schoolLinks: true } },
+    },
+  });
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    yearGroup: row.yearGroup,
+    userId: row.userId,
+    hasSchoolLink: row._count.schoolLinks > 0,
+  };
+}
+
+/**
+ * Atomic identity link for an existing parent-owned ChildProfile:
+ * create student User + set ChildProfile.userId only when still null.
+ * Concurrent losers roll back (no orphan User, no userId replacement).
+ */
+async function defaultLinkInTransaction(input: {
+  parentId: string;
+  childId: string;
+  childName: string;
+  username: string;
+  email: string;
+  passwordHash: string;
+}): Promise<{ userId: string; childId: string }> {
+  return prisma.$transaction(async (tx) => {
+    const { userId } = await createStudentUserInTx(tx, {
+      username: input.username,
+      email: input.email,
+      passwordHash: input.passwordHash,
+      name: input.childName,
+    });
+
+    const updated = await tx.childProfile.updateMany({
+      where: {
+        id: input.childId,
+        parentId: input.parentId,
+        userId: null,
+      },
+      data: { userId },
+    });
+
+    if (updated.count !== 1) {
+      // Rolls back the User create in this transaction — no orphan, no replace.
+      throw new ChildLoginLinkConflictError();
+    }
+
+    return { userId, childId: input.childId };
+  });
+}
+
+/**
+ * Create a student login for an existing unlinked ChildProfile (Slice 6).
+ * Does not create a second ChildProfile — only links userId on the existing row.
+ */
+export async function linkExistingChildLoginAccount(
+  input: LinkExistingChildLoginInput,
+  deps: LinkExistingChildLoginDeps = {},
+): Promise<LinkExistingChildLoginResult> {
+  const childId = input.childId?.trim() ?? "";
+  if (!childId) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Child id is required.",
+      code: "child_id_required",
+    };
+  }
+
+  const findOwnedChild = deps.findOwnedChild ?? defaultFindOwnedChild;
+  const child = await findOwnedChild({
+    parentId: input.parentId,
+    childId,
+  });
+
+  if (!child) {
+    return {
+      ok: false,
+      status: 404,
+      error: "Child not found.",
+      code: "child_not_found",
+    };
+  }
+
+  if (child.hasSchoolLink) {
+    return {
+      ok: false,
+      status: 403,
+      error: "School-managed students cannot use parent Create Login.",
+      code: "school_managed_child",
+    };
+  }
+
+  if (child.userId != null) {
+    return {
+      ok: false,
+      status: 409,
+      error: "This child already has a login.",
+      code: "child_login_exists",
+    };
+  }
+
+  const resolved = await resolveChildLoginCredentials(
+    {
+      mode: input.mode,
+      childName: child.name,
+      username: input.username,
+      password: input.password,
+    },
+    {
+      usernameTaken: deps.usernameTaken,
+      hashPassword: deps.hashPassword,
+      generatePassword: deps.generatePassword,
+    },
+  );
+
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  const linkInTransaction = deps.linkInTransaction ?? defaultLinkInTransaction;
+
+  try {
+    const linked = await linkInTransaction({
+      parentId: input.parentId,
+      childId: child.id,
+      childName: child.name,
+      username: resolved.username,
+      email: resolved.email,
+      passwordHash: resolved.passwordHash,
+    });
+
+    return {
+      ok: true,
+      child: {
+        id: child.id,
+        name: child.name,
+        yearGroup: child.yearGroup,
+        userId: linked.userId,
+      },
+      credentials: {
+        username: resolved.username,
+        password: resolved.password,
+        mode: resolved.mode,
+      },
+    };
+  } catch (error) {
+    if (
+      error instanceof ChildLoginLinkConflictError
+      || (error instanceof Error && error.message === "child_login_exists")
+      || (typeof error === "object"
+        && error !== null
+        && "code" in error
+        && (error as { code?: string }).code === "child_login_exists")
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        error: "This child already has a login.",
+        code: "child_login_exists",
+      };
+    }
+
+    const message = error instanceof Error ? error.message : "unknown_error";
+    if (message.includes("Unique constraint") || message.includes("username")) {
+      return {
+        ok: false,
+        status: 409,
+        error: "That username is already taken. Please choose another.",
+        code: "username_taken",
+      };
+    }
+    console.error("[child-account-link]", message);
+    return {
+      ok: false,
+      status: 500,
+      error: "Could not create child login. Please try again.",
+    };
+  }
+}

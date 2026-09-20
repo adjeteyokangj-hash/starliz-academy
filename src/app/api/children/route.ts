@@ -46,7 +46,8 @@ export async function GET(request: Request) {
 
   const includeArchived = new URL(request.url).searchParams.get("includeArchived") === "1";
 
-  let childrenRows: Awaited<ReturnType<typeof prisma.childProfile.findMany>> = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- include widens findMany row shape for login fields
+  let childrenRows: any[] = [];
   let user: { activeChildId: string | null } | null = null;
   let profileRows: Array<{ childId: string; subjectFocus: string | null }> = [];
   try {
@@ -54,6 +55,10 @@ export async function GET(request: Request) {
       prisma.childProfile.findMany({
         where: { parentId: parentScope.parentId, ...(includeArchived ? {} : { archived: false }) },
         orderBy: { createdAt: "asc" },
+        include: {
+          account: { select: { username: true } },
+          _count: { select: { schoolLinks: true } },
+        },
       }),
       prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { activeChildId: true } }),
     ]);
@@ -83,9 +88,16 @@ export async function GET(request: Request) {
     children: childrenRows.map((row) => {
       const profile = fromDbRecord(row) as Record<string, unknown>;
       const selectedSubjects = sanitizeSelectedSubjects((focusByChildId.get(row.id) ?? "").split(",").map((entry) => entry.trim()));
+      const hasSchoolLink = row._count.schoolLinks > 0;
       return {
         ...profile,
         selectedSubjects,
+        userId: row.userId,
+        hasLogin: Boolean(row.userId),
+        loginUsername: row.account?.username ?? null,
+        hasSchoolLink,
+        // Consumer Create Login is only for parent-owned profiles without school roster links.
+        canCreateLogin: !row.userId && !hasSchoolLink,
       };
     }),
     activeChildId: user?.activeChildId ?? null,
