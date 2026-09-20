@@ -252,6 +252,7 @@ model ChildProfile {
   coachInteractionLogs  CoachInteractionLog[]
   gaLessonProgress      GaStudentLessonProgress[]
   gaStudentRecordings   GaStudentRecording[]
+  questionExposures     StudentQuestionExposure[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1344,6 +1345,7 @@ model School {
   learningWindows                 SchoolLearningWindow[]
   learningBookings                StudentLearningBooking[]
   shortLearningJourneys           ShortLearningJourney[]
+  questionExposures               StudentQuestionExposure[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1520,6 +1522,27 @@ model SchoolStudent {
   @@index([schoolId, status])
   @@index([classroomId])
   @@index([childId])
+}
+
+/// Per-student Short Learning question exposure so a year-group bank can be
+/// reused across pupils, rotated, and never repeated for the same child + subject.
+model StudentQuestionExposure {
+  id          String       @id @default(cuid())
+  studentId   String
+  student     ChildProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolId    String
+  school      School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  subject     String
+  yearGroup   String
+  fingerprint String
+  prompt      String       @default("")
+  contentId   String?
+  bookingId   String?
+  usedAt      DateTime     @default(now())
+
+  @@unique([studentId, subject, yearGroup, fingerprint])
+  @@index([schoolId, subject, yearGroup, fingerprint])
+  @@index([studentId, subject, yearGroup])
 }
 
 model SchoolLicence {
