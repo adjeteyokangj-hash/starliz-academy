@@ -94,7 +94,7 @@ export async function handlePinVerifyForSession(input: {
       action: "parent_pin_unlock_attempted_while_locked",
       entityType: "User",
       entityId: input.sessionUserId,
-    });
+    }).catch(() => undefined);
     return NextResponse.json(
       {
         valid: false,
@@ -106,7 +106,12 @@ export async function handlePinVerifyForSession(input: {
     );
   }
 
-  const valid = await deps.verifyPin(input.pin, user.pinHash);
+  let valid = false;
+  try {
+    valid = await deps.verifyPin(input.pin.trim(), user.pinHash.trim());
+  } catch {
+    valid = false;
+  }
 
   if (!valid) {
     const newCount = (user.parentPinFailedAttempts ?? 0) + 1;
@@ -121,13 +126,13 @@ export async function handlePinVerifyForSession(input: {
     });
 
     if (shouldLock) {
-      await deps.writeAudit({
+      void deps.writeAudit({
         actorUserId: input.sessionUserId,
         action: "parent_pin_temporary_lockout_triggered",
         entityType: "User",
         entityId: input.sessionUserId,
         metadata: { failedAttempts: newCount, lockedUntilMs: lockedUntil?.getTime() },
-      });
+      }).catch(() => undefined);
       return NextResponse.json(
         {
           valid: false,
@@ -139,15 +144,18 @@ export async function handlePinVerifyForSession(input: {
       );
     }
 
-    await deps.writeAudit({
+    void deps.writeAudit({
       actorUserId: input.sessionUserId,
       action: "parent_pin_failed_attempt",
       entityType: "User",
       entityId: input.sessionUserId,
       metadata: { failedAttempts: newCount },
-    });
+    }).catch(() => undefined);
 
-    return NextResponse.json({ valid: false }, { status: 401 });
+    return NextResponse.json(
+      { valid: false, code: "invalid_pin", error: "Incorrect PIN." },
+      { status: 403 },
+    );
   }
 
   // Success — reset failed attempts
@@ -174,11 +182,18 @@ export async function POST(request: Request) {
 
   try {
     const body = schema.parse(await request.json());
-    return handlePinVerifyForSession({
+    return await handlePinVerifyForSession({
       sessionUserId: session.userId,
       pin: body.pin,
     });
-  } catch {
-    return NextResponse.json({ valid: false, error: "Invalid PIN request." }, { status: 400 });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return NextResponse.json({ valid: false, error: "Invalid PIN request." }, { status: 400 });
+    }
+    console.error("[pin/verify]", err);
+    return NextResponse.json(
+      { valid: false, error: "Could not verify PIN. Please try again." },
+      { status: 503 },
+    );
   }
 }

@@ -2,16 +2,12 @@
 
 import Image from "next/image";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
+import { fetchPinRequest, postParentPinVerify } from "@/lib/parent-pin-client";
 import { resolveParentPinGateState } from "@/lib/parent-pin-gate";
 import type { ParentProfilesPayload } from "@/lib/parent-profiles";
-
-const PIN_VERIFY_TIMEOUT_MS = 45000;
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
 
 const featurePills = [
   {
@@ -67,10 +63,15 @@ function ModalShell({
   children: ReactNode;
   onClose: () => void;
 }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4">
-      <div className="w-full max-w-md rounded-3xl border border-cyan-200/20 bg-slate-900 p-6 shadow-2xl">
-        <h2 className="text-2xl font-black text-white">{title}</h2>
+  const modal = (
+    <div className="fixed inset-0 z-200 flex items-center justify-center bg-slate-950/75 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profile-modal-title"
+        className="w-full max-w-md rounded-3xl border border-cyan-200/20 bg-slate-900 p-6 shadow-2xl"
+      >
+        <h2 id="profile-modal-title" className="text-2xl font-black text-white">{title}</h2>
         <p className="mt-2 text-sm text-slate-300">{description}</p>
         <div className="mt-5">{children}</div>
         <button
@@ -83,6 +84,9 @@ function ModalShell({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return modal;
+  return createPortal(modal, document.body);
 }
 
 function FeatureIcon({ icon }: { icon: (typeof featurePills)[number]["icon"] }) {
@@ -161,6 +165,7 @@ export default function ProfileSelectionClient({
   const [pendingProfileId, setPendingProfileId] = useState<string | "parent" | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const childSwitchInFlightRef = useRef(false);
+  const parentUnlockInFlightRef = useRef(false);
 
   useEffect(() => {
     // SSR already provided children — only load PIN status in the background.
@@ -178,9 +183,7 @@ export default function ProfileSelectionClient({
           if (!pinStatusResponse.ok) return;
           const statusPayload = (await pinStatusResponse.json()) as { hasPin: boolean; unlocked: boolean };
           setParentPinStatus(statusPayload);
-          if (!statusPayload.hasPin) {
-            setParentPinSetupRequired(true);
-          }
+          setParentPinSetupRequired(!statusPayload.hasPin);
         } catch {
           // PIN status is optional for showing the child list.
         }
@@ -221,9 +224,7 @@ export default function ProfileSelectionClient({
           const statusPayload = (await pinStatusResponse.json()) as { hasPin: boolean; unlocked: boolean };
           if (!active) return;
           setParentPinStatus(statusPayload);
-          if (!statusPayload.hasPin) {
-            setParentPinSetupRequired(true);
-          }
+          setParentPinSetupRequired(!statusPayload.hasPin);
         } catch {
           // PIN status is optional for showing the child list.
         }
@@ -245,9 +246,26 @@ export default function ProfileSelectionClient({
     router.prefetch("/parent-pin");
   }, [router]);
 
+  const parentGateState = resolveParentPinGateState({
+    hasPin: parentPinStatus?.hasPin ?? null,
+    setupRequiredHint: parentPinSetupRequired,
+  });
+
   function goToParentPinSetup() {
     const next = safeParentNext(nextPath);
-    router.replace(`/parent-pin?reset=1&next=${encodeURIComponent(next)}`);
+    window.location.assign(`/parent-pin?reset=1&next=${encodeURIComponent(next)}`);
+  }
+
+  function openParentProfile() {
+    if (submitting) return;
+    setChildSwitchError(null);
+    if (parentGateState === "setup_required") {
+      goToParentPinSetup();
+      return;
+    }
+    setParentPin("");
+    setParentPinError(null);
+    setShowParentPinModal(true);
   }
 
   const bannerMessage = useMemo(() => {
@@ -260,11 +278,6 @@ export default function ProfileSelectionClient({
     return null;
   }, [intent]);
 
-  const parentGateState = resolveParentPinGateState({
-    hasPin: parentPinStatus?.hasPin ?? null,
-    setupRequiredHint: parentPinSetupRequired,
-  });
-
   async function logout() {
     if (loggingOut) return;
     setLoggingOut(true);
@@ -273,51 +286,44 @@ export default function ProfileSelectionClient({
   }
 
   async function handleParentUnlock() {
+    if (parentUnlockInFlightRef.current || submitting) return;
     if (!/^\d{4}$/.test(parentPin)) {
       setParentPinError("Enter a 4-digit PIN.");
       return;
     }
 
+    parentUnlockInFlightRef.current = true;
     setSubmitting(true);
     setPendingProfileId("parent");
     setParentPinError(null);
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => {
-      controller.abort();
-    }, PIN_VERIFY_TIMEOUT_MS);
 
     try {
-      const response = await fetchWithRefreshRetry("/api/pin/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ pin: parentPin }),
-        signal: controller.signal,
-      });
+      const response = await postParentPinVerify(parentPin);
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string; code?: string } | null;
+        if (response.status === 401) {
+          setParentPinError("Session expired. Please log in again.");
+          window.location.assign("/auth/login");
+          return;
+        }
         if (payload?.code === "pin_setup_required" || response.status === 409) {
           setShowParentPinModal(false);
           setParentPin("");
           setParentPinStatus({ hasPin: false, unlocked: false });
           setParentPinSetupRequired(true);
-          setParentPinError("Parent PIN has been reset. Please create a new PIN.");
+          goToParentPinSetup();
           return;
         }
         setParentPinError(payload?.error ?? "Incorrect PIN.");
         return;
       }
 
-      router.replace(safeParentNext(nextPath));
-    } catch (error: unknown) {
-      if (isAbortError(error)) {
-        setParentPinError("Verification timed out. Please try again.");
-        return;
-      }
-      setParentPinError("Could not verify PIN.");
+      window.location.assign(safeParentNext(nextPath));
+    } catch {
+      setParentPinError("Could not verify PIN. Please try again.");
     } finally {
-      window.clearTimeout(timeoutId);
+      parentUnlockInFlightRef.current = false;
       setSubmitting(false);
       setPendingProfileId(null);
     }
@@ -335,18 +341,14 @@ export default function ProfileSelectionClient({
     setPendingProfileId(childId);
     setChildSwitchError(null);
     setChildPinError(null);
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => {
-      controller.abort();
-    }, PIN_VERIFY_TIMEOUT_MS);
 
     try {
-      const response = await fetchWithRefreshRetry("/api/parent/profiles/verify-child-pin", {
+      const response = await fetchPinRequest("/api/parent/profiles/verify-child-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        cache: "no-store",
         body: JSON.stringify({ childId, pin }),
-        signal: controller.signal,
       });
 
       const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
@@ -365,18 +367,11 @@ export default function ProfileSelectionClient({
       }
 
       router.replace("/student/dashboard");
-    } catch (error: unknown) {
-      if (isAbortError(error)) {
-        const message = "Switching profile timed out. Please try again.";
-        setChildPinError(message);
-        setChildSwitchError(message);
-        return;
-      }
-      const message = "Could not open child profile.";
+    } catch {
+      const message = "Could not open child profile. Please try again.";
       setChildPinError(message);
       setChildSwitchError(message);
     } finally {
-      window.clearTimeout(timeoutId);
       childSwitchInFlightRef.current = false;
       setSubmitting(false);
       setPendingProfileId(null);
@@ -527,49 +522,9 @@ export default function ProfileSelectionClient({
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <button
             type="button"
-            onClick={() => {
-              if (submitting) return;
-              if (parentPinStatus === null) {
-                setPendingProfileId("parent");
-                void (async () => {
-                  try {
-                    const pinStatusResponse = await fetchWithRefreshRetry("/api/pin/status", {
-                      credentials: "include",
-                      cache: "no-store",
-                    });
-                    if (!pinStatusResponse.ok) {
-                      setChildSwitchError("Could not check parent PIN status. Use Create parent PIN above.");
-                      setPendingProfileId(null);
-                      return;
-                    }
-                    const statusPayload = (await pinStatusResponse.json()) as { hasPin: boolean; unlocked: boolean };
-                    setParentPinStatus(statusPayload);
-                    if (!statusPayload.hasPin) {
-                      setParentPinSetupRequired(true);
-                      goToParentPinSetup();
-                      return;
-                    }
-                    setParentPin("");
-                    setParentPinError(null);
-                    setShowParentPinModal(true);
-                  } catch {
-                    setChildSwitchError("Could not check parent PIN status. Please try again.");
-                    setPendingProfileId(null);
-                  }
-                })();
-                return;
-              }
-              if (parentGateState === "setup_required") {
-                goToParentPinSetup();
-                return;
-              }
-              setPendingProfileId("parent");
-              setParentPin("");
-              setParentPinError(null);
-              setShowParentPinModal(true);
-            }}
+            onClick={openParentProfile}
             disabled={submitting}
-            className={`group relative overflow-hidden rounded-[1.6rem] border border-fuchsia-300/45 bg-[linear-gradient(135deg,rgba(88,28,135,0.38),rgba(79,70,229,0.22))] p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-fuchsia-300/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 disabled:cursor-not-allowed disabled:opacity-80 sm:p-6 ${pendingProfileId === "parent" ? "scale-[0.995]" : ""}`}
+            className={`group relative overflow-hidden rounded-[1.6rem] border border-fuchsia-300/45 bg-[linear-gradient(135deg,rgba(88,28,135,0.38),rgba(79,70,229,0.22))] p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-fuchsia-300/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 disabled:cursor-not-allowed disabled:opacity-80 sm:p-6 ${showParentPinModal ? "scale-[0.995]" : ""}`}
             data-testid="profile-card-parent"
           >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_28%,rgba(255,255,255,0.16),transparent_24%),radial-gradient(circle_at_18%_82%,rgba(255,255,255,0.08),transparent_18%)]" />
@@ -590,11 +545,16 @@ export default function ProfileSelectionClient({
                   <p className="mt-3 text-sm font-semibold text-fuchsia-200">
                     {parentGateState === "setup_required"
                       ? "Tap to create a new parent PIN"
-                      : pendingProfileId === "parent"
-                        ? "Opening..."
+                      : showParentPinModal
+                        ? "Enter parent PIN"
                         : "PIN required to access"}
                   </p>
                 </div>
+              </div>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-fuchsia-300/45 bg-fuchsia-400/10 text-fuchsia-100 transition group-hover:border-fuchsia-200 group-hover:text-white">
+                <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+                  <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </div>
             </div>
           </button>
@@ -671,7 +631,7 @@ export default function ProfileSelectionClient({
         </p>
       </section>
 
-      {showParentPinModal && parentGateState === "pin_required" ? (
+      {showParentPinModal ? (
         <ModalShell
           title="Parent PIN"
           description="Enter your 4-digit parent PIN to open the parent dashboard."
@@ -684,9 +644,19 @@ export default function ProfileSelectionClient({
           <input
             type="password"
             inputMode="numeric"
+            autoComplete="one-time-code"
+            name="parent-pin"
+            autoFocus
             maxLength={4}
+            disabled={submitting}
             value={parentPin}
             onChange={(event) => setParentPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                if (!submitting) void handleParentUnlock();
+              }
+            }}
             className="w-full rounded-xl border border-white/20 bg-slate-950 px-4 py-3 text-center text-2xl tracking-[0.45em] text-white"
             placeholder="0000"
             data-testid="parent-pin-input"
@@ -718,6 +688,7 @@ export default function ProfileSelectionClient({
             type="password"
             inputMode="numeric"
             maxLength={4}
+            disabled={submitting}
             value={childPin}
             onChange={(event) => setChildPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
             className="w-full rounded-xl border border-white/20 bg-slate-950 px-4 py-3 text-center text-2xl tracking-[0.45em] text-white"

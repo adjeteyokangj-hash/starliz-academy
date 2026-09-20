@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
+import { fetchWithRefreshRetry } from "@/lib/refresh_client";
+import { postParentPinVerify } from "@/lib/parent-pin-client";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "back", "0", "submit"];
 
@@ -26,34 +28,45 @@ export default function ParentPinPage() {
   const [lockCountdown, setLockCountdown] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusReloadKey, setStatusReloadKey] = useState(0);
   const justReset = searchParams.get("reset") === "1";
+  const verifyInFlightRef = useRef(false);
 
   useEffect(() => {
-    const loadStatus = async () => {
+    let cancelled = false;
+
+    async function loadStatus() {
       try {
-        const response = await fetch("/api/pin/status", { credentials: "include" });
+        const response = await fetchWithRefreshRetry("/api/pin/status", { credentials: "include" });
+        if (cancelled) return;
         if (response.status === 401) {
           router.replace("/auth/login");
           return;
         }
         if (!response.ok) {
-          setHasPin(true);
-          setError("Could not verify PIN status. Enter PIN to continue.");
+          setStatusError("Could not verify PIN status. Please try again.");
           return;
         }
         const payload = await response.json() as { hasPin: boolean; unlocked: boolean };
+        if (cancelled) return;
         if (payload.unlocked) {
-          router.replace(safeParentNext(searchParams.get("next")));
+          window.location.assign(safeParentNext(searchParams.get("next")));
           return;
         }
         setHasPin(payload.hasPin);
       } catch {
-        setHasPin(true);
-        setError("Could not verify PIN status. Enter PIN to continue.");
+        if (!cancelled) {
+          setStatusError("Could not verify PIN status. Please try again.");
+        }
       }
-    };
+    }
+
     void loadStatus();
-  }, [router, searchParams]);
+    return () => {
+      cancelled = true;
+    };
+  }, [router, searchParams, statusReloadKey]);
 
   // Countdown timer for lockout
   useEffect(() => {
@@ -81,37 +94,29 @@ export default function ParentPinPage() {
 
   const verifyPin = useCallback(async () => {
     if (pin.length !== 4) return;
-    if (isLocked) return;
+    if (isLocked || loading || verifyInFlightRef.current) return;
 
+    verifyInFlightRef.current = true;
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/pin/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ pin }),
-      });
-
-      if (response.status === 401) {
-        const payload = await response.json().catch(() => null) as { error?: string } | null;
-        if (payload?.error === "Unauthorized") {
-          router.replace("/auth/login");
-          return;
-        }
-      }
-
-      if (response.ok) {
-        router.replace(safeParentNext(searchParams.get("next")));
-        return;
-      }
-
+      const response = await postParentPinVerify(pin);
       const payload = await response.json().catch(() => null) as {
         locked?: boolean;
         retryAfterSeconds?: number;
         error?: string;
         code?: string;
       } | null;
+
+      if (response.status === 401) {
+        router.replace("/auth/login");
+        return;
+      }
+
+      if (response.ok) {
+        window.location.assign(safeParentNext(searchParams.get("next")));
+        return;
+      }
 
       if (payload?.code === "pin_setup_required" || response.status === 409) {
         setHasPin(false);
@@ -126,15 +131,16 @@ export default function ParentPinPage() {
         setLockCountdown(seconds);
         setError("Too many incorrect attempts. Please wait before trying again.");
       } else {
-        setError("Incorrect PIN. Try again.");
+        setError(payload?.error ?? "Incorrect PIN. Try again.");
       }
       setPin("");
     } catch {
       setError("Could not verify PIN.");
     } finally {
+      verifyInFlightRef.current = false;
       setLoading(false);
     }
-  }, [isLocked, pin, router, searchParams]);
+  }, [isLocked, loading, pin, router, searchParams]);
 
   useEffect(() => {
     if (!hasPin) return;
@@ -172,7 +178,7 @@ export default function ParentPinPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/pin/set", {
+      const response = await fetchWithRefreshRetry("/api/pin/set", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -184,13 +190,7 @@ export default function ParentPinPage() {
       });
       const payload = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) { setError(payload?.error ?? "Could not set PIN."); return; }
-      setHasPin(true);
-      setSetPinDraft("");
-      setSetPinConfirm("");
-      setCurrentPinDraft("");
-      setNewPinDraft("");
-      setNewPinConfirm("");
-      setError(null);
+      window.location.assign(safeParentNext(searchParams.get("next")));
     } catch {
       setError("Could not set PIN.");
     } finally {
@@ -201,7 +201,21 @@ export default function ParentPinPage() {
   if (hasPin === null) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
-        <p className="text-sm text-slate-600">Loading parent access...</p>
+        <div className="w-full max-w-md space-y-3 rounded-3xl bg-white/90 p-6 text-center shadow-xl ring-1 ring-slate-200">
+          <p className="text-sm text-slate-600">{statusError ?? "Loading parent access..."}</p>
+          {statusError ? (
+            <Button
+              className="w-full"
+              onClick={() => {
+                setStatusError(null);
+                setHasPin(null);
+                setStatusReloadKey((key) => key + 1);
+              }}
+            >
+              Retry
+            </Button>
+          ) : null}
+        </div>
       </main>
     );
   }
@@ -226,6 +240,8 @@ export default function ParentPinPage() {
             <input
               type="password"
               inputMode="numeric"
+              autoComplete="new-password"
+              name="parent-pin-new"
               maxLength={4}
               value={setPinDraft}
               onChange={(e) => setSetPinDraft(e.target.value.replace(/\D/g, "").slice(0, 4))}
@@ -235,6 +251,8 @@ export default function ParentPinPage() {
             <input
               type="password"
               inputMode="numeric"
+              autoComplete="new-password"
+              name="parent-pin-confirm"
               maxLength={4}
               value={setPinConfirm}
               onChange={(e) => setSetPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 4))}

@@ -29,7 +29,12 @@ export default async function ParentProfilesPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const intent = typeof params.intent === "string" ? params.intent : null;
   const nextPath = typeof params.next === "string" ? params.next : null;
-  const initialPayload = await loadParentProfilesPayload(session);
+  let initialPayload = null;
+  try {
+    initialPayload = await loadParentProfilesPayload(session);
+  } catch (error) {
+    console.error("[parent/profiles] failed to load profiles", error);
+  }
 
   return (
     <Suspense fallback={<ParentProfilesLoading />}>

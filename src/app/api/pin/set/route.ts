@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { hashPassword, verifyPassword } from "@/lib/auth";
+import {
+  createParentUnlockToken,
+  getParentUnlockCookieName,
+  getParentUnlockMaxAgeSeconds,
+  hashPassword,
+  verifyPassword,
+} from "@/lib/auth";
 import { requireSession } from "@/lib/api_guard";
 import { decideParentPinSetRequest, isWeakParentPin, type ParentPinSetBody } from "@/lib/parent-pin";
 
@@ -19,6 +25,7 @@ export async function handlePinSetForSession(input: {
     updateUserPin: (userId: string, pinHash: string) => Promise<void>;
     verifyCurrentPin: (plain: string, hash: string) => Promise<boolean>;
     hashPin: (plain: string) => Promise<string>;
+    createUnlockToken?: (userId: string) => Promise<string>;
   };
 }): Promise<NextResponse> {
   const deps = input.deps ?? {
@@ -26,11 +33,17 @@ export async function handlePinSetForSession(input: {
     updateUserPin: async (userId: string, pinHash: string) => {
       await prisma.user.update({
         where: { id: userId },
-        data: { pinHash, parentPinUpdatedAt: new Date() },
+        data: {
+          pinHash,
+          parentPinUpdatedAt: new Date(),
+          parentPinFailedAttempts: 0,
+          parentPinLockedUntil: null,
+        },
       });
     },
     verifyCurrentPin: verifyPassword,
     hashPin: hashPassword,
+    createUnlockToken: createParentUnlockToken,
   };
 
   const user = await deps.findUser(input.sessionUserId);
@@ -66,7 +79,22 @@ export async function handlePinSetForSession(input: {
   const pinHash = await deps.hashPin(decision.nextPin);
   await deps.updateUserPin(input.sessionUserId, pinHash);
 
-  return NextResponse.json({ ok: true, mode: decision.mode });
+  const reply = NextResponse.json({ ok: true, mode: decision.mode });
+  try {
+    if (deps.createUnlockToken) {
+      const token = await deps.createUnlockToken(input.sessionUserId);
+      reply.cookies.set(getParentUnlockCookieName(), token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: getParentUnlockMaxAgeSeconds(),
+      });
+    }
+  } catch {
+    // PIN is stored even if the unlock cookie cannot be issued.
+  }
+  return reply;
 }
 
 export async function POST(request: Request) {

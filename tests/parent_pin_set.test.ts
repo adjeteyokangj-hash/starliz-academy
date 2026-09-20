@@ -6,6 +6,7 @@ import { handlePinStatusForSession } from "../src/lib/pin-status-api";
 import { handlePinVerifyForSession } from "../src/app/api/pin/verify/route";
 import { resolveParentPinGateState } from "../src/lib/parent-pin-gate";
 import { decideParentPinSetRequest, isWeakParentPin } from "../src/lib/parent-pin";
+import { shouldRefreshAfter401 } from "../src/lib/refresh_client";
 
 test("first-time parent PIN setup succeeds", async () => {
   let updatedHash = "";
@@ -173,10 +174,42 @@ test("/api/pin/verify returns setup-required when no PIN exists", async () => {
   assert.match(payload.error ?? "", /create a new PIN/i);
 });
 
+test("incorrect parent PIN is not treated as a session 401", async () => {
+  const response = await handlePinVerifyForSession({
+    sessionUserId: "parent-verify-wrong",
+    pin: "2580",
+    deps: {
+      findUser: async () => ({
+        id: "parent-verify-wrong",
+        pinHash: "stored-hash",
+        parentPinFailedAttempts: 0,
+        parentPinLockedUntil: null,
+      }),
+      verifyPin: async () => false,
+      updateUser: async () => undefined,
+      writeAudit: async () => undefined,
+      createUnlockToken: async () => "unused",
+    },
+  });
+
+  const payload = (await response.json()) as { code?: string; error?: string; valid?: boolean };
+  assert.equal(response.status, 403);
+  assert.equal(payload.valid, false);
+  assert.equal(payload.code, "invalid_pin");
+  assert.match(payload.error ?? "", /incorrect pin/i);
+});
+
 test("parent profile gate resolves to create-PIN state when hasPin is false", () => {
   const state = resolveParentPinGateState({ hasPin: false });
   assert.equal(state, "setup_required");
 
   const staleCookieState = resolveParentPinGateState({ hasPin: false, setupRequiredHint: true });
   assert.equal(staleCookieState, "setup_required");
+});
+
+test("wrong PIN 401 payloads do not trigger a session refresh retry", () => {
+  assert.equal(shouldRefreshAfter401({ valid: false }), false);
+  assert.equal(shouldRefreshAfter401({ valid: false, code: "invalid_pin", error: "Incorrect PIN." }), false);
+  assert.equal(shouldRefreshAfter401({ error: "Incorrect PIN." }), false);
+  assert.equal(shouldRefreshAfter401({ error: "Unauthorized" }), true);
 });
