@@ -22,12 +22,19 @@ type ChildFormData = {
 
 type FieldErrors = Partial<Record<keyof ChildFormData, string>>;
 
+export type ChildAccountCreatedResult = {
+  credentials: { username: string; password: string };
+  childName: string;
+};
+
 type ChildManagementFormProps = {
   mode: 'add' | 'edit';
   initialData?: ChildFormData & { id: string; selectedSubjects?: string[] };
-  onSuccess: () => void;
+  onSuccess: (result?: ChildAccountCreatedResult) => void;
   onCancel: () => void;
 };
+
+type LoginMode = 'generated' | 'manual';
 
 type SubjectPolicy = {
   minSubjects: number;
@@ -136,6 +143,9 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [loginMode, setLoginMode] = useState<LoginMode>('generated');
+  const [manualUsername, setManualUsername] = useState('');
+  const [manualPassword, setManualPassword] = useState('');
   const [subjectPolicy, setSubjectPolicy] = useState<SubjectPolicy>({
     minSubjects: 2,
     maxSubjects: 4,
@@ -204,6 +214,17 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
       return;
     }
 
+    if (mode === 'add' && loginMode === 'manual') {
+      if (!manualUsername.trim()) {
+        setError('Enter a username for the child login.');
+        return;
+      }
+      if (manualPassword.length < 8) {
+        setError('Password must be at least 8 characters.');
+        return;
+      }
+    }
+
     setSaving(true);
     setError(null);
     setFieldErrors({});
@@ -216,27 +237,89 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
         .filter(Boolean)
         .slice(0, 8);
       const supportNeeds = formData.supportNeeds.trim();
-      const payload = {
+      const profilePayload = {
         name: formData.name.trim(),
         avatar: formData.avatar,
         ageYears,
-        ageRange: getAgeRange(ageYears),
         yearGroup: formData.yearGroup.trim(),
-        schoolYear: formData.schoolYear.trim(),
         dateOfBirth: formData.dateOfBirth || undefined,
         keyStageLevel: formData.keyStageLevel.trim(),
-        subjectLevel: formData.subjectLevel.trim(),
         selectedSubjects: formData.selectedSubjects,
         learningGoals: learningGoals.length ? learningGoals : undefined,
         senSupportNeeds: supportNeeds || undefined,
         startLevelChoice: formData.startLevelChoice,
       };
 
-      const url = mode === 'add' ? '/api/children' : `/api/children/${initialData?.id}`;
-      const method = mode === 'add' ? 'POST' : 'PUT';
+      if (mode === 'add') {
+        const accountBody =
+          loginMode === 'generated'
+            ? { mode: 'generated' as const, profile: profilePayload }
+            : {
+                mode: 'manual' as const,
+                profile: profilePayload,
+                username: manualUsername.trim(),
+                password: manualPassword,
+              };
 
-      const response = await fetch(url, {
-        method,
+        const response = await fetch('/api/parent/children/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(accountBody),
+        });
+
+        const data = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          fieldErrors?: Record<string, string[]>;
+          credentials?: { username: string; password: string };
+          child?: { name?: string };
+        };
+
+        if (!response.ok) {
+          if (data.fieldErrors?.username?.[0]) {
+            setError(data.fieldErrors.username[0]);
+          } else if (data.fieldErrors?.password?.[0]) {
+            setError(data.fieldErrors.password[0]);
+          } else {
+            setError(data.error || 'Failed to create child login account');
+          }
+          if (data.fieldErrors) {
+            const nextFieldErrors: FieldErrors = {};
+            for (const [key, messages] of Object.entries(data.fieldErrors)) {
+              if (!messages?.length) continue;
+              if (key in formData) {
+                nextFieldErrors[key as keyof ChildFormData] = messages[0];
+              }
+            }
+            setFieldErrors(nextFieldErrors);
+          }
+          return;
+        }
+
+        if (!data.credentials?.username || !data.credentials?.password) {
+          setError('Child account was created but credentials were not returned. Contact support.');
+          return;
+        }
+
+        onSuccess({
+          credentials: {
+            username: data.credentials.username,
+            password: data.credentials.password,
+          },
+          childName: data.child?.name ?? profilePayload.name,
+        });
+        return;
+      }
+
+      const payload = {
+        ...profilePayload,
+        ageRange: getAgeRange(ageYears),
+        schoolYear: formData.schoolYear.trim(),
+        subjectLevel: formData.subjectLevel.trim(),
+      };
+
+      const response = await fetch(`/api/children/${initialData?.id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(payload),
@@ -259,11 +342,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           setFieldErrors(nextFieldErrors);
         }
 
-        if (process.env.NODE_ENV !== 'production') {
-          console.info('[children.form] validation response', data);
-        }
-
-        throw new Error(data.error || `Failed to ${mode} child`);
+        throw new Error(data.error || 'Failed to update child');
       }
 
       onSuccess();
@@ -524,9 +603,81 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
         />
       </div>
 
+      {mode === 'add' ? (
+        <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-4">
+          <div>
+            <p className="text-sm font-semibold text-slate-200">Child login</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Create a username and password the child can use at login. Generated passwords are shown once after creation.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Login creation mode">
+            <button
+              type="button"
+              onClick={() => setLoginMode('generated')}
+              className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                loginMode === 'generated'
+                  ? 'bg-cyan-500 text-slate-950'
+                  : 'border border-white/15 bg-slate-900 text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              Generate login
+            </button>
+            <button
+              type="button"
+              onClick={() => setLoginMode('manual')}
+              className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                loginMode === 'manual'
+                  ? 'bg-cyan-500 text-slate-950'
+                  : 'border border-white/15 bg-slate-900 text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              Manual login
+            </button>
+          </div>
+          {loginMode === 'generated' ? (
+            <p className="text-xs text-slate-400">
+              We will create a child-friendly username from their name and a secure password. Save them when they appear —
+              the password cannot be shown again later.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="child-login-username" className="block text-sm font-semibold text-slate-300 mb-2">
+                  Username *
+                </label>
+                <input
+                  id="child-login-username"
+                  type="text"
+                  autoComplete="off"
+                  value={manualUsername}
+                  onChange={(e) => setManualUsername(e.target.value)}
+                  placeholder="e.g. alex.kid"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="child-login-password" className="block text-sm font-semibold text-slate-300 mb-2">
+                  Password *
+                </label>
+                <input
+                  id="child-login-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={manualPassword}
+                  onChange={(e) => setManualPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-3 pt-4 sm:flex-row">
         <Button type="submit" disabled={saving || Boolean(submitDisabledReason)} aria-describedby={submitDisabledReason ? 'child-form-submit-help' : undefined}>
-          {saving ? 'Saving...' : mode === 'add' ? 'Add child' : 'Save changes'}
+          {saving ? 'Saving...' : mode === 'add' ? 'Create child login' : 'Save changes'}
         </Button>
         <Button
           type="button"

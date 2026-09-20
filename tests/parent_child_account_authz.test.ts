@@ -1,0 +1,33 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+function read(relativePath: string): string {
+  return readFileSync(resolve(process.cwd(), relativePath), "utf8");
+}
+
+test("accounts route rejects non-parent roles in handler source", () => {
+  const route = read("src/app/api/parent/children/accounts/route.ts");
+  assert.match(route, /Only parent accounts can create child login accounts/);
+  assert.match(route, /status:\s*403/);
+  assert.match(route, /parentScope\.parentId !== session\.userId/);
+});
+
+test("create helper never accepts caller-supplied role email domain or passwordHash", () => {
+  const lib = read("src/lib/child-account-create.ts");
+  assert.match(lib, /role:\s*"student"/);
+  assert.match(lib, /buildChildSyntheticEmail/);
+  assert.match(lib, /hashPassword/);
+  assert.match(lib, /prisma\.\$transaction/);
+
+  const inputType = lib.match(
+    /export type CreateChildAccountInput = \{([\s\S]*?)\};/,
+  )?.[1];
+  assert.ok(inputType, "CreateChildAccountInput type missing");
+  assert.match(inputType, /parentId:/);
+  assert.match(inputType, /password\?:/);
+  assert.doesNotMatch(inputType, /\brole\b/);
+  assert.doesNotMatch(inputType, /passwordHash/);
+  assert.doesNotMatch(inputType, /\bemail\b/);
+});

@@ -5,7 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
-import ChildManagementForm from "./ChildManagementForm";
+import ChildManagementForm, { type ChildAccountCreatedResult } from "./ChildManagementForm";
+import ChildLoginCredentialsReveal, { type OneTimeChildCredentials } from "./ChildLoginCredentialsReveal";
 import BillingCard from "./BillingCard";
 import SecuritySettings from "./SecuritySettings";
 import ConsentAuditView from "./ConsentAuditView";
@@ -536,6 +537,10 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [showChildForm, setShowChildForm] = useState(false);
   const [editingChildId, setEditingChildId] = useState<string | null>(null);
   const [childFormMessage, setChildFormMessage] = useState<string | null>(null);
+  const [createdLoginReveal, setCreatedLoginReveal] = useState<{
+    childName: string;
+    credentials: OneTimeChildCredentials;
+  } | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [accountNameDraft, setAccountNameDraft] = useState("");
   const [accountContactDraft, setAccountContactDraft] = useState({
@@ -1955,7 +1960,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           {activeSection === "children" ? (
             <div className="space-y-6">
               {formVisible ? (
-                <Panel title={effectiveEditingChildId ? "Edit child" : "Add new child"} description={effectiveEditingChildId ? "Update child details" : "Create a new child profile"}>
+                <Panel title={effectiveEditingChildId ? "Edit child" : "Add new child"} description={effectiveEditingChildId ? "Update child details" : "Create a child profile with a login username and password"}>
                   <ChildManagementForm
                     mode={effectiveEditingChildId ? "edit" : "add"}
                     initialData={effectiveEditingChildId ? (() => {
@@ -1976,11 +1981,20 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         avatar: child.avatar || 'star',
                       } : undefined;
                     })() : undefined}
-                    onSuccess={() => {
+                    onSuccess={(result?: ChildAccountCreatedResult) => {
                       const wasEditing = effectiveEditingChildId !== null;
                       setShowChildForm(false);
                       setEditingChildId(null);
-                      setChildFormMessage(wasEditing ? "Child profile updated." : "Child profile added successfully.");
+                      if (!wasEditing && result?.credentials) {
+                        setCreatedLoginReveal({
+                          childName: result.childName,
+                          credentials: result.credentials,
+                        });
+                        setChildFormMessage("Child login created. Save the username and password shown below — the password cannot be shown again.");
+                      } else {
+                        setCreatedLoginReveal(null);
+                        setChildFormMessage(wasEditing ? "Child profile updated." : "Child profile added successfully.");
+                      }
                       if (modeAdd) {
                         router.replace("/parent/children");
                       }
@@ -2013,6 +2027,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       {childFormMessage}
                     </p>
                   ) : null}
+                  {createdLoginReveal ? (
+                    <div className="mb-4">
+                      <ChildLoginCredentialsReveal
+                        childName={createdLoginReveal.childName}
+                        credentials={createdLoginReveal.credentials}
+                        onDismiss={() => setCreatedLoginReveal(null)}
+                      />
+                    </div>
+                  ) : null}
                   <div className="space-y-4">
                     <ChildPicker
                       profiles={children?.children ?? []}
@@ -2026,6 +2049,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     <Button
                       onClick={() => {
                         setChildFormMessage(null);
+                        setCreatedLoginReveal(null);
                         setEditingChildId(null);
                         setShowChildForm(true);
                       }}

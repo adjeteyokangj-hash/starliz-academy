@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -603,6 +604,15 @@ export default function ProfileSelectionClient({
               </div>
             </button>
           ))}
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <Link
+            href="/parent/children?mode=add"
+            className="rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/20"
+          >
+            Create child login
+          </Link>
         </div>
 
         <div className="mt-6 rounded-[1.8rem] border border-white/10 bg-[linear-gradient(135deg,rgba(76,29,149,0.3),rgba(15,23,42,0.72))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:p-6">
