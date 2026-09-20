@@ -121,6 +121,7 @@ enum GaStudentRecordingReviewStatus {
 model User {
   id                      String    @id @default(cuid())
   email                   String    @unique
+  username                String?   @unique
   passwordHash            String
   name                    String?
   role                    String    @default("parent")
@@ -136,7 +137,10 @@ model User {
   passwordResetToken      String?
   passwordResetExpires    DateTime?
 
-  children                          ChildProfile[]
+  // Parent ownership: profiles this parent owns (ChildProfile.parentId).
+  children                          ChildProfile[]                   @relation("ChildProfileParent")
+  // Child identity: profile represented by this student User (ChildProfile.userId).
+  studentChildProfile               ChildProfile?                    @relation("ChildProfileAccount")
   adminProfile                      AdminUser?
   auditLogs                         AuditLog[]
   subscriptions                     Subscription[]
@@ -212,7 +216,11 @@ model ParentPinResetToken {
 model ChildProfile {
   id       String @id
   parentId String
-  parent   User   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  parent   User   @relation("ChildProfileParent", fields: [parentId], references: [id], onDelete: Cascade)
+
+  // Optional link to the child's own login User (role=student). Nullable during rollout.
+  userId  String? @unique
+  account User?   @relation("ChildProfileAccount", fields: [userId], references: [id], onDelete: SetNull)
 
   name      String
   avatar    String?
