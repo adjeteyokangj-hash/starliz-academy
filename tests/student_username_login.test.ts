@@ -84,13 +84,13 @@ test("password hashing still verifies with existing bcrypt helpers", async () =>
   assert.equal(await verifyPassword("wrong", hash), false);
 });
 
-test("student login lands on /student/dashboard; parent landing unchanged", () => {
+test("student login lands on /student/dashboard; parent lands on Parent Portal", () => {
   assert.deepEqual(
     resolveStaffLandingFromMembership({ userRole: "student", membership: null }),
     { kind: "student", path: "/student/dashboard" },
   );
   assert.deepEqual(
     resolveStaffLandingFromMembership({ userRole: "parent", membership: null }),
-    { kind: "parent", path: "/parent/profiles" },
+    { kind: "parent", path: "/parent/dashboard" },
   );
 });

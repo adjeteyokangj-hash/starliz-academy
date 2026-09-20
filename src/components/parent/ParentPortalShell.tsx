@@ -564,29 +564,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     let cancelled = false;
 
     async function load() {
-      const pinStatusResponse = await fetchWithRefreshRetry("/api/pin/status", {
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (cancelled) return;
-      if (pinStatusResponse.status === 401) {
-        router.replace("/auth/login");
-        return;
-      }
-      if (pinStatusResponse.ok) {
-        const pinStatus = (await pinStatusResponse.json()) as { hasPin?: boolean; unlocked?: boolean };
-        if (!pinStatus.hasPin) {
-          const next = pathname ?? `/parent/${section}`;
-          router.replace(`/parent-pin?reset=1&next=${encodeURIComponent(next)}`);
-          return;
-        }
-        if (!pinStatus.unlocked) {
-          const next = pathname ?? `/parent/${section}`;
-          router.replace(`/parent/profiles?intent=parent&next=${encodeURIComponent(next)}`);
-          return;
-        }
-      }
-
       setLoading(true);
       const [accountRes, childrenRes, subscriptionRes, consentRes] = await Promise.all([
         fetchWithRefreshRetry("/api/account", { credentials: "include" }),
@@ -596,6 +573,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       ]);
 
       if (cancelled) return;
+
+      if (accountRes.status === 401) {
+        router.replace("/auth/login");
+        return;
+      }
 
       if (accountRes.ok) {
         const payload = (await accountRes.json()) as AccountPayload;

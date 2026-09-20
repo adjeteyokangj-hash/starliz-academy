@@ -46,7 +46,7 @@ export function buildAdminLoginUrl(pathname: string, search = "", reason?: "swit
  */
 export function nonPlatformAdminFallbackPath(role: string | null | undefined): string {
   if (role === "teacher") return SCHOOL_ADMIN_HOME;
-  if (role === "parent") return "/parent/profiles";
+  if (role === "parent") return "/parent/dashboard";
   if (role === "student") return "/student/dashboard";
   return "/";
 }

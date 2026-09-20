@@ -15,7 +15,7 @@ export default async function ShortLearningStagePage({ params }: Params) {
   const childId = resolved.ok ? resolved.childId : null;
   if (!childId) {
     if (session.role === "student") redirect("/student/dashboard");
-    redirect("/parent/profiles?intent=child&next=/student/short-learning");
+    redirect("/parent/dashboard");
   }
 
   const { bookingId, blockId } = await params;

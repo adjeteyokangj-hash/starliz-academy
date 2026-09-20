@@ -27,7 +27,7 @@ export default async function StudentShortLearningListPage() {
     if (session.role === "student") {
       redirect("/student/dashboard");
     }
-    redirect("/parent/profiles?intent=child&next=/student/short-learning");
+    redirect("/parent/dashboard");
 
   }
 

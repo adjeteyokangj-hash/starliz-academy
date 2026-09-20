@@ -43,7 +43,7 @@ export function resolveStaffLandingFromMembership(input: {
     return { kind: "student", path: "/student/dashboard" };
   }
   if (input.userRole === "parent") {
-    return { kind: "parent", path: "/parent/profiles" };
+    return { kind: "parent", path: "/parent/dashboard" };
   }
 
   const membership = input.membership;
@@ -51,7 +51,7 @@ export function resolveStaffLandingFromMembership(input: {
     if (input.userRole === "teacher") {
       return { kind: "teacher", path: TEACHER_HOME, schoolId: "", schoolRole: "teacher" };
     }
-    return { kind: "parent", path: "/parent/profiles" };
+    return { kind: "parent", path: "/parent/dashboard" };
   }
 
   const preferTeaching = input.portalMode === "teaching";

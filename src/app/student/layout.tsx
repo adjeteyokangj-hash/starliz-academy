@@ -7,7 +7,7 @@ export default function StudentLayout({
 }) {
   return (
     <>
-      <SessionKeepAlive loginPath="/auth/login" refreshPin />
+      <SessionKeepAlive loginPath="/auth/login" />
       {children}
     </>
   );

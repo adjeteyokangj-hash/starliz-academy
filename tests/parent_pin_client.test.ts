@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { fetchWithRefreshRetry } from "../src/lib/refresh_client";
-import { postParentPinVerify } from "../src/lib/parent-pin-client";
 
 test("fetchWithRefreshRetry still retries after 401 if abort fires during refresh", async () => {
   const originalFetch = globalThis.fetch;
@@ -16,54 +15,53 @@ test("fetchWithRefreshRetry still retries after 401 if abort fires during refres
       controller.abort();
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
-    if (calls.filter((item) => item.includes("/api/pin/verify")).length === 1) {
+    if (calls.filter((item) => item.includes("/api/account")).length === 1) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "content-type": "application/json" },
       });
     }
-    return new Response(JSON.stringify({ valid: true }), {
+    return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
   }) as typeof fetch;
 
   try {
-    const response = await fetchWithRefreshRetry("/api/pin/verify", {
-      method: "POST",
+    const response = await fetchWithRefreshRetry("/api/account", {
+      method: "GET",
       signal: controller.signal,
-      body: JSON.stringify({ pin: "1234" }),
     });
     assert.equal(response.status, 200);
-    assert.equal(calls.filter((item) => item.includes("/api/pin/verify")).length, 2);
+    assert.equal(calls.filter((item) => item.includes("/api/account")).length, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("postParentPinVerify retries once after a dropped network request", async () => {
+test("invalid_pin and pin_setup_required responses do not trigger session refresh retry", async () => {
   const originalFetch = globalThis.fetch;
-  let verifyCalls = 0;
+  let accountCalls = 0;
+  let refreshCalls = 0;
 
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/api/auth/refresh")) {
+      refreshCalls += 1;
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
-    verifyCalls += 1;
-    if (verifyCalls === 1) {
-      throw new TypeError("Failed to fetch");
-    }
-    return new Response(JSON.stringify({ valid: true }), {
-      status: 200,
+    accountCalls += 1;
+    return new Response(JSON.stringify({ error: "Incorrect PIN.", code: "invalid_pin" }), {
+      status: 401,
       headers: { "content-type": "application/json" },
     });
   }) as typeof fetch;
 
   try {
-    const response = await postParentPinVerify("1234");
-    assert.equal(response.status, 200);
-    assert.equal(verifyCalls, 2);
+    const response = await fetchWithRefreshRetry("/api/account", { method: "GET" });
+    assert.equal(response.status, 401);
+    assert.equal(accountCalls, 1);
+    assert.equal(refreshCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

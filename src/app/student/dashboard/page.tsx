@@ -1318,6 +1318,14 @@ export default function StudentDashboardPage() {
     }));
   }, [loading, router, supportSkill, weakAccuracy, weakAssignment, weakSkill]);
 
+  const showDaySchoolCard = Boolean(
+    schoolEnrolment
+    && schoolDaySnapshot
+    && schoolDaySnapshot.lessonsToday > 0
+    && schoolDaySnapshot.phase !== "after_school"
+    && schoolDaySnapshot.phase !== "no_timetable",
+  );
+
   return (
     <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
       <Navbar />
@@ -1378,7 +1386,7 @@ export default function StudentDashboardPage() {
             </p>
             <button
               type="button"
-              onClick={() => router.push("/parent/profiles?intent=child")}
+              onClick={() => router.push("/parent/dashboard")}
               className="mt-4 rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-500"
             >
               Go to Profile Selection
@@ -1411,7 +1419,7 @@ export default function StudentDashboardPage() {
               </div>
             ) : null}
 
-            {schoolEnrolment ? (
+            {schoolEnrolment && showDaySchoolCard ? (
               <section className="mb-6 overflow-hidden rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-5 shadow-sm">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-700">
                   Day School · {schoolEnrolment.schoolName}

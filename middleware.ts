@@ -88,17 +88,6 @@ async function getSessionPayload(request: NextRequest): Promise<DecodedSession |
   }
 }
 
-async function hasParentUnlock(request: NextRequest): Promise<boolean> {
-  const token = request.cookies.get(PARENT_UNLOCK_COOKIE)?.value;
-  if (!token) return false;
-  try {
-    const { payload } = await jwtVerify(token, getSecret());
-    return String(payload.scope ?? "") === "parent-unlock";
-  } catch {
-    return false;
-  }
-}
-
 async function hasChildSelection(request: NextRequest, expectedUserId: string): Promise<boolean> {
   const token = request.cookies.get(CHILD_SELECTION_COOKIE)?.value;
   if (!token) return false;
@@ -167,13 +156,15 @@ export async function middleware(request: NextRequest) {
     && (isDocumentNavigation || isSoftNavigation);
   const adminLoginTarget = request.nextUrl.searchParams.get("next")?.startsWith("/admin") ?? false;
   const shouldClearParentUnlock = Boolean(
-    authenticated
-      && session?.role === "parent"
-      && request.cookies.get(PARENT_UNLOCK_COOKIE)?.value
-      // Keep unlock while parent browses child/student views so Parent Area can return
-      // without a fresh PIN. Still clear on profile re-selection and non-parent destinations
-      // that are not student/dashboard child-view surfaces.
-      && pathname.startsWith("/parent/profiles")
+    request.cookies.get(PARENT_UNLOCK_COOKIE)?.value
+    && (
+      // Always clear legacy unlock cookie once observed — Parent PIN is retired.
+      !authenticated
+      || session?.role === "parent"
+      || pathname.startsWith("/auth/login")
+      || pathname.startsWith("/login")
+      || pathname.startsWith("/parent-pin")
+    ),
   );
 
   const finalize = (response: NextResponse): NextResponse => {
@@ -222,7 +213,7 @@ export async function middleware(request: NextRequest) {
       // School owners land on /school-admin; classroom-only teachers are bounced to /teacher by that layout.
       return finalize(NextResponse.redirect(new URL("/school-admin", request.url)));
     }
-    return finalize(NextResponse.redirect(new URL("/parent/profiles", request.url)));
+    return finalize(NextResponse.redirect(new URL("/parent/dashboard", request.url)));
   }
 
   const launchScopeRedirect = resolveLaunchScopeRedirect({
@@ -283,15 +274,23 @@ export async function middleware(request: NextRequest) {
 
   if (authenticated && pathname.startsWith("/school-admin") && session.role !== "teacher" && session.role !== "admin") {
     const fallback =
-      session.role === "parent" ? "/parent/profiles"
+      session.role === "parent" ? "/parent/dashboard"
       : session.role === "student" ? "/student/dashboard"
       : "/";
     return finalize(NextResponse.redirect(new URL(fallback, request.url)));
   }
 
+  // Parent PIN pages are retired — send authenticated parents to the portal.
+  if (authenticated && pathname.startsWith("/parent-pin")) {
+    if (session.role === "parent") {
+      return finalize(NextResponse.redirect(new URL("/parent/dashboard", request.url)));
+    }
+    return finalize(NextResponse.redirect(new URL("/auth/login", request.url)));
+  }
+
   const parentProtectedRoute =
     pathname === "/parent"
-    || (pathname.startsWith("/parent/") && !pathname.startsWith("/parent/profiles"));
+    || pathname.startsWith("/parent/");
 
   if (authenticated && parentProtectedRoute) {
     if (session.role !== "parent") {
@@ -302,23 +301,18 @@ export async function middleware(request: NextRequest) {
       return finalize(NextResponse.redirect(new URL(fallback, request.url)));
     }
 
-    const unlocked = await hasParentUnlock(request);
-    if (!unlocked) {
-      const next = `${pathname}${request.nextUrl.search}`;
-      const profilesUrl = new URL(`/parent/profiles?intent=parent&next=${encodeURIComponent(next)}`, request.url);
-      return finalize(NextResponse.redirect(profilesUrl));
-    }
-
     if (pathname === "/parent") {
       return finalize(NextResponse.redirect(new URL("/parent/dashboard", request.url)));
     }
   }
 
   if (authenticated && session.role === "parent" && (pathname === "/dashboard" || pathname.startsWith("/student"))) {
+    // Parent session + child-selection cookie is no longer the primary student-login path.
+    // Keep a transitional allow-through only when a selection cookie is already present;
+    // otherwise send parents to the Parent Portal.
     const selectedChild = await hasChildSelection(request, session.userId);
     if (!selectedChild) {
-      const profilesUrl = new URL("/parent/profiles?intent=child", request.url);
-      return finalize(NextResponse.redirect(profilesUrl));
+      return finalize(NextResponse.redirect(new URL("/parent/dashboard", request.url)));
     }
   }
 

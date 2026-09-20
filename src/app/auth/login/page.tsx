@@ -69,7 +69,7 @@ function ParentLoginForm() {
         window.location.assign(nextPath);
         return;
       }
-      window.location.assign(landingPath ?? "/parent/profiles");
+      window.location.assign(landingPath ?? "/parent/dashboard");
     } catch {
       setError("Unable to login right now.");
     } finally {
