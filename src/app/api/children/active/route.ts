@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { fromDbRecord } from "@/lib/child_profile_db";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
+import { resolveActiveChildForSession, resolveParentActiveChildId } from "@/lib/activeChild";
 import {
   createChildSelectionToken,
   getChildSelectionCookieName,
@@ -18,6 +18,17 @@ const schema = z.object({
 export async function GET() {
   const { session, response } = await requireSession();
   if (!session) return response;
+
+  if (session.role === "student") {
+    const resolved = await resolveActiveChildForSession(session);
+    if (!resolved.ok) {
+      return NextResponse.json({ child: null, code: "no_linked_profile" });
+    }
+    const child = await prisma.childProfile.findFirst({
+      where: { id: resolved.childId, userId: session.userId, archived: false },
+    });
+    return NextResponse.json({ child: child ? fromDbRecord(child) : null });
+  }
 
   const parentScope = await resolveParentScope(session);
   if (!parentScope) {
@@ -39,6 +50,13 @@ export async function GET() {
 export async function POST(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
+
+  if (session.role === "student") {
+    return NextResponse.json(
+      { error: "Student accounts cannot switch learner profiles." },
+      { status: 403 },
+    );
+  }
 
   const parentScope = await resolveParentScope(session);
   if (!parentScope) {

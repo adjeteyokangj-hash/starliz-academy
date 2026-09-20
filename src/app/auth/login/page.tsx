@@ -10,12 +10,12 @@ import { getLoginDisabledReason } from "@/lib/login-utils";
 
 function ParentLoginForm() {
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const resetSuccess = searchParams.get("reset") === "success";
-  const loginDisabledReason = getLoginDisabledReason(email, password);
+  const loginDisabledReason = getLoginDisabledReason(identifier, password);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -23,20 +23,20 @@ function ParentLoginForm() {
     setLoading(true);
     try {
       const formData = new FormData(event.currentTarget);
-      const submittedEmail = String(formData.get("email") ?? email).trim();
+      const submittedIdentifier = String(formData.get("identifier") ?? identifier).trim();
       const submittedPassword = String(formData.get("password") ?? password);
-      if (!submittedEmail || !submittedPassword) {
-        setError("Enter your email and password.");
+      if (!submittedIdentifier || !submittedPassword) {
+        setError("Enter your email or username and password.");
         return;
       }
-      setEmail(submittedEmail);
+      setIdentifier(submittedIdentifier);
       setPassword(submittedPassword);
 
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: submittedEmail, password: submittedPassword }),
+        body: JSON.stringify({ identifier: submittedIdentifier, password: submittedPassword }),
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -60,6 +60,11 @@ function ParentLoginForm() {
         window.location.assign(teacherNext ?? landingPath ?? "/teacher");
         return;
       }
+      if (payload.user?.role === "student") {
+        const studentNext = nextPath?.startsWith("/student") ? nextPath : null;
+        window.location.assign(studentNext ?? landingPath ?? "/student/dashboard");
+        return;
+      }
       if (nextPath?.startsWith("/") && !nextPath.startsWith("//")) {
         window.location.assign(nextPath);
         return;
@@ -77,22 +82,22 @@ function ParentLoginForm() {
       <div className="mb-5 flex justify-center sm:justify-start">
         <Logo variant="wordmark" size={30} animation={false} className="pointer-events-none" textClassName="text-slate-900" />
       </div>
-      <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Parent portal</p>
+      <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">StarLiz sign in</p>
       <h1 className="mt-2 font-heading text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Sign in</h1>
       <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
-        Manage child profiles, follow progress, and celebrate stars and rewards in one calm place.
+        Parents use email. Children use the username created in the parent profile.
       </p>
 
       <form className="mt-7 space-y-4" onSubmit={onSubmit}>
         <label className="block text-sm font-semibold text-slate-700">
-          Email
+          Email or username
           <input
-            type="email"
-            name="email"
-            autoComplete="email"
+            type="text"
+            name="identifier"
+            autoComplete="username"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
             suppressHydrationWarning
             className="mt-1.5 w-full rounded-xl border border-slate-300 bg-slate-50/80 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
           />

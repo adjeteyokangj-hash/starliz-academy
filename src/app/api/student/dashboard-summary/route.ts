@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
+import { resolveActiveChildForSession, resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import { resolveDashboardTier } from "@/lib/dashboardResolver";
 import { ensureLearningAccess } from "@/lib/subscriptions/learning-access";
@@ -23,19 +23,38 @@ export async function GET(request: Request) {
   const requestedStudentId = params.get("studentId")?.trim() || null;
   const isAdminPreview = session.role === "admin" && Boolean(requestedStudentId);
 
-  let parentScope: Awaited<ReturnType<typeof resolveParentScope>> = null;
-  if (!isAdminPreview) {
-    parentScope = await resolveParentScope(session);
+  let parentIdForAccess: string | null = null;
+  let studentId: string | null = requestedStudentId;
+
+  if (isAdminPreview) {
+    // Admin preview keeps explicit studentId.
+  } else if (session.role === "student") {
+    const resolved = await resolveActiveChildForSession(session);
+    if (!resolved.ok) {
+      return NextResponse.json(
+        {
+          error: "No learner profile is linked to this student account.",
+          code: "no_linked_profile",
+        },
+        { status: 403 },
+      );
+    }
+    studentId = resolved.childId;
+    parentIdForAccess = resolved.parentId;
+  } else {
+    const parentScope = await resolveParentScope(session);
     if (!parentScope) {
       return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
     }
+    parentIdForAccess = parentScope.parentId;
+    studentId = requestedStudentId ?? (await resolveParentActiveChildId(parentScope.parentId));
+  }
 
-    const access = await ensureLearningAccess(parentScope.parentId);
+  if (parentIdForAccess) {
+    const access = await ensureLearningAccess(parentIdForAccess);
     if (access.response) return access.response;
   }
 
-  const studentId = requestedStudentId
-    ?? (parentScope ? await resolveParentActiveChildId(parentScope.parentId) : null);
   if (!studentId) {
     return NextResponse.json({
       ok: true,
@@ -59,7 +78,9 @@ export async function GET(request: Request) {
   const child = await prisma.childProfile.findFirst({
     where: isAdminPreview
       ? { id: studentId, archived: false }
-      : { id: studentId, parentId: parentScope!.parentId, archived: false },
+      : session.role === "student"
+        ? { id: studentId, userId: session.userId, archived: false }
+        : { id: studentId, parentId: parentIdForAccess!, archived: false },
     select: {
       id: true,
       name: true,
@@ -199,8 +220,9 @@ export async function GET(request: Request) {
 
   // Sliding renewal: keep the learner on the student dashboard while actively learning
   // instead of bouncing to /parent/profiles after the 12h child-selection cookie expires.
-  if (parentScope) {
-    const selectionToken = await createChildSelectionToken(parentScope.parentId, studentId);
+  // Student-owned sessions never use the selection cookie for identity.
+  if (session.role === "parent" && parentIdForAccess) {
+    const selectionToken = await createChildSelectionToken(parentIdForAccess, studentId);
     reply.cookies.set(getChildSelectionCookieName(), selectionToken, {
       httpOnly: true,
       sameSite: "lax",

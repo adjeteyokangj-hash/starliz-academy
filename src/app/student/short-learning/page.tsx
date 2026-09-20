@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
-import { readChildSelectionFromCookie, readSessionFromCookie } from "@/lib/auth";
+import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { SHORT_LEARNING_EARLY_ENTRY_MINUTES, SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
 import { isShortLearningBookingActive } from "@/lib/schools/support-eligibility";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
-import { resolveParentScope } from "@/lib/parent_scope";
+import { resolveActiveChildForSession } from "@/lib/activeChild";
 import { formatUkDateTime } from "@/lib/uk-datetime";
 
 
@@ -21,18 +20,13 @@ export default async function StudentShortLearningListPage() {
 
 
 
-  let childId: string | null = await readChildSelectionFromCookie(session.userId);
-
-  if (!childId && session.role === "parent") {
-
-    const parentScope = await resolveParentScope(session);
-
-    if (parentScope) childId = await resolveParentActiveChildId(parentScope.parentId);
-
-  }
+  const resolved = await resolveActiveChildForSession(session);
+  const childId = resolved.ok ? resolved.childId : null;
 
   if (!childId) {
-
+    if (session.role === "student") {
+      redirect("/student/dashboard");
+    }
     redirect("/parent/profiles?intent=child&next=/student/short-learning");
 
   }

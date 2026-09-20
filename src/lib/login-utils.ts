@@ -1,6 +1,6 @@
-export function getLoginDisabledReason(email: string, password: string): string | null {
-  if (!email.trim()) {
-    return "Enter your email address to continue.";
+export function getLoginDisabledReason(identifier: string, password: string): string | null {
+  if (!identifier.trim()) {
+    return "Enter your email or username to continue.";
   }
 
   if (!password) {

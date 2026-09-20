@@ -1,23 +1,18 @@
 import { NextResponse } from "next/server";
-import { readChildSelectionFromCookie, readSessionFromCookie } from "@/lib/auth";
+import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   ensureShortLearningSessionContent,
   getShortLearningSessionSummary,
   startShortLearningContentBlock,
 } from "@/lib/schools/short-learning-session-content";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
-import { resolveParentScope } from "@/lib/parent_scope";
+import { resolveActiveChildForSession } from "@/lib/activeChild";
 
 type Params = { params: Promise<{ bookingId: string }> };
 
 async function resolveChildId(session: { userId: string; email: string; role: string }): Promise<string | null> {
-  let childId: string | null = await readChildSelectionFromCookie(session.userId);
-  if (!childId && session.role === "parent") {
-    const parentScope = await resolveParentScope(session);
-    if (parentScope) childId = await resolveParentActiveChildId(parentScope.parentId);
-  }
-  return childId;
+  const resolved = await resolveActiveChildForSession(session);
+  return resolved.ok ? resolved.childId : null;
 }
 
 async function assertBookingAccess(bookingId: string, childId: string) {

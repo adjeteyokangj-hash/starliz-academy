@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkRateLimit, getRequestIp, requireSession } from "@/lib/api_guard";
+import { resolveActiveChildForSession } from "@/lib/activeChild";
 import { resolveParentScope } from "@/lib/parent_scope";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import { ensureLearningAccessForDaytimePeriod } from "@/lib/subscriptions/learning-access";
 import {
@@ -61,7 +61,6 @@ async function resolveChildId(input: {
     return { childId: input.payloadStudentId ?? null, isAdminPreview: true };
   }
 
-  // Student role with child cookie / parent scope
   if (input.session.role === "teacher" || input.session.role === "admin") {
     return {
       childId: null,
@@ -70,25 +69,40 @@ async function resolveChildId(input: {
     };
   }
 
-  const parentScope = await resolveParentScope(input.session as never);
-  if (!parentScope) {
+  const resolved = await resolveActiveChildForSession(input.session);
+  if (!resolved.ok) {
+    if (resolved.reason === "no_linked_profile") {
+      return {
+        childId: null,
+        isAdminPreview: false,
+        error: NextResponse.json(
+          { error: "No learner profile is linked to this student account.", code: "no_linked_profile" },
+          { status: 403 },
+        ),
+      };
+    }
     return {
       childId: null,
       isAdminPreview: false,
-      error: NextResponse.json({ error: "Parent account not found." }, { status: 404 }),
+      error: NextResponse.json({ error: "Select a child profile first." }, { status: 400 }),
     };
   }
 
-  const childId = input.payloadStudentId || (await resolveParentActiveChildId(parentScope.parentId));
-  if (!childId) {
-    return {
-      childId: null,
-      isAdminPreview: false,
-      error: NextResponse.json({ error: "No active learner selected." }, { status: 400 }),
-    };
+  if (input.session.role === "student") {
+    if (input.payloadStudentId && input.payloadStudentId !== resolved.childId) {
+      return {
+        childId: null,
+        isAdminPreview: false,
+        error: NextResponse.json({ error: "Student accounts cannot switch learner profiles." }, { status: 403 }),
+      };
+    }
+    return { childId: resolved.childId, isAdminPreview: false };
   }
+
+  // Parent may pass an explicit owned child id; otherwise use shared resolution.
+  const requestedId = input.payloadStudentId || resolved.childId;
   const owned = await prisma.childProfile.findFirst({
-    where: { id: childId, parentId: parentScope.parentId, archived: false },
+    where: { id: requestedId, parentId: resolved.parentId, archived: false },
     select: { id: true },
   });
   if (!owned) {
@@ -98,7 +112,7 @@ async function resolveChildId(input: {
       error: NextResponse.json({ error: "Student not found." }, { status: 404 }),
     };
   }
-  return { childId, isAdminPreview: false };
+  return { childId: owned.id, isAdminPreview: false };
 }
 
 export async function POST(request: Request) {
@@ -126,10 +140,13 @@ export async function POST(request: Request) {
   }
 
   if (payload.aiTutorScope === AI_TUTOR_SCOPE_DAYTIME_SCHOOL && !resolvedChild.isAdminPreview) {
-    const parentScope = await resolveParentScope(session);
-    if (parentScope) {
+    const active = await resolveActiveChildForSession(session);
+    const parentId = active.ok
+      ? active.parentId
+      : (await resolveParentScope(session))?.parentId ?? null;
+    if (parentId) {
       const access = await ensureLearningAccessForDaytimePeriod({
-        parentId: parentScope.parentId,
+        parentId,
         childId,
         dayLessonId: payload.periodId,
       });

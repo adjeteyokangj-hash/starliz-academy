@@ -15,11 +15,29 @@ import { evaluateUserSchoolLoginAccess } from "@/lib/schools/licensing";
 import { writeSchoolAuditLog, writeSchoolLoginHistory } from "@/lib/schools/audit";
 import { buildDeviceFingerprint, detectSuspiciousLogin, issueRefreshToken } from "@/lib/auth_sessions";
 import { PORTAL_MODE_COOKIE, resolveStaffLanding } from "@/lib/schools/portal-routing";
+import {
+  LOGIN_INVALID_CREDENTIALS_ERROR,
+  findUserForLoginIdentifier,
+} from "@/lib/login-identity";
 
-const bodySchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
+const bodySchema = z
+  .object({
+    password: z.string().min(1),
+    /** Preferred field for email or username. */
+    identifier: z.string().optional(),
+    /** Backward-compatible alias used by older clients. */
+    email: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    const identifier = String(value.identifier ?? value.email ?? "").trim();
+    if (!identifier) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Login identifier is required.",
+        path: ["identifier"],
+      });
+    }
+  });
 
 export async function POST(request: Request) {
   try {
@@ -36,9 +54,35 @@ export async function POST(request: Request) {
     }
 
     const body = bodySchema.parse(await request.json());
-    const user = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() } });
+    const rawIdentifier = String(body.identifier ?? body.email ?? "");
+    const user = await findUserForLoginIdentifier(rawIdentifier, {
+      findByEmail: (email) =>
+        prisma.user.findUnique({
+          where: { email },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            passwordHash: true,
+            name: true,
+            role: true,
+          },
+        }),
+      findByUsername: (username) =>
+        prisma.user.findUnique({
+          where: { username },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            passwordHash: true,
+            name: true,
+            role: true,
+          },
+        }),
+    });
     if (!user) {
-      return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+      return NextResponse.json({ error: LOGIN_INVALID_CREDENTIALS_ERROR }, { status: 401 });
     }
 
     const valid = await verifyPassword(body.password, user.passwordHash);
@@ -58,7 +102,7 @@ export async function POST(request: Request) {
           userAgent: request.headers.get("user-agent") ?? undefined,
         });
       }
-      return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+      return NextResponse.json({ error: LOGIN_INVALID_CREDENTIALS_ERROR }, { status: 401 });
     }
 
     const userAgent = request.headers.get("user-agent") ?? undefined;
@@ -178,7 +222,13 @@ export async function POST(request: Request) {
 
     const response = NextResponse.json({
       ok: true,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+      },
       landingPath: landing.path,
       ...(landing.kind === "school_admin" || landing.kind === "teacher"
         ? { schoolRole: landing.schoolRole, schoolId: landing.schoolId || undefined }

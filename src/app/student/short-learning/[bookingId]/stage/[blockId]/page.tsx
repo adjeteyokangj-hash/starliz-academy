@@ -1,9 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import ShortLearningStageScreen from "@/components/student/ShortLearningStageScreen";
-import { readChildSelectionFromCookie, readSessionFromCookie } from "@/lib/auth";
+import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
-import { resolveParentScope } from "@/lib/parent_scope";
+import { resolveActiveChildForSession } from "@/lib/activeChild";
 import { isStructuralShortLearningBlockType } from "@/lib/schools/short-learning-classroom";
 
 type Params = { params: Promise<{ bookingId: string; blockId: string }> };
@@ -12,12 +11,10 @@ export default async function ShortLearningStagePage({ params }: Params) {
   const session = await readSessionFromCookie();
   if (!session) redirect("/auth/login?next=/student/short-learning");
 
-  let childId: string | null = await readChildSelectionFromCookie(session.userId);
-  if (!childId && session.role === "parent") {
-    const parentScope = await resolveParentScope(session);
-    if (parentScope) childId = await resolveParentActiveChildId(parentScope.parentId);
-  }
+  const resolved = await resolveActiveChildForSession(session);
+  const childId = resolved.ok ? resolved.childId : null;
   if (!childId) {
+    if (session.role === "student") redirect("/student/dashboard");
     redirect("/parent/profiles?intent=child&next=/student/short-learning");
   }
 
