@@ -3,7 +3,9 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { getAssignmentSafetyAndRecommendation } from "@/lib/assignments";
+import { isPlayableAssignedStatus } from "@/lib/subscriptions/learning-access";
 import { extractStagePackExtras } from "@/lib/schools/daytime-lesson-ui";
+import { resolveStudentOwnedChildProfile } from "@/lib/activeChild";
 
 function toArray(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
@@ -67,13 +69,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "contentId or assignmentId is required." }, { status: 400 });
   }
 
+  let studentFilter: { parentId: string; id?: string } = { parentId: parentScope.parentId };
+  if (session.role === "student") {
+    const owned = await resolveStudentOwnedChildProfile(session.userId);
+    if (!owned || owned.parentId !== parentScope.parentId) {
+      return NextResponse.json({ error: "Student profile not linked." }, { status: 404 });
+    }
+    studentFilter = { parentId: parentScope.parentId, id: owned.childId };
+  }
+
   const resolvedContentId = contentId ?? "";
   const assignment = assignmentId
     ? await prisma.assignment.findFirst({
         where: {
           id: assignmentId,
           ...(contentId ? { contentId } : {}),
-          student: { parentId: parentScope.parentId },
+          student: studentFilter,
         },
         include: {
           student: { select: { id: true } },
@@ -83,7 +94,7 @@ export async function GET(request: Request) {
     : await prisma.assignment.findFirst({
         where: {
           contentId: resolvedContentId,
-          student: { parentId: parentScope.parentId },
+          student: studentFilter,
         },
         orderBy: { createdAt: "desc" },
         include: {
@@ -96,19 +107,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Assigned content not found." }, { status: 404 });
   }
 
-  const safety = await getAssignmentSafetyAndRecommendation({
-    studentId: assignment.student.id,
-    contentId: assignment.contentId,
-  });
-  if (!safety.safe) {
-    return NextResponse.json(
-      {
-        error: "Assignment context mismatch.",
-        reason: safety.reason,
-        meta: safety.meta,
-      },
-      { status: 409 },
-    );
+  // Same rule as /api/student/assignments: playable assigned work stays openable.
+  if (!isPlayableAssignedStatus(assignment.status)) {
+    const safety = await getAssignmentSafetyAndRecommendation({
+      studentId: assignment.student.id,
+      contentId: assignment.contentId,
+    });
+    if (!safety.safe) {
+      return NextResponse.json(
+        {
+          error: "Assignment context mismatch.",
+          reason: safety.reason,
+          meta: safety.meta,
+        },
+        { status: 409 },
+      );
+    }
   }
 
   let parsed: unknown;

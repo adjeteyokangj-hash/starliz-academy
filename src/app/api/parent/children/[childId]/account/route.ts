@@ -66,6 +66,7 @@ export async function POST(request: Request, context: RouteContext) {
         error: result.error,
         code: result.code,
         fieldErrors: result.fieldErrors,
+        suggestions: result.suggestions ?? [],
       },
       { status: result.status },
     );

@@ -160,3 +160,60 @@ export async function suggestAvailableChildUsernames(input: {
 
   return suggestions.slice(0, count);
 }
+
+export type ChildUsernameAvailability = {
+  username: string | null;
+  valid: boolean;
+  available: boolean;
+  message: string | null;
+  suggestions: string[];
+};
+
+export async function checkChildUsernameAvailability(input: {
+  username: string;
+  childName?: string | null;
+  isTaken: (username: string) => Promise<boolean>;
+  suggestionCount?: number;
+}): Promise<ChildUsernameAvailability> {
+  const validated = validateManualChildUsername(input.username);
+  if (!validated.ok) {
+    const suggestions = await suggestAvailableChildUsernames({
+      childName: input.childName,
+      count: input.suggestionCount ?? 5,
+      isTaken: input.isTaken,
+    });
+    return {
+      username: null,
+      valid: false,
+      available: false,
+      message: validated.error,
+      suggestions,
+    };
+  }
+
+  const taken = await input.isTaken(validated.username);
+  if (!taken) {
+    return {
+      username: validated.username,
+      valid: true,
+      available: true,
+      message: "Username is available.",
+      suggestions: [],
+    };
+  }
+
+  const suggestions = await suggestAvailableChildUsernames({
+    desired: validated.username,
+    childName: input.childName,
+    count: input.suggestionCount ?? 5,
+    isTaken: input.isTaken,
+  });
+
+  return {
+    username: validated.username,
+    valid: true,
+    available: false,
+    message: "That username is already taken.",
+    suggestions,
+  };
+}

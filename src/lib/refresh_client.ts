@@ -26,6 +26,7 @@ async function executeRefreshOnce(): Promise<RefreshResult> {
       method: "POST",
       credentials: "include",
       cache: "no-store",
+      signal: AbortSignal.timeout(12_000),
     });
     return { ok: response.ok, status: response.status };
   } catch {

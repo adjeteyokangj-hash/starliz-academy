@@ -25,7 +25,18 @@ export default function ConsentPage() {
         setError("Could not record consent.");
         return;
       }
-      router.replace("/profiles");
+      let nextPath = "/profiles";
+      try {
+        const meRes = await fetch("/api/auth/me", { credentials: "include" });
+        if (meRes.ok) {
+          const me = (await meRes.json()) as { user?: { role?: string } };
+          if (me.user?.role === "student") nextPath = "/student/dashboard";
+          else if (me.user?.role === "parent") nextPath = "/parent/dashboard";
+        }
+      } catch {
+        // Keep /profiles fallback.
+      }
+      router.replace(nextPath);
     } catch {
       setError("Could not record consent.");
     }

@@ -5,7 +5,7 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { getAssignmentSafetyAndRecommendation, taskHrefForContentType } from "@/lib/assignments";
 import { mergeWeakAreas, parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { normalizeExamBoard } from "@/lib/curriculum";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
+import { resolveParentActiveChildId, resolveStudentOwnedChildProfile } from "@/lib/activeChild";
 import { normalizeLessonContentJson } from "@/lib/lesson-runtime-normalizer";
 import {
   ensureLearningAccess,
@@ -19,6 +19,7 @@ function parseContentMetadata(raw: string | null): {
   keyStage: string | null;
   ageGroup: string | null;
   subject: string | null;
+  schoolSubject: string | null;
   visualAssets: Array<Record<string, unknown>>;
 } {
   if (!raw) {
@@ -28,6 +29,7 @@ function parseContentMetadata(raw: string | null): {
       keyStage: null,
       ageGroup: null,
       subject: null,
+      schoolSubject: null,
       visualAssets: [],
     };
   }
@@ -47,6 +49,7 @@ function parseContentMetadata(raw: string | null): {
       keyStage: typeof parsed.keyStage === "string" ? parsed.keyStage : null,
       ageGroup: typeof parsed.ageGroup === "string" ? parsed.ageGroup : null,
       subject: typeof parsed.subject === "string" ? parsed.subject : null,
+      schoolSubject: typeof parsed.schoolSubject === "string" ? parsed.schoolSubject : null,
       visualAssets,
     };
   } catch {
@@ -56,6 +59,7 @@ function parseContentMetadata(raw: string | null): {
       keyStage: null,
       ageGroup: null,
       subject: null,
+      schoolSubject: null,
       visualAssets: [],
     };
   }
@@ -75,7 +79,21 @@ export async function GET(request: Request) {
     const assignmentId = params.get("id");
     const currentAssignmentId = params.get("currentAssignmentId");
     const requestedStudentId = params.get("studentId");
-    let studentId = requestedStudentId ?? await resolveParentActiveChildId(parentScope.parentId);
+    const isStudentSession = session.role === "student";
+
+    let studentId: string | null = null;
+    if (isStudentSession) {
+      const owned = await resolveStudentOwnedChildProfile(session.userId);
+      if (!owned || owned.parentId !== parentScope.parentId) {
+        return NextResponse.json({ error: "Student profile not linked." }, { status: 404 });
+      }
+      studentId = owned.childId;
+      if (requestedStudentId && requestedStudentId !== owned.childId) {
+        return NextResponse.json({ error: "Student can only access their own assignments." }, { status: 403 });
+      }
+    } else {
+      studentId = requestedStudentId ?? await resolveParentActiveChildId(parentScope.parentId);
+    }
     if (!studentId) {
       return NextResponse.json({ error: "No active student selected." }, { status: 400 });
     }
@@ -85,7 +103,11 @@ export async function GET(request: Request) {
         where: {
           id: assignmentId,
           status: { not: "archived" },
-          ...(requestedStudentId ? { studentId: requestedStudentId } : {}),
+          ...(isStudentSession
+            ? { studentId }
+            : requestedStudentId
+              ? { studentId: requestedStudentId }
+              : {}),
           student: { parentId: parentScope.parentId },
         },
         include: { content: true },
@@ -95,38 +117,49 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
       }
 
+      if (isStudentSession && assignment.studentId !== studentId) {
+        return NextResponse.json({ error: "Assignment not found." }, { status: 404 });
+      }
+
       if (!isPlayableAssignedStatus(assignment.status)) {
         const access = await ensureLearningAccess(parentScope.parentId);
         if (access.response) return access.response;
       }
 
-      if (!requestedStudentId && assignment.studentId !== studentId) {
+      if (!isStudentSession && !requestedStudentId && assignment.studentId !== studentId) {
         studentId = assignment.studentId;
         await prisma.user.update({
           where: { id: parentScope.parentId },
           data: { activeChildId: studentId },
         });
       }
+      if (isStudentSession) {
+        studentId = assignment.studentId;
+      }
 
-      const safety = await getAssignmentSafetyAndRecommendation({
-        studentId,
-        contentId: assignment.contentId,
-      });
-      if (!safety.safe) {
-        return NextResponse.json(
-          {
-            error: "Assignment context mismatch.",
-            reason: safety.reason,
-            meta: safety.meta,
-          },
-          { status: 409 },
-        );
+      // Already-queued playable work must remain openable (Short Learning / Today).
+      // Curriculum safety gates assignment creation; it must not block load of assigned lessons.
+      if (!isPlayableAssignedStatus(assignment.status)) {
+        const safety = await getAssignmentSafetyAndRecommendation({
+          studentId,
+          contentId: assignment.contentId,
+        });
+        if (!safety.safe) {
+          return NextResponse.json(
+            {
+              error: "Assignment context mismatch.",
+              reason: safety.reason,
+              meta: safety.meta,
+            },
+            { status: 409 },
+          );
+        }
       }
 
       const contentMeta = parseContentMetadata(assignment.content.metadataJson);
       const items = normalizeLessonContentJson(assignment.content.contentJson, {
         contentType: assignment.content.contentType,
-        subject: contentMeta.subject ?? assignment.content.contentType,
+        subject: contentMeta.schoolSubject ?? contentMeta.subject ?? assignment.content.contentType,
         topic: assignment.content.topic,
         skillFocus: assignment.content.skillFocus,
         difficulty: assignment.content.level,
@@ -139,12 +172,13 @@ export async function GET(request: Request) {
       return NextResponse.json({
         id: assignment.id,
         status: assignment.status,
-        subject: assignment.content.contentType,
+        subject: contentMeta.schoolSubject ?? contentMeta.subject ?? assignment.content.contentType,
         studentId,
         contentId: assignment.contentId,
         title: assignment.content.topic || assignment.content.skillFocus || assignment.content.contentType,
         skillFocus: assignment.content.skillFocus,
         difficulty: assignment.content.level,
+        yearGroup: assignment.content.yearGroup,
         examBoard: contentMeta.examBoard,
         items,
         href: taskHrefForContentType(assignment.content.contentType, assignment.id),
@@ -155,7 +189,7 @@ export async function GET(request: Request) {
           status: assignment.status,
           studentId,
           contentId: assignment.contentId,
-          subject: assignment.content.contentType,
+          subject: contentMeta.schoolSubject ?? contentMeta.subject ?? assignment.content.contentType,
           difficulty: assignment.content.level,
           examBoard: contentMeta.examBoard,
           topic: assignment.content.topic,
@@ -176,7 +210,8 @@ export async function GET(request: Request) {
             yearGroup: contentMeta.yearGroup,
             keyStage: contentMeta.keyStage,
             ageGroup: contentMeta.ageGroup,
-            subject: contentMeta.subject,
+            subject: contentMeta.schoolSubject ?? contentMeta.subject,
+            schoolSubject: contentMeta.schoolSubject,
             visualAssets: contentMeta.visualAssets,
           },
           items,
@@ -208,7 +243,7 @@ export async function GET(request: Request) {
         activeStudentId: studentId,
       });
 
-      if (!requestedStudentId && currentAssignment?.studentId && currentAssignment.studentId !== studentId) {
+      if (!isStudentSession && !requestedStudentId && currentAssignment?.studentId && currentAssignment.studentId !== studentId) {
         studentId = currentAssignment.studentId;
         await prisma.user.update({
           where: { id: parentScope.parentId },
@@ -265,7 +300,7 @@ export async function GET(request: Request) {
         return ({
         id: assignment.id,
         status: assignment.status,
-        subject: assignment.content.contentType,
+        subject: contentMeta.schoolSubject ?? contentMeta.subject ?? assignment.content.contentType,
         contentId: assignment.contentId,
         title: assignment.content.topic || assignment.content.skillFocus || assignment.content.contentType,
         skillFocus: assignment.content.skillFocus,
@@ -279,7 +314,8 @@ export async function GET(request: Request) {
           yearGroup: contentMeta.yearGroup,
           keyStage: contentMeta.keyStage,
           ageGroup: contentMeta.ageGroup,
-          subject: contentMeta.subject,
+          subject: contentMeta.schoolSubject ?? contentMeta.subject,
+          schoolSubject: contentMeta.schoolSubject,
           visualAssets: contentMeta.visualAssets,
         },
         visualAssets: contentMeta.visualAssets,
