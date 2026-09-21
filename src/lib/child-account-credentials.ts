@@ -112,3 +112,51 @@ export function validateManualChildUsername(raw: string): ChildUsernameValidatio
   }
   return { ok: true, username: normalized.value };
 }
+
+/**
+ * Build alternative usernames when the desired one is taken.
+ * Parents can pick a suggestion or keep typing manually.
+ */
+export async function suggestAvailableChildUsernames(input: {
+  desired?: string | null;
+  childName?: string | null;
+  count?: number;
+  isTaken: (username: string) => Promise<boolean>;
+}): Promise<string[]> {
+  const count = Math.max(1, Math.min(8, input.count ?? 5));
+  const suggestions: string[] = [];
+  const seen = new Set<string>();
+
+  const pushIfFree = async (candidate: string) => {
+    if (!isNormalizedUsernameValid(candidate) || seen.has(candidate)) return;
+    seen.add(candidate);
+    if (await input.isTaken(candidate)) return;
+    suggestions.push(candidate);
+  };
+
+  const desiredCheck = input.desired?.trim()
+    ? validateManualChildUsername(input.desired)
+    : null;
+  const baseFromDesired = desiredCheck?.ok ? desiredCheck.username : null;
+  const baseFromName = deriveUsernameBaseFromChildName(input.childName?.trim() || "learner");
+  const base = baseFromDesired ?? baseFromName;
+
+  if (!(await input.isTaken(base))) {
+    await pushIfFree(base);
+  }
+
+  for (let attempt = 1; suggestions.length < count && attempt <= 40; attempt += 1) {
+    const suffix = attempt <= 9 ? String(attempt) : String(randomInt(10, 999));
+    const truncated = base.slice(0, Math.max(3, 32 - suffix.length));
+    await pushIfFree(`${truncated}${suffix}`);
+  }
+
+  while (suggestions.length < count) {
+    const fallback = `learner${randomBytes(2).toString("hex")}`.slice(0, 32);
+    const before = suggestions.length;
+    await pushIfFree(fallback);
+    if (suggestions.length === before) break;
+  }
+
+  return suggestions.slice(0, count);
+}
