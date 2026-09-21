@@ -154,9 +154,13 @@ export function calculateAgeFromDateOfBirth(dateOfBirth: string, referenceDate =
   return age < 0 ? null : age;
 }
 
+/**
+ * UK school year for year-group labelling rolls forward after July
+ * (August onwards belongs to the September-starting academic year).
+ */
 function getAcademicYearStart(referenceDate: Date): number {
   const month = referenceDate.getMonth() + 1;
-  return month >= 9 ? referenceDate.getFullYear() : referenceDate.getFullYear() - 1;
+  return month >= 8 ? referenceDate.getFullYear() : referenceDate.getFullYear() - 1;
 }
 
 function getReceptionAcademicStartYear(dateOfBirth: Date): number {

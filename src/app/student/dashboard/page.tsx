@@ -32,6 +32,10 @@ import { isPlayableDaytimeLessonType, minutesNow } from "@/lib/schools/school-da
 import { formatUkDateTime } from "@/lib/uk-datetime";
 import type { PlacementLessonGroup, PlacementLessonRecommendation, PlacementLevels, StudentLearningState } from "@/components/student/dashboardTypes";
 import type { CoverageEntry, LearningTwinProfile } from "@/lib/academic-intelligence/types";
+import {
+  defaultStudentDashboardSections,
+  type StudentDashboardSections,
+} from "@/lib/student-dashboard-sections";
 
 type ProgressionRecommendation = {
   scopedSubject: string;
@@ -94,6 +98,7 @@ type StudentSkill = {
   skill: string;
   status: "weak" | "improving" | "mastered" | string;
   accuracy: number;
+  updatedAt?: string | null;
 };
 
 type DailyJourneyPayload = {
@@ -202,6 +207,7 @@ type DashboardSummaryPayload = {
     status: string;
   }>;
   skills?: StudentSkill[];
+  dashboardSections?: StudentDashboardSections;
   error?: string;
 };
 
@@ -511,6 +517,7 @@ export default function StudentDashboardPage() {
   const [stats, setStats] = useState({ stars: 0, xp: 0, coins: 0, streak: 0 });
   const [schoolEnrolment, setSchoolEnrolment] = useState<NonNullable<DashboardSummaryPayload["schoolEnrolment"]> | null>(null);
   const [nextShortLearning, setNextShortLearning] = useState<NonNullable<DashboardSummaryPayload["nextShortLearning"]> | null>(null);
+  const [dashboardSections, setDashboardSections] = useState<StudentDashboardSections>(() => defaultStudentDashboardSections());
   const [schoolDaySnapshot, setSchoolDaySnapshot] = useState<{
     weekdayLabel: string;
     phase: string;
@@ -526,6 +533,7 @@ export default function StudentDashboardPage() {
   const [activeChildId, setActiveChildId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [startingJourney, setStartingJourney] = useState(false);
+  const [improvingBoostStarting, setImprovingBoostStarting] = useState(false);
   const [bossUnlocked, setBossUnlocked] = useState(false);
   const [bossPlayedToday, setBossPlayedToday] = useState(false);
   const [ownedBadges, setOwnedBadges] = useState<ShopOwnedItem[]>([]);
@@ -564,6 +572,7 @@ export default function StudentDashboardPage() {
     setProgression(null);
     setWeeklyHomeworkGate(null);
     setPanelActionMessage(null);
+    let paintedFromActive = false;
     try {
       const forceDashboardRefresh = typeof window !== "undefined"
         && new URLSearchParams(window.location.search).get("refresh") === "1";
@@ -572,10 +581,55 @@ export default function StudentDashboardPage() {
         : "";
       const refreshParam = forceDashboardRefresh ? "refresh=1" : "";
       const summaryQuery = [summaryParam, refreshParam].filter(Boolean).join("&");
-      const summaryRes = await fetchWithRefreshRetry(`/api/student/dashboard-summary${summaryQuery ? `?${summaryQuery}` : ""}`, { credentials: "include" });
+
+      const applyChildIdentity = (
+        child: NonNullable<ActiveChildPayload["child"]> & {
+          dashboardTier?: "primary" | "ks3" | "gcse";
+          keyStage?: string | null;
+        },
+      ) => {
+        setActiveChildId(child.id);
+        setChildName(child.name || "Learner");
+        setStats({
+          stars: child.stars ?? 0,
+          xp: child.xp ?? 0,
+          coins: child.coins ?? 0,
+          streak: child.weekStreak ?? 0,
+        });
+        setDashboardTier(child.dashboardTier ?? resolveDashboardTier({
+          yearGroup: child.yearGroup,
+          ageYears: child.ageYears,
+          dateOfBirth: child.dateOfBirth,
+        }));
+        if (child.yearGroup) {
+          setProfileContext({
+            yearGroup: child.yearGroup,
+            ageGroup: ageGroupForYearGroup(child.yearGroup),
+            keyStage: child.keyStage ?? keyStageForYearGroup(child.yearGroup),
+          });
+        }
+      };
+
+      const summaryPromise = fetchWithRefreshRetry(
+        `/api/student/dashboard-summary${summaryQuery ? `?${summaryQuery}` : ""}`,
+        { credentials: "include" },
+      );
+      const activeRes = await fetch("/api/children/active", { credentials: "include" });
+      if (activeRes.ok) {
+        const activePayload = (await activeRes.json().catch(() => null)) as ActiveChildPayload | null;
+        if (activePayload?.child?.id) {
+          applyChildIdentity(activePayload.child);
+          paintedFromActive = true;
+          setLoading(false);
+        }
+      }
+
+      const summaryRes = await summaryPromise;
       if (summaryRes.status === 401) {
-        setAuthRequired(true);
-        setError("Your session expired. Please sign in again.");
+        if (!paintedFromActive) {
+          setAuthRequired(true);
+          setError("Your session expired. Please sign in again.");
+        }
         return;
       }
       if (summaryRes.status === 402) {
@@ -592,37 +646,51 @@ export default function StudentDashboardPage() {
         }
         return;
       }
+      if (summaryRes.status === 503) {
+        if (!paintedFromActive) {
+          throw new Error("The dashboard is busy. Please try again.");
+        }
+        return;
+      }
       if (!summaryRes.ok) {
-        throw new Error("Unable to confirm active learner profile.");
+        if (!paintedFromActive) {
+          throw new Error("Unable to confirm active learner profile.");
+        }
+        return;
       }
 
       const summaryPayload = (await summaryRes.json().catch(() => null)) as DashboardSummaryPayload | null;
       if (!summaryPayload || typeof summaryPayload !== "object") {
-        throw new Error("Unable to read dashboard summary.");
+        if (!paintedFromActive) {
+          throw new Error("Unable to read dashboard summary.");
+        }
+        return;
       }
       if (!summaryPayload.child?.id) {
-        setMissingChildContext(true);
-        setActiveChildId(null);
-        setAcademicLoading(false);
-        setAssignments([]);
-        setActiveLanguageModules([]);
-        setSkills([]);
-        setSessionSummary(null);
-        setLearningState(null);
-        setQuickLevelFinderRetestEnabled(false);
-        setPlacementLevels(null);
-        setPlacementLessonGroups([]);
-        setPlacementContentGaps([]);
-        setProgression(null);
-        setCertificateEligibility(null);
-        setAcademicIntelligence(null);
-        setAcademicError("");
-        setWeeklyHomeworkGate(null);
-        setBossUnlocked(false);
-        setBossPlayedToday(false);
-        setBossAssignmentId(null);
-        setSchoolEnrolment(null);
-        setNextShortLearning(null);
+        if (!paintedFromActive) {
+          setMissingChildContext(true);
+          setActiveChildId(null);
+          setAcademicLoading(false);
+          setAssignments([]);
+          setActiveLanguageModules([]);
+          setSkills([]);
+          setSessionSummary(null);
+          setLearningState(null);
+          setQuickLevelFinderRetestEnabled(false);
+          setPlacementLevels(null);
+          setPlacementLessonGroups([]);
+          setPlacementContentGaps([]);
+          setProgression(null);
+          setCertificateEligibility(null);
+          setAcademicIntelligence(null);
+          setAcademicError("");
+          setWeeklyHomeworkGate(null);
+          setBossUnlocked(false);
+          setBossPlayedToday(false);
+          setBossAssignmentId(null);
+          setSchoolEnrolment(null);
+          setNextShortLearning(null);
+        }
         return;
       }
 
@@ -634,37 +702,27 @@ export default function StudentDashboardPage() {
       setBossAssignmentId(null);
       setSchoolEnrolment(summaryPayload.schoolEnrolment ?? null);
       setNextShortLearning(summaryPayload.nextShortLearning ?? null);
+      setDashboardSections({
+        ...defaultStudentDashboardSections(),
+        ...(summaryPayload.dashboardSections ?? {}),
+      });
       if (!summaryPayload.schoolEnrolment) {
         setSchoolDaySnapshot(null);
         setAttendancePresentRate(null);
       }
-      setActiveChildId(summaryPayload.child.id);
       setDeferredPanelsLoadedFor(null);
       setAcademicLoading(true);
-
-      if (summaryPayload.child) {
-        setChildName(summaryPayload.child.name || "Learner");
-        setStats({
-          stars: summaryPayload.child.stars ?? 0,
-          xp: summaryPayload.child.xp ?? 0,
-          coins: summaryPayload.child.coins ?? 0,
-          streak: summaryPayload.child.weekStreak ?? 0,
-        });
-        setDashboardTier(summaryPayload.child.dashboardTier ?? resolveDashboardTier({
-          yearGroup: summaryPayload.child.yearGroup,
-          ageYears: summaryPayload.child.ageYears,
-          dateOfBirth: summaryPayload.child.dateOfBirth,
-        }));
-        if (summaryPayload.child.yearGroup) {
-          setProfileContext({
-            yearGroup: summaryPayload.child.yearGroup,
-            ageGroup: ageGroupForYearGroup(summaryPayload.child.yearGroup),
-            keyStage: summaryPayload.child.keyStage ?? keyStageForYearGroup(summaryPayload.child.yearGroup),
-          });
-        }
-      }
+      applyChildIdentity(summaryPayload.child);
+      setError("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load dashboard.");
+      if (!paintedFromActive) {
+        const name = err instanceof Error || err instanceof DOMException ? err.name : "";
+        const timedOut = name === "AbortError" || name === "TimeoutError"
+          || (err instanceof Error && /timed out/i.test(err.message));
+        setError(timedOut
+          ? "This is taking too long. Please try again."
+          : err instanceof Error ? err.message : "Unable to load dashboard.");
+      }
     } finally {
       setLoading(false);
     }
@@ -1014,6 +1072,10 @@ export default function StudentDashboardPage() {
 
   function openStore() {
     if (openingStore) return;
+    if (dashboardTier !== "primary") {
+      setError("The rewards store is only available for Years 1–6.");
+      return;
+    }
     setOpeningStore(true);
     router.push("/shop");
   }
@@ -1103,6 +1165,37 @@ export default function StudentDashboardPage() {
       setError(err instanceof Error ? err.message : "Unable to start today's journey.");
     } finally {
       setStartingJourney(false);
+    }
+  }
+
+  async function startImprovingBoost() {
+    if (improvingBoostStarting) return;
+    setImprovingBoostStarting(true);
+    setError("");
+    try {
+      const response = await fetchWithRefreshRetry("/api/student/improving-session", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(activeChildId ? { studentId: activeChildId } : {}),
+      });
+      const payload = await response.json().catch(() => null) as {
+        error?: string;
+        href?: string;
+        code?: string;
+      } | null;
+      if (response.status === 401) {
+        setAuthRequired(true);
+        throw new Error("Your session expired. Please sign in again.");
+      }
+      if (!response.ok || !payload?.href) {
+        throw new Error(payload?.error ?? "Unable to start your 20-minute improving boost.");
+      }
+      router.push(payload.href);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start your 20-minute improving boost.");
+    } finally {
+      setImprovingBoostStarting(false);
     }
   }
 
@@ -1254,11 +1347,14 @@ export default function StudentDashboardPage() {
         startingJourney={startingJourney}
         onStartJourney={startTodayJourney}
         onStartAssignment={startAssignment}
+        onStartImprovingBoost={startImprovingBoost}
+        improvingBoostStarting={improvingBoostStarting}
         onStartBossBattle={startBossBattle}
         bossLaunching={bossLaunching}
         onOpenStore={openStore}
         pendingAssignmentId={pendingAssignmentId}
         openingStore={openingStore}
+        dashboardSections={dashboardSections}
       />
     )
     : (dashboardTier === "ks3" || dashboardTier === "gcse")
@@ -1292,10 +1388,13 @@ export default function StudentDashboardPage() {
           allAssignments={assignments}
           onStartJourney={startTodayJourney}
           onStartAssignment={startAssignment}
+          onStartImprovingBoost={startImprovingBoost}
+          improvingBoostStarting={improvingBoostStarting}
           onStartBossBattle={startBossBattle}
           bossLaunching={bossLaunching}
           onOpenStore={openStore}
           pendingAssignmentId={pendingAssignmentId}
+          dashboardSections={dashboardSections}
           openingStore={openingStore}
         />
       )
@@ -1592,6 +1691,7 @@ export default function StudentDashboardPage() {
               </div>
             ) : null}
 
+            {dashboardSections.prioritySummary ? (
             <section className="mb-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -1680,8 +1780,9 @@ export default function StudentDashboardPage() {
                 </div>
               </div>
             </section>
+            ) : null}
 
-            {primaryLanguageModule ? (
+            {dashboardSections.languageAdventure && primaryLanguageModule ? (
               <section className="mb-6 rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Language Adventure</p>
                 <h2 className="mt-1 text-lg font-black text-slate-900">{primaryLanguageModule.title}</h2>
@@ -1698,7 +1799,7 @@ export default function StudentDashboardPage() {
               </section>
             ) : null}
 
-            {showWeeklyHomeworkCard ? (
+            {dashboardSections.weeklyHomework && showWeeklyHomeworkCard ? (
               <section className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -1749,6 +1850,7 @@ export default function StudentDashboardPage() {
               </div>
             ) : null}
 
+            {dashboardSections.recoveryPath ? (
             <section id="recovery-path-panel" className="mb-6 rounded-3xl border border-cyan-200 bg-cyan-50/70 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -1842,7 +1944,9 @@ export default function StudentDashboardPage() {
                 </div>
               )}
             </section>
+            ) : null}
 
+            {dashboardSections.weeklyHomework ? (
             <details id="weekly-homework-panel" className="mb-6 rounded-3xl border border-violet-200 bg-violet-50/70 p-5">
               <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.18em] text-violet-700">
                 Weekly Homework Details (expand)
@@ -1941,8 +2045,9 @@ export default function StudentDashboardPage() {
                 {weeklyHomeworkGate?.homework ? <WeeklyHomeworkPanel /> : null}
               </div>
             </details>
+            ) : null}
 
-            {progression && (Array.isArray(progression.recommendations) ? progression.recommendations.length > 0 : Boolean(progression.message)) ? (
+            {dashboardSections.subjectProgression && progression && (Array.isArray(progression.recommendations) ? progression.recommendations.length > 0 : Boolean(progression.message)) ? (
               <details className="mb-6 rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5">
                 <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
                   Subject Progression (expand)
@@ -1994,7 +2099,7 @@ export default function StudentDashboardPage() {
               </details>
             ) : null}
 
-            {certificateCenterEnabled && certificateEligibility && (certificateEligibility.summary || certificateEligibility.message) ? (
+            {dashboardSections.certificates && certificateCenterEnabled && certificateEligibility && (certificateEligibility.summary || certificateEligibility.message) ? (
               <details id="certificate-progress-panel" open={openCertificateByDefault} className="mb-6 rounded-3xl border border-amber-200 bg-amber-50/70 p-5">
                 <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.18em] text-amber-700">
                   Certificate Progress (expand)
@@ -2080,7 +2185,7 @@ export default function StudentDashboardPage() {
               </details>
             ) : null}
 
-            {!certificateCenterEnabled ? (
+            {dashboardSections.certificates && !certificateCenterEnabled ? (
               <details id="certificate-progress-panel" className="mb-6 rounded-3xl border border-slate-200 bg-slate-50/70 p-5">
                 <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.18em] text-slate-600">
                   Certificates (expand)

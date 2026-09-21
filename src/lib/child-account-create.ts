@@ -8,9 +8,12 @@ import {
   buildChildSyntheticEmail,
   deriveUsernameBaseFromChildName,
   generateChildPassword,
+  suggestAvailableChildUsernames,
   validateChildAccountPassword,
   validateManualChildUsername,
 } from "@/lib/child-account-credentials";
+import { keyStageForYearGroup } from "@/lib/curriculum";
+import { resolveUkStudentYearFields } from "@/lib/uk-student-year";
 
 export type CreateChildAccountMode = "generated" | "manual";
 
@@ -56,6 +59,7 @@ export type CreateChildAccountFailure = {
   error: string;
   code?: string;
   fieldErrors?: Record<string, string[]>;
+  suggestions?: string[];
 };
 
 export type CreateChildAccountResult = CreateChildAccountSuccess | CreateChildAccountFailure;
@@ -105,15 +109,22 @@ function normalizeProfile(profile: CreateChildAccountProfileInput): CreateChildA
     };
   }
   const yearGroup = profile.yearGroup?.trim() ?? "";
-  if (!yearGroup) {
+  const derived = resolveUkStudentYearFields({
+    dateOfBirth: profile.dateOfBirth,
+    currentYearGroup: yearGroup,
+    yearGroupLocked: false,
+  });
+  const resolvedYearGroup = derived.yearGroup ?? yearGroup;
+  if (!resolvedYearGroup) {
     return {
       ok: false,
       status: 400,
       error: "Year group is required.",
-      fieldErrors: { yearGroup: ["Year group is required."] },
+      fieldErrors: { yearGroup: ["Year group is required. Enter a date of birth to calculate it automatically."] },
     };
   }
-  if (!Number.isInteger(profile.ageYears) || profile.ageYears < 3 || profile.ageYears > 18) {
+  const resolvedAge = derived.ageYears ?? profile.ageYears;
+  if (!Number.isInteger(resolvedAge) || resolvedAge < 3 || resolvedAge > 18) {
     return {
       ok: false,
       status: 400,
@@ -121,13 +132,17 @@ function normalizeProfile(profile: CreateChildAccountProfileInput): CreateChildA
       fieldErrors: { ageYears: ["Age must be between 3 and 18."] },
     };
   }
+  const resolvedKeyStage =
+    derived.keyStageLevel
+    ?? profile.keyStageLevel?.trim()
+    ?? keyStageForYearGroup(resolvedYearGroup);
   return {
     name,
-    yearGroup,
-    ageYears: profile.ageYears,
+    yearGroup: resolvedYearGroup,
+    ageYears: resolvedAge,
     avatar: profile.avatar?.trim() || "⭐",
     dateOfBirth: profile.dateOfBirth?.trim() || undefined,
-    keyStageLevel: profile.keyStageLevel?.trim() || undefined,
+    keyStageLevel: resolvedKeyStage,
     selectedSubjects: profile.selectedSubjects,
     learningGoals: profile.learningGoals,
     senSupportNeeds: profile.senSupportNeeds?.trim() || undefined,
@@ -181,12 +196,19 @@ export async function resolveChildLoginCredentials(
       };
     }
     if (await usernameTaken(usernameCheck.username)) {
+      const suggestions = await suggestAvailableChildUsernames({
+        desired: usernameCheck.username,
+        childName,
+        count: 5,
+        isTaken: usernameTaken,
+      });
       return {
         ok: false,
         status: 409,
         error: "That username is already taken. Please choose another.",
         code: "username_taken",
         fieldErrors: { username: ["That username is already taken."] },
+        suggestions,
       };
     }
     username = usernameCheck.username;
@@ -277,6 +299,7 @@ async function defaultCreateInTransaction(input: {
         name: input.profile.name,
         age: input.profile.ageYears,
         yearGroup: input.profile.yearGroup,
+        yearGroupLocked: false,
         avatar: input.profile.avatar ?? "⭐",
         snapshotJson: JSON.stringify({
           onboarding: {
@@ -287,6 +310,10 @@ async function defaultCreateInTransaction(input: {
             learningGoals: input.profile.learningGoals ?? [],
             senSupportNeeds: input.profile.senSupportNeeds ?? null,
           },
+          dateOfBirth: input.profile.dateOfBirth ?? null,
+          keyStageLevel: input.profile.keyStageLevel ?? null,
+          yearGroup: input.profile.yearGroup,
+          ageYears: input.profile.ageYears,
         }),
       },
     });

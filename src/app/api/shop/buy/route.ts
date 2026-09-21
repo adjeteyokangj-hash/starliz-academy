@@ -9,6 +9,7 @@ import {
   syncProfileFromDb,
 } from "@/app/api/shop/_helpers";
 import { applyWalletMutation, type WalletMetadata } from "@/lib/wallet_ledger";
+import { isPrimaryRewardsStoreEligible } from "@/lib/dashboardResolver";
 
 async function recordFailedPurchase(
   childId: string,
@@ -50,6 +51,16 @@ export async function POST(request: Request) {
     });
     if (!child) {
       return NextResponse.json({ error: "Child not found." }, { status: 404 });
+    }
+
+    if (!isPrimaryRewardsStoreEligible({
+      yearGroup: child.yearGroup,
+      age: child.age,
+    })) {
+      return NextResponse.json(
+        { error: "The rewards store is only available for Years 1–6.", code: "STORE_PRIMARY_ONLY" },
+        { status: 403 },
+      );
     }
 
     const profile = await syncProfileFromDb(body.childId);

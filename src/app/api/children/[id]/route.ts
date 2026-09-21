@@ -14,6 +14,8 @@ import {
   sanitizeSelectedSubjects,
   selectedSubjectsToFocusText,
 } from "@/lib/subject-selection";
+import { keyStageForYearGroup } from "@/lib/curriculum";
+import { resolveUkStudentYearFields, syncChildAcademicFieldsFromDob } from "@/lib/uk-student-year";
 
 function normalizeOptionalString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -67,11 +69,19 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   }
 
   const { id } = await params;
+  try {
+    await syncChildAcademicFieldsFromDob(id);
+  } catch {
+    // Continue with stored values if sync fails.
+  }
   let child: Awaited<ReturnType<typeof prisma.childProfile.findFirst>> = null;
-  let profile: { subjectFocus: string | null } | null = null;
+  let profile: { subjectFocus: string | null; dateOfBirth: Date | null; keyStageLevel: string | null } | null = null;
   try {
     child = await prisma.childProfile.findFirst({ where: { id, parentId: parentScope.parentId } });
-    profile = await prisma.studentProfile.findUnique({ where: { childId: id }, select: { subjectFocus: true } });
+    profile = await prisma.studentProfile.findUnique({
+      where: { childId: id },
+      select: { subjectFocus: true, dateOfBirth: true, keyStageLevel: true },
+    });
   } catch (error) {
     if (isTransientDbSaturationError(error)) {
       return NextResponse.json(
@@ -86,7 +96,18 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   }
 
   const selectedSubjects = sanitizeSelectedSubjects((profile?.subjectFocus ?? "").split(",").map((entry) => entry.trim()));
-  return NextResponse.json({ child: { ...fromDbRecord(child), selectedSubjects } });
+  const mapped = fromDbRecord(child);
+  return NextResponse.json({
+    child: {
+      ...mapped,
+      selectedSubjects,
+      dateOfBirth: profile?.dateOfBirth?.toISOString() ?? mapped.dateOfBirth,
+      keyStageLevel: profile?.keyStageLevel || mapped.keyStageLevel,
+      ageYears: child.age ?? mapped.ageYears,
+      yearGroup: child.yearGroup ?? mapped.yearGroup,
+      yearGroupLocked: child.yearGroupLocked,
+    },
+  });
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -127,7 +148,29 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const body = parsed.data;
-    const normalized = withChildDefaults({ ...(body as Partial<ChildProfile>), id });
+    const existingLocked = existing.yearGroupLocked;
+    const derived = resolveUkStudentYearFields({
+      dateOfBirth: body.dateOfBirth,
+      currentYearGroup: body.yearGroup,
+      // Parents cannot lock; keep existing admin/school lock.
+      yearGroupLocked: existingLocked,
+    });
+    const resolvedYearGroup = existingLocked
+      ? (body.yearGroup || existing.yearGroup || derived.yearGroup || "")
+      : (derived.yearGroup ?? body.yearGroup);
+    const resolvedAgeYears = derived.ageYears ?? body.ageYears;
+    const resolvedKeyStage = existingLocked
+      ? (body.keyStageLevel || derived.keyStageLevel || (resolvedYearGroup ? keyStageForYearGroup(resolvedYearGroup) : undefined))
+      : (derived.keyStageLevel ?? body.keyStageLevel ?? (resolvedYearGroup ? keyStageForYearGroup(resolvedYearGroup) : undefined));
+
+    const normalized = withChildDefaults({
+      ...(body as Partial<ChildProfile>),
+      id,
+      yearGroup: resolvedYearGroup,
+      ageYears: resolvedAgeYears,
+      keyStageLevel: resolvedKeyStage,
+      schoolYear: resolvedYearGroup,
+    });
     const subscription = await prisma.subscription.findFirst({
       where: { parentId: parentScope.parentId },
       orderBy: { updatedAt: "desc" },
@@ -140,7 +183,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const subjectPolicy = resolveSubjectSelectionPolicy({
       planName: currentPricingPlan?.name ?? subscription?.planKey ?? "free",
       childLimit: currentPricingPlan?.childLimit ?? 1,
-      yearGroup: body.yearGroup,
+      yearGroup: resolvedYearGroup,
     });
     const selectedSubjects = applySubjectSelectionPolicy({
       selected: sanitizeSelectedSubjects(body.selectedSubjects),
@@ -167,7 +210,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       where: { childId: id },
       update: {
         dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
-        keyStageLevel: body.keyStageLevel ?? null,
+        keyStageLevel: resolvedKeyStage ?? null,
         learningLevel: body.subjectLevel ?? null,
         senSupportNeeds: body.senSupportNeeds ?? null,
         weakAreasText: body.learningGoals?.join(", ") ?? null,
@@ -180,7 +223,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       create: {
         childId: id,
         dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
-        keyStageLevel: body.keyStageLevel ?? null,
+        keyStageLevel: resolvedKeyStage ?? null,
         learningLevel: body.subjectLevel ?? null,
         senSupportNeeds: body.senSupportNeeds ?? null,
         weakAreasText: body.learningGoals?.join(", ") ?? null,
@@ -199,13 +242,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       entityId: id,
       metadata: {
         parentId: parentScope.parentId,
-        yearGroup: body.yearGroup,
-        keyStageLevel: body.keyStageLevel ?? null,
+        yearGroup: resolvedYearGroup,
+        keyStageLevel: resolvedKeyStage ?? null,
         selectedSubjects: selectedSubjects.selected,
       },
     });
 
-    return NextResponse.json({ ok: true, child: fromDbRecord(updated) });
+    return NextResponse.json({
+      ok: true,
+      child: {
+        ...fromDbRecord(updated),
+        dateOfBirth: body.dateOfBirth ?? null,
+        keyStageLevel: resolvedKeyStage ?? "",
+        ageYears: resolvedAgeYears,
+        yearGroup: resolvedYearGroup,
+        yearGroupLocked: existingLocked,
+      },
+    });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.error("[children.put] unexpected_error", error);

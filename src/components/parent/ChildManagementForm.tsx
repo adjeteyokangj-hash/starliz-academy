@@ -4,6 +4,10 @@ import { useState, FormEvent, useEffect, useMemo } from 'react';
 import Button from '@/components/ui/Button';
 import { KEY_STAGES, YEAR_GROUPS, keyStageForYearGroup } from '@/lib/curriculum';
 import { parentSubjectsForYearGroup } from '@/lib/subject-selection';
+import {
+  calculateAgeFromDateOfBirth,
+  suggestUkYearGroupFromDateOfBirth,
+} from '@/lib/registration/child-profile-options';
 
 type ChildFormData = {
   name: string;
@@ -29,7 +33,7 @@ export type ChildAccountCreatedResult = {
 
 type ChildManagementFormProps = {
   mode: 'add' | 'edit';
-  initialData?: ChildFormData & { id: string; selectedSubjects?: string[] };
+  initialData?: ChildFormData & { id: string; selectedSubjects?: string[]; yearGroupLocked?: boolean };
   onSuccess: (result?: ChildAccountCreatedResult) => void;
   onCancel: () => void;
 };
@@ -57,15 +61,29 @@ const AVATAR_OPTIONS = [
   { value: 'dragon',  emoji: '🐉', label: 'Dragon' },
 ];
 
-function calcAgeFromDob(dob: string): number | '' {
-  if (!dob) return '';
-  const birthDate = new Date(dob);
-  const today = new Date();
-  if (isNaN(birthDate.getTime())) return '';
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const m = today.getMonth() - birthDate.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-  return age >= 0 ? age : '';
+function applyDobDerivedFields(dob: string, current: ChildFormData, locked: boolean): ChildFormData {
+  if (!dob) return { ...current, dateOfBirth: '', ageYears: '' };
+  const age = calculateAgeFromDateOfBirth(dob);
+  const suggestedYear = suggestUkYearGroupFromDateOfBirth(dob);
+  const nextYear = locked ? (current.yearGroup || suggestedYear || '') : (suggestedYear || current.yearGroup || '');
+  const nextKeyStage = nextYear ? keyStageForYearGroup(nextYear) : current.keyStageLevel;
+  return {
+    ...current,
+    dateOfBirth: dob,
+    ageYears: age ?? '',
+    yearGroup: nextYear,
+    schoolYear: nextYear,
+    keyStageLevel: nextKeyStage,
+    selectedSubjects: nextYear
+      ? normalizeSelectionForYearGroupStatic(current.selectedSubjects, nextYear)
+      : current.selectedSubjects,
+  };
+}
+
+function normalizeSelectionForYearGroupStatic(selected: string[], yearGroup: string): string[] {
+  const allowedKeys = new Set<string>(parentSubjectsForYearGroup(yearGroup).map((subject) => subject.key));
+  const retained = selected.filter((key) => allowedKeys.has(key));
+  return retained.length > 0 ? retained : Array.from(allowedKeys).slice(0, 2);
 }
 
 export function getChildFormValidationErrors(formData: ChildFormData, subjectPolicy: SubjectPolicy): FieldErrors {
@@ -118,12 +136,16 @@ export function getChildFormDisabledReason(formData: ChildFormData, subjectPolic
 }
 
 export default function ChildManagementForm({ mode, initialData, onSuccess, onCancel }: ChildManagementFormProps) {
+  const yearGroupLocked = Boolean(initialData?.yearGroupLocked);
   const [formData, setFormData] = useState<ChildFormData>(() => {
     if (initialData) {
-      const computedAge = initialData.dateOfBirth
-        ? calcAgeFromDob(initialData.dateOfBirth)
-        : initialData.ageYears;
-      return { ...initialData, ageYears: computedAge, selectedSubjects: initialData.selectedSubjects ?? ['english', 'maths'] };
+      const base = {
+        ...initialData,
+        selectedSubjects: initialData.selectedSubjects ?? ['english', 'maths'],
+      };
+      return initialData.dateOfBirth
+        ? applyDobDerivedFields(initialData.dateOfBirth, base, yearGroupLocked)
+        : base;
     }
     return {
       name: '',
@@ -155,8 +177,6 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
   const yearGroups = [...YEAR_GROUPS];
   const keyStages = [...KEY_STAGES];
   const subjectLevels = ['Foundation', 'Core', 'Developing', 'Secure', 'Greater Depth'];
-  const expectedKeyStage = formData.yearGroup ? keyStageForYearGroup(formData.yearGroup) : null;
-  const keyStageMismatch = Boolean(expectedKeyStage && formData.keyStageLevel && expectedKeyStage !== formData.keyStageLevel);
   const availableSubjectOptions = useMemo(
     () => parentSubjectsForYearGroup(formData.yearGroup || null),
     [formData.yearGroup]
@@ -387,7 +407,9 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           <select
             id="child-year-group"
             value={formData.yearGroup}
+            disabled={!yearGroupLocked}
             onChange={(e) => {
+              if (!yearGroupLocked) return;
               const nextYear = e.target.value;
               const nextSubjects = normalizeSelectionForYearGroup(formData.selectedSubjects, nextYear);
               setFormData({
@@ -398,7 +420,7 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
                 selectedSubjects: nextSubjects,
               });
             }}
-            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-70"
             aria-describedby={fieldErrors.yearGroup ? 'child-year-group-error' : undefined}
           >
             <option value="">Select year...</option>
@@ -406,6 +428,11 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
               <option key={year} value={year}>{year}</option>
             ))}
           </select>
+          <p className="mt-1 text-xs text-slate-400">
+            {yearGroupLocked
+              ? 'Locked by admin/school override.'
+              : 'Auto-set from date of birth (UK curriculum).'}
+          </p>
           {fieldErrors.yearGroup ? <p id="child-year-group-error" className="mt-1 text-xs text-red-400">{fieldErrors.yearGroup}</p> : null}
         </div>
 
@@ -447,11 +474,12 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
             max={new Date().toISOString().split('T')[0]}
             onChange={(e) => {
               const dob = e.target.value;
-              setFormData({ ...formData, dateOfBirth: dob, ageYears: calcAgeFromDob(dob) });
+              setFormData((current) => applyDobDerivedFields(dob, current, yearGroupLocked));
             }}
             className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
             aria-describedby={fieldErrors.dateOfBirth ? 'child-date-of-birth-error' : undefined}
           />
+          <p className="mt-1 text-xs text-slate-400">Age and year group update automatically from UK school year rules (rolls forward after July).</p>
           {fieldErrors.dateOfBirth ? <p id="child-date-of-birth-error" className="mt-1 text-xs text-red-400">{fieldErrors.dateOfBirth}</p> : null}
         </div>
 
@@ -479,8 +507,9 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           <select
             id="child-key-stage"
             value={formData.keyStageLevel}
+            disabled
             onChange={(e) => setFormData({ ...formData, keyStageLevel: e.target.value })}
-            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-70"
             aria-describedby={fieldErrors.keyStageLevel ? 'child-key-stage-error' : undefined}
           >
             <option value="">Select key stage...</option>
@@ -488,12 +517,8 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
               <option key={stage} value={stage}>{stage}</option>
             ))}
           </select>
+          <p className="mt-1 text-xs text-slate-400">Auto-calculated from year group</p>
           {fieldErrors.keyStageLevel ? <p id="child-key-stage-error" className="mt-1 text-xs text-red-400">{fieldErrors.keyStageLevel}</p> : null}
-          {keyStageMismatch ? (
-            <p className="mt-1 text-xs text-amber-300">
-              Calculated key stage for {formData.yearGroup} is {expectedKeyStage}. Please double-check this selection.
-            </p>
-          ) : null}
         </div>
 
         <div>

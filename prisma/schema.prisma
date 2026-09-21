@@ -226,6 +226,8 @@ model ChildProfile {
   avatar    String?
   age       Int?
   yearGroup String?
+  /** When true, year group is admin/school-managed and must not auto-update from DOB. */
+  yearGroupLocked Boolean @default(false)
 
   stars  Int @default(0)
   xp     Int @default(0)
@@ -346,6 +348,8 @@ model StudentProfile {
   guardianPermissions   String?
   schoolInformation     String?
   subjectFocus          String?
+  /** Per-student Study Dashboard section visibility (JSON). Missing/null = all hidden. */
+  dashboardSectionsJson String?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 }

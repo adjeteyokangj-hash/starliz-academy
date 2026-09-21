@@ -15,6 +15,10 @@ import {
   keyStageForYearGroup,
 } from "@/lib/curriculum";
 import { uploadMediaFile } from "@/lib/upload-client";
+import {
+  calculateAgeFromDateOfBirth,
+  suggestUkYearGroupFromDateOfBirth,
+} from "@/lib/registration/child-profile-options";
 
 type ParentOption = { id: string; name: string | null; email: string };
 type StudentDetail = {
@@ -22,6 +26,7 @@ type StudentDetail = {
   name: string;
   age: number | null;
   yearGroup: string | null;
+  yearGroupLocked?: boolean;
   avatar: string | null;
   level: number;
   selectedVoice: string;
@@ -94,6 +99,7 @@ export default function EditStudentPage() {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
   const [yearGroup, setYearGroup] = useState("");
+  const [yearGroupLocked, setYearGroupLocked] = useState(false);
   const [avatar, setAvatar] = useState("");
   const [level, setLevel] = useState("1");
   const [selectedVoice, setSelectedVoice] = useState("friendly_coach");
@@ -130,6 +136,7 @@ export default function EditStudentPage() {
           setParentId(payload.student.parent.id);
           setAge(payload.student.age ? String(payload.student.age) : "");
           setYearGroup(payload.student.yearGroup ?? "");
+          setYearGroupLocked(Boolean(payload.student.yearGroupLocked));
           setAvatar(payload.student.avatar ?? "");
           setLevel(String(payload.student.level ?? 1));
           setSelectedVoice(payload.student.selectedVoice ?? "friendly_coach");
@@ -176,6 +183,7 @@ export default function EditStudentPage() {
         name,
         age: age ? Number(age) : null,
         yearGroup: yearGroup || null,
+        yearGroupLocked,
         avatar: avatar || null,
         level: Number(level),
         selectedVoice: selectedVoice || null,
@@ -239,7 +247,8 @@ export default function EditStudentPage() {
         </label>
         <label className="block text-sm font-bold text-slate-300">
           Age
-          <input type="number" min={1} max={18} value={age} onChange={(event) => setAge(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+          <input type="number" min={1} max={18} value={age} readOnly className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-slate-300" />
+          <p className="mt-1 text-xs font-medium text-slate-500">Calculated automatically from date of birth.</p>
         </label>
         <label className="block text-sm font-bold text-slate-300">
           Year group
@@ -248,6 +257,7 @@ export default function EditStudentPage() {
             onChange={(event) => {
               const nextYear = event.target.value;
               setYearGroup(nextYear);
+              setYearGroupLocked(true);
               setKeyStageLevel(nextYear ? keyStageForYearGroup(nextYear) : keyStageLevel);
               const nextPathway = curriculumPathwayForYearGroup(nextYear);
               setCurriculumPathway(nextPathway);
@@ -261,10 +271,50 @@ export default function EditStudentPage() {
             {YEAR_GROUPS.map((group) => <option key={group} value={group}>{group}</option>)}
           </select>
         </label>
+        <label className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-3 text-sm font-bold text-slate-300">
+          <input
+            type="checkbox"
+            checked={yearGroupLocked}
+            onChange={(event) => {
+              const locked = event.target.checked;
+              setYearGroupLocked(locked);
+              if (!locked && dateOfBirth) {
+                const suggested = suggestUkYearGroupFromDateOfBirth(dateOfBirth);
+                if (suggested) {
+                  setYearGroup(suggested);
+                  setKeyStageLevel(keyStageForYearGroup(suggested));
+                  setCurriculumPathway(curriculumPathwayForYearGroup(suggested));
+                  const nextAge = calculateAgeFromDateOfBirth(dateOfBirth);
+                  if (nextAge !== null) setAge(String(nextAge));
+                }
+              }
+            }}
+          />
+          Lock year group (admin override — stops automatic UK DOB updates)
+        </label>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block text-sm font-bold text-slate-300">
             Date of birth
-            <input type="date" value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white" />
+            <input
+              type="date"
+              value={dateOfBirth}
+              onChange={(event) => {
+                const dob = event.target.value;
+                setDateOfBirth(dob);
+                if (!dob) return;
+                const nextAge = calculateAgeFromDateOfBirth(dob);
+                if (nextAge !== null) setAge(String(nextAge));
+                if (!yearGroupLocked) {
+                  const suggested = suggestUkYearGroupFromDateOfBirth(dob);
+                  if (suggested) {
+                    setYearGroup(suggested);
+                    setKeyStageLevel(keyStageForYearGroup(suggested));
+                    setCurriculumPathway(curriculumPathwayForYearGroup(suggested));
+                  }
+                }
+              }}
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white"
+            />
           </label>
           <label className="block text-sm font-bold text-slate-300">
             Avatar URL

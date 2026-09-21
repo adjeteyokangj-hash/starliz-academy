@@ -47,16 +47,16 @@ export function buildPrimaryNavLinks(input: {
   dashboardHref: string;
   profileHref: string;
   gaLearningHubHref: string;
+  /** Only when admin has assigned active Ga learning to this student. */
+  showGaLearningHub?: boolean;
 }): PrimaryNavLink[] {
   if (input.showParentAccess) {
-    // Parent-in-child: keep student shell links usable under restricted/trial states.
+    // Parent-in-child: lean shell — no Attendance / Ga Hub / My Profile.
     // Parent Area must return to /parent/dashboard (not profiles?intent=parent).
-    // Do not reuse the same href for two labels — React keys must stay unique.
     return [
       navLink("child-dashboard", "/student/dashboard", "Child Dashboard"),
       navLink("today", "/student/today", "Today"),
       navLink("short-learning", "/student/short-learning", "Short Learning"),
-      navLink("attendance", "/student/attendance", "Attendance"),
       navLink("parent-area", "/parent/dashboard", "Parent Area"),
     ].filter((link): link is PrimaryNavLink => Boolean(link));
   }
@@ -67,9 +67,14 @@ export function buildPrimaryNavLinks(input: {
   if (input.isStudentContext) {
     links.push(navLink("day-school", "/student/today", "Day School"));
     links.push(navLink("short-learning", "/student/short-learning", "Short Learning"));
-    links.push(navLink("attendance", "/student/attendance", "Attendance"));
-    links.push(navLink("ga-learning-hub", input.gaLearningHubHref, "Ga Learning Hub"));
+    if (input.showGaLearningHub) {
+      links.push(navLink("ga-learning-hub", input.gaLearningHubHref, "Ga Learning Hub"));
+    }
+    // My Profile and Attendance stay off the student chrome.
+    return links.filter((link): link is PrimaryNavLink => Boolean(link));
   }
+
+  // Parent (and other non-student) accounts keep My Profile.
   links.push(navLink("profile", input.profileHref, "My Profile"));
   return links.filter((link): link is PrimaryNavLink => Boolean(link));
 }
@@ -79,8 +84,8 @@ export default function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [role, setRole] = useState<string | null>(null);
-  const [authResolved, setAuthResolved] = useState(false);
   const [activeChild, setActiveChild] = useState<ActiveChildPayload["child"] | null>(null);
+  const [showGaLearningHub, setShowGaLearningHub] = useState(false);
 
   const isStudentPage = Boolean(
     pathname?.startsWith("/student") ||
@@ -88,22 +93,25 @@ export default function Navbar() {
     pathname === "/dashboard" ||
     pathname?.startsWith("/dashboard/")
   );
-  // Parent→child open keeps role "parent". Do not treat unresolved auth on /student/*
-  // as a student, or Ga Learning Hub flashes before /api/auth/me returns.
+  // Parent→child open keeps role "parent". On /student/* keep Day School / Short Learning
+  // until we know the session is a parent or staff account — a slow or failed /api/auth/me
+  // must not fall back to Dashboard / My Profile.
   const isStudentRole = role === "student";
-  const pendingStudentExperience = !authResolved && isStudentPage;
-  const isStudentContext = isStudentRole;
+  const isStaffRole = role === "teacher" || role === "admin";
+  const pendingStudentExperience = isStudentPage && !isStudentRole && role !== "parent" && !isStaffRole;
   const dashboardHref = isStudentRole || pendingStudentExperience ? "/student/dashboard" : "/dashboard";
-  const profileHref = isStudentRole || pendingStudentExperience ? "/student/profile" : "/my-profile";
+  const profileHref = "/my-profile";
   const gaLearningHubHref = "/ga-learning-hub";
-  const showParentAccess = authResolved && role === "parent";
+  const showParentAccess = role === "parent" && isStudentPage;
   const primaryNavLinks = buildPrimaryNavLinks({
     showParentAccess,
-    isStudentContext,
+    isStudentContext: (isStudentRole || pendingStudentExperience) && !showParentAccess,
     dashboardHref,
     profileHref,
     gaLearningHubHref,
+    showGaLearningHub: isStudentRole && showGaLearningHub,
   });
+  const showStudentMetaBanner = isStudentRole && Boolean(activeChild);
   const studentYearGroup = activeChild?.yearGroup ?? null;
   const studentKeyStage = activeChild?.keyStageLevel?.trim() || (studentYearGroup ? keyStageForYearGroup(studentYearGroup) : null);
   const studentAgeLabel = studentYearGroup ? ageGroupForYearGroup(studentYearGroup) : activeChild?.ageYears ? `${activeChild.ageYears}` : "-";
@@ -118,7 +126,6 @@ export default function Navbar() {
         if (!active) return;
         if (!response.ok) {
           setRole(null);
-          setAuthResolved(true);
           return;
         }
         const payload = (await response.json()) as AuthMePayload;
@@ -126,8 +133,6 @@ export default function Navbar() {
       } catch {
         if (!active) return;
         setRole(null);
-      } finally {
-        if (active) setAuthResolved(true);
       }
     };
 
@@ -139,32 +144,44 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    if (!isStudentContext) return;
+    if (!isStudentRole) return;
     let active = true;
 
-    const loadActiveChild = async () => {
+    const loadStudentChrome = async () => {
       try {
-        const response = await fetch("/api/children/active", { credentials: "include" });
-        if (!active || !response.ok) return;
-        const payload = (await response.json()) as ActiveChildPayload;
+        const activeRes = await fetch("/api/children/active", {
+          credentials: "include",
+          signal: AbortSignal.timeout(12_000),
+        });
         if (!active) return;
-        setActiveChild(payload.child ?? null);
+
+        if (activeRes.ok) {
+          const payload = (await activeRes.json()) as ActiveChildPayload & {
+            showGaLearningHub?: boolean;
+          };
+          setActiveChild(payload.child ?? null);
+          setShowGaLearningHub(Boolean(payload.showGaLearningHub));
+        } else {
+          setActiveChild(null);
+          setShowGaLearningHub(false);
+        }
       } catch {
         if (!active) return;
         setActiveChild(null);
+        setShowGaLearningHub(false);
       }
     };
 
-    void loadActiveChild();
+    void loadStudentChrome();
 
     return () => {
       active = false;
     };
-  }, [isStudentContext]);
+  }, [isStudentRole]);
 
   useEffect(() => {
     // Track last child page so "Continue" can resume their session
-    const CHILD_PAGES = ["/dashboard", "/student", "/games", "/spelling", "/maths", "/reading", "/student/profile", "/student/today", "/student/attendance", "/goals"];
+    const CHILD_PAGES = ["/dashboard", "/student", "/games", "/spelling", "/maths", "/reading", "/student/profile", "/student/today", "/student/attendance", "/goals", "/ga-learning-hub"];
     if (CHILD_PAGES.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
       saveLastPage(pathname);
     }
@@ -215,7 +232,7 @@ export default function Navbar() {
           </nav>
         </div>
 
-        {isStudentContext && activeChild && (
+        {showStudentMetaBanner && (
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-semibold text-slate-700">
             <span>Age: {studentAgeLabel} years</span>
             <span className="text-slate-300">|</span>
