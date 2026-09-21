@@ -704,6 +704,13 @@ export default function DailyLessonGamePage() {
       try {
         const response = await fetchWithRefreshRetry(`/api/student/assignments?id=${encodeURIComponent(assignmentId)}`, { credentials: "include" });
         const payload = (await response.json()) as LessonAssignment & { error?: string };
+        if (response.status === 401) {
+          const next = typeof window !== "undefined"
+            ? `${window.location.pathname}${window.location.search}`
+            : "/games/lesson";
+          router.replace(`/auth/login?next=${encodeURIComponent(next)}`);
+          return;
+        }
         if (!response.ok) throw new Error(payload.error ?? "Unable to load lesson.");
         setAssignment(payload);
         if (typeof window !== "undefined") {
