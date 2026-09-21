@@ -908,7 +908,8 @@ export async function startShortLearningContentBlock(input: {
   const session = existing && shortLearningSessionHasStartableBlock(existing.blocks)
     ? existing
     : (await ensureShortLearningSessionContent({ bookingId: input.bookingId })).session;
-  if (!shortLearningSessionHasStartableBlock(session.blocks)) {
+  if (!session || !("blocks" in session) || !Array.isArray(session.blocks)
+    || !shortLearningSessionHasStartableBlock(session.blocks)) {
     throw new Error("This Short Learning session is not ready yet. Please try again shortly.");
   }
 
@@ -948,12 +949,13 @@ export async function startShortLearningContentBlock(input: {
       : completedAnchor
         ? completedAnchor.order + 1
         : session.currentBlockOrder ?? 0;
-    playable = pickNextShortLearningBlock({
+    const next = pickNextShortLearningBlock({
       blocks,
       preferredOrder,
       completedContentId: input.completedContentId,
       completedBlockId: input.completedBlockId,
     });
+    playable = next ? blocks.find((block) => block.id === next.id) ?? null : null;
   }
 
   if (!playable) {
