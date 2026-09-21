@@ -22,6 +22,7 @@ import { recommendShortLearningSubject } from "@/lib/schools/short-learning-subj
 import {
   SHORT_LEARNING_ALLOWED_DURATIONS,
   SHORT_LEARNING_EARLY_ENTRY_MINUTES,
+  SHORT_LEARNING_HONESTY_POLICY_VERSION,
 } from "@/lib/schools/short-learning-constants";
 
 export {
@@ -54,7 +55,7 @@ export function isAllowedShortLearningDuration(minutes: number): boolean {
   return (SHORT_LEARNING_ALLOWED_DURATIONS as readonly number[]).includes(minutes);
 }
 
-/** Subscription model — cancellation is always free; late flag is status-only. */
+/** Subscription model ÔÇö cancellation is always free; late flag is status-only. */
 export function shortLearningCancellationIsAlwaysFree(): boolean {
   return true;
 }
@@ -81,7 +82,7 @@ export function generateSlotStartMinutes(input: {
 
 /**
  * Interpret `day` as a calendar date (UTC midnight placeholder for YYYY-MM-DD)
- * plus minutes-from-midnight in the school window timezone → UTC instant.
+ * plus minutes-from-midnight in the school window timezone ÔåÆ UTC instant.
  */
 function atLocalMinutes(day: Date, minutes: number, timeZone = UK_TIMEZONE): Date {
   const y = day.getUTCFullYear();
@@ -173,7 +174,7 @@ export async function ensureDefaultLearningWindows(schoolId: string) {
   if (existing > 0) return { created: 0 };
 
   const rows = [
-    // Mon–Fri
+    // MonÔÇôFri
     ...[1, 2, 3, 4, 5].map((weekday) => ({
       schoolId,
       weekday,
@@ -184,7 +185,7 @@ export async function ensureDefaultLearningWindows(schoolId: string) {
       capacityPerSlot: 40,
       active: true,
     })),
-    // Sat–Sun
+    // SatÔÇôSun
     ...[0, 6].map((weekday) => ({
       schoolId,
       weekday,
@@ -361,7 +362,7 @@ export async function listParentBookableShortLearningStudents(parentUserId: stri
         "Add a child profile in the Parent Portal before booking Short Learning. A direct subscription does not require a school link, but a child must exist first.";
     } else {
       emptyReason =
-        "Your child is not yet enrolled at a school that offers Short Learning slots. School linkage is not required for a direct subscription purchase itself, but booking uses school capacity — contact support if you need help completing enrolment.";
+        "Your child is not yet enrolled at a school that offers Short Learning slots. School linkage is not required for a direct subscription purchase itself, but booking uses school capacity ÔÇö contact support if you need help completing enrolment.";
     }
   }
 
@@ -393,7 +394,7 @@ export async function parentOwnsBookableSchoolStudent(input: {
 }
 
 /**
- * Reliability gate — no fees. Repeated no-shows may temporarily restrict booking.
+ * Reliability gate ÔÇö no fees. Repeated no-shows may temporarily restrict booking.
  * Uses SchoolSupportPolicy.metadataJson.shortLearning thresholds when present.
  */
 export async function assertParentShortLearningReliability(input: {
@@ -439,7 +440,7 @@ export async function assertParentShortLearningReliability(input: {
     const restrictionEnds = new Date(anchor.getTime() + settings.restrictBookingDays * 86_400_000);
     if (now < restrictionEnds) {
       throw new Error(
-        `Booking temporarily restricted until ${restrictionEnds.toISOString().slice(0, 10)} after repeated no-shows. No fees apply — please confirm attendance going forward.`,
+        `Booking temporarily restricted until ${restrictionEnds.toISOString().slice(0, 10)} after repeated no-shows. No fees apply ÔÇö please confirm attendance going forward.`,
       );
     }
     // After restriction window, still cap concurrent future bookings.
@@ -661,7 +662,7 @@ export async function cancelStudentLearningBooking(input: {
       status,
       cancelledAt: new Date(),
       cancellationCategory: late ? "late_free" : "free",
-      // Explicitly no fee fields — subscription model has no cancellation charge.
+      // Explicitly no fee fields ÔÇö subscription model has no cancellation charge.
     },
   });
 
