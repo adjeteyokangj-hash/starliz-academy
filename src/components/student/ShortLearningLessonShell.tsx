@@ -87,6 +87,7 @@ export default function ShortLearningLessonShell({
       ? `${support.supportContext.subject}${support.supportContext.yearGroup ? ` · ${support.supportContext.yearGroup}` : ""}`
       : "AI-led Short Learning");
   const resolvedObjective = learningObjective ?? support?.supportContext?.learningObjective ?? null;
+  // Keep assignmentId/contentId as a truthy check (not Boolean()) so TS narrows for DaytimeTutorPanel.
   const showTutor = !hideTutor && Boolean(assignmentId && contentId);
 
   return (
@@ -112,7 +113,7 @@ export default function ShortLearningLessonShell({
 
       <div className={`mx-auto grid max-w-7xl gap-5 px-4 py-5 sm:px-6 ${showTutor ? "lg:grid-cols-[minmax(0,1fr)_minmax(280px,34%)] lg:items-start" : ""}`}>
         <main className="min-w-0 space-y-4 pb-8">{children}</main>
-        {showTutor ? (
+        {!hideTutor && assignmentId && contentId ? (
           <aside
             data-testid="short-learning-lesson-sidebar"
             className="flex h-full flex-col gap-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.06)] lg:sticky lg:top-4"
