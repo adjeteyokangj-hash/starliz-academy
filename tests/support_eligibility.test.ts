@@ -31,10 +31,11 @@ test("Day School: AI not exhausted → no human tutor eligibility", () => {
   assert.equal(result.continueAi, true);
 });
 
-test("Short Learning: exhausted with active booking is human-eligible", () => {
+test("Short Learning: student invite with active booking is human-eligible", () => {
   const result = resolveStudentHumanSupportEligibility({
     mode: "SHORT_LEARNING",
-    aiExhausted: true,
+    aiExhausted: false,
+    studentRequestedHelp: true,
     studentRecovered: false,
     bookingActive: true,
   });

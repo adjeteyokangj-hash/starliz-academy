@@ -1,13 +1,17 @@
 import { prisma } from "@/lib/db";
 import { assignContentToStudent } from "@/lib/assignments";
 import { itemCountForMinutes } from "@/lib/schools/daytime-session-plan";
-import { minMathQuestionsForMinutes } from "@/lib/schools/math-practice-fill";
+import { ensureMinimumMathQuestions, minMathQuestionsForMinutes } from "@/lib/schools/math-practice-fill";
 import {
   generateDaytimeStageWithOpenAi,
   generateGuidedReadingSharedPassage,
 } from "@/lib/schools/daytime-ai-stage-generator";
 import { logDaytimeGenerationTelemetry } from "@/lib/schools/daytime-generation-telemetry";
 import { classifyDaytimeSubjectMode } from "@/lib/schools/daytime-subject-mode";
+import {
+  serializeDaytimeStageContentJson,
+  type NormalizedDaytimeStagePack,
+} from "@/lib/schools/daytime-stage-validators";
 import { shortLearningMinQuestionCount } from "@/lib/schools/short-learning-instructional-depth";
 import {
   isPlayableSubjectContentTypeCompatible,
@@ -31,6 +35,7 @@ import {
   resolveShortLearningSkillFocus,
 } from "@/lib/schools/short-learning-curriculum";
 import { remixContentQuestionsForStudent } from "@/lib/schools/short-learning-question-rotation";
+import { buildSubjectPracticeFillItems } from "@/lib/schools/subject-practice-fill";
 import {
   pickNextShortLearningBlock,
   shortLearningLessonHref,
@@ -309,6 +314,79 @@ async function validateAndRepairSessionPlayability(input: {
   return { ok: issues.length === 0, issues, repairedContentIds };
 }
 
+/**
+ * Deterministic offline pack when OpenAI fails — keeps live Short Learning playable.
+ */
+function buildShortLearningOfflineFallbackPack(input: {
+  mode: ReturnType<typeof classifyDaytimeSubjectMode>;
+  subject: string;
+  skillFocus: string;
+  yearGroup: string;
+  lessonTitle: string;
+  stageLabel: string;
+  targetMinutes: number;
+  targetItems: number;
+}): NormalizedDaytimeStagePack | null {
+  const maths = canonicalShortLearningSubjectKey(input.subject) === "maths";
+  const count = Math.max(4, input.targetItems);
+  const rawQuestions = maths
+    ? ensureMinimumMathQuestions({
+        questions: [],
+        yearGroup: input.yearGroup,
+        skillFocus: input.skillFocus,
+        title: input.stageLabel,
+        estimatedMinutes: input.targetMinutes,
+      })
+    : buildSubjectPracticeFillItems({
+        subject: input.subject,
+        yearGroup: input.yearGroup,
+        skillFocus: input.skillFocus,
+        count,
+        idPrefix: `sl-offline-${input.subject}`,
+      });
+  if (!rawQuestions.length) return null;
+
+  const questions = rawQuestions.map((q, index) => {
+    const prompt = String(q.prompt ?? q.question ?? "").trim();
+    const answer = String(q.answer ?? "").trim();
+    const choices = (Array.isArray(q.choices) ? q.choices : Array.isArray(q.options) ? q.options : [])
+      .map((c) => String(c));
+    const explanation = String(q.explanation ?? "Check the subject carefully and try again.");
+    return {
+      id: String(q.id ?? `sl-offline-q-${index + 1}`),
+      prompt,
+      question: prompt,
+      answer,
+      choices,
+      options: choices,
+      explanation,
+      hints: Array.isArray(q.hints) ? q.hints.map(String) : [explanation],
+      kind: "multiple-choice" as const,
+    };
+  });
+
+  return {
+    subjectType: input.mode,
+    title: `${input.lessonTitle} · ${input.stageLabel}`,
+    estimatedMinutes: input.targetMinutes,
+    targetItems: questions.length,
+    learningObjective: input.skillFocus,
+    explanation: `Practice ${input.skillFocus} for ${input.subject}.`,
+    priorLearningWarmup: `Quick warm-up on ${input.skillFocus}.`,
+    reflectionCheck: `What is one thing you improved about ${input.skillFocus}?`,
+    activities: [
+      {
+        kind: "multiple-choice",
+        estimatedMinutes: input.targetMinutes,
+        title: `Work through these ${input.subject} questions.`,
+      },
+    ],
+    questions,
+    generationStatus: "ok",
+    failureReason: null,
+  };
+}
+
 async function createContentForBlock(input: {
   bookingId: string;
   subject: string;
@@ -323,7 +401,7 @@ async function createContentForBlock(input: {
     wordCount: number;
   } | null;
   sharedVocabulary?: Array<{ word: string; childFriendlyMeaning: string; example?: string }> | null;
-}): Promise<{ contentId: string; openAiSucceeded: boolean; playableContentType: string } | null> {
+}): Promise<{ contentId: string; openAiSucceeded: boolean; playableContentType: string; usedOfflineFallback: boolean } | null> {
   if (!input.block.requiresContent || !input.block.daytimeStage) return null;
 
   const mode = classifyDaytimeSubjectMode(input.subject, input.skillFocus);
@@ -361,17 +439,36 @@ async function createContentForBlock(input: {
     instructionalDepthProfile: "short-learning",
   });
 
+  let contentJson = generated.contentJson;
+  let usedOfflineFallback = false;
+  if (!generated.openAiSucceeded) {
+    const fallback = buildShortLearningOfflineFallbackPack({
+      mode,
+      subject: input.subject,
+      skillFocus: input.skillFocus,
+      yearGroup: input.yearGroup,
+      lessonTitle,
+      stageLabel: input.block.title,
+      targetMinutes,
+      targetItems,
+    });
+    if (fallback) {
+      contentJson = serializeDaytimeStageContentJson(fallback);
+      usedOfflineFallback = true;
+    }
+  }
+
   const content = await prisma.aIContentCache.create({
     data: {
       contentType: playable.playableContentType,
       level: yearGroupToLevel(input.yearGroup),
       topic: lessonTitle.slice(0, 180),
-      contentJson: generated.contentJson,
+      contentJson,
       // Live booking content is student-playable immediately. Admin publication remains
       // for reusable journeys, not for entering this booked class.
       status: "generated",
       createdBy: "short-learning-session-planner",
-      model: generated.model,
+      model: usedOfflineFallback ? "offline-subject-bank" : generated.model,
       keyStage: keyStageForYearGroup(input.yearGroup),
       yearGroup: input.yearGroup,
       skillFocus: input.skillFocus.slice(0, 120),
@@ -384,6 +481,7 @@ async function createContentForBlock(input: {
         daytimeStage: stage,
         learningObjective: input.block.learningObjectiveLabel,
         openAiSucceeded: generated.openAiSucceeded,
+        usedOfflineFallback,
         validationIssues: generated.validationIssues,
         lifecycle: "awaiting_review",
         // Playable subject aligns with contentType for assignment safety.
@@ -407,6 +505,7 @@ async function createContentForBlock(input: {
     contentId: content.id,
     openAiSucceeded: generated.openAiSucceeded,
     playableContentType: playable.playableContentType,
+    usedOfflineFallback,
   };
 }
 
@@ -764,7 +863,7 @@ export async function ensureShortLearningSessionContent(
           sharedPassage,
           sharedVocabulary,
         });
-        if (generated?.openAiSucceeded && generated.contentId) {
+        if (generated?.contentId && (generated.openAiSucceeded || generated.usedOfflineFallback)) {
           contentId = generated.contentId;
           if (booking.schoolStudent.childId) {
             const remixed = await remixContentQuestionsForStudent({
@@ -780,6 +879,9 @@ export async function ensureShortLearningSessionContent(
             contentId = remixed.contentId;
           }
           if (generated.playableContentType) playableTypes.push(generated.playableContentType);
+          if (!generated.openAiSucceeded) {
+            anyOpenAiFailure = true;
+          }
         } else {
           blockStatus = "failed";
           anyOpenAiFailure = true;
@@ -835,7 +937,8 @@ export async function ensureShortLearningSessionContent(
       return Boolean(b.contentId) && b.status === "ready";
     }).length === createdBlocks.length;
 
-  const generatedOk = generativeReady && playability.ok && !anyOpenAiFailure;
+  // Offline subject-bank fallback still counts as a playable success for live bookings.
+  const generatedOk = generativeReady && playability.ok;
   const sessionStatus = generatedOk ? "ready" : "failed";
 
   const generationDurationMs = Date.now() - generationStarted;
@@ -905,9 +1008,19 @@ export async function startShortLearningContentBlock(input: {
     where: { bookingId: input.bookingId },
     include: { blocks: { orderBy: { order: "asc" as const } } },
   });
-  const session = existing && shortLearningSessionHasStartableBlock(existing.blocks)
-    ? existing
-    : (await ensureShortLearningSessionContent({ bookingId: input.bookingId })).session;
+  const needsRebuild = !existing
+    || existing.status === "failed"
+    || existing.status === "generating"
+    || !shortLearningSessionHasStartableBlock(existing.blocks)
+    || !existing.blocks.some((block) => Boolean(block.contentId) && block.status !== "failed");
+
+  const ensured = needsRebuild
+    ? await ensureShortLearningSessionContent({
+        bookingId: input.bookingId,
+        forceRegenerate: existing?.status === "failed",
+      })
+    : null;
+  const session = ensured?.session ?? existing;
   if (!session || !("blocks" in session) || !Array.isArray(session.blocks)
     || !shortLearningSessionHasStartableBlock(session.blocks)) {
     throw new Error("This Short Learning session is not ready yet. Please try again shortly.");

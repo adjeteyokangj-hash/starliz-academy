@@ -8,6 +8,7 @@ import {
   shortLearningSubjectLabel,
 } from "@/lib/schools/short-learning-subjects";
 import { formatUkDateTimeShort, formatUkTime, todayUkDateIso } from "@/lib/uk-datetime";
+import ParentCollapsibleCard from "@/components/parent/ParentCollapsibleCard";
 
 type StudentOption = {
   schoolId: string;
@@ -123,6 +124,11 @@ export default function ParentShortLearningPanel() {
       return;
     }
     setSlots(payload.slots ?? []);
+    setStartsAt((current) => {
+      if (!current) return current;
+      const stillAvailable = (payload.slots as SlotRow[] | undefined)?.some((slot) => slot.startsAt === current);
+      return stillAvailable ? current : "";
+    });
   }
 
   useEffect(() => {
@@ -235,8 +241,13 @@ export default function ParentShortLearningPanel() {
       {success ? <p className="text-sm font-semibold text-emerald-300" role="status">{success}</p> : null}
       {loading ? <p className="text-sm text-slate-400" aria-live="polite">Loading…</p> : null}
 
-      <form onSubmit={onBook} className="space-y-4 rounded-[2rem] border border-slate-800 bg-slate-900/80 p-6">
-        <h2 className="text-xl font-bold">Book a session</h2>
+      <ParentCollapsibleCard
+        title="Book a session"
+        description="Choose a student, slot, and subject for Short Learning."
+        storageKey="parent-short-learning:book"
+        className="rounded-[2rem] border-slate-800"
+      >
+      <form onSubmit={onBook} className="space-y-4">
         <label className="block text-sm">
           Student
           <select
@@ -339,13 +350,17 @@ export default function ParentShortLearningPanel() {
           {saving ? "Booking…" : "Book Short Learning"}
         </button>
       </form>
+      </ParentCollapsibleCard>
 
-      <section>
-        <h2 className="text-xl font-bold">Your bookings</h2>
+      <ParentCollapsibleCard
+        title="Your bookings"
+        description="Upcoming and past Short Learning sessions."
+        storageKey="parent-short-learning:bookings"
+      >
         {bookings.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-400">No bookings yet.</p>
+          <p className="text-sm text-slate-400">No bookings yet.</p>
         ) : (
-          <ul className="mt-4 space-y-3">
+          <ul className="space-y-3">
             {bookings.map((booking) => (
               <li key={booking.id} className="rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -391,7 +406,7 @@ export default function ParentShortLearningPanel() {
             ))}
           </ul>
         )}
-      </section>
+      </ParentCollapsibleCard>
     </div>
   );
 }

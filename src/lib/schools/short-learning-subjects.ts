@@ -55,6 +55,8 @@ const ALIASES: Record<string, ShortLearningSubjectKey | typeof SHORT_LEARNING_ST
   "let starliz choose": SHORT_LEARNING_STARLIZ_CHOOSE,
   auto: SHORT_LEARNING_STARLIZ_CHOOSE,
   english: "english",
+  spelling: "english",
+  reading: "english",
   maths: "maths",
   math: "maths",
   mathematics: "maths",

@@ -23,6 +23,8 @@ export type ShortLearningEligibilityContext = {
   aiExhausted: boolean;
   studentRecovered: boolean;
   bookingActive: boolean;
+  /** Child tapped Invite a tutor while a human is on shift and available. */
+  studentRequestedHelp?: boolean;
 };
 
 export type StudentHumanSupportEligibilityInput =
@@ -95,7 +97,7 @@ export function resolveStudentHumanSupportEligibility(
       reason: "No active Short Learning booking.",
     };
   }
-  if (!input.aiExhausted) {
+  if (!input.aiExhausted && !input.studentRequestedHelp) {
     return {
       humanTutorEligible: false,
       continueAi: true,

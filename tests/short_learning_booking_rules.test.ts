@@ -8,6 +8,7 @@ import {
   canCancelFreely,
   generateSlotStartMinutes,
   isAllowedShortLearningDuration,
+  isShortLearningTestParentEmail,
   isWithinStandardBookingWindow,
   parseTimeHm,
   shortLearningCancellationIsAlwaysFree,
@@ -17,6 +18,13 @@ test("Short Learning honesty copy is present", () => {
   assert.match(SHORT_LEARNING_PROMISE, /AI teaching is guaranteed/i);
   assert.match(SHORT_LEARNING_CHECKBOX, /AI-led/i);
   assert.equal(SHORT_LEARNING_HONESTY_POLICY_VERSION, "short-learning-ai-led-v1");
+});
+
+test("E2E parent email is allowlisted for schedule relax outside production", () => {
+  assert.equal(isShortLearningTestParentEmail("e2e.parent+assigned@starliz.local"), true);
+  assert.equal(isShortLearningTestParentEmail("E2E.Parent+Assigned@starliz.local"), true);
+  assert.equal(isShortLearningTestParentEmail("someone.else@starliz.local"), false);
+  assert.equal(isShortLearningTestParentEmail(null), false);
 });
 
 test("weekday booking opens 7 days ahead and is late after noon", () => {

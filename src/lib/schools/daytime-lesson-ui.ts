@@ -159,17 +159,16 @@ export function studentHumanSupportDisplay(input: {
   if (summary.state === "tutor-available") {
     return {
       state: "tutor-available",
-      label: "A tutor is available if AI help is exhausted",
+      label: "A tutor is available — invite them if you need extra help",
       minutesRemaining: null,
     };
   }
   if (summary.state === "queued") {
-    // Only show queue language when tutors are online (deriveHumanSupportSummary already gates).
-    return { state: "queued", label: "Human support in progress", minutesRemaining: null };
+    return { state: "queued", label: "Waiting for a tutor to join", minutesRemaining: null };
   }
   return {
     state: "tutors-busy",
-    label: "A tutor is available if AI help is exhausted",
+    label: "Tutors are busy right now — continue with AI",
     minutesRemaining: null,
   };
 }

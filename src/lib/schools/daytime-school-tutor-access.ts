@@ -1,4 +1,10 @@
 import { prisma } from "@/lib/db";
+import { ensureMinimumMathQuestions, padMathAnswerChoices } from "@/lib/schools/math-practice-fill";
+import {
+  ensureMinimumSubjectQuestions,
+  replaceOffSubjectMathsQuestions,
+} from "@/lib/schools/subject-practice-fill";
+import { canonicalShortLearningSubjectKey } from "@/lib/schools/short-learning-curriculum";
 import {
   extractHelpFromQuestionItem,
   type StoredQuestionHelp,
@@ -201,7 +207,14 @@ function normalizeChoices(item: Record<string, unknown>): string[] {
 
 export function resolveQuestionFromContentJson(
   contentJson: string,
-  input: { questionId?: string; questionIndex?: number },
+  input: {
+    questionId?: string;
+    questionIndex?: number;
+    contentType?: string | null;
+    subject?: string | null;
+    yearGroup?: string | null;
+    skillFocus?: string | null;
+  },
 ): DaytimeTutorQuestion | null {
   let parsed: unknown;
   try {
@@ -209,16 +222,64 @@ export function resolveQuestionFromContentJson(
   } catch {
     return null;
   }
-  const items = toQuestionArray(parsed);
+  let items = toQuestionArray(parsed);
+  const pack = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : null;
+  const contentType = (input.contentType ?? "").toLowerCase();
+  const subjectType = String(pack?.subjectType ?? "").toLowerCase();
+  const packTitle = typeof pack?.title === "string" ? pack.title : null;
+  const subject = input.subject
+    ?? (typeof pack?.schoolSubject === "string" ? pack.schoolSubject : null)
+    ?? packTitle;
+  const booked = canonicalShortLearningSubjectKey(subject);
+  const isMaths = booked ? booked === "maths" : (contentType.includes("math") || subjectType.includes("math"));
+  const idPrefix = isMaths ? "math" : contentType.includes("spell") ? "spelling" : contentType.includes("read") ? "reading" : "q";
+  const skillFocus = input.skillFocus ?? (typeof pack?.skillFocus === "string" ? pack.skillFocus : null);
+  const estimatedMinutes = typeof pack?.estimatedMinutes === "number" ? pack.estimatedMinutes : null;
+  if (isMaths) {
+    items = ensureMinimumMathQuestions({
+      questions: items,
+      yearGroup: input.yearGroup,
+      skillFocus,
+      title: packTitle,
+      estimatedMinutes,
+    });
+  } else {
+    items = replaceOffSubjectMathsQuestions({
+      questions: items,
+      subject,
+      yearGroup: input.yearGroup,
+      skillFocus,
+      title: packTitle,
+      estimatedMinutes,
+    });
+    items = ensureMinimumSubjectQuestions({
+      questions: items,
+      subject,
+      yearGroup: input.yearGroup,
+      skillFocus,
+      title: packTitle,
+      estimatedMinutes,
+    });
+  }
   if (!items.length) return null;
+
+  const idsFor = (item: Record<string, unknown>, i: number): string[] => {
+    const prompt = String(item.question ?? item.prompt ?? item.word ?? "").trim().toLowerCase();
+    return Array.from(new Set([
+      String(item.id ?? "").trim(),
+      `q-${i + 1}`,
+      `${idPrefix}-${i + 1}`,
+      prompt,
+    ].filter(Boolean)));
+  };
 
   let index = -1;
   if (input.questionId?.trim()) {
     const wanted = input.questionId.trim();
-    index = items.findIndex((item, i) => {
-      const id = String(item.id ?? `q-${i + 1}`);
-      return id === wanted;
-    });
+    const wantedKey = wanted.toLowerCase();
+    index = items.findIndex((item, i) => idsFor(item, i).some((id) => id === wanted || id === wantedKey));
   }
   if (index < 0 && typeof input.questionIndex === "number" && Number.isFinite(input.questionIndex)) {
     index = Math.trunc(input.questionIndex);
@@ -229,7 +290,7 @@ export function resolveQuestionFromContentJson(
   const item = items[index]!;
   const prompt = String(item.question ?? item.prompt ?? item.word ?? "").trim();
   if (!prompt) return null;
-  const id = String(item.id ?? `q-${index + 1}`);
+  const id = String(item.id ?? `${idPrefix}-${index + 1}`);
   const modelAnswer = (item.answer ?? item.correctAnswer ?? item.word ?? null) as string | number | null;
   const passageOrExplanation = typeof item.passage === "string"
     ? item.passage
@@ -237,15 +298,20 @@ export function resolveQuestionFromContentJson(
       ? item.explanation
       : null;
   const storedHelp = extractHelpFromQuestionItem(item);
+  const choices = padMathAnswerChoices({
+    prompt,
+    answer: modelAnswer ?? "",
+    existing: normalizeChoices(item),
+  });
 
   return {
     id,
     index,
     prompt,
-    answerType: String(item.kind ?? (normalizeChoices(item).length ? "multiple-choice" : "short-answer")),
+    answerType: String(item.kind ?? (choices.length ? "multiple-choice" : "short-answer")),
     modelAnswer,
     passageOrExplanation,
-    choices: normalizeChoices(item),
+    choices,
     storedHelp,
     raw: item,
   };

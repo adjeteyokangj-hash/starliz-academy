@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 export type DaytimeTutorIntent =
@@ -85,8 +85,72 @@ function DaytimeTutorPanelInner({
   const [history, setHistory] = useState<TutorTurn[]>([]);
   const [word, setWord] = useState("");
   const [wordPromptOpen, setWordPromptOpen] = useState(false);
+  const [humanSupportState, setHumanSupportState] = useState("ai-only");
+  const [humanSupportLabel, setHumanSupportLabel] = useState("AI support available");
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
   const premium = variant === "premium";
   const isShortLearning = Boolean(shortLearningBookingId);
+
+  useEffect(() => {
+    if (!isShortLearning || !shortLearningBookingId || !assignmentId || !contentId) return;
+    let cancelled = false;
+    void (async () => {
+      const qs = new URLSearchParams({ assignmentId, contentId });
+      const response = await fetchWithRefreshRetry(
+        `/api/student/short-learning/${encodeURIComponent(shortLearningBookingId)}/support-context?${qs.toString()}`,
+        { credentials: "include" },
+      );
+      const payload = await response.json().catch(() => ({})) as {
+        humanSupport?: { state?: string; label?: string };
+      };
+      if (cancelled || !response.ok) return;
+      setHumanSupportState(payload.humanSupport?.state ?? "ai-only");
+      setHumanSupportLabel(payload.humanSupport?.label ?? "AI support available");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isShortLearning, shortLearningBookingId, assignmentId, contentId]);
+
+  async function inviteTutor() {
+    if (!isShortLearning || !shortLearningBookingId || inviting) return;
+    setInviting(true);
+    setInviteMessage(null);
+    try {
+      const response = await fetchWithRefreshRetry(
+        `/api/student/short-learning/${encodeURIComponent(shortLearningBookingId)}/invite-tutor`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assignmentId,
+            contentId,
+            shortLearningSessionId,
+            shortLearningBlockId,
+            questionId,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        message?: string;
+        humanSupport?: { state?: string; label?: string };
+      };
+      if (!response.ok) {
+        setInviteMessage(typeof payload.error === "string" ? payload.error : "Unable to invite a tutor right now.");
+        return;
+      }
+      setHumanSupportState(payload.humanSupport?.state ?? "queued");
+      setHumanSupportLabel(payload.humanSupport?.label ?? "Waiting for a tutor to join");
+      setInviteMessage(payload.message ?? "A tutor has been invited. Keep going with AI help while you wait.");
+    } catch {
+      setInviteMessage("Unable to invite a tutor right now. Continue with AI help.");
+    } finally {
+      setInviting(false);
+    }
+  }
 
   async function ask(intent: DaytimeTutorIntent, wordValue?: string) {
     if (loading) return;
@@ -275,6 +339,52 @@ function DaytimeTutorPanelInner({
                 <p>You may need help from your teacher with this question.</p>
               )}
             </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {isShortLearning ? (
+        <div
+          className={
+            premium
+              ? "mt-3 rounded-lg border border-violet-200 bg-white p-3 text-left"
+              : "mt-3 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3 text-left"
+          }
+          data-testid="short-learning-invite-tutor"
+          data-support-state={humanSupportState}
+        >
+          <p className={`text-[11px] font-semibold uppercase tracking-[0.12em] ${premium ? "text-violet-700" : "text-violet-200"}`}>
+            Human tutor
+          </p>
+          <p className={`mt-1 text-xs ${premium ? "text-slate-700" : "text-indigo-100"}`}>{humanSupportLabel}</p>
+          {humanSupportState === "tutor-available" ? (
+            <button
+              type="button"
+              disabled={inviting}
+              onClick={() => void inviteTutor()}
+              className={
+                premium
+                  ? "mt-2 w-full rounded-md bg-violet-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                  : "mt-2 w-full rounded-md bg-white/15 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+              }
+            >
+              {inviting ? "Inviting…" : "Invite a tutor"}
+            </button>
+          ) : humanSupportState === "queued" || humanSupportState === "human-session-active" ? null : (
+            <button
+              type="button"
+              disabled
+              className={
+                premium
+                  ? "mt-2 w-full rounded-md bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-500"
+                  : "mt-2 w-full rounded-md bg-white/10 px-3 py-2 text-xs font-semibold text-indigo-200/70"
+              }
+            >
+              Invite a tutor
+            </button>
+          )}
+          {inviteMessage ? (
+            <p className={`mt-2 text-xs ${premium ? "text-slate-600" : "text-indigo-100/90"}`}>{inviteMessage}</p>
           ) : null}
         </div>
       ) : null}
