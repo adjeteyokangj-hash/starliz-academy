@@ -6,6 +6,7 @@ import {
   getShortLearningSessionSummary,
   startShortLearningContentBlock,
 } from "@/lib/schools/short-learning-session-content";
+import { resolveShortLearningSchoolStudentIdsForChild } from "@/lib/schools/short-learning-bookings";
 import { resolveActiveChildForSession } from "@/lib/activeChild";
 
 type Params = { params: Promise<{ bookingId: string }> };
@@ -16,10 +17,12 @@ async function resolveChildId(session: { userId: string; email: string; role: st
 }
 
 async function assertBookingAccess(bookingId: string, childId: string) {
+  const schoolStudentIds = await resolveShortLearningSchoolStudentIdsForChild(childId);
+  if (schoolStudentIds.length === 0) return null;
   return prisma.studentLearningBooking.findFirst({
     where: {
       id: bookingId,
-      schoolStudent: { childId, status: "active" },
+      schoolStudentId: { in: schoolStudentIds },
       status: { in: ["booked", "confirmed", "attended"] },
     },
     select: { id: true, subject: true, durationMinutes: true, learningFocus: true, startsAt: true, endsAt: true },

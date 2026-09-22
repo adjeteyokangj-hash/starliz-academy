@@ -293,11 +293,12 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return NextResponse.json({ error: "Child not found." }, { status: 404 });
   }
 
-  if (existing._count.schoolLinks > 0 && !existing.userId) {
+  // Hard delete stays blocked for any school-linked profile (school ops retain history).
+  if (mode === "hard" && existing._count.schoolLinks > 0) {
     return NextResponse.json(
       {
-        error: "School-managed students cannot be removed from the parent portal.",
-        code: "school_managed_child",
+        error: "School-linked students cannot be permanently deleted. Remove them from your account instead.",
+        code: "school_linked_hard_delete",
       },
       { status: 403 },
     );
@@ -307,10 +308,28 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return NextResponse.json({ ok: true, mode: "soft", alreadyArchived: true });
   }
 
+  let archiveMeta: {
+    successorChildId: string | null;
+    transferredSchoolStudentIds: string[];
+    mergedSchoolStudentIds: string[];
+  } | null = null;
+
   if (mode === "hard") {
     await prisma.childProfile.delete({ where: { id } });
   } else {
-    await prisma.childProfile.update({ where: { id }, data: { archived: true } });
+    const { softArchiveChildProfileForParent } = await import("@/lib/child-account-create");
+    const archived = await softArchiveChildProfileForParent({
+      parentId: parentScope.parentId,
+      childId: id,
+    });
+    if (!archived.ok) {
+      return NextResponse.json({ error: archived.error, code: archived.code }, { status: archived.status });
+    }
+    archiveMeta = {
+      successorChildId: archived.successorChildId,
+      transferredSchoolStudentIds: archived.transferredSchoolStudentIds,
+      mergedSchoolStudentIds: archived.mergedSchoolStudentIds,
+    };
   }
 
   const user = await prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { activeChildId: true } });
@@ -333,8 +352,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     metadata: {
       mode,
       childName: existing.name,
+      ...(archiveMeta ?? {}),
     },
   }).catch(() => undefined);
 
-  return NextResponse.json({ ok: true, mode });
+  return NextResponse.json({ ok: true, mode, ...(archiveMeta ?? {}) });
 }

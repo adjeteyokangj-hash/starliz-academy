@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { SHORT_LEARNING_EARLY_ENTRY_MINUTES } from "@/lib/schools/short-learning-constants";
+import { getNextShortLearningBookingForChild } from "@/lib/schools/short-learning-bookings";
 import {
   buildActiveLanguageModules,
   buildAssignedLanguageLessons,
@@ -22,38 +22,6 @@ function assignmentHref(contentType: string, assignmentId: string): string {
   const params = new URLSearchParams({ assignmentId });
   if (normalized.includes("literature") || normalized.includes("gcse-english")) params.set("mode", "literature");
   return `${path}?${params.toString()}`;
-}
-
-async function nextShortLearningForChild(childId: string, now = new Date()) {
-  const memberships = await prisma.schoolStudent.findMany({
-    where: { childId, status: "active" },
-    select: { id: true },
-  });
-  const schoolStudentIds = memberships.map((row) => row.id);
-  if (schoolStudentIds.length === 0) return null;
-
-  const booking = await prisma.studentLearningBooking.findFirst({
-    where: {
-      schoolStudentId: { in: schoolStudentIds },
-      status: { in: ["booked", "confirmed", "attended"] },
-      endsAt: { gt: now },
-    },
-    include: { school: { select: { name: true } } },
-    orderBy: { startsAt: "asc" },
-  });
-  if (!booking) return null;
-
-  const opensAt = new Date(booking.startsAt.getTime() - SHORT_LEARNING_EARLY_ENTRY_MINUTES * 60_000);
-  return {
-    id: booking.id,
-    subject: booking.subject,
-    schoolName: booking.school.name,
-    startsAt: booking.startsAt.toISOString(),
-    endsAt: booking.endsAt.toISOString(),
-    durationMinutes: booking.durationMinutes,
-    joinable: now.getTime() >= opensAt.getTime() && now.getTime() < booking.endsAt.getTime(),
-    opensAt: opensAt.toISOString(),
-  };
 }
 
 export async function getStudentDashboardShell(studentId: string) {
@@ -94,7 +62,7 @@ export async function getStudentDashboardShell(studentId: string) {
         updatedAt: true,
       },
     }),
-    nextShortLearningForChild(studentId),
+    getNextShortLearningBookingForChild(studentId),
   ]);
 
   const assignments = assignmentRows.map((assignment) => ({

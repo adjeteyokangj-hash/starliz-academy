@@ -5,7 +5,7 @@ import {
   passesSchoolAdminLayoutGuard,
 } from "../src/lib/schools/portal-routing";
 import { resolveLaunchScopeRedirect } from "../src/lib/launch-scope";
-import { isAllowedShortLearningDuration } from "../src/lib/schools/short-learning-bookings";
+import { isAllowedShortLearningDuration, selectAliasedShortLearningSchoolStudentIds, shortLearningFirstNameLikelyMatch, shortLearningSiblingNameMatches } from "../src/lib/schools/short-learning-bookings";
 
 function withEnv(name: string, value: string | undefined, run: () => void) {
   const previous = process.env[name];
@@ -61,4 +61,39 @@ test("short learning booking durations are restricted to 90 and 120 minutes", ()
   assert.equal(isAllowedShortLearningDuration(120), true);
   assert.equal(isAllowedShortLearningDuration(60), false);
   assert.equal(isAllowedShortLearningDuration(30), false);
+});
+
+test("credential-login alias matches sibling names and nicknames", () => {
+  assert.equal(shortLearningSiblingNameMatches("Lizzy", "lizzy"), true);
+  assert.equal(shortLearningFirstNameLikelyMatch("Ephi", "Ephraim Adjetey"), true);
+  assert.deepEqual(
+    selectAliasedShortLearningSchoolStudentIds({
+      loginChild: {
+        id: "login-lizzy",
+        name: "Lizzy",
+        userId: "student-user-1",
+        schoolStudentIds: [],
+      },
+      siblings: [
+        { id: "school-lizzy", name: "Lizzy", userId: null, schoolStudentIds: ["ss-lizzy"] },
+        { id: "school-ephi", name: "Ephi", userId: null, schoolStudentIds: ["ss-ephi"] },
+      ],
+    }).sort(),
+    ["ss-lizzy"],
+  );
+  assert.deepEqual(
+    selectAliasedShortLearningSchoolStudentIds({
+      loginChild: {
+        id: "login-ephraim",
+        name: "Ephraim Adjetey",
+        userId: "student-user-2",
+        schoolStudentIds: [],
+      },
+      siblings: [
+        { id: "school-ephi", name: "Ephi", userId: null, schoolStudentIds: ["ss-ephi"] },
+        { id: "school-lizzy", name: "Lizzy", userId: null, schoolStudentIds: ["ss-lizzy"] },
+      ],
+    }),
+    ["ss-ephi"],
+  );
 });

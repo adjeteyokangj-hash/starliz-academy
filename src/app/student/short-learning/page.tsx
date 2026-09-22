@@ -3,7 +3,11 @@ import { redirect } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { SHORT_LEARNING_EARLY_ENTRY_MINUTES, SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
+import {
+  SHORT_LEARNING_EARLY_ENTRY_MINUTES,
+  SHORT_LEARNING_PROMISE,
+  resolveShortLearningSchoolStudentIdsForChild,
+} from "@/lib/schools/short-learning-bookings";
 import { isShortLearningBookingActive } from "@/lib/schools/support-eligibility";
 import { resolveActiveChildForSession } from "@/lib/activeChild";
 import { formatUkDateTime } from "@/lib/uk-datetime";
@@ -33,15 +37,7 @@ export default async function StudentShortLearningListPage() {
 
 
 
-  const memberships = await prisma.schoolStudent.findMany({
-
-    where: { childId, status: "active" },
-
-    select: { id: true },
-
-  });
-
-  const schoolStudentIds = memberships.map((m) => m.id);
+  const schoolStudentIds = await resolveShortLearningSchoolStudentIdsForChild(childId);
 
   const now = new Date();
 

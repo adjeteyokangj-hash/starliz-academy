@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { readChildSelectionFromCookie, readSessionFromCookie } from "@/lib/auth";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
-import { resolveParentScope } from "@/lib/parent_scope";
+import { readSessionFromCookie } from "@/lib/auth";
+import { resolveActiveChildForSession } from "@/lib/activeChild";
 import { resolveShortLearningSupportContext, shortLearningSupportMetadata } from "@/lib/schools/short-learning-support-context";
 import { resolveStudentHumanSupportEligibility } from "@/lib/schools/support-eligibility";
 import { syncShortLearningEligibleQueue } from "@/lib/schools/human-support-scheduler";
@@ -10,12 +9,8 @@ import { studentHumanSupportDisplay } from "@/lib/schools/daytime-lesson-ui";
 type Params = { params: Promise<{ bookingId: string }> };
 
 async function resolveChildId(session: { userId: string; email: string; role: string }) {
-  let childId: string | null = await readChildSelectionFromCookie(session.userId);
-  if (!childId && session.role === "parent") {
-    const parentScope = await resolveParentScope(session);
-    if (parentScope) childId = await resolveParentActiveChildId(parentScope.parentId);
-  }
-  return childId;
+  const resolved = await resolveActiveChildForSession(session);
+  return resolved.ok ? resolved.childId : null;
 }
 
 /** POST — student invites a human tutor when one is on shift and available. */

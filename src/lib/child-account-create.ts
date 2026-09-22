@@ -14,6 +14,10 @@ import {
 } from "@/lib/child-account-credentials";
 import { keyStageForYearGroup } from "@/lib/curriculum";
 import { resolveUkStudentYearFields } from "@/lib/uk-student-year";
+import {
+  shortLearningFirstNameLikelyMatch,
+  shortLearningSiblingNameMatches,
+} from "@/lib/schools/short-learning-bookings";
 
 export type CreateChildAccountMode = "generated" | "manual";
 
@@ -1039,4 +1043,150 @@ export async function resetChildLoginCredentials(
       error: "Could not reset child login. Please try again.",
     };
   }
+}
+
+// --- Soft-archive school-managed duplicates (parent portal Remove child) ---
+
+export type SoftArchiveChildResult =
+  | {
+      ok: true;
+      childId: string;
+      successorChildId: string | null;
+      transferredSchoolStudentIds: string[];
+      mergedSchoolStudentIds: string[];
+    }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      code: string;
+    };
+
+/**
+ * Pick a credential-login sibling that should inherit school roster rows when a
+ * school-managed duplicate profile is archived from the parent portal.
+ */
+export function pickCredentialSuccessorForSchoolChild(input: {
+  schoolChild: { id: string; name: string };
+  siblings: Array<{ id: string; name: string; userId: string | null; archived: boolean }>;
+}): string | null {
+  const candidates = input.siblings.filter(
+    (row) =>
+      row.id !== input.schoolChild.id
+      && !row.archived
+      && Boolean(row.userId),
+  );
+  const exact = candidates.filter((row) =>
+    shortLearningSiblingNameMatches(row.name, input.schoolChild.name),
+  );
+  if (exact.length === 1) return exact[0]!.id;
+  if (exact.length > 1) {
+    return null;
+  }
+  const soft = candidates.filter((row) =>
+    shortLearningFirstNameLikelyMatch(row.name, input.schoolChild.name),
+  );
+  if (soft.length === 1) return soft[0]!.id;
+  return null;
+}
+
+/**
+ * Soft-archive a parent-owned child profile.
+ * School-managed duplicates may be removed; active SchoolStudent rows move to a
+ * matching credential-login sibling when one exists so Short Learning / Day School keep working.
+ */
+export async function softArchiveChildProfileForParent(input: {
+  parentId: string;
+  childId: string;
+}): Promise<SoftArchiveChildResult> {
+  const existing = await prisma.childProfile.findFirst({
+    where: { id: input.childId, parentId: input.parentId },
+    select: {
+      id: true,
+      name: true,
+      archived: true,
+      userId: true,
+      schoolLinks: {
+        where: { status: "active" },
+        select: { id: true, schoolId: true },
+      },
+    },
+  });
+  if (!existing) {
+    return { ok: false, status: 404, error: "Child not found.", code: "not_found" };
+  }
+  if (existing.archived) {
+    return {
+      ok: true,
+      childId: existing.id,
+      successorChildId: null,
+      transferredSchoolStudentIds: [],
+      mergedSchoolStudentIds: [],
+    };
+  }
+
+  let successorChildId: string | null = null;
+  const transferredSchoolStudentIds: string[] = [];
+  const mergedSchoolStudentIds: string[] = [];
+
+  if (existing.schoolLinks.length > 0 && !existing.userId) {
+    const siblings = await prisma.childProfile.findMany({
+      where: { parentId: input.parentId, id: { not: existing.id } },
+      select: { id: true, name: true, userId: true, archived: true },
+    });
+    successorChildId = pickCredentialSuccessorForSchoolChild({
+      schoolChild: { id: existing.id, name: existing.name },
+      siblings,
+    });
+
+    if (successorChildId) {
+      for (const link of existing.schoolLinks) {
+        const conflict = await prisma.schoolStudent.findFirst({
+          where: {
+            schoolId: link.schoolId,
+            childId: successorChildId,
+          },
+          select: { id: true, status: true },
+        });
+
+        if (conflict) {
+          await prisma.studentLearningBooking.updateMany({
+            where: { schoolStudentId: link.id },
+            data: { schoolStudentId: conflict.id },
+          });
+          if (conflict.status !== "active") {
+            await prisma.schoolStudent.update({
+              where: { id: conflict.id },
+              data: { status: "active", leftAt: null },
+            });
+          }
+          await prisma.schoolStudent.update({
+            where: { id: link.id },
+            data: { status: "transferred", leftAt: new Date() },
+          });
+          mergedSchoolStudentIds.push(link.id);
+          continue;
+        }
+
+        await prisma.schoolStudent.update({
+          where: { id: link.id },
+          data: { childId: successorChildId },
+        });
+        transferredSchoolStudentIds.push(link.id);
+      }
+    }
+  }
+
+  await prisma.childProfile.update({
+    where: { id: existing.id },
+    data: { archived: true },
+  });
+
+  return {
+    ok: true,
+    childId: existing.id,
+    successorChildId,
+    transferredSchoolStudentIds,
+    mergedSchoolStudentIds,
+  };
 }
