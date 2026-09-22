@@ -199,7 +199,7 @@ export default function StarLizQuestionCard({
       {visualRequiredSlot}
 
       {/* ── Formula / diagram visual ────────────────────────────────────── */}
-      {visual ? (
+      {visual && visual.title.toLowerCase() !== "none" ? (
         <div className="mt-6 rounded-3xl border border-violet-200 bg-violet-50 p-5">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">
             {visual.title}

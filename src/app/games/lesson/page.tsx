@@ -533,6 +533,8 @@ export default function DailyLessonGamePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assignmentId = searchParams.get("assignmentId");
+  const improvingBoostMode = searchParams.get("mode") === "improving_boost";
+  const improvingTargetMinutes = Number(searchParams.get("targetMinutes") || "0");
   const daytimePeriodId = searchParams.get("daytimePeriodId");
   const shortLearningBookingId = searchParams.get("shortLearningBookingId");
   const shortLearningSessionId = searchParams.get("shortLearningSessionId");
@@ -665,6 +667,26 @@ export default function DailyLessonGamePage() {
           router.replace("/onboarding");
           return;
         }
+        // Server auth failed but a stale local profile exists — do not pretend we are logged in.
+        if (!serverProfile && nextProfile) {
+          void fetchWithRefreshRetry("/api/auth/me", { credentials: "include" })
+            .then(async (meRes) => {
+              if (meRes.status === 401) {
+                const next = typeof window !== "undefined"
+                  ? `${window.location.pathname}${window.location.search}`
+                  : "/games/lesson";
+                router.replace(`/auth/login?next=${encodeURIComponent(next)}`);
+                return;
+              }
+              setProfile(nextProfile);
+              setProfileLoading(false);
+            })
+            .catch(() => {
+              setProfile(nextProfile);
+              setProfileLoading(false);
+            });
+          return;
+        }
         setProfile(nextProfile);
         setProfileLoading(false);
       })
@@ -729,7 +751,7 @@ export default function DailyLessonGamePage() {
       }
     }
     void loadLesson();
-  }, [assignmentId]);
+  }, [assignmentId, router]);
 
   const handleShortLearningEnded = useCallback(() => {
     setSessionTimedOut(true);
@@ -761,20 +783,36 @@ export default function DailyLessonGamePage() {
 
   const activeAssignment = (() => {
     if (!assignment) return null;
-    if (!interventionMission) return assignment;
+    const withMission = !interventionMission
+      ? assignment
+      : {
+          ...assignment,
+          subject: interventionMission.subject,
+          title: interventionMission.title,
+          skillFocus: interventionSkill ?? assignment.skillFocus,
+          items: normalizeLessonContentItems(interventionMission.items, {
+            contentType: interventionMission.subject,
+            subject: interventionMission.subject,
+            topic: interventionMission.title,
+            skillFocus: interventionSkill ?? assignment.skillFocus ?? interventionMission.badge,
+            difficulty: assignment.difficulty ?? 1,
+            yearGroup: assignment.yearGroup,
+          }),
+        };
+
+    if (!improvingBoostMode) return withMission;
+
+    const minutes = Number.isFinite(improvingTargetMinutes) && improvingTargetMinutes > 0
+      ? improvingTargetMinutes
+      : 20;
+    const questionCap = Math.max(6, Math.min(12, Math.round(minutes / 2)));
+    const cappedItems = withMission.items.slice(0, questionCap);
     return {
-      ...assignment,
-      subject: interventionMission.subject,
-      title: interventionMission.title,
-      skillFocus: interventionSkill ?? assignment.skillFocus,
-      items: normalizeLessonContentItems(interventionMission.items, {
-        contentType: interventionMission.subject,
-        subject: interventionMission.subject,
-        topic: interventionMission.title,
-        skillFocus: interventionSkill ?? assignment.skillFocus ?? interventionMission.badge,
-        difficulty: assignment.difficulty ?? 1,
-        yearGroup: assignment.yearGroup,
-      }),
+      ...withMission,
+      title: withMission.title?.startsWith("20-min boost")
+        ? withMission.title
+        : `20-min boost · ${withMission.skillFocus || withMission.title}`,
+      items: cappedItems,
     };
   })();
 
@@ -3271,9 +3309,27 @@ export default function DailyLessonGamePage() {
                   {continuingDaytime ? "Continuing…" : "Continue lesson"}
                 </button>
               ) : null}
-              <Link href={isShortLearning && shortLearningBookingId ? `/student/short-learning/${shortLearningBookingId}` : daytimePeriodId ? "/student/today" : "/student/dashboard"} className="mt-6 inline-flex rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white">
-                {isShortLearning ? "Back to session" : daytimePeriodId ? "Back to Today" : "Back to Dashboard"}
-              </Link>
+              {isShortLearning && sessionTimedOut ? (
+                <Link
+                  href="/student/short-learning"
+                  className="mt-6 inline-flex rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white"
+                >
+                  Back to Short Learning
+                </Link>
+              ) : (
+                <Link
+                  href={
+                    isShortLearning && shortLearningBookingId
+                      ? `/student/short-learning/${shortLearningBookingId}`
+                      : daytimePeriodId
+                        ? "/student/today"
+                        : "/student/dashboard"
+                  }
+                  className="mt-6 inline-flex rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white"
+                >
+                  {isShortLearning ? "Back to session" : daytimePeriodId ? "Back to Today" : "Back to Dashboard"}
+                </Link>
+              )}
               {isShortLearning ? null : lessonMasteryReady ? (
                 <>
                   <p className="mt-4 text-sm font-black text-rose-700">{"You've mastered today's lesson. Ready to challenge the Boss?"}</p>
