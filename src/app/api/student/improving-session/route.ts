@@ -11,7 +11,10 @@ import {
 } from "@/lib/improving-session";
 import { DEFAULT_MASTERED_REVIEW_POLICY } from "@/lib/student-dashboard-sections";
 
-async function resolveStudentId(session: { userId: string; role: string }, requestedStudentId: string | null) {
+async function resolveStudentId(
+  session: { userId: string; email: string; role: string },
+  requestedStudentId: string | null,
+) {
   const parentScope = await resolveParentScope(session);
   if (!parentScope) return { error: NextResponse.json({ error: "Parent account not found." }, { status: 404 }) };
 
