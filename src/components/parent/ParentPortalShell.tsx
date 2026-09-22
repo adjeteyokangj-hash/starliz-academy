@@ -2190,7 +2190,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                           </div>
                         ) : null}
                         {!child.archived
-                          && !(child.hasSchoolLink && !child.hasLogin && !child.userId)
                           && removeChildId !== child.id
                           && createLoginChildId !== child.id
                           && resetLoginChildId !== child.id ? (
@@ -2216,8 +2215,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <div>
                               <h3 className="text-base font-semibold text-white">Remove {child.name}?</h3>
                               <p className="mt-1 text-sm text-slate-300">
-                                This removes the child profile from your parent account. Their login will no longer appear here.
-                                School-managed students cannot be removed this way.
+                                {child.hasSchoolLink && !child.hasLogin && !child.userId
+                                  ? "This hides the school-managed profile from your account. If a matching login child exists, school enrolment and Short Learning bookings move to that login profile."
+                                  : "This removes the child profile from your parent account. Their login will no longer appear here."}
                               </p>
                             </div>
                             {removeChildError ? (

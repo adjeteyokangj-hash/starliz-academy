@@ -147,7 +147,7 @@ function ParentLoginForm() {
         <Button
           type="submit"
           className="mt-1 w-full"
-          disabled={loading || Boolean(loginDisabledReason)}
+          disabled={loading}
           aria-describedby={loginDisabledReason ? "login-help" : undefined}
           aria-busy={loading}
         >

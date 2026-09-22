@@ -5,7 +5,7 @@ import {
   countOnlineTutors,
   getOrCreateSupportPolicy,
 } from "@/lib/schools/human-support-presence";
-import { SHORT_LEARNING_EARLY_ENTRY_MINUTES } from "@/lib/schools/short-learning-bookings";
+import { SHORT_LEARNING_EARLY_ENTRY_MINUTES, resolveShortLearningSchoolStudentIdsForChild } from "@/lib/schools/short-learning-bookings";
 import { resolveTutorShiftEligibility } from "@/lib/schools/tutor-support-shifts";
 
 export type SupportEligibilityMode = "DAY_SCHOOL" | "SHORT_LEARNING";
@@ -208,11 +208,13 @@ export async function loadActiveShortLearningBooking(input: {
   now?: Date;
 }) {
   const now = input.now ?? new Date();
+  const schoolStudentIds = await resolveShortLearningSchoolStudentIdsForChild(input.childId);
+  if (schoolStudentIds.length === 0) return null;
   const booking = await prisma.studentLearningBooking.findFirst({
     where: {
       schoolId: input.schoolId,
       status: { in: ["booked", "confirmed", "attended"] },
-      schoolStudent: { childId: input.childId, status: "active" },
+      schoolStudentId: { in: schoolStudentIds },
       startsAt: { lte: new Date(now.getTime() + SHORT_LEARNING_EARLY_ENTRY_MINUTES * 60_000) },
       endsAt: { gte: now },
     },

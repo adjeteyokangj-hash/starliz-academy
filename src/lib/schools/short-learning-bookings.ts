@@ -35,6 +35,146 @@ export {
   isShortLearningTestParentEmail,
 } from "@/lib/schools/short-learning-constants";
 
+function normalizeLearnerDisplayName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function shortLearningSiblingNameMatches(a: string, b: string): boolean {
+  return normalizeLearnerDisplayName(a) === normalizeLearnerDisplayName(b);
+}
+
+/** Soft first-name match for nicknames (e.g. Ephi ↔ Ephraim Adjetey). */
+export function shortLearningFirstNameLikelyMatch(a: string, b: string): boolean {
+  if (shortLearningSiblingNameMatches(a, b)) return true;
+  const aFirst = normalizeLearnerDisplayName(a).split(" ")[0] ?? "";
+  const bFirst = normalizeLearnerDisplayName(b).split(" ")[0] ?? "";
+  if (aFirst.length < 3 || bFirst.length < 3) return false;
+  if (aFirst.startsWith(bFirst) || bFirst.startsWith(aFirst)) return true;
+  // Shared stem (Ephi/Ephraim share "eph") — requires unambiguous caller-side filtering.
+  let shared = 0;
+  while (shared < aFirst.length && shared < bFirst.length && aFirst[shared] === bFirst[shared]) {
+    shared += 1;
+  }
+  return shared >= 3;
+}
+
+/**
+ * Pure alias rules for Short Learning roster visibility.
+ * Credential-login ChildProfiles often have no SchoolStudent row; parent bookings sit on a
+ * same-name school-managed sibling under the same parent.
+ */
+export function selectAliasedShortLearningSchoolStudentIds(input: {
+  loginChild: {
+    id: string;
+    name: string;
+    userId: string | null;
+    schoolStudentIds: string[];
+  };
+  siblings: Array<{
+    id: string;
+    name: string;
+    userId: string | null;
+    schoolStudentIds: string[];
+  }>;
+}): string[] {
+  const ids = new Set(input.loginChild.schoolStudentIds);
+  if (!input.loginChild.userId || input.loginChild.schoolStudentIds.length > 0) {
+    return Array.from(ids);
+  }
+
+  const candidates = input.siblings.filter(
+    (sibling) => sibling.id !== input.loginChild.id && !sibling.userId,
+  );
+  const exact = candidates.filter((sibling) =>
+    shortLearningSiblingNameMatches(sibling.name, input.loginChild.name),
+  );
+  const matched =
+    exact.length > 0
+      ? exact
+      : candidates.filter((sibling) =>
+          shortLearningFirstNameLikelyMatch(sibling.name, input.loginChild.name),
+        );
+
+  // Soft matches must be unambiguous — never attach another sibling's bookings.
+  if (exact.length === 0 && matched.length !== 1) {
+    return Array.from(ids);
+  }
+
+  for (const sibling of matched) {
+    for (const id of sibling.schoolStudentIds) ids.add(id);
+  }
+  return Array.from(ids);
+}
+
+/**
+ * SchoolStudent ids that should surface Short Learning bookings for a ChildProfile.
+ */
+export async function resolveShortLearningSchoolStudentIdsForChild(
+  childId: string,
+): Promise<string[]> {
+  const child = await prisma.childProfile.findFirst({
+    where: { id: childId, archived: false },
+    select: {
+      id: true,
+      parentId: true,
+      name: true,
+      userId: true,
+      schoolLinks: { where: { status: "active" }, select: { id: true } },
+    },
+  });
+  if (!child) return [];
+
+  const siblings =
+    child.userId && child.schoolLinks.length === 0
+      ? await prisma.childProfile.findMany({
+          where: {
+            parentId: child.parentId,
+            archived: false,
+            id: { not: child.id },
+            userId: null,
+          },
+          select: {
+            id: true,
+            name: true,
+            userId: true,
+            schoolLinks: { where: { status: "active" }, select: { id: true } },
+          },
+        })
+      : [];
+
+  return selectAliasedShortLearningSchoolStudentIds({
+    loginChild: {
+      id: child.id,
+      name: child.name,
+      userId: child.userId,
+      schoolStudentIds: child.schoolLinks.map((row) => row.id),
+    },
+    siblings: siblings.map((sibling) => ({
+      id: sibling.id,
+      name: sibling.name,
+      userId: sibling.userId,
+      schoolStudentIds: sibling.schoolLinks.map((row) => row.id),
+    })),
+  });
+}
+
+export async function studentCanAccessShortLearningBooking(input: {
+  childId: string;
+  bookingId: string;
+}): Promise<boolean> {
+  const schoolStudentIds = await resolveShortLearningSchoolStudentIdsForChild(input.childId);
+  if (schoolStudentIds.length === 0) return false;
+  const booking = await prisma.studentLearningBooking.findFirst({
+    where: {
+      id: input.bookingId,
+      schoolStudentId: { in: schoolStudentIds },
+      status: { in: ["booked", "confirmed", "attended"] },
+    },
+    select: { id: true },
+  });
+  return Boolean(booking);
+}
+
 const WEEKDAY_OPEN = { opensAt: "16:00", closesAt: "20:00" };
 const WEEKEND_OPEN = { opensAt: "09:00", closesAt: "18:00" };
 const ALLOWED_DURATIONS = SHORT_LEARNING_ALLOWED_DURATIONS;
@@ -915,11 +1055,7 @@ export async function getNextShortLearningBookingForChild(
   childId: string,
   now = new Date(),
 ): Promise<NextShortLearningBookingDto | null> {
-  const memberships = await prisma.schoolStudent.findMany({
-    where: { childId, status: "active" },
-    select: { id: true },
-  });
-  const schoolStudentIds = memberships.map((row) => row.id);
+  const schoolStudentIds = await resolveShortLearningSchoolStudentIdsForChild(childId);
   if (schoolStudentIds.length === 0) return null;
 
   const booking = await prisma.studentLearningBooking.findFirst({

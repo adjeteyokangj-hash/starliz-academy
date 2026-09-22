@@ -4,6 +4,7 @@ import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveActiveChildForSession } from "@/lib/activeChild";
 import { isStructuralShortLearningBlockType } from "@/lib/schools/short-learning-classroom";
+import { resolveShortLearningSchoolStudentIdsForChild } from "@/lib/schools/short-learning-bookings";
 
 type Params = { params: Promise<{ bookingId: string; blockId: string }> };
 
@@ -19,19 +20,22 @@ export default async function ShortLearningStagePage({ params }: Params) {
   }
 
   const { bookingId, blockId } = await params;
-  const booking = await prisma.studentLearningBooking.findFirst({
-    where: {
-      id: bookingId,
-      schoolStudent: { childId, status: "active" },
-      status: { in: ["booked", "confirmed", "attended"] },
-    },
-    include: {
-      school: { select: { name: true } },
-      shortLearningSession: {
-        include: { blocks: { orderBy: { order: "asc" } } },
-      },
-    },
-  });
+  const schoolStudentIds = await resolveShortLearningSchoolStudentIdsForChild(childId);
+  const booking = schoolStudentIds.length
+    ? await prisma.studentLearningBooking.findFirst({
+        where: {
+          id: bookingId,
+          schoolStudentId: { in: schoolStudentIds },
+          status: { in: ["booked", "confirmed", "attended"] },
+        },
+        include: {
+          school: { select: { name: true } },
+          shortLearningSession: {
+            include: { blocks: { orderBy: { order: "asc" } } },
+          },
+        },
+      })
+    : null;
   if (!booking?.shortLearningSession) notFound();
 
   const block = booking.shortLearningSession.blocks.find((item) => item.id === blockId);

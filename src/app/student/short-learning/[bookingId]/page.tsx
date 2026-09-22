@@ -3,7 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { SHORT_LEARNING_EARLY_ENTRY_MINUTES, SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
+import {
+  SHORT_LEARNING_EARLY_ENTRY_MINUTES,
+  SHORT_LEARNING_PROMISE,
+  resolveShortLearningSchoolStudentIdsForChild,
+} from "@/lib/schools/short-learning-bookings";
 import { isShortLearningBookingActive } from "@/lib/schools/support-eligibility";
 import { resolveActiveChildForSession } from "@/lib/activeChild";
 import { formatUkDateTime } from "@/lib/uk-datetime";
@@ -25,31 +29,34 @@ export default async function StudentShortLearningSessionPage({ params }: Params
   }
 
   const { bookingId } = await params;
-  const booking = await prisma.studentLearningBooking.findFirst({
-    where: {
-      id: bookingId,
-      schoolStudent: { childId, status: "active" },
-      status: { in: ["booked", "confirmed", "attended"] },
-    },
-    include: {
-      school: { select: { name: true } },
-      shortLearningSession: {
+  const schoolStudentIds = await resolveShortLearningSchoolStudentIdsForChild(childId);
+  const booking = schoolStudentIds.length
+    ? await prisma.studentLearningBooking.findFirst({
+        where: {
+          id: bookingId,
+          schoolStudentId: { in: schoolStudentIds },
+          status: { in: ["booked", "confirmed", "attended"] },
+        },
         include: {
-          blocks: {
-            orderBy: { order: "asc" },
-            select: {
-              order: true,
-              title: true,
-              blockType: true,
-              estimatedMinutes: true,
-              contentId: true,
-              status: true,
+          school: { select: { name: true } },
+          shortLearningSession: {
+            include: {
+              blocks: {
+                orderBy: { order: "asc" },
+                select: {
+                  order: true,
+                  title: true,
+                  blockType: true,
+                  estimatedMinutes: true,
+                  contentId: true,
+                  status: true,
+                },
+              },
             },
           },
         },
-      },
-    },
-  });
+      })
+    : null;
   if (!booking) notFound();
 
   // Best-effort: prepare Daytime-engine content before the student opens Learn.

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveActiveChildForSession } from "@/lib/activeChild";
+import { resolveShortLearningSchoolStudentIdsForChild } from "@/lib/schools/short-learning-bookings";
 import { resolveShortLearningSupportContext } from "@/lib/schools/short-learning-support-context";
 import { countShiftEligibleTutorCapacity, isShortLearningBookingActive } from "@/lib/schools/support-eligibility";
 import { studentHumanSupportDisplay } from "@/lib/schools/daytime-lesson-ui";
@@ -26,18 +27,21 @@ export async function GET(request: Request, { params }: Params) {
   const assignmentId = url.searchParams.get("assignmentId")?.trim() ?? "";
   const contentId = url.searchParams.get("contentId")?.trim() ?? "";
 
-  const booking = await prisma.studentLearningBooking.findFirst({
-    where: {
-      id: bookingId,
-      schoolStudent: { childId, status: "active" },
-      status: { in: ["booked", "confirmed", "attended"] },
-    },
-    include: {
-      shortLearningSession: {
-        include: { blocks: { orderBy: { order: "asc" }, take: 12 } },
-      },
-    },
-  });
+  const schoolStudentIds = await resolveShortLearningSchoolStudentIdsForChild(childId);
+  const booking = schoolStudentIds.length
+    ? await prisma.studentLearningBooking.findFirst({
+        where: {
+          id: bookingId,
+          schoolStudentId: { in: schoolStudentIds },
+          status: { in: ["booked", "confirmed", "attended"] },
+        },
+        include: {
+          shortLearningSession: {
+            include: { blocks: { orderBy: { order: "asc" }, take: 12 } },
+          },
+        },
+      })
+    : null;
   if (!booking) return NextResponse.json({ error: "Booking not found." }, { status: 404 });
 
   const active = isShortLearningBookingActive({

@@ -1,11 +1,8 @@
-/**
- * Server-side Short Learning support context.
- * Never trust client-supplied IDs without re-validating ownership and window.
- */
 import { prisma } from "@/lib/db";
 import { isShortLearningBookingActive } from "@/lib/schools/support-eligibility";
 import { resolveStudentYearContext } from "@/lib/schools/student-year-context";
 import { canStudentStartShortLearningSession } from "@/lib/schools/short-learning-session-content";
+import { resolveShortLearningSchoolStudentIdsForChild } from "@/lib/schools/short-learning-bookings";
 
 export const AI_TUTOR_SCOPE_SHORT_LEARNING = "short-learning" as const;
 export const SHORT_LEARNING_SUPPORT_MODE = "SHORT_LEARNING" as const;
@@ -87,10 +84,15 @@ export async function resolveShortLearningSupportContext(input: {
     return { ok: false, status: 400, code: "INVALID_CONTEXT", error: "Missing Short Learning support identifiers." };
   }
 
+  const schoolStudentIds = await resolveShortLearningSchoolStudentIdsForChild(studentId);
+  if (schoolStudentIds.length === 0) {
+    return { ok: false, status: 404, code: "BOOKING_NOT_FOUND", error: "Short Learning booking not found." };
+  }
+
   const booking = await prisma.studentLearningBooking.findFirst({
     where: {
       id: bookingId,
-      schoolStudent: { childId: studentId, status: "active" },
+      schoolStudentId: { in: schoolStudentIds },
       status: { in: ["booked", "confirmed", "attended"] },
     },
     select: {
@@ -102,6 +104,7 @@ export async function resolveShortLearningSupportContext(input: {
       status: true,
       schoolStudent: {
         select: {
+          childId: true,
           classroomId: true,
           child: { select: { yearGroup: true } },
           classroom: { select: { yearGroup: true, name: true } },
@@ -146,10 +149,13 @@ export async function resolveShortLearningSupportContext(input: {
     return { ok: false, status: 409, code: "SESSION_NOT_READY", error: "Short Learning session is not ready yet." };
   }
 
+  const allowedStudentIds = Array.from(
+    new Set([studentId, booking.schoolStudent.childId].filter(Boolean)),
+  );
   const assignment = await prisma.assignment.findFirst({
     where: {
       id: assignmentId,
-      studentId,
+      studentId: { in: allowedStudentIds },
       contentId,
       status: { in: ["assigned", "in_progress", "completed"] },
     },
