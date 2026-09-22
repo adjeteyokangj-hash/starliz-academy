@@ -552,6 +552,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   } | null>(null);
   const [createLoginChildId, setCreateLoginChildId] = useState<string | null>(null);
   const [resetLoginChildId, setResetLoginChildId] = useState<string | null>(null);
+  const [removeChildId, setRemoveChildId] = useState<string | null>(null);
+  const [removingChildId, setRemovingChildId] = useState<string | null>(null);
+  const [removeChildError, setRemoveChildError] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [accountNameDraft, setAccountNameDraft] = useState("");
   const [accountContactDraft, setAccountContactDraft] = useState({
@@ -960,6 +963,57 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       setChildSwitchError("We could not switch the active child. Please try again.");
     } finally {
       setSwitchingChildId(null);
+    }
+  }
+
+  async function removeChildFromAccount(childId: string, childName: string) {
+    setRemoveChildError(null);
+    setRemovingChildId(childId);
+    try {
+      const response = await fetchWithRefreshRetry(
+        `/api/children/${encodeURIComponent(childId)}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        code?: string;
+      } | null;
+      if (!response.ok) {
+        setRemoveChildError(payload?.error ?? "Could not remove this child. Please try again.");
+        return;
+      }
+
+      setRemoveChildId(null);
+      setCreateLoginChildId(null);
+      setResetLoginChildId(null);
+      setCreatedLoginReveal(null);
+      setChildFormMessage(`${childName} was removed from your account.`);
+
+      const childrenRes = await fetchWithRefreshRetry("/api/children", { credentials: "include" });
+      const childrenData = childrenRes.ok
+        ? ((await childrenRes.json()) as ChildListResponse)
+        : null;
+      if (childrenData) {
+        setChildren(childrenData);
+        const nextActiveId = childrenData.activeChildId ?? childrenData.children[0]?.id ?? null;
+        setSelectedChildId(nextActiveId);
+        const nextActive = childrenData.children.find((entry) => entry.id === nextActiveId) ?? null;
+        setAccount((current) => current
+          ? {
+            ...current,
+            activeChild: nextActive
+              ? { id: nextActive.id, name: nextActive.name, avatar: nextActive.avatar }
+              : null,
+          }
+          : current);
+      }
+    } catch {
+      setRemoveChildError("Could not remove this child. Please try again.");
+    } finally {
+      setRemovingChildId(null);
     }
   }
 
@@ -2047,6 +2101,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         setEditingChildId(null);
                         setCreateLoginChildId(null);
                         setResetLoginChildId(null);
+                        setRemoveChildId(null);
+                        setRemoveChildError(null);
                         setShowChildForm(true);
                       }}
                       className="w-full bg-cyan-600 hover:bg-cyan-700"
@@ -2083,6 +2139,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                               setShowChildForm(true);
                               setCreateLoginChildId(null);
                               setResetLoginChildId(null);
+                              setRemoveChildId(null);
+                              setRemoveChildError(null);
                             }}
                             className="text-xs text-cyan-400 hover:text-cyan-300 opacity-0 group-hover:opacity-100 transition"
                           >
@@ -2101,6 +2159,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                                 setChildFormMessage(null);
                                 setCreatedLoginReveal(null);
                                 setResetLoginChildId(null);
+                                setRemoveChildId(null);
                                 setCreateLoginChildId(child.id);
                               }}
                               className="w-full bg-cyan-700 hover:bg-cyan-600 text-sm"
@@ -2112,7 +2171,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         {(child.hasLogin || child.userId)
                           && child.loginUsername
                           && resetLoginChildId !== child.id
-                          && createLoginChildId !== child.id ? (
+                          && createLoginChildId !== child.id
+                          && removeChildId !== child.id ? (
                           <div className="mt-3">
                             <Button
                               type="button"
@@ -2120,12 +2180,70 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                                 setChildFormMessage(null);
                                 setCreatedLoginReveal(null);
                                 setCreateLoginChildId(null);
+                                setRemoveChildId(null);
                                 setResetLoginChildId(child.id);
                               }}
                               className="w-full bg-amber-700 hover:bg-amber-600 text-sm"
                             >
                               Reset Login
                             </Button>
+                          </div>
+                        ) : null}
+                        {!child.archived
+                          && !(child.hasSchoolLink && !child.hasLogin && !child.userId)
+                          && removeChildId !== child.id
+                          && createLoginChildId !== child.id
+                          && resetLoginChildId !== child.id ? (
+                          <div className="mt-3">
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                setChildFormMessage(null);
+                                setCreatedLoginReveal(null);
+                                setCreateLoginChildId(null);
+                                setResetLoginChildId(null);
+                                setRemoveChildError(null);
+                                setRemoveChildId(child.id);
+                              }}
+                              className="w-full bg-rose-800/80 hover:bg-rose-700 text-sm"
+                            >
+                              Remove child
+                            </Button>
+                          </div>
+                        ) : null}
+                        {removeChildId === child.id ? (
+                          <div className="mt-3 space-y-3 rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4">
+                            <div>
+                              <h3 className="text-base font-semibold text-white">Remove {child.name}?</h3>
+                              <p className="mt-1 text-sm text-slate-300">
+                                This removes the child profile from your parent account. Their login will no longer appear here.
+                                School-managed students cannot be removed this way.
+                              </p>
+                            </div>
+                            {removeChildError ? (
+                              <p className="text-sm font-semibold text-rose-300">{removeChildError}</p>
+                            ) : null}
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                disabled={removingChildId === child.id}
+                                onClick={() => void removeChildFromAccount(child.id, child.name)}
+                                className="bg-rose-700 hover:bg-rose-600"
+                              >
+                                {removingChildId === child.id ? "Removing…" : "Confirm remove"}
+                              </Button>
+                              <Button
+                                type="button"
+                                disabled={removingChildId === child.id}
+                                onClick={() => {
+                                  setRemoveChildId(null);
+                                  setRemoveChildError(null);
+                                }}
+                                className="bg-white/10 hover:bg-white/15"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
                           </div>
                         ) : null}
                         {createLoginChildId === child.id ? (

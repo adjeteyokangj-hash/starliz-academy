@@ -279,9 +279,32 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
   const mode = new URL(request.url).searchParams.get("mode") ?? "soft";
 
-  const existing = await prisma.childProfile.findFirst({ where: { id, parentId: parentScope.parentId } });
+  const existing = await prisma.childProfile.findFirst({
+    where: { id, parentId: parentScope.parentId },
+    select: {
+      id: true,
+      name: true,
+      archived: true,
+      userId: true,
+      _count: { select: { schoolLinks: true } },
+    },
+  });
   if (!existing) {
     return NextResponse.json({ error: "Child not found." }, { status: 404 });
+  }
+
+  if (existing._count.schoolLinks > 0 && !existing.userId) {
+    return NextResponse.json(
+      {
+        error: "School-managed students cannot be removed from the parent portal.",
+        code: "school_managed_child",
+      },
+      { status: 403 },
+    );
+  }
+
+  if (existing.archived && mode !== "hard") {
+    return NextResponse.json({ ok: true, mode: "soft", alreadyArchived: true });
   }
 
   if (mode === "hard") {
@@ -292,9 +315,26 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   const user = await prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { activeChildId: true } });
   if (user?.activeChildId === id) {
-    const fallback = await prisma.childProfile.findFirst({ where: { parentId: parentScope.parentId, archived: false }, orderBy: { createdAt: "asc" } });
-    await prisma.user.update({ where: { id: parentScope.parentId }, data: { activeChildId: fallback?.id ?? null } });
+    const fallback = await prisma.childProfile.findFirst({
+      where: { parentId: parentScope.parentId, archived: false },
+      orderBy: { createdAt: "asc" },
+    });
+    await prisma.user.update({
+      where: { id: parentScope.parentId },
+      data: { activeChildId: fallback?.id ?? null },
+    });
   }
+
+  void writeAuditLog({
+    actorUserId: parentScope.parentId,
+    action: mode === "hard" ? "child_removed_hard" : "child_removed",
+    entityType: "ChildProfile",
+    entityId: id,
+    metadata: {
+      mode,
+      childName: existing.name,
+    },
+  }).catch(() => undefined);
 
   return NextResponse.json({ ok: true, mode });
 }
