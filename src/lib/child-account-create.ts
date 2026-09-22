@@ -683,3 +683,360 @@ export async function linkExistingChildLoginAccount(
     };
   }
 }
+
+export type ResetChildLoginInput = {
+  parentId: string;
+  childId: string;
+  mode: CreateChildAccountMode;
+  /** Manual mode only — omit or match current to keep the existing username. */
+  username?: string;
+  password?: string;
+};
+
+export type ResetChildLoginSuccess = {
+  ok: true;
+  child: {
+    id: string;
+    name: string;
+    yearGroup: string | null;
+    userId: string;
+  };
+  credentials: {
+    username: string;
+    password: string;
+    mode: CreateChildAccountMode;
+  };
+};
+
+export type ResetChildLoginResult = ResetChildLoginSuccess | CreateChildAccountFailure;
+
+export type OwnedChildForLoginReset = {
+  id: string;
+  name: string;
+  yearGroup: string | null;
+  userId: string | null;
+  loginUsername: string | null;
+  studentRole: boolean;
+  hasSchoolLink: boolean;
+};
+
+type ResetChildLoginDeps = CredentialDeps & {
+  findOwnedChild?: (input: {
+    parentId: string;
+    childId: string;
+  }) => Promise<OwnedChildForLoginReset | null>;
+  resetInTransaction?: (input: {
+    parentId: string;
+    childId: string;
+    userId: string;
+    username: string;
+    email: string;
+    passwordHash: string;
+  }) => Promise<{ userId: string; childId: string }>;
+};
+
+async function defaultFindOwnedChildForReset(input: {
+  parentId: string;
+  childId: string;
+}): Promise<OwnedChildForLoginReset | null> {
+  const row = await prisma.childProfile.findFirst({
+    where: { id: input.childId, parentId: input.parentId },
+    select: {
+      id: true,
+      name: true,
+      yearGroup: true,
+      userId: true,
+      account: { select: { id: true, username: true, role: true } },
+      _count: { select: { schoolLinks: true } },
+    },
+  });
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    yearGroup: row.yearGroup,
+    userId: row.userId,
+    loginUsername: row.account?.username ?? null,
+    studentRole: row.account?.role === "student",
+    hasSchoolLink: row._count.schoolLinks > 0,
+  };
+}
+
+async function defaultResetInTransaction(input: {
+  parentId: string;
+  childId: string;
+  userId: string;
+  username: string;
+  email: string;
+  passwordHash: string;
+}): Promise<{ userId: string; childId: string }> {
+  return prisma.$transaction(async (tx) => {
+    const owned = await tx.childProfile.findFirst({
+      where: {
+        id: input.childId,
+        parentId: input.parentId,
+        userId: input.userId,
+      },
+      select: { id: true },
+    });
+    if (!owned) {
+      throw new Error("child_login_reset_conflict");
+    }
+
+    const updated = await tx.user.updateMany({
+      where: {
+        id: input.userId,
+        role: "student",
+      },
+      data: {
+        username: input.username,
+        email: input.email,
+        passwordHash: input.passwordHash,
+      },
+    });
+    if (updated.count !== 1) {
+      throw new Error("child_login_reset_conflict");
+    }
+
+    return { userId: input.userId, childId: input.childId };
+  });
+}
+
+/**
+ * Resolve credentials for a parent-initiated child login reset.
+ * Generated mode keeps the existing username and issues a new password.
+ * Manual mode requires a password and optionally allows a username change.
+ */
+export async function resolveChildLoginResetCredentials(
+  input: {
+    mode: CreateChildAccountMode;
+    childName: string;
+    currentUsername: string;
+    excludeUserId: string;
+    username?: string;
+    password?: string;
+  },
+  deps: CredentialDeps = {},
+): Promise<ResolvedChildLoginCredentials | CreateChildAccountFailure> {
+  const currentUsername = input.currentUsername?.trim() ?? "";
+  if (!currentUsername) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Child login username is missing.",
+      code: "login_username_missing",
+    };
+  }
+
+  const usernameTaken =
+    deps.usernameTaken
+    ?? (async (username: string) => {
+      const existing = await prisma.user.findUnique({
+        where: { username },
+        select: { id: true },
+      });
+      return Boolean(existing && existing.id !== input.excludeUserId);
+    });
+
+  let username: string;
+  let plaintextPassword: string;
+
+  if (input.mode === "generated") {
+    username = currentUsername;
+    plaintextPassword = (deps.generatePassword ?? generateChildPassword)();
+  } else {
+    const requested = input.username?.trim() ?? "";
+    if (!requested || requested === currentUsername) {
+      username = currentUsername;
+    } else {
+      const usernameCheck = validateManualChildUsername(requested);
+      if (!usernameCheck.ok) {
+        return {
+          ok: false,
+          status: 400,
+          error: usernameCheck.error,
+          fieldErrors: { username: [usernameCheck.error] },
+        };
+      }
+      if (await usernameTaken(usernameCheck.username)) {
+        const suggestions = await suggestAvailableChildUsernames({
+          desired: usernameCheck.username,
+          childName: input.childName,
+          count: 5,
+          isTaken: usernameTaken,
+        });
+        return {
+          ok: false,
+          status: 409,
+          error: "That username is already taken. Please choose another.",
+          code: "username_taken",
+          fieldErrors: { username: ["That username is already taken."] },
+          suggestions,
+        };
+      }
+      username = usernameCheck.username;
+    }
+
+    const passwordCheck = validateChildAccountPassword(input.password ?? "");
+    if (!passwordCheck.ok) {
+      return {
+        ok: false,
+        status: 400,
+        error: passwordCheck.error,
+        fieldErrors: { password: [passwordCheck.error] },
+      };
+    }
+    plaintextPassword = input.password!;
+  }
+
+  const passwordCheck = validateChildAccountPassword(plaintextPassword);
+  if (!passwordCheck.ok) {
+    return {
+      ok: false,
+      status: 400,
+      error: passwordCheck.error,
+      fieldErrors: { password: [passwordCheck.error] },
+    };
+  }
+
+  const hasher = deps.hashPassword ?? hashPassword;
+  const passwordHash = await hasher(plaintextPassword);
+  const email = buildChildSyntheticEmail(username);
+
+  return {
+    ok: true,
+    mode: input.mode,
+    username,
+    password: plaintextPassword,
+    passwordHash,
+    email,
+  };
+}
+
+/**
+ * Reset username/password for an existing parent-owned child student login.
+ * School-managed children are blocked. Password is returned once for parent reveal.
+ */
+export async function resetChildLoginCredentials(
+  input: ResetChildLoginInput,
+  deps: ResetChildLoginDeps = {},
+): Promise<ResetChildLoginResult> {
+  const childId = input.childId?.trim() ?? "";
+  if (!childId) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Child id is required.",
+      code: "child_id_required",
+    };
+  }
+
+  const findOwnedChild = deps.findOwnedChild ?? defaultFindOwnedChildForReset;
+  const child = await findOwnedChild({
+    parentId: input.parentId,
+    childId,
+  });
+
+  if (!child) {
+    return {
+      ok: false,
+      status: 404,
+      error: "Child not found.",
+      code: "child_not_found",
+    };
+  }
+
+  if (!child.userId || !child.loginUsername) {
+    return {
+      ok: false,
+      status: 409,
+      error: "This child does not have a login to reset. Create a login first.",
+      code: "child_login_missing",
+    };
+  }
+
+  // School roster links do not block reset: if the parent-linked student User
+  // exists, the parent may rotate that login. Create Login remains blocked for
+  // school-managed profiles that have no parent-owned userId yet.
+
+  if (!child.studentRole) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Only student logins can be reset from the parent portal.",
+      code: "not_student_login",
+    };
+  }
+
+  const resolved = await resolveChildLoginResetCredentials(
+    {
+      mode: input.mode,
+      childName: child.name,
+      currentUsername: child.loginUsername,
+      excludeUserId: child.userId,
+      username: input.username,
+      password: input.password,
+    },
+    {
+      usernameTaken: deps.usernameTaken,
+      hashPassword: deps.hashPassword,
+      generatePassword: deps.generatePassword,
+    },
+  );
+
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  const resetInTransaction = deps.resetInTransaction ?? defaultResetInTransaction;
+
+  try {
+    const reset = await resetInTransaction({
+      parentId: input.parentId,
+      childId: child.id,
+      userId: child.userId,
+      username: resolved.username,
+      email: resolved.email,
+      passwordHash: resolved.passwordHash,
+    });
+
+    return {
+      ok: true,
+      child: {
+        id: child.id,
+        name: child.name,
+        yearGroup: child.yearGroup,
+        userId: reset.userId,
+      },
+      credentials: {
+        username: resolved.username,
+        password: resolved.password,
+        mode: resolved.mode,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown_error";
+    if (message === "child_login_reset_conflict") {
+      return {
+        ok: false,
+        status: 409,
+        error: "Could not reset this login. Refresh and try again.",
+        code: "child_login_reset_conflict",
+      };
+    }
+    if (message.includes("Unique constraint") || message.includes("username")) {
+      return {
+        ok: false,
+        status: 409,
+        error: "That username is already taken. Please choose another.",
+        code: "username_taken",
+      };
+    }
+    console.error("[child-account-reset]", message);
+    return {
+      ok: false,
+      status: 500,
+      error: "Could not reset child login. Please try again.",
+    };
+  }
+}

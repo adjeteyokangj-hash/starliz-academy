@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 function read(relativePath: string): string {
-  return readFileSync(resolve(process.cwd(), relativePath), "utf8");
+  return readFileSync(resolve(process.cwd(), relativePath), "utf8").replace(/\r\n/g, "\n");
 }
 
 test("accounts route rejects non-parent roles in handler source", () => {
@@ -20,6 +20,16 @@ test("existing-child account route rejects non-parent and scopes by owned childI
   assert.match(route, /status:\s*403/);
   assert.match(route, /parentScope\.parentId !== session\.userId/);
   assert.match(route, /linkExistingChildLoginAccount/);
+  assert.doesNotMatch(route, /parentId:\s*body/);
+  assert.doesNotMatch(route, /userId:\s*body/);
+});
+
+test("reset account route rejects non-parent and scopes by owned childId", () => {
+  const route = read("src/app/api/parent/children/[childId]/account/reset/route.ts");
+  assert.match(route, /Only parent accounts can reset child logins/);
+  assert.match(route, /status:\s*403/);
+  assert.match(route, /parentScope\.parentId !== session\.userId/);
+  assert.match(route, /resetChildLoginCredentials/);
   assert.doesNotMatch(route, /parentId:\s*body/);
   assert.doesNotMatch(route, /userId:\s*body/);
 });

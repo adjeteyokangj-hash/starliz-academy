@@ -401,6 +401,43 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
+          <label htmlFor="child-date-of-birth" className="block text-sm font-semibold text-slate-300 mb-2">
+            Date of birth
+          </label>
+          <input
+            id="child-date-of-birth"
+            type="date"
+            value={formData.dateOfBirth}
+            max={new Date().toISOString().split('T')[0]}
+            onChange={(e) => {
+              const dob = e.target.value;
+              setFormData((current) => applyDobDerivedFields(dob, current, yearGroupLocked));
+            }}
+            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+            aria-describedby={fieldErrors.dateOfBirth ? 'child-date-of-birth-error' : undefined}
+          />
+          <p className="mt-1 text-xs text-slate-400">Age and year group update automatically from UK school year rules (rolls forward after July).</p>
+          {fieldErrors.dateOfBirth ? <p id="child-date-of-birth-error" className="mt-1 text-xs text-red-400">{fieldErrors.dateOfBirth}</p> : null}
+        </div>
+
+        <div>
+          <label htmlFor="child-age" className="block text-sm font-semibold text-slate-300 mb-2">
+            Age *
+          </label>
+          <input
+            id="child-age"
+            type="number"
+            value={formData.ageYears}
+            readOnly
+            className="w-full rounded-xl border border-white/10 bg-slate-800/60 px-3 py-2 text-sm text-slate-300 cursor-not-allowed"
+          />
+          <p className="mt-1 text-xs text-slate-400">Age is calculated automatically from date of birth.</p>
+          {fieldErrors.ageYears ? <p className="mt-1 text-xs text-red-400">{fieldErrors.ageYears}</p> : null}
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
           <label htmlFor="child-year-group" className="block text-sm font-semibold text-slate-300 mb-2">
             Year group
           </label>
@@ -459,43 +496,6 @@ export default function ChildManagementForm({ mode, initialData, onSuccess, onCa
           </select>
           <p className="mt-1 text-xs text-slate-400">Auto-calculated from year group</p>
           {fieldErrors.keyStageLevel ? <p className="mt-1 text-xs text-red-400">{fieldErrors.keyStageLevel}</p> : null}
-        </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label htmlFor="child-date-of-birth" className="block text-sm font-semibold text-slate-300 mb-2">
-            Date of birth
-          </label>
-          <input
-            id="child-date-of-birth"
-            type="date"
-            value={formData.dateOfBirth}
-            max={new Date().toISOString().split('T')[0]}
-            onChange={(e) => {
-              const dob = e.target.value;
-              setFormData((current) => applyDobDerivedFields(dob, current, yearGroupLocked));
-            }}
-            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
-            aria-describedby={fieldErrors.dateOfBirth ? 'child-date-of-birth-error' : undefined}
-          />
-          <p className="mt-1 text-xs text-slate-400">Age and year group update automatically from UK school year rules (rolls forward after July).</p>
-          {fieldErrors.dateOfBirth ? <p id="child-date-of-birth-error" className="mt-1 text-xs text-red-400">{fieldErrors.dateOfBirth}</p> : null}
-        </div>
-
-        <div>
-          <label htmlFor="child-age" className="block text-sm font-semibold text-slate-300 mb-2">
-            Age *
-          </label>
-          <input
-            id="child-age"
-            type="number"
-            value={formData.ageYears}
-            readOnly
-            className="w-full rounded-xl border border-white/10 bg-slate-800/60 px-3 py-2 text-sm text-slate-300 cursor-not-allowed"
-          />
-          <p className="mt-1 text-xs text-slate-400">Age is calculated automatically from date of birth.</p>
-          {fieldErrors.ageYears ? <p className="mt-1 text-xs text-red-400">{fieldErrors.ageYears}</p> : null}
         </div>
       </div>
 

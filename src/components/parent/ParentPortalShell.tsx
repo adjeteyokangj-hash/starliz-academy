@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import ChildManagementForm, { type ChildAccountCreatedResult } from "./ChildManagementForm";
 import ChildLoginCredentialsReveal, { type OneTimeChildCredentials } from "./ChildLoginCredentialsReveal";
 import CreateChildLoginPanel from "./CreateChildLoginPanel";
+import ResetChildLoginPanel from "./ResetChildLoginPanel";
 import BillingCard from "./BillingCard";
 import SecuritySettings from "./SecuritySettings";
 import ConsentAuditView from "./ConsentAuditView";
@@ -550,6 +551,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     credentials: OneTimeChildCredentials;
   } | null>(null);
   const [createLoginChildId, setCreateLoginChildId] = useState<string | null>(null);
+  const [resetLoginChildId, setResetLoginChildId] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [accountNameDraft, setAccountNameDraft] = useState("");
   const [accountContactDraft, setAccountContactDraft] = useState({
@@ -2043,6 +2045,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         setChildFormMessage(null);
                         setCreatedLoginReveal(null);
                         setEditingChildId(null);
+                        setCreateLoginChildId(null);
+                        setResetLoginChildId(null);
                         setShowChildForm(true);
                       }}
                       className="w-full bg-cyan-600 hover:bg-cyan-700"
@@ -2078,6 +2082,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                               setEditingChildId(child.id);
                               setShowChildForm(true);
                               setCreateLoginChildId(null);
+                              setResetLoginChildId(null);
                             }}
                             className="text-xs text-cyan-400 hover:text-cyan-300 opacity-0 group-hover:opacity-100 transition"
                           >
@@ -2095,11 +2100,31 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                               onClick={() => {
                                 setChildFormMessage(null);
                                 setCreatedLoginReveal(null);
+                                setResetLoginChildId(null);
                                 setCreateLoginChildId(child.id);
                               }}
                               className="w-full bg-cyan-700 hover:bg-cyan-600 text-sm"
                             >
                               Create Login
+                            </Button>
+                          </div>
+                        ) : null}
+                        {(child.hasLogin || child.userId)
+                          && child.loginUsername
+                          && resetLoginChildId !== child.id
+                          && createLoginChildId !== child.id ? (
+                          <div className="mt-3">
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                setChildFormMessage(null);
+                                setCreatedLoginReveal(null);
+                                setCreateLoginChildId(null);
+                                setResetLoginChildId(child.id);
+                              }}
+                              className="w-full bg-amber-700 hover:bg-amber-600 text-sm"
+                            >
+                              Reset Login
                             </Button>
                           </div>
                         ) : null}
@@ -2125,6 +2150,32 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                                   .catch(() => undefined);
                               }}
                               onCancel={() => setCreateLoginChildId(null)}
+                            />
+                          </div>
+                        ) : null}
+                        {resetLoginChildId === child.id && child.loginUsername ? (
+                          <div className="mt-3">
+                            <ResetChildLoginPanel
+                              childId={child.id}
+                              childName={child.name}
+                              currentUsername={child.loginUsername}
+                              onSuccess={(result) => {
+                                setResetLoginChildId(null);
+                                setCreatedLoginReveal({
+                                  childName: result.childName,
+                                  credentials: result.credentials,
+                                });
+                                setChildFormMessage(
+                                  "Child login reset. Save the username and password shown below — the password cannot be shown again.",
+                                );
+                                void fetch("/api/children", { credentials: "include" })
+                                  .then((r) => (r.ok ? (r.json() as Promise<ChildListResponse>) : null))
+                                  .then((childrenData) => {
+                                    if (childrenData) setChildren(childrenData);
+                                  })
+                                  .catch(() => undefined);
+                              }}
+                              onCancel={() => setResetLoginChildId(null)}
                             />
                           </div>
                         ) : null}
