@@ -10,8 +10,15 @@ import { buildAiGeneratorUrl } from "@/lib/admin-ai-generator-url";
 import { mapHeartbeatActionButton, toHeartbeatDecisionViewModel } from "@/lib/academic-intelligence/heartbeatActionMap";
 import type { CoachHeartbeatSignalSummary, CoverageEntry, HeartbeatDecision, SchoolWeekday } from "@/lib/academic-intelligence/types";
 import { keyStageForYearGroup } from "@/lib/curriculum";
+import { suggestUkYearGroupFromDateOfBirth } from "@/lib/registration/child-profile-options";
 import type { UniversalAiPrefillContract } from "@/lib/ai-prefill-contract";
 import { formatStudentId } from "@/lib/student-id";
+import {
+  STUDENT_DASHBOARD_SECTION_KEYS,
+  STUDENT_DASHBOARD_SECTION_LABELS,
+  defaultStudentDashboardSections,
+  type StudentDashboardSections,
+} from "@/lib/student-dashboard-sections";
 
 type StudentDetail = {
   id: string;
@@ -221,20 +228,7 @@ type ChecklistItem = {
 
 /** Derives the expected UK school year group from a date of birth. */
 function ukYearGroupFromDob(dob: Date): string | null {
-  const today = new Date();
-  const SEPT = 8; // September is month index 8 (0-based)
-  // Current academic year started in September of 'schoolYearStart'
-  const schoolYearStart = today.getMonth() < SEPT ? today.getFullYear() - 1 : today.getFullYear();
-  // Birthday falls before September 1 in the year?
-  const birthdayBeforeSept = dob.getMonth() < SEPT || (dob.getMonth() === SEPT && dob.getDate() === 1);
-  let ageAtSchoolStart = schoolYearStart - dob.getFullYear();
-  if (!birthdayBeforeSept) ageAtSchoolStart -= 1;
-  // Reception is age 4; Year N is age 4+N
-  const yearGroupNum = ageAtSchoolStart - 4;
-  if (yearGroupNum < 0) return null;
-  if (yearGroupNum === 0) return "Reception";
-  if (yearGroupNum >= 1 && yearGroupNum <= 11) return `Year ${yearGroupNum}`;
-  return null;
+  return suggestUkYearGroupFromDateOfBirth(dob.toISOString().slice(0, 10));
 }
 
 type AdminProgressionPayload = {
@@ -368,6 +362,11 @@ export default function StudentDetailPage() {
   const [dashboardContentError, setDashboardContentError] = useState<string | null>(null);
   const [dashboardContentMessage, setDashboardContentMessage] = useState<string | null>(null);
   const [dashboardContentBusyKey, setDashboardContentBusyKey] = useState<string | null>(null);
+  const [dashboardSections, setDashboardSections] = useState<StudentDashboardSections>(() => defaultStudentDashboardSections());
+  const [dashboardSectionsLoading, setDashboardSectionsLoading] = useState(true);
+  const [dashboardSectionsSaving, setDashboardSectionsSaving] = useState(false);
+  const [dashboardSectionsMessage, setDashboardSectionsMessage] = useState<string | null>(null);
+  const [dashboardSectionsError, setDashboardSectionsError] = useState<string | null>(null);
 
   const loadStudent = useCallback(async () => {
     const response = await fetch(`/api/admin/students/${params.id}`);
@@ -455,6 +454,53 @@ export default function StudentDetailPage() {
     setDashboardContent(payload);
     setDashboardContentLoading(false);
   }, [params.id]);
+
+  const loadDashboardSections = useCallback(async () => {
+    setDashboardSectionsLoading(true);
+    setDashboardSectionsError(null);
+    const response = await fetch(`/api/admin/students/${params.id}/dashboard-sections`);
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      setDashboardSections(defaultStudentDashboardSections());
+      setDashboardSectionsError(payload?.error ?? "Unable to load dashboard section settings.");
+      setDashboardSectionsLoading(false);
+      return;
+    }
+    const payload = (await response.json()) as {
+      sections?: StudentDashboardSections;
+    };
+    setDashboardSections({
+      ...defaultStudentDashboardSections(),
+      ...(payload.sections ?? {}),
+    });
+    setDashboardSectionsLoading(false);
+  }, [params.id]);
+
+  async function saveDashboardSections() {
+    setDashboardSectionsSaving(true);
+    setDashboardSectionsMessage(null);
+    setDashboardSectionsError(null);
+    const response = await fetch(`/api/admin/students/${params.id}/dashboard-sections`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(dashboardSections),
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      sections?: StudentDashboardSections;
+    } | null;
+    if (!response.ok) {
+      setDashboardSectionsError(payload?.error ?? "Unable to save dashboard sections.");
+      setDashboardSectionsSaving(false);
+      return;
+    }
+    setDashboardSections({
+      ...defaultStudentDashboardSections(),
+      ...(payload?.sections ?? dashboardSections),
+    });
+    setDashboardSectionsMessage("Student dashboard sections saved.");
+    setDashboardSectionsSaving(false);
+  }
 
   async function removeDashboardContent(input: {
     contentType: "assignment" | "catch_up" | "homework";
@@ -553,9 +599,10 @@ export default function StudentDetailPage() {
         loadQuickLevelFinderControl(),
         loadProgressionRecommendations(),
         loadDashboardContent(),
+        loadDashboardSections(),
       ]);
     })();
-  }, [loadAcademicIntelligence, loadDashboardContent, loadProgressionRecommendations, loadQuickLevelFinderControl, loadSchoolWeekSettings, loadStudent]);
+  }, [loadAcademicIntelligence, loadDashboardContent, loadDashboardSections, loadProgressionRecommendations, loadQuickLevelFinderControl, loadSchoolWeekSettings, loadStudent]);
 
   useEffect(() => {
     if (!student || !isStudentFocusTarget(focus)) return;
@@ -1014,6 +1061,59 @@ export default function StudentDetailPage() {
             </div>
           )}
           </div>
+        </AdminSectionCard>
+
+        <AdminSectionCard title="Student Dashboard Sections" eyebrow="Show or hide Study Dashboard blocks">
+          <p className="text-sm text-slate-300">
+            All gated sections stay hidden until you enable them for this learner. Day School, Short Learning, and core chrome stay available.
+          </p>
+          {dashboardSectionsMessage ? (
+            <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+              {dashboardSectionsMessage}
+            </p>
+          ) : null}
+          {dashboardSectionsError ? (
+            <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
+              {dashboardSectionsError}
+            </p>
+          ) : null}
+          {dashboardSectionsLoading ? (
+            <p className="mt-3 text-sm text-slate-400">Loading section settings...</p>
+          ) : (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {STUDENT_DASHBOARD_SECTION_KEYS.map((key) => (
+                <label
+                  key={key}
+                  className="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm text-slate-200"
+                >
+                  <input
+                    type="checkbox"
+                    checked={dashboardSections[key]}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      setDashboardSections((current) => ({
+                        ...current,
+                        [key]: enabled,
+                      }));
+                    }}
+                    className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-cyan-500"
+                  />
+                  <span>
+                    <span className="font-semibold text-white">{STUDENT_DASHBOARD_SECTION_LABELS[key]}</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">{key}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={dashboardSectionsLoading || dashboardSectionsSaving}
+            onClick={() => void saveDashboardSections()}
+            className="mt-4 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+          >
+            {dashboardSectionsSaving ? "Saving..." : "Save dashboard sections"}
+          </button>
         </AdminSectionCard>
 
         <AdminSectionCard title="Dashboard Content Removal" eyebrow="Remove stuck learner items">

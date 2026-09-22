@@ -1,4 +1,6 @@
 import type { LearningTwinProfile } from "@/lib/academic-intelligence/types";
+import type { MasteredReviewPolicy, StudentDashboardSections } from "@/lib/student-dashboard-sections";
+import { defaultStudentDashboardSections, DEFAULT_MASTERED_REVIEW_POLICY } from "@/lib/student-dashboard-sections";
 
 export type StudentAssignment = {
   id: string;
@@ -18,6 +20,7 @@ export type StudentSkill = {
   skill: string;
   status: "weak" | "improving" | "mastered" | string;
   accuracy: number;
+  updatedAt?: string | null;
 };
 
 export type CoachRow = {
@@ -133,9 +136,15 @@ export type DashboardProps = {
   allAssignments?: StudentAssignment[];
   onStartJourney: () => Promise<void>;
   onStartAssignment: (assignment: StudentAssignment | null) => void;
+  onStartImprovingBoost?: () => Promise<void>;
+  improvingBoostStarting?: boolean;
   onStartBossBattle?: () => Promise<void>;
   bossLaunching?: boolean;
   onOpenStore: () => void;
   pendingAssignmentId?: string | null;
   openingStore?: boolean;
+  dashboardSections?: StudentDashboardSections;
+  masteredReview?: MasteredReviewPolicy;
 };
+
+export { defaultStudentDashboardSections, DEFAULT_MASTERED_REVIEW_POLICY };

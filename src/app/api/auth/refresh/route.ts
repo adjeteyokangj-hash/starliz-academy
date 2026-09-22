@@ -40,7 +40,7 @@ function resolveRefreshNextPath(nextPath: string | null | undefined, role: strin
     return null;
   }
   if (nextPath.startsWith("/student") && role === "parent") {
-    return "/parent/profiles";
+    return "/parent/dashboard";
   }
   return nextPath;
 }

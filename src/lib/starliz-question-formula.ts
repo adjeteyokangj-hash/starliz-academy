@@ -336,8 +336,17 @@ export function buildQuestionFormulaScaffold(input: {
     ...linesFromValue(item.keyInformation),
   ];
   const subject = subjectLabel || (section === "math" ? "Maths" : section === "reading" ? "Reading" : "Spelling");
-  const learningFocus = text(item.skillFocus)
-    ? `Today we are practising ${text(item.skillFocus)}.`
+  const skill = text(item.skillFocus);
+  const genericSkill = !skill || /^(maths?|english|reading|spelling|science|lesson)$/i.test(skill);
+  const cleanedSkill = skill
+    .replace(/^today we are (practising|learning)\s+/i, "")
+    .replace(/^to\s+/i, "")
+    .replace(/\.\.+$/g, ".")
+    .trim();
+  const learningFocus = !genericSkill
+    ? (cleanedSkill.length > 60
+      ? `Today we are practising ${/array/i.test(cleanedSkill) ? "multiplication using arrays" : "this maths skill"}.`
+      : `Today we are practising ${cleanedSkill.replace(/\.$/, "")}.`)
     : section === "math"
       ? `Today we are practising ${subject.toLowerCase()} thinking step by step.`
       : section === "reading"
@@ -366,7 +375,20 @@ export function buildQuestionFormulaScaffold(input: {
     };
   }
 
+  const requestedVisualType = text(item.visualType).toLowerCase();
+  if (requestedVisualType === "none") {
+    return {
+      learningFocus,
+      keyInformation,
+      hint: text(item.hint) || null,
+      unitLabel: null,
+      visual: null,
+    };
+  }
   const visualType = text(item.passage) ? "passage" : "formula_card";
+  const visualTitle = requestedVisualType && requestedVisualType !== "none"
+    ? text(item.visualType)
+    : visualType === "formula_card" ? "Formula help" : "Visual support";
 
   return {
     learningFocus,
@@ -376,7 +398,7 @@ export function buildQuestionFormulaScaffold(input: {
     visual: text(item.visualPrompt) || text(item.visualAltText)
       ? {
           type: visualType,
-          title: text(item.visualType) || (visualType === "formula_card" ? "Formula help" : "Visual support"),
+          title: visualTitle,
           altText: text(item.visualAltText) || text(item.visualPrompt) || "Question support",
           body: [text(item.visualPrompt) || text(item.visualAltText)].filter(Boolean),
         }

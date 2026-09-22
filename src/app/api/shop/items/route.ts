@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { getEquippedMap, getLiveShopItems, getOwnedMap, levelForProfile, syncProfileFromDb } from "@/app/api/shop/_helpers";
+import { isPrimaryRewardsStoreEligible } from "@/lib/dashboardResolver";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -18,6 +19,16 @@ export async function GET(request: Request) {
   const child = await prisma.childProfile.findFirst({ where: { id: childId, parentId: session.userId, archived: false } });
   if (!child) {
     return NextResponse.json({ error: "Child not found." }, { status: 404 });
+  }
+
+  if (!isPrimaryRewardsStoreEligible({
+    yearGroup: child.yearGroup,
+    age: child.age,
+  })) {
+    return NextResponse.json(
+      { error: "The rewards store is only available for Years 1–6.", code: "STORE_PRIMARY_ONLY" },
+      { status: 403 },
+    );
   }
 
   const [profile, ownedMap, equippedMap, liveItems] = await Promise.all([

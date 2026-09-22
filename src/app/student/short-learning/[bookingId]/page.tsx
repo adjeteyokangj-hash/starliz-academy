@@ -1,27 +1,27 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
-import { readChildSelectionFromCookie, readSessionFromCookie } from "@/lib/auth";
+import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
+import { SHORT_LEARNING_EARLY_ENTRY_MINUTES, SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
 import { isShortLearningBookingActive } from "@/lib/schools/support-eligibility";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
-import { resolveParentScope } from "@/lib/parent_scope";
+import { resolveActiveChildForSession } from "@/lib/activeChild";
 import { formatUkDateTime } from "@/lib/uk-datetime";
 
 type Params = { params: Promise<{ bookingId: string }> };
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function StudentShortLearningSessionPage({ params }: Params) {
   const session = await readSessionFromCookie();
   if (!session) redirect("/auth/login?next=/student/short-learning");
 
-  let childId: string | null = await readChildSelectionFromCookie(session.userId);
-  if (!childId && session.role === "parent") {
-    const parentScope = await resolveParentScope(session);
-    if (parentScope) childId = await resolveParentActiveChildId(parentScope.parentId);
-  }
+  const resolved = await resolveActiveChildForSession(session);
+  const childId = resolved.ok ? resolved.childId : null;
   if (!childId) {
-    redirect("/parent/profiles?intent=child&next=/student/short-learning");
+    if (session.role === "student") redirect("/student/dashboard");
+    redirect("/parent/dashboard");
   }
 
   const { bookingId } = await params;
@@ -67,7 +67,7 @@ export default async function StudentShortLearningSessionPage({ params }: Params
     endsAt: booking.endsAt,
     status: booking.status,
     now,
-    earlyEntryMinutes: 10,
+    earlyEntryMinutes: SHORT_LEARNING_EARLY_ENTRY_MINUTES,
   });
 
   if (active && !booking.joinedAt) {
@@ -141,8 +141,8 @@ export default async function StudentShortLearningSessionPage({ params }: Params
             <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
               {now < booking.startsAt ? (
                 <p>
-                  You can enter from 10 minutes before the start (
-                  {formatUkDateTime(new Date(booking.startsAt.getTime() - 10 * 60_000))}).
+                  You can enter from {SHORT_LEARNING_EARLY_ENTRY_MINUTES} minutes before the start (
+                  {formatUkDateTime(new Date(booking.startsAt.getTime() - SHORT_LEARNING_EARLY_ENTRY_MINUTES * 60_000))}).
                 </p>
               ) : (
                 <p>This Short Learning window has ended.</p>

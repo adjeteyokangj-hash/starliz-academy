@@ -1,4 +1,7 @@
 import { buildQuestionFormulaScaffold } from "@/lib/starliz-question-formula";
+import { ensureMinimumMathQuestions, padMathAnswerChoices } from "@/lib/schools/math-practice-fill";
+import { ensureMinimumSubjectQuestions, replaceOffSubjectMathsQuestions } from "@/lib/schools/subject-practice-fill";
+import { canonicalShortLearningSubjectKey } from "@/lib/schools/short-learning-curriculum";
 
 export type LessonQuestionType =
   | "spelling"
@@ -146,13 +149,62 @@ function normalizeQuestionType(raw: unknown, fallback: LessonQuestionType): Less
   const value = text(raw).toLowerCase();
   if (!value) return fallback;
   if (value.includes("spell") || value.includes("phonics")) return "spelling";
-  if (value.includes("math") || value.includes("number") || value.includes("science") || value.includes("gcse-maths")) return "math";
-  if (value.includes("read") || value.includes("comprehension") || value.includes("literature") || value.includes("language")) return "reading";
+  if (value.includes("science") && !value.includes("math")) return "science";
+  if (value.includes("math") || value.includes("gcse-maths")) return "math";
+  if (value.includes("read") || value.includes("comprehension") || value.includes("literature")) return "reading";
   if (value.includes("grammar")) return "grammar";
   if (value.includes("punct")) return "punctuation";
   if (value.includes("science")) return "science";
   if (value.includes("language")) return "languages";
   return fallback;
+}
+
+function isGenericSubjectLabel(value: string | null | undefined): boolean {
+  const normalized = text(value).toLowerCase();
+  return !normalized || ["math", "maths", "english", "reading", "spelling", "science", "lesson"].includes(normalized);
+}
+
+function defaultSkillFocusForYear(questionType: LessonQuestionType, yearGroup: string | null | undefined): string {
+  const year = Number(/(\d{1,2})/.exec(yearGroup ?? "")?.[1] ?? 0);
+  if (questionType === "math") {
+    if (year <= 2) return "number bonds and addition";
+    if (year === 3) return "multiplication and division facts";
+    if (year === 4) return "multiplication, division and written methods";
+    if (year === 5) return "fractions, decimals and written methods";
+    if (year === 6) return "fractions, percentages and multi-step problems";
+    if (year >= 7) return "number, algebra and proportional reasoning";
+    return "number and calculation";
+  }
+  return "";
+}
+
+function isDaytimeStagePackShape(raw: Record<string, unknown>): boolean {
+  if (text(raw.subjectType)) return true;
+  const hasQuestions = Array.isArray(raw.questions) && raw.questions.length > 0;
+  const hasActivities = Array.isArray(raw.activities);
+  const hasTeaching = Boolean(
+    raw.learningObjective
+    || raw.explanation
+    || raw.workedExamples
+    || raw.estimatedMinutes
+    || raw.priorLearningWarmup,
+  );
+  return hasQuestions && (hasActivities || hasTeaching);
+}
+
+function packQuestionType(raw: Record<string, unknown>, context: LessonPayloadContext): LessonQuestionType {
+  const booked = canonicalShortLearningSubjectKey(context.subject);
+  if (booked === "maths") return "math";
+  if (booked === "english") return "reading";
+  if (booked === "science") return "science";
+  if (booked) return "generic";
+  const subjectType = text(raw.subjectType).toLowerCase();
+  if (subjectType.includes("math")) return "math";
+  if (subjectType.includes("spell")) return "spelling";
+  if (subjectType.includes("read") || subjectType.includes("guided")) return "reading";
+  const fromContent = contentTypeToQuestionType(context.contentType);
+  if (fromContent !== "generic") return fromContent;
+  return contentTypeToQuestionType(context.subject);
 }
 
 function inferQuestionType(raw: Record<string, unknown>, context: LessonPayloadContext): LessonQuestionType {
@@ -162,9 +214,28 @@ function inferQuestionType(raw: Record<string, unknown>, context: LessonPayloadC
     : "generic";
   if (explicit !== "generic") return explicit;
   if (text(raw.word)) return "spelling";
-  if (text(raw.passage) || Array.isArray(raw.questions)) return "reading";
-  if (typeof raw.answer === "number" || Array.isArray(raw.options) || Array.isArray(raw.choices)) return "math";
-  return contentTypeToQuestionType(context.contentType);
+  const contextType = contentTypeToQuestionType(context.contentType);
+  if (contextType === "math") {
+    if (
+      typeof raw.answer === "number"
+      || Array.isArray(raw.options)
+      || Array.isArray(raw.choices)
+      || text(raw.question)
+      || text(raw.prompt)
+    ) return "math";
+  }
+  // Daytime maths packs also have questions[] — that must not flip them to reading.
+  if (Array.isArray(raw.questions) && (contextType === "reading" || contextType === "generic" || text(raw.passage))) {
+    if (contextType !== "math" && contextType !== "spelling") return "reading";
+  }
+  if (text(raw.passage) && contextType !== "math" && contextType !== "spelling") return "reading";
+  if (contextType === "math" && (typeof raw.answer === "number" || Array.isArray(raw.options) || Array.isArray(raw.choices))) {
+    return "math";
+  }
+  if (Array.isArray(raw.options) || Array.isArray(raw.choices)) {
+    return contextType === "generic" ? "generic" : contextType;
+  }
+  return contextType;
 }
 
 function buildFallbackLearningFocus(type: LessonQuestionType, skillFocus: string, topic: string): string {
@@ -315,7 +386,30 @@ function toStringAnswer(value: unknown): string | number {
   return text(value);
 }
 
-function normalizeOptionList(item: Record<string, unknown>, correctAnswer: string | number): string[] {
+function padClosedQuestionOptions(
+  values: string[],
+  answer: string,
+  questionType: LessonQuestionType,
+  prompt: string,
+): string[] {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(value);
+  }
+  if (questionType === "spelling") return unique;
+  return padMathAnswerChoices({ prompt, answer, existing: unique });
+}
+
+function normalizeOptionList(
+  item: Record<string, unknown>,
+  correctAnswer: string | number,
+  questionType: LessonQuestionType = "generic",
+  prompt = "",
+): string[] {
   const source = Array.isArray(item.options)
     ? item.options
     : Array.isArray(item.choices)
@@ -328,7 +422,8 @@ function normalizeOptionList(item: Record<string, unknown>, correctAnswer: strin
   if (answer && !values.some((value) => value.toLowerCase() === answer.toLowerCase())) {
     values.push(answer);
   }
-  return Array.from(new Set(values));
+  const unique = Array.from(new Set(values));
+  return padClosedQuestionOptions(unique, answer, questionType, prompt);
 }
 
 function normalizeVisuals(input: {
@@ -341,7 +436,7 @@ function normalizeVisuals(input: {
 }): LessonVisuals {
   const { item, questionType, learningFocus, question, correctAnswer, scaffoldVisual } = input;
   const rawType = text(item.visualType).toLowerCase();
-  const validRawType = rawType && ["none", "diagram", "formula_card", "passage", "chart", "table"].includes(rawType)
+  const validRawType = rawType && rawType !== "none" && ["diagram", "formula_card", "passage", "chart", "table"].includes(rawType)
     ? (rawType as LessonVisualType)
     : null;
   const explicitVisualContent = Boolean(validRawType)
@@ -352,7 +447,21 @@ function normalizeVisuals(input: {
   const resolvedType = scaffoldVisual?.type
     ?? validRawType
     ?? (explicitVisualContent ? (questionType === "reading" ? "passage" : "formula_card") : "none");
-  const title = firstText(item.visualTitle, scaffoldVisual?.title, resolvedType === "passage" ? "Passage support" : "Visual support");
+  if (resolvedType === "none") {
+    return {
+      required: false,
+      type: "none",
+      title: "",
+      altText: "",
+      body: [],
+      prompt: "",
+    };
+  }
+  const title = firstText(
+    text(item.visualTitle).toLowerCase() === "none" ? "" : item.visualTitle,
+    scaffoldVisual?.title,
+    resolvedType === "passage" ? "Passage support" : "Visual support",
+  );
   const altText = firstText(item.visualAltText, scaffoldVisual?.altText, item.visualPrompt, question || learningFocus || "Question support");
   const prompt = firstText(item.visualPrompt, scaffoldVisual?.body?.[0], learningFocus || question || altText);
   const body = textArray(item.visualBody).length
@@ -469,6 +578,36 @@ function buildNormalizedItem(input: {
   return normalized;
 }
 
+function formatPupilSkillLabel(skill: string): string {
+  const cleaned = skill
+    .replace(/^today we are (practising|learning)\s+/i, "")
+    .replace(/^to\s+/i, "")
+    .replace(/\.\.+$/g, ".")
+    .trim();
+  if (!cleaned) return "";
+  if (cleaned.length > 48) {
+    if (/array/i.test(cleaned)) return "multiplication using arrays";
+    if (/multipl/i.test(cleaned)) return "multiplication";
+    if (/divis/i.test(cleaned)) return "division";
+    if (/fraction/i.test(cleaned)) return "fractions";
+    return cleaned.slice(0, 46).replace(/\s+\S*$/, "");
+  }
+  return cleaned;
+}
+
+function resolveSpecificSkillFocus(
+  raw: Record<string, unknown>,
+  context: LessonPayloadContext,
+  questionType: LessonQuestionType,
+): string {
+  const candidates = [raw.learningFocus, raw.skillFocus, context.skillFocus, raw.topic, context.topic].map((value) => text(value));
+  const specific = candidates.find((value) => value && !isGenericSubjectLabel(value)) ?? "";
+  if (specific) return formatPupilSkillLabel(specific) || specific;
+  const objective = text(raw.learningObjective);
+  if (objective && objective.length <= 80) return formatPupilSkillLabel(objective) || objective;
+  return defaultSkillFocusForYear(questionType, context.yearGroup);
+}
+
 function normalizeSingleItem(raw: Record<string, unknown>, context: LessonPayloadContext, index: number): NormalizedLessonItem | null {
   const questionType = inferQuestionType(raw, context);
   if (questionType === "reading" && Array.isArray(raw.questions) && raw.questions.length > 0) {
@@ -481,25 +620,29 @@ function normalizeSingleItem(raw: Record<string, unknown>, context: LessonPayloa
       : firstText(raw.question, raw.prompt, raw.word),
   );
   const correctAnswer = resolveCorrectAnswer(raw);
-  const learningFocus = firstText(raw.learningFocus, raw.skillFocus, context.skillFocus, raw.topic, buildFallbackLearningFocus(questionType, text(raw.skillFocus ?? context.skillFocus), text(raw.topic ?? context.topic)));
+  const specificSkill = resolveSpecificSkillFocus(raw, context, questionType);
+  const learningFocus = firstText(
+    specificSkill ? buildFallbackLearningFocus(questionType, specificSkill, "") : "",
+    buildFallbackLearningFocus(questionType, "", text(raw.topic ?? context.topic)),
+  );
   const scaffold = buildQuestionFormulaScaffold({
     item: {
       ...raw,
       prompt: question,
       question,
       answer: correctAnswer,
-      skillFocus: learningFocus,
-      passage: text(raw.passage),
+      skillFocus: specificSkill,
+      passage: questionType === "reading" ? text(raw.passage) : "",
       visualPrompt: text(raw.visualPrompt),
       visualAltText: text(raw.visualAltText),
-      visualType: text(raw.visualType),
+      visualType: text(raw.visualType).toLowerCase() === "none" ? "" : text(raw.visualType),
     },
     section: questionType === "reading" ? "reading" : questionType === "spelling" ? "spelling" : "math",
     subjectLabel: context.subject ?? context.contentType ?? questionType,
   });
   const hint = firstText(raw.hint, scaffold.hint, buildFallbackHint(questionType, question, learningFocus));
-  const options = normalizeOptionList(raw, correctAnswer);
-  const passage = text(raw.passage);
+  const options = normalizeOptionList(raw, correctAnswer, questionType, question);
+  const passage = questionType === "reading" ? text(raw.passage) : "";
   const masterySignals: LessonMasterySignals = {
     firstTryCorrect: Boolean(raw.firstTryCorrect ?? false),
     retryCorrect: Boolean(raw.retryCorrect ?? false),
@@ -510,7 +653,7 @@ function normalizeSingleItem(raw: Record<string, unknown>, context: LessonPayloa
   };
 
   return buildNormalizedItem({
-    item: raw,
+    item: { ...raw, skillFocus: specificSkill || raw.skillFocus },
     context,
     index,
     questionType,
@@ -552,7 +695,7 @@ function expandReadingQuestions(raw: Record<string, unknown>, context: LessonPay
         subjectLabel: context.subject ?? context.contentType ?? "Reading",
       });
       const hint = firstText(q.hint, raw.hint, scaffold.hint, buildFallbackHint("reading", question, learningFocus));
-      const options = normalizeOptionList({ ...raw, ...q }, correctAnswer);
+      const options = normalizeOptionList({ ...raw, ...q }, correctAnswer, "reading", question);
       const masterySignals: LessonMasterySignals = {
         firstTryCorrect: Boolean(q.firstTryCorrect ?? raw.firstTryCorrect ?? false),
         retryCorrect: Boolean(q.retryCorrect ?? raw.retryCorrect ?? false),
@@ -580,6 +723,102 @@ function expandReadingQuestions(raw: Record<string, unknown>, context: LessonPay
     .filter((item): item is NormalizedLessonItem => Boolean(item));
 }
 
+function expandDaytimeStagePack(
+  raw: Record<string, unknown>,
+  context: LessonPayloadContext,
+  index: number,
+): NormalizedLessonItem[] {
+  const packType = packQuestionType(raw, context);
+  const questions = Array.isArray(raw.questions) && raw.questions.length
+    ? raw.questions
+    : Array.isArray(raw.items)
+      ? raw.items
+      : [];
+  const packSkill = firstText(
+    text(raw.learningObjective).length <= 80 ? raw.learningObjective : "",
+    isGenericSubjectLabel(text(raw.skillFocus)) ? "" : raw.skillFocus,
+    defaultSkillFocusForYear(packType, context.yearGroup),
+    context.skillFocus,
+  );
+  const packContext: LessonPayloadContext = {
+    ...context,
+    contentType: packType === "math" ? "math" : packType === "spelling" ? "spelling" : packType === "reading" ? "reading" : context.contentType,
+    skillFocus: packSkill || context.skillFocus,
+    topic: firstText(raw.title, context.topic),
+  };
+
+  if (packType === "reading") {
+    const passageRaw = raw.passage;
+    const passage = typeof passageRaw === "string"
+      ? passageRaw
+      : passageRaw && typeof passageRaw === "object" && !Array.isArray(passageRaw)
+        ? text((passageRaw as Record<string, unknown>).text)
+        : "";
+    const packQuestions = questions.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry));
+    const filledReading = ensureMinimumSubjectQuestions({
+      questions: replaceOffSubjectMathsQuestions({
+        questions: packQuestions,
+        subject: context.subject ?? "english",
+        yearGroup: context.yearGroup,
+        skillFocus: packSkill || context.skillFocus,
+        title: firstText(raw.title, context.topic),
+        estimatedMinutes: Number(raw.estimatedMinutes) || null,
+      }),
+      subject: context.subject ?? "english",
+      yearGroup: context.yearGroup,
+      skillFocus: packSkill || context.skillFocus,
+      title: firstText(raw.title, context.topic),
+      estimatedMinutes: Number(raw.estimatedMinutes) || null,
+    });
+    return expandReadingQuestions({ ...raw, questions: filledReading, passage, skillFocus: packSkill }, packContext, index);
+  }
+
+  const packQuestions = questions.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry));
+  const subjectKey = canonicalShortLearningSubjectKey(context.subject ?? context.contentType);
+  const inSubjectQuestions = packType === "math" || subjectKey === "maths"
+    ? packQuestions
+    : replaceOffSubjectMathsQuestions({
+        questions: packQuestions,
+        subject: context.subject ?? subjectKey,
+        yearGroup: context.yearGroup,
+        skillFocus: packSkill || context.skillFocus,
+        title: firstText(raw.title, context.topic),
+        estimatedMinutes: Number(raw.estimatedMinutes) || null,
+      });
+  const filledQuestions = packType === "math" || subjectKey === "maths"
+    ? ensureMinimumMathQuestions({
+        questions: inSubjectQuestions,
+        yearGroup: context.yearGroup,
+        skillFocus: packSkill || context.skillFocus,
+        title: firstText(raw.title, context.topic),
+        estimatedMinutes: Number(raw.estimatedMinutes) || null,
+      })
+    : ensureMinimumSubjectQuestions({
+        questions: inSubjectQuestions,
+        subject: context.subject ?? subjectKey,
+        yearGroup: context.yearGroup,
+        skillFocus: packSkill || context.skillFocus,
+        title: firstText(raw.title, context.topic),
+        estimatedMinutes: Number(raw.estimatedMinutes) || null,
+      });
+
+  const items: NormalizedLessonItem[] = [];
+  filledQuestions.forEach((entry, questionIndex) => {
+    if (!entry || typeof entry !== "object") return;
+    const question = entry as Record<string, unknown>;
+    const item = normalizeSingleItem({
+      ...question,
+      type: question.type ?? question.questionType ?? packType,
+      questionType: question.questionType ?? question.type ?? packType,
+      skillFocus: firstText(question.skillFocus, packSkill),
+      learningObjective: firstText(question.learningObjective, raw.learningObjective),
+      topic: firstText(question.topic, raw.title, context.topic),
+    }, packContext, index * 100 + questionIndex);
+    if (item) items.push(item);
+  });
+  return items;
+}
+
 export function normalizeLessonContentItems(rawContent: unknown, context: LessonPayloadContext = {}): NormalizedLessonItem[] {
   const rawItems = Array.isArray(rawContent)
     ? rawContent
@@ -591,6 +830,10 @@ export function normalizeLessonContentItems(rawContent: unknown, context: Lesson
   rawItems.forEach((entry, index) => {
     if (!entry || typeof entry !== "object") return;
     const raw = entry as Record<string, unknown>;
+    if (isDaytimeStagePackShape(raw)) {
+      normalized.push(...expandDaytimeStagePack(raw, context, index));
+      return;
+    }
     const questionType = inferQuestionType(raw, context);
     if (questionType === "reading" && Array.isArray(raw.questions) && raw.questions.length > 0) {
       normalized.push(...expandReadingQuestions(raw, context, index));

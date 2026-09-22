@@ -31,10 +31,11 @@ test("Day School: AI not exhausted → no human tutor eligibility", () => {
   assert.equal(result.continueAi, true);
 });
 
-test("Short Learning: exhausted with active booking is human-eligible", () => {
+test("Short Learning: student invite with active booking is human-eligible", () => {
   const result = resolveStudentHumanSupportEligibility({
     mode: "SHORT_LEARNING",
-    aiExhausted: true,
+    aiExhausted: false,
+    studentRequestedHelp: true,
     studentRecovered: false,
     bookingActive: true,
   });
@@ -97,6 +98,24 @@ test("recovered student after exhaustion is not human-eligible", () => {
 test("isShortLearningBookingActive respects early entry window", () => {
   const startsAt = new Date("2026-07-25T18:00:00.000Z");
   const endsAt = new Date("2026-07-25T19:30:00.000Z");
+  assert.equal(
+    isShortLearningBookingActive({
+      startsAt,
+      endsAt,
+      status: "booked",
+      now: new Date("2026-07-25T17:54:00.000Z"),
+    }),
+    false,
+  );
+  assert.equal(
+    isShortLearningBookingActive({
+      startsAt,
+      endsAt,
+      status: "booked",
+      now: new Date("2026-07-25T17:55:00.000Z"),
+    }),
+    true,
+  );
   assert.equal(
     isShortLearningBookingActive({
       startsAt,

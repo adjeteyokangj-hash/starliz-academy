@@ -13,8 +13,16 @@ import {
 import { analyzeContentSessionSlots } from "@/lib/session-slot-validation";
 import { analyzeSessionSlotDuplicates } from "@/lib/session-slot-duplicates";
 import { itemCountForMinutes } from "@/lib/schools/daytime-session-plan";
+import { minMathQuestionsForMinutes } from "@/lib/schools/math-practice-fill";
 import { generateDaytimeStageWithOpenAi } from "@/lib/schools/daytime-ai-stage-generator";
 import { classifyDaytimeSubjectMode } from "@/lib/schools/daytime-subject-mode";
+import { shortLearningMinQuestionCount } from "@/lib/schools/short-learning-instructional-depth";
+import {
+  canonicalShortLearningSubjectKey,
+  defaultShortLearningSkillFocus,
+  shortLearningSubjectMatchValues,
+  shortLearningYearMatchValues,
+} from "@/lib/schools/short-learning-curriculum";
 import {
   isPlayableSubjectContentTypeCompatible,
   resolvePlayableLessonType,
@@ -115,7 +123,13 @@ async function createBlockContent(input: {
   });
   const stage = input.block.daytimeStage as ShortLearningDaytimeStage;
   const targetMinutes = Math.max(5, input.block.estimatedMinutes);
-  const targetItems = itemCountForMinutes(targetMinutes);
+  const mathsSubject = canonicalShortLearningSubjectKey(input.subject) === "maths";
+  const targetItems = mathsSubject
+    ? minMathQuestionsForMinutes(targetMinutes, input.block.title)
+    : Math.max(
+        itemCountForMinutes(targetMinutes),
+        shortLearningMinQuestionCount(input.block.title, targetMinutes),
+      );
   const lessonTitle = `${input.subject}: ${input.block.title}${input.topic ? ` · ${input.topic}` : ""}`;
 
   const generated = await generateStage({
@@ -212,14 +226,19 @@ export async function generateShortLearningJourney(input: GenerateShortLearningJ
   });
   if (!school) throw new Error("School not found.");
 
-  const skillFocus = (input.skillFocus?.trim() || input.topic?.trim() || input.subject).slice(0, 120);
+  const subject = canonicalShortLearningSubjectKey(input.subject) ?? input.subject.trim();
+  const skillFocus = (
+    input.skillFocus?.trim()
+    || input.topic?.trim()
+    || defaultShortLearningSkillFocus(subject, input.yearGroup)
+  ).slice(0, 120);
   const topic = (input.topic?.trim() || skillFocus).slice(0, 180);
   const plan = buildShortLearningSessionPlan(input.durationMinutes);
 
   const journey = await prisma.shortLearningJourney.create({
     data: {
       schoolId: input.schoolId,
-      subject: input.subject.trim(),
+      subject,
       yearGroup: input.yearGroup.trim(),
       durationMinutes: input.durationMinutes,
       topic,
@@ -257,7 +276,7 @@ export async function generateShortLearningJourney(input: GenerateShortLearningJ
           const generated = await createBlockContent({
             journeyId: journey.id,
             schoolId: input.schoolId,
-            subject: input.subject,
+            subject,
             skillFocus,
             yearGroup: input.yearGroup,
             difficulty,
@@ -352,8 +371,8 @@ export async function findPublishedShortLearningJourney(input: {
   return prisma.shortLearningJourney.findFirst({
     where: {
       schoolId: input.schoolId,
-      subject: input.subject,
-      yearGroup: input.yearGroup,
+      subject: { in: shortLearningSubjectMatchValues(input.subject) },
+      yearGroup: { in: shortLearningYearMatchValues(input.yearGroup) },
       durationMinutes: input.durationMinutes,
       status: "published",
     },

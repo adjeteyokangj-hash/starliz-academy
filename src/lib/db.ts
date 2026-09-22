@@ -1,33 +1,17 @@
 import { PrismaClient } from "@prisma/client";
+import { normalizePrismaDatabaseUrl } from "./prisma-database-url";
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+  prismaUrl?: string;
+};
 
-function withConservativePoolParams(rawUrl: string | undefined): string | undefined {
-  if (!rawUrl) return undefined;
-  try {
-    const parsed = new URL(rawUrl);
-    const protocol = parsed.protocol.toLowerCase();
-    if (protocol !== "postgres:" && protocol !== "postgresql:") {
-      return rawUrl;
-    }
+const runtimeDatabaseUrl = normalizePrismaDatabaseUrl(process.env.DATABASE_URL);
 
-    if (!parsed.searchParams.has("connection_limit")) {
-      parsed.searchParams.set("connection_limit", "1");
-    }
-    if (!parsed.searchParams.has("pool_timeout")) {
-      parsed.searchParams.set("pool_timeout", "20");
-    }
-    if (!parsed.searchParams.has("connect_timeout")) {
-      parsed.searchParams.set("connect_timeout", "5");
-    }
-
-    return parsed.toString();
-  } catch {
-    return rawUrl;
-  }
+if (globalForPrisma.prisma && globalForPrisma.prismaUrl !== runtimeDatabaseUrl) {
+  void globalForPrisma.prisma.$disconnect().catch(() => undefined);
+  globalForPrisma.prisma = undefined;
 }
-
-const runtimeDatabaseUrl = withConservativePoolParams(process.env.DATABASE_URL);
 
 const prismaOptions =
   runtimeDatabaseUrl
@@ -40,4 +24,5 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient(prismaOptions);
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
+  globalForPrisma.prismaUrl = runtimeDatabaseUrl;
 }

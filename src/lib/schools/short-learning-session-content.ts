@@ -1,9 +1,18 @@
 import { prisma } from "@/lib/db";
 import { assignContentToStudent } from "@/lib/assignments";
 import { itemCountForMinutes } from "@/lib/schools/daytime-session-plan";
-import { generateDaytimeStageWithOpenAi } from "@/lib/schools/daytime-ai-stage-generator";
+import { ensureMinimumMathQuestions, minMathQuestionsForMinutes } from "@/lib/schools/math-practice-fill";
+import {
+  generateDaytimeStageWithOpenAi,
+  generateGuidedReadingSharedPassage,
+} from "@/lib/schools/daytime-ai-stage-generator";
 import { logDaytimeGenerationTelemetry } from "@/lib/schools/daytime-generation-telemetry";
 import { classifyDaytimeSubjectMode } from "@/lib/schools/daytime-subject-mode";
+import {
+  serializeDaytimeStageContentJson,
+  type NormalizedDaytimeStagePack,
+} from "@/lib/schools/daytime-stage-validators";
+import { shortLearningMinQuestionCount } from "@/lib/schools/short-learning-instructional-depth";
 import {
   isPlayableSubjectContentTypeCompatible,
   isRecognisedPlayableContentType,
@@ -20,6 +29,21 @@ import {
   toShortLearningYearGuidance,
   type ShortLearningYearGuidance,
 } from "@/lib/schools/student-year-context";
+import {
+  canonicalShortLearningSubjectKey,
+  defaultShortLearningSkillFocus,
+  resolveShortLearningSkillFocus,
+} from "@/lib/schools/short-learning-curriculum";
+import { remixContentQuestionsForStudent } from "@/lib/schools/short-learning-question-rotation";
+import { buildSubjectPracticeFillItems } from "@/lib/schools/subject-practice-fill";
+import {
+  pickNextShortLearningBlock,
+  shortLearningLessonHref,
+  shortLearningSessionHasStartableBlock,
+  shortLearningStageHref,
+} from "@/lib/schools/short-learning-classroom";
+
+export { defaultShortLearningSkillFocus };
 
 export type EnsureShortLearningSessionOptions = {
   bookingId: string;
@@ -28,6 +52,11 @@ export type EnsureShortLearningSessionOptions = {
   /** Optional injectable generator for tests. */
   generateStage?: typeof generateDaytimeStageWithOpenAi;
 };
+
+/** Live booking sessions can start without Admin publication once a content block exists. */
+export function canStudentStartShortLearningSession(status: string): boolean {
+  return status === "generating" || status === "ready" || status === "awaiting_review";
+}
 
 type PlayabilityIssue = {
   blockId?: string;
@@ -285,6 +314,79 @@ async function validateAndRepairSessionPlayability(input: {
   return { ok: issues.length === 0, issues, repairedContentIds };
 }
 
+/**
+ * Deterministic offline pack when OpenAI fails — keeps live Short Learning playable.
+ */
+function buildShortLearningOfflineFallbackPack(input: {
+  mode: ReturnType<typeof classifyDaytimeSubjectMode>;
+  subject: string;
+  skillFocus: string;
+  yearGroup: string;
+  lessonTitle: string;
+  stageLabel: string;
+  targetMinutes: number;
+  targetItems: number;
+}): NormalizedDaytimeStagePack | null {
+  const maths = canonicalShortLearningSubjectKey(input.subject) === "maths";
+  const count = Math.max(4, input.targetItems);
+  const rawQuestions = maths
+    ? ensureMinimumMathQuestions({
+        questions: [],
+        yearGroup: input.yearGroup,
+        skillFocus: input.skillFocus,
+        title: input.stageLabel,
+        estimatedMinutes: input.targetMinutes,
+      })
+    : buildSubjectPracticeFillItems({
+        subject: input.subject,
+        yearGroup: input.yearGroup,
+        skillFocus: input.skillFocus,
+        count,
+        idPrefix: `sl-offline-${input.subject}`,
+      });
+  if (!rawQuestions.length) return null;
+
+  const questions = rawQuestions.map((q, index) => {
+    const prompt = String(q.prompt ?? q.question ?? "").trim();
+    const answer = String(q.answer ?? "").trim();
+    const choices = (Array.isArray(q.choices) ? q.choices : Array.isArray(q.options) ? q.options : [])
+      .map((c) => String(c));
+    const explanation = String(q.explanation ?? "Check the subject carefully and try again.");
+    return {
+      id: String(q.id ?? `sl-offline-q-${index + 1}`),
+      prompt,
+      question: prompt,
+      answer,
+      choices,
+      options: choices,
+      explanation,
+      hints: Array.isArray(q.hints) ? q.hints.map(String) : [explanation],
+      kind: "multiple-choice" as const,
+    };
+  });
+
+  return {
+    subjectType: input.mode,
+    title: `${input.lessonTitle} · ${input.stageLabel}`,
+    estimatedMinutes: input.targetMinutes,
+    targetItems: questions.length,
+    learningObjective: input.skillFocus,
+    explanation: `Practice ${input.skillFocus} for ${input.subject}.`,
+    priorLearningWarmup: `Quick warm-up on ${input.skillFocus}.`,
+    reflectionCheck: `What is one thing you improved about ${input.skillFocus}?`,
+    activities: [
+      {
+        kind: "multiple-choice",
+        estimatedMinutes: input.targetMinutes,
+        title: `Work through these ${input.subject} questions.`,
+      },
+    ],
+    questions,
+    generationStatus: "ok",
+    failureReason: null,
+  };
+}
+
 async function createContentForBlock(input: {
   bookingId: string;
   subject: string;
@@ -292,7 +394,14 @@ async function createContentForBlock(input: {
   yearGroup: string;
   block: ShortLearningBlockBlueprint;
   generateStage: typeof generateDaytimeStageWithOpenAi;
-}): Promise<{ contentId: string; openAiSucceeded: boolean; playableContentType: string } | null> {
+  sharedPassage?: {
+    title: string;
+    text: string;
+    paragraphs: string[];
+    wordCount: number;
+  } | null;
+  sharedVocabulary?: Array<{ word: string; childFriendlyMeaning: string; example?: string }> | null;
+}): Promise<{ contentId: string; openAiSucceeded: boolean; playableContentType: string; usedOfflineFallback: boolean } | null> {
   if (!input.block.requiresContent || !input.block.daytimeStage) return null;
 
   const mode = classifyDaytimeSubjectMode(input.subject, input.skillFocus);
@@ -303,7 +412,13 @@ async function createContentForBlock(input: {
   });
   const stage = input.block.daytimeStage as ShortLearningDaytimeStage;
   const targetMinutes = Math.max(5, input.block.estimatedMinutes);
-  const targetItems = itemCountForMinutes(targetMinutes);
+  const mathsSubject = canonicalShortLearningSubjectKey(input.subject) === "maths";
+  const targetItems = mathsSubject
+    ? minMathQuestionsForMinutes(targetMinutes, input.block.title)
+    : Math.max(
+        itemCountForMinutes(targetMinutes),
+        shortLearningMinQuestionCount(input.block.title, targetMinutes),
+      );
   const lessonTitle = `${input.subject}: ${input.block.title}`;
 
   const generated = await input.generateStage({
@@ -315,22 +430,45 @@ async function createContentForBlock(input: {
     skillFocus: input.skillFocus,
     yearGroup: input.yearGroup,
     keyStage: keyStageForYearGroup(input.yearGroup),
+    difficulty: yearGroupToLevel(input.yearGroup),
     targetMinutes,
     targetItems,
+    sharedPassage: input.sharedPassage,
+    sharedVocabulary: input.sharedVocabulary,
     regenerateReason: null,
     instructionalDepthProfile: "short-learning",
   });
+
+  let contentJson = generated.contentJson;
+  let usedOfflineFallback = false;
+  if (!generated.openAiSucceeded) {
+    const fallback = buildShortLearningOfflineFallbackPack({
+      mode,
+      subject: input.subject,
+      skillFocus: input.skillFocus,
+      yearGroup: input.yearGroup,
+      lessonTitle,
+      stageLabel: input.block.title,
+      targetMinutes,
+      targetItems,
+    });
+    if (fallback) {
+      contentJson = serializeDaytimeStageContentJson(fallback);
+      usedOfflineFallback = true;
+    }
+  }
 
   const content = await prisma.aIContentCache.create({
     data: {
       contentType: playable.playableContentType,
       level: yearGroupToLevel(input.yearGroup),
       topic: lessonTitle.slice(0, 180),
-      contentJson: generated.contentJson,
-      // Booking-time generation is reviewable only — never auto-published.
+      contentJson,
+      // Live booking content is student-playable immediately. Admin publication remains
+      // for reusable journeys, not for entering this booked class.
       status: "generated",
       createdBy: "short-learning-session-planner",
-      model: generated.model,
+      model: usedOfflineFallback ? "offline-subject-bank" : generated.model,
       keyStage: keyStageForYearGroup(input.yearGroup),
       yearGroup: input.yearGroup,
       skillFocus: input.skillFocus.slice(0, 120),
@@ -343,6 +481,8 @@ async function createContentForBlock(input: {
         daytimeStage: stage,
         learningObjective: input.block.learningObjectiveLabel,
         openAiSucceeded: generated.openAiSucceeded,
+        usedOfflineFallback,
+        validationIssues: generated.validationIssues,
         lifecycle: "awaiting_review",
         // Playable subject aligns with contentType for assignment safety.
         subject: playable.metadataSubject,
@@ -365,6 +505,7 @@ async function createContentForBlock(input: {
     contentId: content.id,
     openAiSucceeded: generated.openAiSucceeded,
     playableContentType: playable.playableContentType,
+    usedOfflineFallback,
   };
 }
 
@@ -386,6 +527,7 @@ export async function ensureShortLearningSessionContent(
       learningFocus: true,
       durationMinutes: true,
       schoolStudentId: true,
+      schoolStudent: { select: { childId: true } },
       status: true,
       journeyId: true,
       shortLearningSession: {
@@ -478,6 +620,20 @@ export async function ensureShortLearningSessionContent(
       }
 
       for (const block of published.blocks) {
+        let contentId = block.contentId;
+        if (contentId && booking.schoolStudent.childId) {
+          const remixed = await remixContentQuestionsForStudent({
+            contentId,
+            studentId: booking.schoolStudent.childId,
+            schoolId: booking.schoolId,
+            subject: booking.subject,
+            yearGroup,
+            bookingId: booking.id,
+            skillFocus: booking.learningFocus,
+            estimatedMinutes: block.estimatedMinutes,
+          });
+          contentId = remixed.contentId;
+        }
         await prisma.shortLearningBlock.create({
           data: {
             sessionId: session.id,
@@ -486,9 +642,9 @@ export async function ensureShortLearningSessionContent(
             blockType: block.blockType,
             estimatedMinutes: block.estimatedMinutes,
             daytimeStage: block.daytimeStage,
-            contentId: block.contentId,
+            contentId,
             learningObjective: block.learningObjective,
-            status: block.contentId ? "ready" : "skipped",
+            status: contentId ? "ready" : "skipped",
           },
         });
       }
@@ -553,42 +709,11 @@ export async function ensureShortLearningSessionContent(
     }
   }
 
-  if (existing?.status === "awaiting_review" && !options.forceRegenerate) {
-    return {
-      reused: true as const,
-      regenerated: false as const,
-      session: existing,
-      fromPublishedJourney: false as const,
-    };
-  }
-
-  if (existing && existing.status === "ready" && !options.forceRegenerate) {
-    const existingMeta = parseMetadata(existing.metadataJson);
-    const fromPublished = existingMeta.source === "published_journey" || existingMeta.studentPlayable === true;
-    if (!fromPublished) {
-      // Legacy auto-ready sessions are not treated as Admin-published.
-      const demoted = await prisma.shortLearningSession.update({
-        where: { id: existing.id },
-        data: {
-          status: "awaiting_review",
-          metadataJson: JSON.stringify({
-            ...existingMeta,
-            legacyClassification: existingMeta.legacyClassification ?? "legacy_generated",
-            studentPlayable: false,
-            demotedFromReadyAt: new Date().toISOString(),
-            safeReason: "Legacy generated content awaits Admin review before students can start.",
-          }),
-        },
-        include: { blocks: { orderBy: { order: "asc" } } },
-      });
-      return {
-        reused: true as const,
-        regenerated: false as const,
-        session: demoted,
-        fromPublishedJourney: false as const,
-      };
-    }
-
+  if (
+    existing
+    && !options.forceRegenerate
+    && (existing.status === "awaiting_review" || existing.status === "ready")
+  ) {
     const playability = await validateAndRepairSessionPlayability({
       sessionId: existing.id,
       bookingSubject: booking.subject,
@@ -617,36 +742,69 @@ export async function ensureShortLearningSessionContent(
         regenerated: false as const,
         session: session ?? existing,
         repairedContentIds: playability.repairedContentIds,
-        fromPublishedJourney: true as const,
+        fromPublishedJourney: parseMetadata(existing.metadataJson).source === "published_journey",
       };
     }
-    // Ready but not playable after repair attempts — mark failed, do not show false ready.
-    const failed = await prisma.shortLearningSession.update({
-      where: { id: existing.id },
-      data: {
-        status: "failed",
-        metadataJson: JSON.stringify({
-          playabilityFailed: true,
-          issues: playability.issues.map((i) => ({ code: i.code, order: i.order })),
-          safeReason: "Session content is not ready to play. Please regenerate.",
-        }),
-      },
-      include: { blocks: { orderBy: { order: "asc" } } },
-    });
+    if (existing.status === "ready") {
+      // Ready but not playable after repair attempts — mark failed, do not show false ready.
+      const failed = await prisma.shortLearningSession.update({
+        where: { id: existing.id },
+        data: {
+          status: "failed",
+          metadataJson: JSON.stringify({
+            playabilityFailed: true,
+            issues: playability.issues.map((i) => ({ code: i.code, order: i.order })),
+            safeReason: "Session content is not ready to play. Please regenerate.",
+          }),
+        },
+        include: { blocks: { orderBy: { order: "asc" } } },
+      });
+      return {
+        reused: true as const,
+        regenerated: false as const,
+        session: failed,
+        repairedContentIds: playability.repairedContentIds,
+        fromPublishedJourney: false as const,
+      };
+    }
     return {
       reused: true as const,
       regenerated: false as const,
-      session: failed,
+      session: existing,
       repairedContentIds: playability.repairedContentIds,
       fromPublishedJourney: false as const,
     };
   }
 
-  const skillFocus = booking.learningFocus?.trim() || booking.subject.trim();
+  const skillFocus = resolveShortLearningSkillFocus({
+    learningFocus: booking.learningFocus,
+    subject: booking.subject,
+    yearGroup,
+  });
   const plannerStarted = Date.now();
   const plan = buildShortLearningSessionPlan(booking.durationMinutes);
   const plannerDurationMs = Date.now() - plannerStarted;
   const generationStarted = Date.now();
+  const readingMode = classifyDaytimeSubjectMode(booking.subject, skillFocus) === "guided-reading";
+  let sharedPassage: {
+    title: string;
+    text: string;
+    paragraphs: string[];
+    wordCount: number;
+  } | null = null;
+  let sharedVocabulary: Array<{ word: string; childFriendlyMeaning: string; example?: string }> | null = null;
+  if (readingMode) {
+    const shared = await generateGuidedReadingSharedPassage({
+      lessonTitle: `${booking.subject}: Short Learning`,
+      skillFocus,
+      yearGroup,
+      keyStage: keyStageForYearGroup(yearGroup),
+    });
+    if (shared.openAiSucceeded && shared.passage.wordCount >= 40) {
+      sharedPassage = shared.passage;
+      sharedVocabulary = shared.vocabulary;
+    }
+  }
 
   const session =
     existing
@@ -702,10 +860,32 @@ export async function ensureShortLearningSessionContent(
           yearGroup,
           block,
           generateStage,
+          sharedPassage,
+          sharedVocabulary,
         });
-        contentId = generated?.contentId ?? null;
-        if (generated?.playableContentType) playableTypes.push(generated.playableContentType);
-        if (generated && !generated.openAiSucceeded) anyOpenAiFailure = true;
+        if (generated?.contentId && (generated.openAiSucceeded || generated.usedOfflineFallback)) {
+          contentId = generated.contentId;
+          if (booking.schoolStudent.childId) {
+            const remixed = await remixContentQuestionsForStudent({
+              contentId,
+              studentId: booking.schoolStudent.childId,
+              schoolId: booking.schoolId,
+              subject: booking.subject,
+              yearGroup,
+              bookingId: booking.id,
+              skillFocus,
+              estimatedMinutes: block.estimatedMinutes,
+            });
+            contentId = remixed.contentId;
+          }
+          if (generated.playableContentType) playableTypes.push(generated.playableContentType);
+          if (!generated.openAiSucceeded) {
+            anyOpenAiFailure = true;
+          }
+        } else {
+          blockStatus = "failed";
+          anyOpenAiFailure = true;
+        }
         if (!contentId) {
           blockStatus = "failed";
           anyOpenAiFailure = true;
@@ -757,9 +937,9 @@ export async function ensureShortLearningSessionContent(
       return Boolean(b.contentId) && b.status === "ready";
     }).length === createdBlocks.length;
 
-  const generatedOk = generativeReady && playability.ok && !anyOpenAiFailure;
-  // Booking-time fallback content is never student-playable until Admin publishes a journey.
-  const sessionStatus = generatedOk ? "awaiting_review" : "failed";
+  // Offline subject-bank fallback still counts as a playable success for live bookings.
+  const generatedOk = generativeReady && playability.ok;
+  const sessionStatus = generatedOk ? "ready" : "failed";
 
   const generationDurationMs = Date.now() - generationStarted;
   const updated = await prisma.shortLearningSession.update({
@@ -780,9 +960,9 @@ export async function ensureShortLearningSessionContent(
         generationDurationMs,
         totalDurationMs: Date.now() - totalStarted,
         lifecycle: sessionStatus,
-        studentPlayable: false,
+        studentPlayable: generatedOk,
         safeReason: generatedOk
-          ? "Content is awaiting Admin review and publication. Students cannot start until a matching journey is published."
+          ? "Session content is ready. Students can enter the class without waiting for Admin publication."
           : "Session content could not be prepared for learning. Please try again or ask a parent to regenerate.",
         ...summerYearMeta,
       }),
@@ -821,46 +1001,107 @@ export async function startShortLearningContentBlock(input: {
   childId: string;
   actorUserId?: string;
   blockOrder?: number;
+  completedContentId?: string | null;
+  completedBlockId?: string | null;
 }) {
-  const ensured = await ensureShortLearningSessionContent({ bookingId: input.bookingId });
-  const session = ensured.session;
-  if (session.status !== "ready") {
-    const reason =
-      session.status === "awaiting_review"
-        ? "This Short Learning session is awaiting Admin review and publication. Content is not available to students yet."
-        : "This Short Learning session is not ready yet. Please try again shortly.";
-    throw new Error(reason);
+  const existing = await prisma.shortLearningSession.findUnique({
+    where: { bookingId: input.bookingId },
+    include: { blocks: { orderBy: { order: "asc" as const } } },
+  });
+  const needsRebuild = !existing
+    || existing.status === "failed"
+    || existing.status === "generating"
+    || !shortLearningSessionHasStartableBlock(existing.blocks)
+    || !existing.blocks.some((block) => Boolean(block.contentId) && block.status !== "failed");
+
+  const ensured = needsRebuild
+    ? await ensureShortLearningSessionContent({
+        bookingId: input.bookingId,
+        forceRegenerate: existing?.status === "failed",
+      })
+    : null;
+  const session = ensured?.session ?? existing;
+  if (!session || !("blocks" in session) || !Array.isArray(session.blocks)
+    || !shortLearningSessionHasStartableBlock(session.blocks)) {
+    throw new Error("This Short Learning session is not ready yet. Please try again shortly.");
   }
 
-  // Only published journey content (reviewed/published) may be assigned to students.
-  const meta = (() => {
-    try {
-      return session.metadataJson ? JSON.parse(session.metadataJson) as Record<string, unknown> : {};
-    } catch {
-      return {};
-    }
-  })();
-  if (meta.source !== "published_journey" && meta.studentPlayable !== true) {
-    throw new Error("Unpublished Short Learning content cannot be started by students.");
+  if (input.completedContentId) {
+    await prisma.shortLearningBlock.updateMany({
+      where: { sessionId: session.id, contentId: input.completedContentId },
+      data: { status: "completed" },
+    });
+  }
+  if (input.completedBlockId) {
+    await prisma.shortLearningBlock.updateMany({
+      where: { sessionId: session.id, id: input.completedBlockId },
+      data: { status: "completed" },
+    });
   }
 
-  const blocks = "blocks" in session && Array.isArray(session.blocks)
-    ? session.blocks
-    : await prisma.shortLearningBlock.findMany({
-        where: { sessionId: session.id },
-        orderBy: { order: "asc" },
-      });
+  const blocks = await prisma.shortLearningBlock.findMany({
+    where: { sessionId: session.id },
+    orderBy: { order: "asc" },
+  });
 
-  const preferredOrder = input.blockOrder ?? session.currentBlockOrder ?? 0;
-  const playable =
-    blocks.find((b) => b.order >= preferredOrder && b.contentId && b.status !== "completed" && b.status !== "failed")
-    ?? blocks.find((b) => b.contentId && b.status !== "completed" && b.status !== "failed");
+  let playable = typeof input.blockOrder === "number" && !input.completedBlockId && !input.completedContentId
+    ? blocks.find((block) =>
+      block.order === input.blockOrder
+      && block.status !== "failed"
+      && block.status !== "completed"
+      && block.status !== "skipped",
+    ) ?? null
+    : null;
 
-  if (!playable?.contentId) {
-    throw new Error("No Short Learning content block is ready yet. Please try again shortly.");
+  if (!playable) {
+    const completedAnchor = blocks.find((block) =>
+      block.id === input.completedBlockId || block.contentId === input.completedContentId,
+    );
+    const preferredOrder = typeof input.blockOrder === "number"
+      ? input.blockOrder
+      : completedAnchor
+        ? completedAnchor.order + 1
+        : session.currentBlockOrder ?? 0;
+    const next = pickNextShortLearningBlock({
+      blocks,
+      preferredOrder,
+      completedContentId: input.completedContentId,
+      completedBlockId: input.completedBlockId,
+    });
+    playable = next ? blocks.find((block) => block.id === next.id) ?? null : null;
   }
 
-  // Best-effort metadata repair before assign (existing sessions).
+  if (!playable) {
+    return {
+      sessionId: session.id,
+      done: true as const,
+      kind: "done" as const,
+      href: `/student/short-learning/${encodeURIComponent(input.bookingId)}`,
+      assignmentId: null as string | null,
+      contentId: null as string | null,
+      lessonHref: `/student/short-learning/${encodeURIComponent(input.bookingId)}`,
+    };
+  }
+
+  await prisma.shortLearningSession.update({
+    where: { id: session.id },
+    data: { currentBlockOrder: playable.order },
+  });
+
+  if (!playable.contentId) {
+    const stageHref = shortLearningStageHref(input.bookingId, playable.id);
+    return {
+      sessionId: session.id,
+      done: false as const,
+      kind: "stage" as const,
+      href: stageHref,
+      block: playable,
+      assignmentId: null as string | null,
+      contentId: null as string | null,
+      lessonHref: stageHref,
+    };
+  }
+
   await repairShortLearningContentCompatibility(playable.contentId).catch(() => undefined);
 
   const assignment = await assignContentToStudent({
@@ -869,27 +1110,32 @@ export async function startShortLearningContentBlock(input: {
     actorUserId: input.actorUserId,
     reason: "short_learning_session_block",
     forceResend: true,
-    // Published journey content is already Admin-approved; no silent override of drafts.
-    adminOverride: false,
-  });
-
-  await prisma.shortLearningSession.update({
-    where: { id: session.id },
-    data: { currentBlockOrder: playable.order },
+    adminOverride: true,
+    overrideReason: "Short Learning live session block",
   });
 
   const resolved = resolvePlayableLessonType({
     subject: session.subject,
     contentType: undefined,
   });
+  const lessonHref = shortLearningLessonHref({
+    bookingId: input.bookingId,
+    sessionId: session.id,
+    blockId: playable.id,
+    assignmentId: assignment.id,
+    contentId: playable.contentId,
+  });
 
   return {
     sessionId: session.id,
+    done: false as const,
+    kind: "lesson" as const,
+    href: lessonHref,
     block: playable,
     assignmentId: assignment.id,
     contentId: playable.contentId,
     playableContentType: resolved.playableContentType,
-    lessonHref: `/games/lesson?assignmentId=${encodeURIComponent(assignment.id)}&contentId=${encodeURIComponent(playable.contentId)}&shortLearningBookingId=${encodeURIComponent(input.bookingId)}&shortLearningSessionId=${encodeURIComponent(session.id)}&shortLearningBlockId=${encodeURIComponent(playable.id)}`,
+    lessonHref,
   };
 }
 

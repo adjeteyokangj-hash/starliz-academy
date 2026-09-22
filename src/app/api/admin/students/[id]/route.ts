@@ -10,12 +10,18 @@ import { keyStageForYearGroup } from "@/lib/curriculum";
 import { mergeStudentCurriculumProfileJson, readStudentCurriculumProfile } from "@/lib/student-curriculum-profile";
 import { parseQuickLevelFinderSession } from "@/lib/quick-level-finder";
 import { getStudentLearningBrain } from "@/lib/student-learning-brain";
+import {
+  resolveUkStudentYearFields,
+  shouldLockYearGroupFromSave,
+  syncChildAcademicFieldsFromDob,
+} from "@/lib/uk-student-year";
 
 const updateStudentSchema = z.object({
   name: z.string().trim().min(1).optional(),
   parentId: z.string().min(1).optional(),
   age: z.number().int().min(1).max(18).nullable().optional(),
   yearGroup: z.string().trim().nullable().optional(),
+  yearGroupLocked: z.boolean().optional(),
   avatar: z.string().trim().nullable().optional(),
   level: z.number().int().min(1).max(10).optional(),
   selectedVoice: z.string().trim().nullable().optional(),
@@ -63,6 +69,11 @@ export async function GET(_request: Request, context: Context) {
   if (!session) return response;
 
   const { id } = await context.params;
+  try {
+    await syncChildAcademicFieldsFromDob(id);
+  } catch {
+    // Continue with stored values.
+  }
   const brainPromise = getStudentLearningBrain(id);
   const student = await prisma.childProfile.findUnique({
     where: { id },
@@ -114,6 +125,7 @@ export async function GET(_request: Request, context: Context) {
       avatar: student.avatar,
       age: student.age,
       yearGroup: student.yearGroup,
+      yearGroupLocked: student.yearGroupLocked,
       level: student.level,
       selectedVoice: student.selectedVoice,
       studentProfile: student.studentProfile
@@ -258,24 +270,57 @@ export async function PATCH(request: Request, context: Context) {
       where: { id },
       select: {
         yearGroup: true,
-        studentProfile: { select: { aiLearningProfileJson: true, keyStageLevel: true } },
+        yearGroupLocked: true,
+        age: true,
+        studentProfile: { select: { aiLearningProfileJson: true, keyStageLevel: true, dateOfBirth: true } },
       },
     });
     if (!existing) {
       return NextResponse.json({ error: "Student not found." }, { status: 404 });
     }
 
-    const nextYearGroup = body.yearGroup !== undefined ? body.yearGroup : existing.yearGroup;
-    const nextKeyStage = body.keyStageLevel !== undefined
-      ? body.keyStageLevel
-      : (existing.studentProfile?.keyStageLevel ?? (nextYearGroup ? keyStageForYearGroup(nextYearGroup) : null));
+    const nextDob =
+      body.dateOfBirth !== undefined
+        ? (body.dateOfBirth ? new Date(body.dateOfBirth) : null)
+        : (existing.studentProfile?.dateOfBirth ?? null);
+
+    const nextYearGroupLocked = body.yearGroupLocked !== undefined
+      ? body.yearGroupLocked
+      : body.yearGroup !== undefined
+        ? shouldLockYearGroupFromSave({
+            dateOfBirth: nextDob,
+            yearGroup: body.yearGroup,
+          })
+        : existing.yearGroupLocked;
+
+    const derived = resolveUkStudentYearFields({
+      dateOfBirth: nextDob,
+      currentYearGroup: body.yearGroup !== undefined ? body.yearGroup : existing.yearGroup,
+      yearGroupLocked: nextYearGroupLocked,
+    });
+
+    const nextYearGroup = nextYearGroupLocked
+      ? (body.yearGroup !== undefined ? body.yearGroup : existing.yearGroup)
+      : (derived.yearGroup ?? (body.yearGroup !== undefined ? body.yearGroup : existing.yearGroup));
+
+    const nextAge = derived.ageYears ?? (body.age !== undefined ? body.age : existing.age);
+
+    const nextKeyStage = nextYearGroupLocked
+      ? (body.keyStageLevel !== undefined
+        ? body.keyStageLevel
+        : (existing.studentProfile?.keyStageLevel ?? (nextYearGroup ? keyStageForYearGroup(nextYearGroup) : null)))
+      : (derived.keyStageLevel
+        ?? (body.keyStageLevel !== undefined ? body.keyStageLevel : null)
+        ?? (nextYearGroup ? keyStageForYearGroup(nextYearGroup) : null));
+
     const shouldUpdateCurriculumProfile = body.curriculumPathway !== undefined
       || body.examBoard !== undefined
       || body.gcseSubjects !== undefined
       || body.targetGrades !== undefined
       || body.yearGroup !== undefined
       || body.keyStageLevel !== undefined
-      || body.aiLearningProfileJson !== undefined;
+      || body.aiLearningProfileJson !== undefined
+      || Boolean(nextDob);
     const nextAiProfileJson = shouldUpdateCurriculumProfile
       ? mergeStudentCurriculumProfileJson({
           existingJson: body.aiLearningProfileJson !== undefined
@@ -292,7 +337,7 @@ export async function PATCH(request: Request, context: Context) {
 
     const profileData = {
       ...(body.dateOfBirth !== undefined ? { dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null } : {}),
-      ...(body.keyStageLevel !== undefined ? { keyStageLevel: body.keyStageLevel } : {}),
+      keyStageLevel: nextKeyStage,
       ...(body.learningLevel !== undefined ? { learningLevel: body.learningLevel } : {}),
       ...(body.senSupportNeeds !== undefined ? { senSupportNeeds: body.senSupportNeeds } : {}),
       ...(body.readingLevel !== undefined ? { readingLevel: body.readingLevel } : {}),
@@ -324,8 +369,9 @@ export async function PATCH(request: Request, context: Context) {
               },
             }
           : {}),
-        ...(body.age !== undefined ? { age: body.age } : {}),
-        ...(body.yearGroup !== undefined ? { yearGroup: body.yearGroup } : {}),
+        age: nextAge,
+        yearGroup: nextYearGroup,
+        yearGroupLocked: nextYearGroupLocked,
         ...(body.avatar !== undefined ? { avatar: body.avatar } : {}),
         ...(body.selectedVoice != null ? { selectedVoice: body.selectedVoice } : {}),
         ...(body.level !== undefined ? { level: body.level } : {}),

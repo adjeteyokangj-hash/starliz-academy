@@ -1,40 +1,75 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
+import { resolveActiveChildForSession, resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import { resolveDashboardTier } from "@/lib/dashboardResolver";
 import { ensureLearningAccess } from "@/lib/subscriptions/learning-access";
-import { getStudentLearningBrainForDashboard } from "@/lib/student-learning-brain";
+import { getStudentDashboardShell } from "@/lib/student-learning-brain/dashboard-shell";
 import {
   createChildSelectionToken,
   getChildSelectionCookieName,
   getChildSelectionMaxAgeSeconds,
 } from "@/lib/auth";
 import { resolveStudentYearContext } from "@/lib/schools/student-year-context";
+import { DEFAULT_MASTERED_REVIEW_POLICY, parseStudentDashboardSettings } from "@/lib/student-dashboard-sections";
+import { syncChildAcademicFieldsFromDob } from "@/lib/uk-student-year";
 
 export async function GET(request: Request) {
+  try {
+    return await handleDashboardSummaryGet(request);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2024") {
+      return NextResponse.json(
+        { error: "The dashboard is busy. Please try again.", code: "db_busy" },
+        { status: 503 },
+      );
+    }
+    throw error;
+  }
+}
+
+async function handleDashboardSummaryGet(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
 
   const params = new URL(request.url).searchParams;
-  const manualRefresh = params.get("refresh") === "1";
   const requestedStudentId = params.get("studentId")?.trim() || null;
   const isAdminPreview = session.role === "admin" && Boolean(requestedStudentId);
 
-  let parentScope: Awaited<ReturnType<typeof resolveParentScope>> = null;
-  if (!isAdminPreview) {
-    parentScope = await resolveParentScope(session);
+  let parentIdForAccess: string | null = null;
+  let studentId: string | null = requestedStudentId;
+
+  if (isAdminPreview) {
+    // Admin preview keeps explicit studentId.
+  } else if (session.role === "student") {
+    const resolved = await resolveActiveChildForSession(session);
+    if (!resolved.ok) {
+      return NextResponse.json(
+        {
+          error: "No learner profile is linked to this student account.",
+          code: "no_linked_profile",
+        },
+        { status: 403 },
+      );
+    }
+    studentId = resolved.childId;
+    parentIdForAccess = resolved.parentId;
+  } else {
+    const parentScope = await resolveParentScope(session);
     if (!parentScope) {
       return NextResponse.json({ error: "Parent account not found." }, { status: 404 });
     }
+    parentIdForAccess = parentScope.parentId;
+    studentId = requestedStudentId ?? (await resolveParentActiveChildId(parentScope.parentId));
+  }
 
-    const access = await ensureLearningAccess(parentScope.parentId);
+  if (parentIdForAccess) {
+    const access = await ensureLearningAccess(parentIdForAccess);
     if (access.response) return access.response;
   }
 
-  const studentId = requestedStudentId
-    ?? (parentScope ? await resolveParentActiveChildId(parentScope.parentId) : null);
   if (!studentId) {
     return NextResponse.json({
       ok: true,
@@ -51,13 +86,18 @@ export async function GET(request: Request) {
       certificateProgressSummary: { issuedCount: 0, friendlyLabel: "Keep learning" },
       smartCoachSummary: { status: "pending", headline: "Choose a learner to begin.", weakCount: 0, masteredCount: 0 },
       snapshot: { available: false, refreshed: false, lastCalculatedAt: null },
+      nextShortLearning: null,
+      dashboardSections: parseStudentDashboardSettings(null).sections,
+      masteredReview: DEFAULT_MASTERED_REVIEW_POLICY,
     });
   }
 
-  const child = await prisma.childProfile.findFirst({
+  let child = await prisma.childProfile.findFirst({
     where: isAdminPreview
       ? { id: studentId, archived: false }
-      : { id: studentId, parentId: parentScope!.parentId, archived: false },
+      : session.role === "student"
+        ? { id: studentId, userId: session.userId, archived: false }
+        : { id: studentId, parentId: parentIdForAccess!, archived: false },
     select: {
       id: true,
       name: true,
@@ -73,6 +113,7 @@ export async function GET(request: Request) {
           dateOfBirth: true,
           keyStageLevel: true,
           aiLearningProfileJson: true,
+          dashboardSectionsJson: true,
         },
       },
     },
@@ -82,8 +123,37 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const [dashboardBrain, schoolEnrolment] = await Promise.all([
-    getStudentLearningBrainForDashboard(studentId, { forceRefresh: manualRefresh }),
+  try {
+    await syncChildAcademicFieldsFromDob(child.id);
+    const refreshed = await prisma.childProfile.findUnique({
+      where: { id: child.id },
+      select: {
+        id: true,
+        name: true,
+        stars: true,
+        xp: true,
+        coins: true,
+        streak: true,
+        level: true,
+        yearGroup: true,
+        age: true,
+        studentProfile: {
+          select: {
+            dateOfBirth: true,
+            keyStageLevel: true,
+            aiLearningProfileJson: true,
+            dashboardSectionsJson: true,
+          },
+        },
+      },
+    });
+    if (refreshed) child = refreshed;
+  } catch {
+    // Keep original row if sync fails.
+  }
+
+  const [dashboardShell, schoolEnrolment] = await Promise.all([
+    getStudentDashboardShell(studentId),
     prisma.schoolStudent.findFirst({
       where: {
         childId: studentId,
@@ -100,7 +170,6 @@ export async function GET(request: Request) {
       orderBy: { joinedAt: "desc" },
     }),
   ]);
-  if (!dashboardBrain) return NextResponse.json({ error: "Student not found." }, { status: 404 });
 
   const yearContext = resolveStudentYearContext({
     officialYearGroup: child.yearGroup,
@@ -109,6 +178,8 @@ export async function GET(request: Request) {
     classroomAcademicYear: schoolEnrolment?.classroom?.academicYear ?? null,
     surface: "dashboard",
   });
+
+  const dashboardSettings = parseStudentDashboardSettings(child.studentProfile?.dashboardSectionsJson);
 
   const reply = NextResponse.json({
     ok: true,
@@ -168,35 +239,35 @@ export async function GET(request: Request) {
       yearGroup: child.yearGroup,
       keyStage: child.studentProfile?.keyStageLevel ?? null,
     },
-    assignments: dashboardBrain.assignments,
-    activeLanguageModules: dashboardBrain.activeLanguageModules,
-    assignedLanguageLessons: dashboardBrain.assignedLanguageLessons,
-    skills: dashboardBrain.skills,
+    assignments: dashboardShell.assignments,
+    activeLanguageModules: dashboardShell.activeLanguageModules,
+    assignedLanguageLessons: dashboardShell.assignedLanguageLessons,
+    skills: dashboardShell.skills,
     today: {
-      nextActivity: dashboardBrain.assignedWork.nextActivity,
+      nextActivity: dashboardShell.assignedWork.nextActivity,
     },
     assignedWorkSummary: {
-      total: dashboardBrain.assignedWork.total,
-      active: dashboardBrain.assignedWork.active,
-      completed: dashboardBrain.assignedWork.completed,
-      nextTitle: dashboardBrain.assignedWork.nextTitle,
+      total: dashboardShell.assignedWork.total,
+      active: dashboardShell.assignedWork.active,
+      completed: dashboardShell.assignedWork.completed,
+      nextTitle: dashboardShell.assignedWork.nextTitle,
     },
-    catchUpSummary: dashboardBrain.catchUpSummary,
-    masterMapSummary: dashboardBrain.masterMapSummary,
-    certificateProgressSummary: dashboardBrain.certificateProgressSummary,
-    smartCoachSummary: dashboardBrain.smartCoach,
-    examReadinessSummary: dashboardBrain.examReadinessSummary,
-    progressionRecommendationSummary: dashboardBrain.progressionRecommendationSummary,
-    heartbeatSummary: dashboardBrain.heartbeatSummary,
-    quickLevelFinderBaseline: dashboardBrain.quickLevelFinderBaseline,
-    languageReadiness: dashboardBrain.languageReadiness,
-    snapshot: dashboardBrain.snapshot,
+    catchUpSummary: { total: 0, active: 0, completed: 0, overdue: 0, highPriority: 0 },
+    masterMapSummary: { totalTopics: 0, needsCatchUpCount: 0, needsRevisionCount: 0, coveredCount: 0, averageScore: 0 },
+    certificateProgressSummary: { issuedCount: 0, friendlyLabel: "Keep learning" },
+    smartCoachSummary: dashboardShell.smartCoach,
+    snapshot: { available: false, refreshed: false, lastCalculatedAt: null },
+    nextShortLearning: dashboardShell.nextShortLearning,
+    dashboardSections: dashboardSettings.sections,
+    // Automatic platform policy — not configured per student in admin.
+    masteredReview: DEFAULT_MASTERED_REVIEW_POLICY,
   });
 
   // Sliding renewal: keep the learner on the student dashboard while actively learning
   // instead of bouncing to /parent/profiles after the 12h child-selection cookie expires.
-  if (parentScope) {
-    const selectionToken = await createChildSelectionToken(parentScope.parentId, studentId);
+  // Student-owned sessions never use the selection cookie for identity.
+  if (session.role === "parent" && parentIdForAccess) {
+    const selectionToken = await createChildSelectionToken(parentIdForAccess, studentId);
     reply.cookies.set(getChildSelectionCookieName(), selectionToken, {
       httpOnly: true,
       sameSite: "lax",

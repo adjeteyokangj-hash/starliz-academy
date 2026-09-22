@@ -5,6 +5,7 @@ import {
   countOnlineTutors,
   getOrCreateSupportPolicy,
 } from "@/lib/schools/human-support-presence";
+import { SHORT_LEARNING_EARLY_ENTRY_MINUTES } from "@/lib/schools/short-learning-bookings";
 import { resolveTutorShiftEligibility } from "@/lib/schools/tutor-support-shifts";
 
 export type SupportEligibilityMode = "DAY_SCHOOL" | "SHORT_LEARNING";
@@ -22,6 +23,8 @@ export type ShortLearningEligibilityContext = {
   aiExhausted: boolean;
   studentRecovered: boolean;
   bookingActive: boolean;
+  /** Child tapped Invite a tutor while a human is on shift and available. */
+  studentRequestedHelp?: boolean;
 };
 
 export type StudentHumanSupportEligibilityInput =
@@ -60,8 +63,11 @@ export function isShortLearningBookingActive(input: {
 }): boolean {
   const now = input.now ?? new Date();
   if (!ACTIVE_BOOKING_STATUSES.has(input.status)) return false;
-  const earlyMs = (input.earlyEntryMinutes ?? 10) * 60_000;
-  return now.getTime() >= input.startsAt.getTime() - earlyMs && now.getTime() <= input.endsAt.getTime();
+  const startMs = new Date(input.startsAt).getTime();
+  const endMs = new Date(input.endsAt).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return false;
+  const earlyMs = (input.earlyEntryMinutes ?? SHORT_LEARNING_EARLY_ENTRY_MINUTES) * 60_000;
+  return now.getTime() >= startMs - earlyMs && now.getTime() <= endMs;
 }
 
 /** Pure student-side gate — does not consider tutor capacity. */
@@ -91,7 +97,7 @@ export function resolveStudentHumanSupportEligibility(
       reason: "No active Short Learning booking.",
     };
   }
-  if (!input.aiExhausted) {
+  if (!input.aiExhausted && !input.studentRequestedHelp) {
     return {
       humanTutorEligible: false,
       continueAi: true,
@@ -207,7 +213,7 @@ export async function loadActiveShortLearningBooking(input: {
       schoolId: input.schoolId,
       status: { in: ["booked", "confirmed", "attended"] },
       schoolStudent: { childId: input.childId, status: "active" },
-      startsAt: { lte: new Date(now.getTime() + 10 * 60_000) },
+      startsAt: { lte: new Date(now.getTime() + SHORT_LEARNING_EARLY_ENTRY_MINUTES * 60_000) },
       endsAt: { gte: now },
     },
     orderBy: { startsAt: "asc" },

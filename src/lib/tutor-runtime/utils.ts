@@ -70,13 +70,19 @@ export function getItemSection(item: LessonItemInput, fallback: string): "spelli
     type === "gcse-science"
   ) return "math";
   if (
+    type === "spelling" ||
+    type === "phonics" ||
+    type === "spell"
+  ) return "spelling";
+  if (
     type === "reading" ||
     type === "english-language" ||
     type === "english-literature" ||
     type === "gcse-english" ||
-    type === "vocabulary" ||
-    !!item.passage
+    type === "vocabulary"
   ) return "reading";
+  // A maths word problem may include a short stem; that is not a reading lesson.
+  if (item.passage && type !== "math" && type !== "maths") return "reading";
   return "spelling";
 }
 
@@ -193,6 +199,9 @@ export function classifySpokenVsTarget(
  */
 export function fallbackVisualFromItem(item: LessonItemInput | null): QuestionVisualSupport | null {
   if (!item || !item.visuals.required) return null;
+  if (!item.visuals.type || item.visuals.type === "none") return null;
+  const title = decodeLessonText(String(item.visuals.title ?? "")).trim();
+  if (title.toLowerCase() === "none") return null;
 
   const body = item.visuals.body
     .map((line) => decodeLessonText(String(line)))
@@ -213,7 +222,7 @@ export function fallbackVisualFromItem(item: LessonItemInput | null): QuestionVi
 
   return {
     type: visualType,
-    title: decodeLessonText(
+    title: title || decodeLessonText(
       String(item.visuals.title || (visualType === "formula_card" ? "Formula help" : "Visual support")),
     ),
     altText: decodeLessonText(

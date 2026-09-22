@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { readParentUnlockFromCookie, readSessionFromCookie } from "@/lib/auth";
+import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   auditAdminAccessDenial,
@@ -253,15 +253,6 @@ export async function requireAdminPermission(permission: string): Promise<{
 }
 
 export async function requireParentUnlocked() {
-  const { session, response } = await requireSession();
-  if (!session) {
-    return { session: null, response };
-  }
-
-  const unlocked = await readParentUnlockFromCookie(session.userId);
-  if (!unlocked) {
-    return { session: null, response: NextResponse.json({ error: "Parent PIN required." }, { status: 403 }) };
-  }
-
-  return { session, response: nullGuardResponse() };
+  // Slice 5: Parent PIN unlock is retired. Authenticated parent session is sufficient.
+  return requireSession();
 }

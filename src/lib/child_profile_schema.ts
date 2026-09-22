@@ -101,15 +101,18 @@ export const childPayloadSchema = z
     settings: childSettingsSchema.optional(),
   })
   .superRefine((value, ctx) => {
-    const band = yearGroupAgeBands[value.yearGroup.trim().toLowerCase()];
-    if (band) {
-      const ageWithinBand = value.ageYears >= band.min && value.ageYears <= band.max + 1;
-      if (!ageWithinBand) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["ageYears"],
-          message: `Age ${value.ageYears} does not match ${value.yearGroup} expectations (${band.min}-${band.max + 1}).`,
-        });
+    // When DOB is present, age/year are derived from UK rules — skip static band checks.
+    if (!value.dateOfBirth) {
+      const band = yearGroupAgeBands[value.yearGroup.trim().toLowerCase()];
+      if (band) {
+        const ageWithinBand = value.ageYears >= band.min && value.ageYears <= band.max + 1;
+        if (!ageWithinBand) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["ageYears"],
+            message: `Age ${value.ageYears} does not match ${value.yearGroup} expectations (${band.min}-${band.max + 1}).`,
+          });
+        }
       }
     }
 

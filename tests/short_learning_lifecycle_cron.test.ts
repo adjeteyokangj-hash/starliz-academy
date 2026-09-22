@@ -87,7 +87,18 @@ test("lifecycle classifier: booked becomes active at early entry", () => {
       startsAt,
       endsAt,
       joinedAt: null,
-      now: new Date("2026-07-26T15:50:00.000Z"),
+      now: new Date("2026-07-26T15:54:00.000Z"),
+      studentPlayable: true,
+    }),
+    "none",
+  );
+  assert.equal(
+    classifyBookingLifecycleTransition({
+      status: "booked",
+      startsAt,
+      endsAt,
+      joinedAt: null,
+      now: new Date("2026-07-26T15:55:00.000Z"),
       studentPlayable: true,
     }),
     "active",

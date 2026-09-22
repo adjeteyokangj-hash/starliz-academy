@@ -5,6 +5,14 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AdminButtonLink, AdminPageHeader } from "@/components/admin/ui";
 
+type BankAlert = {
+  id: string;
+  subject: string;
+  yearGroup: string;
+  message: string;
+  generateHref: string;
+};
+
 type JourneyRow = {
   id: string;
   subject: string;
@@ -21,6 +29,7 @@ export default function ShortLearningJourneysPage() {
   const status = searchParams.get("status") ?? "";
   const schoolId = searchParams.get("schoolId") ?? "";
   const [journeys, setJourneys] = useState<JourneyRow[]>([]);
+  const [questionBankAlerts, setQuestionBankAlerts] = useState<BankAlert[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,6 +41,7 @@ export default function ShortLearningJourneysPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to load journeys");
         setJourneys(data.journeys ?? []);
+        setQuestionBankAlerts(data.questionBankAlerts ?? []);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
   }, [status, schoolId]);
@@ -87,6 +97,20 @@ export default function ShortLearningJourneysPage() {
         Generation success does not equal publication. Students only receive journeys with status{" "}
         <span className="font-semibold text-[var(--admin-text)]">published</span>.
       </p>
+
+      {questionBankAlerts.length > 0 ? (
+        <div className="space-y-2 rounded-[var(--admin-radius-lg)] border border-amber-400/40 bg-amber-500/10 p-4">
+          <p className="text-sm font-semibold text-amber-100">Generate new year-group questions</p>
+          {questionBankAlerts.map((alert) => (
+            <p key={alert.id} className="text-sm text-amber-50">
+              {alert.yearGroup} {alert.subject}: students have used this bank.{" "}
+              <Link className="font-semibold underline underline-offset-2" href={alert.generateHref}>
+                Start generating
+              </Link>
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}
 

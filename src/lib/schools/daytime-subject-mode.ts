@@ -1,3 +1,8 @@
+import {
+  canonicalShortLearningSubjectKey,
+  shortLearningSubjectMode,
+} from "@/lib/schools/short-learning-curriculum";
+
 export type DaytimeSubjectMode =
   | "guided-reading"
   | "spelling"
@@ -14,6 +19,9 @@ export function classifyDaytimeSubjectMode(
   subject: string,
   skillFocus?: string | null,
 ): DaytimeSubjectMode {
+  if (canonicalShortLearningSubjectKey(subject)) {
+    return shortLearningSubjectMode(subject, skillFocus);
+  }
   const s = `${subject} ${skillFocus ?? ""}`.toLowerCase();
   if (
     s.includes("guided reading")
@@ -51,10 +59,11 @@ export function contentTypeForSubjectMode(mode: DaytimeSubjectMode): string {
     case "spelling":
       return "spelling";
     case "guided-reading":
+      return "reading";
     case "humanities":
     case "computing":
     case "generic-lesson":
-      return "reading";
+      return "lesson";
     case "science":
     case "practical-pe":
     case "practical-arts":

@@ -51,7 +51,7 @@ test("platform and consumer roles land on fixed paths", () => {
   );
   assert.deepEqual(
     resolveStaffLandingFromMembership({ userRole: "parent", membership: null }),
-    { kind: "parent", path: "/parent/profiles" },
+    { kind: "parent", path: "/parent/dashboard" },
   );
 });
 

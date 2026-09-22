@@ -121,6 +121,7 @@ enum GaStudentRecordingReviewStatus {
 model User {
   id                      String    @id @default(cuid())
   email                   String    @unique
+  username                String?   @unique
   passwordHash            String
   name                    String?
   role                    String    @default("parent")
@@ -136,7 +137,10 @@ model User {
   passwordResetToken      String?
   passwordResetExpires    DateTime?
 
-  children                          ChildProfile[]
+  // Parent ownership: profiles this parent owns (ChildProfile.parentId).
+  children                          ChildProfile[]                   @relation("ChildProfileParent")
+  // Child identity: profile represented by this student User (ChildProfile.userId).
+  studentChildProfile               ChildProfile?                    @relation("ChildProfileAccount")
   adminProfile                      AdminUser?
   auditLogs                         AuditLog[]
   subscriptions                     Subscription[]
@@ -212,12 +216,18 @@ model ParentPinResetToken {
 model ChildProfile {
   id       String @id
   parentId String
-  parent   User   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  parent   User   @relation("ChildProfileParent", fields: [parentId], references: [id], onDelete: Cascade)
+
+  // Optional link to the child's own login User (role=student). Nullable during rollout.
+  userId  String? @unique
+  account User?   @relation("ChildProfileAccount", fields: [userId], references: [id], onDelete: SetNull)
 
   name      String
   avatar    String?
   age       Int?
   yearGroup String?
+  /** When true, year group is admin/school-managed and must not auto-update from DOB. */
+  yearGroupLocked Boolean @default(false)
 
   stars  Int @default(0)
   xp     Int @default(0)
@@ -252,6 +262,7 @@ model ChildProfile {
   coachInteractionLogs  CoachInteractionLog[]
   gaLessonProgress      GaStudentLessonProgress[]
   gaStudentRecordings   GaStudentRecording[]
+  questionExposures     StudentQuestionExposure[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -337,6 +348,8 @@ model StudentProfile {
   guardianPermissions   String?
   schoolInformation     String?
   subjectFocus          String?
+  /** Per-student Study Dashboard section visibility (JSON). Missing/null = all hidden. */
+  dashboardSectionsJson String?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 }
@@ -1344,6 +1357,7 @@ model School {
   learningWindows                 SchoolLearningWindow[]
   learningBookings                StudentLearningBooking[]
   shortLearningJourneys           ShortLearningJourney[]
+  questionExposures               StudentQuestionExposure[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1520,6 +1534,27 @@ model SchoolStudent {
   @@index([schoolId, status])
   @@index([classroomId])
   @@index([childId])
+}
+
+/// Per-student Short Learning question exposure so a year-group bank can be
+/// reused across pupils, rotated, and never repeated for the same child + subject.
+model StudentQuestionExposure {
+  id          String       @id @default(cuid())
+  studentId   String
+  student     ChildProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolId    String
+  school      School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  subject     String
+  yearGroup   String
+  fingerprint String
+  prompt      String       @default("")
+  contentId   String?
+  bookingId   String?
+  usedAt      DateTime     @default(now())
+
+  @@unique([studentId, subject, yearGroup, fingerprint])
+  @@index([schoolId, subject, yearGroup, fingerprint])
+  @@index([studentId, subject, yearGroup])
 }
 
 model SchoolLicence {

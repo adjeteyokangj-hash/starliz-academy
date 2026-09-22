@@ -4,6 +4,7 @@ import {
   listAvailableSlots,
   parentHasShortLearningEntitlement,
   parentOwnsBookableSchoolStudent,
+  isShortLearningTestParentEmail,
 } from "@/lib/schools/short-learning-bookings";
 
 export async function GET(request: Request) {
@@ -46,6 +47,8 @@ export async function GET(request: Request) {
     schoolId,
     dateIso,
     durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : 90,
+    relaxSchedule: isShortLearningTestParentEmail(session.email),
+    schoolStudentId,
   });
 
   return NextResponse.json({

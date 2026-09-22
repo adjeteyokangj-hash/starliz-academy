@@ -59,6 +59,17 @@ export async function assertShortLearningTutorAccess(input: {
   const question = resolveQuestionFromContentJson(content.contentJson, {
     questionId: input.questionId,
     questionIndex: input.questionIndex,
+    contentType: content.contentType,
+    subject: (() => {
+      try {
+        const parsed = content.metadataJson ? JSON.parse(content.metadataJson) as Record<string, unknown> : null;
+        return typeof parsed?.schoolSubject === "string" ? parsed.schoolSubject : content.topic;
+      } catch {
+        return content.topic;
+      }
+    })(),
+    yearGroup: content.yearGroup,
+    skillFocus: content.skillFocus,
   });
   if (!question) {
     return { ok: false, status: 400, code: "QUESTION_MISSING", error: "That question could not be loaded for AI help." };

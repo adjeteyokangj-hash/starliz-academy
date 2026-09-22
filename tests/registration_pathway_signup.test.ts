@@ -39,6 +39,11 @@ test("Age 15 equivalent DOB does not suggest Year 1", () => {
   assert.notEqual(suggestion, "Year 1");
 });
 
+test("Academic year for year-group labelling rolls forward after July", () => {
+  assert.equal(suggestUkYearGroupFromDateOfBirth("2011-03-15", new Date("2026-07-31")), "Year 10");
+  assert.equal(suggestUkYearGroupFromDateOfBirth("2011-03-15", new Date("2026-08-01")), "Year 11");
+});
+
 test("Year-group to stage mapping is correct", () => {
   assert.equal(getStageForYearGroup("Reception"), "EYFS");
   assert.equal(getStageForYearGroup("Year 1"), "KS1");

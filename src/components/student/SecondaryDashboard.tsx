@@ -1,11 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import type { DashboardProps } from "./dashboardTypes";
+import { defaultStudentDashboardSections, DEFAULT_MASTERED_REVIEW_POLICY } from "./dashboardTypes";
 import { useRouter } from "next/navigation";
 import StudyPlanBadge from "@/components/learning/StudyPlanBadge";
 import LearningTwinInsight from "@/components/academic-intelligence/LearningTwinInsight";
 import { percentageWidthClass } from "@/lib/progress-class";
 import { deriveStudyPlanProgress } from "@/lib/study-plan";
+import {
+  masteredReviewDaysRemaining,
+  selectFocusAreaSkills,
+  selectImprovingSkills,
+  selectMasteredReviewSkills,
+} from "@/lib/student-dashboard-sections";
+import { IMPROVING_SESSION_MINUTES } from "@/lib/improving-session";
 
 function accuracyBand(accuracy: number): { label: string; color: string } {
   if (accuracy >= 80) return { label: "Strong", color: "text-emerald-700 bg-emerald-100" };
@@ -14,10 +23,23 @@ function accuracyBand(accuracy: number): { label: string; color: string } {
 }
 
 function subjectLabel(subject: string): string {
-  if (subject === "math") return "Mathematics";
+  if (subject === "math" || subject === "maths") return "Mathematics";
   if (subject === "reading") return "English / Reading";
   if (subject === "lesson" || subject === "ai_daily" || subject === "daily") return "Daily Revision";
+  if (subject === "ga" || subject === "ga-language") return "Ga";
   return subject.charAt(0).toUpperCase() + subject.slice(1);
+}
+
+/** Ga / language adventure is admin-gated and must not appear as a GCSE track by default. */
+function isLanguageAdventureSubject(subject: string): boolean {
+  const normalized = subject.trim().toLowerCase().replace(/\s+/g, "-");
+  return (
+    normalized === "ga"
+    || normalized === "ga-language"
+    || normalized === "gcse-ga"
+    || normalized.includes("ga-language")
+    || normalized === "language-adventure"
+  );
 }
 
 function assignmentSessionLabel(title: string, skillFocus?: string | null): string {
@@ -30,6 +52,26 @@ function recommendationTone(status: "assigned" | "ready" | "content_needed" | "b
   if (status === "ready") return "bg-sky-100 text-sky-700";
   if (status === "blocked") return "bg-amber-100 text-amber-700";
   return "bg-rose-100 text-rose-700";
+}
+
+type StatMetricKey = "streak" | "mastered" | "improving" | "focus";
+
+type StatMetricCard = {
+  key: StatMetricKey;
+  label: string;
+  value: string;
+  valueClassName: string;
+  meaning: string;
+  improve: string;
+  detailLines?: string[];
+  ctaLabel: string | null;
+  ctaAction: "journey" | "assignment" | "review" | "improvingBoost" | "practiseFocus" | "shortLearning" | "recovery" | null;
+};
+
+function skillDisplayLabel(skill: string): string {
+  return skill
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export default function SecondaryDashboard({
@@ -57,36 +99,88 @@ export default function SecondaryDashboard({
   allAssignments,
   onStartJourney,
   onStartAssignment,
+  onStartImprovingBoost,
+  improvingBoostStarting,
   onStartBossBattle,
   bossLaunching,
   pendingAssignmentId,
+  dashboardSections,
 }: DashboardProps) {
   const router = useRouter();
+  const [selectedMetric, setSelectedMetric] = useState<StatMetricKey | null>(null);
+  const sections = dashboardSections ?? defaultStudentDashboardSections();
+  // Platform policy is automatic — no per-student admin tuning required.
+  const reviewPolicy = DEFAULT_MASTERED_REVIEW_POLICY;
   const isGcse = pathway === "gcse";
   const isFirstTimeStudent = Boolean(learningState?.isFirstTimeStudent);
   const needsPlacement = Boolean(learningState && !learningState.hasCompletedPlacement);
   const showOnboardingCta = isFirstTimeStudent || needsPlacement || quickLevelFinderRetestEnabled === true;
   const coachAwaitingAssessment = !learningState?.coachUnlocked;
-  const masteredCount = skills.filter((s) => s.status === "mastered").length;
-  const weakCount = skills.filter((s) => s.status === "weak").length;
-  const improvingCount = skills.filter((s) => s.status === "improving").length;
+  const allMasteredSkills = skills.filter((s) => s.status === "mastered");
+  const masteredCount = allMasteredSkills.length;
+  const allImprovingSkills = skills.filter((s) => s.status === "improving");
+  const improvingCount = allImprovingSkills.length;
+  const allWeakSkills = skills.filter((s) => s.status === "weak");
+  const weakCount = allWeakSkills.length;
+  const activeMasteredReviews = selectMasteredReviewSkills(skills, reviewPolicy);
+  const activeImprovingSkills = selectImprovingSkills(skills, reviewPolicy);
+  const activeFocusSkills = selectFocusAreaSkills(skills, reviewPolicy);
+  const sourceAssignments = (allAssignments && allAssignments.length ? allAssignments : visibleAssignments);
+
+  function skillPoolLabels(rows: typeof activeMasteredReviews): string[] {
+    return rows.map((row) => {
+      const daysLeft = masteredReviewDaysRemaining(row.updatedAt, reviewPolicy.replaceAfterDays);
+      const base = skillDisplayLabel(row.skill);
+      return daysLeft === null ? base : `${base} · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
+    });
+  }
+
+  function findAssignmentForSkillPool(poolSkills: typeof activeMasteredReviews) {
+    if (poolSkills.length === 0) return null;
+    const codes = new Set(poolSkills.map((row) => row.skill.toLowerCase()));
+    const pool = [...sourceAssignments].sort((a, b) => {
+      const aDone = a.status === "completed" ? 0 : 1;
+      const bDone = b.status === "completed" ? 0 : 1;
+      return aDone - bDone;
+    });
+    return pool.find((assignment) => {
+      const focus = (assignment.skillFocus ?? "").toLowerCase();
+      const title = assignment.title.toLowerCase();
+      return [...codes].some((code) => {
+        const label = skillDisplayLabel(code).toLowerCase();
+        return focus.includes(code) || focus.includes(label) || title.includes(code) || title.includes(label);
+      });
+    }) ?? null;
+  }
+
+  const masteredLabels = skillPoolLabels(activeMasteredReviews);
+  const improvingLabels = skillPoolLabels(activeImprovingSkills);
+  const focusLabels = skillPoolLabels(activeFocusSkills);
   const priorityAssignments = [focusAssignment, weakAssignment, reviewAssignment]
     .filter((assignment, index, array): assignment is NonNullable<typeof assignment> => {
       return Boolean(assignment) && array.findIndex((candidate) => candidate?.id === assignment?.id) === index;
     })
     .slice(0, 3);
   const sessionAssignments = priorityAssignments;
+  const masteredReviewAssignment = findAssignmentForSkillPool(activeMasteredReviews) ?? (activeMasteredReviews.length > 0 ? reviewAssignment : null);
+  const canStartImprovingBoost = activeImprovingSkills.length > 0 && Boolean(onStartImprovingBoost);
+  const focusPracticeAssignment = findAssignmentForSkillPool(activeFocusSkills) ?? (activeFocusSkills.length > 0 ? (weakAssignment ?? focusAssignment) : null);
   const examReadiness = Math.max(0, Math.min(100, Math.round((masteredCount * 2 + improvingCount - weakCount) * 8)));
   const weakTopics = coachRows.filter((row) => row.status === "weak").map((row) => row.label).slice(0, 4);
   const revisionTasks = visibleAssignments.filter((assignment) => {
     const haystack = `${assignment.title} ${assignment.skillFocus ?? ""} ${assignment.subject}`.toLowerCase();
     return haystack.includes("revision") || haystack.includes("mock") || haystack.includes("gcse") || haystack.includes("exam");
   });
-  const sourceAssignments = (allAssignments && allAssignments.length ? allAssignments : visibleAssignments);
   const trackedSubjects = Array.from(new Set(
     sourceAssignments
-      .map((assignment) => subjectLabel(assignment.subject))
-      .filter((value) => value && value !== "Daily Revision")
+      .map((assignment) => assignment.subject)
+      .filter((subject) => {
+        if (!subject || subjectLabel(subject) === "Daily Revision") return false;
+        // Only show Ga in GCSE tracking when admin enabled Language Adventure for this student.
+        if (isLanguageAdventureSubject(subject) && !sections.languageAdventure) return false;
+        return true;
+      })
+      .map((subject) => subjectLabel(subject))
   )).slice(0, 6);
 
   const subjectDashboardRows = trackedSubjects.map((subjectName) => {
@@ -109,38 +203,186 @@ export default function SecondaryDashboard({
     };
   });
 
+  const metricCards: StatMetricCard[] = [
+    {
+      key: "streak",
+      label: "Study Streak",
+      value: `🔥 ${stats.streak}`,
+      valueClassName: "text-slate-900",
+      meaning: "Days in a row you have completed learning activity on StarLiz.",
+      improve: stats.streak > 0
+        ? "Keep the streak by finishing one assigned task or Short Learning session today."
+        : "Start today's study session or a Short Learning block to begin a streak.",
+      ctaLabel: sessionAssignments.length > 0 ? "Start today's session" : "Open Short Learning",
+      ctaAction: sessionAssignments.length > 0 ? "journey" : "shortLearning",
+    },
+    {
+      key: "mastered",
+      label: "Mastered",
+      value: String(masteredCount),
+      valueClassName: "text-emerald-700",
+      meaning: `Skills you have already secured — review only. StarLiz automatically keeps up to ${reviewPolicy.maxSubjectSessions} subject sessions available and replaces each one after ${reviewPolicy.replaceAfterDays} days.`,
+      improve: activeMasteredReviews.length > 0
+        ? "Review one of the sessions below. When its window ends, StarLiz automatically replaces it with newer mastered work."
+        : masteredCount > 0
+          ? "Older mastered skills have automatically rotated out. Keep learning — newer mastery will appear here."
+          : "Nothing to review yet. Mastery appears after you finish lessons with consistently strong accuracy.",
+      detailLines: activeMasteredReviews.length > 0 ? masteredLabels : undefined,
+      ctaLabel: activeMasteredReviews.length > 0 && masteredReviewAssignment
+        ? "Review mastered work"
+        : null,
+      ctaAction: activeMasteredReviews.length > 0 && masteredReviewAssignment ? "review" : null,
+    },
+    {
+      key: "improving",
+      label: "Improving",
+      value: String(improvingCount),
+      valueClassName: "text-amber-700",
+      meaning: `What you can improve next. StarLiz automatically picks the subject and questions for a short ${IMPROVING_SESSION_MINUTES}-minute boost (up to ${reviewPolicy.maxSubjectSessions} skills rotate every ${reviewPolicy.replaceAfterDays} days).`,
+      improve: activeImprovingSkills.length > 0
+        ? `Start the ${IMPROVING_SESSION_MINUTES}-min boost below. StarLiz chooses one improving skill and a matching question set for you.`
+        : improvingCount > 0
+          ? "Older improving skills have automatically rotated out. Keep practising — newer progress will appear here."
+          : `Nothing to improve on yet. Complete lessons first — then StarLiz will auto-build a ${IMPROVING_SESSION_MINUTES}-min boost from your progress.`,
+      detailLines: activeImprovingSkills.length > 0 ? improvingLabels : undefined,
+      ctaLabel: canStartImprovingBoost
+        ? `Start ${IMPROVING_SESSION_MINUTES}-min boost`
+        : null,
+      ctaAction: canStartImprovingBoost ? "improvingBoost" : null,
+    },
+    {
+      key: "focus",
+      label: "Focus Areas",
+      value: String(weakCount),
+      valueClassName: "text-rose-700",
+      meaning: `Skills that need extra support from work you have already attempted. StarLiz automatically keeps up to ${reviewPolicy.maxSubjectSessions} subject sessions available and replaces each one after ${reviewPolicy.replaceAfterDays} days.`,
+      improve: activeFocusSkills.length > 0
+        ? "Practise one of the focus sessions below, or open Recovery Path for guided support."
+        : weakCount > 0
+          ? "Older focus skills have automatically rotated out. Keep learning — new focus areas will appear here."
+          : "Great — no weak skills flagged yet. Keep completing lessons to stay on track.",
+      detailLines: activeFocusSkills.length > 0 ? focusLabels : undefined,
+      ctaLabel: activeFocusSkills.length > 0
+        ? (focusPracticeAssignment ? "Practise focus skill" : "Open Recovery Path")
+        : null,
+      ctaAction: activeFocusSkills.length > 0
+        ? (focusPracticeAssignment ? "practiseFocus" : "recovery")
+        : null,
+    },
+  ];
+
+  const selectedCard = metricCards.find((card) => card.key === selectedMetric) ?? null;
+
+  function runMetricCta(card: StatMetricCard) {
+    if (!card.ctaAction) return;
+    if (card.ctaAction === "shortLearning") {
+      router.push("/student/short-learning");
+      return;
+    }
+    if (card.ctaAction === "recovery") {
+      router.push("/student/recovery-path");
+      return;
+    }
+    if (card.ctaAction === "review") {
+      if (masteredReviewAssignment) {
+        onStartAssignment(masteredReviewAssignment);
+      }
+      return;
+    }
+    if (card.ctaAction === "improvingBoost") {
+      if (onStartImprovingBoost) {
+        void onStartImprovingBoost();
+      }
+      return;
+    }
+    if (card.ctaAction === "practiseFocus") {
+      if (focusPracticeAssignment) {
+        onStartAssignment(focusPracticeAssignment);
+      }
+      return;
+    }
+    if (card.ctaAction === "assignment") {
+      const target = weakAssignment && card.key === "improving"
+        ? weakAssignment
+        : focusAssignment ?? weakAssignment ?? reviewAssignment;
+      if (target) {
+        onStartAssignment(target);
+        return;
+      }
+    }
+    void onStartJourney();
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Study Dashboard</p>
         <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{childName}</h1>
-        <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Study Streak</p>
-            <p className="mt-1 text-lg font-black text-slate-900">🔥 {stats.streak}</p>
-          </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">XP Earned</p>
-            <p className="mt-1 text-lg font-black text-slate-900">{stats.xp}</p>
-          </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Mastered</p>
-            <p className="mt-1 text-lg font-black text-emerald-700">{masteredCount}</p>
-          </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Improving</p>
-            <p className="mt-1 text-lg font-black text-amber-700">{improvingCount}</p>
-          </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Focus Areas</p>
-            <p className="mt-1 text-lg font-black text-rose-700">{weakCount}</p>
-          </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Stars</p>
-            <p className="mt-1 text-lg font-black text-slate-900">⭐ {stats.stars}</p>
-          </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {metricCards.map((card) => {
+            const selected = selectedMetric === card.key;
+            return (
+              <button
+                key={card.key}
+                type="button"
+                onClick={() => setSelectedMetric(selected ? null : card.key)}
+                aria-expanded={selected}
+                aria-controls="study-stat-help"
+                className={`rounded-xl border p-3 text-left transition ${
+                  selected
+                    ? "border-indigo-300 bg-indigo-50 ring-2 ring-indigo-200"
+                    : "border-slate-100 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                }`}
+              >
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{card.label}</p>
+                <p className={`mt-1 text-lg font-black ${card.valueClassName}`}>{card.value}</p>
+              </button>
+            );
+          })}
         </div>
+        {selectedCard ? (
+          <div
+            id="study-stat-help"
+            className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/80 p-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-indigo-700">
+                  How {selectedCard.label} works
+                </p>
+                <p className="mt-2 text-sm font-semibold text-slate-800">{selectedCard.meaning}</p>
+                <p className="mt-2 text-sm text-slate-700">
+                  <span className="font-bold text-slate-900">How to improve: </span>
+                  {selectedCard.improve}
+                </p>
+                {selectedCard.detailLines && selectedCard.detailLines.length > 0 ? (
+                  <ul className="mt-3 list-disc space-y-1 pl-5 text-sm font-semibold text-slate-700">
+                    {selectedCard.detailLines.map((line) => (
+                      <li key={line} className="capitalize">{line}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              {selectedCard.ctaLabel && selectedCard.ctaAction ? (
+                <button
+                  type="button"
+                  onClick={() => runMetricCta(selectedCard)}
+                  disabled={startingJourney || loading || Boolean(improvingBoostStarting)}
+                  className="shrink-0 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {improvingBoostStarting && selectedCard.ctaAction === "improvingBoost"
+                    ? "Preparing boost..."
+                    : selectedCard.ctaLabel}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-xs font-semibold text-slate-500">
+            Tap a score for what it means and how to improve it.
+          </p>
+        )}
       </header>
 
       {showOnboardingCta ? (
@@ -196,7 +438,7 @@ export default function SecondaryDashboard({
         </section>
       ) : null}
 
-      {placementLessonGroups && placementLessonGroups.length > 0 ? (
+      {sections.firstLessons && placementLessonGroups && placementLessonGroups.length > 0 ? (
         <section className="rounded-3xl border border-violet-200 bg-violet-50 p-5">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Your First Lessons</p>
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -301,7 +543,7 @@ export default function SecondaryDashboard({
         ) : null}
       </section>
 
-      {isGcse && (
+      {isGcse ? (
         <section className="rounded-3xl border border-slate-200 bg-white p-6">
           <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">GCSE Progress</p>
           <h2 className="mt-1 text-lg font-black text-slate-900">Exam Preparation</h2>
@@ -354,9 +596,10 @@ export default function SecondaryDashboard({
             </div>
           </div>
         </section>
-      )}
+      ) : null}
 
       {/* Assigned Tasks */}
+      {sections.assignedWork ? (
       <section className="rounded-3xl border border-slate-200 bg-white p-6">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Assigned Work</p>
         <h2 className="mt-1 text-lg font-black text-slate-900">Your Study Tasks</h2>
@@ -400,6 +643,7 @@ export default function SecondaryDashboard({
           </div>
         )}
       </section>
+      ) : null}
 
       {/* Skill Mastery */}
       {!coachAwaitingAssessment && coachRows.length > 0 && (
@@ -432,12 +676,12 @@ export default function SecondaryDashboard({
         </section>
       )}
 
-      {coachAwaitingAssessment && (
+      {sections.learningTwin ? (
         <LearningTwinInsight profile={learningTwin} />
-      )}
+      ) : null}
 
       {/* Session insights */}
-      {sessionSummary && (
+      {sections.lastSession && sessionSummary ? (
         <section className="rounded-3xl border border-slate-200 bg-white p-6">
           <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Last Session</p>
           <h2 className="mt-1 text-lg font-black text-slate-900">Session Insights</h2>
@@ -454,7 +698,7 @@ export default function SecondaryDashboard({
             ))}
           </div>
         </section>
-      )}
+      ) : null}
 
       {/* Boss Battle (academic framing) */}
       {bossUnlocked && (

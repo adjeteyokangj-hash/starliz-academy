@@ -8,6 +8,7 @@ import { canAddChild } from "@/lib/subscriptions/enforcement";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { writeAuditLog } from "@/lib/audit";
 import { resolveCurrentPricingPlan } from "@/lib/pricing/service";
+import { resolveActiveChildForSession } from "@/lib/activeChild";
 import {
   ENGLISH_STRANDS,
   applySubjectSelectionPolicy,
@@ -15,6 +16,12 @@ import {
   sanitizeSelectedSubjects,
   selectedSubjectsToFocusText,
 } from "@/lib/subject-selection";
+import {
+  resolveUkStudentYearFields,
+  syncChildAcademicFieldsFromDob,
+  syncChildrenAcademicFieldsFromDob,
+} from "@/lib/uk-student-year";
+import { keyStageForYearGroup } from "@/lib/curriculum";
 
 function isTransientDbSaturationError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -29,6 +36,48 @@ function isTransientDbSaturationError(error: unknown): boolean {
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
+
+  // Independent student login: return the single linked ChildProfile (via userId).
+  // Parent-scoped listing remains below; students must not get an empty list that
+  // causes client bootstrap to bounce them to /profiles.
+  if (session.role === "student") {
+    const resolved = await resolveActiveChildForSession(session);
+    if (!resolved.ok) {
+      return NextResponse.json({ children: [], activeChildId: null, code: resolved.reason });
+    }
+    await syncChildAcademicFieldsFromDob(resolved.childId);
+    const child = await prisma.childProfile.findFirst({
+      where: { id: resolved.childId, userId: session.userId, archived: false },
+      include: {
+        account: { select: { username: true } },
+        studentProfile: { select: { dateOfBirth: true, keyStageLevel: true } },
+        _count: { select: { schoolLinks: true } },
+      },
+    });
+    if (!child) {
+      return NextResponse.json({ children: [], activeChildId: null, code: "no_linked_profile" });
+    }
+    const profile = fromDbRecord(child);
+    const dobIso = child.studentProfile?.dateOfBirth?.toISOString() ?? null;
+    return NextResponse.json({
+      children: [
+        {
+          ...profile,
+          dateOfBirth: dobIso ?? profile.dateOfBirth,
+          keyStageLevel: child.studentProfile?.keyStageLevel || profile.keyStageLevel,
+          ageYears: child.age ?? profile.ageYears,
+          yearGroup: child.yearGroup ?? profile.yearGroup,
+          yearGroupLocked: child.yearGroupLocked,
+          userId: child.userId,
+          hasLogin: true,
+          loginUsername: child.account?.username ?? null,
+          hasSchoolLink: child._count.schoolLinks > 0,
+          canCreateLogin: false,
+        },
+      ],
+      activeChildId: child.id,
+    });
+  }
 
   const parentScope = await resolveParentScope(session);
   if (!parentScope) {
@@ -46,7 +95,8 @@ export async function GET(request: Request) {
 
   const includeArchived = new URL(request.url).searchParams.get("includeArchived") === "1";
 
-  let childrenRows: Awaited<ReturnType<typeof prisma.childProfile.findMany>> = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- include widens findMany row shape for login fields
+  let childrenRows: any[] = [];
   let user: { activeChildId: string | null } | null = null;
   let profileRows: Array<{ childId: string; subjectFocus: string | null }> = [];
   try {
@@ -54,13 +104,28 @@ export async function GET(request: Request) {
       prisma.childProfile.findMany({
         where: { parentId: parentScope.parentId, ...(includeArchived ? {} : { archived: false }) },
         orderBy: { createdAt: "asc" },
+        include: {
+          account: { select: { username: true } },
+          studentProfile: { select: { dateOfBirth: true, keyStageLevel: true, subjectFocus: true } },
+          _count: { select: { schoolLinks: true } },
+        },
       }),
       prisma.user.findUnique({ where: { id: parentScope.parentId }, select: { activeChildId: true } }),
     ]);
-    profileRows = await prisma.studentProfile.findMany({
-      where: { childId: { in: childrenRows.map((child) => child.id) } },
-      select: { childId: true, subjectFocus: true },
+    await syncChildrenAcademicFieldsFromDob(childrenRows.map((child) => child.id as string));
+    childrenRows = await prisma.childProfile.findMany({
+      where: { parentId: parentScope.parentId, ...(includeArchived ? {} : { archived: false }) },
+      orderBy: { createdAt: "asc" },
+      include: {
+        account: { select: { username: true } },
+        studentProfile: { select: { dateOfBirth: true, keyStageLevel: true, subjectFocus: true } },
+        _count: { select: { schoolLinks: true } },
+      },
     });
+    profileRows = childrenRows.map((child) => ({
+      childId: child.id as string,
+      subjectFocus: child.studentProfile?.subjectFocus ?? null,
+    }));
   } catch (error) {
     if (isTransientDbSaturationError(error)) {
       return NextResponse.json(
@@ -83,9 +148,24 @@ export async function GET(request: Request) {
     children: childrenRows.map((row) => {
       const profile = fromDbRecord(row) as Record<string, unknown>;
       const selectedSubjects = sanitizeSelectedSubjects((focusByChildId.get(row.id) ?? "").split(",").map((entry) => entry.trim()));
+      const hasSchoolLink = row._count.schoolLinks > 0;
+      const dobIso = row.studentProfile?.dateOfBirth
+        ? new Date(row.studentProfile.dateOfBirth).toISOString()
+        : null;
       return {
         ...profile,
+        dateOfBirth: dobIso ?? profile.dateOfBirth,
+        keyStageLevel: row.studentProfile?.keyStageLevel || profile.keyStageLevel,
+        ageYears: row.age ?? profile.ageYears,
+        yearGroup: row.yearGroup ?? profile.yearGroup,
+        yearGroupLocked: Boolean(row.yearGroupLocked),
         selectedSubjects,
+        userId: row.userId,
+        hasLogin: Boolean(row.userId),
+        loginUsername: row.account?.username ?? null,
+        hasSchoolLink,
+        // Consumer Create Login is only for parent-owned profiles without school roster links.
+        canCreateLogin: !row.userId && !hasSchoolLink,
       };
     }),
     activeChildId: user?.activeChildId ?? null,
@@ -116,7 +196,21 @@ export async function POST(request: Request) {
     }
 
     const body = parsed.data;
-    const normalized = withChildDefaults(body as Partial<ChildProfile>);
+    const derived = resolveUkStudentYearFields({
+      dateOfBirth: body.dateOfBirth,
+      currentYearGroup: body.yearGroup,
+      yearGroupLocked: false,
+    });
+    const resolvedYearGroup = derived.yearGroup ?? body.yearGroup;
+    const resolvedAgeYears = derived.ageYears ?? body.ageYears;
+    const resolvedKeyStage = derived.keyStageLevel ?? body.keyStageLevel ?? (resolvedYearGroup ? keyStageForYearGroup(resolvedYearGroup) : undefined);
+    const normalized = withChildDefaults({
+      ...(body as Partial<ChildProfile>),
+      yearGroup: resolvedYearGroup,
+      ageYears: resolvedAgeYears,
+      keyStageLevel: resolvedKeyStage,
+      schoolYear: resolvedYearGroup,
+    });
     const subscription = await prisma.subscription.findFirst({
       where: { parentId: parentScope.parentId },
       orderBy: { updatedAt: "desc" },
@@ -129,7 +223,7 @@ export async function POST(request: Request) {
     const subjectPolicy = resolveSubjectSelectionPolicy({
       planName: currentPricingPlan?.name ?? subscription?.planKey ?? "free",
       childLimit: currentPricingPlan?.childLimit ?? 1,
-      yearGroup: body.yearGroup,
+      yearGroup: resolvedYearGroup,
     });
     const selectedSubjects = applySubjectSelectionPolicy({
       selected: sanitizeSelectedSubjects(body.selectedSubjects),
@@ -157,10 +251,12 @@ export async function POST(request: Request) {
       create: {
         id: normalized.id,
         parentId: parentScope.parentId,
+        yearGroupLocked: false,
         ...toDbUpdateInput(normalized),
       },
       update: {
         parentId: parentScope.parentId,
+        yearGroupLocked: false,
         ...toDbUpdateInput(normalized),
       },
     });
@@ -169,7 +265,7 @@ export async function POST(request: Request) {
       where: { childId: normalized.id },
       update: {
         dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
-        keyStageLevel: body.keyStageLevel ?? null,
+        keyStageLevel: resolvedKeyStage ?? null,
         learningLevel: body.subjectLevel ?? null,
         senSupportNeeds: body.senSupportNeeds ?? null,
         weakAreasText: body.learningGoals?.join(", ") ?? null,
@@ -182,7 +278,7 @@ export async function POST(request: Request) {
       create: {
         childId: normalized.id,
         dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
-        keyStageLevel: body.keyStageLevel ?? null,
+        keyStageLevel: resolvedKeyStage ?? null,
         learningLevel: body.subjectLevel ?? null,
         senSupportNeeds: body.senSupportNeeds ?? null,
         weakAreasText: body.learningGoals?.join(", ") ?? null,
@@ -206,8 +302,8 @@ export async function POST(request: Request) {
       entityId: normalized.id,
       metadata: {
         parentId: parentScope.parentId,
-        yearGroup: body.yearGroup,
-        keyStageLevel: body.keyStageLevel ?? null,
+        yearGroup: resolvedYearGroup,
+        keyStageLevel: resolvedKeyStage ?? null,
         selectedSubjects: selectedSubjects.selected,
       },
     });

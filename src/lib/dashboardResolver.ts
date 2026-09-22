@@ -62,6 +62,16 @@ export function dashboardTierLabel(tier: DashboardTier): string {
   return "Primary Pathway";
 }
 
+/** Stars, XP, coins, and the rewards store are primary-only (Years 1–6). */
+export function isPrimaryRewardsStoreEligible(input: {
+  yearGroup?: string | null;
+  age?: number | null;
+  ageYears?: number | null;
+  dateOfBirth?: string | null;
+}): boolean {
+  return resolveDashboardTier(input) === "primary";
+}
+
 /** Returns true when the child profile contains enough data to resolve the tier reliably. */
 export function isProfileComplete(input: {
   yearGroup?: string | null;

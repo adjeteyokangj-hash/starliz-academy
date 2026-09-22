@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { fromDbRecord } from "@/lib/child_profile_db";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
+import { resolveActiveChildForSession, resolveParentActiveChildId } from "@/lib/activeChild";
+import { buildActiveLanguageModules } from "@/lib/student-dashboard-summary";
 import {
   createChildSelectionToken,
   getChildSelectionCookieName,
@@ -18,6 +19,45 @@ const schema = z.object({
 export async function GET() {
   const { session, response } = await requireSession();
   if (!session) return response;
+
+  if (session.role === "student") {
+    const resolved = await resolveActiveChildForSession(session);
+    if (!resolved.ok) {
+      return NextResponse.json({ child: null, code: "no_linked_profile" });
+    }
+    const child = await prisma.childProfile.findFirst({
+      where: { id: resolved.childId, userId: session.userId, archived: false },
+    });
+    const assignmentRows = child
+      ? await prisma.assignment.findMany({
+          where: {
+            studentId: child.id,
+            status: { not: "archived" },
+          },
+          take: 30,
+          orderBy: { updatedAt: "desc" },
+          select: {
+            id: true,
+            status: true,
+            content: { select: { contentType: true, topic: true } },
+          },
+        })
+      : [];
+    const hasGaModule = buildActiveLanguageModules(
+      assignmentRows.map((row) => ({
+        id: row.id,
+        status: row.status,
+        subject: row.content.contentType,
+        title: row.content.topic || row.content.contentType,
+      })),
+    ).some((module) => module.id === "ga-learning-hub");
+    // Navbar Ga Learning Hub is out of scope for dashboardSections — language modules only.
+    const showGaLearningHub = hasGaModule;
+    return NextResponse.json({
+      child: child ? fromDbRecord(child) : null,
+      showGaLearningHub,
+    });
+  }
 
   const parentScope = await resolveParentScope(session);
   if (!parentScope) {
@@ -39,6 +79,13 @@ export async function GET() {
 export async function POST(request: Request) {
   const { session, response } = await requireSession();
   if (!session) return response;
+
+  if (session.role === "student") {
+    return NextResponse.json(
+      { error: "Student accounts cannot switch learner profiles." },
+      { status: 403 },
+    );
+  }
 
   const parentScope = await resolveParentScope(session);
   if (!parentScope) {

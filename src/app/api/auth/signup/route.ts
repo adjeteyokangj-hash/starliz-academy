@@ -27,6 +27,22 @@ import {
   validateParentEmailQuality,
   validateParentFullName,
 } from "@/lib/uk_contact";
+import {
+  createStudentUserInTx,
+  resolveChildLoginCredentials,
+  type CreateChildAccountMode,
+} from "@/lib/child-account-create";
+
+const childLoginSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("generated"),
+  }),
+  z.object({
+    mode: z.literal("manual"),
+    username: z.string().min(1),
+    password: z.string().min(1),
+  }),
+]);
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -55,6 +71,8 @@ const bodySchema = z.object({
     favouriteSubject: z.enum(["Spelling", "Maths", "Reading", "All subjects"]).optional(),
     learningConfidence: z.enum(["Needs support", "Growing", "Confident", "Advanced / ready for challenge"]).optional(),
   }).optional(),
+  /** Slice 4: first-child login credentials. Defaults to generated when child is present. */
+  childLogin: childLoginSchema.optional(),
   schoolEnrollment: z.object({
     schoolId: z.string().min(1),
     classroomId: z.string().min(1).optional(),
@@ -114,6 +132,41 @@ export async function POST(request: Request) {
       }
     }
 
+    let childCredentials: {
+      username: string;
+      password: string;
+      mode: CreateChildAccountMode;
+      passwordHash: string;
+      email: string;
+    } | null = null;
+
+    if (body.child) {
+      const loginMode = body.childLogin?.mode ?? "generated";
+      const resolved = await resolveChildLoginCredentials({
+        mode: loginMode,
+        childName: body.child.name,
+        username: body.childLogin && body.childLogin.mode === "manual" ? body.childLogin.username : undefined,
+        password: body.childLogin && body.childLogin.mode === "manual" ? body.childLogin.password : undefined,
+      });
+      if (!resolved.ok) {
+        return NextResponse.json(
+          {
+            error: resolved.error,
+            code: resolved.code,
+            fieldErrors: resolved.fieldErrors,
+          },
+          { status: resolved.status },
+        );
+      }
+      childCredentials = {
+        username: resolved.username,
+        password: resolved.password,
+        mode: resolved.mode,
+        passwordHash: resolved.passwordHash,
+        email: resolved.email,
+      };
+    }
+
     const passwordHash = await hashPassword(body.password);
     const created = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -121,6 +174,7 @@ export async function POST(request: Request) {
           email: normalizedEmail,
           passwordHash,
           name: validatedName,
+          role: "parent",
           parentProfile: {
             create: {
               phone: normalizedPhone.e164,
@@ -135,7 +189,8 @@ export async function POST(request: Request) {
       });
 
       let childId: string | null = null;
-      if (body.child) {
+      let childUserId: string | null = null;
+      if (body.child && childCredentials) {
         childId = randomUUID();
         const parsedDob = body.child.dateOfBirth ? new Date(body.child.dateOfBirth) : null;
         const validDob = parsedDob && !Number.isNaN(parsedDob.getTime()) ? parsedDob : null;
@@ -143,10 +198,19 @@ export async function POST(request: Request) {
         const keyStage = body.child.stage ?? getStageForYearGroup(body.child.yearGroup);
         const learningFocus = body.child.learningFocus ?? "All recommended subjects";
 
+        const student = await createStudentUserInTx(tx, {
+          username: childCredentials.username,
+          email: childCredentials.email,
+          passwordHash: childCredentials.passwordHash,
+          name: body.child.name,
+        });
+        childUserId = student.userId;
+
         await tx.childProfile.create({
           data: {
             id: childId,
             parentId: user.id,
+            userId: student.userId,
             name: body.child.name,
             age: derivedAge,
             yearGroup: body.child.yearGroup,
@@ -212,6 +276,9 @@ export async function POST(request: Request) {
             marketingOptIn: body.marketingOptIn ?? false,
             childProvided: Boolean(body.child),
             childId,
+            childUserId,
+            childUsername: childCredentials?.username ?? null,
+            childLoginMode: childCredentials?.mode ?? null,
             schoolEnrollment: body.schoolEnrollment?.schoolId ?? null,
           }),
         },
@@ -220,6 +287,7 @@ export async function POST(request: Request) {
       return user;
     });
 
+    // Parent remains the authenticated session; child User is separate until explicit login.
     const fingerprint = buildDeviceFingerprint({ ip, userAgent });
     const token = await createSessionToken(
       { userId: created.id, email: created.email, role: created.role },
@@ -231,7 +299,27 @@ export async function POST(request: Request) {
       ipAddress: ip,
       userAgent,
     });
-    const response = NextResponse.json({ ok: true, user: { id: created.id, email: created.email, name: created.name } }, { status: 201 });
+    const responseBody: {
+      ok: true;
+      user: { id: string; email: string; name: string | null; role: string };
+      childCredentials?: { username: string; password: string; mode: CreateChildAccountMode };
+      notice?: string;
+    } = {
+      ok: true,
+      user: { id: created.id, email: created.email, name: created.name, role: created.role },
+    };
+
+    if (childCredentials) {
+      responseBody.childCredentials = {
+        username: childCredentials.username,
+        password: childCredentials.password,
+        mode: childCredentials.mode,
+      };
+      responseBody.notice =
+        "Save your child's username and password now. The password cannot be shown again because it is not stored in plain text.";
+    }
+
+    const response = NextResponse.json(responseBody, { status: 201 });
     response.cookies.set(getAuthCookieName(), token, {
       httpOnly: true,
       sameSite: "lax",

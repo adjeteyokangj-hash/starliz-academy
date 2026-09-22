@@ -13,6 +13,7 @@ import {
 } from "@/lib/uk_contact";
 import Logo from "@/components/Logo";
 import PublicShell from "@/components/layout/PublicShell";
+import ChildLoginCredentialsReveal from "@/components/parent/ChildLoginCredentialsReveal";
 import {
   AVATAR_OPTIONS,
   calculateAgeFromDateOfBirth,
@@ -45,6 +46,8 @@ type SignupErrors = Partial<Record<
   | "guardianConsent"
   | "learningProfileConsent"
   | "termsConsent"
+  | "childLoginUsername"
+  | "childLoginPassword"
   | "general",
   string
 >>;
@@ -118,6 +121,13 @@ export default function SignupPage() {
   const [manualYearGroup, setManualYearGroup] = useState<string>("Reception");
   const [yearGroupLockedByParent, setYearGroupLockedByParent] = useState(false);
   const [avatar, setAvatar] = useState<string>(AVATAR_OPTIONS[0]);
+  const [childLoginMode, setChildLoginMode] = useState<"generated" | "manual">("generated");
+  const [childLoginUsername, setChildLoginUsername] = useState("");
+  const [childLoginPassword, setChildLoginPassword] = useState("");
+  const [pendingChildCredentials, setPendingChildCredentials] = useState<{
+    username: string;
+    password: string;
+  } | null>(null);
 
   const [rawSelectedSubjects, setRawSelectedSubjects] = useState<string[]>([]);
   const [learningFocus, setLearningFocus] = useState<string>(LEARNING_FOCUS_OPTIONS[0].label);
@@ -275,6 +285,12 @@ export default function SignupPage() {
     if (!childName.trim()) next.childName = "Child first name is required.";
     if (!childDateOfBirth) next.childDateOfBirth = "Child date of birth is required.";
     if (!yearGroup) next.yearGroup = "Select a year group.";
+    if (childLoginMode === "manual") {
+      if (!childLoginUsername.trim()) next.childLoginUsername = "Enter a username for the child login.";
+      if (!childLoginPassword || childLoginPassword.length < 8) {
+        next.childLoginPassword = "Password must be at least 8 characters.";
+      }
+    }
     return next;
   }
 
@@ -390,13 +406,56 @@ export default function SignupPage() {
             mainFocus: mapLearningFocusToLegacyMainFocus(learningFocus),
             avatar,
           },
+          childLogin:
+            childLoginMode === "generated"
+              ? { mode: "generated" }
+              : {
+                  mode: "manual",
+                  username: childLoginUsername.trim(),
+                  password: childLoginPassword,
+                },
         }),
       });
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await response.json()) as {
+        error?: string;
+        fieldErrors?: Record<string, string[]>;
+        user?: { role?: string };
+        childCredentials?: { username?: string; password?: string };
+      };
 
       if (!response.ok) {
-        setErrors({ general: payload.error ?? "Unable to create account." });
-        setToast({ type: "error", message: payload.error ?? "Could not complete sign up." });
+        const fieldMessage =
+          payload.fieldErrors?.username?.[0]
+          ?? payload.fieldErrors?.password?.[0]
+          ?? payload.error
+          ?? "Unable to create account.";
+        setErrors({
+          general: fieldMessage,
+          childLoginUsername: payload.fieldErrors?.username?.[0],
+          childLoginPassword: payload.fieldErrors?.password?.[0],
+        });
+        setToast({ type: "error", message: fieldMessage });
+        if (payload.fieldErrors?.username || payload.fieldErrors?.password) {
+          setStep(2);
+        }
+        return;
+      }
+
+      if (payload.user?.role && payload.user.role !== "parent") {
+        setErrors({ general: "Unexpected session role after signup." });
+        setToast({ type: "error", message: "Signup completed with an unexpected account role." });
+        return;
+      }
+
+      if (payload.childCredentials?.username && payload.childCredentials?.password) {
+        setPendingChildCredentials({
+          username: payload.childCredentials.username,
+          password: payload.childCredentials.password,
+        });
+        setToast({
+          type: "success",
+          message: "Account created. Save your child's login now — the password cannot be shown again.",
+        });
         return;
       }
 
@@ -408,6 +467,11 @@ export default function SignupPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function continueAfterCredentialReveal() {
+    setPendingChildCredentials(null);
+    router.replace("/consent");
   }
 
   return (
@@ -503,6 +567,74 @@ export default function SignupPage() {
                       ))}
                     </div>
                   </div>
+
+                  <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-200">Child login</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Your child will get their own username and password for student login. Generated passwords are shown once after signup.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2" role="group" aria-label="Child login creation mode">
+                      <button
+                        type="button"
+                        onClick={() => setChildLoginMode("generated")}
+                        className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                          childLoginMode === "generated"
+                            ? "bg-cyan-500 text-slate-950"
+                            : "border border-white/15 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                        }`}
+                      >
+                        Generate child login
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setChildLoginMode("manual")}
+                        className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                          childLoginMode === "manual"
+                            ? "bg-cyan-500 text-slate-950"
+                            : "border border-white/15 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                        }`}
+                      >
+                        Manual child login
+                      </button>
+                    </div>
+                    {childLoginMode === "generated" ? (
+                      <p className="text-xs text-slate-400">
+                        We will create a child-friendly username from their name and a secure password. Save them when they appear after signup.
+                      </p>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label>
+                          <span className="text-sm font-semibold text-slate-300">Username</span>
+                          <input
+                            value={childLoginUsername}
+                            onChange={(e) => setChildLoginUsername(e.target.value)}
+                            autoComplete="off"
+                            className={inputCls}
+                            placeholder="e.g. alex.kid"
+                          />
+                          {errors.childLoginUsername ? (
+                            <p className="mt-1 text-xs font-semibold text-rose-300">{errors.childLoginUsername}</p>
+                          ) : null}
+                        </label>
+                        <label>
+                          <span className="text-sm font-semibold text-slate-300">Password</span>
+                          <input
+                            type="password"
+                            value={childLoginPassword}
+                            onChange={(e) => setChildLoginPassword(e.target.value)}
+                            autoComplete="new-password"
+                            className={inputCls}
+                            placeholder="At least 8 characters"
+                          />
+                          {errors.childLoginPassword ? (
+                            <p className="mt-1 text-xs font-semibold text-rose-300">{errors.childLoginPassword}</p>
+                          ) : null}
+                        </label>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -550,6 +682,7 @@ export default function SignupPage() {
                     <p className="font-bold text-white">Review summary</p>
                     <p className="mt-2">Parent: {parentName} ({email})</p>
                     <p>Child: {childName}</p>
+                    <p>Child login: {childLoginMode === "generated" ? "Generate login" : `Manual (${childLoginUsername.trim() || "username required"})`}</p>
                     <p>Date of birth: {childDateOfBirth || "-"}</p>
                     <p>Calculated age: {calculatedAge ?? "-"}</p>
                     <p>Year group: {yearGroup}</p>
@@ -649,6 +782,18 @@ export default function SignupPage() {
           </div>
         </div>
       </section>
+
+      {pendingChildCredentials ? (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/80 p-4">
+          <div className="w-full max-w-lg">
+            <ChildLoginCredentialsReveal
+              childName={childName.trim() || "your child"}
+              credentials={pendingChildCredentials}
+              onDismiss={continueAfterCredentialReveal}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {toast ? (
         <div className="fixed right-4 top-20 z-50 max-w-sm rounded-2xl border border-slate-700 bg-slate-900/95 px-4 py-3 shadow-2xl backdrop-blur transition">

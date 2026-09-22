@@ -17,18 +17,27 @@ export async function GET() {
     return NextResponse.json({ error: "Parent access required." }, { status: 403 });
   }
 
-  const [bookings, bookable, entitled] = await Promise.all([
+  const [bookingsRaw, bookable, entitled] = await Promise.all([
     prisma.studentLearningBooking.findMany({
       where: { parentUserId: session.userId },
       include: {
         schoolStudent: { include: { child: { select: { name: true } }, school: { select: { id: true, name: true } } } },
       },
-      orderBy: { startsAt: "desc" },
+      orderBy: { startsAt: "asc" },
       take: 100,
     }),
     listParentBookableShortLearningStudents(session.userId),
     parentHasShortLearningEntitlement(session.userId),
   ]);
+
+  const nowMs = Date.now();
+  const bookings = [...bookingsRaw].sort((a, b) => {
+    const aUpcoming = a.endsAt.getTime() > nowMs;
+    const bUpcoming = b.endsAt.getTime() > nowMs;
+    if (aUpcoming !== bUpcoming) return aUpcoming ? -1 : 1;
+    if (aUpcoming) return a.startsAt.getTime() - b.startsAt.getTime();
+    return b.startsAt.getTime() - a.startsAt.getTime();
+  });
 
   return NextResponse.json({
     ok: true,

@@ -69,3 +69,23 @@ test("canonical learning write coordinator remains the Brain-compatible evidence
   const source = fs.readFileSync(fullPath, "utf8");
   assert.ok(source.includes("export"), "writeLearningActivity must export the canonical writer");
 });
+
+test("dashboard brain snapshot loads in parallel; forceRefresh uses refresh path", () => {
+  const source = fs.readFileSync(
+    path.join(PROJECT_ROOT, "src/lib/student-learning-brain/index.ts"),
+    "utf8",
+  );
+  assert.match(source, /export async function getStudentLearningBrainForDashboard/);
+  assert.match(
+    source,
+    /const \[brain, dashboardAssignments, dashboardSkills, snapshotResult\] = await Promise\.all\(\[/,
+  );
+  assert.match(source, /options\.forceRefresh/);
+  assert.match(
+    source,
+    /getOrRefreshAcademicIntelligenceSnapshot\(\{\s*studentId,\s*forceRefresh:\s*true,\s*reason:\s*"manual_refresh"/,
+  );
+  assert.match(source, /readAcademicIntelligenceSnapshot\(profile\?\.aiLearningProfileJson/);
+  assert.match(source, /refreshed:\s*false/);
+  assert.match(source, /toStudentDashboardBrainView\(brain, snapshotResult/);
+});

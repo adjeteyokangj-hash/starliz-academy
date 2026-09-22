@@ -5,12 +5,15 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
-import ChildManagementForm from "./ChildManagementForm";
+import ChildManagementForm, { type ChildAccountCreatedResult } from "./ChildManagementForm";
+import ChildLoginCredentialsReveal, { type OneTimeChildCredentials } from "./ChildLoginCredentialsReveal";
+import CreateChildLoginPanel from "./CreateChildLoginPanel";
 import BillingCard from "./BillingCard";
 import SecuritySettings from "./SecuritySettings";
 import ConsentAuditView from "./ConsentAuditView";
 import NotificationPreferences from "./NotificationPreferences";
 import ParentShortLearningPanel from "./ParentShortLearningPanel";
+import ParentCollapsibleCard from "./ParentCollapsibleCard";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
@@ -87,6 +90,12 @@ type ChildListResponse = {
     learningGoals?: string[];
     senSupportNeeds?: string;
     selectedSubjects?: string[];
+    yearGroupLocked?: boolean;
+    userId?: string | null;
+    hasLogin?: boolean;
+    loginUsername?: string | null;
+    hasSchoolLink?: boolean;
+    canCreateLogin?: boolean;
   }>;
   activeChildId: string | null;
 };
@@ -536,6 +545,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   const [showChildForm, setShowChildForm] = useState(false);
   const [editingChildId, setEditingChildId] = useState<string | null>(null);
   const [childFormMessage, setChildFormMessage] = useState<string | null>(null);
+  const [createdLoginReveal, setCreatedLoginReveal] = useState<{
+    childName: string;
+    credentials: OneTimeChildCredentials;
+  } | null>(null);
+  const [createLoginChildId, setCreateLoginChildId] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [accountNameDraft, setAccountNameDraft] = useState("");
   const [accountContactDraft, setAccountContactDraft] = useState({
@@ -559,29 +573,6 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     let cancelled = false;
 
     async function load() {
-      const pinStatusResponse = await fetchWithRefreshRetry("/api/pin/status", {
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (cancelled) return;
-      if (pinStatusResponse.status === 401) {
-        router.replace("/auth/login");
-        return;
-      }
-      if (pinStatusResponse.ok) {
-        const pinStatus = (await pinStatusResponse.json()) as { hasPin?: boolean; unlocked?: boolean };
-        if (!pinStatus.hasPin) {
-          const next = pathname ?? `/parent/${section}`;
-          router.replace(`/parent-pin?reset=1&next=${encodeURIComponent(next)}`);
-          return;
-        }
-        if (!pinStatus.unlocked) {
-          const next = pathname ?? `/parent/${section}`;
-          router.replace(`/parent/profiles?intent=parent&next=${encodeURIComponent(next)}`);
-          return;
-        }
-      }
-
       setLoading(true);
       const [accountRes, childrenRes, subscriptionRes, consentRes] = await Promise.all([
         fetchWithRefreshRetry("/api/account", { credentials: "include" }),
@@ -591,6 +582,11 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
       ]);
 
       if (cancelled) return;
+
+      if (accountRes.status === 401) {
+        router.replace("/auth/login");
+        return;
+      }
 
       if (accountRes.ok) {
         const payload = (await accountRes.json()) as AccountPayload;
@@ -1955,7 +1951,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
           {activeSection === "children" ? (
             <div className="space-y-6">
               {formVisible ? (
-                <Panel title={effectiveEditingChildId ? "Edit child" : "Add new child"} description={effectiveEditingChildId ? "Update child details" : "Create a new child profile"}>
+                <Panel title={effectiveEditingChildId ? "Edit child" : "Add new child"} description={effectiveEditingChildId ? "Update child details" : "Create a child profile with a login username and password"}>
                   <ChildManagementForm
                     mode={effectiveEditingChildId ? "edit" : "add"}
                     initialData={effectiveEditingChildId ? (() => {
@@ -1974,13 +1970,23 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         ageYears: child.ageYears ?? '',
                         startLevelChoice: 'Beginner',
                         avatar: child.avatar || 'star',
+                        yearGroupLocked: Boolean(child.yearGroupLocked),
                       } : undefined;
                     })() : undefined}
-                    onSuccess={() => {
+                    onSuccess={(result?: ChildAccountCreatedResult) => {
                       const wasEditing = effectiveEditingChildId !== null;
                       setShowChildForm(false);
                       setEditingChildId(null);
-                      setChildFormMessage(wasEditing ? "Child profile updated." : "Child profile added successfully.");
+                      if (!wasEditing && result?.credentials) {
+                        setCreatedLoginReveal({
+                          childName: result.childName,
+                          credentials: result.credentials,
+                        });
+                        setChildFormMessage("Child login created. Save the username and password shown below — the password cannot be shown again.");
+                      } else {
+                        setCreatedLoginReveal(null);
+                        setChildFormMessage(wasEditing ? "Child profile updated." : "Child profile added successfully.");
+                      }
                       if (modeAdd) {
                         router.replace("/parent/children");
                       }
@@ -2013,6 +2019,15 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                       {childFormMessage}
                     </p>
                   ) : null}
+                  {createdLoginReveal ? (
+                    <div className="mb-4">
+                      <ChildLoginCredentialsReveal
+                        childName={createdLoginReveal.childName}
+                        credentials={createdLoginReveal.credentials}
+                        onDismiss={() => setCreatedLoginReveal(null)}
+                      />
+                    </div>
+                  ) : null}
                   <div className="space-y-4">
                     <ChildPicker
                       profiles={children?.children ?? []}
@@ -2026,6 +2041,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     <Button
                       onClick={() => {
                         setChildFormMessage(null);
+                        setCreatedLoginReveal(null);
                         setEditingChildId(null);
                         setShowChildForm(true);
                       }}
@@ -2043,18 +2059,75 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                             <div>
                               <p className="font-semibold text-white">{child.name}</p>
                               <p className="text-sm text-slate-400">{child.archived ? "Archived" : "Active"}</p>
+                              {child.hasLogin || child.userId ? (
+                                <p className="mt-1 text-xs text-emerald-300">
+                                  Login created
+                                  {child.loginUsername ? (
+                                    <span className="text-slate-400"> · {child.loginUsername}</span>
+                                  ) : null}
+                                </p>
+                              ) : child.hasSchoolLink ? (
+                                <p className="mt-1 text-xs text-slate-400">School-managed account</p>
+                              ) : (
+                                <p className="mt-1 text-xs text-amber-200/90">No student login yet</p>
+                              )}
                             </div>
                           </div>
                           <button
                             onClick={() => {
                               setEditingChildId(child.id);
                               setShowChildForm(true);
+                              setCreateLoginChildId(null);
                             }}
                             className="text-xs text-cyan-400 hover:text-cyan-300 opacity-0 group-hover:opacity-100 transition"
                           >
                             Edit
                           </button>
                         </div>
+                        {child.canCreateLogin !== false
+                          && !child.hasLogin
+                          && !child.userId
+                          && !child.hasSchoolLink
+                          && createLoginChildId !== child.id ? (
+                          <div className="mt-3">
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                setChildFormMessage(null);
+                                setCreatedLoginReveal(null);
+                                setCreateLoginChildId(child.id);
+                              }}
+                              className="w-full bg-cyan-700 hover:bg-cyan-600 text-sm"
+                            >
+                              Create Login
+                            </Button>
+                          </div>
+                        ) : null}
+                        {createLoginChildId === child.id ? (
+                          <div className="mt-3">
+                            <CreateChildLoginPanel
+                              childId={child.id}
+                              childName={child.name}
+                              onSuccess={(result) => {
+                                setCreateLoginChildId(null);
+                                setCreatedLoginReveal({
+                                  childName: result.childName,
+                                  credentials: result.credentials,
+                                });
+                                setChildFormMessage(
+                                  "Child login created. Save the username and password shown below — the password cannot be shown again.",
+                                );
+                                void fetch("/api/children", { credentials: "include" })
+                                  .then((r) => (r.ok ? (r.json() as Promise<ChildListResponse>) : null))
+                                  .then((childrenData) => {
+                                    if (childrenData) setChildren(childrenData);
+                                  })
+                                  .catch(() => undefined);
+                              }}
+                              onCancel={() => setCreateLoginChildId(null)}
+                            />
+                          </div>
+                        ) : null}
                       </article>
                     ))}
                   </div>
@@ -2457,13 +2530,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
 function Panel({ title, description, children }: { title: string; description: string; children?: ReactNode }) {
   return (
-    <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-2xl shadow-slate-950/30 sm:p-5 lg:p-6">
-      <div className="mb-4">
-        <h2 className="text-xl font-bold text-white">{title}</h2>
-        <p className="mt-1 text-sm text-slate-400">{description}</p>
-      </div>
+    <ParentCollapsibleCard title={title} description={description} storageKey={`parent-portal-panel:${title}`}>
       {children}
-    </section>
+    </ParentCollapsibleCard>
   );
 }
 

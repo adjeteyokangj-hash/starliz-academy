@@ -108,3 +108,128 @@ test("does not force visual-required for generic maths items", () => {
   assert.equal(item.visuals.required, false);
   assert.equal(item.visuals.type, "none");
 });
+
+test("expands a daytime maths pack as maths questions with four options", () => {
+  const items = normalizeLessonContentJson(JSON.stringify({
+    subjectType: "maths",
+    title: "maths: Lesson block 1 · New concept",
+    estimatedMinutes: 10,
+    learningObjective: "Multiply two-digit numbers using a written method",
+    activities: [{ kind: "multiple-choice", estimatedMinutes: 8 }],
+    questions: [
+      { prompt: "What is 6 x 2?", answer: "12" },
+      { prompt: "If you have 4 rows of 4 apples, how many apples do you have in total?", answer: 16 },
+    ],
+  }), {
+    contentType: "math",
+    subject: "maths",
+    skillFocus: "maths",
+    yearGroup: "Year 4",
+  });
+
+  assert.ok(items.length >= 8);
+  assert.equal(items[0]?.questionType, "math");
+  assert.equal(items[1]?.questionType, "math");
+  assert.equal(items[0]?.passage ?? "", "");
+  assert.ok((items[0]?.options.length ?? 0) >= 4);
+  assert.ok((items[1]?.options.length ?? 0) >= 4);
+  assert.equal(items[0]?.options.includes("12"), true);
+  assert.equal(items[1]?.options.includes("16"), true);
+  assert.match(String(items[0]?.learningFocus ?? "").toLowerCase(), /written method|multiplication/);
+});
+
+test("pads explain-how maths answers to four choices", () => {
+  const items = normalizeLessonContentItems([
+    {
+      prompt: "Explain how you can use an array to solve 3 x 5.",
+      answer: "You can draw 3 rows with 5 items in each row to see the total.",
+      skillFocus: "To understand and apply the concept of multiplication using arrays.",
+    },
+  ], { contentType: "math", subject: "maths", yearGroup: "Year 4" });
+
+  const item = first(items);
+  assert.equal(item.questionType, "math");
+  assert.ok(item.options.length >= 4);
+  assert.equal(item.options.includes("You can draw 3 rows with 5 items in each row to see the total."), true);
+  assert.match(item.learningFocus.toLowerCase(), /array|multiplication/);
+});
+
+test("18-minute daytime maths pack expands beyond three questions", () => {
+  const items = normalizeLessonContentJson(JSON.stringify({
+    subjectType: "maths",
+    title: "maths: Lesson block 1 · New concept",
+    estimatedMinutes: 18,
+    learningObjective: "To understand and apply the concept of multiplication using arrays.",
+    activities: [{ kind: "multiple-choice", estimatedMinutes: 16 }],
+    questions: [
+      {
+        prompt: "Explain how you can use an array to solve 3 x 5.",
+        answer: "You can draw 3 rows with 5 items in each row to see the total.",
+      },
+      { prompt: "What is 4 x 4?", answer: 16 },
+      { prompt: "What is 6 x 2?", answer: "12" },
+    ],
+  }), {
+    contentType: "math",
+    subject: "maths",
+    skillFocus: "maths",
+    yearGroup: "Year 4",
+  });
+
+  assert.ok(items.length >= 8);
+  assert.equal(items.every((item) => item.questionType === "math"), true);
+  assert.equal(items.every((item) => item.options.length >= 4), true);
+  const positions = new Set(
+    items.map((item) => item.options.findIndex((option) => String(option) === String(item.correctAnswer))),
+  );
+  assert.ok(positions.size >= 2, "Correct answers should appear in more than one option slot");
+  const extraPrompts = items.slice(3).map((item) => item.question.toLowerCase());
+  assert.equal(extraPrompts.some((prompt) => /^\s*what is \d+ \+ \d+/.test(prompt)), false);
+  assert.ok(extraPrompts.some((prompt) => /array|×|groups|rows|trays|missing/.test(prompt)));
+  const calculation = items.find((item) => /which calculation matches an array/i.test(item.question));
+  if (calculation) {
+    assert.match(String(calculation.correctAnswer), /×/);
+    assert.equal(calculation.options.some((option) => /×/.test(String(option))), true);
+    assert.equal(calculation.options.some((option) => /\+/.test(String(option))), true);
+  }
+});
+
+test("does not treat a maths word problem as a reading lesson", () => {
+  const items = normalizeLessonContentItems([
+    {
+      question: "A shop sells 6 bags of 2 apples. How many apples is that?",
+      answer: 12,
+      skillFocus: "maths",
+    },
+  ], { contentType: "math", subject: "maths", yearGroup: "Year 4" });
+
+  const item = first(items);
+  assert.equal(item.questionType, "math");
+  assert.ok(item.options.length >= 4);
+  assert.match(item.learningFocus.toLowerCase(), /multiplication|written method|number/);
+});
+
+test("Year 1 maths packs fill with number bonds, not Year 4 arrays", () => {
+  const items = normalizeLessonContentJson(JSON.stringify({
+    subjectType: "maths",
+    title: "maths: Lesson block 1 · New concept",
+    estimatedMinutes: 18,
+    learningObjective: "To use number bonds and addition.",
+    activities: [{ kind: "multiple-choice", estimatedMinutes: 16 }],
+    questions: [
+      { prompt: "What is 3 + 4?", answer: 7 },
+      { prompt: "What is 2 + 6?", answer: 8 },
+    ],
+  }), {
+    contentType: "math",
+    subject: "maths",
+    skillFocus: "maths",
+    yearGroup: "Year 1",
+  });
+
+  assert.ok(items.length >= 8);
+  assert.equal(items.every((row) => row.questionType === "math"), true);
+  const extras = items.map((row) => row.question.toLowerCase());
+  assert.equal(extras.some((prompt) => /array has \d+ rows/.test(prompt)), false);
+  assert.ok(extras.some((prompt) => /\+|bond|more than|cubes|apples/.test(prompt)));
+});

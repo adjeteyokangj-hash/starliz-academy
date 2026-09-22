@@ -21,6 +21,7 @@ import {
   type UpdateSchoolDayLessonDeps,
 } from "../src/lib/schools/update-school-day-lesson";
 import {
+  getStudentDaytimeBoard,
   getStudentDaytimeBoardScoped,
   getTutorDaytimeBoard,
   getTutorDaytimeBoardForSession,
@@ -32,6 +33,7 @@ import {
   findCurrentPeriod,
   findNextPeriod,
   isValidTimeRange,
+  ukSchoolTimetableDay,
 } from "../src/lib/schools/school-day-period";
 
 function makeBootstrapStore() {
@@ -533,6 +535,40 @@ test("student query returns only enrolled class timetable", async () => {
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.deepEqual(result.board.periods.map((row) => row.id), ["class-1-maths"]);
+});
+
+test("student weekend board does not fall back to Monday's timetable", async () => {
+  assert.equal(ukSchoolTimetableDay(new Date("2026-09-19T12:00:00+01:00")), null);
+  assert.equal(ukSchoolTimetableDay(new Date("2026-09-21T08:00:00+01:00")), 1);
+
+  let queriedDay: number | null = null;
+  const deps: StudentBoardDeps = {
+    findActiveEnrolment: async () => ({
+      id: "ss-1",
+      schoolId: "school-1",
+      classroomId: "class-1",
+      classroomName: "5K",
+      schoolName: "UI Drill",
+    }),
+    findClassPeriods: async ({ dayOfWeek }) => {
+      queriedDay = dayOfWeek;
+      return [
+        periodRow({ id: "monday-maths", teacherId: "t1", classroomId: "class-1", startsAt: "10:55", endsAt: "11:45" }),
+      ];
+    },
+  };
+
+  const result = await getStudentDaytimeBoard({
+    childId: "child-1",
+    now: new Date("2026-09-19T12:34:00+01:00"),
+  }, deps);
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(queriedDay, null);
+  assert.equal(result.board.periods.length, 0);
+  assert.equal(result.board.phase, "no_timetable");
+  assert.equal(result.board.weekdayLabel, "Saturday");
 });
 
 test("student cannot access another class or school via query params", async () => {

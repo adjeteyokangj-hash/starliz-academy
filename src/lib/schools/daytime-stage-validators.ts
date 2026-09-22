@@ -307,7 +307,7 @@ export function normalizeDaytimeStagePack(raw: unknown, fallbackMode: DaytimeSub
           answer,
         };
       })
-      .filter((item) => item.question && item.answer)
+      .filter((item) => item.question)
     : undefined;
 
   const estimatedMinutes = asNumber(row.estimatedMinutes, estimateMinutesFromActivities(activities, questions.length));
@@ -355,6 +355,7 @@ export function validateDaytimeStagePack(input: {
   /** When "short-learning", apply additive instructional-depth checks. Day School leaves this unset. */
   instructionalDepthProfile?: "day-school" | "short-learning";
   stageLabel?: string;
+  skillFocus?: string | null;
 }): DaytimeStageValidationIssue[] {
   const issues: DaytimeStageValidationIssue[] = [];
   const { pack, mode, stage, targetMinutes } = input;
@@ -596,6 +597,7 @@ export function validateDaytimeStagePack(input: {
         stage,
         stageLabel: input.stageLabel || input.lessonTitle || pack.title,
         targetMinutes,
+        skillFocus: input.skillFocus,
       }),
     );
   }

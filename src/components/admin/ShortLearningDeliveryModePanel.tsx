@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { skillsForSubjectAndYear, type Subject } from "@/lib/curriculum";
+import { skillsForSubjectAndYear, YEAR_GROUPS, type Subject } from "@/lib/curriculum";
+import {
+  adminShortLearningSubjectOptions,
+  canonicalShortLearningSubjectKey,
+  shortLearningSkillsForYear,
+} from "@/lib/schools/short-learning-curriculum";
 import { SHORT_LEARNING_ADMIN_DURATIONS } from "@/lib/schools/short-learning-session-plan";
 
 type SchoolOption = { id: string; name: string };
@@ -14,28 +19,6 @@ type Props = {
   onLessonPackImportSelected?: () => void;
 };
 
-const YEAR_GROUPS = [
-  "Year 1",
-  "Year 2",
-  "Year 3",
-  "Year 4",
-  "Year 5",
-  "Year 6",
-  "Year 7",
-  "Year 8",
-  "Year 9",
-  "Year 10",
-  "Year 11",
-] as const;
-
-const SUBJECTS = [
-  { value: "maths", label: "Maths" },
-  { value: "english", label: "English" },
-  { value: "science", label: "Science" },
-  { value: "spelling", label: "Spelling" },
-  { value: "reading", label: "Reading" },
-] as const;
-
 const DIFFICULTY_LEVELS = [
   { value: 1, label: "1 · Foundation" },
   { value: 2, label: "2 · Developing" },
@@ -44,14 +27,7 @@ const DIFFICULTY_LEVELS = [
   { value: 5, label: "5 · Challenge" },
 ] as const;
 
-/** Map Short Learning delivery subjects onto curriculum skill catalogues. */
-function curriculumSubjectForTopics(subject: string): Subject {
-  if (subject === "english") return "reading";
-  if (subject === "maths" || subject === "science" || subject === "spelling" || subject === "reading") {
-    return subject;
-  }
-  return "maths";
-}
+const ADMIN_SUBJECTS = adminShortLearningSubjectOptions();
 
 const fieldClassName =
   "w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400 [color-scheme:dark]";
@@ -86,7 +62,12 @@ export default function ShortLearningDeliveryModePanel({
 
   const durationOptions = useMemo(() => [...SHORT_LEARNING_ADMIN_DURATIONS], []);
   const topicOptions = useMemo(
-    () => [...skillsForSubjectAndYear(curriculumSubjectForTopics(subject), yearGroup)],
+    () => {
+      const fromParentSubjects = shortLearningSkillsForYear(subject, yearGroup);
+      if (fromParentSubjects.length) return fromParentSubjects;
+      const fallback = subject === "english" ? "reading" : subject;
+      return [...skillsForSubjectAndYear(fallback as Subject, yearGroup)];
+    },
     [subject, yearGroup],
   );
   const selectedTopic = topicOptions.includes(topic) ? topic : (topicOptions[0] ?? "");
@@ -113,7 +94,7 @@ export default function ShortLearningDeliveryModePanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           schoolId,
-          subject,
+          subject: canonicalShortLearningSubjectKey(subject) ?? subject,
           yearGroup,
           difficulty,
           topic: selectedTopic || undefined,
@@ -214,12 +195,15 @@ export default function ShortLearningDeliveryModePanel({
                 setTopic("");
               }}
             >
-              {SUBJECTS.map((item) => (
-                <option key={item.value} value={item.value} className={optionClassName}>
+              {ADMIN_SUBJECTS.map((item) => (
+                <option key={item.key} value={item.key} className={optionClassName}>
                   {item.label}
                 </option>
               ))}
             </select>
+            <span className="mt-1 block text-xs text-slate-400">
+              Same subjects parents can book. Each year group has its own curriculum topics.
+            </span>
           </label>
           <label className="text-sm">
             <span className={labelClassName}>Year group</span>
@@ -231,7 +215,7 @@ export default function ShortLearningDeliveryModePanel({
                 setTopic("");
               }}
             >
-              {YEAR_GROUPS.map((year) => (
+              {YEAR_GROUPS.filter((year) => year !== "Reception").map((year) => (
                 <option key={year} value={year} className={optionClassName}>
                   {year}
                 </option>

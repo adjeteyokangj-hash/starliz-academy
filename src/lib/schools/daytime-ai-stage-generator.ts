@@ -14,7 +14,11 @@ import {
   type WeeklyCurriculumMemory,
   type WeeklyReviewPolicy,
 } from "@/lib/schools/weekly-curriculum-memory";
-import { shortLearningDepthPromptGuidance } from "@/lib/schools/short-learning-instructional-depth";
+import {
+  ensureWorkedExampleFromPassage,
+  shortLearningDepthPromptGuidance,
+} from "@/lib/schools/short-learning-instructional-depth";
+import { englishSkillUsesPassageAsLanguageContext } from "@/lib/schools/short-learning-curriculum";
 
 const MAX_RETRIES = 2;
 const SHORT_LEARNING_MAX_RETRIES = 3;
@@ -81,7 +85,15 @@ read-passage, teacher-explanation, worked-example, multiple-choice, short-answer
 word-sort, dictation, proofreading, vocabulary, reflection, practical, challenge, fluency, prediction, scaffold, independent.
 Do not invent free-text kinds such as "vocabulary preview" or "group game".`;
 
-export function systemPromptForMode(mode: DaytimeSubjectMode): string {
+export function systemPromptForMode(
+  mode: DaytimeSubjectMode,
+  context?: {
+    subject?: string;
+    yearGroup?: string;
+    skillFocus?: string;
+    instructionalDepthProfile?: "day-school" | "short-learning";
+  },
+): string {
   const base = `You are an expert primary/secondary UK classroom lesson designer for StarLiz Academy.
 Return STRICT JSON only (no markdown). Use child-friendly, age-appropriate language.
 ${DAYTIME_BRITISH_ENGLISH_RULES}
@@ -94,16 +106,42 @@ ${ACTIVITY_KIND_ENUM}
 Include targetItems matching the number of pupil tasks/questions where relevant.`;
 
   switch (mode) {
-    case "guided-reading":
+    case "guided-reading": {
+      if (
+        context?.instructionalDepthProfile === "short-learning"
+        && englishSkillUsesPassageAsLanguageContext(context.skillFocus)
+      ) {
+        return `${base}
+Subject mode: guided-reading.
+Skill intent: language/grammar feature — "${context.skillFocus ?? ""}".
+Keep the shared passage and teach from it. The passage is CONTEXT for practising this skill — do not switch into a generic reading-comprehension quiz.
+Include passage { title, text, paragraphs[], wordCount } — KEEP the shared passage if provided.
+Include vocabulary[{ word, childFriendlyMeaning, example }] (at least 3 terms from THIS passage).
+Include learningObjective and a substantial explanation that teaches THIS skill (what it is and how the feature works, including words such as who/which/that when they belong to the skill).
+Include at least one workedExamples entry as a think-aloud that QUOTES an actual sentence from the shared passage and shows how the skill applies to that sentence.
+Questions MUST practise the skill using passage sentences:
+- identify/explain the feature in a quoted passage sentence
+- complete or manipulate the feature
+- rewrite or combine sentences using the feature
+- later items: independent application of the skill
+FORBIDDEN unless the item also requires applying the skill: generic retrieval/inference stems such as "What did [character] find?", "How did [character] feel?", "What is the main idea of the passage?", "How does the author create mystery?", "What happens next?".
+Warm-up: recall the skill with a short passage example.
+Core: teach → model on a passage sentence → guided skill practice.
+Stretch: harder independent skill application, still using the passage as context.`;
+      }
       return `${base}
 Subject mode: guided-reading.
 Include passage { title, text, paragraphs[], wordCount } — a real age-appropriate reading passage (not meta commentary about the lesson).
-Include vocabulary[{ word, childFriendlyMeaning, example }].
+If a shared passage is provided, KEEP that passage and teach from it — do not invent an unrelated story.
+Include vocabulary[{ word, childFriendlyMeaning, example }] (at least 3 terms from THIS passage).
+Include learningObjective and a substantial explanation that models one comprehension strategy (retrieval, inference, or evidence) using sentences from the passage.
+Include at least one workedExamples entry as a think-aloud: { question, steps[], answer } quoting evidence from the passage.
 Vary question stems across the stage — do NOT repeat the same generic stems such as "What is the main idea of the passage?", "How do the characters feel…?", or "What lesson can we learn…?" more than once in a session stage.
 Prefer a mix of: retrieval, inference, author's intent/purpose, prediction, summarising, vocabulary in context, evidence finding, comparison, and evaluation — each tied to THIS passage.
 Warm-up: vocabulary, prediction, short-answer retrieval.
 Core: read-passage, short-answer / multiple-choice comprehension, reasoning.
 Stretch: deeper inference, author purpose, short justified response.`;
+    }
     case "spelling":
       return `${base}
 Subject mode: spelling.
@@ -115,6 +153,9 @@ Use the target pattern consistently. Dictation may be open/oral without a multip
 Subject mode: maths.
 Include learningObjective, prerequisiteKnowledge[], explanation, workedExamples[{ question, steps[], answer }].
 EVERY stage (including warm-up) MUST include a non-empty "explanation" string OR at least one workedExamples entry.
+Closed-answer practice questions MUST include four distinct choices/options (one correct, three plausible distractors). Do not return a single answer button.
+Keep the lesson on this maths skill only — do not add English reading passages, spelling, or unrelated subjects.
+Match the year group and difficulty: Year 4+ must not be simple one-step times-table recall such as "What is 6 x 2?".
 Warm-up: short explanation plus 1–2 retrieval or reasoning prompts; open "Explain why…" questions should use kind "reasoning".
 Core MUST include ALL of:
 1) a clear teaching explanation
@@ -153,11 +194,27 @@ Practical/reflection items do not need a single fixed text answer.`;
     case "practical-music":
       return `${base}
 Subject mode: ${mode}.
-Focus on practical/creative process, technique, and reflection — not fake reading passages.`;
+This is ${context?.subject ?? mode} for ${context?.yearGroup ?? "the booked year group"}, skill focus "${context?.skillFocus ?? ""}".
+Focus on practical/creative process, technique, and reflection — not fake reading passages and not maths calculations.`;
+    case "computing":
+      return `${base}
+Subject mode: computing.
+This is Computing for ${context?.yearGroup ?? "the booked year group"}, skill focus "${context?.skillFocus ?? ""}".
+Do NOT generate maths arrays, times tables, or English phonics. Questions must be about algorithms, code, data, networks, or online safety as appropriate to the year group.
+Closed-answer questions MUST include four distinct choices.`;
+    case "humanities":
+      return `${base}
+Subject mode: humanities.
+This lesson is ${context?.subject ?? "humanities"} for ${context?.yearGroup ?? "the booked year group"}, skill focus "${context?.skillFocus ?? ""}".
+Do NOT generate maths calculations, arrays, times tables, number bonds, or English-only phonics.
+Questions must stay on this subject and year group only (history, geography, RE, or citizenship as booked).
+Closed-answer questions MUST include four distinct choices.`;
     default:
       return `${base}
 Subject mode: ${mode}.
-Produce topic-specific teaching explanation and varied questions with model answers. Avoid generic reusable templates.`;
+This lesson is ${context?.subject ?? mode} for ${context?.yearGroup ?? "the booked year group"}, skill focus "${context?.skillFocus ?? ""}".
+Produce topic-specific teaching explanation and varied questions with model answers. Avoid generic reusable templates.
+Do NOT switch into a different school subject. Closed-answer questions MUST include four distinct choices.`;
   }
 }
 
@@ -226,6 +283,21 @@ export function repairHintForIssues(issues: string[]): string {
       "Weekly uniqueness failed: invent a new scenario/observation and vary activity kinds and order versus earlier this week.",
     );
   }
+  if (joined.includes("sl_reading_thin_passage") || joined.includes("missing_passage") || joined.includes("sl_reading_thin_vocabulary")) {
+    hints.push(
+      "Reading depth failed: keep the shared passage, teach a comprehension strategy in explanation, add vocabulary from the passage, and write questions that quote evidence — do not invent a generic 'main idea of a paragraph' quiz.",
+    );
+  }
+  if (joined.includes("sl_skill_practice_mismatch") || joined.includes("sl_skill_teaching_mismatch")) {
+    hints.push(
+      "Practice drifted into generic reading comprehension. Keep the shared passage as context, but every question must practise the skill focus (identify / complete / rewrite / apply that language feature). Do not ask plot, feelings, or main-idea questions unless they also require applying the skill.",
+    );
+  }
+  if (joined.includes("sl_model_not_from_passage")) {
+    hints.push(
+      "Worked examples must quote an actual sentence from the shared passage and think aloud how the skill applies to that sentence. Do not invent an unrelated example.",
+    );
+  }
   if (joined.includes("sl_thin_teaching") || joined.includes("sl_missing_") || joined.includes("sl_excessive_repetition") || joined.includes("sl_insufficient_practice_depth")) {
     hints.push(
       "Short Learning depth failed: rebuild as a full teaching cycle for the allocated minutes — prior warm-up, substantial explanation, ≥2 worked examples (lesson), guided + independent practice, misconceptions[], reflectionCheck, transitionNote, and varied (non-clone) practice. Do not pad with repetitive number substitutions.",
@@ -256,6 +328,7 @@ function stageIntentGuidance(input: DaytimeAiStageInput): string {
           mode: input.mode,
           stageLabel: input.stageLabel,
           targetMinutes: input.targetMinutes,
+          skillFocus: input.skillFocus,
         })
       : "";
   const emitOrder =
@@ -264,8 +337,8 @@ function stageIntentGuidance(input: DaytimeAiStageInput): string {
 1) learningObjective, priorLearningWarmup, explanation (substantial), workedExamples (≥2 for lesson blocks)
 2) misconceptions[], reflectionCheck, transitionNote
 3) activities[] covering scaffold + independent + reasoning/reflection
-4) questions[] with varied stems (guided then independent then reasoning) — never near-identical number substitutions
-Keep JSON complete within the token budget; prefer fewer high-quality items over truncated empty shells.`
+4) questions[] — at least ${input.targetItems} pupil tasks for this ${input.targetMinutes}m block. Most closed items need four distinct choices. Do not return only 2–3 questions.
+Keep JSON complete within the token budget, but do not drop practice items to save space.`
       : "";
 
   const label = input.stageLabel.toLowerCase();
@@ -279,7 +352,14 @@ Keep JSON complete within the token budget; prefer fewer high-quality items over
 - Do NOT introduce a new topic or stretch into unrelated skills
 - Stay within targetMinutes — deepen review quality, do not expand duration`;
     } else if (input.mode === "guided-reading") {
-      intent = `Recap intent (mandatory): Review earlier reading learning for this skill focus — not a new unrelated story quiz.
+      intent = englishSkillUsesPassageAsLanguageContext(input.skillFocus)
+        && input.instructionalDepthProfile === "short-learning"
+        ? `Recap intent (mandatory): Review "${input.skillFocus}" using the shared passage — not a new plot quiz.
+- Restate how the language feature works
+- Include one worked example quoting a passage sentence
+- 2–3 skill checks (identify / complete / rewrite)
+- Stay within targetMinutes`
+        : `Recap intent (mandatory): Review earlier reading learning for this skill focus — not a new unrelated story quiz.
 - Keep continuity with the session theme/skill
 - Use varied stems (retrieval, evidence, vocabulary in context) — avoid repeating generic main-idea/feeling/lesson stems
 - Stay within targetMinutes`;
@@ -287,7 +367,16 @@ Keep JSON complete within the token budget; prefer fewer high-quality items over
       intent = `Recap intent: genuinely review earlier learning for skill focus "${input.skillFocus}". Do not pad with unrelated new content. Stay within targetMinutes.`;
     }
   } else if (input.mode === "guided-reading") {
-    intent = `Comprehension variety: across questions, cover different thinking types (retrieval, inference, author's intent, prediction, summarising, vocabulary in context, evidence, comparison, evaluation). Avoid near-identical stems.`;
+    intent = englishSkillUsesPassageAsLanguageContext(input.skillFocus)
+      && input.instructionalDepthProfile === "short-learning"
+      ? `Skill-practice progression for "${input.skillFocus}":
+- Model on a quoted sentence from the shared passage
+- Identify/explain the feature in passage sentences
+- Complete or manipulate the feature
+- Rewrite/combine using the feature
+- Later items: independent application
+Do NOT switch into generic plot/feelings/main-idea comprehension.`
+      : `Comprehension variety: across questions, cover different thinking types (retrieval, inference, author's intent, prediction, summarising, vocabulary in context, evidence, comparison, evaluation). Avoid near-identical stems.`;
   }
 
   return [intent, depth, emitOrder].filter(Boolean).join("\n\n");
@@ -360,7 +449,7 @@ export async function generateDaytimeStageWithOpenAi(
     try {
       const openAiStarted = Date.now();
       const result = await requestOpenAiJson({
-        systemPrompt: systemPromptForMode(input.mode),
+        systemPrompt: systemPromptForMode(input.mode, input),
         userPrompt: userPromptForStage({
           ...input,
           previousValidationErrors: lastIssues,
@@ -387,6 +476,12 @@ export async function generateDaytimeStageWithOpenAi(
         }
         if (input.sharedVocabulary?.length && !normalized.vocabulary?.length) {
           normalized.vocabulary = input.sharedVocabulary;
+        }
+        if (
+          input.instructionalDepthProfile === "short-learning"
+          && englishSkillUsesPassageAsLanguageContext(input.skillFocus)
+        ) {
+          ensureWorkedExampleFromPassage(normalized, input.skillFocus);
         }
       }
       // Maths stages sometimes omit structured teaching fields even when questions exist.
@@ -430,6 +525,7 @@ export async function generateDaytimeStageWithOpenAi(
         lessonTitle: input.lessonTitle,
         instructionalDepthProfile: input.instructionalDepthProfile,
         stageLabel: input.stageLabel,
+        skillFocus: input.skillFocus,
       });
       const weeklyIssues = validateAgainstWeeklyMemory({
         pack: normalized,
@@ -560,6 +656,7 @@ Skill focus: ${input.skillFocus}
 Year group: ${input.yearGroup}
 Key stage: ${input.keyStage}
 Create an engaging original passage pupils can actually read.
+If the skill focus is a grammar or language feature, the passage MUST contain at least four clear natural examples of that feature (do not write a plot-only story that never uses it).
 ${DAYTIME_BRITISH_ENGLISH_RULES}
 
 ${formatWeeklyMemoryForPrompt(input.weeklyMemory)}

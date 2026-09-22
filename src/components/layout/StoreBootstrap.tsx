@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
-import { getProfile, hydrateProfilesFromServer } from "@/lib/store";
+import { getProfile, hydrateActiveProfileFromServer, hydrateProfilesFromServer } from "@/lib/store";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
+import { decideStudentStoreBootstrap } from "@/lib/student-store-bootstrap";
 
 type Props = {
   children: React.ReactNode;
@@ -61,11 +62,19 @@ export default function StoreBootstrap({ children }: Props) {
         setShowFallback(true);
       }
     }, 5000);
+    const failsafeId = window.setTimeout(() => {
+      if (mounted) {
+        setReady(true);
+      }
+    }, 20_000);
 
     const bootstrap = async () => {
       // Teachers/staff are not parents/learners — never require a child profile.
       try {
-        const meRes = await fetchWithRefreshRetry("/api/auth/me", { credentials: "include" });
+        const meRes = await fetchWithRefreshRetry("/api/auth/me", {
+          credentials: "include",
+          signal: AbortSignal.timeout(12_000),
+        });
         if (meRes.ok) {
           const me = await meRes.json() as { user?: { role?: string } };
           const role = me.user?.role;
@@ -80,6 +89,25 @@ export default function StoreBootstrap({ children }: Props) {
             }
             if (mounted) {
               window.clearTimeout(timeoutId);
+              window.clearTimeout(failsafeId);
+              setReady(true);
+            }
+            return;
+          }
+
+          // Independent student sessions resolve ChildProfile via userId.
+          // Never bounce them through the parent profile picker or parent consent gate —
+          // that created a /student/dashboard ↔ /profiles refresh loop.
+          if (role === "student") {
+            await hydrateActiveProfileFromServer();
+            const decision = decideStudentStoreBootstrap(pathname);
+            if (decision.action === "replace") {
+              window.location.replace(decision.path);
+              return;
+            }
+            if (mounted) {
+              window.clearTimeout(timeoutId);
+              window.clearTimeout(failsafeId);
               setReady(true);
             }
             return;
@@ -98,7 +126,10 @@ export default function StoreBootstrap({ children }: Props) {
       }
 
       try {
-        const response = await fetchWithRefreshRetry("/api/consent", { credentials: "include" });
+        const response = await fetchWithRefreshRetry("/api/consent", {
+          credentials: "include",
+          signal: AbortSignal.timeout(12_000),
+        });
         if (response.ok) {
           const payload = await response.json() as { accepted: boolean };
           if (!payload.accepted) {
@@ -119,6 +150,7 @@ export default function StoreBootstrap({ children }: Props) {
 
       if (mounted) {
         window.clearTimeout(timeoutId);
+        window.clearTimeout(failsafeId);
         setReady(true);
       }
     };
@@ -127,6 +159,7 @@ export default function StoreBootstrap({ children }: Props) {
     return () => {
       mounted = false;
       window.clearTimeout(timeoutId);
+      window.clearTimeout(failsafeId);
     };
   }, [pathname, skipBootstrap]);
 

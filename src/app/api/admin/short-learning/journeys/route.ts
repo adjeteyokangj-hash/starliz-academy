@@ -5,6 +5,8 @@ import { requireAdminPermission } from "@/lib/api_guard";
 import {
   generateShortLearningJourney,
 } from "@/lib/schools/short-learning-journey";
+import { canonicalShortLearningSubjectKey } from "@/lib/schools/short-learning-curriculum";
+import { listQuestionBankRefillAlerts } from "@/lib/schools/short-learning-question-rotation";
 import {
   SHORT_LEARNING_ADMIN_DURATIONS,
   isShortLearningAdminDuration,
@@ -44,7 +46,8 @@ export async function GET(request: Request) {
     },
   });
 
-  return NextResponse.json({ ok: true, journeys });
+  const questionBankAlerts = await listQuestionBankRefillAlerts(schoolId);
+  return NextResponse.json({ ok: true, journeys, questionBankAlerts });
 }
 
 export async function POST(request: Request) {
@@ -69,10 +72,18 @@ export async function POST(request: Request) {
     );
   }
 
+  const subject = canonicalShortLearningSubjectKey(body.subject);
+  if (!subject) {
+    return NextResponse.json(
+      { error: "Subject must match a parent-bookable Short Learning subject." },
+      { status: 400 },
+    );
+  }
+
   try {
     const journey = await generateShortLearningJourney({
       schoolId: body.schoolId,
-      subject: body.subject,
+      subject,
       yearGroup: body.yearGroup,
       difficulty: body.difficulty,
       topic: body.topic,

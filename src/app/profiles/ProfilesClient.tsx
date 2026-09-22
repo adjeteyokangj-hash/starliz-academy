@@ -70,10 +70,10 @@ export default function ProfilesClient() {
             </div>
           ) : null}
           <div className="mt-6 flex gap-3">
-            <Link href="/parent-pin">
+            <Link href="/parent/children?mode=add">
               <Button variant="accent">{profiles.length ? "Add another child" : "Parent: add child profile"}</Button>
             </Link>
-            <Link href="/parent-pin"><Button variant="secondary">Parent Area 🔒</Button></Link>
+            <Link href="/parent/dashboard"><Button variant="secondary">Parent Area</Button></Link>
           </div>
         </Card>
       </div>

@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { DashboardProps } from "./dashboardTypes";
+import { defaultStudentDashboardSections } from "./dashboardTypes";
 import { useRouter } from "next/navigation";
 import StudyPlanBadge from "@/components/learning/StudyPlanBadge";
 import { percentageWidthClass } from "@/lib/progress-class";
@@ -65,8 +67,11 @@ export default function PrimaryDashboard({
   onOpenStore,
   pendingAssignmentId,
   openingStore,
+  dashboardSections,
 }: DashboardProps) {
   const router = useRouter();
+  const [selectedStat, setSelectedStat] = useState<"stars" | "xp" | "coins" | "streak" | null>(null);
+  const sections = dashboardSections ?? defaultStudentDashboardSections();
   const journeyAssignments = [focusAssignment, weakAssignment, reviewAssignment]
     .filter((assignment, index, array): assignment is NonNullable<typeof assignment> => {
       return Boolean(assignment) && array.findIndex((candidate) => candidate?.id === assignment?.id) === index;
@@ -124,22 +129,94 @@ export default function PrimaryDashboard({
       ) : null}
 
       {/* Stats */}
-      <div className="grid gap-3 sm:grid-cols-4">
-        {[
-          { label: "⭐ Stars", value: stats.stars },
-          { label: "✨ XP", value: stats.xp },
-          { label: "🪙 Coins", value: stats.coins },
-          { label: "🔥 Streak", value: stats.streak },
-        ].map(({ label, value }) => (
-          <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-            <p className="mt-1 text-xl font-black text-slate-900">{value}</p>
+      {(() => {
+        const primaryStatCards = [
+          {
+            key: "stars" as const,
+            label: "⭐ Stars",
+            value: stats.stars,
+            meaning: "Stars you earn from strong lesson results. Stars power your primary rewards store (Years 1–6).",
+            improve: "Finish lessons with high accuracy to collect more stars, then spend them in the store.",
+            ctaLabel: "Open store",
+            onCta: () => onOpenStore(),
+          },
+          {
+            key: "xp" as const,
+            label: "✨ XP",
+            value: stats.xp,
+            meaning: "Experience points from completed learning. XP links to your primary rewards store (Years 1–6).",
+            improve: "Complete Today's Journey to grow XP, then visit the store for unlocks and items.",
+            ctaLabel: "Open store",
+            onCta: () => onOpenStore(),
+          },
+          {
+            key: "coins" as const,
+            label: "🪙 Coins",
+            value: stats.coins,
+            meaning: "Coins you can spend in the StarLiz store (Years 1–6 only).",
+            improve: "Keep practising daily — coins unlock after successful activities.",
+            ctaLabel: "Open store",
+            onCta: () => onOpenStore(),
+          },
+          {
+            key: "streak" as const,
+            label: "🔥 Streak",
+            value: stats.streak,
+            meaning: "How many days in a row you have been learning.",
+            improve: "Do at least one lesson today to keep your streak going.",
+            ctaLabel: "Start today's journey",
+            onCta: () => void onStartJourney(),
+          },
+        ];
+        const selectedCard = primaryStatCards.find((card) => card.key === selectedStat) ?? null;
+        return (
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-4">
+              {primaryStatCards.map((card) => {
+                const selected = selectedStat === card.key;
+                return (
+                  <button
+                    key={card.key}
+                    type="button"
+                    onClick={() => setSelectedStat(selected ? null : card.key)}
+                    aria-expanded={selected}
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                      selected
+                        ? "border-indigo-300 bg-indigo-50 ring-2 ring-indigo-200"
+                        : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                    }`}
+                  >
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{card.label}</p>
+                    <p className="mt-1 text-xl font-black text-slate-900">{card.value}</p>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedCard ? (
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50/80 p-4">
+                <p className="text-sm font-semibold text-slate-800">{selectedCard.meaning}</p>
+                <p className="mt-2 text-sm text-slate-700">
+                  <span className="font-bold text-slate-900">How to improve: </span>
+                  {selectedCard.improve}
+                </p>
+                <button
+                  type="button"
+                  onClick={selectedCard.onCta}
+                  disabled={startingJourney || loading || (["stars", "xp", "coins"].includes(selectedCard.key) && openingStore)}
+                  className="mt-3 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-60"
+                >
+                  {selectedCard.ctaLabel}
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs font-semibold text-slate-500">Tap a score for tips on how to improve it.</p>
+            )}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
-      {/* AI Learning Signals */}
-      {sessionSummary && (
+      {/* AI Learning Signals — Last Session / Session Insights (admin-gated) */}
+      {sections.lastSession && sessionSummary ? (
         <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">AI Learning Signals</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -157,7 +234,7 @@ export default function PrimaryDashboard({
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
       {placementLevels && Object.keys(placementLevels).length > 0 ? (
         <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
@@ -174,7 +251,7 @@ export default function PrimaryDashboard({
         </section>
       ) : null}
 
-      {placementLessonGroups && placementLessonGroups.length > 0 ? (
+      {sections.firstLessons && placementLessonGroups && placementLessonGroups.length > 0 ? (
         <section className="rounded-3xl border border-violet-200 bg-violet-50 p-5">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Your First Lessons</p>
           <div className="mt-3 space-y-4">
@@ -278,7 +355,7 @@ export default function PrimaryDashboard({
       </section>
 
       {/* Assigned content */}
-      {!loading && visibleAssignments.length > 0 && (
+      {sections.assignedWork && !loading && visibleAssignments.length > 0 ? (
         <section className="rounded-3xl border border-sky-200 bg-sky-50 p-6">
           <p className="text-sm font-black uppercase tracking-[0.2em] text-sky-700">📋 Your Assigned Tasks</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -312,7 +389,7 @@ export default function PrimaryDashboard({
             ))}
           </div>
         </section>
-      )}
+      ) : null}
 
       {/* Smart Coach */}
       <section className="rounded-3xl border border-slate-200 bg-slate-50 p-6">

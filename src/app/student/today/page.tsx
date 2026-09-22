@@ -13,11 +13,13 @@ import {
 } from "@/components/student/school-day/periodStatus";
 import { subjectGlyph } from "@/components/student/school-day/subjectGlyph";
 import {
+  findCurrentPeriod,
+  findNextPeriod,
+  isPlayableDaytimeLessonType,
   minutesNow,
   parseHmToMinutes,
   resolvePeriodState,
 } from "@/lib/schools/school-day-period";
-import { isPlayableDaytimeLessonType } from "@/lib/schools/start-daytime-period";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 
 type BoardPeriod = {
@@ -166,6 +168,10 @@ export default function StudentTodayPage() {
       if (typeof data.href !== "string" || !data.href) {
         throw new Error("Classroom link was missing.");
       }
+      const target = data.href.split("?")[0];
+      if (data.mode === "period_complete" || target === "/student/today") {
+        throw new Error("This lesson has finished. Open the lesson that is on now.");
+      }
       router.push(data.href);
     } catch (cause) {
       setStartError(cause instanceof Error ? cause.message : "Unable to enter this classroom.");
@@ -173,8 +179,8 @@ export default function StudentTodayPage() {
     }
   }
 
-  const current = board?.periods.find((row) => row.id === board.currentPeriodId) ?? null;
-  const next = board?.periods.find((row) => row.id === board.nextPeriodId) ?? null;
+  const current = board ? findCurrentPeriod(board.periods, nowMinutes) : null;
+  const next = board ? findNextPeriod(board.periods, nowMinutes) : null;
   const focus = current ?? next;
   const currentPlayable = Boolean(current && isPlayableDaytimeLessonType(current.lessonType));
   const progress = useMemo(() => {
@@ -230,10 +236,10 @@ export default function StudentTodayPage() {
 
         {loading ? <p className="text-sm text-foreground/60">Loading your school day…</p> : null}
         {error ? (
-          <p className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</p>
+          <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{error}</p>
         ) : null}
         {startError ? (
-          <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">{startError}</p>
+          <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{startError}</p>
         ) : null}
 
         {!loading && !error && board && !board.enrolment ? (
@@ -377,12 +383,12 @@ export default function StudentTodayPage() {
                     const ui = resolvePeriodUiStatus({
                       clockState: clock,
                       lessonType: period.lessonType,
-                      isCurrent: period.id === board.currentPeriodId,
-                      isNext: period.id === board.nextPeriodId,
+                      isCurrent: period.id === current?.id,
+                      isNext: period.id === next?.id,
                     });
                     const glyph = subjectGlyph(period);
                     const done = clock === "past";
-                    const active = period.id === board.currentPeriodId;
+                    const active = period.id === current?.id;
                     return (
                       <li key={period.id} className="flex flex-col items-stretch">
                         <div

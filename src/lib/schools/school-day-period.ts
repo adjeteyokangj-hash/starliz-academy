@@ -1,5 +1,7 @@
 /** Shared school-day period clock helpers for admin, tutor, and student boards. */
 
+import { getUkParts } from "@/lib/uk-datetime";
+
 export type PeriodClockState = "before_school" | "now" | "upcoming" | "past" | "after_school";
 
 export type TimedPeriod = {
@@ -17,8 +19,20 @@ export function schoolDayOfWeek(date = new Date()): number {
   return day;
 }
 
+/** Calendar weekday in Europe/London: 0=Sunday … 6=Saturday. */
+export function ukCalendarDayOfWeek(date = new Date()): number {
+  return getUkParts(date).weekday;
+}
+
+/** Monday–Friday timetable day in Europe/London, or null on Saturday/Sunday. */
+export function ukSchoolTimetableDay(date = new Date()): number | null {
+  const day = ukCalendarDayOfWeek(date);
+  if (day === 0 || day === 6) return null;
+  return day;
+}
+
 export function weekdayLabel(dayOfWeek: number): string {
-  if (dayOfWeek >= 1 && dayOfWeek <= 5) return DAY_LABELS[dayOfWeek];
+  if (dayOfWeek >= 0 && dayOfWeek <= 6) return DAY_LABELS[dayOfWeek];
   return "Weekday";
 }
 
@@ -40,6 +54,11 @@ export function isValidTimeRange(startsAt: string, endsAt: string): boolean {
 
 export function minutesNow(date = new Date()): number {
   return date.getHours() * 60 + date.getMinutes();
+}
+
+export function minutesNowUk(date = new Date()): number {
+  const parts = getUkParts(date);
+  return parts.hour * 60 + parts.minute;
 }
 
 export function comparePeriods(a: TimedPeriod, b: TimedPeriod): number {

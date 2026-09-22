@@ -1,23 +1,18 @@
 import { NextResponse } from "next/server";
-import { readChildSelectionFromCookie, readSessionFromCookie } from "@/lib/auth";
+import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   ensureShortLearningSessionContent,
   getShortLearningSessionSummary,
   startShortLearningContentBlock,
 } from "@/lib/schools/short-learning-session-content";
-import { resolveParentActiveChildId } from "@/lib/activeChild";
-import { resolveParentScope } from "@/lib/parent_scope";
+import { resolveActiveChildForSession } from "@/lib/activeChild";
 
 type Params = { params: Promise<{ bookingId: string }> };
 
 async function resolveChildId(session: { userId: string; email: string; role: string }): Promise<string | null> {
-  let childId: string | null = await readChildSelectionFromCookie(session.userId);
-  if (!childId && session.role === "parent") {
-    const parentScope = await resolveParentScope(session);
-    if (parentScope) childId = await resolveParentActiveChildId(parentScope.parentId);
-  }
-  return childId;
+  const resolved = await resolveActiveChildForSession(session);
+  return resolved.ok ? resolved.childId : null;
 }
 
 async function assertBookingAccess(bookingId: string, childId: string) {
@@ -27,7 +22,7 @@ async function assertBookingAccess(bookingId: string, childId: string) {
       schoolStudent: { childId, status: "active" },
       status: { in: ["booked", "confirmed", "attended"] },
     },
-    select: { id: true, subject: true, durationMinutes: true, learningFocus: true },
+    select: { id: true, subject: true, durationMinutes: true, learningFocus: true, startsAt: true, endsAt: true },
   });
 }
 
@@ -62,6 +57,8 @@ export async function GET(_request: Request, { params }: Params) {
       subject: booking.subject,
       durationMinutes: booking.durationMinutes,
       learningFocus: booking.learningFocus,
+      startsAt: booking.startsAt.toISOString(),
+      endsAt: booking.endsAt.toISOString(),
     },
     session: summary,
   });
@@ -78,10 +75,15 @@ export async function POST(request: Request, { params }: Params) {
   const { bookingId } = await params;
   const booking = await assertBookingAccess(bookingId, childId);
   if (!booking) return NextResponse.json({ error: "Booking not found." }, { status: 404 });
+  if (Date.now() >= booking.endsAt.getTime()) {
+    return NextResponse.json({ error: "This Short Learning window has ended.", ended: true }, { status: 400 });
+  }
 
   const body = (await request.json().catch(() => ({}))) as {
     forceRegenerate?: boolean;
     blockOrder?: number;
+    completedContentId?: string;
+    completedBlockId?: string;
   };
 
   try {
@@ -93,6 +95,8 @@ export async function POST(request: Request, { params }: Params) {
       childId,
       actorUserId: session.userId,
       blockOrder: typeof body.blockOrder === "number" ? body.blockOrder : undefined,
+      completedContentId: typeof body.completedContentId === "string" ? body.completedContentId : undefined,
+      completedBlockId: typeof body.completedBlockId === "string" ? body.completedBlockId : undefined,
     });
     return NextResponse.json(started);
   } catch (error) {

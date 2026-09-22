@@ -11,32 +11,13 @@ function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
-function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) {
-    return promise;
+function initWithoutAbortedSignal(init?: RequestInit): RequestInit | undefined {
+  if (!init?.signal?.aborted) {
+    return init;
   }
-
-  if (signal.aborted) {
-    return Promise.reject(new DOMException("The operation was aborted.", "AbortError"));
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      reject(new DOMException("The operation was aborted.", "AbortError"));
-    };
-
-    signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(value);
-      },
-      (error) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(error);
-      }
-    );
-  });
+  const rest = { ...init };
+  delete rest.signal;
+  return rest;
 }
 
 async function executeRefreshOnce(): Promise<RefreshResult> {
@@ -45,6 +26,7 @@ async function executeRefreshOnce(): Promise<RefreshResult> {
       method: "POST",
       credentials: "include",
       cache: "no-store",
+      signal: AbortSignal.timeout(12_000),
     });
     return { ok: response.ok, status: response.status };
   } catch {
@@ -71,6 +53,30 @@ export async function refreshAuthSession(options?: { retryOnce?: boolean }): Pro
   return first;
 }
 
+export function shouldRefreshAfter401(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") {
+    return true;
+  }
+
+  const record = payload as { valid?: unknown; error?: unknown; code?: unknown };
+  if (record.valid === false) return false;
+  if (record.code === "invalid_pin" || record.code === "pin_setup_required") return false;
+
+  if (typeof record.error === "string") {
+    const error = record.error.toLowerCase();
+    if (
+      error === "unauthorized"
+      || error === "session expired"
+      || error.includes("refresh token")
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  return true;
+}
+
 export async function fetchWithRefreshRetry(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const signal = init?.signal ?? undefined;
   throwIfAborted(signal);
@@ -79,14 +85,15 @@ export async function fetchWithRefreshRetry(input: RequestInfo | URL, init?: Req
     return first;
   }
 
-  const refreshResult = await raceWithAbort(
-    refreshAuthSession({ retryOnce: true }),
-    signal,
-  );
+  const payload = await first.clone().json().catch(() => null);
+  if (!shouldRefreshAfter401(payload)) {
+    return first;
+  }
+
+  const refreshResult = await refreshAuthSession({ retryOnce: true });
   if (!refreshResult.ok) {
     return first;
   }
 
-  throwIfAborted(signal);
-  return fetch(input, init);
+  return fetch(input, initWithoutAbortedSignal(init));
 }

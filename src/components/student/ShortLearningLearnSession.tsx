@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
-import { SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-bookings";
+import ShortLearningSessionClock from "@/components/student/ShortLearningSessionClock";
+import { SHORT_LEARNING_EARLY_ENTRY_MINUTES, SHORT_LEARNING_PROMISE } from "@/lib/schools/short-learning-constants";
+import { isShortLearningClockOpen } from "@/lib/schools/short-learning-session-clock";
+import { isStructuralShortLearningBlockType } from "@/lib/schools/short-learning-classroom";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import { formatUkDateTime } from "@/lib/uk-datetime";
 
@@ -36,15 +39,6 @@ type SessionPayload = {
   blocks: SessionBlock[];
 };
 
-function formatRemainingMs(ms: number): string {
-  if (ms <= 0) return "Session ended";
-  const totalMinutes = Math.ceil(ms / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours <= 0) return `${minutes} min remaining`;
-  return `${hours}h ${minutes}m remaining`;
-}
-
 function blockTone(blockType: string): string {
   if (blockType === "break") return "border-amber-200 bg-amber-50 text-amber-950";
   if (blockType === "tutor_support") return "border-sky-200 bg-sky-50 text-sky-950";
@@ -60,11 +54,8 @@ export default function ShortLearningLearnSession(props: Props) {
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<SessionPayload | null>(null);
 
-  const startsAtMs = useMemo(() => new Date(props.startsAtIso).getTime(), [props.startsAtIso]);
-  const endsAtMs = useMemo(() => new Date(props.endsAtIso).getTime(), [props.endsAtIso]);
-
   useEffect(() => {
-    const tick = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    const tick = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(tick);
   }, []);
 
@@ -99,8 +90,12 @@ export default function ShortLearningLearnSession(props: Props) {
     };
   }, [props.bookingId]);
 
-  const windowOpen = nowMs >= startsAtMs - 10 * 60_000 && nowMs <= endsAtMs;
-  const remainingLabel = formatRemainingMs(endsAtMs - nowMs);
+  const windowOpen = isShortLearningClockOpen({
+    startsAtIso: props.startsAtIso,
+    endsAtIso: props.endsAtIso,
+    nowMs,
+    earlyEntryMinutes: SHORT_LEARNING_EARLY_ENTRY_MINUTES,
+  });
   const readyBlocks = (session?.blocks ?? []).filter((b) => b.contentId).length;
   const generativeBlocks = (session?.blocks ?? []).filter((b) =>
     ["welcome", "lesson", "recap", "challenge", "review"].includes(b.blockType),
@@ -128,6 +123,10 @@ export default function ShortLearningLearnSession(props: Props) {
         router.push(payload.lessonHref);
         return;
       }
+      if (payload.done && typeof payload.href === "string" && payload.href.startsWith("/")) {
+        router.push(payload.href);
+        return;
+      }
       throw new Error("Session started but no lesson link was returned.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to start AI tutoring.");
@@ -150,7 +149,7 @@ export default function ShortLearningLearnSession(props: Props) {
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700">Short Learning · AI-led journey</p>
           <h1 className="mt-1 text-2xl font-bold text-foreground">Your guided learning session</h1>
           <p className="mt-2 text-sm text-foreground/70">
-            Same Daytime AI engine — sequenced into a {props.durationMinutes}-minute journey with lessons, recaps,
+            Same Daytime AI engine — a {props.durationMinutes}-minute classroom with teaching, practice, recaps,
             challenge, and AI Tutor support.
           </p>
           <p className="mt-3 text-sm font-medium text-violet-950">{SHORT_LEARNING_PROMISE}</p>
@@ -167,7 +166,13 @@ export default function ShortLearningLearnSession(props: Props) {
                 <p className="mt-2 text-sm text-foreground/80">Focus: {props.learningFocus}</p>
               ) : null}
             </div>
-            <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-800">{remainingLabel}</span>
+            <div className="min-w-[16rem] flex-1 sm:max-w-sm">
+              <ShortLearningSessionClock
+                bookingId={props.bookingId}
+                endsAtIso={props.endsAtIso}
+                durationMinutes={props.durationMinutes}
+              />
+            </div>
           </div>
 
           <div className="mt-5 rounded-xl border border-border bg-muted/30 p-4">
@@ -201,10 +206,14 @@ export default function ShortLearningLearnSession(props: Props) {
                       <p className="text-xs opacity-80">
                         {block.estimatedMinutes > 0 ? `${block.estimatedMinutes} min` : "Wrap-up"}
                         {block.learningObjective ? ` · ${block.learningObjective}` : ""}
-                        {block.contentId ? " · content ready" : block.blockType === "break" || block.blockType === "tutor_support" || block.blockType === "progress_report" ? "" : " · waiting"}
+                        {block.status === "completed"
+                          ? " · done"
+                          : block.contentId || isStructuralShortLearningBlockType(block.blockType)
+                            ? " · ready"
+                            : " · waiting"}
                       </p>
                     </div>
-                    {block.contentId && windowOpen ? (
+                    {(block.contentId || isStructuralShortLearningBlockType(block.blockType)) && windowOpen && block.status !== "completed" ? (
                       <button
                         type="button"
                         disabled={starting}
@@ -234,10 +243,10 @@ export default function ShortLearningLearnSession(props: Props) {
 
           {!windowOpen ? (
             <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-              {nowMs < startsAtMs ? (
+              {nowMs < Date.parse(props.startsAtIso) ? (
                 <p>
-                  You can enter from 10 minutes before the start (
-                  {formatUkDateTime(new Date(startsAtMs - 10 * 60_000).toISOString())}).
+                  You can enter from {SHORT_LEARNING_EARLY_ENTRY_MINUTES} minutes before the start (
+                  {formatUkDateTime(new Date(Date.parse(props.startsAtIso) - SHORT_LEARNING_EARLY_ENTRY_MINUTES * 60_000).toISOString())}).
                 </p>
               ) : (
                 <p>This Short Learning window has ended.</p>
@@ -256,7 +265,7 @@ export default function ShortLearningLearnSession(props: Props) {
                 disabled={starting}
                 className="inline-flex rounded-xl bg-violet-700 px-5 py-3 text-sm font-bold text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {starting ? "Starting learning block…" : "Continue with next learning block"}
+                {starting ? "Starting classroom…" : "Continue with the next classroom stage"}
               </button>
             </div>
           )}

@@ -67,8 +67,13 @@ import {
   DaytimePracticalPanel,
 } from "@/components/student/daytime-lesson";
 import DaytimeTutorPanel from "@/components/games/DaytimeTutorPanel";
+import ShortLearningSessionClock from "@/components/student/ShortLearningSessionClock";
+import ShortLearningLessonShell from "@/components/student/ShortLearningLessonShell";
+import ShortLearningTeachMoment from "@/components/student/ShortLearningTeachMoment";
 import { useDaytimeStagePack } from "@/components/student/daytime-lesson/useDaytimeStagePack";
 import { isPracticalPePack } from "@/lib/schools/daytime-lesson-ui";
+import { buildShortLearningTeachingMoment } from "@/lib/schools/short-learning-classroom";
+import { canonicalShortLearningSubjectKey, shortLearningSubjectLabel } from "@/lib/schools/short-learning-curriculum";
 
 type LessonItem = NormalizedLessonItem;
 
@@ -81,6 +86,7 @@ type LessonAssignment = {
   title: string;
   skillFocus?: string | null;
   difficulty?: number;
+  yearGroup?: string | null;
   items: LessonItem[];
 };
 
@@ -308,7 +314,7 @@ function buildBossChallengeItem(section: "spelling" | "math" | "reading", slot: 
     } as unknown as LessonItem;
   }
 
-  if (slot === "mixed") {
+  if (slot === "mixed" && section === "reading") {
     return {
       id: "boss-reading-mixed",
       type: "reading",
@@ -527,6 +533,8 @@ export default function DailyLessonGamePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assignmentId = searchParams.get("assignmentId");
+  const improvingBoostMode = searchParams.get("mode") === "improving_boost";
+  const improvingTargetMinutes = Number(searchParams.get("targetMinutes") || "0");
   const daytimePeriodId = searchParams.get("daytimePeriodId");
   const shortLearningBookingId = searchParams.get("shortLearningBookingId");
   const shortLearningSessionId = searchParams.get("shortLearningSessionId");
@@ -555,12 +563,23 @@ export default function DailyLessonGamePage() {
   const [assignment, setAssignment] = useState<LessonAssignment | null>(null);
   const daytimeContentId = assignment?.contentId ?? urlContentId;
   const daytimeStagePack = useDaytimeStagePack({
-    enabled: Boolean(daytimePeriodId),
+    enabled: Boolean(daytimePeriodId || shortLearningBookingId),
     contentId: daytimeContentId,
     assignmentId,
   });
   const isDaytimeSchool = Boolean(daytimePeriodId && assignmentId && daytimeContentId);
-  const isShortLearning = Boolean(shortLearningBookingId && assignmentId && daytimeContentId);
+  const isShortLearning = Boolean(shortLearningBookingId);
+  const lessonSubjectLabel = (() => {
+    const raw = String(assignment?.subject ?? assignment?.title ?? "");
+    const booked = canonicalShortLearningSubjectKey(raw);
+    if (booked) return shortLearningSubjectLabel(booked);
+    const lower = raw.toLowerCase();
+    if (lower.includes("math")) return "Maths";
+    if (lower.includes("spell")) return "Spelling";
+    if (lower.includes("read") || lower.includes("english")) return "English";
+    if (lower.includes("science")) return "Science";
+    return isShortLearning ? (raw || "Short Learning") : "";
+  })();
   const isPracticalDaytime = isDaytimeSchool && isPracticalPePack(daytimeStagePack, assignment?.subject);
   const [loading, setLoading] = useState(true);
   const [sessionHydrated, setSessionHydrated] = useState(false);
@@ -572,6 +591,8 @@ export default function DailyLessonGamePage() {
   const [feedback, setFeedback] = useState("");
   const [records, setRecords] = useState<AnswerRecord[]>([]);
   const [completed, setCompleted] = useState(false);
+  const [sessionTimedOut, setSessionTimedOut] = useState(false);
+  const [boundAssignmentId, setBoundAssignmentId] = useState(assignmentId);
   const [saving, setSaving] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [tutorState, setTutorState] = useState<"idle" | "thinking" | "celebrate" | "try_again">("idle");
@@ -646,6 +667,26 @@ export default function DailyLessonGamePage() {
           router.replace("/onboarding");
           return;
         }
+        // Server auth failed but a stale local profile exists — do not pretend we are logged in.
+        if (!serverProfile && nextProfile) {
+          void fetchWithRefreshRetry("/api/auth/me", { credentials: "include" })
+            .then(async (meRes) => {
+              if (meRes.status === 401) {
+                const next = typeof window !== "undefined"
+                  ? `${window.location.pathname}${window.location.search}`
+                  : "/games/lesson";
+                router.replace(`/auth/login?next=${encodeURIComponent(next)}`);
+                return;
+              }
+              setProfile(nextProfile);
+              setProfileLoading(false);
+            })
+            .catch(() => {
+              setProfile(nextProfile);
+              setProfileLoading(false);
+            });
+          return;
+        }
         setProfile(nextProfile);
         setProfileLoading(false);
       })
@@ -685,6 +726,13 @@ export default function DailyLessonGamePage() {
       try {
         const response = await fetchWithRefreshRetry(`/api/student/assignments?id=${encodeURIComponent(assignmentId)}`, { credentials: "include" });
         const payload = (await response.json()) as LessonAssignment & { error?: string };
+        if (response.status === 401) {
+          const next = typeof window !== "undefined"
+            ? `${window.location.pathname}${window.location.search}`
+            : "/games/lesson";
+          router.replace(`/auth/login?next=${encodeURIComponent(next)}`);
+          return;
+        }
         if (!response.ok) throw new Error(payload.error ?? "Unable to load lesson.");
         setAssignment(payload);
         if (typeof window !== "undefined") {
@@ -703,23 +751,68 @@ export default function DailyLessonGamePage() {
       }
     }
     void loadLesson();
+  }, [assignmentId, router]);
+
+  const handleShortLearningEnded = useCallback(() => {
+    setSessionTimedOut(true);
+    setCompleted(true);
+  }, []);
+
+  if (boundAssignmentId !== assignmentId) {
+    setBoundAssignmentId(assignmentId);
+    setContinuingDaytime(false);
+    setCompleted(false);
+    setSessionTimedOut(false);
+    setStarted(false);
+    setIndex(0);
+    setRecords([]);
+    setAnswer("");
+    setFeedback("");
+    setFeedbackMode("none");
+    setError("");
+    setLessonPhase("warmup");
+    setSaveResult(null);
+    setAttemptCount(0);
+  }
+
+  useEffect(() => {
+    restoreCheckedRef.current = false;
+    tutorEngineLoadedRef.current = false;
+    bossEntryHandledRef.current = false;
   }, [assignmentId]);
 
   const activeAssignment = (() => {
     if (!assignment) return null;
-    if (!interventionMission) return assignment;
+    const withMission = !interventionMission
+      ? assignment
+      : {
+          ...assignment,
+          subject: interventionMission.subject,
+          title: interventionMission.title,
+          skillFocus: interventionSkill ?? assignment.skillFocus,
+          items: normalizeLessonContentItems(interventionMission.items, {
+            contentType: interventionMission.subject,
+            subject: interventionMission.subject,
+            topic: interventionMission.title,
+            skillFocus: interventionSkill ?? assignment.skillFocus ?? interventionMission.badge,
+            difficulty: assignment.difficulty ?? 1,
+            yearGroup: assignment.yearGroup,
+          }),
+        };
+
+    if (!improvingBoostMode) return withMission;
+
+    const minutes = Number.isFinite(improvingTargetMinutes) && improvingTargetMinutes > 0
+      ? improvingTargetMinutes
+      : 20;
+    const questionCap = Math.max(6, Math.min(12, Math.round(minutes / 2)));
+    const cappedItems = withMission.items.slice(0, questionCap);
     return {
-      ...assignment,
-      subject: interventionMission.subject,
-      title: interventionMission.title,
-      skillFocus: interventionSkill ?? assignment.skillFocus,
-      items: normalizeLessonContentItems(interventionMission.items, {
-        contentType: interventionMission.subject,
-        subject: interventionMission.subject,
-        topic: interventionMission.title,
-        skillFocus: interventionSkill ?? assignment.skillFocus ?? interventionMission.badge,
-        difficulty: assignment.difficulty ?? 1,
-      }),
+      ...withMission,
+      title: withMission.title?.startsWith("20-min boost")
+        ? withMission.title
+        : `20-min boost · ${withMission.skillFocus || withMission.title}`,
+      items: cappedItems,
     };
   })();
 
@@ -1167,7 +1260,8 @@ export default function DailyLessonGamePage() {
         }
 
         setStarted(Boolean(saved.started));
-        setLessonPhase(saved.lessonPhase ?? "warmup");
+        const restoredPhase = saved.lessonPhase ?? "warmup";
+        setLessonPhase(isShortLearning && restoredPhase === "boss_battle" ? "complete" : restoredPhase);
         setWelcomeVoiceStarted(Boolean(saved.welcomeVoiceStarted));
         setWelcomeSpeechFinished(Boolean(saved.welcomeSpeechFinished));
         startedAtRef.current = performance.now();
@@ -1224,7 +1318,7 @@ export default function DailyLessonGamePage() {
         setSessionHydrated(true);
       }
     }, 0);
-  }, [activeAssignment, assignmentId]);
+  }, [activeAssignment, assignmentId, isShortLearning]);
 
   useEffect(() => {
     if (!assignmentId || !activeAssignment || !restoreCheckedRef.current || completed) return;
@@ -1432,6 +1526,12 @@ export default function DailyLessonGamePage() {
 
   function lessonLabelText(): string {
     const skill = assignment?.skillFocus ? String(assignment.skillFocus) : "Core practice";
+    if (isShortLearning) {
+      const year = assignment?.yearGroup?.trim() || profile?.yearGroup?.trim();
+      const genericSkill = /^(maths?|english|reading|spelling|science|lesson)$/i.test(skill.trim());
+      const focus = genericSkill ? (assignment?.title || "Maths") : skill;
+      return year ? `${year} · ${focus}` : focus;
+    }
     const hasBasicSpelling = lessonItems.some((item) => {
       const section = getItemSection(item, assignment?.subject ?? "spelling");
       if (section !== "spelling") return false;
@@ -1448,6 +1548,13 @@ export default function DailyLessonGamePage() {
   }
 
   function questionContextLabel(item: LessonItem): string {
+    if (isShortLearning) {
+      const year = assignment?.yearGroup?.trim() || profile?.yearGroup?.trim();
+      const skill = String(item.skillFocus ?? assignment?.skillFocus ?? "").trim();
+      const genericSkill = !skill || /^(maths?|english|reading|spelling|science|lesson)$/i.test(skill);
+      const focus = genericSkill ? "Challenge" : skill;
+      return year ? `${year} · ${focus}` : focus;
+    }
     const section = getItemSection(item, assignment?.subject ?? "spelling");
     const word = getAnswer(item).trim();
     const isBasicSpelling = section === "spelling" && (isAlphabetLessonItem(item) || (word.length > 0 && word.length <= 3));
@@ -1547,6 +1654,7 @@ export default function DailyLessonGamePage() {
   }
 
   useEffect(() => {
+    if (isShortLearning) return;
     if (!requestedBossPhase || bossEntryHandledRef.current) return;
     if (!activeAssignment || lessonItems.length === 0) return;
     bossEntryHandledRef.current = true;
@@ -1567,7 +1675,7 @@ export default function DailyLessonGamePage() {
       setTutorState("thinking");
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [activeAssignment, buildBossQuestionsFromRuntime, lessonItems.length, requestedBossPhase]);
+  }, [activeAssignment, buildBossQuestionsFromRuntime, isShortLearning, lessonItems.length, requestedBossPhase]);
 
   async function completeBossBattle(finalCorrect: number, finalHearts: number, answeredCount: number) {
     setBossSubmitting(true);
@@ -1678,7 +1786,7 @@ export default function DailyLessonGamePage() {
     setFeedbackMode("none");
     setAnswer("");
     setAttemptCount(0);
-    setTutorState("thinking");
+    setTutorState(voiceEnabled ? "thinking" : "idle");
 
     if (isReviewRound) {
       const nextPointer = reviewPointer + 1;
@@ -1964,11 +2072,11 @@ export default function DailyLessonGamePage() {
         lessonStage,
       }));
     }
-    setTutorState("thinking");
+    setTutorState(voiceEnabled ? "thinking" : "idle");
     const line = interventionMission?.introLine
       ?? (voiceEnabled
         ? (warmupResult ? `Great work, ${childName}. ${warmupResult.tutorReply} Let's begin your mission.` : welcomeLine)
-        : `Great work, ${childName}. Press begin to start.`);
+        : `Let's go, ${childName}. Use Coach me or the tutor buttons if you get stuck.`);
     setVoiceLine(line);
   }
 
@@ -2605,9 +2713,41 @@ export default function DailyLessonGamePage() {
     );
   }
 
+  if (isShortLearning && shortLearningBookingId && activeAssignment && !started && !completed && !sessionTimedOut) {
+    const teaching = buildShortLearningTeachingMoment(daytimeStagePack, {
+      skillFocus: activeAssignment.skillFocus,
+      title: activeAssignment.title,
+      subject: lessonSubjectLabel || activeAssignment.subject,
+    });
+    return (
+      <ShortLearningLessonShell
+        bookingId={shortLearningBookingId}
+        sessionId={shortLearningSessionId ?? undefined}
+        blockId={shortLearningBlockId ?? undefined}
+        assignmentId={assignmentId ?? undefined}
+        contentId={daytimeContentId ?? undefined}
+        blockTitle={activeAssignment.title}
+        subject={lessonSubjectLabel || activeAssignment.subject}
+        learningObjective={teaching.learningObjective}
+        hideTutor={false}
+        onEnded={handleShortLearningEnded}
+      >
+        <ShortLearningTeachMoment
+          subjectLabel={lessonSubjectLabel || activeAssignment.subject}
+          title={activeAssignment.title}
+          teaching={teaching}
+          onStartPractice={() => {
+            setStarted(true);
+            setLessonPhase("lesson");
+          }}
+        />
+      </ShortLearningLessonShell>
+    );
+  }
+
   return (
     <>
-      {isDaytimeSchool ? null : <Navbar />}
+      {isDaytimeSchool || isShortLearning ? null : <Navbar />}
       {isDaytimeSchool && isPracticalDaytime ? (
         <DaytimeSchoolLessonShell
           periodId={daytimePeriodId!}
@@ -2690,13 +2830,37 @@ export default function DailyLessonGamePage() {
               <p className="text-sm font-black uppercase tracking-[0.25em] text-indigo-500">{interventionMission ? interventionMission.badge : "Today's Lesson"}</p>
               <h1 className="mt-2 text-4xl font-black">{decodeLessonText(activeAssignment?.title || "Daily practice")}</h1>
               <p className="mt-1 text-sm font-black text-indigo-700">{interventionMission ? `Level ${interventionLevel} • ${decodeLessonText(String(activeAssignment?.skillFocus ?? "Sound Builder Mission"))}` : lessonLabelText()}</p>
-              <p className="mt-2 text-slate-600">{interventionMission ? "Voice-led repair mission with visual cues and repeat-until-correct practice." : "Spelling, maths and reading in one focused session."}</p>
+              <p className="mt-2 text-slate-600">{
+                interventionMission
+                  ? "Voice-led repair mission with visual cues and repeat-until-correct practice."
+                  : isShortLearning
+                    ? `A focused ${lessonSubjectLabel || "lesson"} Short Learning class with AI tutor support.`
+                    : lessonSubjectLabel
+                      ? `A focused ${lessonSubjectLabel} lesson with step-by-step practice.`
+                    : "Spelling, maths and reading in one focused session."
+              }</p>
             </div>
             <VoiceHelpControls
               voiceHelpEnabled={voiceEnabled}
               onToggleVoiceHelp={setVoiceHelpEnabled}
             />
           </div>
+          {isShortLearning && shortLearningBookingId ? (
+            <div className="mt-5">
+              <ShortLearningSessionClock
+                bookingId={shortLearningBookingId}
+                assignmentId={assignmentId}
+                contentId={daytimeContentId}
+                onEnded={handleShortLearningEnded}
+              />
+            </div>
+          ) : null}
+          {isShortLearning && daytimeStagePack?.explanation ? (
+            <section className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/70 p-4" data-testid="short-learning-method-strip">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700">Remember the method</p>
+              <p className="mt-1 text-sm leading-relaxed text-slate-800">{daytimeStagePack.explanation}</p>
+            </section>
+          ) : null}
           {voiceUnavailable ? (
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
               {voiceUnavailable}
@@ -2752,7 +2916,9 @@ export default function DailyLessonGamePage() {
                   <p className="mt-2 text-sm font-bold text-indigo-900">
                     {interventionMission
                       ? "We're going to strengthen this tricky skill step by step and build confidence."
-                      : "We're going to master letter sounds, sharpen maths thinking, and grow reading confidence."}
+                      : isShortLearning || lessonSubjectLabel
+                        ? `We're going to practise ${assignment?.yearGroup ?? profile?.yearGroup ?? "Year 4"} ${lessonSubjectLabel || "this subject"} together. Use Coach me or the tutor buttons if you get stuck.`
+                        : "We're going to master letter sounds, sharpen maths thinking, and grow reading confidence."}
                   </p>
                 </div>
 
@@ -3028,11 +3194,19 @@ export default function DailyLessonGamePage() {
             </div>
           ) : completed ? (
             <div className="mt-8 rounded-3xl bg-slate-50 p-8 text-center">
-              <p className="text-sm font-black uppercase tracking-[0.25em] text-emerald-600">{interventionMission ? "Mission Complete" : "Lesson Complete"}</p>
+              <p className={`text-sm font-black uppercase tracking-[0.25em] ${sessionTimedOut ? "text-rose-700" : "text-emerald-600"}`}>
+                {sessionTimedOut ? "Session time is up" : interventionMission ? "Mission Complete" : "Lesson Complete"}
+              </p>
               <h2 className="mt-3 text-5xl font-black">{score}%</h2>
               <p className="mt-3 text-slate-600">{correctCount} correct, {incorrectCount} to practise again.</p>
               <p className="mt-2 text-base font-black text-indigo-700">
-                {interventionMission ? interventionMission.outroLine : score === 100 ? "Perfect score! You're getting stronger every day!" : "Amazing work!"}
+                {sessionTimedOut
+                  ? "This Short Learning class ended on time. Your answers so far are saved."
+                  : interventionMission
+                    ? interventionMission.outroLine
+                    : score === 100
+                      ? "Perfect score! You're getting stronger every day!"
+                      : "Amazing work!"}
               </p>
               {saveResult?.rewards ? (
                 <div className="mx-auto mt-4 grid max-w-xl gap-3 sm:grid-cols-4">
@@ -3054,6 +3228,54 @@ export default function DailyLessonGamePage() {
               ) : null}
               {memoryFeedback ? (
                 <p className="mx-auto mt-4 max-w-xl rounded-2xl bg-cyan-50 p-4 text-sm font-bold text-cyan-900">{memoryFeedback}</p>
+              ) : null}
+              {isShortLearning && !sessionTimedOut ? (
+                <button
+                  type="button"
+                  disabled={continuingDaytime}
+                  onClick={() => {
+                    setContinuingDaytime(true);
+                    void (async () => {
+                      try {
+                        if (assignmentId) {
+                          await fetchWithRefreshRetry(`/api/assignments/${encodeURIComponent(assignmentId)}`, {
+                            method: "PATCH",
+                            credentials: "include",
+                            headers: { "content-type": "application/json" },
+                            body: JSON.stringify({ status: "completed" }),
+                          }).catch(() => undefined);
+                        }
+                        const response = await fetchWithRefreshRetry(
+                          `/api/student/short-learning/${encodeURIComponent(shortLearningBookingId!)}/session`,
+                          {
+                            method: "POST",
+                            credentials: "include",
+                            headers: { "content-type": "application/json" },
+                            body: JSON.stringify({ completedContentId: daytimeContentId ?? assignment?.contentId ?? undefined }),
+                          },
+                        );
+                        const payload = await response.json().catch(() => ({}));
+                        const href = typeof payload.lessonHref === "string"
+                          ? payload.lessonHref
+                          : typeof payload.href === "string"
+                            ? payload.href
+                            : "";
+                        if (response.ok && href.startsWith("/")) {
+                          window.location.assign(href);
+                          return;
+                        }
+                        setError(typeof payload.error === "string" ? payload.error : "Unable to open the next learning block.");
+                      } catch {
+                        setError("Unable to open the next learning block.");
+                      } finally {
+                        setContinuingDaytime(false);
+                      }
+                    })();
+                  }}
+                  className="mt-6 inline-flex rounded-2xl bg-sky-600 px-6 py-4 font-black text-white disabled:opacity-60"
+                >
+                  {continuingDaytime ? "Continuing…" : "Continue to next learning block"}
+                </button>
               ) : null}
               {daytimePeriodId ? (
                 <button
@@ -3087,10 +3309,28 @@ export default function DailyLessonGamePage() {
                   {continuingDaytime ? "Continuing…" : "Continue lesson"}
                 </button>
               ) : null}
-              <Link href={daytimePeriodId ? "/student/today" : "/student/dashboard"} className="mt-6 inline-flex rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white">
-                {daytimePeriodId ? "Back to Today" : "Back to Dashboard"}
-              </Link>
-              {lessonMasteryReady ? (
+              {isShortLearning && sessionTimedOut ? (
+                <Link
+                  href="/student/short-learning"
+                  className="mt-6 inline-flex rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white"
+                >
+                  Back to Short Learning
+                </Link>
+              ) : (
+                <Link
+                  href={
+                    isShortLearning && shortLearningBookingId
+                      ? `/student/short-learning/${shortLearningBookingId}`
+                      : daytimePeriodId
+                        ? "/student/today"
+                        : "/student/dashboard"
+                  }
+                  className="mt-6 inline-flex rounded-2xl bg-indigo-600 px-6 py-4 font-black text-white"
+                >
+                  {isShortLearning ? "Back to session" : daytimePeriodId ? "Back to Today" : "Back to Dashboard"}
+                </Link>
+              )}
+              {isShortLearning ? null : lessonMasteryReady ? (
                 <>
                   <p className="mt-4 text-sm font-black text-rose-700">{"You've mastered today's lesson. Ready to challenge the Boss?"}</p>
                   <button
@@ -3379,9 +3619,9 @@ export default function DailyLessonGamePage() {
                       shortLearningBlockId={shortLearningBlockId ?? undefined}
                       assignmentId={assignmentId}
                       contentId={daytimeContentId}
-                      questionId={currentItem?.id}
+                      questionId={currentItem?.id ?? `q-${index + 1}`}
                       questionIndex={index}
-                      studentAttempt={answer || undefined}
+                      studentAttempt={answer || getPrompt(currentItem, currentSection) || undefined}
                       variant="default"
                     />
                     <p className="mt-3 text-[11px] leading-relaxed text-indigo-100/90">

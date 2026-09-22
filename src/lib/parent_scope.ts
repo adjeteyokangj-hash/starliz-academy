@@ -9,7 +9,7 @@ type SessionLike = {
 export type ParentScope = {
   parentId: string;
   parentEmail: string;
-  source: "session-user" | "email-match";
+  source: "session-user" | "email-match" | "student-linked-parent";
 };
 
 function normalizeEmail(email: string): string {
@@ -29,6 +29,24 @@ export async function resolveParentScope(session: SessionLike): Promise<ParentSc
       parentEmail: normalizeEmail(sessionUser.email),
       source: "session-user",
     };
+  }
+
+  // Independent student logins still load assignments/content under their parent's account.
+  if (sessionUser?.role === "student") {
+    const linkedChild = await prisma.childProfile.findFirst({
+      where: { userId: sessionUser.id, archived: false },
+      select: {
+        parentId: true,
+        parent: { select: { email: true } },
+      },
+    });
+    if (linkedChild?.parentId) {
+      return {
+        parentId: linkedChild.parentId,
+        parentEmail: normalizeEmail(linkedChild.parent.email),
+        source: "student-linked-parent",
+      };
+    }
   }
 
   const allowEmailFallback =

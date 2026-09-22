@@ -19,18 +19,24 @@ import {
   shortLearningSubjectLabel,
 } from "@/lib/schools/short-learning-subjects";
 import { recommendShortLearningSubject } from "@/lib/schools/short-learning-subject-recommendation";
+import {
+  SHORT_LEARNING_ALLOWED_DURATIONS,
+  SHORT_LEARNING_EARLY_ENTRY_MINUTES,
+  SHORT_LEARNING_HONESTY_POLICY_VERSION,
+  isShortLearningTestParentEmail,
+} from "@/lib/schools/short-learning-constants";
 
-export const SHORT_LEARNING_HONESTY_POLICY_VERSION = "short-learning-ai-led-v1";
-
-export const SHORT_LEARNING_PROMISE =
-  "AI teaching is guaranteed. Human support is a safety net when available — not a private 1:1 tutor booking.";
-
-export const SHORT_LEARNING_CHECKBOX =
-  "I understand that Short Learning is AI-led and that human tutor support depends on availability.";
+export {
+  SHORT_LEARNING_ALLOWED_DURATIONS,
+  SHORT_LEARNING_CHECKBOX,
+  SHORT_LEARNING_EARLY_ENTRY_MINUTES,
+  SHORT_LEARNING_HONESTY_POLICY_VERSION,
+  SHORT_LEARNING_PROMISE,
+  isShortLearningTestParentEmail,
+} from "@/lib/schools/short-learning-constants";
 
 const WEEKDAY_OPEN = { opensAt: "16:00", closesAt: "20:00" };
 const WEEKEND_OPEN = { opensAt: "09:00", closesAt: "18:00" };
-export const SHORT_LEARNING_ALLOWED_DURATIONS = [90, 120] as const;
 const ALLOWED_DURATIONS = SHORT_LEARNING_ALLOWED_DURATIONS;
 
 export type SlotCandidate = {
@@ -202,6 +208,12 @@ export async function listAvailableSlots(input: {
   dateIso: string; // YYYY-MM-DD
   durationMinutes: number;
   now?: Date;
+  /** Allowlisted test parents: daytime hours + book slots that have started but not ended. */
+  relaxSchedule?: boolean;
+  /** When set, hide slots this student already holds (exact start or overlapping). */
+  schoolStudentId?: string | null;
+  /** When rescheduling, keep this booking out of the student busy filter. */
+  excludeBookingId?: string | null;
 }): Promise<SlotCandidate[]> {
   if (!ALLOWED_DURATIONS.includes(input.durationMinutes as 90 | 120)) {
     return [];
@@ -217,21 +229,61 @@ export async function listAvailableSlots(input: {
   });
   if (!window) return [];
 
-  const openMin = parseTimeHm(window.opensAt);
-  const closeMin = parseTimeHm(window.closesAt);
+  let openMin = parseTimeHm(window.opensAt);
+  let closeMin = parseTimeHm(window.closesAt);
+  if (input.relaxSchedule) {
+    // Full calendar day so local UAT can book/attend outside the 16:00 window.
+    openMin = 0;
+    closeMin = 24 * 60;
+  }
   if (openMin < 0 || closeMin <= openMin) return [];
 
   const interval = window.startIntervalMinutes || 30;
   const capacity = window.capacityPerSlot || 40;
   const slots: SlotCandidate[] = [];
 
+  const studentBusyRanges: Array<{ startMs: number; endMs: number }> = [];
+  if (input.schoolStudentId) {
+    const dayStart = atLocalMinutes(day, 0, window.timezone);
+    const dayEnd = atLocalMinutes(day, 24 * 60, window.timezone);
+    const existing = await prisma.studentLearningBooking.findMany({
+      where: {
+        schoolStudentId: input.schoolStudentId,
+        status: { in: ["booked", "confirmed", "attended"] },
+        startsAt: { lt: dayEnd },
+        endsAt: { gt: dayStart },
+        ...(input.excludeBookingId ? { id: { not: input.excludeBookingId } } : {}),
+      },
+      select: { startsAt: true, endsAt: true },
+    });
+    for (const row of existing) {
+      studentBusyRanges.push({
+        startMs: row.startsAt.getTime(),
+        endMs: row.endsAt.getTime(),
+      });
+    }
+  }
+
   for (let startMin = openMin; startMin + input.durationMinutes <= closeMin; startMin += interval) {
     const startsAt = atLocalMinutes(day, startMin, window.timezone);
     const endsAt = atLocalMinutes(day, startMin + input.durationMinutes, window.timezone);
-    if (startsAt <= now) continue;
+    if (input.relaxSchedule) {
+      // Still joinable mid-session; hide only fully finished slots.
+      if (endsAt <= now) continue;
+    } else if (startsAt <= now) {
+      continue;
+    }
 
-    const windowCheck = isWithinStandardBookingWindow({ sessionStartsAt: startsAt, now });
+    const windowCheck = input.relaxSchedule
+      ? { ok: true as const, lateBooking: startsAt.getTime() <= now.getTime() }
+      : isWithinStandardBookingWindow({ sessionStartsAt: startsAt, now });
     if (!windowCheck.ok) continue;
+
+    const startMs = startsAt.getTime();
+    const endMs = endsAt.getTime();
+    if (studentBusyRanges.some((range) => startMs < range.endMs && endMs > range.startMs)) {
+      continue;
+    }
 
     const booked = await prisma.studentLearningBooking.count({
       where: {
@@ -448,6 +500,14 @@ export async function assertParentShortLearningReliability(input: {
   }
 }
 
+async function parentUsesRelaxedShortLearningSchedule(parentUserId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: parentUserId },
+    select: { email: true },
+  });
+  return isShortLearningTestParentEmail(user?.email);
+}
+
 export async function createStudentLearningBooking(input: {
   schoolId: string;
   schoolStudentId: string;
@@ -526,7 +586,10 @@ export async function createStudentLearningBooking(input: {
 
   const endsAt = new Date(input.startsAt.getTime() + input.durationMinutes * 60_000);
   const now = input.now ?? new Date();
-  const windowCheck = isWithinStandardBookingWindow({ sessionStartsAt: input.startsAt, now });
+  const relaxSchedule = await parentUsesRelaxedShortLearningSchedule(input.parentUserId);
+  const windowCheck = relaxSchedule
+    ? { ok: true as const, lateBooking: input.startsAt.getTime() <= now.getTime() }
+    : isWithinStandardBookingWindow({ sessionStartsAt: input.startsAt, now });
   if (!windowCheck.ok) {
     throw new Error(windowCheck.reason ?? "Outside booking window.");
   }
@@ -537,6 +600,8 @@ export async function createStudentLearningBooking(input: {
     dateIso,
     durationMinutes: input.durationMinutes,
     now,
+    relaxSchedule,
+    schoolStudentId: input.schoolStudentId,
   });
   const match = slots.find((s) => s.startsAt.getTime() === input.startsAt.getTime());
   if (!match) {
@@ -571,6 +636,7 @@ export async function createStudentLearningBooking(input: {
     requestedLearningFocus,
     resolvedLearningFocus,
     selectedSubjectLabel: shortLearningSubjectLabel(selectedSubject),
+    ...(relaxSchedule ? { scheduleTestHarness: true } : {}),
   };
 
   const booking = await prisma.studentLearningBooking.create({
@@ -752,6 +818,8 @@ export async function changeStudentLearningBooking(input: {
     dateIso,
     durationMinutes: nextDuration,
     now,
+    schoolStudentId: booking.schoolStudentId,
+    excludeBookingId: booking.id,
   });
   const match = slots.find((s) => s.startsAt.getTime() === nextStartsAt.getTime());
   // Allow keeping the same start time even if capacity counts this booking.
@@ -830,4 +898,50 @@ function safeParseJsonObject(raw: string | null | undefined): Record<string, unk
   } catch {
     return null;
   }
+}
+
+export type NextShortLearningBookingDto = {
+  id: string;
+  subject: string;
+  schoolName: string;
+  startsAt: string;
+  endsAt: string;
+  durationMinutes: number;
+  joinable: boolean;
+  opensAt: string;
+};
+
+export async function getNextShortLearningBookingForChild(
+  childId: string,
+  now = new Date(),
+): Promise<NextShortLearningBookingDto | null> {
+  const memberships = await prisma.schoolStudent.findMany({
+    where: { childId, status: "active" },
+    select: { id: true },
+  });
+  const schoolStudentIds = memberships.map((row) => row.id);
+  if (schoolStudentIds.length === 0) return null;
+
+  const booking = await prisma.studentLearningBooking.findFirst({
+    where: {
+      schoolStudentId: { in: schoolStudentIds },
+      status: { in: ["booked", "confirmed", "attended"] },
+      endsAt: { gt: now },
+    },
+    include: { school: { select: { name: true } } },
+    orderBy: { startsAt: "asc" },
+  });
+  if (!booking) return null;
+
+  const opensAt = new Date(booking.startsAt.getTime() - SHORT_LEARNING_EARLY_ENTRY_MINUTES * 60_000);
+  return {
+    id: booking.id,
+    subject: booking.subject,
+    schoolName: booking.school.name,
+    startsAt: booking.startsAt.toISOString(),
+    endsAt: booking.endsAt.toISOString(),
+    durationMinutes: booking.durationMinutes,
+    joinable: now.getTime() >= opensAt.getTime() && now.getTime() < booking.endsAt.getTime(),
+    opensAt: opensAt.toISOString(),
+  };
 }

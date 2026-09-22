@@ -20,6 +20,7 @@ import {
   getStoreItemImageUrl,
   getThemePalette,
 } from "@/lib/store_item_preview";
+import { isPrimaryRewardsStoreEligible } from "@/lib/dashboardResolver";
 
 const CATEGORY_TABS: Array<{ key: ShopCategory; label: string }> = [
   { key: "themes", label: "Themes" },
@@ -50,6 +51,13 @@ export default function RewardsShopPage() {
       const p = serverProfile ?? getProfile();
       if (!p) {
         router.replace("/profiles");
+        return;
+      }
+      if (!isPrimaryRewardsStoreEligible({
+        yearGroup: p.yearGroup,
+        ageYears: p.ageYears,
+      })) {
+        router.replace("/student/dashboard");
         return;
       }
       setProfile(p);

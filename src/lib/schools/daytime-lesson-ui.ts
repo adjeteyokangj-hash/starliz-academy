@@ -159,17 +159,16 @@ export function studentHumanSupportDisplay(input: {
   if (summary.state === "tutor-available") {
     return {
       state: "tutor-available",
-      label: "A tutor is available if AI help is exhausted",
+      label: "A tutor is available — invite them if you need extra help",
       minutesRemaining: null,
     };
   }
   if (summary.state === "queued") {
-    // Only show queue language when tutors are online (deriveHumanSupportSummary already gates).
-    return { state: "queued", label: "Human support in progress", minutesRemaining: null };
+    return { state: "queued", label: "Waiting for a tutor to join", minutesRemaining: null };
   }
   return {
     state: "tutors-busy",
-    label: "A tutor is available if AI help is exhausted",
+    label: "Tutors are busy right now — continue with AI",
     minutesRemaining: null,
   };
 }
@@ -220,6 +219,9 @@ export type DaytimeStagePackExtras = {
   explanation?: string;
   workedExamples?: Array<{ question: string; steps: string[]; answer: string }>;
   scenarioOrObservation?: string;
+  priorLearningWarmup?: string;
+  misconceptions?: string[];
+  reflectionCheck?: string;
   activities?: Array<{ kind: string; title?: string; estimatedMinutes?: number }>;
   subjectType?: string;
 };
@@ -304,6 +306,13 @@ export function extractStagePackExtras(raw: unknown): DaytimeStagePackExtras | n
     scenarioOrObservation: typeof row.scenarioOrObservation === "string"
       ? row.scenarioOrObservation.trim()
       : undefined,
+    priorLearningWarmup: typeof row.priorLearningWarmup === "string"
+      ? row.priorLearningWarmup.trim()
+      : undefined,
+    misconceptions: Array.isArray(row.misconceptions)
+      ? row.misconceptions.map((item) => String(item ?? "").trim()).filter(Boolean)
+      : undefined,
+    reflectionCheck: typeof row.reflectionCheck === "string" ? row.reflectionCheck.trim() : undefined,
     activities,
     subjectType: typeof row.subjectType === "string" ? row.subjectType.trim() : undefined,
   };
@@ -318,6 +327,9 @@ export function extractStagePackExtras(raw: unknown): DaytimeStagePackExtras | n
       || extras.explanation
       || extras.workedExamples?.length
       || extras.scenarioOrObservation
+      || extras.priorLearningWarmup
+      || extras.misconceptions?.length
+      || extras.reflectionCheck
       || extras.activities?.length,
   );
   return hasContent ? extras : null;

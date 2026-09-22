@@ -7,6 +7,7 @@ import { listHomeworkTasks, syncHomeworkTasks } from "@/lib/academic-intelligenc
 import {
   buildAcademicIntelligenceSnapshot,
   getOrRefreshAcademicIntelligenceSnapshot,
+  readAcademicIntelligenceSnapshot,
   upsertAcademicIntelligenceSnapshotJson,
 } from "@/lib/academic-intelligence/snapshot";
 import { extractLearningDnaFromProfileJson, buildParentLearningDnaSummary } from "@/lib/learning_dna";
@@ -285,7 +286,7 @@ export async function getStudentLearningBrain(studentId: string, options: BrainO
 
 // Role-specific mappers keep route responses consistent and prevent duplicated shaping logic.
 export async function getStudentLearningBrainForDashboard(studentId: string, options: { forceRefresh?: boolean } = {}) {
-  const [brain, dashboardAssignments, dashboardSkills] = await Promise.all([
+  const [brain, dashboardAssignments, dashboardSkills, snapshotResult] = await Promise.all([
     getStudentLearningBrain(studentId, { includeCoachSignals: false }),
     prisma.assignment.findMany({
       where: {
@@ -324,13 +325,21 @@ export async function getStudentLearningBrainForDashboard(studentId: string, opt
         accuracy: true,
       },
     }),
+    options.forceRefresh
+      ? getOrRefreshAcademicIntelligenceSnapshot({
+          studentId,
+          forceRefresh: true,
+          reason: "manual_refresh",
+        })
+      : prisma.studentProfile.findUnique({
+          where: { childId: studentId },
+          select: { aiLearningProfileJson: true },
+        }).then((profile) => ({
+          snapshot: readAcademicIntelligenceSnapshot(profile?.aiLearningProfileJson ?? null),
+          refreshed: false,
+        })),
   ]);
   if (!brain) return null;
-  const snapshotResult = await getOrRefreshAcademicIntelligenceSnapshot({
-    studentId,
-    forceRefresh: options.forceRefresh,
-    reason: options.forceRefresh ? "manual_refresh" : undefined,
-  });
   return toStudentDashboardBrainView(brain, snapshotResult, {
     assignments: dashboardAssignments.map((assignment) => ({
       id: assignment.id,
