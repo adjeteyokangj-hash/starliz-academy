@@ -7,7 +7,7 @@ import { resetChildLoginCredentials } from "../src/lib/child-account-create";
 import { buildChildSyntheticEmail } from "../src/lib/child-account-credentials";
 
 function read(relativePath: string): string {
-  return readFileSync(resolve(process.cwd(), relativePath), "utf8");
+  return readFileSync(resolve(process.cwd(), relativePath), "utf8").replace(/\r\n/g, "\n");
 }
 
 test("reset account route is parent-owned and childId scoped", () => {
