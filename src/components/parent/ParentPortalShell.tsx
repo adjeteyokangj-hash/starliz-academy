@@ -90,6 +90,7 @@ type ChildListResponse = {
     learningGoals?: string[];
     senSupportNeeds?: string;
     selectedSubjects?: string[];
+    yearGroupLocked?: boolean;
     userId?: string | null;
     hasLogin?: boolean;
     loginUsername?: string | null;
@@ -1969,6 +1970,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         ageYears: child.ageYears ?? '',
                         startLevelChoice: 'Beginner',
                         avatar: child.avatar || 'star',
+                        yearGroupLocked: Boolean(child.yearGroupLocked),
                       } : undefined;
                     })() : undefined}
                     onSuccess={(result?: ChildAccountCreatedResult) => {
