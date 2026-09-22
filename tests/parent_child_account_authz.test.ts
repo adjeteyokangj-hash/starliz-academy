@@ -24,6 +24,16 @@ test("existing-child account route rejects non-parent and scopes by owned childI
   assert.doesNotMatch(route, /userId:\s*body/);
 });
 
+test("reset account route rejects non-parent and scopes by owned childId", () => {
+  const route = read("src/app/api/parent/children/[childId]/account/reset/route.ts");
+  assert.match(route, /Only parent accounts can reset child logins/);
+  assert.match(route, /status:\s*403/);
+  assert.match(route, /parentScope\.parentId !== session\.userId/);
+  assert.match(route, /resetChildLoginCredentials/);
+  assert.doesNotMatch(route, /parentId:\s*body/);
+  assert.doesNotMatch(route, /userId:\s*body/);
+});
+
 test("create helper never accepts caller-supplied role email domain or passwordHash", () => {
   const lib = read("src/lib/child-account-create.ts");
   assert.match(lib, /role:\s*"student"/);
