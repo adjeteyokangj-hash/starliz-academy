@@ -105,6 +105,43 @@ test("resolveQuestionFromContentJson finds question by id and index", () => {
   assert.equal(byIndex?.storedHelp.breakdown?.keyWords?.[0]?.word, "reeds");
 });
 
+test("maths Short Learning packs fill questions and match lesson ids for AI help", () => {
+  const json = JSON.stringify({
+    subjectType: "maths",
+    title: "maths: Lesson block 1 · New concept",
+    estimatedMinutes: 18,
+    skillFocus: "multiplication using arrays",
+    questions: [
+      {
+        prompt: "Explain how you can use an array to solve 3 x 5.",
+        answer: "You can draw 3 rows with 5 items in each row to see the total.",
+      },
+      { prompt: "What is 6 x 2?", answer: "12" },
+    ],
+  });
+
+  const explain = resolveQuestionFromContentJson(json, {
+    questionId: "math-1",
+    contentType: "math",
+    yearGroup: "Year 4",
+    skillFocus: "multiplication using arrays",
+  });
+  assert.ok(explain);
+  assert.match(explain.prompt, /array to solve 3 x 5/i);
+  assert.ok(explain.choices.length >= 4);
+  assert.equal(explain.choices.includes("You can draw 3 rows with 5 items in each row to see the total."), true);
+
+  const filled = resolveQuestionFromContentJson(json, {
+    questionId: "math-fill-1",
+    contentType: "math",
+    yearGroup: "Year 4",
+    skillFocus: "multiplication using arrays",
+  });
+  assert.ok(filled);
+  assert.ok(filled.choices.length >= 4);
+  assert.notEqual(filled.prompt, explain.prompt);
+});
+
 test("assertDaytimeSchoolTutorAccess succeeds for valid daytime student", async () => {
   const result = await assertDaytimeSchoolTutorAccess(
     {

@@ -9,6 +9,7 @@ import { postSchoolAction } from "@/components/admin/schools/school-actions";
 import { useSchoolDashboardRecord } from "@/components/admin/schools/school-dashboard-data";
 import {
   describeSchoolClock,
+  isPlayableDaytimeLessonType,
   minutesNow,
   resolvePeriodState,
   schoolDayOfWeek,
@@ -16,7 +17,6 @@ import {
   weekdayLabel,
 } from "@/lib/schools/school-day-period";
 import { findDaySchoolConflicts } from "@/lib/schools/day-school-conflicts";
-import { isPlayableDaytimeLessonType } from "@/lib/schools/start-daytime-period";
 
 type Props = {
   schoolId: string;

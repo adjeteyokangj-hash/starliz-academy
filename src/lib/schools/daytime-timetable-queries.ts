@@ -2,10 +2,13 @@ import { prisma } from "@/lib/db";
 import {
   describeSchoolClock,
   minutesNow,
+  minutesNowUk,
   periodMinutes,
   schoolDayOfWeek,
   sortPeriodsByTime,
   studentWorkMinutes,
+  ukCalendarDayOfWeek,
+  ukSchoolTimetableDay,
   weekdayLabel,
 } from "@/lib/schools/school-day-period";
 import { buildDaytimeSessionPlan } from "@/lib/schools/daytime-session-plan";
@@ -303,14 +306,17 @@ export async function getStudentDaytimeBoard(
 ) {
   const enrolment = await deps.findActiveEnrolment(input.childId);
   if (!enrolment) {
+    const now = input.now ?? new Date();
+    const timetableDay = ukSchoolTimetableDay(now);
+    const calendarDay = ukCalendarDayOfWeek(now);
     return {
       ok: true as const,
       board: {
         childId: input.childId,
         enrolment: null as null,
-        dayOfWeek: schoolDayOfWeek(input.now ?? new Date()),
-        weekdayLabel: weekdayLabel(schoolDayOfWeek(input.now ?? new Date())),
-        dateIso: (input.now ?? new Date()).toISOString(),
+        dayOfWeek: timetableDay ?? calendarDay,
+        weekdayLabel: weekdayLabel(timetableDay ?? calendarDay),
+        dateIso: now.toISOString(),
         phase: "no_timetable" as const,
         currentPeriodId: null,
         nextPeriodId: null,
@@ -321,9 +327,35 @@ export async function getStudentDaytimeBoard(
     };
   }
 
-  const dayOfWeek = input.dayOfWeek && input.dayOfWeek >= 1 && input.dayOfWeek <= 5
+  const now = input.now ?? new Date();
+  const requestedDay = input.dayOfWeek && input.dayOfWeek >= 1 && input.dayOfWeek <= 5
     ? input.dayOfWeek
-    : schoolDayOfWeek(input.now ?? new Date());
+    : null;
+  const dayOfWeek = requestedDay ?? ukSchoolTimetableDay(now);
+
+  if (dayOfWeek == null) {
+    const weekend = ukCalendarDayOfWeek(now);
+    return {
+      ok: true as const,
+      board: {
+        childId: input.childId,
+        enrolment: {
+          schoolStudentId: enrolment.id,
+          schoolId: enrolment.schoolId,
+          classroomId: enrolment.classroomId,
+        },
+        dayOfWeek: weekend,
+        weekdayLabel: weekdayLabel(weekend),
+        dateIso: now.toISOString(),
+        phase: "no_timetable" as const,
+        currentPeriodId: null,
+        nextPeriodId: null,
+        periods: [] as DaytimePeriodDto[],
+        schoolName: enrolment.schoolName,
+        classroomName: enrolment.classroomName,
+      },
+    };
+  }
 
   const rows = await deps.findClassPeriods({
     schoolId: enrolment.schoolId,
@@ -336,7 +368,7 @@ export async function getStudentDaytimeBoard(
     (row) => row.classroomId === enrolment.classroomId,
   );
   const periods = sortPeriodsByTime(scopedRows.map(mapPeriod));
-  const nowMinutes = minutesNow(input.now ?? new Date());
+  const nowMinutes = minutesNowUk(now);
   const clock = describeSchoolClock(periods, nowMinutes);
 
   return {

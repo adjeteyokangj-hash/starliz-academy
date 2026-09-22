@@ -449,7 +449,7 @@ async function resolvePeriodContext(
     };
   }
 
-  const period = await deps.findDayLesson(input.dayLessonId);
+  let period = await deps.findDayLesson(input.dayLessonId);
   if (!period) {
     return { ok: false, status: 404, error: "Period not found.", code: "PERIOD_NOT_FOUND" };
   }
@@ -475,14 +475,8 @@ async function resolvePeriodContext(
   if (period.lesson) {
     const reviewStatus = period.lesson.reviewStatus ?? "draft";
     if (reviewStatus !== "approved") {
-      return {
-        ok: false,
-        status: 409,
-        error: reviewStatus === "machine_failed"
-          ? "This lesson failed Lesson Health. Ask your teacher to regenerate or repair it."
-          : "This lesson is not approved for class yet.",
-        code: "LESSON_NOT_APPROVED",
-      };
+      // Do not block classroom entry. Unapproved packs are skipped; pool/practice still opens.
+      period = { ...period, lesson: null, lessonId: null };
     }
   }
 

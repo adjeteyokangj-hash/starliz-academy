@@ -1,5 +1,4 @@
-import type { PeriodClockState } from "@/lib/schools/school-day-period";
-import { isPlayableDaytimeLessonType } from "@/lib/schools/start-daytime-period";
+import { isPlayableDaytimeLessonType, type PeriodClockState } from "@/lib/schools/school-day-period";
 
 export type PeriodUiStatus =
   | "ready"

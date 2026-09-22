@@ -353,7 +353,7 @@ test("startDaytimePeriod assigns warm-up first for a fresh three-stage lesson", 
   assert.deepEqual(assigned, ["stage-1"]);
 });
 
-test("startDaytimePeriod blocks unapproved lessons", async () => {
+test("startDaytimePeriod still opens classroom when lesson is unapproved", async () => {
   const result = await startDaytimePeriod(
     { childId: "child-1", dayLessonId: "period-1" },
     baseDeps({
@@ -379,9 +379,10 @@ test("startDaytimePeriod blocks unapproved lessons", async () => {
       }),
     }),
   );
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.equal(result.code, "LESSON_NOT_APPROVED");
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.mode, "practice");
+  assert.ok(result.href.includes("/games/math"));
 });
 
 test("continueDaytimePeriod persists completedContentId so later continues advance", async () => {
