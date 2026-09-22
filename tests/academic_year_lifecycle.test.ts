@@ -71,3 +71,18 @@ test("migration creates academic year config and year-change audit tables", () =
   assert.match(sql, /StudentYearChange/);
   assert.match(sql, /holdBackFromPromotion/);
 });
+
+test("early promotion locks year group; bulk rollover does not", () => {
+  const apply = read("src/lib/schools/academic-year-rollover.ts");
+  // Intentional mid-year early promote must stick (not get overwritten by DOB sync).
+  assert.match(
+    apply,
+    /async function earlyPromoteStudent[\s\S]*?data:\s*\{\s*yearGroup:\s*to,\s*yearGroupLocked:\s*true\s*\}/,
+  );
+  assert.match(apply, /reason:\s*"early_promote"/);
+  // Ordinary cohort rollover only advances yearGroup — do not lock the whole cohort.
+  assert.match(apply, /data:\s*\{\s*yearGroup:\s*row\.toYearGroup\s*\}/);
+  assert.match(apply, /reason:\s*"rollover"/);
+  const lockWrites = apply.match(/yearGroupLocked:\s*true/g) ?? [];
+  assert.equal(lockWrites.length, 1, "only early promotion should set yearGroupLocked");
+});

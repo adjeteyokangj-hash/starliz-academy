@@ -277,7 +277,7 @@ export async function earlyPromoteStudent(input: {
   await prisma.$transaction(async (tx) => {
     await tx.childProfile.update({
       where: { id: membership.childId },
-      data: { yearGroup: to },
+      data: { yearGroup: to, yearGroupLocked: true },
     });
     if (targetClass) {
       await tx.schoolStudent.update({
