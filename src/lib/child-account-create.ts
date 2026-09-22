@@ -746,7 +746,7 @@ async function defaultFindOwnedChildForReset(input: {
       name: true,
       yearGroup: true,
       userId: true,
-      user: { select: { id: true, username: true, role: true } },
+      account: { select: { id: true, username: true, role: true } },
       _count: { select: { schoolLinks: true } },
     },
   });
@@ -756,8 +756,8 @@ async function defaultFindOwnedChildForReset(input: {
     name: row.name,
     yearGroup: row.yearGroup,
     userId: row.userId,
-    loginUsername: row.user?.username ?? null,
-    studentRole: row.user?.role === "student",
+    loginUsername: row.account?.username ?? null,
+    studentRole: row.account?.role === "student",
     hasSchoolLink: row._count.schoolLinks > 0,
   };
 }
