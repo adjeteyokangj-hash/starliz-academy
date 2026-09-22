@@ -13,6 +13,7 @@ import SecuritySettings from "./SecuritySettings";
 import ConsentAuditView from "./ConsentAuditView";
 import NotificationPreferences from "./NotificationPreferences";
 import ParentShortLearningPanel from "./ParentShortLearningPanel";
+import ParentCollapsibleCard from "./ParentCollapsibleCard";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
 import CurriculumMasteryMap from "@/components/academic-intelligence/CurriculumMasteryMap";
@@ -2527,13 +2528,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
 function Panel({ title, description, children }: { title: string; description: string; children?: ReactNode }) {
   return (
-    <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-2xl shadow-slate-950/30 sm:p-5 lg:p-6">
-      <div className="mb-4">
-        <h2 className="text-xl font-bold text-white">{title}</h2>
-        <p className="mt-1 text-sm text-slate-400">{description}</p>
-      </div>
+    <ParentCollapsibleCard title={title} description={description} storageKey={`parent-portal-panel:${title}`}>
       {children}
-    </section>
+    </ParentCollapsibleCard>
   );
 }
 
