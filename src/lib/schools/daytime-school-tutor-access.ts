@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { loadDaySchoolAccess } from "@/lib/schools/day-school-access";
 import { ensureMinimumMathQuestions, padMathAnswerChoices } from "@/lib/schools/math-practice-fill";
 import {
   ensureMinimumSubjectQuestions,
@@ -320,13 +321,13 @@ export function resolveQuestionFromContentJson(
 export function createDefaultDaytimeTutorAccessDeps(): DaytimeTutorAccessDeps {
   return {
     findActiveEnrolment: async (studentId) => {
-      const row = await prisma.schoolStudent.findFirst({
-        where: { childId: studentId, status: "active", classroomId: { not: null } },
-        orderBy: { updatedAt: "desc" },
-        select: { id: true, schoolId: true, classroomId: true },
-      });
-      if (!row?.classroomId) return null;
-      return { id: row.id, schoolId: row.schoolId, classroomId: row.classroomId };
+      const access = await loadDaySchoolAccess(studentId);
+      if (!access.enrolment) return null;
+      return {
+        id: access.enrolment.id,
+        schoolId: access.enrolment.schoolId,
+        classroomId: access.enrolment.classroomId,
+      };
     },
     findPeriod: async (periodId) => {
       return prisma.schoolDayLesson.findUnique({

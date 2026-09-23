@@ -4,6 +4,7 @@ import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import { ensureLearningAccessForDaytimePeriod } from "@/lib/subscriptions/learning-access";
+import { loadDaySchoolAccess } from "@/lib/schools/day-school-access";
 import { startDaytimePeriod } from "@/lib/schools/start-daytime-period";
 
 type RouteContext = {
@@ -56,6 +57,14 @@ export async function POST(request: Request, context: RouteContext) {
 
   if (!childId) {
     return NextResponse.json({ error: "No active learner selected." }, { status: 400 });
+  }
+
+  const daySchool = await loadDaySchoolAccess(childId);
+  if (daySchool.block) {
+    return NextResponse.json(
+      { error: daySchool.block.error, code: daySchool.block.code },
+      { status: daySchool.block.status },
+    );
   }
 
   const result = await startDaytimePeriod({

@@ -88,7 +88,11 @@ export type SchoolAuditAction =
   | "human_support_admin_close_abandoned"
   | "human_support_admin_follow_up"
   | "human_support_admin_view_private_notes"
-  | "human_support_admin_export";
+  | "human_support_admin_export"
+  | "day_school_enabled"
+  | "day_school_disabled"
+  | "student_day_school_removed"
+  | "student_day_school_restored";
 
 export type SchoolEntityType =
   | "school"

@@ -25,6 +25,7 @@ export type SchoolAdminRecord = {
   contactEmail: string | null;
   contactPhone: string | null;
   notes: string | null;
+  daySchoolEnabled: boolean;
   ownerUserId: string | null;
   ownerName: string | null;
   ownerEmail: string | null;
@@ -79,6 +80,7 @@ export type SchoolAdminRecord = {
     classroomId: string | null;
     classroomName: string | null;
     status: string;
+    daySchoolEnabled: boolean;
     externalRef: string | null;
     joinedAt: string;
     updatedAt: string;
@@ -378,6 +380,7 @@ type SchoolAdminSource = {
   contactEmail: string | null;
   contactPhone: string | null;
   notes: string | null;
+  daySchoolEnabled: boolean;
   ownerUserId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -423,6 +426,7 @@ type SchoolAdminSource = {
     id: string;
     classroomId: string | null;
     status: string;
+    daySchoolEnabled: boolean;
     externalRef: string | null;
     joinedAt: Date;
     updatedAt: Date;
@@ -919,6 +923,7 @@ export async function mapSchoolToAdminRecord(school: SchoolAdminSource): Promise
     contactEmail: school.contactEmail,
     contactPhone: school.contactPhone,
     notes: school.notes,
+    daySchoolEnabled: school.daySchoolEnabled,
     ownerUserId: school.ownerUserId,
     ownerName: school.owner?.name ?? null,
     ownerEmail: school.owner?.email ?? null,
@@ -975,6 +980,7 @@ export async function mapSchoolToAdminRecord(school: SchoolAdminSource): Promise
       classroomId: student.classroomId,
       classroomName: student.classroom?.name ?? null,
       status: student.status,
+      daySchoolEnabled: student.daySchoolEnabled,
       externalRef: student.externalRef,
       joinedAt: student.joinedAt.toISOString(),
       updatedAt: student.updatedAt.toISOString(),
@@ -1041,6 +1047,7 @@ export async function mapSchoolToDashboardRecord(school: SchoolDashboardSource):
     contactEmail: school.contactEmail,
     contactPhone: school.contactPhone,
     notes: school.notes,
+    daySchoolEnabled: school.daySchoolEnabled,
     ownerUserId: school.ownerUserId,
     ownerName: school.owner?.name ?? null,
     ownerEmail: school.owner?.email ?? null,
@@ -1097,6 +1104,7 @@ export async function mapSchoolToDashboardRecord(school: SchoolDashboardSource):
       classroomId: student.classroomId,
       classroomName: student.classroom?.name ?? null,
       status: student.status,
+      daySchoolEnabled: student.daySchoolEnabled,
       externalRef: student.externalRef,
       joinedAt: student.joinedAt.toISOString(),
       updatedAt: student.updatedAt.toISOString(),

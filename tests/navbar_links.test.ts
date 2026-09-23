@@ -4,6 +4,26 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildPrimaryNavLinks } from "../src/components/layout/Navbar";
 
+test("student navigation hides Day School when the school switch is off and keeps Short Learning", () => {
+  const links = buildPrimaryNavLinks({
+    showParentAccess: false,
+    isStudentContext: true,
+    dashboardHref: "/student/dashboard",
+    profileHref: "/my-profile",
+    gaLearningHubHref: "/ga-learning-hub",
+    showGaLearningHub: false,
+    showDaySchool: false,
+  });
+
+  assert.deepEqual(
+    links.map((link) => ({ href: link.href, label: link.label })),
+    [
+      { href: "/student/dashboard", label: "Home" },
+      { href: "/student/short-learning", label: "Short Learning" },
+    ],
+  );
+});
+
 test("student navigation is lean: Home, Day School, Short Learning only by default", () => {
   const links = buildPrimaryNavLinks({
     showParentAccess: false,

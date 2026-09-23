@@ -13,6 +13,7 @@ import {
 } from "@/lib/schools/daytime-lesson-ui";
 import { countOnlineTutors, getOrCreateSupportPolicy } from "@/lib/schools/human-support-presence";
 import { getActiveGuidanceForChild } from "@/lib/schools/human-support-scheduler";
+import { loadDaySchoolAccess } from "@/lib/schools/day-school-access";
 import type { DaytimeSessionPlanDto } from "@/lib/schools/start-daytime-period";
 
 type RouteContext = {
@@ -75,11 +76,14 @@ export async function GET(request: Request, context: RouteContext) {
   });
   if (access.response) return access.response;
 
-  const enrolment = await prisma.schoolStudent.findFirst({
-    where: { childId, status: "active", classroomId: { not: null } },
-    orderBy: { updatedAt: "desc" },
-    select: { schoolId: true, classroomId: true },
-  });
+  const daySchool = await loadDaySchoolAccess(childId);
+  if (daySchool.block) {
+    return NextResponse.json(
+      { error: daySchool.block.error, code: daySchool.block.code },
+      { status: daySchool.block.status },
+    );
+  }
+  const enrolment = daySchool.enrolment;
   if (!enrolment?.classroomId) {
     return NextResponse.json({ error: "No school enrolment found." }, { status: 404 });
   }

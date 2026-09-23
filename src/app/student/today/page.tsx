@@ -102,6 +102,7 @@ export default function StudentTodayPage() {
   const [startingId, setStartingId] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [studentFirstName, setStudentFirstName] = useState<string | null>(null);
+  const [daySchoolOff, setDaySchoolOff] = useState(false);
   const [nowMinutes, setNowMinutes] = useState(() => minutesNow());
 
   useEffect(() => {
@@ -114,6 +115,7 @@ export default function StudentTodayPage() {
     async function load() {
       setLoading(true);
       setError(null);
+      setDaySchoolOff(false);
       try {
         const [timetableRes, summaryRes] = await Promise.all([
           fetchWithRefreshRetry("/api/student/daytime-timetable", {
@@ -127,6 +129,12 @@ export default function StudentTodayPage() {
         ]);
         const data = await timetableRes.json().catch(() => ({}));
         if (!timetableRes.ok) {
+          if (data.code === "DAY_SCHOOL_DISABLED") {
+            if (!active) return;
+            setDaySchoolOff(true);
+            setBoard(null);
+            return;
+          }
           throw new Error(typeof data.error === "string" ? data.error : "Unable to load your school day.");
         }
         if (!active) return;
@@ -207,6 +215,22 @@ export default function StudentTodayPage() {
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
       <main className="mx-auto max-w-2xl space-y-6 px-4 py-6">
+        {daySchoolOff ? (
+          <section className="rounded-2xl border border-border bg-card px-5 py-6">
+            <h1 className="text-xl font-black">Day School is turned off</h1>
+            <p className="mt-2 text-sm text-foreground/70">
+              Your school has Day School switched off right now. Short Learning is still available.
+            </p>
+            <Link
+              href="/student/short-learning"
+              className="mt-4 inline-flex rounded-xl bg-violet-700 px-4 py-2 text-sm font-bold text-white hover:bg-violet-600"
+            >
+              Open Short Learning
+            </Link>
+          </section>
+        ) : null}
+        {!daySchoolOff ? (
+        <>
         <header className="space-y-3">
           <p className="text-xs uppercase tracking-[0.14em] text-foreground/45">Day School · My school day</p>
           <div>
@@ -445,6 +469,8 @@ export default function StudentTodayPage() {
             Attendance
           </Link>
         </div>
+        </>
+        ) : null}
       </main>
     </div>
   );

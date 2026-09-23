@@ -38,6 +38,7 @@ const baseSchoolSchema = z.object({
   contactPhone: z.string().trim().max(40).optional(),
   notes: z.string().trim().max(2000).optional(),
   ownerUserId: z.string().min(1).optional(),
+  daySchoolEnabled: z.boolean().optional(),
 });
 
 const actionSchema = z.discriminatedUnion("action", [
@@ -163,6 +164,14 @@ const actionSchema = z.discriminatedUnion("action", [
       classroomId: z.string().min(1).optional().nullable(),
       externalRef: z.string().trim().max(120).optional().nullable(),
       status: z.enum(["active", "archived", "transferred"]).optional(),
+    }),
+  }),
+  z.object({
+    action: z.literal("setStudentDaySchool"),
+    payload: z.object({
+      schoolId: z.string().min(1),
+      schoolStudentId: z.string().min(1),
+      daySchoolEnabled: z.boolean(),
     }),
   }),
   z.object({
@@ -453,7 +462,7 @@ export async function POST(request: Request) {
       case "updateSchool": {
         const current = await prisma.school.findUnique({
           where: { id: parsed.payload.schoolId },
-          select: { slug: true, status: true },
+          select: { slug: true, status: true, daySchoolEnabled: true },
         });
         if (!current) {
           return NextResponse.json({ error: "School not found." }, { status: 404 });
@@ -476,8 +485,29 @@ export async function POST(request: Request) {
             ...(parsed.payload.ownerUserId !== undefined
               ? { ownerUserId: parsed.payload.ownerUserId || null }
               : {}),
+            ...(parsed.payload.daySchoolEnabled !== undefined
+              ? { daySchoolEnabled: parsed.payload.daySchoolEnabled }
+              : {}),
           },
         });
+
+        if (
+          parsed.payload.daySchoolEnabled !== undefined
+          && parsed.payload.daySchoolEnabled !== current.daySchoolEnabled
+        ) {
+          await writeSchoolAuditLog({
+            schoolId: parsed.payload.schoolId,
+            actorUserId: session.userId,
+            action: parsed.payload.daySchoolEnabled ? "day_school_enabled" : "day_school_disabled",
+            entityType: "school",
+            entityId: parsed.payload.schoolId,
+            metadata: {
+              previousDaySchoolEnabled: current.daySchoolEnabled,
+              daySchoolEnabled: parsed.payload.daySchoolEnabled,
+            },
+            severity: "info",
+          });
+        }
 
         if (parsed.payload.status && parsed.payload.status !== current.status) {
           await writeSchoolAuditLog({
@@ -1130,6 +1160,41 @@ export async function POST(request: Request) {
             ...(parsed.payload.externalRef !== undefined ? { externalRef: parsed.payload.externalRef || null } : {}),
             ...(parsed.payload.status !== undefined ? { status: parsed.payload.status } : {}),
           },
+        });
+        break;
+      }
+      case "setStudentDaySchool": {
+        const student = await prisma.schoolStudent.findFirst({
+          where: { id: parsed.payload.schoolStudentId, schoolId: parsed.payload.schoolId },
+          select: {
+            id: true,
+            status: true,
+            classroomId: true,
+            daySchoolEnabled: true,
+            childId: true,
+          },
+        });
+        if (!student) {
+          return NextResponse.json({ error: "Student not found in this school." }, { status: 404 });
+        }
+        await prisma.schoolStudent.update({
+          where: { id: student.id },
+          data: { daySchoolEnabled: parsed.payload.daySchoolEnabled },
+        });
+        await writeSchoolAuditLog({
+          schoolId: parsed.payload.schoolId,
+          actorUserId: session.userId,
+          action: parsed.payload.daySchoolEnabled ? "student_day_school_restored" : "student_day_school_removed",
+          entityType: "student",
+          entityId: student.id,
+          metadata: {
+            childId: student.childId,
+            previousDaySchoolEnabled: student.daySchoolEnabled,
+            daySchoolEnabled: parsed.payload.daySchoolEnabled,
+            status: student.status,
+            classroomId: student.classroomId,
+          },
+          severity: "info",
         });
         break;
       }

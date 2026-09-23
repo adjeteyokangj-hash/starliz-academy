@@ -19,6 +19,7 @@ export type SchoolDashboardRecord = {
   status: string;
   type?: string;
   notes: string | null;
+  daySchoolEnabled?: boolean;
   contactEmail?: string | null;
   contactPhone?: string | null;
   ownerName?: string | null;
@@ -53,6 +54,7 @@ export type SchoolDashboardRecord = {
     childName?: string;
     parentEmail?: string;
     status: string;
+    daySchoolEnabled?: boolean;
     classroomId: string | null;
     classroomName?: string | null;
     externalRef?: string | null;

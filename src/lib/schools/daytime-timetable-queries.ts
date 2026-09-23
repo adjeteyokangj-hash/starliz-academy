@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { loadDaySchoolAccess } from "@/lib/schools/day-school-access";
 import {
   describeSchoolClock,
   minutesNow,
@@ -177,29 +178,8 @@ export function createDefaultTutorBoardDeps(): TutorBoardDeps {
 export function createDefaultStudentBoardDeps(): StudentBoardDeps {
   return {
     findActiveEnrolment: async (childId) => {
-      const enrolment = await prisma.schoolStudent.findFirst({
-        where: {
-          childId,
-          status: "active",
-          classroomId: { not: null },
-        },
-        select: {
-          id: true,
-          schoolId: true,
-          classroomId: true,
-          classroom: { select: { id: true, name: true } },
-          school: { select: { id: true, name: true } },
-        },
-        orderBy: { joinedAt: "desc" },
-      });
-      if (!enrolment || !enrolment.classroomId) return null;
-      return {
-        id: enrolment.id,
-        schoolId: enrolment.schoolId,
-        classroomId: enrolment.classroomId,
-        classroomName: enrolment.classroom?.name ?? null,
-        schoolName: enrolment.school.name,
-      };
+      const access = await loadDaySchoolAccess(childId);
+      return access.enrolment;
     },
     findClassPeriods: async ({ schoolId, classroomId, dayOfWeek }) => prisma.schoolDayLesson.findMany({
       where: {
