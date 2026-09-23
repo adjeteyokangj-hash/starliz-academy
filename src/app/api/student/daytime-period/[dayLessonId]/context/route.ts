@@ -14,6 +14,7 @@ import {
 import { countOnlineTutors, getOrCreateSupportPolicy } from "@/lib/schools/human-support-presence";
 import { getActiveGuidanceForChild } from "@/lib/schools/human-support-scheduler";
 import { loadDaySchoolAccess } from "@/lib/schools/day-school-access";
+import { attendanceBlockForDay } from "@/lib/academic-intelligence/schoolWeekSettings";
 import type { DaytimeSessionPlanDto } from "@/lib/schools/start-daytime-period";
 
 type RouteContext = {
@@ -96,6 +97,7 @@ export async function GET(request: Request, context: RouteContext) {
     },
     select: {
       id: true,
+      dayOfWeek: true,
       title: true,
       subject: true,
       skillFocus: true,
@@ -120,6 +122,14 @@ export async function GET(request: Request, context: RouteContext) {
 
   if (!period) {
     return NextResponse.json({ error: "Period not found for this learner." }, { status: 404 });
+  }
+
+  const attendanceBlock = await attendanceBlockForDay(childId, period.dayOfWeek);
+  if (attendanceBlock) {
+    return NextResponse.json(
+      { error: attendanceBlock.error, code: attendanceBlock.code },
+      { status: attendanceBlock.status },
+    );
   }
 
   const contentRefIds = (period.lesson?.contentRefs ?? "")

@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/db";
 import { loadDaySchoolAccess } from "@/lib/schools/day-school-access";
 import {
+  loadStudentSchoolWeekSettings,
+  studentAttendsDayOfWeek,
+  type SchoolWeekSettings,
+} from "@/lib/academic-intelligence/schoolWeekSettings";
+import {
   describeSchoolClock,
   minutesNow,
   minutesNowUk,
@@ -131,6 +136,7 @@ export type StudentBoardDeps = {
     classroomId: string;
     dayOfWeek: number;
   }) => Promise<PeriodRow[]>;
+  findAttendanceSettings?: (childId: string) => Promise<SchoolWeekSettings>;
 };
 
 const periodInclude = {
@@ -191,6 +197,7 @@ export function createDefaultStudentBoardDeps(): StudentBoardDeps {
       include: periodInclude,
       orderBy: [{ periodIndex: "asc" }, { startsAt: "asc" }],
     }),
+    findAttendanceSettings: (childId) => loadStudentSchoolWeekSettings(childId),
   };
 }
 
@@ -337,6 +344,39 @@ export async function getStudentDaytimeBoard(
     };
   }
 
+  const attendanceSettings = deps.findAttendanceSettings
+    ? await deps.findAttendanceSettings(input.childId)
+    : null;
+  const attending = attendanceSettings
+    ? studentAttendsDayOfWeek(attendanceSettings, dayOfWeek)
+    : true;
+  const attendanceDays = attendanceSettings?.activeDays ?? ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+  if (!attending) {
+    return {
+      ok: true as const,
+      board: {
+        childId: input.childId,
+        enrolment: {
+          schoolStudentId: enrolment.id,
+          schoolId: enrolment.schoolId,
+          classroomId: enrolment.classroomId,
+        },
+        dayOfWeek,
+        weekdayLabel: weekdayLabel(dayOfWeek),
+        dateIso: now.toISOString(),
+        phase: "not_attending" as const,
+        currentPeriodId: null,
+        nextPeriodId: null,
+        periods: [] as DaytimePeriodDto[],
+        schoolName: enrolment.schoolName,
+        classroomName: enrolment.classroomName,
+        attending: false,
+        attendanceDays,
+      },
+    };
+  }
+
   const rows = await deps.findClassPeriods({
     schoolId: enrolment.schoolId,
     classroomId: enrolment.classroomId,
@@ -369,6 +409,8 @@ export async function getStudentDaytimeBoard(
       periods,
       schoolName: enrolment.schoolName,
       classroomName: enrolment.classroomName,
+      attending: true,
+      attendanceDays,
     },
   };
 }

@@ -35,6 +35,7 @@ import {
   isValidTimeRange,
   ukSchoolTimetableDay,
 } from "../src/lib/schools/school-day-period";
+import { DEFAULT_SCHOOL_WEEK_SETTINGS } from "../src/lib/academic-intelligence/schoolWeekSettings";
 
 function makeBootstrapStore() {
   const users = new Map<string, { id: string; email: string }>();
@@ -640,4 +641,39 @@ test("assignSchoolLesson helpers remain stable", () => {
     writeSchoolAuditLog: async () => undefined,
   };
   void deps;
+});
+
+test("student Day School board hides classes on days outside the saved attendance days", async () => {
+  const queried: number[] = [];
+  const settings = {
+    ...DEFAULT_SCHOOL_WEEK_SETTINGS,
+    activeDays: ["Monday", "Wednesday", "Friday"] as typeof DEFAULT_SCHOOL_WEEK_SETTINGS.activeDays,
+  };
+  const deps: StudentBoardDeps = {
+    findActiveEnrolment: async () => ({
+      id: "ss-1",
+      schoolId: "school-1",
+      classroomId: "class-1",
+      classroomName: "Year 9",
+      schoolName: "StarLiz Academy School",
+    }),
+    findClassPeriods: async ({ dayOfWeek }) => {
+      queried.push(dayOfWeek);
+      return [periodRow({ id: "lesson", teacherId: "t1", classroomId: "class-1", startsAt: "09:00", endsAt: "09:40" })];
+    },
+    findAttendanceSettings: async (childId) => {
+      assert.equal(childId, "adjei");
+      return settings;
+    },
+  };
+
+  const tuesday = await getStudentDaytimeBoard({ childId: "adjei", dayOfWeek: 2, now: new Date("2026-09-22T10:00:00+01:00") }, deps);
+  const wednesday = await getStudentDaytimeBoard({ childId: "adjei", dayOfWeek: 3, now: new Date("2026-09-23T10:00:00+01:00") }, deps);
+  assert.equal(tuesday.ok && wednesday.ok, true);
+  if (!tuesday.ok || !wednesday.ok) return;
+  assert.equal(tuesday.board.phase, "not_attending");
+  assert.equal(tuesday.board.periods.length, 0);
+  assert.deepEqual(tuesday.board.attendanceDays, ["Monday", "Wednesday", "Friday"]);
+  assert.equal(wednesday.board.periods.length, 1);
+  assert.deepEqual(queried, [3]);
 });

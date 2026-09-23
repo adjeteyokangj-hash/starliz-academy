@@ -402,13 +402,16 @@ export default function StudentDetailPage() {
   }, [params.id]);
 
   const loadSchoolWeekSettings = useCallback(async () => {
-    const response = await fetch(`/api/admin/students/${params.id}/school-week-settings`);
+    const response = await fetch(`/api/admin/students/${params.id}/school-week-settings`, {
+      cache: "no-store",
+      credentials: "include",
+    });
     if (!response.ok) {
-      setSchoolWeekSettings(defaultSchoolWeekSettings);
+      setSchoolWeekMessage("Unable to load saved school week controls.");
       return;
     }
     const payload = (await response.json()) as { settings?: SchoolWeekSettingsPayload };
-    setSchoolWeekSettings(payload.settings ?? defaultSchoolWeekSettings);
+    if (payload.settings) setSchoolWeekSettings(payload.settings);
   }, [params.id]);
 
   const loadQuickLevelFinderControl = useCallback(async () => {
@@ -638,6 +641,8 @@ export default function StudentDetailPage() {
     const response = await fetch(`/api/admin/students/${params.id}/school-week-settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      credentials: "include",
       body: JSON.stringify(schoolWeekSettings),
     });
     const payload = (await response.json().catch(() => null)) as { error?: string; settings?: SchoolWeekSettingsPayload } | null;
@@ -649,8 +654,9 @@ export default function StudentDetailPage() {
     if (payload?.settings) {
       setSchoolWeekSettings(payload.settings);
     }
-    await loadAcademicIntelligence();
-    setSchoolWeekMessage("School week controls saved.");
+    await loadSchoolWeekSettings();
+    const savedDays = (payload?.settings?.activeDays ?? schoolWeekSettings.activeDays).join(", ");
+    setSchoolWeekMessage(`Saved. Day School attendance days: ${savedDays}.`);
     setSchoolWeekSaving(false);
   }
 

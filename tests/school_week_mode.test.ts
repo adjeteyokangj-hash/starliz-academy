@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildAcademicIntelligence, toStudentSafeAcademicIntelligence } from "../src/lib/academic-intelligence/academicIntelligence";
+import {
+  mergeSchoolWeekSettingsIntoProfileJson,
+  readSchoolWeekSettingsFromProfileJson,
+  sanitizeSchoolWeekSettings,
+  studentAttendsDayOfWeek,
+} from "../src/lib/academic-intelligence/schoolWeekSettings";
 import type { AcademicSourceData, SchoolWeekSettings } from "../src/lib/academic-intelligence/types";
 
 function sourceWithSettings(settings?: Partial<SchoolWeekSettings>): AcademicSourceData {
@@ -88,6 +94,28 @@ test("school week mode can exclude catch-up blocks", () => {
   const output = buildAcademicIntelligence(sourceWithSettings({ includeCatchUpTasks: false }));
   const hasCatchUp = output.schoolWeekModePlan.dailySchedules.some((day) => day.blocks.some((block) => block.activityType === "catch_up"));
   assert.equal(hasCatchUp, false);
+});
+
+test("attendance day controls persist as saved and do not expand to every weekday", () => {
+  const saved = sanitizeSchoolWeekSettings({
+    activeDays: ["Monday", "Wednesday", "Friday"],
+    startTime: "09:00",
+    endTime: "15:10",
+    lessonBlockMinutes: 40,
+    dailySubjectLimit: 3,
+  });
+  const raw = mergeSchoolWeekSettingsIntoProfileJson({ settings: saved });
+  const read = readSchoolWeekSettingsFromProfileJson(raw);
+  assert.deepEqual(read.activeDays, ["Monday", "Wednesday", "Friday"]);
+  assert.equal(read.startTime, "09:00");
+  assert.equal(read.endTime, "15:10");
+  assert.equal(read.lessonBlockMinutes, 40);
+  assert.equal(read.dailySubjectLimit, 3);
+  assert.equal(studentAttendsDayOfWeek(read, 1), true);
+  assert.equal(studentAttendsDayOfWeek(read, 2), false);
+  assert.equal(studentAttendsDayOfWeek(read, 3), true);
+  assert.equal(studentAttendsDayOfWeek(read, 5), true);
+  assert.equal(raw.includes("daySchoolEnabled"), false);
 });
 
 test("student-safe payload strips school week sensitive notes", () => {

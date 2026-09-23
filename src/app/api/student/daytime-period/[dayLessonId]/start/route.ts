@@ -5,6 +5,7 @@ import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
 import { ensureLearningAccessForDaytimePeriod } from "@/lib/subscriptions/learning-access";
 import { loadDaySchoolAccess } from "@/lib/schools/day-school-access";
+import { attendanceBlockForDay } from "@/lib/academic-intelligence/schoolWeekSettings";
 import { startDaytimePeriod } from "@/lib/schools/start-daytime-period";
 
 type RouteContext = {
@@ -65,6 +66,20 @@ export async function POST(request: Request, context: RouteContext) {
       { error: daySchool.block.error, code: daySchool.block.code },
       { status: daySchool.block.status },
     );
+  }
+
+  const periodDay = await prisma.schoolDayLesson.findUnique({
+    where: { id: dayLessonId },
+    select: { dayOfWeek: true },
+  });
+  if (periodDay) {
+    const attendanceBlock = await attendanceBlockForDay(childId, periodDay.dayOfWeek);
+    if (attendanceBlock) {
+      return NextResponse.json(
+        { error: attendanceBlock.error, code: attendanceBlock.code },
+        { status: attendanceBlock.status },
+      );
+    }
   }
 
   const result = await startDaytimePeriod({

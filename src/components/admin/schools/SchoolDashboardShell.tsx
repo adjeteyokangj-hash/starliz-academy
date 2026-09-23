@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ReactNode, useMemo, useState } from "react";
 import { canDo, getSchoolRoleLabel, type SchoolRole } from "@/lib/schools/permissions";
 import { useSchoolDashboardRecord, type SchoolDashboardRecord } from "@/components/admin/schools/school-dashboard-data";
+import { postSchoolAction } from "@/components/admin/schools/school-actions";
 import { AdminButtonLink, AdminCard, AdminPageHeader, AdminSelect } from "@/components/admin/ui";
 
 type TabKey =
@@ -76,6 +77,9 @@ function onboardingStatus(school: SchoolDashboardRecord): string {
 export default function SchoolDashboardShell({ schoolId, activeTab, title, subtitle, children }: Props) {
   const { school, loading, error, refresh } = useSchoolDashboardRecord(schoolId);
   const [viewAsRole, setViewAsRole] = useState<SchoolRole>("owner");
+  const [daySchoolSaving, setDaySchoolSaving] = useState(false);
+  const [daySchoolMessage, setDaySchoolMessage] = useState<string | null>(null);
+  const [daySchoolError, setDaySchoolError] = useState<string | null>(null);
 
   const tabs = useMemo<TabItem[]>(() => {
     return [
@@ -129,6 +133,37 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
     });
   }, [tabs, viewAsRole]);
 
+  const daySchoolOn = school?.daySchoolEnabled !== false;
+  const canToggleDaySchool = activeTab === "dashboard" && Boolean(school) && canDo(viewAsRole, "manageSchoolSettings");
+
+  async function setDaySchoolEnabled(next: boolean) {
+    if (!school) return;
+    setDaySchoolSaving(true);
+    setDaySchoolMessage(null);
+    setDaySchoolError(null);
+    const status = ["pilot", "active", "suspended", "archived"].includes(school.status)
+      ? school.status
+      : "pilot";
+    const result = await postSchoolAction("updateSchool", {
+      schoolId: school.id,
+      name: school.name,
+      slug: school.slug,
+      status,
+      type: school.type || "school",
+      contactEmail: school.contactEmail ?? "",
+      contactPhone: school.contactPhone ?? "",
+      notes: school.notes ?? "",
+      daySchoolEnabled: next,
+    });
+    setDaySchoolSaving(false);
+    if (!result.ok) {
+      setDaySchoolError(result.error);
+      return;
+    }
+    setDaySchoolMessage(next ? "Day School is on for this school." : "Day School is off. Short Learning stays available.");
+    refresh();
+  }
+
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <AdminCard padding="lg">
@@ -177,6 +212,27 @@ export default function SchoolDashboardShell({ schoolId, activeTab, title, subti
             </AdminButtonLink>
           </div>
         </div>
+
+        {canToggleDaySchool && school ? (
+          <div className="mt-4 flex flex-wrap items-center gap-4 rounded-[var(--admin-radius)] border border-[var(--admin-border)] px-4 py-3" style={{ background: "var(--admin-rail)" }}>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[var(--admin-text)]">Day School: {daySchoolOn ? "On" : "Off"}</p>
+              <p className="mt-1 max-w-xl text-xs text-[var(--admin-muted)]">
+                Turning this off hides Day School for every student at this school. Accounts, classes, attendance history, and Short Learning stay in place.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={daySchoolSaving}
+              onClick={() => void setDaySchoolEnabled(!daySchoolOn)}
+              className="shrink-0 rounded-xl border border-slate-500 bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:border-slate-300 disabled:opacity-60"
+            >
+              {daySchoolSaving ? "Saving…" : daySchoolOn ? "Turn Day School off" : "Turn Day School on"}
+            </button>
+            {daySchoolMessage ? <p className="w-full text-xs text-emerald-200">{daySchoolMessage}</p> : null}
+            {daySchoolError ? <p className="w-full text-xs text-rose-200">{daySchoolError}</p> : null}
+          </div>
+        ) : null}
 
         {loading ? <p className="admin-body mt-4">Loading school profile...</p> : null}
         {error ? (

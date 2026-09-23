@@ -1,4 +1,8 @@
+import { prisma } from "@/lib/db";
 import { SchoolWeekSettings, SchoolWeekday } from "@/lib/academic-intelligence/types";
+
+export type { SchoolWeekSettings, SchoolWeekday };
+import { weekdayLabel } from "@/lib/schools/school-day-period";
 
 const SCHOOL_WEEK_DAYS: SchoolWeekday[] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -60,7 +64,11 @@ function normalizeStringArray(value: unknown): string[] {
 function normalizeActiveDays(value: unknown, fallback: SchoolWeekday[]): SchoolWeekday[] {
   if (!Array.isArray(value)) return fallback;
   const next = value.filter((entry): entry is SchoolWeekday => typeof entry === "string" && SCHOOL_WEEK_DAYS.includes(entry as SchoolWeekday));
-  return next.length ? Array.from(new Set(next)) : fallback;
+  // An explicit selection, including a shorter week, must be kept.
+  // Only a missing or completely invalid list falls back.
+  if (value.length > 0 && next.length === 0) return fallback;
+  const unique = Array.from(new Set(next));
+  return unique.sort((left, right) => SCHOOL_WEEK_DAYS.indexOf(left) - SCHOOL_WEEK_DAYS.indexOf(right));
 }
 
 function toJsonObject(value: unknown): JsonObject {
@@ -117,6 +125,30 @@ export function mergeSchoolWeekSettingsIntoProfileJson(input: {
     schoolWeekModeSettings: mergedSettings,
   };
   return JSON.stringify(next);
+}
+
+export function studentAttendsDayOfWeek(settings: SchoolWeekSettings, dayOfWeek: number): boolean {
+  if (!settings.enabled) return false;
+  const label = weekdayLabel(dayOfWeek);
+  return settings.activeDays.includes(label as SchoolWeekday);
+}
+
+export async function attendanceBlockForDay(childId: string, dayOfWeek: number) {
+  const settings = await loadStudentSchoolWeekSettings(childId);
+  if (studentAttendsDayOfWeek(settings, dayOfWeek)) return null;
+  return {
+    status: 403 as const,
+    code: "NOT_ATTENDING" as const,
+    error: "This student does not attend Day School on that day.",
+  };
+}
+
+export async function loadStudentSchoolWeekSettings(childId: string): Promise<SchoolWeekSettings> {
+  const profile = await prisma.studentProfile.findUnique({
+    where: { childId },
+    select: { aiLearningProfileJson: true },
+  });
+  return readSchoolWeekSettingsFromProfileJson(profile?.aiLearningProfileJson ?? null);
 }
 
 export function stripSchoolWeekSensitiveFields(settings: SchoolWeekSettings): Omit<SchoolWeekSettings, "parentAdminNotes"> {

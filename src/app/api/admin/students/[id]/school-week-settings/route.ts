@@ -58,6 +58,8 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
     settings,
     safeSettings: stripSchoolWeekSensitiveFields(settings),
     defaults: stripSchoolWeekSensitiveFields(DEFAULT_SCHOOL_WEEK_SETTINGS),
+  }, {
+    headers: { "Cache-Control": "no-store" },
   });
 }
 
@@ -90,6 +92,9 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
 
   const existing = readSchoolWeekSettingsFromProfileJson(child.studentProfile?.aiLearningProfileJson ?? null);
   const normalized = sanitizeSchoolWeekSettings(parsed.data, existing);
+  if (normalized.activeDays.length === 0) {
+    return NextResponse.json({ error: "Choose at least one attendance day." }, { status: 400 });
+  }
   const mergedJson = mergeSchoolWeekSettingsIntoProfileJson({
     existingJson: child.studentProfile?.aiLearningProfileJson ?? null,
     settings: normalized,
@@ -111,5 +116,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
   return NextResponse.json({
     settings: normalized,
     safeSettings: stripSchoolWeekSensitiveFields(normalized),
+  }, {
+    headers: { "Cache-Control": "no-store" },
   });
 }
