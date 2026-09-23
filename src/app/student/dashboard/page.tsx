@@ -526,6 +526,8 @@ export default function StudentDashboardPage() {
     supportLabel: string | null;
     lessonsToday: number;
     endedLessons: number;
+    attending?: boolean;
+    attendanceDays?: string[];
   } | null>(null);
   const [attendancePresentRate, setAttendancePresentRate] = useState<number | null>(null);
   const [dashboardTier, setDashboardTier] = useState<"primary" | "ks3" | "gcse">("primary");
@@ -903,6 +905,8 @@ export default function StudentDashboardPage() {
               teacherName: string | null;
             }>;
             supportPreview?: { label?: string } | null;
+            attending?: boolean;
+            attendanceDays?: string[];
           } | undefined;
           const periods = board?.periods ?? [];
           const current = periods.find((row) => row.id === board?.currentPeriodId) ?? null;
@@ -939,6 +943,8 @@ export default function StudentDashboardPage() {
               supportLabel: board?.supportPreview?.label ?? "AI Tutor ready",
               lessonsToday: playable.length,
               endedLessons,
+              attending: board?.attending !== false,
+              attendanceDays: board?.attendanceDays ?? [],
             });
           }
         }
@@ -1417,12 +1423,18 @@ export default function StudentDashboardPage() {
     }));
   }, [loading, router, supportSkill, weakAccuracy, weakAssignment, weakSkill]);
 
+  const notAttendingToday = schoolDaySnapshot?.attending === false;
   const showDaySchoolCard = Boolean(
     schoolEnrolment
-    && schoolDaySnapshot
-    && schoolDaySnapshot.lessonsToday > 0
-    && schoolDaySnapshot.phase !== "after_school"
-    && schoolDaySnapshot.phase !== "no_timetable",
+    && (
+      !schoolDaySnapshot
+      || notAttendingToday
+      || (
+        schoolDaySnapshot.lessonsToday > 0
+        && schoolDaySnapshot.phase !== "after_school"
+        && schoolDaySnapshot.phase !== "no_timetable"
+      )
+    ),
   );
 
   return (
@@ -1554,6 +1566,15 @@ export default function StudentDashboardPage() {
                   </p>
                 )}
 
+                {notAttendingToday ? (
+                  <div className="mt-5 rounded-2xl border border-sky-200/80 bg-white/80 p-4">
+                    <p className="text-sm font-bold text-slate-900">No Day School on {schoolDaySnapshot?.weekdayLabel}</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Attendance days: {(schoolDaySnapshot?.attendanceDays ?? []).join(", ") || "saved school days"}.
+                      Day School classes are hidden on the other weekdays. Short Learning stays available.
+                    </p>
+                  </div>
+                ) : (
                 <div className="mt-5 rounded-2xl border border-sky-200/80 bg-white/80 p-4">
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-sky-700">
                     {schoolDaySnapshot?.current ? "Current lesson" : "Coming up"}
@@ -1601,6 +1622,7 @@ export default function StudentDashboardPage() {
                     Enter School Day
                   </Link>
                 </div>
+                )}
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link

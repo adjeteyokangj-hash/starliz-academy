@@ -63,6 +63,8 @@ type BoardPayload = {
   classroomName: string | null;
   enrolment: { schoolId: string; classroomId: string } | null;
   supportPreview?: SupportPreview | null;
+  attending?: boolean;
+  attendanceDays?: string[];
 };
 
 function firstNameFrom(name: string | null | undefined): string | null {
@@ -229,7 +231,23 @@ export default function StudentTodayPage() {
             </Link>
           </section>
         ) : null}
-        {!daySchoolOff ? (
+        {!daySchoolOff && board?.attending === false ? (
+          <section className="rounded-2xl border border-border bg-card px-5 py-6">
+            <p className="text-xs uppercase tracking-[0.14em] text-foreground/45">Day School</p>
+            <h1 className="mt-2 text-xl font-black">No Day School on {board.weekdayLabel}</h1>
+            <p className="mt-2 text-sm text-foreground/70">
+              This student attends on {(board.attendanceDays ?? []).join(", ") || "the saved school days"} only.
+              There are no Day School classes on {board.weekdayLabel}.
+            </p>
+            <Link
+              href="/student/short-learning"
+              className="mt-4 inline-flex rounded-xl bg-violet-700 px-4 py-2 text-sm font-bold text-white hover:bg-violet-600"
+            >
+              Open Short Learning
+            </Link>
+          </section>
+        ) : null}
+        {!daySchoolOff && board?.attending !== false ? (
         <>
         <header className="space-y-3">
           <p className="text-xs uppercase tracking-[0.14em] text-foreground/45">Day School · My school day</p>

@@ -91,7 +91,7 @@ export default function Navbar() {
   const [role, setRole] = useState<string | null>(null);
   const [activeChild, setActiveChild] = useState<ActiveChildPayload["child"] | null>(null);
   const [showGaLearningHub, setShowGaLearningHub] = useState(false);
-  const [showDaySchool, setShowDaySchool] = useState(true);
+  const [showDaySchool, setShowDaySchool] = useState<boolean | null>(null);
 
   const isStudentPage = Boolean(
     pathname?.startsWith("/student") ||
@@ -116,7 +116,7 @@ export default function Navbar() {
     profileHref,
     gaLearningHubHref,
     showGaLearningHub: isStudentRole && showGaLearningHub,
-    showDaySchool,
+    showDaySchool: showDaySchool === true,
   });
   const showStudentMetaBanner = isStudentRole && Boolean(activeChild);
   const studentYearGroup = activeChild?.yearGroup ?? null;
