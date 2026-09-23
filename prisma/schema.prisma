@@ -1320,6 +1320,8 @@ model School {
   contactPhone String?
   addressJson  String?
   notes        String?
+  /// When false, students keep school membership and Short Learning, but Day School UI and routes stay closed.
+  daySchoolEnabled Boolean @default(true)
 
   ownerUserId String?
   owner       User?   @relation("SchoolOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
@@ -1520,6 +1522,8 @@ model SchoolStudent {
   leftAt      DateTime?
   /// When true, school academic-year rollover skips this enrolment (admin hold-back).
   holdBackFromPromotion Boolean   @default(false)
+  /// When false, this student is unassigned from Day School without leaving the school.
+  daySchoolEnabled Boolean @default(true)
 
   parentLinks      ParentSchoolLink[]
   dayAttendance    SchoolDayAttendance[]

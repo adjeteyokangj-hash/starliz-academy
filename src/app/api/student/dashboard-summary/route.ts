@@ -12,6 +12,7 @@ import {
   getChildSelectionCookieName,
   getChildSelectionMaxAgeSeconds,
 } from "@/lib/auth";
+import { activeDaySchoolEnrolmentWhere } from "@/lib/schools/day-school-access";
 import { resolveStudentYearContext } from "@/lib/schools/student-year-context";
 import { DEFAULT_MASTERED_REVIEW_POLICY, parseStudentDashboardSettings } from "@/lib/student-dashboard-sections";
 import { syncChildAcademicFieldsFromDob } from "@/lib/uk-student-year";
@@ -155,11 +156,7 @@ async function handleDashboardSummaryGet(request: Request) {
   const [dashboardShell, schoolEnrolment] = await Promise.all([
     getStudentDashboardShell(studentId),
     prisma.schoolStudent.findFirst({
-      where: {
-        childId: studentId,
-        status: "active",
-        classroomId: { not: null },
-      },
+      where: activeDaySchoolEnrolmentWhere(studentId),
       select: {
         id: true,
         schoolId: true,

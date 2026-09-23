@@ -13,6 +13,7 @@ export type SchoolActionName =
   | "updateClassroom"
   | "updateTeacher"
   | "updateStudentAssignment"
+  | "setStudentDaySchool"
   | "bootstrapDaytimeSchool"
   | "assignSchoolLesson"
   | "updateSchoolDayLesson"

@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { resolveParentActiveChildId } from "@/lib/activeChild";
 import { prisma } from "@/lib/db";
+import { loadDaySchoolAccess } from "@/lib/schools/day-school-access";
 import { getStudentAttendanceHistory } from "@/lib/schools/attendance-register";
 import {
   buildStudentAttendanceDashboard,
@@ -33,6 +34,14 @@ export async function GET(request: Request) {
   });
   if (!owned) {
     return NextResponse.json({ error: "Student not found." }, { status: 404 });
+  }
+
+  const daySchool = await loadDaySchoolAccess(childId);
+  if (daySchool.block) {
+    return NextResponse.json(
+      { error: daySchool.block.error, code: daySchool.block.code },
+      { status: daySchool.block.status },
+    );
   }
 
   // ParentSchoolLink is optional enrichment — ChildProfile ownership already verifies the relationship.

@@ -315,7 +315,10 @@ function LinkExistingStudentsPanel({ schoolId }: { schoolId: string }) {
 }
 
 export function SchoolStudentsRegistry({ schoolId }: { schoolId: string }) {
-  const { school, loading, error } = useSchoolDashboardRecord(schoolId);
+  const { school, loading, error, refresh } = useSchoolDashboardRecord(schoolId);
+  const [daySchoolBusyId, setDaySchoolBusyId] = useState<string | null>(null);
+  const [daySchoolNotice, setDaySchoolNotice] = useState<string | null>(null);
+  const [daySchoolError, setDaySchoolError] = useState<string | null>(null);
 
   if (loading) {
     return <p className="text-sm text-slate-300">Loading student roster...</p>;
@@ -325,6 +328,28 @@ export function SchoolStudentsRegistry({ schoolId }: { schoolId: string }) {
   }
 
   const students = [...school.students].sort((left, right) => (left.childName ?? "").localeCompare(right.childName ?? ""));
+
+  async function setStudentDaySchool(schoolStudentId: string, daySchoolEnabled: boolean, childName: string) {
+    setDaySchoolBusyId(schoolStudentId);
+    setDaySchoolError(null);
+    setDaySchoolNotice(null);
+    const result = await postSchoolAction("setStudentDaySchool", {
+      schoolId,
+      schoolStudentId,
+      daySchoolEnabled,
+    });
+    setDaySchoolBusyId(null);
+    if (!result.ok) {
+      setDaySchoolError(result.error);
+      return;
+    }
+    setDaySchoolNotice(
+      daySchoolEnabled
+        ? `${childName} can use Day School again. Their class and history were kept.`
+        : `${childName} is removed from Day School. Their account, class, and Short Learning stay.`,
+    );
+    refresh();
+  }
 
   return (
     <div className="space-y-4">
@@ -348,6 +373,8 @@ export function SchoolStudentsRegistry({ schoolId }: { schoolId: string }) {
           <h2 className="text-sm font-semibold text-white">Student Roster</h2>
           <p className="text-xs text-slate-400">{students.length} enrolled</p>
         </div>
+        {daySchoolError ? <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{daySchoolError}</p> : null}
+        {daySchoolNotice ? <p className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">{daySchoolNotice}</p> : null}
         {students.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-slate-600 bg-slate-900/40 p-4 text-sm text-slate-300">
             No students enrolled in this school yet. Link Ephi, Kelvin, Elizabeth (and others) from the panel above, or
@@ -399,20 +426,41 @@ export function SchoolStudentsRegistry({ schoolId }: { schoolId: string }) {
                     <td className="px-2 py-2">
                       <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(student.status)}`}>{student.status}</span>
                     </td>
-                    <td className="px-2 py-2">{student.classroomName ?? (student.classroomId ? "Assigned" : "Unassigned")}</td>
+                    <td className="px-2 py-2">
+                      <span className="block">{student.classroomName ?? (student.classroomId ? "Assigned" : "Unassigned")}</span>
+                      <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                        {student.daySchoolEnabled === false ? "Day School off" : "Day School on"}
+                      </span>
+                    </td>
                     <td className="px-2 py-2">{student.parentEmail ?? "-"}</td>
                     <td className="px-2 py-2">{shortDate(student.joinedAt ?? student.updatedAt)}</td>
                     <td className="px-2 py-2">
-                      {detailHref ? (
-                        <Link
-                          href={detailHref}
-                          className="inline-flex rounded-lg border border-slate-600 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+                      <div className="flex flex-wrap gap-1">
+                        {detailHref ? (
+                          <Link
+                            href={detailHref}
+                            className="inline-flex rounded-lg border border-slate-600 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+                          >
+                            Manage
+                          </Link>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={daySchoolBusyId === student.id}
+                          onClick={() => void setStudentDaySchool(
+                            student.id,
+                            student.daySchoolEnabled === false,
+                            nameLabel,
+                          )}
+                          className="inline-flex rounded-lg border border-slate-600 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white disabled:opacity-50"
                         >
-                          Manage
-                        </Link>
-                      ) : (
-                        <span className="text-slate-500">—</span>
-                      )}
+                          {daySchoolBusyId === student.id
+                            ? "Saving…"
+                            : student.daySchoolEnabled === false
+                              ? "Restore Day School"
+                              : "Remove from Day School"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   );

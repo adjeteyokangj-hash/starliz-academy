@@ -13,6 +13,7 @@ import {
   DAYTIME_TUTOR_INTENTS,
   respondDaytimeSchoolTutor,
 } from "@/lib/schools/daytime-school-tutor";
+import { loadDaySchoolAccess } from "@/lib/schools/day-school-access";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
 import { AI_TUTOR_SCOPE_SHORT_LEARNING } from "@/lib/schools/short-learning-support-context";
 import { assertShortLearningTutorAccess } from "@/lib/schools/short-learning-tutor-access";
@@ -279,6 +280,14 @@ export async function POST(request: Request) {
       shortLearningBlockId: sl.blockId,
       humanSupport,
     });
+  }
+
+  const daySchool = await loadDaySchoolAccess(childId);
+  if (daySchool.block) {
+    return NextResponse.json(
+      { error: daySchool.block.error, code: daySchool.block.code },
+      { status: daySchool.block.status },
+    );
   }
 
   const access = await assertDaytimeSchoolTutorAccess({

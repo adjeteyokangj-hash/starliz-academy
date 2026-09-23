@@ -49,13 +49,16 @@ export function buildPrimaryNavLinks(input: {
   gaLearningHubHref: string;
   /** Only when admin has assigned active Ga learning to this student. */
   showGaLearningHub?: boolean;
+  /** Day School nav stays available unless the school or student has Day School turned off. */
+  showDaySchool?: boolean;
 }): PrimaryNavLink[] {
+  const showDaySchool = input.showDaySchool !== false;
   if (input.showParentAccess) {
     // Parent-in-child: lean shell — no Attendance / Ga Hub / My Profile.
     // Parent Area must return to /parent/dashboard (not profiles?intent=parent).
     return [
       navLink("child-dashboard", "/student/dashboard", "Child Dashboard"),
-      navLink("today", "/student/today", "Today"),
+      showDaySchool ? navLink("today", "/student/today", "Today") : null,
       navLink("short-learning", "/student/short-learning", "Short Learning"),
       navLink("parent-area", "/parent/dashboard", "Parent Area"),
     ].filter((link): link is PrimaryNavLink => Boolean(link));
@@ -65,7 +68,9 @@ export function buildPrimaryNavLinks(input: {
     navLink("home", input.dashboardHref, input.isStudentContext ? "Home" : "Dashboard"),
   ];
   if (input.isStudentContext) {
-    links.push(navLink("day-school", "/student/today", "Day School"));
+    if (showDaySchool) {
+      links.push(navLink("day-school", "/student/today", "Day School"));
+    }
     links.push(navLink("short-learning", "/student/short-learning", "Short Learning"));
     if (input.showGaLearningHub) {
       links.push(navLink("ga-learning-hub", input.gaLearningHubHref, "Ga Learning Hub"));
@@ -86,6 +91,7 @@ export default function Navbar() {
   const [role, setRole] = useState<string | null>(null);
   const [activeChild, setActiveChild] = useState<ActiveChildPayload["child"] | null>(null);
   const [showGaLearningHub, setShowGaLearningHub] = useState(false);
+  const [showDaySchool, setShowDaySchool] = useState(true);
 
   const isStudentPage = Boolean(
     pathname?.startsWith("/student") ||
@@ -110,6 +116,7 @@ export default function Navbar() {
     profileHref,
     gaLearningHubHref,
     showGaLearningHub: isStudentRole && showGaLearningHub,
+    showDaySchool,
   });
   const showStudentMetaBanner = isStudentRole && Boolean(activeChild);
   const studentYearGroup = activeChild?.yearGroup ?? null;
@@ -142,6 +149,29 @@ export default function Navbar() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isStudentPage) return;
+    let active = true;
+    const loadDaySchool = async () => {
+      try {
+        const response = await fetch("/api/student/day-school-access", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!active) return;
+        if (!response.ok) return;
+        const payload = (await response.json()) as { daySchool?: boolean };
+        setShowDaySchool(payload.daySchool !== false);
+      } catch {
+        if (!active) return;
+      }
+    };
+    void loadDaySchool();
+    return () => {
+      active = false;
+    };
+  }, [isStudentPage, pathname]);
 
   useEffect(() => {
     if (!isStudentRole) return;

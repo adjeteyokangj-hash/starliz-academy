@@ -49,12 +49,14 @@ export default function StudentAttendanceHistoryPage() {
   const [streakDays, setStreakDays] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [daySchoolOff, setDaySchoolOff] = useState(false);
 
   useEffect(() => {
     let active = true;
     async function load() {
       setLoading(true);
       setError(null);
+      setDaySchoolOff(false);
       try {
         const response = await fetch("/api/student/attendance", {
           credentials: "include",
@@ -62,6 +64,11 @@ export default function StudentAttendanceHistoryPage() {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
+          if (data.code === "DAY_SCHOOL_DISABLED") {
+            if (!active) return;
+            setDaySchoolOff(true);
+            return;
+          }
           throw new Error(typeof data.error === "string" ? data.error : "Unable to load attendance.");
         }
         if (!active) return;
@@ -99,6 +106,21 @@ export default function StudentAttendanceHistoryPage() {
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
       <main className="mx-auto max-w-3xl space-y-5 px-4 py-6">
+        {daySchoolOff ? (
+          <section className="rounded-2xl border border-border bg-card px-5 py-6">
+            <h1 className="text-xl font-black">Day School attendance is turned off</h1>
+            <p className="mt-2 text-sm text-foreground/70">
+              Attendance stays on your record, but it is hidden while Day School is off. Short Learning is still available.
+            </p>
+            <Link
+              href="/student/short-learning"
+              className="mt-4 inline-flex rounded-xl bg-violet-700 px-4 py-2 text-sm font-bold text-white hover:bg-violet-600"
+            >
+              Open Short Learning
+            </Link>
+          </section>
+        ) : (
+        <>
         <header>
           <p className="text-xs uppercase tracking-[0.14em] text-foreground/45">My attendance</p>
           <h1 className="mt-1 text-2xl font-black">Attendance</h1>
@@ -242,6 +264,8 @@ export default function StudentAttendanceHistoryPage() {
             </section>
           </>
         ) : null}
+        </>
+        )}
       </main>
     </div>
   );
