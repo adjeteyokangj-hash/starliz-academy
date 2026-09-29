@@ -3,6 +3,7 @@ import {
   canonicalShortLearningSubjectKey,
   type ShortLearningSubjectKey,
 } from "@/lib/schools/short-learning-curriculum";
+import { questionsAreEducationallyEquivalent } from "@/lib/schools/short-learning-question-equivalence";
 
 export type SubjectPracticeQuestion = {
   id: string;
@@ -368,22 +369,21 @@ export function buildSubjectPracticeFillItems(input: {
   const facts = BANK[key][band(year)];
   if (!facts.length) return [];
   const start = (year - 1) % facts.length;
-  const used = new Set((input.existingPrompts ?? []).map((prompt) => prompt.trim().toLowerCase()));
+  const accepted: Array<{ prompt: string; answer: string }> = (input.existingPrompts ?? []).map((prompt) => ({
+    prompt,
+    answer: "",
+  }));
   const items: SubjectPracticeQuestion[] = [];
-  let cursor = 0;
-  while (items.length < input.count && cursor < facts.length * 3) {
+  for (let cursor = 0; cursor < facts.length && items.length < input.count; cursor += 1) {
     const fact = facts[(start + cursor) % facts.length];
     if (!fact) break;
-    const prompt = cursor < facts.length ? fact.prompt : `${fact.prompt} (check the subject carefully.)`;
-    cursor += 1;
-    const keyPrompt = prompt.trim().toLowerCase();
-    if (used.has(keyPrompt)) continue;
-    used.add(keyPrompt);
+    const candidate = { prompt: fact.prompt, answer: fact.answer };
+    if (accepted.some((prior) => questionsAreEducationallyEquivalent(candidate, prior))) continue;
+    accepted.push(candidate);
     items.push(
       toQuestion(
         {
           ...fact,
-          prompt,
           skillFocus: input.skillFocus?.trim() || fact.skillFocus,
         },
         `${input.idPrefix ?? `${key}-fill`}-${items.length + 1}`,

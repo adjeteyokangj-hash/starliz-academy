@@ -1,4 +1,5 @@
 import { itemCountForMinutes } from "@/lib/schools/daytime-session-plan";
+import { questionsAreEducationallyEquivalent } from "@/lib/schools/short-learning-question-equivalence";
 
 export type MathPracticeQuestion = {
   id: string;
@@ -164,7 +165,10 @@ export function buildMathPracticeFillItems(input: {
 }): MathPracticeQuestion[] {
   const year = yearNumber(input.yearGroup);
   const topic = resolveMathPracticeTopic(input.yearGroup, input.skillFocus);
-  const used = new Set((input.existingPrompts ?? []).map((prompt) => prompt.trim().toLowerCase()));
+  const seen: Array<{ prompt: string; answer: string }> = (input.existingPrompts ?? []).map((prompt) => ({
+    prompt,
+    answer: "",
+  }));
   const builders = buildersForTopic(year, topic);
 
   const items: MathPracticeQuestion[] = [];
@@ -172,9 +176,9 @@ export function buildMathPracticeFillItems(input: {
   while (items.length < input.count && cursor < builders.length * 4) {
     const built = builders[cursor % builders.length]!(Math.floor(cursor / builders.length));
     cursor += 1;
-    const key = built.prompt.trim().toLowerCase();
-    if (used.has(key)) continue;
-    used.add(key);
+    const candidate = { prompt: built.prompt, answer: String(built.answer) };
+    if (seen.some((prior) => questionsAreEducationallyEquivalent(candidate, prior))) continue;
+    seen.push(candidate);
     const id = `${input.idPrefix ?? "math-fill"}-${items.length + 1}`;
     items.push({
       id,

@@ -2,6 +2,14 @@ import { prisma } from "@/lib/db";
 import { emitNotificationEvent } from "@/lib/notifications/dispatcher";
 import { questionFingerprint } from "@/lib/question-duplicate-detection";
 import {
+  compareQuestionEquivalence,
+  partsFromQuestionFingerprint,
+  repetitionPurposeForBlock,
+  repetitionPurposeOf,
+  type QuestionEquivalence,
+  type QuestionRepetitionPurpose,
+} from "@/lib/schools/short-learning-question-equivalence";
+import {
   canonicalShortLearningSubjectKey,
   shortLearningSubjectLabel,
   shortLearningSubjectMatchValues,
@@ -24,11 +32,23 @@ export type RotatableQuestion = {
   raw: Record<string, unknown>;
 };
 
+export type PriorQuestionExposure = {
+  fingerprint?: string;
+  prompt: string;
+  answer?: string;
+  studentId?: string;
+  subject?: string;
+};
+
 export type RotationPickResult = {
   selected: RotatableQuestion[];
   unusedRemaining: number;
   poolSize: number;
   refillNeeded: boolean;
+  /** Ordinary questions dropped because this student had already seen an equivalent. */
+  excludedRepeatCount?: number;
+  /** Questions kept on purpose as retry, mastery, retrieval, or support. */
+  intentionalRepeatCount?: number;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -106,8 +126,20 @@ export function replacePackQuestions(contentJson: string, questions: RotatableQu
     return JSON.stringify(payload);
   }
   const row = asRecord(parsed) ?? {};
-  if (Array.isArray(row.items) && !Array.isArray(row.questions)) {
+  const hasQuestions = Array.isArray(row.questions);
+  const hasItems = Array.isArray(row.items);
+  // Daytime packs mirror the same array in `questions` and `items`. Updating only
+  // one leaves stale pre-remix prompts that extractRotatableQuestions can fall back to.
+  if (hasItems && !hasQuestions) {
     return JSON.stringify({ ...row, items: payload, targetItems: payload.length });
+  }
+  if (hasQuestions && hasItems) {
+    return JSON.stringify({
+      ...row,
+      questions: payload,
+      items: payload,
+      targetItems: payload.length,
+    });
   }
   return JSON.stringify({
     ...row,
@@ -150,9 +182,43 @@ export function pickRotatedQuestions(input: {
   };
 }
 
+function sameShortLearningSubject(left: string, right: string): boolean {
+  const a = canonicalShortLearningSubjectKey(left) ?? left.trim().toLowerCase();
+  const b = canonicalShortLearningSubjectKey(right) ?? right.trim().toLowerCase();
+  return a === b;
+}
+
+function tagQuestion(item: RotatableQuestion, purpose: QuestionRepetitionPurpose): RotatableQuestion {
+  return {
+    ...item,
+    raw: {
+      ...item.raw,
+      repetitionPurpose: purpose,
+      intentionalRepetition: purpose !== "ordinary",
+    },
+  };
+}
+
+function asComparable(item: { prompt: string; answer?: string; fingerprint?: string }) {
+  return { prompt: item.prompt, answer: item.answer ?? "", fingerprint: item.fingerprint };
+}
+
+function equivalentToAny(
+  item: RotatableQuestion,
+  rows: Array<{ prompt: string; answer?: string; fingerprint?: string }>,
+): QuestionEquivalence | null {
+  for (const row of rows) {
+    const match = compareQuestionEquivalence(asComparable(item), asComparable(row));
+    if (match) return match;
+  }
+  return null;
+}
+
 /**
- * Keep this pack's generated questions. Bank rotation may supplement a short pack,
- * but must not drop validated items because an earlier block used the same fingerprint.
+ * A fresh pack is not kept wholesale. Ordinary questions this student has
+ * already seen for this Short Learning subject are dropped. Retry, mastery,
+ * retrieval, and support questions are kept and tagged so they stay distinct
+ * from new practice.
  */
 export function selectRemixedQuestions(input: {
   packQuestions: RotatableQuestion[];
@@ -160,38 +226,90 @@ export function selectRemixedQuestions(input: {
   usedFingerprints: Iterable<string>;
   usageCounts: Map<string, number>;
   needed: number;
+  priorExposure?: PriorQuestionExposure[];
+  studentId?: string | null;
+  subject?: string | null;
+  blockTitle?: string | null;
+  blockType?: string | null;
 }): RotationPickResult {
-  const packQuestions = input.packQuestions;
-  const packFingerprints = new Set(packQuestions.map((item) => item.fingerprint));
-  const selected = [...packQuestions];
-  const poolSize = new Set(
-    [...input.bankPool, ...packQuestions].map((item) => item.fingerprint),
-  ).size;
-  const used = new Set(Array.from(input.usedFingerprints).filter(Boolean));
-  const unusedBank = input.bankPool.filter(
-    (item) => !used.has(item.fingerprint) && !packFingerprints.has(item.fingerprint),
-  );
-
-  if (selected.length >= input.needed) {
-    return {
-      selected,
-      unusedRemaining: unusedBank.length,
-      poolSize,
-      refillNeeded: unusedBank.length < QUESTION_BANK_REFILL_THRESHOLD,
-    };
+  const exposure: Array<{ prompt: string; answer: string; fingerprint: string }> = [];
+  for (const fingerprint of input.usedFingerprints) {
+    if (!fingerprint) continue;
+    const parsed = partsFromQuestionFingerprint(fingerprint);
+    exposure.push({ fingerprint, prompt: parsed.prompt, answer: parsed.answer });
+  }
+  for (const row of input.priorExposure ?? []) {
+    if (input.studentId && row.studentId && row.studentId !== input.studentId) continue;
+    if (input.subject && row.subject && !sameShortLearningSubject(input.subject, row.subject)) continue;
+    const parsed = partsFromQuestionFingerprint(row.fingerprint ?? "");
+    const prompt = row.prompt.trim() || parsed.prompt;
+    const answer = (row.answer ?? "").trim() || parsed.answer;
+    if (!prompt && !row.fingerprint) continue;
+    exposure.push({
+      fingerprint: row.fingerprint || questionFingerprint({ prompt, answer }),
+      prompt,
+      answer,
+    });
   }
 
-  const picked = pickRotatedQuestions({
-    pool: input.bankPool.filter((item) => !packFingerprints.has(item.fingerprint)),
-    usedFingerprints: input.usedFingerprints,
-    usageCounts: input.usageCounts,
-    needed: input.needed - selected.length,
+  const blockPurpose = repetitionPurposeForBlock({
+    title: input.blockTitle,
+    blockType: input.blockType,
   });
+  const selected: RotatableQuestion[] = [];
+  let excludedRepeatCount = 0;
+  let intentionalRepeatCount = 0;
+
+  for (const item of input.packQuestions) {
+    const marked = repetitionPurposeOf(item.raw);
+    const exposureMatch = equivalentToAny(item, exposure);
+    const selectedMatch = equivalentToAny(item, selected);
+    // Recap/review/mastery blocks carry purpose from the block itself — do not wait
+    // for a prior exposure match. Lesson blocks stay ordinary unless the question is marked.
+    const purpose: QuestionRepetitionPurpose =
+      marked !== "ordinary" ? marked : blockPurpose ? blockPurpose : "ordinary";
+    const intentional = purpose !== "ordinary";
+    if (!intentional && (exposureMatch || selectedMatch)) {
+      excludedRepeatCount += 1;
+      continue;
+    }
+    selected.push(tagQuestion(item, purpose));
+    if (intentional && exposureMatch) intentionalRepeatCount += 1;
+  }
+
+  const poolSize = new Set(
+    [...input.bankPool, ...input.packQuestions].map((item) => item.fingerprint),
+  ).size;
+  const safeBank = input.bankPool.filter((item) => {
+    if (selected.some((kept) => kept.fingerprint === item.fingerprint)) return false;
+    if (equivalentToAny(item, exposure)) return false;
+    if (equivalentToAny(item, selected)) return false;
+    return true;
+  });
+
+  let finalSelected = selected;
+  if (finalSelected.length < input.needed && safeBank.length > 0) {
+    const picked = pickRotatedQuestions({
+      pool: safeBank,
+      usedFingerprints: [],
+      usageCounts: input.usageCounts,
+      needed: input.needed - finalSelected.length,
+    });
+    finalSelected = [
+      ...finalSelected,
+      ...picked.selected.map((item) => tagQuestion(item, blockPurpose ?? "ordinary")),
+    ];
+  }
+
+  const addedFromBank = finalSelected.length - selected.length;
+  const unusedRemaining = Math.max(0, safeBank.length - addedFromBank);
   return {
-    selected: [...selected, ...picked.selected],
-    unusedRemaining: picked.unusedRemaining,
+    selected: finalSelected,
+    unusedRemaining,
     poolSize,
-    refillNeeded: picked.refillNeeded,
+    refillNeeded: finalSelected.length < input.needed || unusedRemaining < QUESTION_BANK_REFILL_THRESHOLD,
+    excludedRepeatCount,
+    intentionalRepeatCount,
   };
 }
 
@@ -203,12 +321,25 @@ function fillQuestions(input: {
   needed: number;
   estimatedMinutes?: number | null;
   usedFingerprints?: Iterable<string>;
+  priorExposure?: PriorQuestionExposure[];
 }): RotatableQuestion[] {
   const used = new Set(input.existing.map((item) => item.prompt.trim().toLowerCase()));
   const seen = new Set([
     ...input.existing.map((item) => item.fingerprint),
     ...Array.from(input.usedFingerprints ?? []),
   ]);
+  const history = [
+    ...input.existing.map((item) => ({ prompt: item.prompt, answer: item.answer, fingerprint: item.fingerprint })),
+    ...Array.from(input.usedFingerprints ?? []).filter(Boolean).map((fingerprint) => {
+      const parsed = partsFromQuestionFingerprint(fingerprint);
+      return { prompt: parsed.prompt, answer: parsed.answer, fingerprint };
+    }),
+    ...(input.priorExposure ?? []).map((row) => ({
+      prompt: row.prompt,
+      answer: row.answer ?? "",
+      fingerprint: row.fingerprint,
+    })),
+  ];
   const subjectKey = canonicalShortLearningSubjectKey(input.subject);
   const extras = subjectKey === "maths"
     ? ensureMinimumMathQuestions({
@@ -237,9 +368,11 @@ function fillQuestions(input: {
   for (const row of filled) {
     const question = questionFromRaw(row as Record<string, unknown>);
     if (!question || seen.has(question.fingerprint) || used.has(question.prompt.trim().toLowerCase())) continue;
+    if (equivalentToAny(question, history) || equivalentToAny(question, out)) continue;
     seen.add(question.fingerprint);
     used.add(question.prompt.trim().toLowerCase());
-    out.push(question);
+    history.push({ prompt: question.prompt, answer: question.answer, fingerprint: question.fingerprint });
+    out.push(tagQuestion(question, "ordinary"));
     if (out.length >= input.needed) break;
   }
   return out;
@@ -263,6 +396,7 @@ export async function loadQuestionBankPool(input: {
   pool: RotatableQuestion[];
   usageCounts: Map<string, number>;
   usedFingerprints: Map<string, Set<string>>;
+  exposureByStudent: Map<string, PriorQuestionExposure[]>;
 }> {
   const subjectValues = shortLearningSubjectMatchValues(input.subject);
   const yearValues = shortLearningYearMatchValues(input.yearGroup);
@@ -297,23 +431,35 @@ export async function loadQuestionBankPool(input: {
       pool.push(item);
     }
   }
+  // Student + subject, across year groups. A later year must not treat last year's
+  // question as new just because the bank query is year-scoped.
   const exposures = await prisma.studentQuestionExposure.findMany({
     where: {
       schoolId: input.schoolId,
       subject: { in: subjectValues },
-      yearGroup: { in: yearValues },
     },
-    select: { studentId: true, fingerprint: true },
+    select: { studentId: true, fingerprint: true, prompt: true, subject: true },
   });
   const usageCounts = new Map<string, number>();
   const usedFingerprints = new Map<string, Set<string>>();
+  const exposureByStudent = new Map<string, PriorQuestionExposure[]>();
   for (const row of exposures) {
     usageCounts.set(row.fingerprint, (usageCounts.get(row.fingerprint) ?? 0) + 1);
     const set = usedFingerprints.get(row.studentId) ?? new Set<string>();
     set.add(row.fingerprint);
     usedFingerprints.set(row.studentId, set);
+    const list = exposureByStudent.get(row.studentId) ?? [];
+    const parsed = partsFromQuestionFingerprint(row.fingerprint);
+    list.push({
+      studentId: row.studentId,
+      subject: row.subject,
+      fingerprint: row.fingerprint,
+      prompt: row.prompt || parsed.prompt,
+      answer: parsed.answer,
+    });
+    exposureByStudent.set(row.studentId, list);
   }
-  return { pool, usageCounts, usedFingerprints };
+  return { pool, usageCounts, usedFingerprints, exposureByStudent };
 }
 
 export async function recordQuestionExposures(input: {
@@ -480,6 +626,8 @@ export async function remixContentQuestionsForStudent(input: {
   bookingId?: string | null;
   skillFocus?: string | null;
   estimatedMinutes?: number | null;
+  blockTitle?: string | null;
+  blockType?: string | null;
 }): Promise<{ contentId: string; refillNeeded: boolean; unusedRemaining: number; selectedCount: number }> {
   const content = await prisma.aIContentCache.findUnique({
     where: { id: input.contentId },
@@ -513,6 +661,7 @@ export async function remixContentQuestionsForStudent(input: {
     yearGroup: input.yearGroup,
   });
   const studentUsed = bank.usedFingerprints.get(input.studentId) ?? new Set<string>();
+  const studentExposure = bank.exposureByStudent.get(input.studentId) ?? [];
   const mergedPool = [...bank.pool];
   const seen = new Set(mergedPool.map((item) => item.fingerprint));
   for (const item of packQuestions) {
@@ -526,6 +675,11 @@ export async function remixContentQuestionsForStudent(input: {
     usedFingerprints: studentUsed,
     usageCounts: bank.usageCounts,
     needed,
+    priorExposure: studentExposure,
+    studentId: input.studentId,
+    subject: input.subject,
+    blockTitle: input.blockTitle,
+    blockType: input.blockType,
   });
   let selected = picked.selected;
   if (selected.length < needed) {
@@ -537,6 +691,7 @@ export async function remixContentQuestionsForStudent(input: {
       needed,
       estimatedMinutes: input.estimatedMinutes,
       usedFingerprints: studentUsed,
+      priorExposure: studentExposure,
     });
   }
 
@@ -565,6 +720,8 @@ export async function remixContentQuestionsForStudent(input: {
         rotatedForStudentId: input.studentId,
         questionRotation: true,
         unusedRemaining: picked.unusedRemaining,
+        excludedRepeatCount: picked.excludedRepeatCount ?? 0,
+        intentionalRepeatCount: picked.intentionalRepeatCount ?? 0,
       }),
     },
     select: { id: true },
