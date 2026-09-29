@@ -631,6 +631,8 @@ export async function ensureShortLearningSessionContent(
             bookingId: booking.id,
             skillFocus: booking.learningFocus,
             estimatedMinutes: block.estimatedMinutes,
+            blockTitle: block.title,
+            blockType: block.blockType,
           });
           contentId = remixed.contentId;
         }
@@ -875,6 +877,8 @@ export async function ensureShortLearningSessionContent(
               bookingId: booking.id,
               skillFocus,
               estimatedMinutes: block.estimatedMinutes,
+              blockTitle: block.title,
+              blockType: block.blockType,
             });
             contentId = remixed.contentId;
           }

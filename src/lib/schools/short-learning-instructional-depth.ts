@@ -7,6 +7,10 @@ import {
   classifyEnglishSkillIntent,
   englishSkillUsesPassageAsLanguageContext,
 } from "@/lib/schools/short-learning-curriculum";
+import {
+  isIntentionalRepetitionQuestion,
+  questionsAreEducationallyEquivalent,
+} from "@/lib/schools/short-learning-question-equivalence";
 
 export type ShortLearningBlockIntent = "lesson" | "recap" | "challenge" | "final_review";
 
@@ -208,7 +212,10 @@ function practiceSkeleton(prompt: string): string {
     .trim();
 }
 
-/** True when too many practice prompts are near-clones (padding with substitutions). */
+/**
+ * True when too many practice prompts inside one generated pack are near-clones.
+ * This stays within the pack. Cross-session repeats are handled at question selection.
+ */
 export function hasExcessivePracticeRepetition(prompts: string[]): boolean {
   const skeletons = prompts
     .map((p) => practiceSkeleton(p))
@@ -232,6 +239,8 @@ export function validateShortLearningInstructionalDepth(input: {
   stageLabel: string;
   targetMinutes: number;
   skillFocus?: string | null;
+  /** Prompts this child has already seen for this subject. Ordinary repeats are excessive. */
+  priorExposurePrompts?: string[];
 }): DaytimeStageValidationIssue[] {
   const { pack, mode, targetMinutes } = input;
   const intent = classifyShortLearningBlockIntent(input.stageLabel);
@@ -328,6 +337,22 @@ export function validateShortLearningInstructionalDepth(input: {
         code: "sl_excessive_repetition",
         message: "Practice items look excessively repetitive (near-clones). Vary structure and demand — do not pad duration with substitutions.",
       });
+    }
+    const priorExposure = input.priorExposurePrompts ?? [];
+    if (priorExposure.length > 0 && !issues.some((issue) => issue.code === "sl_excessive_repetition")) {
+      const accidental = pack.questions.filter((question) => {
+        if (isIntentionalRepetitionQuestion(question as unknown as Record<string, unknown>)) return false;
+        return priorExposure.some((seen) => questionsAreEducationallyEquivalent(
+          { prompt: question.prompt, answer: question.answer },
+          { prompt: seen, answer: "" },
+        ));
+      });
+      if (accidental.length > 0) {
+        issues.push({
+          code: "sl_excessive_repetition",
+          message: "Practice repeats a question this child has already seen. Use a different question, or mark it as an intentional retry, mastery check, or retrieval practice.",
+        });
+      }
     }
   }
 

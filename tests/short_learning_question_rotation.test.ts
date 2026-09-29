@@ -8,8 +8,8 @@ import {
   QUESTION_BANK_REFILL_THRESHOLD,
 } from "../src/lib/schools/short-learning-question-rotation";
 
-function q(prompt: string, answer = "A"): ReturnType<typeof extractRotatableQuestions>[number] {
-  const raw = { prompt, answer, choices: [answer, "B", "C", "D"] };
+function q(prompt: string, answer = "A", extra: Record<string, unknown> = {}): ReturnType<typeof extractRotatableQuestions>[number] {
+  const raw = { prompt, answer, choices: [answer, "B", "C", "D"], ...extra };
   return extractRotatableQuestions(JSON.stringify({ questions: [raw] }))[0]!;
 }
 
@@ -81,7 +81,225 @@ test("replacePackQuestions keeps teaching fields and swaps questions", () => {
   assert.equal(parsed.questions[0]?.prompt, "New question");
 });
 
-test("remix keeps generated pack questions even when earlier blocks used the same fingerprints", () => {
+test("replacePackQuestions clears mirrored items when remix excludes every question", () => {
+  const seen = q("What is the english anchor fact for session 1?", "english-anchor");
+  const cosmetic = q(
+    "What is the english anchor fact for session 1? (check the subject carefully.)",
+    "english-anchor",
+  );
+  const packQuestions = [seen, cosmetic];
+  const source = JSON.stringify({
+    subjectType: "english",
+    title: "Lesson block 2",
+    learningObjective: "Keep metadata",
+    questions: packQuestions.map((item) => item.raw),
+    items: packQuestions.map((item) => item.raw),
+  });
+  const remixed = selectRemixedQuestions({
+    packQuestions,
+    bankPool: packQuestions,
+    usedFingerprints: [],
+    usageCounts: new Map(),
+    needed: 2,
+    studentId: "child-1",
+    subject: "english",
+    blockType: "lesson",
+    priorExposure: [
+      {
+        studentId: "child-1",
+        subject: "english",
+        fingerprint: seen.fingerprint,
+        prompt: seen.prompt,
+        answer: seen.answer,
+      },
+    ],
+  });
+  assert.equal(remixed.selected.length, 0);
+  assert.equal(remixed.excludedRepeatCount, 2);
+
+  const json = replacePackQuestions(source, remixed.selected);
+  const parsed = JSON.parse(json) as {
+    learningObjective: string;
+    questions: unknown[];
+    items: unknown[];
+  };
+  assert.equal(parsed.learningObjective, "Keep metadata");
+  assert.deepEqual(parsed.questions, []);
+  assert.deepEqual(parsed.items, []);
+  assert.equal(extractRotatableQuestions(json).length, 0);
+});
+
+test("replacePackQuestions keeps questions and items synchronized for surviving remixes", () => {
+  const kept = q("Fresh english practice item", "fresh");
+  const dropped = q("What is the english anchor fact for session 1?", "english-anchor");
+  const packQuestions = [dropped, kept];
+  const source = JSON.stringify({
+    subjectType: "english",
+    title: "Lesson block 1",
+    questions: packQuestions.map((item) => item.raw),
+    items: packQuestions.map((item) => ({ ...item.raw, fromItems: true })),
+  });
+  const remixed = selectRemixedQuestions({
+    packQuestions,
+    bankPool: packQuestions,
+    usedFingerprints: [],
+    usageCounts: new Map(),
+    needed: 2,
+    studentId: "child-1",
+    subject: "english",
+    blockType: "lesson",
+    priorExposure: [
+      {
+        studentId: "child-1",
+        subject: "english",
+        fingerprint: dropped.fingerprint,
+        prompt: dropped.prompt,
+        answer: dropped.answer,
+      },
+    ],
+  });
+  assert.equal(remixed.selected.length, 1);
+  assert.equal(remixed.selected[0]?.prompt, kept.prompt);
+
+  const json = replacePackQuestions(source, remixed.selected);
+  const parsed = JSON.parse(json) as {
+    questions: Array<{ prompt: string }>;
+    items: Array<{ prompt: string }>;
+  };
+  assert.deepEqual(
+    parsed.questions.map((row) => row.prompt),
+    [kept.prompt],
+  );
+  assert.deepEqual(
+    parsed.items.map((row) => row.prompt),
+    [kept.prompt],
+  );
+  assert.equal(extractRotatableQuestions(json).some((item) => item.prompt === dropped.prompt), false);
+});
+
+test("replacePackQuestions still supports packs that only use items", () => {
+  const json = replacePackQuestions(
+    JSON.stringify({
+      title: "items-only pack",
+      items: [{ prompt: "Old items prompt", answer: "old" }],
+    }),
+    [q("New items prompt", "new")],
+  );
+  const parsed = JSON.parse(json) as { items: Array<{ prompt: string }>; questions?: unknown };
+  assert.equal(parsed.items[0]?.prompt, "New items prompt");
+  assert.equal(parsed.questions, undefined);
+  assert.equal(extractRotatableQuestions(json)[0]?.prompt, "New items prompt");
+});
+
+test("recap and review tag block purpose without requiring prior exposure", () => {
+  const fresh = q("Brand new recap check", "recall");
+  const seen = q("Previously seen fact", "seen-answer");
+  const mastery = q("Previously seen fact", "seen-answer", { repetitionPurpose: "mastery" });
+  const retry = q("Previously seen fact", "seen-answer", { repetitionPurpose: "retry" });
+  const support = q("Previously seen fact", "seen-answer", { repetitionPurpose: "support" });
+  const prior = [
+    {
+      studentId: "child-1",
+      subject: "science",
+      fingerprint: seen.fingerprint,
+      prompt: seen.prompt,
+      answer: seen.answer,
+    },
+  ];
+
+  const newRecap = selectRemixedQuestions({
+    packQuestions: [fresh],
+    bankPool: [fresh],
+    usedFingerprints: [],
+    usageCounts: new Map(),
+    needed: 1,
+    studentId: "child-1",
+    subject: "science",
+    blockType: "recap",
+    blockTitle: "Quick recap",
+    priorExposure: [],
+  });
+  assert.equal(newRecap.selected.length, 1);
+  assert.equal(newRecap.selected[0]?.raw.repetitionPurpose, "retrieval");
+
+  const exposedRecap = selectRemixedQuestions({
+    packQuestions: [seen],
+    bankPool: [seen],
+    usedFingerprints: [],
+    usageCounts: new Map(),
+    needed: 1,
+    studentId: "child-1",
+    subject: "science",
+    blockType: "recap",
+    priorExposure: prior,
+  });
+  assert.equal(exposedRecap.selected.length, 1);
+  assert.equal(exposedRecap.selected[0]?.raw.repetitionPurpose, "retrieval");
+  assert.equal(exposedRecap.intentionalRepeatCount, 1);
+
+  const finalReview = selectRemixedQuestions({
+    packQuestions: [fresh],
+    bankPool: [fresh],
+    usedFingerprints: [],
+    usageCounts: new Map(),
+    needed: 1,
+    studentId: "child-1",
+    subject: "science",
+    blockType: "review",
+    blockTitle: "Final review",
+    priorExposure: [],
+  });
+  assert.equal(finalReview.selected[0]?.raw.repetitionPurpose, "retrieval");
+
+  const ordinaryNew = selectRemixedQuestions({
+    packQuestions: [fresh],
+    bankPool: [fresh],
+    usedFingerprints: [],
+    usageCounts: new Map(),
+    needed: 1,
+    studentId: "child-1",
+    subject: "science",
+    blockType: "lesson",
+    priorExposure: prior,
+  });
+  assert.equal(ordinaryNew.selected[0]?.raw.repetitionPurpose, "ordinary");
+
+  const ordinaryExposed = selectRemixedQuestions({
+    packQuestions: [seen],
+    bankPool: [seen],
+    usedFingerprints: [],
+    usageCounts: new Map(),
+    needed: 1,
+    studentId: "child-1",
+    subject: "science",
+    blockType: "lesson",
+    priorExposure: prior,
+  });
+  assert.equal(ordinaryExposed.selected.length, 0);
+  assert.equal(ordinaryExposed.excludedRepeatCount, 1);
+
+  for (const [label, pack] of [
+    ["mastery", mastery],
+    ["retry", retry],
+    ["support", support],
+  ] as const) {
+    const result = selectRemixedQuestions({
+      packQuestions: [pack],
+      bankPool: [pack],
+      usedFingerprints: [],
+      usageCounts: new Map(),
+      needed: 1,
+      studentId: "child-1",
+      subject: "science",
+      blockType: "lesson",
+      priorExposure: prior,
+    });
+    assert.equal(result.selected.length, 1, label);
+    assert.equal(result.selected[0]?.raw.repetitionPurpose, label);
+  }
+});
+
+test("ordinary pack questions already seen by this student are not kept just because they were generated", () => {
   const pack = [
     q("Identify the relative clause in the garden sentence."),
     q("Complete the butterfly sentence with a relative clause."),
@@ -98,11 +316,12 @@ test("remix keeps generated pack questions even when earlier blocks used the sam
     ]),
     needed: 4,
   });
-  assert.equal(remixed.selected.length, 4);
   assert.deepEqual(
-    remixed.selected.map((item) => item.prompt),
-    pack.map((item) => item.prompt),
+    remixed.selected.map((item) => item.prompt).sort(),
+    [pack[0]!.prompt, pack[2]!.prompt].sort(),
   );
+  assert.equal(remixed.excludedRepeatCount, 2);
+  assert.equal(remixed.refillNeeded, true);
 });
 
 test("remix still supplements a short pack from unused bank items", () => {

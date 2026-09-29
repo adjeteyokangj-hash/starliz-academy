@@ -293,6 +293,44 @@ test("105 minutes remains unavailable", () => {
   assert.equal(isShortLearningAdminDuration(120), true);
 });
 
+test("prior exposure of an equivalent question is still excessive repetition", () => {
+  const pack = richMathsLessonPack();
+  const issues = validateShortLearningInstructionalDepth({
+    pack,
+    mode: "maths",
+    stage: "core",
+    stageLabel: "Lesson block 1 · New concept",
+    targetMinutes: 18,
+    priorExposurePrompts: ["What is 4 × 7?"],
+  });
+  assert.ok(issues.some((issue) => issue.code === "sl_excessive_repetition"));
+});
+
+test("a mastery-marked repeat of prior exposure is not treated as accidental repetition", () => {
+  const pack = richMathsLessonPack({
+    questions: [
+      { prompt: "Warm-up: what is 7 × 4?", answer: "28", explanation: "7 groups of 4.", hints: ["Count in fours", "Use known facts"], kind: "mastery" },
+      { prompt: "Complete: 32 × 4 = (30 × 4) + (? × 4)", answer: "2", explanation: "Partition ones.", hints: ["Look at ones", "2 ones"], kind: "scaffold" },
+      { prompt: "Calculate 26 × 4", answer: "104", explanation: "20×4=80, 6×4=24, total 104.", hints: ["Partition", "Recombine"] },
+      { prompt: "Calculate 38 × 4", answer: "152", explanation: "30×4=120, 8×4=32.", hints: ["Tens first", "Check addition"] },
+      { prompt: "Explain why 25 × 4 is not 29.", answer: "Because multiplying is repeated addition of 25 four times, not adding 4.", explanation: "Addresses adding error.", hints: ["Think repeated addition", "Place value"], kind: "reasoning" },
+      { prompt: "A tray holds 14 buns. How many buns are on 4 trays?", answer: "56", explanation: "10×4=40, 4×4=16, total 56.", hints: ["Partition 14", "Multiply each part by 4"] },
+      { prompt: "Which array matches 6 × 4?", answer: "6 rows of 4", explanation: "An array of 6 rows with 4 in each row is 6 × 4.", hints: ["Rows times columns", "Not 6+4"] },
+      { prompt: "Find the missing number: 9 × ? = 36", answer: "4", explanation: "36 ÷ 9 = 4, so the missing factor is 4.", hints: ["Use the inverse", "Count in nines to 36"] },
+      { prompt: "What have you learned about partitioning?", answer: "Split tens and ones, multiply, then recombine.", explanation: "Reflection.", hints: ["Name the steps"], kind: "reflection" },
+    ],
+  });
+  const issues = validateShortLearningInstructionalDepth({
+    pack,
+    mode: "maths",
+    stage: "core",
+    stageLabel: "Lesson block 1 · New concept",
+    targetMinutes: 18,
+    priorExposurePrompts: ["What is 4 × 7?"],
+  });
+  assert.equal(issues.some((issue) => issue.code === "sl_excessive_repetition"), false);
+});
+
 test("excessive near-clone practice prompts are rejected", () => {
   const pack = richMathsLessonPack({
     questions: [
