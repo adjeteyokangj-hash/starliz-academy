@@ -19,6 +19,9 @@ export type LessonPackComponentType = (typeof LESSON_PACK_COMPONENT_TYPES)[numbe
 
 export const LESSON_PACK_SESSION_TYPES = [
   "school_day",
+  "short_learning_45",
+  "short_learning_60",
+  "short_learning_70",
   "short_learning_90",
   "short_learning_120",
   "general_library",

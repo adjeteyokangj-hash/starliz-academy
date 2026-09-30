@@ -7,13 +7,13 @@ import {
 } from "@/lib/schools/short-learning-bookings";
 
 export const metadata: Metadata = {
-  title: "Short Learning | AI-Led 90 and 120 Minute Sessions",
+  title: "Short Learning | AI-Led 45, 60 and 70 Minute Sessions",
   description:
-    "Parent-booked, AI-led 90- or 120-minute Maths and English sessions with progress tracking and availability-based human support through the Support desk.",
+    "Parent-booked, AI-led 45-, 60-, or 70-minute Maths and English sessions with progress tracking and availability-based human support through the Support desk.",
   openGraph: {
     title: "StarLiz Short Learning | AI-Led Sessions",
     description:
-      "Understand the AI-first model, booking windows, 90/120-minute journeys and availability-based human support.",
+      "Understand the AI-first model, booking windows, 45/60/70-minute journeys and availability-based human support.",
     images: ["/brand/starliz-logo.png"],
   },
 };
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 const highlights = [
   "AI-led sessions — human tutors are a safety net when on shift, not a private booking.",
   "Monthly subscription covers access with no cancellation fees.",
-  "Book 90- or 120-minute sessions in weekday (16:00–20:00) or weekend (09:00–18:00) windows.",
+  "Book 45-, 60-, or 70-minute sessions in weekday (16:00–20:00) or weekend (09:00–18:00) windows.",
   "Late bookings succeed only when capacity already exists.",
   "Repeated no-shows may lead to booking limits — never financial penalties.",
 ];

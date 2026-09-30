@@ -9,7 +9,11 @@ import {
   canonicalShortLearningSubjectKey,
   shortLearningSkillsForYear,
 } from "@/lib/schools/short-learning-curriculum";
-import { SHORT_LEARNING_ADMIN_DURATIONS } from "@/lib/schools/short-learning-session-plan";
+import {
+  SHORT_LEARNING_ADMIN_DURATIONS,
+  type ShortLearningAdminDuration,
+} from "@/lib/schools/short-learning-session-plan";
+import { SHORT_LEARNING_DEFAULT_DURATION } from "@/lib/schools/short-learning-constants";
 
 type SchoolOption = { id: string; name: string };
 
@@ -55,7 +59,7 @@ export default function ShortLearningDeliveryModePanel({
   const [yearGroup, setYearGroup] = useState("Year 4");
   const [difficulty, setDifficulty] = useState(3);
   const [topic, setTopic] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState<90 | 120>(90);
+  const [durationMinutes, setDurationMinutes] = useState<ShortLearningAdminDuration>(SHORT_LEARNING_DEFAULT_DURATION);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultId, setResultId] = useState<string | null>(null);
@@ -241,7 +245,7 @@ export default function ShortLearningDeliveryModePanel({
             <select
               className={fieldClassName}
               value={durationMinutes}
-              onChange={(e) => setDurationMinutes(Number(e.target.value) as 90 | 120)}
+              onChange={(e) => setDurationMinutes(Number(e.target.value) as ShortLearningAdminDuration)}
             >
               {durationOptions.map((d) => (
                 <option key={d} value={d} className={optionClassName}>
@@ -249,7 +253,9 @@ export default function ShortLearningDeliveryModePanel({
                 </option>
               ))}
             </select>
-            <span className="mt-1 block text-xs text-slate-400">105 minutes is not available.</span>
+            <span className="mt-1 block text-xs text-slate-400">
+              45 is the short session, 60 is standard, and 70 adds extra practice. 90 and 120 minutes are no longer offered for new journeys.
+            </span>
           </label>
           <label className="text-sm sm:col-span-2">
             <span className={labelClassName}>Curriculum topic / objective</span>

@@ -5,6 +5,7 @@ import {
   parentHasShortLearningEntitlement,
   parentOwnsBookableSchoolStudent,
   isShortLearningTestParentEmail,
+  SHORT_LEARNING_DEFAULT_DURATION,
 } from "@/lib/schools/short-learning-bookings";
 
 export async function GET(request: Request) {
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   const schoolId = url.searchParams.get("schoolId")?.trim() || null;
   const schoolStudentId = url.searchParams.get("schoolStudentId")?.trim() || null;
   const dateIso = url.searchParams.get("date")?.trim() || null;
-  const durationMinutes = Number(url.searchParams.get("durationMinutes") ?? "90");
+  const durationMinutes = Number(url.searchParams.get("durationMinutes") ?? String(SHORT_LEARNING_DEFAULT_DURATION));
 
   if (!schoolId || !dateIso) {
     return NextResponse.json({ error: "schoolId and date (YYYY-MM-DD) are required." }, { status: 400 });
@@ -46,7 +47,7 @@ export async function GET(request: Request) {
   const slots = await listAvailableSlots({
     schoolId,
     dateIso,
-    durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : 90,
+    durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : SHORT_LEARNING_DEFAULT_DURATION,
     relaxSchedule: isShortLearningTestParentEmail(session.email),
     schoolStudentId,
   });

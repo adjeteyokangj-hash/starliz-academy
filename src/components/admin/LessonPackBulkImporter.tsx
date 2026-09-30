@@ -249,8 +249,9 @@ type AnalyzeResponse = {
 
 const SESSION_TYPES = [
   { value: "school_day", label: "School Day lesson" },
-  { value: "short_learning_90", label: "Short Learning 90 minutes" },
-  { value: "short_learning_120", label: "Short Learning 120 minutes" },
+  { value: "short_learning_45", label: "Short Learning 45 minutes" },
+  { value: "short_learning_60", label: "Short Learning 60 minutes" },
+  { value: "short_learning_70", label: "Short Learning 70 minutes" },
   { value: "general_library", label: "General Content Library" },
 ] as const;
 

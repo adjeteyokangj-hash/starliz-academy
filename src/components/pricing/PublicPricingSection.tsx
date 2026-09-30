@@ -60,7 +60,7 @@ const familyPricingHighlights = [
   "Daily lessons, assignments, spelling, maths and reading with voice-friendly practice",
   "Parent progress insights, tutor and guided learning history, and rewards progress visibility",
   "Consent controls, support messaging and downloadable progress reports",
-  "Short Learning: AI-led after-hours sessions (90/120 min) — human support when available, not guaranteed",
+  "Short Learning: AI-led after-hours sessions (45, 60, or 70 min) — human support when available, not guaranteed",
 ]
 
 const organisationPricingHighlights = [
@@ -127,7 +127,7 @@ export default function PublicPricingSection({ compact = false, initialPlans = [
           Best experience: StarLiz Academy works best on the latest version of Google Chrome. Other modern browsers may work, but Chrome is recommended for the smoothest learning experience, voice-friendly activities and dashboard use.
         </p>
         <p className="mx-auto mt-4 max-w-3xl text-sm text-slate-500">
-          Short Learning sessions are AI-led after-hours bookings (90/120 min). Your subscription covers access;
+          Short Learning sessions are AI-led after-hours bookings (45, 60, or 70 min). Your subscription covers access;
           cancellations are free. Human tutors are a safety net when on shift — not a guaranteed private booking.{" "}
           <Link href="/short-learning" className="font-semibold text-violet-400 underline hover:text-violet-300">
             Learn more

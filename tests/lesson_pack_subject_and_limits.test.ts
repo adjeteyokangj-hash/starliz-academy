@@ -190,8 +190,12 @@ test("client and server limits module exports identical configured caps", () => 
   assert.equal(LESSON_PACK_UPLOAD_LIMITS.maxFiles, LESSON_PACK_MAX_FILES);
 });
 
-test("general library preserves source duration while short learning expands to 90/120", () => {
+test("general library preserves source duration while short learning uses 45/60/70 and historical 90/120", () => {
   assert.equal(estimatedDurationMinutes("general_library", 55), 55);
+  assert.equal(estimatedDurationMinutes("school_day", 55), 60);
+  assert.equal(estimatedDurationMinutes("short_learning_45", 55), 45);
+  assert.equal(estimatedDurationMinutes("short_learning_60", 55), 60);
+  assert.equal(estimatedDurationMinutes("short_learning_70", 55), 70);
   assert.equal(estimatedDurationMinutes("short_learning_90", 55), 90);
   assert.equal(estimatedDurationMinutes("short_learning_120", 55), 120);
 });

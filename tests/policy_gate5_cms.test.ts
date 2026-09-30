@@ -40,7 +40,7 @@ test("Policy permissions are product-scoped", () => {
 
 test("Locked launch facts remain present", () => {
   assert.ok(SHORT_LEARNING_FACTS.some((f) => f.includes("105-minute")));
-  assert.ok(SHORT_LEARNING_FACTS.some((f) => f.includes("90 or 120")));
+  assert.ok(SHORT_LEARNING_FACTS.some((f) => f.includes("45, 60, or 70")));
   assert.ok(SHORT_LEARNING_FACTS.some((f) => /not guaranteed|availability/i.test(f)));
   assert.ok(SUBSCRIPTION_COMMERCIAL_FACTS.some((f) => /end of the current billing period/i.test(f)));
   assert.ok(COMPLAINT_SLA_COMMERCIAL_FACTS.some((f) => /2 working days/i.test(f)));

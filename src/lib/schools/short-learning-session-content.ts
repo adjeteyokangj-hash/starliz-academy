@@ -21,6 +21,7 @@ import {
 import {
   buildShortLearningSessionPlan,
   isShortLearningPlanDuration,
+  shortLearningBlockCanStart,
   type ShortLearningBlockBlueprint,
   type ShortLearningDaytimeStage,
 } from "@/lib/schools/short-learning-session-plan";
@@ -38,6 +39,7 @@ import { remixContentQuestionsForStudent } from "@/lib/schools/short-learning-qu
 import { buildSubjectPracticeFillItems } from "@/lib/schools/subject-practice-fill";
 import {
   pickNextShortLearningBlock,
+  selectShortLearningBlockWithinRemainingTime,
   shortLearningLessonHref,
   shortLearningSessionHasStartableBlock,
   shortLearningStageHref,
@@ -1047,6 +1049,13 @@ export async function startShortLearningContentBlock(input: {
     where: { sessionId: session.id },
     orderBy: { order: "asc" },
   });
+  const bookingClock = await prisma.studentLearningBooking.findUnique({
+    where: { id: input.bookingId },
+    select: { endsAt: true },
+  });
+  const remainingMinutes = bookingClock
+    ? (bookingClock.endsAt.getTime() - Date.now()) / 60_000
+    : null;
 
   let playable = typeof input.blockOrder === "number" && !input.completedBlockId && !input.completedContentId
     ? blocks.find((block) =>
@@ -1057,6 +1066,18 @@ export async function startShortLearningContentBlock(input: {
     ) ?? null
     : null;
 
+  if (
+    playable
+    && remainingMinutes != null
+    && !shortLearningBlockCanStart({
+      blockType: playable.blockType,
+      estimatedMinutes: playable.estimatedMinutes,
+      remainingMinutes,
+    })
+  ) {
+    playable = null;
+  }
+
   if (!playable) {
     const completedAnchor = blocks.find((block) =>
       block.id === input.completedBlockId || block.contentId === input.completedContentId,
@@ -1066,13 +1087,30 @@ export async function startShortLearningContentBlock(input: {
       : completedAnchor
         ? completedAnchor.order + 1
         : session.currentBlockOrder ?? 0;
-    const next = pickNextShortLearningBlock({
-      blocks,
-      preferredOrder,
-      completedContentId: input.completedContentId,
-      completedBlockId: input.completedBlockId,
-    });
-    playable = next ? blocks.find((block) => block.id === next.id) ?? null : null;
+    if (remainingMinutes != null) {
+      const timed = selectShortLearningBlockWithinRemainingTime({
+        blocks,
+        preferredOrder,
+        remainingMinutes,
+        completedContentId: input.completedContentId,
+        completedBlockId: input.completedBlockId,
+      });
+      if (timed.skipIds.length > 0) {
+        await prisma.shortLearningBlock.updateMany({
+          where: { id: { in: timed.skipIds }, sessionId: session.id },
+          data: { status: "skipped" },
+        });
+      }
+      playable = timed.block;
+    } else {
+      const next = pickNextShortLearningBlock({
+        blocks,
+        preferredOrder,
+        completedContentId: input.completedContentId,
+        completedBlockId: input.completedBlockId,
+      });
+      playable = next ? blocks.find((block) => block.id === next.id) ?? null : null;
+    }
   }
 
   if (!playable) {

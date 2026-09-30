@@ -58,7 +58,7 @@ export const KNOWLEDGE_ARTICLES: KnowledgeArticle[] = [
     audience: "Parent",
     keywords: ["difference", "day school", "short learning"],
     summary:
-      "Day School follows a fixed school timetable with attendance tracked against scheduled periods. Short Learning uses parent-booked 90/120-minute sessions outside school hours.",
+      "Day School follows a fixed school timetable with attendance tracked against scheduled periods. Short Learning uses parent-booked 45, 60, or 70-minute sessions outside school hours.",
   },
   {
     id: "create-manage-account",
@@ -84,7 +84,7 @@ export const KNOWLEDGE_ARTICLES: KnowledgeArticle[] = [
     category: "Short Learning",
     audience: "Parent",
     keywords: ["book", "booking", "parent"],
-    summary: "Open parent Short Learning, choose an entitled child, pick a 90 or 120-minute slot, and confirm the AI-led honesty statement.",
+    summary: "Open parent Short Learning, choose an entitled child, pick a 45, 60, or 70-minute slot, and confirm the AI-led honesty statement.",
     href: "/parent/short-learning",
   },
   {
@@ -97,11 +97,11 @@ export const KNOWLEDGE_ARTICLES: KnowledgeArticle[] = [
   },
   {
     id: "session-lengths",
-    title: "90-minute versus 120-minute sessions",
+    title: "45, 60, and 70-minute sessions",
     category: "Short Learning",
     audience: "Parent",
-    keywords: ["90", "120", "duration"],
-    summary: "You can book 90 or 120 minutes. Both are AI-led Short Learning sessions under the same support promise.",
+    keywords: ["45", "60", "70", "duration"],
+    summary: "You can book 45, 60, or 70 minutes. Each length is a complete AI-led session. Older 90- and 120-minute bookings keep their original length.",
   },
   {
     id: "how-far-ahead",

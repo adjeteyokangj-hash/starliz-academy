@@ -56,10 +56,12 @@ test("/school-admin is launch-scoped like other school portal routes", () => {
   });
 });
 
-test("short learning booking durations are restricted to 90 and 120 minutes", () => {
-  assert.equal(isAllowedShortLearningDuration(90), true);
-  assert.equal(isAllowedShortLearningDuration(120), true);
-  assert.equal(isAllowedShortLearningDuration(60), false);
+test("short learning booking durations are restricted to 45, 60 and 70 minutes", () => {
+  assert.equal(isAllowedShortLearningDuration(45), true);
+  assert.equal(isAllowedShortLearningDuration(60), true);
+  assert.equal(isAllowedShortLearningDuration(70), true);
+  assert.equal(isAllowedShortLearningDuration(90), false);
+  assert.equal(isAllowedShortLearningDuration(120), false);
   assert.equal(isAllowedShortLearningDuration(30), false);
 });
 

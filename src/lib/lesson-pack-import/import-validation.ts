@@ -1,6 +1,6 @@
 /**
  * Global import validation with subject-specific extensions.
- * Applies to School Day, Short Learning 90/120, and General Content Library imports.
+ * Applies to School Day, Short Learning 45/60/70 (and historical 90/120 imports), and General Content Library imports.
  */
 import type { LinkedQaItem, LessonPackStructuredModel } from "@/lib/lesson-pack-import/types";
 import { evaluateLessonActivities, validatePlayableActivity } from "@/lib/lesson-pack-import/playable-validation";

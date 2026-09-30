@@ -14,11 +14,11 @@ export const dynamic = "force-dynamic"
 export const metadata: Metadata = {
   title: "StarLiz Academy UK | AI-Led Short Learning for Children",
   description:
-    "Book AI-led 90- or 120-minute Short Learning sessions, follow progress in the Parent Portal, and access availability-based human support when tutors are on shift.",
+    "Book AI-led 45-, 60-, or 70-minute Short Learning sessions, follow progress in the Parent Portal, and access availability-based human support when tutors are on shift.",
   openGraph: {
     title: "StarLiz Academy UK | AI-Led Short Learning for Children",
     description:
-      "Understand how StarLiz Short Learning works: AI-led 90- or 120-minute sessions, parent booking, progress visibility, and availability-based human support.",
+      "Understand how StarLiz Short Learning works: AI-led 45-, 60-, or 70-minute sessions, parent booking, progress visibility, and availability-based human support.",
     images: ["/brand/starliz-logo.png"],
   },
 }
@@ -186,7 +186,7 @@ const steps = [
   {
     step: "3",
     title: "Book Short Learning",
-    desc: "Choose a 90- or 120-minute Maths or English session from the available booking windows.",
+    desc: "Choose a 45-, 60-, or 70-minute Maths or English session from the available booking windows.",
     icon: "🗓️",
   },
   {
@@ -286,7 +286,7 @@ export default async function PublicHomePage() {
 
             <p className="mt-4 sm:mt-6 max-w-xl text-sm sm:text-base lg:text-lg leading-6 sm:leading-8 text-slate-300">
               StarLiz Academy combines adaptive learning with parent-booked Short Learning:
-              focused 90- or 120-minute sessions led by AI teaching, with clear progress
+              focused 45-, 60-, or 70-minute sessions led by AI teaching, with clear progress
               visibility for families.
             </p>
 
@@ -351,7 +351,7 @@ export default async function PublicHomePage() {
               Focused learning time, led by AI and booked by parents.
             </h2>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-              Choose a 90- or 120-minute journey in Maths or English. Your child follows
+              Choose a 45-, 60-, or 70-minute journey in Maths or English. Your child follows
               an ordered lesson, uses the AI Tutor for progressive help, and can resume
               saved progress after a refresh or break.
             </p>

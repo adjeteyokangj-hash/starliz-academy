@@ -68,6 +68,38 @@ export function calculateSessionBudgetMinutes(input: {
   return budget;
 }
 
+/**
+ * Short Learning support must fit the time still left in the booked session.
+ * Waiting estimates are capped at the remaining period. A new allocation is
+ * refused when the remaining time cannot hold the minimum support session.
+ * School Day callers do not use this helper.
+ */
+export function capHumanSupportToRemainingSession(input: {
+  budgetMinutes: number;
+  estimatedWaitSec: number;
+  minutesUntilSessionEnd: number;
+  minimumSessionMinutes: number;
+}): {
+  budgetMinutes: number;
+  estimatedWaitSec: number;
+  canAllocate: boolean;
+  enoughTime: boolean;
+} {
+  const remainingMinutes = Math.max(0, input.minutesUntilSessionEnd);
+  const remainingSec = Math.max(0, Math.round(remainingMinutes * 60));
+  const estimatedWaitSec = Math.min(Math.max(0, Math.round(input.estimatedWaitSec)), remainingSec);
+  const budgetMinutes = Math.min(Math.max(0, input.budgetMinutes), remainingMinutes);
+  const minimum = Math.max(0, input.minimumSessionMinutes);
+  const enoughTime = remainingMinutes >= minimum;
+  const canAllocate = enoughTime && budgetMinutes >= minimum && budgetMinutes > 0;
+  return {
+    budgetMinutes: enoughTime ? budgetMinutes : 0,
+    estimatedWaitSec,
+    canAllocate,
+    enoughTime,
+  };
+}
+
 export function estimateWaitSeconds(input: {
   waitingAhead: number;
   onlineTutorCount: number;

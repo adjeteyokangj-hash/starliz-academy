@@ -6,6 +6,12 @@ import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 
 import { formatUkDateTime, formatUkTime } from "@/lib/uk-datetime";
+import {
+  SHORT_LEARNING_ALLOWED_DURATIONS,
+  SHORT_LEARNING_DEFAULT_DURATION,
+  formatShortLearningDurationMinutes,
+  isLegacyShortLearningDuration,
+} from "@/lib/schools/short-learning-constants";
 
 type BookingDetail = {
   id: string;
@@ -54,12 +60,19 @@ export default function ParentBookingDetailPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [dateIso, setDateIso] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState(90);
+  const [durationMinutes, setDurationMinutes] = useState<number>(SHORT_LEARNING_DEFAULT_DURATION);
   const [startsAt, setStartsAt] = useState("");
   const [subject, setSubject] = useState("");
   const [learningFocus, setLearningFocus] = useState("");
 
   const canChange = booking ? ["booked", "confirmed"].includes(booking.status) : false;
+  const durationOptions = (() => {
+    const offered = [...SHORT_LEARNING_ALLOWED_DURATIONS] as number[];
+    if (booking && isLegacyShortLearningDuration(booking.durationMinutes) && !offered.includes(booking.durationMinutes)) {
+      offered.push(booking.durationMinutes);
+    }
+    return offered;
+  })();
 
   async function loadBooking() {
     const res = await fetch(`/api/parent/short-learning/bookings/${bookingId}`);
@@ -201,7 +214,7 @@ export default function ParentBookingDetailPage() {
             <p className="text-xs uppercase tracking-wide text-slate-400">{booking.bookingRef}</p>
             <p className="text-xl font-bold">{booking.studentName} · {booking.subject}</p>
             <p className="text-sm text-slate-300">
-              {formatSessionWhen(booking.startsAt)} · {booking.durationMinutes} min · {formatStatus(booking.status)}
+              {formatSessionWhen(booking.startsAt)} · {formatShortLearningDurationMinutes(booking.durationMinutes)} · {formatStatus(booking.status)}
             </p>
             <p className="text-sm text-slate-400">{booking.schoolName}</p>
             {booking.learningFocus ? (
@@ -263,8 +276,13 @@ export default function ParentBookingDetailPage() {
                   onChange={(e) => setDurationMinutes(Number(e.target.value))}
                   className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3"
                 >
-                  <option value={90}>90 minutes</option>
-                  <option value={120}>120 minutes</option>
+                  {durationOptions.map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {isLegacyShortLearningDuration(minutes)
+                        ? `${formatShortLearningDurationMinutes(minutes)} (existing booking)`
+                        : `${minutes} minutes`}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>
@@ -335,14 +353,14 @@ export default function ParentBookingDetailPage() {
                 <p className="text-xs uppercase tracking-wide text-slate-400">Current</p>
                 <p className="mt-2 font-semibold">{booking.subject}</p>
                 <p className="text-sm text-slate-300">{formatSessionWhen(booking.startsAt)}</p>
-                <p className="text-sm text-slate-400">{booking.durationMinutes} min</p>
+                <p className="text-sm text-slate-400">{formatShortLearningDurationMinutes(booking.durationMinutes)}</p>
                 <p className="text-sm text-slate-400">{booking.learningFocus || "No learning focus"}</p>
               </div>
               <div className="rounded-2xl border border-cyan-500/40 bg-cyan-500/10 p-4">
                 <p className="text-xs uppercase tracking-wide text-cyan-200">New</p>
                 <p className="mt-2 font-semibold">{proposed.subject}</p>
                 <p className="text-sm text-slate-100">{formatSessionWhen(proposed.startsAt)}</p>
-                <p className="text-sm text-slate-300">{proposed.durationMinutes} min</p>
+                <p className="text-sm text-slate-300">{formatShortLearningDurationMinutes(proposed.durationMinutes)}</p>
                 <p className="text-sm text-slate-300">{proposed.learningFocus || "No learning focus"}</p>
               </div>
             </div>
@@ -374,7 +392,7 @@ export default function ParentBookingDetailPage() {
           <section className="mt-8 space-y-4 rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-6">
             <h2 className="text-xl font-bold text-emerald-100">Change confirmed</h2>
             <p className="text-sm text-emerald-50/90">
-              {booking.bookingRef} · {formatSessionWhen(booking.startsAt)} · {booking.subject} · {booking.durationMinutes} min
+              {booking.bookingRef} · {formatSessionWhen(booking.startsAt)} · {booking.subject} · {formatShortLearningDurationMinutes(booking.durationMinutes)}
             </p>
             <div className="flex flex-wrap gap-3">
               <button

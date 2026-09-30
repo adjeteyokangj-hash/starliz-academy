@@ -53,7 +53,7 @@ const featureList = [
   {
     icon: "🌙",
     title: "Short Learning (AI-led)",
-    desc: "Parent-booked after-hours sessions (90/120 min). AI teaching is guaranteed; human tutors join only when on shift and available.",
+    desc: "Parent-booked after-hours sessions (45, 60, or 70 min). AI teaching is guaranteed; human tutors join only when on shift and available.",
   },
 ]
 

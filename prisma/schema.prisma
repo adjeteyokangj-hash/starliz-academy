@@ -3123,7 +3123,7 @@ model LessonPackImport {
   id                      String   @id @default(cuid())
   status                  String   @default("uploaded") // uploaded | analysing | needs_input | analysis_failed | draft_created | awaiting_review | changes_requested | approved | published | rejected
   createdByUserId         String?
-  sessionType             String   @default("school_day") // school_day | short_learning_90 | short_learning_120 | general_library
+  sessionType             String   @default("school_day") // school_day | short_learning_45 | short_learning_60 | short_learning_70 | short_learning_90 | short_learning_120 | general_library
   sourceName              String?
   sourceUrl               String?
   licenceType             String?

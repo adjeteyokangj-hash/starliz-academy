@@ -287,10 +287,13 @@ test("English reading thin passage rejected for Short Learning lesson depth", ()
   assert.ok(issues.some((i) => i.code === "sl_reading_thin_passage"));
 });
 
-test("105 minutes remains unavailable", () => {
+test("105, 90 and 120 minutes are not new Admin durations", () => {
   assert.equal(isShortLearningAdminDuration(105), false);
-  assert.equal(isShortLearningAdminDuration(90), true);
-  assert.equal(isShortLearningAdminDuration(120), true);
+  assert.equal(isShortLearningAdminDuration(90), false);
+  assert.equal(isShortLearningAdminDuration(120), false);
+  assert.equal(isShortLearningAdminDuration(45), true);
+  assert.equal(isShortLearningAdminDuration(60), true);
+  assert.equal(isShortLearningAdminDuration(70), true);
 });
 
 test("prior exposure of an equivalent question is still excessive repetition", () => {

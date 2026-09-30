@@ -9,7 +9,15 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const bodySchema = z.object({
-  sessionType: z.enum(["school_day", "short_learning_90", "short_learning_120", "general_library"]).optional(),
+  sessionType: z.enum([
+    "school_day",
+    "short_learning_45",
+    "short_learning_60",
+    "short_learning_70",
+    "short_learning_90",
+    "short_learning_120",
+    "general_library",
+  ]).optional(),
   yearGroup: z.string().optional().nullable(),
   subject: z.string().optional().nullable(),
   sourceName: z.string().optional().nullable(),

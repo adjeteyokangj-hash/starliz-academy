@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   calculateSessionBudgetMinutes,
   canAssignImmediately,
+  capHumanSupportToRemainingSession,
   deriveHumanSupportSummary,
   estimateWaitSeconds,
   rollingMedian,
@@ -115,6 +116,22 @@ test("wait estimate scales with queue depth", () => {
     minutesUntilPeriodEnd: 40,
   });
   assert.ok(long > short);
+});
+
+test("short learning wait estimates cannot exceed the remaining session", () => {
+  const capped = capHumanSupportToRemainingSession({
+    budgetMinutes: 15,
+    estimatedWaitSec: estimateWaitSeconds({
+      waitingAhead: 3,
+      onlineTutorCount: 1,
+      sessionBudgetMinutes: 15,
+      minutesUntilPeriodEnd: 6,
+    }),
+    minutesUntilSessionEnd: 6,
+    minimumSessionMinutes: policy.minimumSessionMinutes,
+  });
+  assert.ok(capped.estimatedWaitSec <= 6 * 60);
+  assert.ok(capped.budgetMinutes <= 6);
 });
 
 test("rolling median supports capacity prediction", () => {

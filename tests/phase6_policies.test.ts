@@ -144,7 +144,7 @@ test("Day School and Short Learning remain distinct", () => {
   assert.match(short, /parent-booked/);
   assert.doesNotMatch(short, /studentlearningbooking/);
   assert.match(short, /16:00/);
-  assert.match(short, /90 or 120/);
+  assert.match(short, /45, 60, or 70/);
 });
 
 test("human support policy does not guarantee tutors", () => {

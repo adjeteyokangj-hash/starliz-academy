@@ -48,7 +48,7 @@ export const LEGAL_POLICIES: PolicyDocument[] = [
         "Short Learning is parent-booked learning time outside Day School hours.",
         "Sessions are AI-led and are not named-tutor bookings.",
         "AI teaching is guaranteed. Human support is a safety net when available — not a private 1:1 tutor booking.",
-        "Session lengths are 90 or 120 minutes, starting every 30 minutes where capacity permits.",
+        "Session lengths are 45, 60, or 70 minutes, starting every 30 minutes where capacity permits.",
         "Weekday window: 16:00–20:00. Weekend window: 09:00–18:00.",
         "Short Learning bookings use published after-hours capacity windows.",
       ),

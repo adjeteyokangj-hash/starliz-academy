@@ -54,11 +54,14 @@ test("past_due access requires an active grace window", () => {
   assert.equal(subscriptionGrantsAccess({ status: "past_due", now }), false);
 });
 
-test("105-minute Short Learning remains unavailable", () => {
+test("105-minute Short Learning remains unavailable and 90/120 are not new bookings", () => {
   assert.equal(isAllowedShortLearningDuration(105), false);
   assert.equal(isShortLearningAdminDuration(105), false);
-  assert.equal(isAllowedShortLearningDuration(90), true);
-  assert.equal(isAllowedShortLearningDuration(120), true);
+  assert.equal(isAllowedShortLearningDuration(90), false);
+  assert.equal(isAllowedShortLearningDuration(120), false);
+  assert.equal(isAllowedShortLearningDuration(45), true);
+  assert.equal(isAllowedShortLearningDuration(60), true);
+  assert.equal(isAllowedShortLearningDuration(70), true);
 });
 
 test("Commercial cancel stance remains locked in parent status copy", () => {

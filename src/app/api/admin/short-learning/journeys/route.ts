@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   if (!isShortLearningAdminDuration(body.durationMinutes)) {
     return NextResponse.json(
       {
-        error: `Duration must be ${SHORT_LEARNING_ADMIN_DURATIONS.join(" or ")} minutes. 105 minutes is not available.`,
+        error: `Duration must be ${SHORT_LEARNING_ADMIN_DURATIONS.join(", ")} minutes.`,
         code: "DURATION_NOT_ALLOWED",
       },
       { status: 422 },

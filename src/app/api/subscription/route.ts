@@ -86,7 +86,7 @@ export async function GET() {
       currentInterval,
       currentCurrency: currentPricingPlan?.currency ?? "GBP",
       includesShortLearning:
-        "Eligible plans include AI-led Short Learning (90/120 min). Human support is availability-based, not guaranteed, and not private 1:1 tutoring.",
+        "Eligible plans include AI-led Short Learning (45, 60, or 70 min). Human support is availability-based, not guaranteed, and not private 1:1 tutoring.",
       commercialNotes: [
         "Cancel in the Parent Portal — access continues until the end of the current billing period.",
         "There is no cancellation fee.",

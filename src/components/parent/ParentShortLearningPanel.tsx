@@ -8,6 +8,11 @@ import {
   shortLearningSubjectLabel,
 } from "@/lib/schools/short-learning-subjects";
 import { formatUkDateTimeShort, formatUkTime, todayUkDateIso } from "@/lib/uk-datetime";
+import {
+  SHORT_LEARNING_ALLOWED_DURATIONS,
+  SHORT_LEARNING_DEFAULT_DURATION,
+  formatShortLearningDurationMinutes,
+} from "@/lib/schools/short-learning-constants";
 import ParentCollapsibleCard from "@/components/parent/ParentCollapsibleCard";
 
 type StudentOption = {
@@ -75,7 +80,7 @@ export default function ParentShortLearningPanel() {
   const [slots, setSlots] = useState<SlotRow[]>([]);
   const [schoolStudentId, setSchoolStudentId] = useState("");
   const [dateIso, setDateIso] = useState(() => todayUkDateIso());
-  const [durationMinutes, setDurationMinutes] = useState(90);
+  const [durationMinutes, setDurationMinutes] = useState<number>(SHORT_LEARNING_DEFAULT_DURATION);
   const [startsAt, setStartsAt] = useState("");
   const [subject, setSubject] = useState<string>(SHORT_LEARNING_STARLIZ_CHOOSE);
   const [learningFocus, setLearningFocus] = useState("");
@@ -281,8 +286,11 @@ export default function ParentShortLearningPanel() {
               onChange={(e) => setDurationMinutes(Number(e.target.value))}
               className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3"
             >
-              <option value={90}>90 minutes</option>
-              <option value={120}>120 minutes</option>
+              {SHORT_LEARNING_ALLOWED_DURATIONS.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes} minutes
+                </option>
+              ))}
             </select>
           </label>
         </div>
@@ -369,7 +377,7 @@ export default function ParentShortLearningPanel() {
                       {booking.studentName} · {shortLearningSubjectLabel(booking.subject)}
                     </p>
                     <p className="text-sm text-slate-400">
-                      {formatUkDateTimeShort(booking.startsAt)} · {booking.durationMinutes} min · {formatBookingStatus(booking.status)}
+                      {formatUkDateTimeShort(booking.startsAt)} · {formatShortLearningDurationMinutes(booking.durationMinutes)} · {formatBookingStatus(booking.status)}
                     </p>
                     {booking.status === "no_show" ? (
                       <p className="mt-1 text-xs text-amber-200/90">

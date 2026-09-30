@@ -16,7 +16,15 @@ export const dynamic = "force-dynamic";
 
 function parseSessionType(value: FormDataEntryValue | null): LessonPackSessionType {
   const raw = String(value ?? "school_day");
-  if (raw === "short_learning_90" || raw === "short_learning_120" || raw === "general_library" || raw === "school_day") {
+  if (
+    raw === "short_learning_45"
+    || raw === "short_learning_60"
+    || raw === "short_learning_70"
+    || raw === "short_learning_90"
+    || raw === "short_learning_120"
+    || raw === "general_library"
+    || raw === "school_day"
+  ) {
     return raw;
   }
   return "school_day";

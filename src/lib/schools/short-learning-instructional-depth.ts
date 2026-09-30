@@ -63,7 +63,8 @@ export function shortLearningMinQuestionCount(stageLabel: string, targetMinutes:
   if (intent === "recap") return 2;
   if (intent === "final_review") return Math.max(4, Math.round(targetMinutes / 2.5));
   if (intent === "challenge") return Math.max(4, Math.round(targetMinutes / 2));
-  return Math.max(8, Math.round(targetMinutes / 2));
+  if (targetMinutes >= 14) return Math.max(8, Math.round(targetMinutes / 2));
+  return Math.max(4, Math.round(targetMinutes / 2));
 }
 
 const GENERIC_READING_COMPREHENSION_STEM =
@@ -257,12 +258,14 @@ export function validateShortLearningInstructionalDepth(input: {
     || a.kind === "fluency",
   ).length;
   const practiceUnits = pack.questions.length + practiceActivityCount;
+  const minPracticeQuestions = shortLearningMinQuestionCount(input.stageLabel, targetMinutes);
   const minPracticeUnits = intent === "recap"
     ? 4
     : intent === "final_review"
       ? Math.max(5, Math.round(targetMinutes / 2.5))
-      : Math.max(8, Math.round(targetMinutes / 2));
-  const minPracticeQuestions = shortLearningMinQuestionCount(input.stageLabel, targetMinutes);
+      : targetMinutes >= 14
+        ? Math.max(8, Math.round(targetMinutes / 2))
+        : minPracticeQuestions;
 
   if (!(pack.learningObjective ?? "").trim() && intent !== "recap") {
     issues.push({

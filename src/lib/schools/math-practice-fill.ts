@@ -132,10 +132,16 @@ function nearTraps(answer: number, extras: number[] = []): number[] {
  */
 export function minMathQuestionsForMinutes(targetMinutes: number | null | undefined, title?: string | null): number {
   const label = (title ?? "").toLowerCase();
+  const minutes = Math.max(0, targetMinutes ?? 18);
   if (label.includes("recap") || label.includes("review")) {
-    return Math.max(4, itemCountForMinutes(Math.max(5, targetMinutes ?? 5)));
+    return Math.max(4, itemCountForMinutes(Math.max(5, minutes || 5)));
   }
-  return Math.max(8, itemCountForMinutes(Math.max(10, targetMinutes ?? 18)));
+  // Longer teaching blocks keep a full practice set. Shorter blocks stay finishable.
+  if (minutes >= 14) {
+    return Math.max(8, itemCountForMinutes(minutes));
+  }
+  const scaled = itemCountForMinutes(Math.max(5, minutes || 5));
+  return Math.max(4, Math.min(scaled, Math.round(Math.max(minutes, 5) / 2)));
 }
 
 /** National Curriculum topic for this year group and skill focus. */

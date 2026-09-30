@@ -3,6 +3,7 @@ import type { HumanSupportOutcome, Prisma } from "@prisma/client";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
 import {
   calculateSessionBudgetMinutes,
+  capHumanSupportToRemainingSession,
   estimateWaitSeconds,
   shouldEnqueueStudent,
   rollingMedian,
@@ -271,6 +272,17 @@ export async function syncShortLearningEligibleQueue(input: {
     onlineTutorCount: Math.max(counts.onlineTutorCount, capacity.acceptReadyTutorCount),
     policy,
   });
+  const supportFit = capHumanSupportToRemainingSession({
+    budgetMinutes,
+    estimatedWaitSec: estimateWaitSeconds({
+      waitingAhead: 0,
+      onlineTutorCount: Math.max(1, counts.onlineTutorCount),
+      sessionBudgetMinutes: budgetMinutes,
+      minutesUntilPeriodEnd: input.minutesUntilBookingEnd,
+    }),
+    minutesUntilSessionEnd: input.minutesUntilBookingEnd,
+    minimumSessionMinutes: policy.minimumSessionMinutes,
+  });
 
   if (!input.humanTutorEligible) {
     await prisma.humanSupportQueueEntry.updateMany({
@@ -337,7 +349,30 @@ export async function syncShortLearningEligibleQueue(input: {
           queueEntryId: existingOpen.id,
         };
       }
+    } else if (existingOpen.status === "waiting" && !supportFit.enoughTime) {
+      await prisma.humanSupportQueueEntry.update({
+        where: { id: existingOpen.id },
+        data: { status: "expired", estimatedWaitSec: 0, budgetMinutes: 0 },
+      });
+      return {
+        counts,
+        enqueued: 0,
+        humanSupportState: "ai-only" as const,
+        queued: false,
+        continueAi: true,
+        unmetEscalation: true,
+      };
     } else {
+      if (existingOpen.status === "waiting") {
+        await prisma.humanSupportQueueEntry.update({
+          where: { id: existingOpen.id },
+          data: {
+            estimatedWaitSec: supportFit.estimatedWaitSec,
+            budgetMinutes: supportFit.budgetMinutes,
+            expiresAt: new Date(now.getTime() + Math.max(1, input.minutesUntilBookingEnd) * 60_000),
+          },
+        });
+      }
       return {
         counts,
         enqueued: 0,
@@ -391,12 +426,16 @@ export async function syncShortLearningEligibleQueue(input: {
     };
   }
 
-  const estimatedWaitSec = estimateWaitSeconds({
-    waitingAhead: 0,
-    onlineTutorCount: counts.onlineTutorCount,
-    sessionBudgetMinutes: budgetMinutes,
-    minutesUntilPeriodEnd: input.minutesUntilBookingEnd,
-  });
+  if (!supportFit.canAllocate) {
+    return {
+      counts,
+      enqueued: 0,
+      humanSupportState: "ai-only" as const,
+      queued: false,
+      continueAi: true,
+      unmetEscalation: true,
+    };
+  }
 
   const entry = await prisma.humanSupportQueueEntry.create({
     data: {
@@ -408,8 +447,8 @@ export async function syncShortLearningEligibleQueue(input: {
       questionKey: input.questionKey,
       status: "waiting",
       expiresAt: new Date(now.getTime() + Math.max(1, input.minutesUntilBookingEnd) * 60_000),
-      estimatedWaitSec,
-      budgetMinutes,
+      estimatedWaitSec: supportFit.estimatedWaitSec,
+      budgetMinutes: supportFit.budgetMinutes,
       metadataJson: JSON.stringify({
         ...input.metadata,
         supportMode: "SHORT_LEARNING",
@@ -429,7 +468,8 @@ export async function syncShortLearningEligibleQueue(input: {
       ...input.metadata,
       periodId: input.supportScopeKey,
       queueEntryId: entry.id,
-      estimatedWaitSec,
+      estimatedWaitSec: supportFit.estimatedWaitSec,
+      budgetMinutes: supportFit.budgetMinutes,
     },
   });
   await writeSchoolAuditLog({

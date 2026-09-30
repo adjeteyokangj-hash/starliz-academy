@@ -9,14 +9,14 @@ import {
 export const metadata: Metadata = {
   title: "Frequently Asked Questions | StarLiz Academy",
   description:
-    "Answers for parents about AI-led Short Learning, 90- and 120-minute bookings, subscriptions, cancellations, human support and safeguarding.",
+    "Answers for parents about AI-led Short Learning, 45-, 60-, and 70-minute bookings, subscriptions, cancellations, human support and safeguarding.",
 };
 
 const faqItems = [
   {
     question: "What is the difference between Day School and Short Learning?",
     answer:
-      "Day School follows your child's school timetable with scheduled classroom periods and attendance tracking during the school day. Parents do not book Day School periods. Short Learning is parent-booked, after-hours, and AI-led: extra focused learning outside normal school hours in 90- or 120-minute sessions.",
+      "Day School follows your child's school timetable with scheduled classroom periods and attendance tracking during the school day. Parents do not book Day School periods. Short Learning is parent-booked, after-hours, and AI-led: extra focused learning outside normal school hours in 45-, 60-, or 70-minute sessions.",
   },
   {
     question: "Is AI teaching guaranteed?",
@@ -39,7 +39,7 @@ const faqItems = [
   },
   {
     question: "How long are Short Learning sessions?",
-    answer: `Sessions are ${SHORT_LEARNING_ALLOWED_DURATIONS.join(" or ")} minutes on 30-minute start boundaries — choose the length that fits your child's focus window.`,
+    answer: `Sessions are ${SHORT_LEARNING_ALLOWED_DURATIONS.join(", ")} minutes on 30-minute start boundaries. A shorter session contains fewer activities so it can finish properly. Existing 90- and 120-minute bookings keep their original length.`,
   },
   {
     question: "Does cancelling a booking cancel my subscription?",

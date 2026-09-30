@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/api_guard";
 import { prisma } from "@/lib/db";
 import {
   SHORT_LEARNING_CHECKBOX,
+  SHORT_LEARNING_DEFAULT_DURATION,
   SHORT_LEARNING_PROMISE,
   createStudentLearningBooking,
   listParentBookableShortLearningStudents,
@@ -100,7 +101,7 @@ export async function POST(request: Request) {
   const startsAtRaw = typeof (body as { startsAt?: unknown }).startsAt === "string"
     ? (body as { startsAt: string }).startsAt
     : null;
-  const durationMinutes = Number((body as { durationMinutes?: unknown }).durationMinutes ?? 90);
+  const durationMinutes = Number((body as { durationMinutes?: unknown }).durationMinutes ?? SHORT_LEARNING_DEFAULT_DURATION);
   const subjectRaw = typeof (body as { subject?: unknown }).subject === "string"
     ? (body as { subject: string }).subject
     : "";
@@ -130,7 +131,7 @@ export async function POST(request: Request) {
       schoolStudentId,
       parentUserId: session.userId,
       startsAt,
-      durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : 90,
+      durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : SHORT_LEARNING_DEFAULT_DURATION,
       subject: subjectRaw,
       learningFocus,
       parentNote,

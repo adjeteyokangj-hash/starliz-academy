@@ -23,15 +23,21 @@ import {
   SHORT_LEARNING_ALLOWED_DURATIONS,
   SHORT_LEARNING_EARLY_ENTRY_MINUTES,
   SHORT_LEARNING_HONESTY_POLICY_VERSION,
+  canKeepExistingShortLearningDuration,
   isShortLearningTestParentEmail,
 } from "@/lib/schools/short-learning-constants";
 
 export {
   SHORT_LEARNING_ALLOWED_DURATIONS,
   SHORT_LEARNING_CHECKBOX,
+  SHORT_LEARNING_DEFAULT_DURATION,
   SHORT_LEARNING_EARLY_ENTRY_MINUTES,
   SHORT_LEARNING_HONESTY_POLICY_VERSION,
+  SHORT_LEARNING_LEGACY_DURATIONS,
   SHORT_LEARNING_PROMISE,
+  canKeepExistingShortLearningDuration,
+  formatShortLearningDurationMinutes,
+  isLegacyShortLearningDuration,
   isShortLearningTestParentEmail,
 } from "@/lib/schools/short-learning-constants";
 
@@ -313,7 +319,18 @@ export function canCancelFreely(input: {
 
 export async function ensureDefaultLearningWindows(schoolId: string) {
   const existing = await prisma.schoolLearningWindow.count({ where: { schoolId } });
-  if (existing > 0) return { created: 0 };
+  if (existing > 0) {
+    // Keep booking rows. Only refresh the old 90/120 window setting used for new slots.
+    const nextJson = JSON.stringify(ALLOWED_DURATIONS);
+    await prisma.schoolLearningWindow.updateMany({
+      where: {
+        schoolId,
+        allowedDurationsJson: { in: ['[90,120]', '[90, 120]', '[90,105,120]', '[90, 105, 120]'] },
+      },
+      data: { allowedDurationsJson: nextJson },
+    });
+    return { created: 0 };
+  }
 
   const rows = [
     // Mon–Fri
@@ -355,7 +372,7 @@ export async function listAvailableSlots(input: {
   /** When rescheduling, keep this booking out of the student busy filter. */
   excludeBookingId?: string | null;
 }): Promise<SlotCandidate[]> {
-  if (!ALLOWED_DURATIONS.includes(input.durationMinutes as 90 | 120)) {
+  if (!isAllowedShortLearningDuration(input.durationMinutes)) {
     return [];
   }
   const now = input.now ?? new Date();
@@ -663,8 +680,8 @@ export async function createStudentLearningBooking(input: {
   if (!input.honestyAcknowledged) {
     throw new Error("You must acknowledge that Short Learning is AI-led.");
   }
-  if (!ALLOWED_DURATIONS.includes(input.durationMinutes as 90 | 120)) {
-    throw new Error("Duration must be 90 or 120 minutes.");
+  if (!isAllowedShortLearningDuration(input.durationMinutes)) {
+    throw new Error(`Duration must be ${SHORT_LEARNING_ALLOWED_DURATIONS.join(", ")} minutes.`);
   }
   const entitled = await parentHasShortLearningEntitlement(input.parentUserId);
   if (!entitled) {
@@ -922,8 +939,8 @@ export async function changeStudentLearningBooking(input: {
       ? (input.learningFocus?.trim() || null)
       : booking.learningFocus;
 
-  if (!ALLOWED_DURATIONS.includes(nextDuration as 90 | 120)) {
-    throw new Error("Duration must be 90 or 120 minutes.");
+  if (!canKeepExistingShortLearningDuration(nextDuration, booking.durationMinutes)) {
+    throw new Error(`Duration must be ${SHORT_LEARNING_ALLOWED_DURATIONS.join(", ")} minutes.`);
   }
 
   const unchanged =

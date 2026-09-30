@@ -57,6 +57,12 @@ export function estimatedDurationMinutes(
   sourceDurationMinutes?: number | null,
 ): number {
   switch (sessionType) {
+    case "short_learning_45":
+      return 45;
+    case "short_learning_60":
+      return 60;
+    case "short_learning_70":
+      return 70;
     case "short_learning_90":
       return 90;
     case "short_learning_120":
@@ -91,7 +97,7 @@ export function transformToStarLizDraft(input: {
 } {
   const duration = estimatedDurationMinutes(input.sessionType, input.sourceDurationMinutes);
   const depth =
-    input.sessionType === "short_learning_90" || input.sessionType === "short_learning_120"
+    input.sessionType.startsWith("short_learning_")
       ? instructionalDepthBudget(duration)
       : null;
 

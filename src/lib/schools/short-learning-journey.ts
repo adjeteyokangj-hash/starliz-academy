@@ -213,7 +213,7 @@ export type GenerateShortLearningJourneyInput = {
 
 export async function generateShortLearningJourney(input: GenerateShortLearningJourneyInput) {
   if (!isShortLearningAdminDuration(input.durationMinutes)) {
-    throw new Error(`Duration must be one of ${SHORT_LEARNING_ADMIN_DURATIONS.join(" or ")} minutes. 105 is not available.`);
+    throw new Error(`Duration must be one of ${SHORT_LEARNING_ADMIN_DURATIONS.join(", ")} minutes.`);
   }
   const difficulty = input.difficulty ?? yearGroupToLevel(input.yearGroup);
   if (!Number.isInteger(difficulty) || difficulty < 1 || difficulty > 5) {
@@ -391,8 +391,11 @@ export async function publishShortLearningJourney(input: {
     include: { blocks: { orderBy: { order: "asc" } } },
   });
   if (!journey) throw new Error("Journey not found.");
-  if (!isShortLearningAdminDuration(journey.durationMinutes)) {
-    throw new Error("Journey duration is not publishable (90 or 120 only).");
+  const historicalPublishable = journey.durationMinutes === 90 || journey.durationMinutes === 120;
+  if (!isShortLearningAdminDuration(journey.durationMinutes) && !historicalPublishable) {
+    throw new Error(
+      `Journey duration is not publishable for new sessions (${SHORT_LEARNING_ADMIN_DURATIONS.join(", ")} minutes).`,
+    );
   }
 
   const academic = journey.blocks.filter((b) => b.daytimeStage);

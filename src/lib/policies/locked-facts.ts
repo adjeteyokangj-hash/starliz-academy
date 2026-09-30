@@ -16,8 +16,8 @@ export const DAY_SCHOOL_FACTS = [
 export const SHORT_LEARNING_FACTS = [
   "Short Learning is parent-booked learning time outside Day School hours.",
   "Sessions are AI-led and are not named-tutor bookings.",
-  "Session lengths are 90 or 120 minutes, starting every 30 minutes where capacity permits.",
-  "105-minute sessions are unavailable for new bookings and Admin authoring.",
+  "Session lengths are 45, 60, or 70 minutes, starting every 30 minutes where capacity permits.",
+  "105-minute sessions are unavailable. 90- and 120-minute lengths are no longer offered for new bookings; existing bookings keep their saved length.",
   "Weekday window: 16:00–20:00. Weekend window: 09:00–18:00.",
   "Short Learning bookings use published after-hours capacity windows.",
   "AI support is available throughout the session. Human tutors are an availability-based safety net and are not guaranteed.",

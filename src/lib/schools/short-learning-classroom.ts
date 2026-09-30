@@ -1,4 +1,5 @@
 import type { DaytimeStagePackExtras } from "@/lib/schools/daytime-lesson-ui";
+import { shortLearningBlockCanStart } from "@/lib/schools/short-learning-session-plan";
 
 export const STRUCTURAL_SHORT_LEARNING_BLOCK_TYPES = [
   "welcome",
@@ -59,6 +60,54 @@ export function pickNextShortLearningBlock(input: {
 
   const remaining = input.blocks.filter((block) => !completedIds.has(block.id) && block.status !== "failed");
   return remaining.find((block) => block.order >= input.preferredOrder) ?? remaining[0] ?? null;
+}
+
+/**
+ * Pick the next block that can finish before the session ends.
+ * Blocks that no longer fit are returned as skipIds so the caller can mark them skipped
+ * instead of starting a lesson that would run past the booking.
+ */
+export function selectShortLearningBlockWithinRemainingTime<T extends {
+  id: string;
+  order: number;
+  blockType: string;
+  estimatedMinutes: number;
+  status: string;
+  contentId: string | null;
+}>(input: {
+  blocks: T[];
+  preferredOrder: number;
+  remainingMinutes: number;
+  completedContentId?: string | null;
+  completedBlockId?: string | null;
+}): { block: T | null; skipIds: string[] } {
+  const completedIds = new Set(
+    input.blocks
+      .filter((block) => {
+        if (block.status === "completed" || block.status === "skipped") return true;
+        if (input.completedBlockId && block.id === input.completedBlockId) return true;
+        if (input.completedContentId && block.contentId === input.completedContentId) return true;
+        return false;
+      })
+      .map((block) => block.id),
+  );
+  const pending = input.blocks
+    .filter((block) => !completedIds.has(block.id) && block.status !== "failed")
+    .sort((a, b) => a.order - b.order);
+  const fromPreferred = pending.filter((block) => block.order >= input.preferredOrder);
+  const queue = fromPreferred.length > 0 ? fromPreferred : pending;
+  const skipIds: string[] = [];
+  for (const block of queue) {
+    if (shortLearningBlockCanStart({
+      blockType: block.blockType,
+      estimatedMinutes: block.estimatedMinutes,
+      remainingMinutes: input.remainingMinutes,
+    })) {
+      return { block, skipIds };
+    }
+    skipIds.push(block.id);
+  }
+  return { block: null, skipIds };
 }
 
 export function shortLearningStageHref(bookingId: string, blockId: string): string {

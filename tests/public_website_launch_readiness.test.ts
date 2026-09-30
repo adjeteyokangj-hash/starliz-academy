@@ -12,7 +12,7 @@ function source(path: string): string {
 test("UK homepage discloses the frozen Short Learning offer and trust boundaries", () => {
   const uk = source("src/app/uk/page.tsx")
   assert.match(uk, /SHORT_LEARNING_PROMISE/)
-  assert.match(uk, /90- or 120-minute/)
+  assert.match(uk, /45-, 60-, or 70-minute/)
   assert.match(uk, /Support desk/)
   assert.match(uk, /not private one-to-one tutoring/)
   assert.match(uk, /Subscription cancellation takes effect at the end of the current billing period/)
