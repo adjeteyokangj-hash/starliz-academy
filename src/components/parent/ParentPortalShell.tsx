@@ -14,6 +14,7 @@ import SecuritySettings from "./SecuritySettings";
 import ConsentAuditView from "./ConsentAuditView";
 import NotificationPreferences from "./NotificationPreferences";
 import ParentShortLearningPanel from "./ParentShortLearningPanel";
+import CodingProgressPanel from "@/components/coding/CodingProgressPanel";
 import ParentCollapsibleCard from "./ParentCollapsibleCard";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
@@ -2390,6 +2391,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     )}
                   </div>
                 ) : null}
+                <div className="mb-4">
+                  <CodingProgressPanel childId={selectedChildId} />
+                </div>
                 {childDetail ? (
                   <div className="grid gap-3 md:grid-cols-3">
                     {childDetail.progressRecords.slice(0, 6).map((record) => (

@@ -60,6 +60,7 @@ export function buildPrimaryNavLinks(input: {
       navLink("child-dashboard", "/student/dashboard", "Child Dashboard"),
       showDaySchool ? navLink("today", "/student/today", "Today") : null,
       navLink("short-learning", "/student/short-learning", "Short Learning"),
+      navLink("coding", "/student/coding", "Coding"),
       navLink("parent-area", "/parent/dashboard", "Parent Area"),
     ].filter((link): link is PrimaryNavLink => Boolean(link));
   }
@@ -72,6 +73,7 @@ export function buildPrimaryNavLinks(input: {
       links.push(navLink("day-school", "/student/today", "Day School"));
     }
     links.push(navLink("short-learning", "/student/short-learning", "Short Learning"));
+    links.push(navLink("coding", "/student/coding", "Coding"));
     if (input.showGaLearningHub) {
       links.push(navLink("ga-learning-hub", input.gaLearningHubHref, "Ga Learning Hub"));
     }

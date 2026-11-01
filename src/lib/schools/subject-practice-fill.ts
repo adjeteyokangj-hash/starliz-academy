@@ -133,6 +133,32 @@ const BANK: Record<ShortLearningSubjectKey, Record<"ks1" | "lks2" | "uks2" | "ks
       { prompt: "Phishing is…", answer: "a trick to steal personal information", extras: ["a type of loop", "a graphics card", "a healthy website"], explanation: "Do not click suspicious links or share passwords.", skillFocus: "cyber security" },
     ],
   },
+  coding: {
+    ks1: [
+      { prompt: "An instruction tells a computer…", answer: "what to do next", extras: ["what the weather was", "the name of a river", "a times table"], explanation: "Instructions are steps a computer can follow.", skillFocus: "instructions" },
+      { prompt: "A sequence is…", answer: "steps in a set order", extras: ["a random jumble", "a paint colour", "a sports score"], explanation: "Order matters when you give instructions.", skillFocus: "sequencing" },
+      { prompt: "A pattern in coding is…", answer: "something that repeats in a rule", extras: ["a hole in a sock", "a lunch menu", "a bus ticket"], explanation: "Patterns help you spot what comes next.", skillFocus: "patterns" },
+      { prompt: "Finding a mistake in instructions is called…", answer: "debugging", extras: ["baking", "measuring", "singing"], explanation: "Debugging means finding and fixing the mistake.", skillFocus: "finding mistakes" },
+    ],
+    lks2: [
+      { prompt: "A loop is used to…", answer: "repeat instructions", extras: ["delete the whole program", "paint one pixel", "charge a tablet"], explanation: "A loop runs the blocks inside it again.", skillFocus: "loops" },
+      { prompt: "An event in a program is…", answer: "something that starts an action", extras: ["a lunch break", "a river on a map", "a spelling list"], explanation: "A click or a key press can be an event.", skillFocus: "events" },
+      { prompt: "A condition lets a program…", answer: "choose a path", extras: ["forget every instruction", "print the school only", "turn into a book"], explanation: "If something is true, the program can take one path.", skillFocus: "conditions" },
+      { prompt: "A coordinate gives…", answer: "a position on the screen", extras: ["the teacher's birthday", "a poem title", "a bus fare"], explanation: "Coordinates say where a character is.", skillFocus: "coordinates" },
+    ],
+    uks2: [
+      { prompt: "A variable stores…", answer: "a value that can change", extras: ["the school carved in stone", "only a picture of a river", "the plug socket"], explanation: "A score or a name can live in a variable.", skillFocus: "variables" },
+      { prompt: "A function is…", answer: "a named group of instructions", extras: ["a type of battery", "a map symbol", "a school bell"], explanation: "You can call a function instead of copying steps.", skillFocus: "functions" },
+      { prompt: "HTML is used to…", answer: "structure a web page", extras: ["boil water", "measure rainfall", "mark a spelling test"], explanation: "HTML describes the parts of a page.", skillFocus: "html" },
+      { prompt: "Debugging means…", answer: "finding and fixing a mistake", extras: ["adding more bugs on purpose", "deleting the internet", "changing your name"], explanation: "Read the error, find the cause, then repair it.", skillFocus: "debugging" },
+    ],
+    ks3: [
+      { prompt: "Python is…", answer: "a text programming language", extras: ["a brand of pencil", "a map of Europe", "a sports rule"], explanation: "Python programs are written as text.", skillFocus: "python" },
+      { prompt: "An algorithm is…", answer: "a clear set of steps to solve a problem", extras: ["a computer's fan", "a school timetable only", "a type of paint"], explanation: "Algorithms can be written before any code.", skillFocus: "algorithms" },
+      { prompt: "CSS is used to…", answer: "style a web page", extras: ["store a database password in public", "count lunch trays only", "replace maths"], explanation: "CSS controls colour, size and layout.", skillFocus: "css" },
+      { prompt: "A list of data can be…", answer: "stored and checked by a program", extras: ["only drawn by hand", "hidden from every test", "the same as a password"], explanation: "Programs can read, sort and search data.", skillFocus: "data" },
+    ],
+  },
   history: {
     ks1: [
       { prompt: "A toy from a long time ago might be made of…", answer: "wood", extras: ["only plastic from a shop today", "a games console", "a charging cable"], explanation: "Older toys were often wooden or metal, not plastic electronics.", skillFocus: "toys then and now" },

@@ -1,5 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import ShortLearningLearnSession from "@/components/student/ShortLearningLearnSession";
+import CodingLessonWorkspace from "@/components/coding/CodingLessonWorkspace";
+import { canonicalShortLearningSubjectKey } from "@/lib/schools/short-learning-curriculum";
+import { PUBLISHED_CODING_LESSON_ID } from "@/lib/coding/types";
 import { readSessionFromCookie } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveActiveChildForSession } from "@/lib/activeChild";
@@ -31,6 +34,15 @@ export default async function StudentShortLearningLearnPage({ params }: Params) 
       })
     : null;
   if (!booking) notFound();
+
+  if (canonicalShortLearningSubjectKey(booking.subject) === "coding") {
+    return (
+      <CodingLessonWorkspace
+        lessonId={PUBLISHED_CODING_LESSON_ID}
+        bookingId={booking.id}
+      />
+    );
+  }
 
   return (
     <ShortLearningLearnSession

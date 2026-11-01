@@ -263,6 +263,7 @@ model ChildProfile {
   gaLessonProgress      GaStudentLessonProgress[]
   gaStudentRecordings   GaStudentRecording[]
   questionExposures     StudentQuestionExposure[]
+  codingWorkspaces      CodingWorkspace[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3153,4 +3154,52 @@ model LessonPackImport {
   @@index([sourceFingerprint])
   @@index([createdByUserId])
   @@index([contentId])
+}
+
+/// Learner coding workspace. Additive — does not alter existing lesson or mastery tables.
+/// Personal projects stay private: there is no public read path.
+model CodingWorkspace {
+  id                  String   @id @default(cuid())
+  childId             String
+  child               ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+  lessonId            String
+  yearGroup           String?
+  pathwayId           String?
+  stage               String   @default("discover")
+  programsJson        String   @default("{}")
+  undoJson            String   @default("{}")
+  completedStagesJson String   @default("[]")
+  evidenceJson        String   @default("{}")
+  hintCountsJson      String   @default("{}")
+  skillStatus         String   @default("not_started")
+  lastFeedback        String?
+  lastRunJson         String?
+  teacherFeedback     String?
+  privateProject      Boolean  @default(true)
+  rewardFlagsJson     String   @default("{}")
+  assignmentStatus    String   @default("available")
+  supportHandoffJson  String?
+  attemptCount        Int      @default(0)
+  checksPassed        Int      @default(0)
+  placementJson       String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  versions CodingProjectVersion[]
+
+  @@unique([childId, lessonId])
+  @@index([childId, skillStatus])
+  @@index([skillStatus])
+}
+
+model CodingProjectVersion {
+  id          String          @id @default(cuid())
+  workspaceId String
+  workspace   CodingWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stage       String
+  label       String
+  programJson String
+  createdAt   DateTime        @default(now())
+
+  @@index([workspaceId, createdAt])
 }

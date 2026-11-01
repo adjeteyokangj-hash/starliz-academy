@@ -10,6 +10,7 @@ export type ShortLearningSubjectKey =
   | "maths"
   | "science"
   | "computing"
+  | "coding"
   | "history"
   | "geography"
   | "religious-education"
@@ -31,6 +32,7 @@ export const SHORT_LEARNING_SUBJECT_OPTIONS: ShortLearningSubjectOption[] = [
   { key: "maths", label: "Maths" },
   { key: "science", label: "Science" },
   { key: "computing", label: "Computing" },
+  { key: "coding", label: "Coding" },
   { key: "history", label: "History" },
   { key: "geography", label: "Geography" },
   { key: "religious-education", label: "Religious Education" },
@@ -62,6 +64,8 @@ const ALIASES: Record<string, ShortLearningSubjectKey | typeof SHORT_LEARNING_ST
   mathematics: "maths",
   science: "science",
   computing: "computing",
+  coding: "coding",
+  "computer programming": "coding",
   "computer science": "computing",
   ict: "computing",
   history: "history",
@@ -122,6 +126,7 @@ export const SHORT_LEARNING_FALLBACK_ROTATION: ShortLearningSubjectKey[] = [
   "maths",
   "science",
   "computing",
+  "coding",
   "history",
   "geography",
   "citizenship",

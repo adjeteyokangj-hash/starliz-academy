@@ -935,6 +935,12 @@ export async function assignContentToStudent(input: {
 
 export function taskHrefForContentType(contentType: string, assignmentId?: string) {
   const normalized = contentType.trim().toLowerCase();
+  if (normalized === "coding") {
+    const params = new URLSearchParams();
+    if (assignmentId) params.set("assignmentId", assignmentId);
+    const query = params.toString();
+    return query ? `/student/coding/understanding-loops?${query}` : "/student/coding/understanding-loops";
+  }
   if (normalized === "ga") {
     const params = new URLSearchParams();
     if (assignmentId) params.set("assignmentId", assignmentId);

@@ -19,6 +19,7 @@ import {
 function lessonPathForContentType(contentType: string): string {
   const normalized = contentType.trim().toLowerCase();
   if (normalized === "ga") return "/ga-learning-hub";
+  if (normalized === "coding") return "/student/coding/understanding-loops";
   const readingTypes = new Set(["reading", "english-language", "english-literature", "gcse-english", "vocabulary"]);
   const lessonTypes = new Set(["lesson", "ai_daily", "daily", "science", "gcse-science", "writing", "grammar", "punctuation"]);
   const mathTypes = new Set(["math", "maths", "times-tables", "gcse-maths", "11-plus-practice", "sats-practice"]);
@@ -100,6 +101,15 @@ function resolveEnglishPlayableType(input: PlayableLessonTypeInput): string {
  */
 export function resolvePlayableLessonType(input: PlayableLessonTypeInput): PlayableLessonTypeResolution {
   const schoolSubject = input.subject.trim() || "lesson";
+  if (/\bcoding\b/i.test(schoolSubject)) {
+    return {
+      curriculumSubject: "coding",
+      playableContentType: "coding",
+      metadataSubject: "coding",
+      schoolSubject,
+      lessonPath: "/student/coding/understanding-loops",
+    };
+  }
   const normalized = normalizeSubject(schoolSubject);
   const curriculumSubject = normalized ?? schoolSubject.toLowerCase().replace(/\s+/g, "-");
   const mode = classifyDaytimeSubjectMode(schoolSubject, input.skillFocus);

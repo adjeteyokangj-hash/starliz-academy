@@ -11,6 +11,7 @@ export type ParentSubjectKey =
   | "german"
   | "mandarin"
   | "computing"
+  | "coding"
   | "citizenship-pshe"
   | "pe-health"
   | "gcse-practice";
@@ -58,6 +59,7 @@ export const PARENT_SUBJECTS: Array<{ key: ParentSubjectKey; label: string; core
   { key: "german", label: "German", core: false },
   { key: "mandarin", label: "Mandarin", core: false },
   { key: "computing", label: "Computing", core: false },
+  { key: "coding", label: "Coding", core: false },
   { key: "citizenship-pshe", label: "Citizenship / PSHE", core: false },
   { key: "pe-health", label: "PE / Health Education", core: false },
   { key: "gcse-practice", label: "GCSE Practice", core: false },
@@ -71,6 +73,7 @@ const KS2_PARENT_SUBJECTS: ParentSubjectKey[] = [
   "history",
   "geography",
   "computing",
+  "coding",
   "citizenship-pshe",
   "pe-health",
   "french",
@@ -82,6 +85,7 @@ const KS3_PARENT_SUBJECTS: ParentSubjectKey[] = [
   "history",
   "geography",
   "computing",
+  "coding",
   "citizenship-pshe",
   "pe-health",
   "french",
@@ -94,8 +98,9 @@ const KS4_PARENT_SUBJECTS: ParentSubjectKey[] = PARENT_SUBJECTS.map((subject) =>
 function allowedParentSubjectKeysForYearGroup(yearGroup: string | null | undefined): ParentSubjectKey[] {
   const normalized = normalizeYearGroup(yearGroup);
   if (!normalized) return KS4_PARENT_SUBJECTS;
-  if (normalized === "Reception" || normalized === "Year 1" || normalized === "Year 2") {
-    return RECEPTION_KS1_PARENT_SUBJECTS;
+  if (normalized === "Reception") return RECEPTION_KS1_PARENT_SUBJECTS;
+  if (normalized === "Year 1" || normalized === "Year 2") {
+    return [...RECEPTION_KS1_PARENT_SUBJECTS, "coding"];
   }
   if (["Year 3", "Year 4", "Year 5", "Year 6"].includes(normalized)) {
     return KS2_PARENT_SUBJECTS;

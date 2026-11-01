@@ -23,6 +23,8 @@ export function preferredContentTypesForPeriod(subject: string, skillFocus?: str
   const s = subject.trim().toLowerCase();
   const skill = (skillFocus ?? "").trim().toLowerCase();
 
+  if (/\bcoding\b/.test(s)) return ["coding"];
+
   if (s.includes("math") || skill.includes("fraction") || skill.includes("geometry") || skill.includes("number fact")) {
     return ["math", "maths"];
   }
@@ -55,6 +57,13 @@ export function preferredContentTypesForPeriod(subject: string, skillFocus?: str
 }
 
 export function practiceHrefForPeriod(subject: string, skillFocus?: string | null, dayLessonId?: string): string | null {
+  if (/\bcoding\b/.test(subject.trim().toLowerCase())) {
+    const params = new URLSearchParams({ daytime: "1" });
+    if (subject.trim()) params.set("subject", subject.trim());
+    if (skillFocus?.trim()) params.set("skill", skillFocus.trim());
+    if (dayLessonId?.trim()) params.set("daytimePeriodId", dayLessonId.trim());
+    return `/student/coding/understanding-loops?${params.toString()}`;
+  }
   const preferred = preferredContentTypesForPeriod(subject, skillFocus)[0] ?? "reading";
   const normalized = preferred.trim().toLowerCase();
   if (normalized === "lesson" || normalized === "science" || normalized.includes("gcse")) {
