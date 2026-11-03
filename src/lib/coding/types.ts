@@ -10,6 +10,22 @@ export const CODING_STAGES = [
 
 export type CodingStage = (typeof CODING_STAGES)[number];
 
+/** A stage opens when every earlier stage has been completed. Discover is always open. */
+export function stageUnlocked(stage: CodingStage, completed: readonly CodingStage[]): boolean {
+  const index = CODING_STAGES.indexOf(stage);
+  if (index <= 0) return true;
+  return CODING_STAGES.slice(0, index).every((previous) => completed.includes(previous));
+}
+
+/** The stage a learner should see. A stored stage ahead of its prerequisite stays locked. */
+export function visibleCodingStage(stored: CodingStage, completed: readonly CodingStage[]): CodingStage {
+  if (stageUnlocked(stored, completed)) return stored;
+  for (const stage of CODING_STAGES) {
+    if (!completed.includes(stage) && stageUnlocked(stage, completed)) return stage;
+  }
+  return "discover";
+}
+
 export const CODING_SKILL_STATUSES = [
   "not_started",
   "learning",

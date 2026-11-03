@@ -1,0 +1,7 @@
+export default function NetworkDiagram({ nodes, links, path = [] }: { nodes: string[]; links: string[][]; path?: string[] }) {
+  const positions = nodes.map((name, index) => ({ name, x: 300 + Math.cos(index / nodes.length * Math.PI * 2 - Math.PI / 2) * 220, y: 190 + Math.sin(index / nodes.length * Math.PI * 2 - Math.PI / 2) * 140 }));
+  return <figure className="min-w-0 space-y-3 rounded-xl border border-slate-300 bg-white p-3"><svg viewBox="0 0 600 380" className="mx-auto w-full max-w-2xl" role="img" aria-label={path.length ? `Calculated delivery path: ${path.join(" to ")}` : `Network diagram with ${nodes.length} devices and ${links.length} connections`}>
+    {links.map(([a, b], index) => { const from = positions.find((point) => point.name === a), to = positions.find((point) => point.name === b); if (!from || !to) return null; const used = path.some((name, i) => name === a && path[i + 1] === b || name === b && path[i + 1] === a); return <line key={index} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={used ? "#0369a1" : "#94a3b8"} strokeWidth={used ? 7 : 3} />; })}
+    {positions.map((point, index) => <g key={point.name}><circle cx={point.x} cy={point.y} r="24" fill={path.includes(point.name) ? "#0369a1" : "#334155"} /><text x={point.x} y={point.y + 7} textAnchor="middle" fontSize="22" fill="white">{index + 1}</text><title>{point.name}</title></g>)}
+  </svg><figcaption><ol className="grid list-inside list-decimal gap-2 text-sm sm:grid-cols-2">{nodes.map((name) => <li key={name} className="break-words">{name}</li>)}</ol></figcaption></figure>;
+}

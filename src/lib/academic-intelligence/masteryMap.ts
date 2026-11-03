@@ -12,6 +12,7 @@ import {
   isCanonicalCompletedStatus,
   isCanonicalProgressCompleted,
 } from "@/lib/canonical-completion-accessor";
+import { codingLessonTitle, codingRewardKind, isMasteredCodingSkill } from "@/lib/academic-intelligence/codingSignals";
 
 const REVISION_OVERDUE_DAYS = 21;
 
@@ -31,6 +32,7 @@ type TopicAggregate = TopicSignal & {
   coachUsageCount: number;
   weakAreaActive: boolean;
   dictionaryWeaknessCount: number;
+  masteryAwarded: boolean;
   lastPractisedAt: string | null;
 };
 
@@ -104,6 +106,7 @@ function buildAggregate(data: AcademicSourceData): Map<string, TopicAggregate> {
       coachUsageCount: 0,
       weakAreaActive: false,
       dictionaryWeaknessCount: 0,
+      masteryAwarded: false,
       lastPractisedAt: null,
     };
     map.set(key, next);
@@ -118,6 +121,16 @@ function buildAggregate(data: AcademicSourceData): Map<string, TopicAggregate> {
   }
 
   for (const progress of data.progressRecords) {
+    const reward = codingRewardKind(progress.activityType, progress.activityName ?? progress.topic);
+    if (reward) {
+      if (reward === "mastery") {
+        const title = codingLessonTitle(progress.activityName ?? progress.topic);
+        const row = ensure({ ...progress, subject: "coding", topic: title, skill: title });
+        row.masteryAwarded = true;
+        row.lastPractisedAt = latestIso(row.lastPractisedAt, progress.createdAt);
+      }
+      continue;
+    }
     const row = ensure(progress);
     row.lessonRecordsTotal += 1;
     if (isCanonicalProgressCompleted(progress.completed)) row.lessonRecordsCompleted += 1;
@@ -175,6 +188,7 @@ function buildAggregate(data: AcademicSourceData): Map<string, TopicAggregate> {
   }
 
   for (const skill of data.studentSkills) {
+    if (isMasteredCodingSkill(skill.skill, skill.status)) continue;
     const row = ensure({ subject: "general", skill: skill.skill });
     if (skill.status === "weak") row.weakAreaActive = true;
     row.attemptCount += Math.max(0, skill.attempts);
@@ -216,9 +230,13 @@ function evaluateMastery(row: TopicAggregate): { status: MasteryStatus; confiden
   if (row.dictionaryWeaknessCount >= 3) confidence -= 4;
   confidence = Math.max(0, Math.min(100, confidence));
 
-  const hasActivity = row.assignmentsTotal + row.lessonRecordsTotal + row.attemptCount > 0;
+  const hasActivity = row.masteryAwarded || row.assignmentsTotal + row.lessonRecordsTotal + row.attemptCount > 0;
   if (!hasActivity) {
     return { status: "not_started", confidence, revisionOverdue: false };
+  }
+
+  if (row.masteryAwarded) {
+    return { status: "mastered", confidence: Math.max(confidence, 90), revisionOverdue: false };
   }
 
   if (row.weakAreaActive && confidence < 85) {

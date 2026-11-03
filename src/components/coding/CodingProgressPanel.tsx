@@ -2,8 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
+import CodingProjectReplay from "@/components/coding/CodingProjectReplay";
+import ParentProjectPortfolio, { type ParentPortfolio } from "./ParentProjectPortfolio";
+import SavedEvidenceLibrary from "./SavedEvidenceLibrary";
+import type { readinessOverview } from "@/lib/coding/learning/readiness";
+import type { CodingProgram, CodingRunResult } from "@/lib/coding/types";
 
 type Summary = {
+  projectPreview?: { program: CodingProgram; run: CodingRunResult; updatedAt: string; evidenceStatus?: string } | null;
   started: boolean;
   lessonTitle: string;
   pathwayTitle: string;
@@ -35,7 +41,7 @@ const EVIDENCE = [
 ] as const;
 
 export default function CodingProgressPanel({ childId }: { childId: string | null }) {
-  const [panel, setPanel] = useState<{ childId: string; summary: Summary | null; error: string | null } | null>(null);
+  const [panel, setPanel] = useState<{ childId: string; summary: Summary | null; error: string | null; portfolio?: ParentPortfolio; readiness?: Awaited<ReturnType<typeof readinessOverview>>; curriculum?: { available: number; started: number; mastered: number; lessons: number; consolidations: number; projects: number } } | null>(null);
 
   useEffect(() => {
     if (!childId) return;
@@ -55,7 +61,9 @@ export default function CodingProgressPanel({ childId }: { childId: string | nul
         });
         return;
       }
-      setPanel({ childId: requestedChildId, summary: data.summary as Summary, error: null });
+      setPanel({ childId: requestedChildId, summary: data.summary as Summary, portfolio: data.portfolio ?? [], readiness: data.readiness, curriculum: data.curriculum, error: null });
+    }).catch(() => {
+      if (!cancelled) setPanel({ childId: requestedChildId, summary: null, error: "Coding progress could not be loaded. Please try again." });
     });
     return () => {
       cancelled = true;
@@ -70,6 +78,8 @@ export default function CodingProgressPanel({ childId }: { childId: string | nul
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+      {panel?.childId === childId && Boolean(panel.curriculum?.started) && <section className="mb-4 rounded-xl border border-sky-700 bg-sky-950 p-4"><h3 className="font-bold text-white">Coding Learning progress</h3><p className="mt-2 text-sky-50">{panel.curriculum!.mastered} of {panel.curriculum!.available} learning activities independently verified.</p><p className="mt-2 text-xs text-sky-100">{panel.curriculum!.lessons} core lessons · {panel.curriculum!.consolidations} consolidation sessions · {panel.curriculum!.projects} portfolio projects. Practical entry bridges are reported separately.</p></section>}
+      <details open={!panel?.curriculum?.started}><summary className="min-h-11 cursor-pointer font-semibold">Earlier Coding lesson record</summary>
       <p className="font-semibold text-white">Coding · {summary.pathwayTitle}</p>
       <p className="mt-1">{summary.lessonTitle} · {STATUS[summary.skillStatus] ?? summary.skillStatus}</p>
       <p className="mt-1 text-xs text-slate-400">Project: {summary.project}. The code stays private.</p>
@@ -88,6 +98,11 @@ export default function CodingProgressPanel({ childId }: { childId: string | nul
         </p>
       ) : null}
       <p className="mt-2 text-xs text-slate-500">Skills: {summary.skills.join("; ")}</p>
+      {summary.projectPreview ? <CodingProjectReplay key={childId + summary.projectPreview.updatedAt} project={summary.projectPreview} /> : null}
+      </details>
+      {panel?.childId === childId && panel.portfolio?.length ? <div className="mt-5"><ParentProjectPortfolio childId={childId} projects={panel.portfolio} /></div> : null}
+      {childId && <div className="mt-5"><SavedEvidenceLibrary key={childId} audience="parent" childId={childId} /></div>}
+      {panel?.childId === childId && panel.readiness && panel.readiness.entryYear > 1 && <p className="mt-4 rounded-xl bg-sky-950 p-4 text-sm text-sky-50">Practical entry readiness is verified for Year {panel.readiness.entryYear}. Inspect the actual bridge work above. Earlier lessons and courses retain their separate completion history.</p>}
     </div>
   );
 }

@@ -1,0 +1,18 @@
+[Unit]
+Description=Remove expired StarLiz execution containers
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=starliz-coding-runner
+Group=starliz-coding-runner
+SupplementaryGroups=docker
+WorkingDirectory=/opt/starliz-coding-runner
+ExecStart=/usr/bin/node /opt/starliz-coding-runner/reap-expired.mjs
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+UMask=0077
+TimeoutStartSec=30

@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assessCodingStage, deriveSkillStatus, freshEvidence } from "../src/lib/coding/assessment";
+import { assessCodingStage, deriveSkillStatus, freshEvidence, stageCountsAsAssessment, stageUnlocked } from "../src/lib/coding/assessment";
 import { REFERENCE_PROGRAMS } from "../src/lib/coding/answers";
-import { pathwayForYear, UNDERSTANDING_LOOPS } from "../src/lib/coding/catalog";
+import { codingPathwayIntro, pathwayForYear, publishedPathwayIds, UNDERSTANDING_LOOPS } from "../src/lib/coding/catalog";
 import { publishedLessonValidation, validateCodingLessonDraft } from "../src/lib/coding/draft-validation";
-import { recommendCodingPathway } from "../src/lib/coding/placement";
+import { publicPlacementQuestions, recommendCodingPathway } from "../src/lib/coding/placement";
 import { nextCodingRewards } from "../src/lib/coding/rewards";
+import { masteredTotal } from "../src/lib/coding/dashboard-lessons";
+import { visibleCodingStage } from "../src/lib/coding/types";
 import { parseCodingProgram, runCodingProgram } from "../src/lib/coding/runner";
 import { buildCodingSupportHandoff } from "../src/lib/coding/support-handoff";
 import { nextCodingHint } from "../src/lib/coding/tutor";
@@ -223,4 +225,96 @@ test("day school and assignment links open the coding workspace", () => {
   assert.match(href ?? "", /daytimePeriodId=period-1/);
   assert.equal(taskHrefForContentType("coding"), "/student/coding/understanding-loops");
   assert.equal(practiceHrefForPeriod("Computing", "Networks"), null);
+});
+
+test("discover does not count as an assessment and later stages stay locked", () => {
+  assert.equal(stageCountsAsAssessment("discover"), false);
+  assert.equal(stageCountsAsAssessment("predict"), true);
+  assert.equal(stageUnlocked("predict", []), false);
+  assert.equal(stageUnlocked("predict", ["discover"]), true);
+  assert.equal(visibleCodingStage("predict", []), "discover");
+  assert.equal(visibleCodingStage("review", ["discover", "predict", "build", "practise", "debug", "create"]), "review");
+});
+
+test("debug names the left move even when the character leaves the board", () => {
+  const starter = UNDERSTANDING_LOOPS.stages.find((stage) => stage.stage === "debug")!.starter;
+  const broken = assessCodingStage({
+    lesson: UNDERSTANDING_LOOPS,
+    stage: "debug",
+    program: starter,
+    evidence: freshEvidence(),
+    revealingHints: 0,
+  });
+  assert.equal(broken.passed, false);
+  assert.match(broken.feedback, /points left/);
+  assert.match(broken.feedback, /star is to the right/);
+  assert.match(broken.run?.error ?? "", /off the board/);
+});
+
+test("build credits the learner unless the tutor gave a full answer", () => {
+  const alone = assessCodingStage({
+    lesson: UNDERSTANDING_LOOPS,
+    stage: "build",
+    program: REFERENCE_PROGRAMS.build,
+    evidence: freshEvidence(),
+    revealingHints: 0,
+  });
+  assert.equal(alone.passed, true);
+  assert.equal(alone.evidence.practical, true);
+  assert.doesNotMatch(alone.feedback, /tutor/);
+  const helped = assessCodingStage({
+    lesson: UNDERSTANDING_LOOPS,
+    stage: "build",
+    program: REFERENCE_PROGRAMS.build,
+    evidence: freshEvidence(),
+    revealingHints: 1,
+  });
+  assert.match(helped.feedback, /tutor/);
+});
+
+test("review accepts an explanation that matches the loops and rejects a generic sentence", () => {
+  const generic = assessCodingStage({
+    lesson: UNDERSTANDING_LOOPS,
+    stage: "review",
+    program: REFERENCE_PROGRAMS.create,
+    explanation: "A loop repeats the move, so I did not write the same move many times.",
+    evidence: freshEvidence(),
+    revealingHints: 0,
+  });
+  assert.equal(generic.passed, false);
+  assert.match(generic.feedback, /direction/);
+  const matched = assessCodingStage({
+    lesson: UNDERSTANDING_LOOPS,
+    stage: "review",
+    program: REFERENCE_PROGRAMS.create,
+    explanation: "My loops move right 2 times and up 2 times, so I did not write the move again and again.",
+    evidence: freshEvidence(),
+    revealingHints: 0,
+  });
+  assert.equal(matched.passed, true);
+  assert.equal(matched.evidence.explanation, true);
+});
+
+test("placement questions follow published lessons and keep the learner year group", () => {
+  const questions = publicPlacementQuestions(publishedPathwayIds());
+  assert.equal(questions.some((question) => /variable/i.test(question.prompt)), false);
+  assert.equal(questions.some((question) => /sorting/i.test(question.prompt)), false);
+  assert.equal(questions.some((question) => /hop/i.test(question.prompt)), true);
+  const intro = codingPathwayIntro({
+    yearGroup: "Year 11",
+    yearPathwayTitle: "Applied Computing",
+    yearPathwayPublished: false,
+    liveLessonTitle: "Understanding Loops",
+  });
+  assert.match(intro, /Year 11/);
+  assert.match(intro, /not published yet/);
+  assert.match(intro, /Understanding Loops/);
+  assert.doesNotMatch(intro, /starts on Applied Computing/);
+});
+
+test("a mastered coding lesson is counted once on the dashboard", () => {
+  const lessons = [{ id: "understanding-loops", title: "Understanding Loops", status: "mastered", href: "/student/coding/understanding-loops", skillCode: "coding_loops" }];
+  assert.equal(masteredTotal([{ skill: "coding_loops", status: "mastered" }, { skill: "reading_cvc", status: "mastered" }], lessons), 2);
+  assert.equal(masteredTotal([], lessons), 1);
+  assert.equal(masteredTotal([], [{ ...lessons[0], status: "learning" }]), 0);
 });

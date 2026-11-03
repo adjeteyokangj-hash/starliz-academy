@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "codex/coding-release-candidate-2026-11-03": false
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/short-learning-reminders",

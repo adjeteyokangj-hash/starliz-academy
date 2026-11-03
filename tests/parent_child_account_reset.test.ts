@@ -262,7 +262,7 @@ test("portal shell wires Reset Login for children with usernames", () => {
   assert.match(shell, /Reset Login/);
 
   const panel = read("src/components/parent/ResetChildLoginPanel.tsx");
-  assert.match(panel, /Generate new password/);
+  assert.match(panel, /Generate automatically/);
   assert.match(panel, /Reset Login/);
   assert.match(panel, /currentUsername/);
   assert.match(panel, /account\/reset/);

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { codingAssistanceEnabled } from "@/lib/coding/settings";
 import type { HumanSupportOutcome, Prisma } from "@prisma/client";
 import { writeSchoolAuditLog } from "@/lib/schools/audit";
 import {
@@ -935,6 +936,14 @@ export async function acceptHumanSupportAssignment(input: {
       }
       if (queueEntry.status !== "assigned") {
         throw Object.assign(new Error("Assignment is not awaiting acceptance."), { status: 409 });
+      }
+      let codingQueue = input.snapshotInput.subject.trim().toLowerCase() === "coding";
+      try {
+        const metadata = JSON.parse(queueEntry.metadataJson ?? "{}");
+        codingQueue ||= metadata.subject?.toLowerCase() === "coding" || Boolean(metadata.coding);
+      } catch { /* The authoritative snapshot subject still applies. */ }
+      if (codingQueue && !await codingAssistanceEnabled()) {
+        throw Object.assign(new Error("Human assistance is disabled for Coding. The learner continues with AI."), { status: 403 });
       }
       if (queueEntry.assignedTutorId && queueEntry.assignedTutorId !== input.schoolTeacherId) {
         throw Object.assign(new Error("This assignment belongs to another tutor."), { status: 403 });

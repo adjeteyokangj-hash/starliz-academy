@@ -8,8 +8,8 @@ import {
 import {
   handleAdminBrainCentreStudentGet,
   type BrainCentreDetailPayload,
-} from "../src/app/api/admin/brain-centre/[studentId]/route";
-import { handleAdminBrainCentreActionPost } from "../src/app/api/admin/brain-centre/[studentId]/actions/route";
+} from "../src/app/api/admin/brain-centre/[studentId]/route-helpers";
+import { handleAdminBrainCentreActionPost } from "../src/app/api/admin/brain-centre/[studentId]/actions/route-helpers";
 import { buildBrainWarningFingerprint, snapshotStatus } from "../src/app/api/admin/brain-centre/_lib";
 import type {
   CoachTutorOrchestrationAudit,

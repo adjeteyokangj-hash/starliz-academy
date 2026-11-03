@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
+import TeacherActivityDesk, { type TeacherActivity, type TeacherActivityIndex } from "./TeacherActivityDesk";
 
 type Student = { id: string; name: string; yearGroup: string | null };
 type Workspace = {
@@ -25,6 +26,7 @@ type Workspace = {
 export default function TeacherCodingDesk() {
   const [students, setStudents] = useState<Student[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [activities, setActivities] = useState<TeacherActivity[]>([]), [activityRows, setActivityRows] = useState<TeacherActivityIndex>([]), [assistanceEnabled, setAssistanceEnabled] = useState(false);
   const [lessonTitle, setLessonTitle] = useState("Understanding Loops");
   const [childId, setChildId] = useState("");
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -41,6 +43,7 @@ export default function TeacherCodingDesk() {
     setError(null);
     setStudents(data.students ?? []);
     setWorkspaces(data.workspaces ?? []);
+    setActivities(data.activities ?? []); setActivityRows(data.activityWorkspaces ?? []); setAssistanceEnabled(data.humanAssistanceEnabled === true);
     if (data.lesson?.title) setLessonTitle(data.lesson.title);
   }
 
@@ -56,6 +59,7 @@ export default function TeacherCodingDesk() {
       setError(null);
       setStudents(data.students ?? []);
       setWorkspaces(data.workspaces ?? []);
+      setActivities(data.activities ?? []); setActivityRows(data.activityWorkspaces ?? []); setAssistanceEnabled(data.humanAssistanceEnabled === true);
       if (data.lesson?.title) setLessonTitle(data.lesson.title);
     });
     return () => {
@@ -106,6 +110,7 @@ export default function TeacherCodingDesk() {
       </header>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
+      <TeacherActivityDesk students={students} activities={activities} rows={activityRows} humanAssistanceEnabled={assistanceEnabled} onSaved={load} />
       <section className="flex flex-wrap items-end gap-3 rounded-xl border border-border p-4">
         <label className="text-sm">
           Learner
@@ -140,13 +145,15 @@ export default function TeacherCodingDesk() {
             <label className="mt-3 block text-sm">
               Feedback
               <textarea
+                disabled={!assistanceEnabled}
+                maxLength={2000}
                 value={notes[row.id] ?? row.teacherFeedback ?? ""}
                 onChange={(event) => setNotes((current) => ({ ...current, [row.id]: event.target.value }))}
                 className="mt-1 w-full rounded-lg border border-border bg-background p-2"
                 rows={3}
               />
             </label>
-            <button type="button" onClick={() => void sendFeedback(row.id)} className="mt-2 text-sm font-semibold text-primary">Save feedback</button>
+            <button type="button" disabled={!assistanceEnabled} onClick={() => void sendFeedback(row.id)} className="mt-2 min-h-11 text-sm font-semibold text-primary disabled:opacity-50">Save feedback</button>
           </article>
         ))}
       </section>

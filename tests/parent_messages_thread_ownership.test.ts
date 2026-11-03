@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest, NextResponse } from "next/server";
 
-import { handleParentMessagesGet } from "../src/app/api/parent/messages/route";
+import { handleParentMessagesGet } from "../src/app/api/parent/messages/route-helpers";
 
 function makeGet(threadId?: string) {
   const url = threadId

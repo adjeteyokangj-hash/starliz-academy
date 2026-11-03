@@ -219,7 +219,11 @@ test("coding workspaces stay inside the signed-in learner and role", async () =>
     const ownSummaryText = await ownSummary.text();
     assert.equal(ownSummary.status, 200);
     assert.equal(ownSummaryText.includes("programsJson"), false);
-    assert.equal(ownSummaryText.includes("\"blocks\""), false);
+    // Parents may inspect their own child's saved project through the protected preview.
+    const ownSummaryData = JSON.parse(ownSummaryText) as { summary: { projectPreview?: { program?: { blocks?: unknown[] } } } };
+    if (ownSummaryData.summary.projectPreview) {
+      assert.ok(Array.isArray(ownSummaryData.summary.projectPreview.program?.blocks));
+    }
     assert.equal(ownSummaryText.includes(probeId), false);
     const hiddenChild = await fetch(`${base}/api/parent/coding?studentId=${encodeURIComponent(otherParentChild.id)}`, {
       headers: { cookie: parent.cookie },

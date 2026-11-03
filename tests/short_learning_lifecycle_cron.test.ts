@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { hasCronAccess } from "../src/lib/cron-auth";
-import { handleTutorPresenceSweepCron } from "../src/app/api/cron/tutor-presence-sweep/route";
-import { handleShortLearningLifecycleCron } from "../src/app/api/cron/short-learning-lifecycle/route";
+import { handleTutorPresenceSweepCron } from "../src/app/api/cron/tutor-presence-sweep/route-helpers";
+import { handleShortLearningLifecycleCron } from "../src/app/api/cron/short-learning-lifecycle/route-helpers";
 import { classifyBookingLifecycleTransition } from "../src/lib/schools/short-learning-booking-lifecycle";
 
 test("vercel.json schedules tutor-presence-sweep every minute", () => {

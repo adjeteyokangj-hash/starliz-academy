@@ -1,0 +1,39 @@
+import { authorModuleActivity, scenario, eq, containsText } from "../authoring";
+import type { PracticalArtifact } from "../types";
+import { algorithmSource, binaryExpected, sortedExpected } from "./algorithm-evaluation-tools";
+
+const collections = [
+  [{ id: "fictional_cards", items: [3, 1, 3, 0] }, { id: "fictional_tiles", items: [1, 2, 3, 4] }],
+  [{ id: "fictional_routes", items: [5, -2, 5, 1] }, { id: "fictional_stops", items: [] }],
+  [{ id: "fictional_labels", items: [0, -1, -1, 2] }, { id: "fictional_seeds", items: [8, 7, 6, 5] }],
+];
+function portfolio(index: number, faulty = false): PracticalArtifact { const artifact = algorithmSource(`import json
+from html import escape
+from algorithm_core import insertion, selection, first_binary
+def solve(data):
+    with open('collections.json') as handle:
+        collections = json.load(handle)
+    investigations = []
+    for collection in collections:
+        original = list(collection['items'])
+        first, second = insertion(original), selection(original)
+        targets = data['targets']
+        searches = []
+        for target in targets:
+            result = first_binary(first['values'], target)
+            searches.append({'target': target, 'sorted_result': result, 'original_indices': [i for i, value in enumerate(original) if value == target]})
+        investigations.append({'id': collection['id'], 'original': original, 'insertion': first, 'selection': second, 'searches': searches, 'conclusion': ${faulty ? "'Selection always wins.'" : "'This dataset: insertion comparisons=' + str(first['comparisons']) + '; selection comparisons=' + str(second['comparisons']) + '. Same original input, same value-comparison measure; no universal timing claim.'"}})
+    evidence = {'investigations': investigations, 'scope': 'Synthetic stored collections; sorted indices and all original matches are separate. Repeated-key values are retained. No personal data, real-world performance or universal timing claim.'}
+    with open('portfolio.json', 'w') as handle:
+        json.dump(evidence, handle)
+    rows = ''.join('<tr><th scope="row">' + escape(row['id']) + '</th><td>' + str(row['insertion']['comparisons']) + '</td><td>' + str(row['selection']['comparisons']) + '</td><td>' + escape(row['conclusion']) + '</td></tr>' for row in investigations)
+    with open('portfolio.html', 'w') as handle:
+        handle.write('<main><h1>Private algorithm evidence portfolio</h1><table><caption>Actual value comparisons on identical inputs</caption><thead><tr><th scope="col">Collection</th><th scope="col">Insertion</th><th scope="col">Selection</th><th scope="col">Scoped conclusion</th></tr></thead><tbody>' + rows + '</tbody></table><p>' + escape(evidence['scope']) + '</p></main>')
+    return evidence
+`); if (artifact.type !== "source") throw new Error("Expected source"); return { ...artifact, projectFiles: { ...artifact.projectFiles, "collections.json": JSON.stringify(collections[index]) } }; }
+function cases(id: string, index: number) { return [[collections[index]![0]!.items[0]!, 100], [0, -1]].map((targets, variant) => { const expected = collections[index]!.map(collection => { const sorted = sortedExpected(collection.items); return { id: collection.id, original: collection.items, ...sorted, searches: targets.map(target => ({ target, sorted_result: binaryExpected(sorted.insertion.values, target), original_indices: collection.items.flatMap((value, position) => value === target ? [position] : []) })), conclusion: `This dataset: insertion comparisons=${sorted.insertion.comparisons}; selection comparisons=${sorted.selection.comparisons}. Same original input, same value-comparison measure; no universal timing claim.` }; }); return scenario(`${id}-${variant}`, { targets }, eq("result.investigations", expected, "Each actual file-backed collection retains complete algorithm traces, fair counts, original provenance and a conclusion generated from its own evidence"), containsText("/files/portfolio.html", "Actual value comparisons on identical inputs", "A real generated HTML table names the controlled measure"), containsText("/files/portfolio.json", '"investigations"', "The actual structured evidence is written to a private project file"), containsText("result.scope", "sorted indices and all original matches are separate", "The saved portfolio explicitly limits index provenance and performance claims")); }); }
+const project = authorModuleActivity({ moduleId: "algorithms-and-data/algorithm-evaluation", kind: "project", workbench: "python", title: "Deliver a file-backed comparative algorithm portfolio", objective: "Investigate multiple stored synthetic collections with actual sorting/search traces, fair per-dataset counts and preserved original-record provenance.", concepts: ["portfolio", "file input", "comparative evidence", "provenance", "report generation", "claim limits"], essentialChecks: ["Every stored collection executes both algorithms on identical input", "All actual traces and original matching positions are retained", "Each conclusion cites its own measured counters", "Private JSON and accessible HTML evidence are generated"], faultDescription: "Every collection receives the same unsupported Selection always wins conclusion instead of a conclusion based on its own actual counters.", workflow: { saveAndReplay: true, restoreVersion: true },
+  explanation: "Deliver a private file-backed investigation portfolio for two synthetic collections. Read the actual collections.json supporting file instead of embedding its results. For each collection run insertion and selection on identical original copies, retain pass snapshots and comparable value-comparison counters, and search the sorted copy for every supplied target. Keep sorted search indices separate from all original matching positions so duplicates retain their identity. Generate each collection's conclusion from its own actual counts; the seeded universal Selection always wins statement is unsupported and may contradict the supplied ordered dataset. Write portfolio.json containing full evidence and portfolio.html with a captioned table, row/column headers and limited claims. Test different target sets including missing targets and duplicates; empty collections must remain inspectable rather than disappearing. Independent portfolios change the stored collections and their ordering. Save, replay and restore the actual private source and evidence workspace. Explain the controlled operation, input family, precondition cost and absence of universal timing or real-world sampling claims. No real personal information or external publishing is involved.",
+  reasoning: ["Two datasets can produce different operation-count relationships, so a single universal caption cannot replace per-dataset evidence.", "A portable investigation retains its source input file, executable helpers, complete traces and generated report rather than only a screenshot."], starter: portfolio(0, true), reference: portfolio(0), faulty: portfolio(0, true), cases: cases("file-backed-algorithm-portfolio", 0), transfer: [1, 2].map(index => ({ task: "Investigate both new stored collections with the actual algorithms and supplied targets. Preserve duplicate provenance, complete per-dataset evidence and scoped conclusions, generate JSON/HTML files and demonstrate private save/replay/restore.", starter: portfolio(index, true), reference: portfolio(index), cases: cases(`new-file-backed-investigation-${index}`, index) })), prediction: { prompt: "Different stored collections have different comparison counts. Which report is justified?", choices: ["One universal winner caption", "Per-collection actual counts and scoped conclusions", "A picture with no input data"], correct: 1 },
+});
+export const algorithmEvaluationPortfolioActivities = [project];

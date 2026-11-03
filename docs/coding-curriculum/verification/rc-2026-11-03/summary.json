@@ -1,0 +1,79 @@
+{
+  "verifiedAt": "2026-11-03T22:46:44.531Z",
+  "scope": "Release verification against preserved local design and dependency snapshot",
+  "activities": {
+    "lessons": 264,
+    "consolidations": 132,
+    "projects": 44,
+    "total": 440,
+    "verified": 440,
+    "practicalChecks": 6162
+  },
+  "practicalExecutionHash": "37fb829f383205db57e5a8ce5c2e9fdf075f80de33e853b3b678af47fc2797f8",
+  "firstSweep": {
+    "passed": 435,
+    "failed": 4,
+    "unavailable": 1
+  },
+  "affectedRerun": {
+    "selected": 5,
+    "passed": 5,
+    "sourceOrBudgetChanges": false
+  },
+  "regression": {
+    "passed": 349,
+    "skipped": 0
+  },
+  "blocklyRoundTrips": 2590,
+  "responsiveSamples": 15,
+  "authenticatedAcceptance": {
+    "passed": true,
+    "nativeOnly": true,
+    "independentOutputs": true,
+    "exactSaveResume": true,
+    "viewports": [
+      1440,
+      820,
+      390
+    ]
+  },
+  "productionBuild": {
+    "passed": true,
+    "fullNpmPipeline": true,
+    "prismaGenerated": true,
+    "normalTypeChecking": true
+  },
+  "anonymousProductionHttpChecks": 6,
+  "migrations": {
+    "local": 68,
+    "matched": 68,
+    "appliedDuringVerification": false
+  },
+  "privacy": {
+    "zdrVerified": false,
+    "protectedPersonalDataExcluded": true,
+    "newModelRequests": 0
+  },
+  "runner": {
+    "currentSecurityAcceptance": "pending",
+    "restrictedProbesRepeated": false
+  },
+  "dependencyAdvisories": {
+    "info": 0,
+    "low": 1,
+    "moderate": 16,
+    "high": 3,
+    "critical": 0,
+    "total": 20
+  },
+  "productionReady": false,
+  "curriculumPublished": false,
+  "remainingGates": [
+    "Provider ZDR/privacy verification",
+    "Authorised current runner security and operational capacity/recovery acceptance",
+    "Applicable dependency advisory review/remediation",
+    "Hosted gateway, private media, permissions and learner acceptance",
+    "Broader accessibility/device/cross-browser acceptance",
+    "Publication and deployment approval"
+  ]
+}

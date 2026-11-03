@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 
-import { handleTwilioWhatsappWebhook } from "../src/app/api/webhooks/twilio/whatsapp/route";
+import { handleTwilioWhatsappWebhook } from "../src/app/api/webhooks/twilio/whatsapp/route-helpers";
 
 type MockDb = {
   parentMessageThread: {

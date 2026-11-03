@@ -5,6 +5,8 @@ import { syncEligibleStudentQueue, syncShortLearningEligibleQueue } from "@/lib/
 import { minutesNowUk, parseHmToMinutes, schoolDayOfWeek } from "@/lib/schools/school-day-period";
 import { isShortLearningBookingActive, resolveStudentHumanSupportEligibility } from "@/lib/schools/support-eligibility";
 import { resolveShortLearningSchoolStudentIdsForChild } from "@/lib/schools/short-learning-bookings";
+import { codingPeriodMatches } from "@/lib/coding/support-policy";
+import { codingAssistanceEnabled } from "@/lib/coding/settings";
 
 export type CodingSupportResult = {
   ok: true;
@@ -25,9 +27,21 @@ export async function requestCodingHumanSupport(input: {
   bookingId?: string | null;
   daytimePeriodId?: string | null;
 }): Promise<CodingSupportResult | { ok: false; error: string; status: number }> {
+  if (!await codingAssistanceEnabled()) {
+    return { ok: false, error: "Human assistance is disabled for Coding. Continue with your AI tutor.", status: 403 };
+  }
   const handoff = await handoffForWorkspace(input.childId, input.lessonId);
   if (!handoff) return { ok: false, error: "Start the coding lesson before asking for a person.", status: 404 };
   await storeSupportHandoff(input.childId, input.lessonId, handoff);
+
+  return requestCodingAssistanceForHandoff(input, handoff);
+}
+
+/** Shared server-side queue authorisation for legacy and versioned activities. */
+export async function requestCodingAssistanceForHandoff(input: {
+  childId: string; bookingId?: string | null; daytimePeriodId?: string | null;
+}, handoff: CodingSupportHandoff): Promise<CodingSupportResult | { ok: false; error: string; status: number }> {
+  if (!await codingAssistanceEnabled()) return { ok: false, error: "Human assistance is disabled for Coding. Continue with your AI tutor.", status: 403 };
 
   const tooSoon = aiFirstMessage(handoff.hintCount);
   if (tooSoon) {
@@ -68,6 +82,7 @@ async function requestFromShortLearning(
       })
     : null;
   if (!booking) return { ok: false, error: "Short Learning booking not found.", status: 404 };
+  if (booking.subject.trim().toLowerCase() !== "coding") return { ok: false, error: "This booking is not a Coding session.", status: 403 };
   const active = isShortLearningBookingActive({
     startsAt: booking.startsAt,
     endsAt: booking.endsAt,
@@ -141,9 +156,11 @@ async function requestFromDaySchool(
   if (!period) return { ok: false, error: "That school lesson could not be found.", status: 404 };
   const enrolled = await prisma.schoolStudent.findFirst({
     where: { childId, schoolId: period.schoolId, status: "active" },
-    select: { id: true },
+    select: { id: true, classroomId: true },
   });
-  if (!enrolled) return { ok: false, error: "This lesson is not on your school timetable.", status: 403 };
+  if (!enrolled || !codingPeriodMatches({ subject: period.subject, periodClassroomId: period.classroomId, learnerClassroomId: enrolled.classroomId })) {
+    return { ok: false, error: "This coding lesson is not on your classroom timetable.", status: 403 };
+  }
   const now = new Date();
   const duringLesson = schoolDayOfWeek(now) === period.dayOfWeek
     && minutesNowUk(now) >= parseHmToMinutes(period.startsAt)

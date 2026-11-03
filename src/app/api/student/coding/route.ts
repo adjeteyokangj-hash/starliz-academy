@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { CODING_PATHWAY_CATALOG } from "@/lib/coding/catalog";
+import { CODING_PATHWAY_CATALOG, codingPathwayIntro, publishedPathwayIds } from "@/lib/coding/catalog";
 import { publicPlacementQuestions } from "@/lib/coding/placement";
 import { pathwayForYear, pathwaySummary } from "@/lib/coding/catalog";
 import { requireCodingLearner } from "@/lib/coding/student-context";
@@ -11,13 +11,22 @@ export async function GET() {
   if (!child) return response;
   const home = await loadCodingHome(child.id, child.yearGroup);
   const yearPathway = pathwayForYear(child.yearGroup);
+  const yearPathwayTitle = pathwaySummary(yearPathway).title;
+  const publishedPathways = publishedPathwayIds();
   return NextResponse.json({
+    learnerId: child.id,
     learnerName: child.name,
     yearGroup: child.yearGroup,
     yearPathway,
-    yearPathwayTitle: pathwaySummary(yearPathway).title,
+    yearPathwayTitle,
+    intro: codingPathwayIntro({
+      yearGroup: child.yearGroup,
+      yearPathwayTitle,
+      yearPathwayPublished: publishedPathways.includes(yearPathway),
+      liveLessonTitle: "Understanding Loops",
+    }),
     pathways: CODING_PATHWAY_CATALOG,
-    placementQuestions: publicPlacementQuestions(),
+    placementQuestions: publicPlacementQuestions(publishedPathways),
     placement: home.placement,
     lesson: home.workspace
       ? {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { stageBrief, UNDERSTANDING_LOOPS } from "../src/lib/coding/catalog";
-import { codingRunSelection, moveCodingBlock } from "../src/lib/coding/editor";
+import { codingRunSelection, insertCodingBlock, moveCodingBlock, removeCodingBlock, updateCodingRepeatTimes } from "../src/lib/coding/editor";
 import { parseCodingProgram, runCodingProgram } from "../src/lib/coding/runner";
 import type { CodingProgram } from "../src/lib/coding/types";
 
@@ -89,4 +89,36 @@ test("predict can run the lesson example or the learner program without changing
   const graded = codingRunSelection({ graded: true, example, learner, source: "example" });
   assert.equal(graded.source, "learner");
   assert.equal(graded.program, learner);
+});
+
+test("a repeat can be inserted inside another repeat and still run", () => {
+  const outer = insertCodingBlock({ blocks: [] }, null, { id: "outer", kind: "repeat", times: 2, body: [] });
+  assert.equal(outer.inserted, true);
+  const inner = insertCodingBlock(outer.program, "outer", { id: "inner", kind: "repeat", times: 2, body: [] });
+  assert.equal(inner.inserted, true);
+  const move = insertCodingBlock(inner.program, "inner", { id: "step", kind: "move", direction: "right" });
+  assert.equal(move.inserted, true);
+  const tooDeep = insertCodingBlock(move.program, "inner", { id: "deeper", kind: "repeat", times: 2, body: [] });
+  assert.equal(tooDeep.inserted, false);
+  assert.equal(tooDeep.program, move.program);
+  const run = runCodingProgram(move.program, { x: 4, y: 0 });
+  assert.equal(run.ok, true);
+  assert.deepEqual(run.final, { x: 4, y: 0 });
+  const timed = updateCodingRepeatTimes(move.program, "inner", 3);
+  const innerBlock = timed.blocks[0];
+  assert.equal(innerBlock?.kind, "repeat");
+  if (innerBlock?.kind !== "repeat") return;
+  const nested = innerBlock.body[0];
+  assert.equal(nested?.kind, "repeat");
+  if (nested?.kind !== "repeat") return;
+  assert.equal(nested.times, 3);
+  const restored = parseCodingProgram(JSON.parse(JSON.stringify(timed)));
+  assert.equal(restored.ok, true);
+  if (!restored.ok) return;
+  assert.deepEqual(restored.program, timed);
+  const removed = removeCodingBlock(timed, "step");
+  const after = removed.blocks[0];
+  assert.equal(after?.kind, "repeat");
+  if (after?.kind !== "repeat" || after.body[0]?.kind !== "repeat") return;
+  assert.deepEqual(after.body[0].body, []);
 });

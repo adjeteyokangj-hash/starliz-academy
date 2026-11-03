@@ -1,15 +1,23 @@
-import { explanationShowsUnderstanding, PREDICT_CORRECT_CHOICE } from "@/lib/coding/answers";
+import { assessLoopExplanation, PREDICT_CORRECT_CHOICE } from "@/lib/coding/answers";
 import { stageBrief, type CodingLessonBrief } from "@/lib/coding/catalog";
 import { runCodingProgram } from "@/lib/coding/runner";
 import {
-  CODING_STAGES,
   EMPTY_EVIDENCE,
+  stageUnlocked,
+  type CodingBlock,
   type CodingEvidence,
   type CodingProgram,
   type CodingRunResult,
   type CodingSkillStatus,
   type CodingStage,
 } from "@/lib/coding/types";
+
+export { stageUnlocked };
+
+/** Discover is an acknowledgement. It must not count as an assessment attempt or a passed check. */
+export function stageCountsAsAssessment(stage: CodingStage): boolean {
+  return stage !== "discover";
+}
 
 export type StageAssessment = {
   passed: boolean;
@@ -37,11 +45,11 @@ export function deriveSkillStatus(started: boolean, evidence: CodingEvidence): C
   return "learning";
 }
 
-export function stageUnlocked(stage: CodingStage, completed: CodingStage[]): boolean {
-  const index = CODING_STAGES.indexOf(stage);
-  if (index <= 0) return true;
-  const previous = CODING_STAGES[index - 1];
-  return previous ? completed.includes(previous) : false;
+function repeatContainsDirection(blocks: CodingBlock[], direction: "left" | "right" | "up" | "down"): boolean {
+  return blocks.some((block) => {
+    if (block.kind === "move") return block.direction === direction;
+    return block.kind === "repeat" && repeatContainsDirection(block.body, direction);
+  });
 }
 
 function loopRequiredFeedback(run: CodingRunResult, goalLabel: string): string | null {
@@ -106,19 +114,11 @@ export function assessCodingStage(input: {
   }
 
   if (input.stage === "review") {
-    const text = input.explanation ?? "";
-    if (!explanationShowsUnderstanding(text)) {
-      return {
-        passed: false,
-        feedback: "Tell StarLiz what your loop repeats, in a full sentence. Mention the loop, or how many times the move happens.",
-        evidence: withEvidence(evidence, { explanation: false }),
-        run: null,
-      };
-    }
+    const check = assessLoopExplanation(input.explanation ?? "", input.program);
     return {
-      passed: true,
-      feedback: "That explanation shows you know why the loop is there.",
-      evidence: withEvidence(evidence, { explanation: true }),
+      passed: check.ok,
+      feedback: check.feedback,
+      evidence: withEvidence(evidence, { explanation: check.ok }),
       run: null,
     };
   }
@@ -136,26 +136,29 @@ export function assessCodingStage(input: {
     return {
       passed: true,
       feedback: input.stage === "build"
-        ? "You and the tutor built a loop that lands on the star."
+        ? input.revealingHints > 0
+          ? "You and the tutor built a loop that lands on the star."
+          : "You built a loop that lands on the star."
         : "You used a loop on your own to reach the star.",
-      evidence: input.stage === "practise" ? withEvidence(evidence, { practical: true }) : evidence,
+      evidence: withEvidence(evidence, { practical: true }),
       run,
     };
   }
 
   if (input.stage === "debug") {
-    const stillWrongWay = input.program.blocks.some((block) =>
-      block.kind === "repeat" && block.body.some((child) => child.kind === "move" && child.direction === "left"),
-    );
-    if (problem || stillWrongWay) {
+    const stillWrongWay = repeatContainsDirection(input.program.blocks, "left");
+    if (stillWrongWay) {
       return {
         passed: false,
-        feedback: stillWrongWay && !run.error
-          ? "The repeat still moves left. The star is to the right. Change the move inside the loop."
-          : problem ?? "The bug is still there.",
+        feedback: run.error
+          ? "The move inside the repeat points left, and the star is to the right. Change that move. The character walked off the board because of that direction."
+          : "The move inside the repeat points left, and the star is to the right. Change that move.",
         evidence,
         run,
       };
+    }
+    if (problem) {
+      return { passed: false, feedback: problem, evidence, run };
     }
     return {
       passed: true,
@@ -170,10 +173,10 @@ export function assessCodingStage(input: {
   }
   const independent = input.revealingHints === 0;
   return {
-    passed: true,
+    passed: independent || evidence.independent,
     feedback: independent
       ? "You reached a new star with a loop and without a full answer from the tutor."
-      : "You reached the star. The tutor showed a full answer, so restore the starter and try this star again without that answer before it counts as independent.",
+      : "You reached the star with help. Restore the starter to receive a different independent challenge before this can count towards mastery.",
     evidence: withEvidence(evidence, { independent: evidence.independent || independent }),
     run,
   };
@@ -185,8 +188,8 @@ export function codingCertificateCopy(input: {
 }): { title: string; body: string } {
   const skills = input.skills.length ? input.skills.join("; ") : "the published coding skills";
   return {
-    title: `${input.pathwayTitle} certificate`,
-    body: `Completed the ${input.pathwayTitle} pathway and demonstrated: ${skills}. Mastery included a prediction, a practical task, debugging, an explanation, and an independent challenge.`,
+    title: `${input.pathwayTitle} lesson achievement`,
+    body: `Demonstrated these lesson skills: ${skills}. Evidence included a prediction, a practical task, debugging, an explanation, and an independent challenge. This award recognises a lesson, not completion of the pathway.`,
   };
 }
 

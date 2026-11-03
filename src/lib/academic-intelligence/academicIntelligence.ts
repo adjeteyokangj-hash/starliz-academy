@@ -1,3 +1,4 @@
+import { isCodingRewardName } from "@/lib/academic-intelligence/codingSignals";
 import { buildAssessmentRecommendations } from "@/lib/academic-intelligence/assessmentEngine";
 import {
   buildCatchUpRecommendations,
@@ -487,8 +488,8 @@ export function buildAcademicIntelligence(
 ): AcademicIntelligenceOutput {
   const generatedAt = data.generatedAt ?? new Date().toISOString();
   const masteryBuilt = buildMasteryMap(data);
-  const existingTasks = options?.existingCatchUpTasks ?? [];
-  const allKnownCatchUpTasks = options?.allCatchUpTasks ?? existingTasks;
+  const existingTasks = (options?.existingCatchUpTasks ?? []).filter((task) => !isCodingRewardTask(task));
+  const allKnownCatchUpTasks = (options?.allCatchUpTasks ?? options?.existingCatchUpTasks ?? []).filter((task) => !isCodingRewardTask(task));
   const existingHomeworkTasks = options?.existingHomeworkTasks ?? [];
 
   const triggers = detectCatchUpTriggers({
@@ -929,4 +930,9 @@ export function toStudentSafeAcademicIntelligence(output: AcademicIntelligenceOu
     curriculumIntelligenceGraph: buildStudentSafeGraph(output.curriculumIntelligenceGraph),
     generatedAt: output.generatedAt,
   };
+}
+
+
+function isCodingRewardTask(task: { topic?: string | null; skill?: string | null; title?: string | null }): boolean {
+  return [task.topic, task.skill, task.title].some((value) => isCodingRewardName(value));
 }

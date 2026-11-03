@@ -128,12 +128,13 @@ export function recommendCodingPathway(input: {
 }
 
 /** Questions sent to the learner. Correct answers stay on the server. */
-export function publicPlacementQuestions(): Array<{
+export function publicPlacementQuestions(publishedPathways?: CodingPathwayId[]): Array<{
   id: string;
   prompt: string;
   choices: Array<{ id: string; label: string }>;
 }> {
-  return PLACEMENT_QUESTIONS.map((question) => ({
+  const allowed = publishedPathways ? new Set(publishedPathways) : null;
+  return PLACEMENT_QUESTIONS.filter((question) => !allowed || allowed.has(question.pathway)).map((question) => ({
     id: question.id,
     prompt: question.prompt,
     choices: question.choices,

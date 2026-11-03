@@ -1,5 +1,6 @@
 import type { CodingLessonBrief } from "@/lib/coding/catalog";
 import type { CodingProgram, CodingSkillStatus, CodingStage } from "@/lib/coding/types";
+import type { PracticalArtifact } from "@/lib/coding/learning/types";
 
 export type CodingSupportHandoff = {
   subject: "coding";
@@ -10,7 +11,7 @@ export type CodingSupportHandoff = {
   stage: CodingStage;
   learningObjective: string;
   task: string;
-  program: CodingProgram;
+  program: CodingProgram | PracticalArtifact;
   error: string | null;
   feedback: string | null;
   hintsAttempted: string[];

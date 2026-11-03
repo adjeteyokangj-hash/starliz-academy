@@ -89,7 +89,12 @@ export function nextCodingHint(input: {
 }): CodingTutorTurn {
   const prompts = GUIDING[input.stage];
   const index = Math.min(input.hintCount, prompts.length - 1);
-  const guiding = prompts[index] ?? prompts[0]!;
+  const createGoal = stageBrief(input.lesson, "create").goal;
+  const guiding = input.stage === "create" && index >= 1 && createGoal
+    ? index >= 2
+      ? `Use repeat ${createGoal.x} with move right, then repeat ${createGoal.y} with move up. This is a full answer; you will need a fresh independent challenge afterwards.`
+      : "Use one loop for the horizontal movement and another for the vertical movement. Read the target coordinates."
+    : prompts[index] ?? prompts[0]!;
   const fromCode = errorFromTheirCode(input.program, input.run, input.stage);
   const revealsSolution = index >= 2 && input.stage !== "predict" && input.stage !== "discover" && input.stage !== "review";
   const yearNote = input.lesson.yearMax <= 4

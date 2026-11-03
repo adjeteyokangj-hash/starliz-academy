@@ -1,5 +1,76 @@
 @import "tailwindcss";
 
+/* Coding Studio: editor-first layout; output panels always retain independent state. */
+.coding-studio { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.studio-learning, .studio-editor, .studio-results { min-width: 0; }
+.studio-learning { overflow: hidden; border: 1px solid #e4def1; border-radius: 1rem; background: white; }
+.studio-guide-content { display: grid; gap: 1rem; padding: .75rem; }
+.studio-guide-content > section, .studio-guide-content > details > section { border: 0; box-shadow: none; padding: 1rem; }
+.studio-panel-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid #e4def1; border-radius: 1rem 1rem 0 0; background: white; }
+.studio-panel-bar h2 { font-size: .875rem; font-weight: 750; color: #382b60; }
+.coding-studio .text-xs { font-size: .875rem; line-height: 1.5; }
+.coding-studio .text-slate-400 { color: #64748b; }
+.coding-studio-early .text-sm, .coding-studio-early .text-xs { font-size: 1rem; line-height: 1.55; }
+.coding-studio-early button, .coding-studio-early summary, .coding-studio-early select { min-height: 48px; }
+.studio-panel-bar h2 { font-size: 1rem; }
+.studio-results { display: grid; gap: 1rem; }
+.studio-results > * { margin-top: 0 !important; }
+.studio-results > section { padding: 12px; }
+.studio-results > section[data-lesson-example] { padding: 0; }
+.studio-results > section h2 { font-size: 1.125rem; }
+.studio-results svg[role="img"] { max-height: 200px; }
+.studio-results [aria-label="Lesson example output"], .studio-results [aria-label="Program output"] { width: min(100%, 200px); margin-inline: auto; }
+.studio-results pre { max-height: 200px; }
+.studio-example-source[open] { max-height: 240px; overflow: auto; }
+.studio-tutor-expanded details[data-studio-tutor] { position: fixed; top: 76px; right: 24px; z-index: 60; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 100px); overflow-y: auto; background: #faf8ff; box-shadow: 0 16px 70px #25203d44; border: 1px solid #bca7e7; border-radius: 16px; }
+.studio-tutor-expanded .studio-learning { z-index: 60; }
+.studio-tutor-expanded details[data-studio-tutor] > summary { padding-right: 130px; background: #eee7fb; font-size: 1rem; }
+.studio-tutor-expanded details[data-studio-tutor] textarea { min-height: 150px; font-size: 1rem; }
+.studio-tutor-expanded details[data-studio-tutor] p { font-size: 1rem; line-height: 1.65; }
+.studio-tutor-close { position: fixed; top: 84px; right: 36px; z-index: 61; }
+.coding-block-editor .blocklyToolbox { min-width: 128px; background: #f0edf8; }
+.coding-block-editor .blocklyToolboxCategory { min-height: 46px; padding: 10px; }
+.coding-block-editor .blocklyToolboxCategoryLabel { font-size: 15px; font-weight: 650; color: #332852; }
+.studio-stage-nav > button { font-size: .875rem; }
+[data-coding-year] > header .text-xs { font-size: .875rem; }
+[data-coding-year="1"] > header p, [data-coding-year="2"] > header p { font-size: 1rem; }
+.studio-output-size { display: none; }
+.studio-brand-mark { display: inline-block; width: 3.5rem; height: 3.5rem; flex-shrink: 0; background: white url('/brand/starliz-logo.png') center/contain no-repeat; }
+.coding-studio-compact .studio-guide-content { display: none; }
+.blocklySvg { background: #faf8ff !important; }
+.blocklyToolbox { font-family: "Segoe UI", Arial, sans-serif; }
+.cm-runtime-error { background: #632d3c66; border-left: 3px solid #fda4af; }
+@media (max-width: 759px) {
+  .studio-stage-nav { display: flex; overflow-x: auto; padding-bottom: .5rem; }
+  .studio-stage-nav > button { flex: 0 0 auto; min-width: 88px; }
+  .coding-block-editor .blocklyToolbox { min-width: 94px; }
+  .coding-block-editor .blocklyToolboxCategory { padding: 8px 5px; }
+  .coding-block-editor .blocklyToolboxCategoryLabel { font-size: 14px; }
+  .studio-tutor-expanded details[data-studio-tutor] { top: 16px; right: 16px; max-height: calc(100dvh - 32px); }
+  .studio-tutor-close { top: 24px; right: 28px; }
+}
+@media (min-width: 760px) and (max-width: 1199px) {
+  .coding-studio { grid-template-columns: 235px minmax(0, 1fr); }
+  .studio-results { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .studio-results > * { margin-top: 0 !important; }
+  .coding-studio-compact { grid-template-columns: 150px minmax(0, 1fr); }
+}
+@media (min-width: 1200px) {
+  .coding-studio { grid-template-columns: 230px minmax(0, 1fr) 320px; }
+  .coding-studio-compact { grid-template-columns: 150px minmax(0, 1fr) 320px; }
+  .studio-results { position: sticky; top: 1rem; }
+  .studio-results > section { max-height: 360px; overflow-y: auto; scrollbar-gutter: stable; }
+  .studio-learning { position: sticky; top: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; }
+}
+@media (min-width: 1400px) {
+  .coding-studio { grid-template-columns: 240px minmax(0, 1fr) var(--studio-results, 500px); }
+  .coding-studio-compact { grid-template-columns: 150px minmax(0, 1fr) var(--studio-results, 500px); }
+  .studio-results { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .studio-output-size { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; min-height: 2.75rem; }
+  .studio-results > section { max-height: min(650px, calc(100dvh - 5rem)); }
+}
+@media (prefers-reduced-motion: reduce) { .coding-studio * { scroll-behavior: auto; } }
+
 :root {
   --font-body: "Segoe UI", Arial, sans-serif;
   --font-heading: "Trebuchet MS", "Segoe UI", Arial, sans-serif;

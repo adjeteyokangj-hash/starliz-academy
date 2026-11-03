@@ -1,0 +1,2 @@
+-- No-op: this migration was generated only to align schema history.
+-- SQLite does not allow dropping autoindexes that back UNIQUE/PRIMARY KEY constraints.

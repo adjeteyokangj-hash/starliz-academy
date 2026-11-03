@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { NextResponse } from "next/server";
 import {
   handleSafeguardingEvidenceDownload,
-} from "../src/app/api/school/safeguarding/[schoolId]/incidents/[incidentId]/attachments/[attachmentId]/download/route";
+} from "../src/app/api/school/safeguarding/[schoolId]/incidents/[incidentId]/attachments/[attachmentId]/download/route-helpers";
 import {
   buildSafeguardingEvidenceDownloadUrl,
   toSafeguardingEvidenceAttachmentView,

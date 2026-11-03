@@ -1,5 +1,5 @@
 import type { CodingPathwayId, CodingProgram, CodingStage, GridPoint } from "@/lib/coding/types";
-import { PUBLISHED_CODING_LESSON_ID } from "@/lib/coding/types";
+import { CODING_PATHWAYS, PUBLISHED_CODING_LESSON_ID } from "@/lib/coding/types";
 
 export type CodingPathwaySummary = {
   id: CodingPathwayId;
@@ -251,7 +251,7 @@ export const UNDERSTANDING_LOOPS: CodingLessonBrief = {
     {
       stage: "review",
       title: "Review",
-      prompt: "Explain how your loop works. Say what it repeats and why you did not write the same move many times.",
+      prompt: "Look at your finished program. Say which way the character moves, and how many times each repeat runs.",
       starter: { blocks: [] },
       goal: null,
       example: null,
@@ -261,6 +261,29 @@ export const UNDERSTANDING_LOOPS: CodingLessonBrief = {
 
 export function publishedCodingLessons(): CodingLessonBrief[] {
   return [UNDERSTANDING_LOOPS];
+}
+
+export function publishedPathwayIds(): CodingPathwayId[] {
+  return CODING_PATHWAYS.filter((id) =>
+    CODING_PATHWAY_CATALOG.some((pathway) =>
+      pathway.id === id
+      && pathway.courses.some((course) =>
+        course.modules.some((courseModule) => courseModule.lessons.some((lesson) => lesson.published)),
+      ),
+    ),
+  );
+}
+
+export function codingPathwayIntro(input: {
+  yearGroup: string | null | undefined;
+  yearPathwayTitle: string;
+  yearPathwayPublished: boolean;
+  liveLessonTitle: string;
+}): string {
+  const live = `The live lesson is ${input.liveLessonTitle}.`;
+  if (!input.yearGroup) return `${live} Placement questions stay with the lessons that are published.`;
+  if (input.yearPathwayPublished) return `${input.yearGroup} starts on ${input.yearPathwayTitle}. ${live}`;
+  return `${input.yearGroup} usually meets ${input.yearPathwayTitle}, and those lessons are not published yet. ${live} Your year group is unchanged.`;
 }
 
 export function codingLessonById(lessonId: string): CodingLessonBrief | null {

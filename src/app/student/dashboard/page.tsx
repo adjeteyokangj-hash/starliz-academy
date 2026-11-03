@@ -10,6 +10,8 @@ import { resolveDashboardTier } from "@/lib/dashboardResolver";
 import { ageGroupForYearGroup, keyStageForYearGroup } from "@/lib/curriculum";
 import PrimaryDashboard from "@/components/student/PrimaryDashboard";
 import SecondaryDashboard from "@/components/student/SecondaryDashboard";
+import CodingLessonCard from "@/components/student/CodingLessonCard";
+import type { CodingDashboardLesson } from "@/lib/coding/dashboard-lessons";
 import StudentContextStrip from "@/components/student/StudentContextStrip";
 import WeeklyHomeworkPanel from "@/components/student/WeeklyHomeworkPanel";
 import {
@@ -207,6 +209,7 @@ type DashboardSummaryPayload = {
     status: string;
   }>;
   skills?: StudentSkill[];
+  codingLessons?: CodingDashboardLesson[];
   dashboardSections?: StudentDashboardSections;
   error?: string;
 };
@@ -512,6 +515,7 @@ export default function StudentDashboardPage() {
   const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
   const [activeLanguageModules, setActiveLanguageModules] = useState<NonNullable<DashboardSummaryPayload["activeLanguageModules"]>>([]);
   const [skills, setSkills] = useState<StudentSkill[]>([]);
+  const [codingLessons, setCodingLessons] = useState<CodingDashboardLesson[]>([]);
   const [journey] = useState<DailyJourneyPayload["journey"] | null>(null);
   const [childName, setChildName] = useState("Learner");
   const [stats, setStats] = useState({ stars: 0, xp: 0, coins: 0, streak: 0 });
@@ -676,6 +680,7 @@ export default function StudentDashboardPage() {
           setAssignments([]);
           setActiveLanguageModules([]);
           setSkills([]);
+          setCodingLessons([]);
           setSessionSummary(null);
           setLearningState(null);
           setQuickLevelFinderRetestEnabled(false);
@@ -699,6 +704,7 @@ export default function StudentDashboardPage() {
       setAssignments(summaryPayload.assignments ?? []);
       setActiveLanguageModules(Array.isArray(summaryPayload.activeLanguageModules) ? summaryPayload.activeLanguageModules : []);
       setSkills(Array.isArray(summaryPayload.skills) ? summaryPayload.skills : []);
+      setCodingLessons(Array.isArray(summaryPayload.codingLessons) ? summaryPayload.codingLessons : []);
       setBossUnlocked(false);
       setBossPlayedToday(false);
       setBossAssignmentId(null);
@@ -1370,6 +1376,7 @@ export default function StudentDashboardPage() {
           stats={stats}
           visibleAssignments={visibleAssignments}
           skills={skills}
+          codingLessons={codingLessons}
           coachRows={coachRows}
           focusSkill={focusSkill}
           weakSkill={weakSkill}
@@ -1861,6 +1868,8 @@ export default function StudentDashboardPage() {
                 </div>
               </section>
             ) : null}
+
+            <CodingLessonCard lessons={codingLessons} />
 
             {!loading && visibleAssignments.length === 0 ? (
               <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">

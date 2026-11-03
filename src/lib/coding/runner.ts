@@ -129,15 +129,14 @@ function runBlocks(blocks: CodingBlock[], state: ExecState, depth: number, insid
   }
 }
 
-export function runCodingProgram(program: CodingProgram, goal: GridPoint | null): CodingRunResult {
-  const start = { x: 0, y: 0 };
+export function runCodingProgram(program: CodingProgram, goal: GridPoint | null, start: GridPoint = { x: 0, y: 0 }): CodingRunResult {
   const state: ExecState = {
     point: { ...start },
     frames: [{ ...start }],
     steps: 0,
     usedLoop: false,
     unrolledMoves: 0,
-    error: null,
+    error: inGrid(start) && Number.isInteger(start.x) && Number.isInteger(start.y) ? null : "The starting position is outside the board.",
     limitHit: false,
   };
   runBlocks(program.blocks, state, 1, false);

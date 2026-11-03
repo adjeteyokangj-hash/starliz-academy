@@ -10,6 +10,8 @@ export type WalletMetadata = {
   category?: string;
   subject?: string;
   activityName?: string;
+  curriculumVersion?: string;
+  activityId?: string;
   itemCategory?: string;
   failureCode?: string;
   requestId?: string;
@@ -120,6 +122,47 @@ export function summarizeWalletTransactions(
     spentByItem: Array.from(spentByItemMap.entries())
       .map(([itemId, value]) => ({ itemId, amount: value.amount, count: value.count, itemName: value.itemName }))
       .sort((left, right) => right.amount - left.amount),
+  };
+}
+
+
+export type ParentWalletMoney = {
+  balance: number;
+  earned: number;
+  spent: number;
+};
+
+function finiteWalletAmount(value: number): number {
+  return Number.isFinite(value) ? value : 0;
+}
+
+/** Parent money excludes coding achievement coins. Coding stars stay on the lesson record. */
+export function parentWalletMoney(
+  transactions: Array<{ type: string; amount: number; source: string }>,
+  currentCoins: number,
+): ParentWalletMoney {
+  let codingNet = 0;
+  let earned = 0;
+  let spent = 0;
+  for (const entry of transactions) {
+    const amount = finiteWalletAmount(entry.amount);
+    const coding = (entry.source ?? "").trim().toLowerCase() === "coding";
+    if (entry.type === "failed") continue;
+    if (coding) {
+      codingNet += amount;
+      continue;
+    }
+    if (entry.type === "earn" || (entry.type === "manual_adjustment" && amount > 0)) {
+      earned += Math.max(0, amount);
+    } else if (entry.type === "spend" || (entry.type === "manual_adjustment" && amount < 0)) {
+      spent += Math.abs(amount);
+    }
+  }
+  const balance = Math.max(0, finiteWalletAmount(currentCoins) - codingNet);
+  return {
+    balance: Number.isFinite(balance) ? balance : 0,
+    earned: Number.isFinite(earned) ? earned : 0,
+    spent: Number.isFinite(spent) ? spent : 0,
   };
 }
 

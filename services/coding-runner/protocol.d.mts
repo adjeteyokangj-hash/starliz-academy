@@ -1,0 +1,14 @@
+export type ExecutionLanguage = "python" | "javascript" | "sql";
+export type ExecutionJob = { jobId: string; language: ExecutionLanguage; source: string; stdin: string; timeLimitMs: number };
+export const MAX_REQUEST_BYTES: number;
+export const MAX_OUTPUT_BYTES: number;
+export const MAX_CLOCK_SKEW_MS: number;
+export const languages: readonly ExecutionLanguage[];
+export function digest(text: string | Uint8Array): string;
+export function sign(secret: string, text: string): string;
+export function authentic(secret: string, text: string, signature: unknown): boolean;
+export function requestProof(method: string, pathname: string, timestamp: string, nonce: string, body: string | Uint8Array): string;
+export function responseProof(nonce: string, requestBody: string | Uint8Array, responseBody: string): string;
+export function validateJob(value: unknown): ExecutionJob | null;
+export function pinnedImage(value: unknown): string | null;
+export function imageDigest(image: string): string;

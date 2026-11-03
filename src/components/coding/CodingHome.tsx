@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import type { CodingPathwayId } from "@/lib/coding/types";
+import LearningCatalogue from "./LearningCatalogue";
+import LearnerProjectLibrary from "./LearnerProjectLibrary";
+import SavedEvidenceLibrary from "./SavedEvidenceLibrary";
+import ReadinessBridges from "./ReadinessBridges";
 
 type Pathway = {
   id: CodingPathwayId;
@@ -25,8 +29,10 @@ type Pathway = {
 type Question = { id: string; prompt: string; choices: Array<{ id: string; label: string }> };
 
 type HomePayload = {
+  learnerId: string;
   yearGroup: string | null;
   yearPathwayTitle: string;
+  intro?: string;
   pathways: Pathway[];
   placementQuestions: Question[];
   placement: { recommended: string; adjustment: string; note: string } | null;
@@ -117,8 +123,7 @@ export default function CodingHome() {
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">Coding</p>
         <h1 className="mt-1 text-3xl font-black">Learn to give a computer instructions</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-600">
-          {home.yearGroup ? `${home.yearGroup} starts on ${home.yearPathwayTitle}.` : `The usual starting pathway is ${home.yearPathwayTitle}.`}
-          {" "}A short placement can suggest revision or a later pathway. Only one module is live, so the full lesson can be proved before the catalogue grows.
+          {home.intro ?? (home.yearGroup ? `${home.yearGroup} starts on ${home.yearPathwayTitle}.` : `The usual starting pathway is ${home.yearPathwayTitle}.`)}
         </p>
       </header>
 
@@ -129,6 +134,10 @@ export default function CodingHome() {
         </p>
       ) : null}
 
+      <LearningCatalogue key={`curriculum:${home.learnerId}`} yearGroup={home.yearGroup} />
+      <ReadinessBridges key={`readiness:${home.learnerId}`} yearGroup={home.yearGroup} />
+      <LearnerProjectLibrary key={`projects:${home.learnerId}`} />
+      <SavedEvidenceLibrary childId={home.learnerId} />
       <section className="grid gap-3 md:grid-cols-2">
         {published.map((lesson) => (
           <Link
@@ -145,8 +154,8 @@ export default function CodingHome() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-lg font-black">Placement</h2>
-        <p className="mt-1 text-sm text-slate-600">Answer what you already know. This does not replace your year-group starting point.</p>
+        <h2 className="text-lg font-black">Find a starting point</h2>
+        <p className="mt-1 text-sm text-slate-600">Answer what you already know about the lessons that are published. This does not change your year group.</p>
         <div className="mt-4 space-y-4">
           {home.placementQuestions.map((question) => (
             <fieldset key={question.id}>
@@ -174,7 +183,7 @@ export default function CodingHome() {
           disabled={saving}
           className="mt-4 rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
         >
-          {saving ? "Saving…" : "Save placement"}
+          {saving ? "Saving…" : "Save recommendation"}
         </button>
         {note || home.placement?.note ? (
           <p className="mt-3 text-sm text-slate-700">{note ?? home.placement?.note}</p>

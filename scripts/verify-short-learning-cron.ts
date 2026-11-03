@@ -56,7 +56,7 @@ async function main() {
 
   // In-process auth (does not require .env.local or a running server)
   const { handleShortLearningRemindersCron } = await import(
-    "../src/app/api/cron/short-learning-reminders/route"
+    "../src/app/api/cron/short-learning-reminders/route-helpers"
   );
   const prevSecret = process.env.CRON_SECRET;
   process.env.CRON_SECRET = "verify-in-process-secret";

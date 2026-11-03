@@ -2033,6 +2033,14 @@ model OutlookToken {
   updatedAt       DateTime @updatedAt
 }
 
+/// Platform lab controls. Missing rows always mean human assistance is disabled.
+model SkillsLabSettings {
+  labId                   String   @id
+  humanAssistanceEnabled  Boolean  @default(false)
+  updatedBy               String
+  updatedAt               DateTime @updatedAt
+}
+
 model GeneralSettings {
   id              String   @id @default(cuid())
   appName         String   @default("StarLiz Academy")

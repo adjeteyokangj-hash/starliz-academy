@@ -1,17 +1,20 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { assessCodingStage, codingCertificateCopy, deriveSkillStatus, freshEvidence, stageUnlocked } from "@/lib/coding/assessment";
+import { assessCodingStage, codingCertificateCopy, deriveSkillStatus, freshEvidence, stageCountsAsAssessment, stageUnlocked } from "@/lib/coding/assessment";
 import { codingLessonById, stageBrief, UNDERSTANDING_LOOPS, type CodingLessonBrief } from "@/lib/coding/catalog";
 import { recommendCodingPathway, type PlacementRecommendation } from "@/lib/coding/placement";
 import { CODING_REWARD_AMOUNTS, EMPTY_REWARD_FLAGS, nextCodingRewards, type CodingRewardFlags } from "@/lib/coding/rewards";
 import { codingRunSelection } from "@/lib/coding/editor";
 import { emptyProgram, parseCodingProgram, runCodingProgram } from "@/lib/coding/runner";
 import { buildCodingSupportHandoff, type CodingSupportHandoff } from "@/lib/coding/support-handoff";
-import { nextCodingHint } from "@/lib/coding/tutor";
+import { codingTeacherTurn } from "@/lib/coding/model-tutor";
+import { independentChallenge, nextIndependentVariant } from "@/lib/coding/independent-challenge";
+import { encodeMasteryProgram, readMasteryProgram } from "@/lib/coding/project-evidence";
 import {
   CODING_STAGES,
   PLACEMENT_LESSON_ID,
+  visibleCodingStage,
   type CodingEvidence,
   type CodingProgram,
   type CodingRunResult,
@@ -24,6 +27,7 @@ const SKILL_FOCUS = "Understanding loops";
 const SKILL_CODE = "coding_loops";
 
 type HintState = {
+  independentVariant: number;
   counts: Partial<Record<CodingStage, number>>;
   revealing: Partial<Record<CodingStage, number>>;
   messages: Partial<Record<CodingStage, string[]>>;
@@ -37,6 +41,7 @@ export type CodingWorkspaceView = {
   stage: CodingStage;
   completedStages: CodingStage[];
   program: CodingProgram;
+  explainedProgram: CodingProgram | null;
   evidence: CodingEvidence;
   skillStatus: CodingSkillStatus;
   feedback: string | null;
@@ -123,8 +128,9 @@ function readEvidence(raw: string): CodingEvidence {
 
 function readHints(raw: string): HintState {
   const parsed = readJson(raw);
-  const empty: HintState = { counts: {}, revealing: {}, messages: {} };
+  const empty: HintState = { counts: {}, revealing: {}, messages: {}, independentVariant: 0 };
   if (!isRecord(parsed)) return empty;
+  if (typeof parsed.independentVariant === "number" && Number.isInteger(parsed.independentVariant) && parsed.independentVariant >= 0 && parsed.independentVariant < 16) empty.independentVariant = parsed.independentVariant;
   const counts = isRecord(parsed.counts) ? parsed.counts : {};
   const revealing = isRecord(parsed.revealing) ? parsed.revealing : {};
   const messages = isRecord(parsed.messages) ? parsed.messages : {};
@@ -179,15 +185,8 @@ async function rememberVersion(
   await tx.codingProjectVersion.create({
     data: { workspaceId, stage, label, programJson: JSON.stringify(program) },
   });
-  const extra = await tx.codingProjectVersion.findMany({
-    where: { workspaceId },
-    orderBy: { createdAt: "desc" },
-    skip: 15,
-    select: { id: true },
-  });
-  if (extra.length) {
-    await tx.codingProjectVersion.deleteMany({ where: { id: { in: extra.map((row) => row.id) } } });
-  }
+  // Preserve learner history. Retention must be a separately reviewed policy,
+  // never an incidental side effect of saving another version.
 }
 
 async function syncProgress(
@@ -341,18 +340,24 @@ async function syncProgress(
 async function ensureWorkspace(childId: string, lessonId: string, yearGroup: string | null) {
   const lesson = codingLessonById(lessonId);
   if (!lesson) return null;
-  return prisma.codingWorkspace.upsert({
-    where: { childId_lessonId: { childId, lessonId } },
-    create: {
+  const where = { childId_lessonId: { childId, lessonId } };
+  const existing = await prisma.codingWorkspace.findUnique({ where });
+  if (existing) return existing;
+  try {
+    return await prisma.codingWorkspace.create({ data: {
       childId,
       lessonId,
       yearGroup,
       pathwayId: lesson.pathwayId,
       stage: "discover",
       privateProject: true,
-    },
-    update: yearGroup ? { yearGroup } : {},
-  });
+    } });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+      return prisma.codingWorkspace.findUniqueOrThrow({ where });
+    }
+    throw error;
+  }
 }
 
 function toView(input: {
@@ -375,15 +380,18 @@ function toView(input: {
   };
   placement: PlacementRecommendation | null;
 }): CodingWorkspaceView {
-  const stage = asStage(input.row.stage);
+  const completedStages = readCompleted(input.row.completedStagesJson);
+  const stage = visibleCodingStage(asStage(input.row.stage), completedStages);
   const programs = readPrograms(input.row.programsJson);
   const hints = readHints(input.row.hintCountsJson);
   const run = readJson(input.row.lastRunJson);
+  const explained = programs.create;
   return {
-    lesson: input.lesson,
+    lesson: independentChallenge(input.lesson, hints.independentVariant),
     stage,
-    completedStages: readCompleted(input.row.completedStagesJson),
+    completedStages,
     program: programFor(programs, input.lesson, stage),
+    explainedProgram: explained && explained.blocks.length > 0 ? explained : null,
     evidence: readEvidence(input.row.evidenceJson),
     skillStatus: asStatus(input.row.skillStatus),
     feedback: input.row.lastFeedback,
@@ -461,7 +469,7 @@ export async function saveCodingProgram(input: {
   programs[input.stage] = parsed.program;
   const saved = await prisma.$transaction(async (tx) => {
     const updated = await tx.codingWorkspace.update({
-      where: { id: row.id },
+      where: { id: row.id, updatedAt: row.updatedAt },
       data: {
         stage: input.stage,
         programsJson: JSON.stringify(programs),
@@ -483,12 +491,12 @@ export async function openCodingStage(input: { childId: string; lessonId: string
   const row = await ensureWorkspace(input.childId, input.lessonId, null);
   if (!row) return { ok: false as const, error: "This coding lesson is not published yet." };
   const completed = readCompleted(row.completedStagesJson);
-  if (!stageUnlocked(input.stage, completed) && input.stage !== asStage(row.stage)) {
+  if (!stageUnlocked(input.stage, completed)) {
     return { ok: false as const, error: "Finish the previous part of the lesson first." };
   }
   const saved = await prisma.codingWorkspace.update({
     where: { id: row.id },
-    data: { stage: input.stage },
+    data: { stage: input.stage, lastRunJson: null },
   });
   return { ok: true as const, workspace: toView({ lesson, row: saved, placement: await placementFor(input.childId) }) };
 }
@@ -500,6 +508,7 @@ export async function undoCodingProgram(input: { childId: string; lessonId: stri
     where: { childId_lessonId: { childId: input.childId, lessonId: input.lessonId } },
   });
   if (!row) return { ok: false as const, error: "Nothing to undo yet." };
+  if (!stageUnlocked(input.stage, readCompleted(row.completedStagesJson))) return { ok: false as const, error: "Finish the previous part of the lesson first." };
   const programs = readPrograms(row.programsJson);
   const undo = readUndo(row.undoJson);
   const stack = undo[input.stage] ?? [];
@@ -508,7 +517,7 @@ export async function undoCodingProgram(input: { childId: string; lessonId: stri
   undo[input.stage] = stack;
   programs[input.stage] = previous;
   const saved = await prisma.codingWorkspace.update({
-    where: { id: row.id },
+    where: { id: row.id, updatedAt: row.updatedAt },
     data: { programsJson: JSON.stringify(programs), undoJson: JSON.stringify(undo), stage: input.stage },
   });
   return { ok: true as const, workspace: toView({ lesson, row: saved, placement: await placementFor(input.childId) }) };
@@ -517,28 +526,34 @@ export async function undoCodingProgram(input: { childId: string; lessonId: stri
 export async function restoreCodingStarter(input: { childId: string; lessonId: string; stage: CodingStage }) {
   const lesson = codingLessonById(input.lessonId);
   if (!lesson) return { ok: false as const, error: "This coding lesson is not published yet." };
-  const starter = stageBrief(lesson, input.stage).starter;
-  const saved = await saveCodingProgram({
-    childId: input.childId,
-    lessonId: input.lessonId,
-    yearGroup: null,
-    stage: input.stage,
-    program: starter,
+  const result = await prisma.$transaction(async (tx) => {
+    const row = await tx.codingWorkspace.findUnique({
+      where: { childId_lessonId: { childId: input.childId, lessonId: input.lessonId } },
+    });
+    if (!row) return { ok: false as const, error: "Open the lesson before restoring its starter." };
+    if (!stageUnlocked(input.stage, readCompleted(row.completedStagesJson))) return { ok: false as const, error: "Finish the previous part of the lesson first." };
+    const hints = readHints(row.hintCountsJson);
+    if (input.stage === "create" && (hints.revealing.create ?? 0) > 0) {
+      const next = nextIndependentVariant(hints.independentVariant);
+      if (next === null) return { ok: false as const, error: "All fresh challenges have been tried. Your work is saved for teacher review." };
+      hints.independentVariant = next;
+    }
+    const programs = readPrograms(row.programsJson);
+    const undo = readUndo(row.undoJson);
+    undo[input.stage] = [...(undo[input.stage] ?? []), programFor(programs, lesson, input.stage)].slice(-20);
+    programs[input.stage] = stageBrief(lesson, input.stage).starter;
+    delete hints.counts[input.stage];
+    delete hints.revealing[input.stage];
+    delete hints.messages[input.stage];
+    const updated = await tx.codingWorkspace.update({
+      where: { id: row.id, updatedAt: row.updatedAt },
+      data: { programsJson: JSON.stringify(programs), undoJson: JSON.stringify(undo), hintCountsJson: JSON.stringify(hints), stage: input.stage, lastRunJson: null },
+    });
+    await rememberVersion(tx, row.id, input.stage, "restore", programs[input.stage]!);
+    return { ok: true as const, row: updated };
   });
-  if (!saved.ok) return saved;
-  const row = await prisma.codingWorkspace.findUnique({
-    where: { childId_lessonId: { childId: input.childId, lessonId: input.lessonId } },
-  });
-  if (!row) return saved;
-  const hints = readHints(row.hintCountsJson);
-  delete hints.counts[input.stage];
-  delete hints.revealing[input.stage];
-  delete hints.messages[input.stage];
-  const updated = await prisma.codingWorkspace.update({
-    where: { id: row.id },
-    data: { hintCountsJson: JSON.stringify(hints) },
-  });
-  return { ok: true as const, workspace: toView({ lesson, row: updated, placement: await placementFor(input.childId) }) };
+  if (!result.ok) return result;
+  return { ok: true as const, workspace: toView({ lesson, row: result.row, placement: await placementFor(input.childId) }) };
 }
 
 export async function runCodingStage(input: {
@@ -599,7 +614,7 @@ export async function runCodingStage(input: {
     };
   }
   const assessment = assessCodingStage({
-    lesson,
+    lesson: independentChallenge(lesson, hints.independentVariant),
     stage: input.stage,
     program: parsed.program,
     evidence,
@@ -639,7 +654,7 @@ export async function runCodingStage(input: {
         })
       : readFlags(row.rewardFlagsJson);
     const updated = await tx.codingWorkspace.update({
-      where: { id: row.id },
+      where: { id: row.id, updatedAt: row.updatedAt },
       data: {
         stage: nextStage,
         programsJson: JSON.stringify(programs),
@@ -689,7 +704,11 @@ export async function submitCodingPrompt(input: {
     return { ok: false as const, error: "Finish the previous part of the lesson first." };
   }
   const programs = readPrograms(row.programsJson);
-  const program = programFor(programs, lesson, input.stage);
+  const storedProgram = programFor(programs, lesson, input.stage);
+  const createProgram = programs.create;
+  const program = input.stage === "review" && createProgram && createProgram.blocks.length > 0
+    ? createProgram
+    : storedProgram;
   const assessment = assessCodingStage({
     lesson,
     stage: input.stage,
@@ -709,24 +728,27 @@ export async function submitCodingPrompt(input: {
   }
   const previousStatus = asStatus(row.skillStatus);
   const nextStatus = deriveSkillStatus(true, assessment.evidence);
-  const attemptCount = row.attemptCount + 1;
-  const checksPassed = row.checksPassed + (assessment.passed ? 1 : 0);
+  const counts = stageCountsAsAssessment(input.stage);
+  const attemptCount = row.attemptCount + (counts ? 1 : 0);
+  const checksPassed = row.checksPassed + (counts && assessment.passed ? 1 : 0);
   const saved = await prisma.$transaction(async (tx) => {
-    const flags = await syncProgress(tx, {
-      childId: input.childId,
-      lesson,
-      yearGroup: input.yearGroup ?? row.yearGroup,
-      previousStatus,
-      nextStatus,
-      flags: readFlags(row.rewardFlagsJson),
-      stage: input.stage,
-      passed: assessment.passed,
-      attemptCount,
-      checksPassed,
-      hintsUsed: 0,
-    });
-    return tx.codingWorkspace.update({
-      where: { id: row.id },
+    const flags = counts
+      ? await syncProgress(tx, {
+          childId: input.childId,
+          lesson,
+          yearGroup: input.yearGroup ?? row.yearGroup,
+          previousStatus,
+          nextStatus,
+          flags: readFlags(row.rewardFlagsJson),
+          stage: input.stage,
+          passed: assessment.passed,
+          attemptCount,
+          checksPassed,
+          hintsUsed: 0,
+        })
+      : readFlags(row.rewardFlagsJson);
+    const updated = await tx.codingWorkspace.update({
+      where: { id: row.id, updatedAt: row.updatedAt },
       data: {
         stage: nextStage,
         completedStagesJson: JSON.stringify(nextCompleted),
@@ -742,6 +764,11 @@ export async function submitCodingPrompt(input: {
           : row.assignmentStatus === "assigned" ? "started" : row.assignmentStatus,
       },
     });
+    if (input.stage === "review" && nextStatus === "mastered" && assessment.passed) {
+      const assessedGoal = stageBrief(independentChallenge(lesson, readHints(row.hintCountsJson).independentVariant), "create").goal;
+      await tx.codingProjectVersion.create({ data: { workspaceId: row.id, stage: "create", label: "mastery-evidence", programJson: encodeMasteryProgram(program, assessedGoal) } });
+    }
+    return updated;
   });
   return {
     ok: true as const,
@@ -766,18 +793,25 @@ export async function askCodingTutor(input: {
   if (!row) return { ok: false as const, error: "This coding lesson is not published yet." };
   const hints = readHints(row.hintCountsJson);
   const used = hints.counts[input.stage] ?? 0;
-  const goal = stageBrief(lesson, input.stage).goal;
+  const activeLesson = independentChallenge(lesson, hints.independentVariant);
+  const goal = stageBrief(activeLesson, input.stage).goal;
   const run = goal ? runCodingProgram(parsed.program, goal) : null;
-  const turn = nextCodingHint({ lesson, stage: input.stage, program: parsed.program, hintCount: used, run });
+  if (!stageUnlocked(input.stage, readCompleted(row.completedStagesJson))) {
+    return { ok: false as const, error: "Finish the previous part of the lesson first." };
+  }
+  const turn = await codingTeacherTurn({ lesson: activeLesson, stage: input.stage, program: parsed.program, hintCount: used, run, yearGroup: input.yearGroup });
+  const programs = readPrograms(row.programsJson);
+  programs[input.stage] = parsed.program;
   hints.counts[input.stage] = used + 1;
   if (turn.revealsSolution) hints.revealing[input.stage] = (hints.revealing[input.stage] ?? 0) + 1;
   const messages = hints.messages[input.stage] ?? [];
   messages.push(turn.message);
   hints.messages[input.stage] = messages.slice(-6);
   const saved = await prisma.codingWorkspace.update({
-    where: { id: row.id },
+    where: { id: row.id, updatedAt: row.updatedAt },
     data: {
       hintCountsJson: JSON.stringify(hints),
+      programsJson: JSON.stringify(programs),
       stage: input.stage,
       skillStatus: row.skillStatus === "not_started" ? "learning" : row.skillStatus,
       lastFeedback: turn.message,
@@ -803,7 +837,7 @@ export async function handoffForWorkspace(childId: string, lessonId: string): Pr
   const run = readJson(row.lastRunJson);
   const error = isRecord(run) && typeof run.error === "string" ? run.error : null;
   return buildCodingSupportHandoff({
-    lesson,
+    lesson: independentChallenge(lesson, hints.independentVariant),
     stage,
     program: programFor(programs, lesson, stage),
     error,
@@ -873,6 +907,12 @@ export async function parentCodingSummary(childId: string) {
   const hints = readHints(row.hintCountsJson);
   const hintTotal = Object.values(hints.counts).reduce((sum, count) => sum + (count ?? 0), 0);
   const status = asStatus(row.skillStatus);
+  const savedPrograms = readPrograms(row.programsJson);
+  const assessedVersion = status === "mastered" ? await prisma.codingProjectVersion.findFirst({
+    where: { workspaceId: row.id, label: "mastery-evidence" }, orderBy: { createdAt: "desc" },
+  }) : null;
+  const parsedAssessed = assessedVersion ? readMasteryProgram(assessedVersion.programJson) : null;
+  const previewProgram = parsedAssessed ? parsedAssessed.program : savedPrograms.create ?? savedPrograms[asStage(row.stage)];
   return {
     started: true,
     lessonTitle: UNDERSTANDING_LOOPS.title,
@@ -891,13 +931,19 @@ export async function parentCodingSummary(childId: string) {
       ? codingCertificateCopy({ pathwayTitle: UNDERSTANDING_LOOPS.pathwayTitle, skills: UNDERSTANDING_LOOPS.skills })
       : null,
     placement,
+    projectPreview: previewProgram ? {
+      program: previewProgram,
+      run: runCodingProgram(previewProgram, parsedAssessed ? parsedAssessed.goal : stageBrief(independentChallenge(UNDERSTANDING_LOOPS, hints.independentVariant), savedPrograms.create ? "create" : asStage(row.stage)).goal),
+      updatedAt: (assessedVersion?.createdAt ?? row.updatedAt).toISOString(),
+      evidenceStatus: parsedAssessed ? "assessed-version" : "saved-draft",
+    } : null,
   };
 }
 
 export async function teacherCodingRows(childIds: string[]) {
   if (!childIds.length) return [];
   return prisma.codingWorkspace.findMany({
-    where: { childId: { in: childIds }, lessonId: { not: PLACEMENT_LESSON_ID } },
+    where: { childId: { in: childIds }, lessonId: { not: PLACEMENT_LESSON_ID }, NOT: { lessonId: { startsWith: "curriculum:" } } },
     include: { child: { select: { id: true, name: true, yearGroup: true } } },
     orderBy: { updatedAt: "desc" },
   });
@@ -913,13 +959,17 @@ export async function assignCodingLesson(input: { childId: string; yearGroup: st
   });
 }
 
-export async function saveTeacherCodingFeedback(input: { workspaceId: string; childIds: string[]; feedback: string }) {
+export async function saveTeacherCodingFeedback(input: { workspaceId: string; childIds: string[]; feedback: string; actorUserId?: string; schoolTeacherId?: string; schoolId?: string }) {
   const feedback = input.feedback.trim().slice(0, 2000);
   if (!feedback) return { ok: false as const, error: "Write a short note for the learner." };
   const row = await prisma.codingWorkspace.findFirst({
     where: { id: input.workspaceId, childId: { in: input.childIds } },
   });
   if (!row) return { ok: false as const, error: "That coding project is not in your classes." };
+  if (row.lessonId.startsWith("curriculum:")) {
+    const { saveTeacherActivityFeedback } = await import("./teacher-activities");
+    return saveTeacherActivityFeedback(input);
+  }
   const saved = await prisma.codingWorkspace.update({
     where: { id: row.id },
     data: { teacherFeedback: feedback },

@@ -1,4 +1,5 @@
 import type { LearningTwinProfile } from "@/lib/academic-intelligence/types";
+import type { CodingDashboardLesson } from "@/lib/coding/dashboard-lessons";
 import type { MasteredReviewPolicy, StudentDashboardSections } from "@/lib/student-dashboard-sections";
 import { defaultStudentDashboardSections, DEFAULT_MASTERED_REVIEW_POLICY } from "@/lib/student-dashboard-sections";
 
@@ -112,6 +113,7 @@ export type DashboardProps = {
   stats: { stars: number; xp: number; coins: number; streak: number };
   visibleAssignments: StudentAssignment[];
   skills: StudentSkill[];
+  codingLessons?: CodingDashboardLesson[];
   coachRows: CoachRow[];
   focusSkill: string;
   weakSkill: string | null;
