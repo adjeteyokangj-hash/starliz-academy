@@ -5,6 +5,8 @@ with both Prisma URLs and a CI-only auth secret present before `npm ci` (which
 runs Prisma generation). The application and test workers inherit the same
 loopback database URL with explicit `sslmode=disable`. Hosted URL normalization,
 Prisma 6.19.3, schema, lockfile and developer environment files are unchanged.
+Jobs use Ubuntu 24.04 for the locked Playwright browser build and Node 24 for
+the locked packages that require Node 22 or later; these are CI-only settings.
 
 `scripts/ci/bootstrap-disposable-db.ts` rejects non-CI execution, hosted targets,
 different database identities, mismatched URLs and developer `.env` files. It

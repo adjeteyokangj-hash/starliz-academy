@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 /** Guard every CI bootstrap/fixture writer before constructing a DB client. */
-export function assertDisposableDatabase(env: NodeJS.ProcessEnv = process.env, checkoutDir = process.cwd()) {
+export function assertDisposableDatabase(env: Record<string, string | undefined> = process.env, checkoutDir = process.cwd()) {
   assert.equal(env.CI_DISPOSABLE_DATABASE, "true", "Disposable CI database opt-in is required");
   assert.equal(env.CI, "true", "This bootstrap is CI-only");
   assert(!existsSync(resolve(checkoutDir, ".env.local")) && !existsSync(resolve(checkoutDir, ".env")), "CI checkout must not contain developer environment files");

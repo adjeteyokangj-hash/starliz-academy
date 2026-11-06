@@ -45,7 +45,7 @@ test.describe("Auth/session refresh continuity", () => {
 
   test("admin protection refreshes an admin session and refuses parent access", async ({ page }) => {
     await login(page, scenario, scenario.admin); await staleAccess(page);
-    await page.goto("/admin"); await expect(page).toHaveURL(/\/admin/);
+    await page.goto("/admin"); await expect(page).toHaveURL(url => url.pathname === "/admin");
     expect((await page.context().cookies()).find(cookie => cookie.name === "starliz_session")?.value).not.toBe("stale.invalid.session");
     await login(page, scenario); const denied = await page.goto("/admin");
     expect(denied?.status() === 403 || !new URL(page.url()).pathname.startsWith("/admin")).toBe(true);

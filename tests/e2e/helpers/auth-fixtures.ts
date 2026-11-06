@@ -15,7 +15,7 @@ export async function seedAuthScenario(tag: string) {
   const child = await prisma.childProfile.create({ data: { id: `child-${suffix}`, parentId: parent.id, userId: student.id, name: "CI child", age: 7, yearGroup: "Year 2", avatar: "star" } });
   const other = await prisma.user.create({ data: { email: `other-${suffix}@example.test`, passwordHash, role: "parent", name: "Other CI parent", consentVersion: "1.0", consentAcceptedAt: new Date() } });
   const foreignChild = await prisma.childProfile.create({ data: { id: `foreign-${suffix}`, parentId: other.id, name: "Other CI child", age: 8, yearGroup: "Year 3" } });
-  const admin = await prisma.user.create({ data: { email: `admin-${suffix}@example.test`, passwordHash, name: "CI admin", role: "admin", adminProfile: { create: { active: true } } } });
+  const admin = await prisma.user.create({ data: { email: `admin-${suffix}@example.test`, passwordHash, name: "CI admin", role: "admin", adminProfile: { create: { active: true, role: { create: { name: `ci-${suffix}`, permissions: JSON.stringify(["VIEW_REPORTS", "VIEW_PROGRESS"]) } } } } } });
   return { prisma, password, parent, child, foreignChild, admin, student };
 }
 export type AuthScenario = Awaited<ReturnType<typeof seedAuthScenario>>;
