@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login, seedAuthScenario, staleAccess, type AuthScenario } from "./helpers/auth-fixtures";
+import { expectRenewedAccess, login, seedAuthScenario, staleAccess, type AuthScenario } from "./helpers/auth-fixtures";
 
 test.describe("Auth/session refresh continuity", () => {
   test.describe.configure({ timeout: 180000 });
@@ -18,7 +18,8 @@ test.describe("Auth/session refresh continuity", () => {
 
   test("parent dashboard refreshes a stale access session without parent unlock", async ({ page }) => {
     await login(page, scenario); await staleAccess(page);
-    await page.goto("/parent/dashboard"); await expect(page).toHaveURL(/\/parent\/dashboard/);
+    await page.goto("/parent/dashboard"); await expectRenewedAccess(page);
+    await expect(page).toHaveURL(url => url.pathname === "/parent/dashboard");
     const cookies = await page.context().cookies();
     expect(cookies.find(cookie => cookie.name === "starliz_session")?.value).not.toBe("stale.invalid.session");
     expect(cookies.some(cookie => cookie.name === "starliz_parent_unlock")).toBe(false);
@@ -45,7 +46,8 @@ test.describe("Auth/session refresh continuity", () => {
 
   test("admin protection refreshes an admin session and refuses parent access", async ({ page }) => {
     await login(page, scenario, scenario.admin); await staleAccess(page);
-    await page.goto("/admin"); await expect(page).toHaveURL(url => url.pathname === "/admin");
+    await page.goto("/admin"); await expectRenewedAccess(page);
+    await expect(page).toHaveURL(url => url.pathname === "/admin");
     expect((await page.context().cookies()).find(cookie => cookie.name === "starliz_session")?.value).not.toBe("stale.invalid.session");
     await login(page, scenario); const denied = await page.goto("/admin");
     expect(denied?.status() === 403 || !new URL(page.url()).pathname.startsWith("/admin")).toBe(true);

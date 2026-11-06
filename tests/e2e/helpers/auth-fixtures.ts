@@ -45,3 +45,12 @@ export async function staleAccess(page: Page) {
   expect(existing).toBeTruthy();
   await page.context().addCookies([{ ...existing!, value: "stale.invalid.session" }]);
 }
+
+export async function expectRenewedAccess(page: Page) {
+  // Page navigation may finish before client-side refresh/hydration. Wait for
+  // an actual replacement cookie; a missing cookie must not count as renewal.
+  await expect.poll(async () => {
+    const value = (await page.context().cookies()).find(cookie => cookie.name === "starliz_session")?.value;
+    return Boolean(value && value !== "stale.invalid.session");
+  }, { timeout: 15000, message: "Protected navigation must replace stale access with a real session cookie" }).toBe(true);
+}
