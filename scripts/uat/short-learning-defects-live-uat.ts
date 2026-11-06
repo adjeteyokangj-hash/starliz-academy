@@ -48,7 +48,7 @@ async function request(jar: Jar, path: string, init: RequestInit = {}) {
   const setCookie = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
   jar.cookie = mergeCookies(jar.cookie, setCookie);
   const text = await res.text();
-  let json: ApiPayload = null;
+  let json: ApiPayload | null = null;
   try { json = JSON.parse(text); } catch { json = null; }
   const location = res.headers.get("location");
   (evidence.routes as Array<Record<string, unknown>>).push({ path, method: init.method ?? "GET", status: res.status, location, cookieNames: cookieNames(jar.cookie) });

@@ -66,7 +66,11 @@ jobs:
         run: npx prisma generate
 
       - name: Typecheck
-        run: npx tsc --noEmit 2>&1 | tee artifacts/typecheck.txt
+        run: npx tsc --noEmit --incremental false 2>&1 | tee artifacts/typecheck.txt
+
+      - name: Verify actual runtime and practical checkout hashes
+        if: ${{ !cancelled() }}
+        run: npx tsx scripts/coding/verify-runtime-checkout.ts 2>&1 | tee artifacts/runtime-checkout.txt
 
       - name: Lint
         if: ${{ !cancelled() }}
@@ -89,6 +93,22 @@ jobs:
           name: verify-diagnostics
           path: artifacts/
           if-no-files-found: warn
+
+  runtime-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify actual Windows checkout bytes and practical executor
+        run: npx tsx scripts/coding/verify-runtime-checkout.ts
 
   e2e-auth:
     runs-on: ubuntu-24.04

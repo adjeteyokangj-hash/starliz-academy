@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import { expect, type Page } from "@playwright/test";
+import { SignJWT, jwtVerify } from "jose";
 import { assertDisposableDatabase } from "../../../scripts/ci/disposable-db";
 
 export async function seedAuthScenario(tag: string) {
@@ -53,4 +54,25 @@ export async function expectRenewedAccess(page: Page) {
     const value = (await page.context().cookies()).find(cookie => cookie.name === "starliz_session")?.value;
     return Boolean(value && value !== "stale.invalid.session");
   }, { timeout: 15000, message: "Protected navigation must replace stale access with a real session cookie" }).toBe(true);
+}
+
+export async function expiredAccess(page: Page, scenario: AuthScenario, actor = scenario.parent) {
+  assertDisposableDatabase();
+  const secret = new TextEncoder().encode(process.env.AUTH_SECRET);
+  const now = Math.floor(Date.now() / 1000);
+  const value = await new SignJWT({ userId: actor.id, email: actor.email, role: actor.role })
+    .setProtectedHeader({ alg: "HS256" }).setIssuedAt(now - 901).setExpirationTime(now - 1).sign(secret);
+  const existing = (await page.context().cookies()).find(cookie => cookie.name === "starliz_session");
+  expect(existing).toBeTruthy();
+  await page.context().addCookies([{ ...existing!, value }]);
+  return value;
+}
+
+export async function expectValidAccess(page: Page, previous: string, actor: AuthScenario["parent"]) {
+  await expect.poll(async () => {
+    const value = (await page.context().cookies()).find(cookie => cookie.name === "starliz_session")?.value;
+    if (!value || value === previous) return false;
+    try { const { payload } = await jwtVerify(value, new TextEncoder().encode(process.env.AUTH_SECRET)); return payload.userId === actor.id && payload.role === actor.role; }
+    catch { return false; }
+  }, { timeout: 15000 }).toBe(true);
 }

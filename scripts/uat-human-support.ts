@@ -725,7 +725,7 @@ async function main() {
         actorUserId: userId,
         sessionId: unresolvedSessionId,
         outcome: "unresolved",
-        unresolvedReportJson: JSON.stringify({
+        unresolvedReport: JSON.stringify({
           reason: "UAT cannot resolve",
           nextStep: "follow up next lesson",
         }),

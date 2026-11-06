@@ -92,13 +92,13 @@ async function main() {
       childId: true,
       child: { select: { parentId: true, yearGroup: true } },
     },
-  });
+  }).then(record => { if (!record) throw new Error("Required membership fixture is missing"); return record; });
   if (!membership?.child.parentId) throw new Error("Need an active school student with a parent");
 
   const school = await prisma.school.findUnique({
     where: { id: membership.schoolId },
     select: { id: true, name: true },
-  });
+  }).then(record => { if (!record) throw new Error("Required school fixture is missing"); return record; });
   if (!school) throw new Error("Need a school");
 
   const teacherUser = await prisma.user.create({

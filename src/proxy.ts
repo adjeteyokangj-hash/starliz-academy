@@ -103,7 +103,7 @@ async function hasChildSelection(request: NextRequest, expectedUserId: string): 
   }
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   // Development-only playground has no learner records or achievement writes.
   if (process.env.NODE_ENV === "development" && ["/dev/coding", "/api/dev/coding-preview"].includes(pathname)) {
@@ -184,6 +184,13 @@ export async function middleware(request: NextRequest) {
     return withSecurityHeaders(response);
   };
 
+  // Eligible navigation must validate and rotate its refresh token before the
+  // final admin/publication gate. Possession of a refresh cookie grants no access.
+  if (!authenticated && !isPublic && shouldAttemptRefresh) {
+    const next = `${pathname}${request.nextUrl.search}`;
+    return finalize(NextResponse.redirect(new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url)));
+  }
+
   // Platform admin gate (Next.js request interceptor): hard-redirect before any admin UI.
   const adminGate = resolvePlatformAdminGate({
     pathname,
@@ -197,11 +204,6 @@ export async function middleware(request: NextRequest) {
   if (!authenticated && !isPublic) {
     if (pathname.startsWith("/api/")) {
       return finalize(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
-    }
-    if (shouldAttemptRefresh) {
-      const next = `${pathname}${request.nextUrl.search}`;
-      const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
-      return finalize(NextResponse.redirect(refreshTarget));
     }
     return finalize(NextResponse.redirect(new URL("/auth/login", request.url)));
   }

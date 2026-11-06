@@ -14,7 +14,7 @@ import { toExpandedCodingDashboardLessons } from "../src/lib/coding/dashboard-le
 import type { Execution, PracticalArtifact } from "../src/lib/coding/learning/types";
 
 const step = (id: string) => beginnerTracks.flatMap(track => track.steps).find(item => item.id === id)!;
-const python = (source: string): PracticalArtifact => ({ type: "source", language: "python", entry: "console", source });
+const python = (source: string): Extract<PracticalArtifact, { type: "source" }> => ({ type: "source", language: "python", entry: "console", source });
 const run = (stdout: string, output: Execution["output"] = {}): Execution => ({ ok: true, stdout, output, stderr: "", trace: [], runtime: "isolated-result-fixture", steps: 1 });
 
 test("web drafts copy forward once, preserve existing downstream drafts and survive reload/legacy storage", () => {

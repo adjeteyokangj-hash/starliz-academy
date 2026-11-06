@@ -1,11 +1,15 @@
-# BEGIN Coding verification checkout byte preservation
-# Match the verified native source bytes on Windows and Linux checkouts.
+# Coding verification hashes actual working bytes. Preserve their verified EOLs
+# consistently on Windows and Linux; mixed-EOL inputs remain exact binary blobs.
+"artifacts/coding-consolidated-final-2026-11-03/inventory.json" text eol=lf
+"docs/coding-curriculum/verification/**" text eol=lf
 "package-lock.json" text eol=lf
 "package.json" text eol=lf
 "prisma/schema.prisma" text eol=crlf
+"scripts/coding/verify-curriculum-runtime.ts" text eol=lf
+"scripts/coding/verify-runtime-checkout.ts" text eol=lf
+"services/coding-runner/container.mjs" text eol=lf
 "services/coding-runner/Dockerfile.dom" text eol=lf
 "services/coding-runner/Dockerfile.media" text eol=lf
-"services/coding-runner/container.mjs" text eol=lf
 "services/coding-runner/local-dev-server.mjs" text eol=lf
 "services/coding-runner/local-media-server.mjs" text eol=lf
 "services/coding-runner/media-container.mjs" text eol=lf
@@ -15,13 +19,18 @@
 "services/coding-runner/reap-expired.mjs" text eol=lf
 "services/coding-runner/server.mjs" text eol=lf
 "services/coding-runner/supabase-gateway.mjs" text eol=lf
+"src/app/admin/(secure)/coding/page.tsx" text eol=crlf
+"src/app/admin/(secure)/coding/preview/\\[lessonId\\]/page.tsx" text eol=lf
+"src/app/admin/(secure)/coding/workbench/\\[activityId\\]/page.tsx" text eol=lf
 "src/app/api/admin/coding/access/route.ts" text eol=lf
 "src/app/api/admin/coding/curriculum/route.ts" text eol=lf
 "src/app/api/admin/coding/execution/route.ts" text eol=lf
 "src/app/api/admin/coding/preview/\\[lessonId\\]/route.ts" text eol=lf
 "src/app/api/admin/coding/settings/route.ts" text eol=lf
 "src/app/api/admin/coding/workbench/\\[activityId\\]/route.ts" text eol=lf
+"src/app/api/auth/refresh/route.ts" text eol=lf
 "src/app/api/coach/route.ts" text eol=crlf
+"src/app/api/dev/coding-preview/route.ts" -text
 "src/app/api/parent/coding/demonstrations/route.ts" text eol=lf
 "src/app/api/parent/coding/route.ts" text eol=crlf
 "src/app/api/student/coding/activities/\\[activityId\\]/route.ts" text eol=lf
@@ -30,16 +39,21 @@
 "src/app/api/student/coding/demonstrations/route.ts" text eol=lf
 "src/app/api/student/coding/evidence/route.ts" text eol=lf
 "src/app/api/student/coding/lessons/\\[lessonId\\]/route.ts" text eol=crlf
+"src/app/api/student/coding/next/route.ts" text eol=lf
 "src/app/api/student/coding/placement/route.ts" text eol=crlf
 "src/app/api/student/coding/portfolio/route.ts" text eol=lf
 "src/app/api/student/coding/readiness/\\[planId\\]/\\[activityId\\]/route.ts" text eol=lf
 "src/app/api/student/coding/readiness/route.ts" text eol=lf
 "src/app/api/student/coding/route.ts" text eol=crlf
 "src/app/api/teacher/coding/route.ts" text eol=crlf
+"src/app/dev/coding/page.tsx" -text
+"src/app/globals.css" -text
+"src/app/school-admin/coding/page.tsx" -text
 "src/app/student/coding/\\[lessonId\\]/page.tsx" text eol=crlf
 "src/app/student/coding/activities/\\[activityId\\]/page.tsx" text eol=lf
 "src/app/student/coding/page.tsx" text eol=crlf
 "src/app/student/coding/readiness/\\[planId\\]/\\[activityId\\]/page.tsx" text eol=lf
+"src/app/teacher/coding/page.tsx" text eol=crlf
 "src/components/coding/ActivityLoader.tsx" text eol=lf
 "src/components/coding/BlockCommandsEditor.tsx" text eol=lf
 "src/components/coding/ClassifierExecution.tsx" text eol=lf
@@ -47,7 +61,10 @@
 "src/components/coding/CodingAssistanceSettings.tsx" text eol=lf
 "src/components/coding/CodingHome.tsx" text eol=crlf
 "src/components/coding/CodingLessonWorkspace.tsx" text eol=lf
+"src/components/coding/CodingNextStep.tsx" text eol=lf
 "src/components/coding/CodingPlanAccess.tsx" text eol=lf
+"src/components/coding/CodingPlayground.module.css" -text
+"src/components/coding/CodingPlayground.tsx" -text
 "src/components/coding/CodingProgressPanel.tsx" text eol=crlf
 "src/components/coding/CodingProjectReplay.tsx" text eol=lf
 "src/components/coding/CodingStudioFrame.tsx" text eol=lf
@@ -67,6 +84,7 @@
 "src/components/coding/EvidenceSelection.tsx" text eol=lf
 "src/components/coding/EvidenceStudio.tsx" text eol=lf
 "src/components/coding/FixtureServiceExecution.tsx" text eol=lf
+"src/components/coding/FunctionCodeGuide.tsx" -text
 "src/components/coding/GameState.tsx" text eol=lf
 "src/components/coding/GameStudio.tsx" text eol=lf
 "src/components/coding/InvestigationExecution.tsx" text eol=lf
@@ -102,18 +120,22 @@
 "src/components/coding/StateTransitionDiagram.tsx" text eol=lf
 "src/components/coding/StoryCharacter.tsx" text eol=lf
 "src/components/coding/StoryExecution.tsx" text eol=lf
+"src/components/coding/SyntaxGuide.tsx" text eol=lf
 "src/components/coding/SystemsExecution.tsx" text eol=lf
 "src/components/coding/SystemsStudio.tsx" text eol=lf
 "src/components/coding/TeacherActivityDesk.tsx" text eol=lf
 "src/components/coding/TeacherCodingDesk.tsx" text eol=crlf
 "src/components/coding/VisualProgramEditor.tsx" text eol=lf
+"src/components/coding/VisualReviewPanel.tsx" text eol=lf
 "src/components/coding/WebInspection.tsx" text eol=lf
+"src/components/layout/StoreBootstrap.tsx" text eol=crlf
 "src/lib/activeChild.ts" text eol=crlf
+"src/lib/admin-auth-gate.ts" text eol=lf
 "src/lib/admin-permissions.ts" text eol=crlf
-"src/lib/api-key-config.ts" text eol=crlf
 "src/lib/api_guard.ts" text eol=lf
-"src/lib/auth.ts" text eol=crlf
+"src/lib/api-key-config.ts" text eol=crlf
 "src/lib/auth_sessions.ts" text eol=crlf
+"src/lib/auth.ts" text eol=crlf
 "src/lib/coach/context-injectors.ts" text eol=crlf
 "src/lib/coach/db-helpers.ts" text eol=crlf
 "src/lib/coach/engine.ts" text eol=crlf
@@ -136,7 +158,9 @@
 "src/lib/coding/curriculum/prediction.ts" text eol=lf
 "src/lib/coding/curriculum/registry.ts" text eol=lf
 "src/lib/coding/curriculum/route-engine.ts" text eol=lf
+"src/lib/coding/dashboard-access.ts" text eol=lf
 "src/lib/coding/dashboard-lessons.ts" text eol=lf
+"src/lib/coding/development-surface.ts" text eol=lf
 "src/lib/coding/draft-validation.ts" text eol=crlf
 "src/lib/coding/editor.ts" text eol=crlf
 "src/lib/coding/execution/client.ts" text eol=lf
@@ -144,10 +168,12 @@
 "src/lib/coding/independent-challenge.ts" text eol=lf
 "src/lib/coding/learning/author-preview.ts" text eol=lf
 "src/lib/coding/learning/authoring.ts" text eol=lf
+"src/lib/coding/learning/beginner-playground.ts" -text
 "src/lib/coding/learning/bridge-context.ts" text eol=lf
 "src/lib/coding/learning/catalogue.ts" text eol=lf
 "src/lib/coding/learning/checks.ts" text eol=lf
 "src/lib/coding/learning/classifier-contract.ts" text eol=lf
+"src/lib/coding/learning/code-guidance.ts" text eol=lf
 "src/lib/coding/learning/completion.ts" text eol=lf
 "src/lib/coding/learning/content/ai-suggestion-check.ts" text eol=lf
 "src/lib/coding/learning/content/algorithm-evaluation-lessons.ts" text eol=lf
@@ -311,15 +337,21 @@
 "src/lib/coding/learning/evidence-engine.ts" text eol=lf
 "src/lib/coding/learning/evidence-links.ts" text eol=lf
 "src/lib/coding/learning/explanation-evidence.ts" text eol=lf
+"src/lib/coding/learning/extended-review.ts" text eol=lf
 "src/lib/coding/learning/game-engine.ts" text eol=lf
 "src/lib/coding/learning/investigation-engine.ts" text eol=lf
 "src/lib/coding/learning/media-library.ts" text eol=lf
 "src/lib/coding/learning/owned-evidence.ts" text eol=lf
 "src/lib/coding/learning/parent-portfolio.ts" text eol=lf
 "src/lib/coding/learning/personal-input.ts" text eol=lf
+"src/lib/coding/learning/playground-assessment.ts" text eol=lf
+"src/lib/coding/learning/playground-drafts.ts" text eol=lf
 "src/lib/coding/learning/public-view.ts" text eol=lf
+"src/lib/coding/learning/publication-summary.ts" text eol=lf
 "src/lib/coding/learning/readiness.ts" text eol=lf
 "src/lib/coding/learning/request.ts" text eol=lf
+"src/lib/coding/learning/review-contracts.ts" text eol=lf
+"src/lib/coding/learning/review-material.ts" text eol=lf
 "src/lib/coding/learning/runtime-pins.json" text eol=lf
 "src/lib/coding/learning/runtime.ts" text eol=lf
 "src/lib/coding/learning/saved-evidence-contract.ts" text eol=lf
@@ -329,6 +361,7 @@
 "src/lib/coding/learning/stage-files.ts" text eol=lf
 "src/lib/coding/learning/state-diagram-contract.ts" text eol=lf
 "src/lib/coding/learning/state-machine.ts" text eol=lf
+"src/lib/coding/learning/structured-review.ts" text eol=lf
 "src/lib/coding/learning/studio-engines.ts" text eol=lf
 "src/lib/coding/learning/systems-contract.ts" text eol=lf
 "src/lib/coding/learning/systems-engine.ts" text eol=lf
@@ -339,9 +372,11 @@
 "src/lib/coding/learning/upload-origin.ts" text eol=lf
 "src/lib/coding/learning/visual-events.ts" text eol=lf
 "src/lib/coding/learning/visual-machine.ts" text eol=lf
+"src/lib/coding/learning/visual-review.ts" text eol=lf
 "src/lib/coding/learning/visual-workspace.ts" text eol=lf
 "src/lib/coding/learning/workspace-store.ts" text eol=lf
 "src/lib/coding/model-tutor.ts" text eol=lf
+"src/lib/coding/next-step.ts" text eol=lf
 "src/lib/coding/placement.ts" text eol=crlf
 "src/lib/coding/project-evidence.ts" text eol=lf
 "src/lib/coding/rewards.ts" text eol=crlf
@@ -360,9 +395,8 @@
 "src/lib/schools/licensing.ts" text eol=lf
 "src/lib/schools/short-learning-bookings.ts" text eol=crlf
 "src/lib/schools/support-eligibility.ts" text eol=crlf
+"src/lib/student-learning-brain/dashboard-shell.ts" text eol=crlf
 "src/lib/subscriptions/enforcement.ts" text eol=lf
 "src/lib/subscriptions/learning-access.ts" text eol=crlf
+"src/proxy.ts" text eol=lf
 "supabase/functions/coding-execution/index.js" text eol=lf
-"docs/coding-curriculum/verification/**" text eol=lf
-"artifacts/coding-consolidated-final-2026-11-03/inventory.json" text eol=lf
-# END Coding verification checkout byte preservation

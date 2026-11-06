@@ -18,5 +18,5 @@ test("portal totals distinguish authored content, local publication, prerequisit
     assert.equal(production.authored, 440); assert.equal(production.published, 0); assert.equal(production.initiallyEligible, 0);
     assert(production.pathways.every(pathway => pathway.published === 0));
     assert(production.legacy.some(lesson => lesson.id === "understanding-loops"));
-  } finally { if (previous === undefined) delete process.env.NODE_ENV; else Object.assign(process.env, { NODE_ENV: previous }); }
+  } finally { if (previous === undefined) Reflect.deleteProperty(process.env, "NODE_ENV"); else Object.assign(process.env, { NODE_ENV: previous }); }
 });

@@ -90,7 +90,7 @@ test("child entry no longer clears parent unlock cookie", () => {
 });
 
 test("middleware only clears parent unlock on profiles re-entry", () => {
-  const source = readFileSync(join(process.cwd(), "middleware.ts"), "utf8");
+  const source = readFileSync(join(process.cwd(), "src/proxy.ts"), "utf8");
   assert.match(source, /pathname\.startsWith\("\/parent\/profiles"\)/);
   assert.doesNotMatch(
     source,

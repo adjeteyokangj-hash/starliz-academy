@@ -236,7 +236,7 @@ export const expectedActivityCounts = { lessons: 264, consolidations: 132, proje
 
 export type ReleaseSeal = { version: string; runtimeHash: string; activities: Record<string, string>; verificationRun: string; publicationScope?: string };
 /** Content approval for local learning cannot authorise a production release. */
-export function publicationScopeAllowed(seal: ReleaseSeal, environment = process.env.NODE_ENV): boolean {
+export function publicationScopeAllowed(seal: ReleaseSeal, environment: string | undefined = process.env.NODE_ENV): boolean {
   return seal.publicationScope === "production" || seal.publicationScope === "development" && environment === "development";
 }
 export function validateReleaseSeal(seal: ReleaseSeal, runtimeHash: string, activities = authoredActivities): boolean {

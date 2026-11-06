@@ -18,10 +18,10 @@ for (const line of readFileSync(".env.local", "utf8").split(/\r?\n/)) {
 type Check = { name: string; ok: boolean; detail?: string };
 
 async function main() {
-  const dbMod = await import("../src/lib/db.ts");
-  const prisma = dbMod.default?.prisma ?? dbMod.prisma;
-  const authMod = await import("../src/lib/auth.ts");
-  const auth = authMod.default ?? authMod;
+  const dbMod = await import("../src/lib/db");
+  const prisma = dbMod.prisma;
+  const authMod = await import("../src/lib/auth");
+  const auth = authMod;
 
   const BASE = process.env.UAT_BASE_URL ?? "http://localhost:3000";
   const stamp = Date.now().toString(36);

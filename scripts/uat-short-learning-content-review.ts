@@ -108,7 +108,7 @@ async function main() {
         },
       },
     },
-  });
+  }).then(record => { if (!record) throw new Error("Required membership fixture is missing"); return record; });
   if (!membership) throw new Error("UAT requires an active school student with a parent.");
 
   const teacher = await prisma.user.findFirst({
@@ -120,7 +120,7 @@ async function main() {
   const school = await prisma.school.findUnique({
     where: { id: membership.schoolId },
     select: { id: true, name: true },
-  });
+  }).then(record => { if (!record) throw new Error("Required school fixture is missing"); return record; });
   if (!school) throw new Error("UAT school not found.");
 
   const superCookie = await cookieFor(superAdmin);

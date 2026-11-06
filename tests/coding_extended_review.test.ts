@@ -100,7 +100,7 @@ test("source mastery reruns evidence, preserves timing replay and rejects invali
   const retryReview = visualReview(retryActivity, reference, firstRun, ownership)!; assert(retryReview);
   const independent = initialActivityState(retryActivity); independent.stage = 'review'; independent.completed = ['discover','predict','build','practise','debug','create']; independent.artifacts.create = reference;
   let freshRuns = 0;
-  const outcome = await transitionActivity(retryActivity, independent, { action: 'reflect', stage: 'review', explanation: JSON.stringify({ type: 'visual-review-v1', binding: retryReview.public.binding, answers: retryReview.correct }) }, {
+  const outcome = await transitionActivity(retryActivity, independent, { action: 'reflect', stage: 'review', revision: "source-replay-review", explanation: JSON.stringify({ type: 'visual-review-v1', binding: retryReview.public.binding, answers: retryReview.correct }) }, {
     run: async (workbench, artifact, input) => { freshRuns++; return executePractical(workbench, artifact, input, (source, data) => executeSource(source, data, executor ??= streamIsolatedExecutor(`${directory}/jobs.jsonl`))); },
     teach: deps.teach, reflect: async (...args) => checkVisualReview(...args, ownership),
   });

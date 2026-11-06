@@ -147,7 +147,7 @@ test("external discovery and monitoring routes bypass browser-session middleware
   assert.equal(isExternalApiRoute("/api/external/v1/deployments"), true);
   assert.equal(isExternalApiRoute("/api/admin/settings"), false);
 
-  const mw = read("middleware.ts");
+  const mw = read("src/proxy.ts");
   assert.match(mw, /isExternalApiRoute\(pathname\)/);
 });
 
