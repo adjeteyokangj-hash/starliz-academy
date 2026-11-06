@@ -1,8 +1,8 @@
 {
   "version": "starliz-coding-2026.11-v1",
   "publicationScope": "development",
-  "runtimeHash": "233832c551925b30116add8a59d3f12edc6f80758cbb93254701a5372684eba0",
-  "verificationRun": "docs/coding-curriculum/verification/local-approval-2026-11-06T15-12-41-315Z",
+  "runtimeHash": "5c46fb33d82172efd9376390405335701d68c0093574d0699d69e4326cff86b1",
+  "verificationRun": "docs/coding-curriculum/verification/local-approval-2026-11-06T16-56-49-117Z",
   "activities": {
     "what-is-an-instruction": "5ad54503a077a24517a972ce2d3614d7da4153a76cc2f5405974635c77ea3c8f",
     "put-steps-in-order": "9c540767972d793a0846b773ea4f2252d21c336b7165461f274d9ded3aef6de8",

@@ -323,7 +323,7 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
   const nextTitle = workspace.lesson.stages.find(item => item.stage === nextStage)?.title;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-[1440px] space-y-5 rounded-3xl bg-slate-50 px-4 py-6 text-slate-900 sm:px-6">
+    <div data-coding-year={4} className="mx-auto w-full min-w-0 max-w-none space-y-5 rounded-3xl bg-slate-50 px-4 py-6 text-slate-900 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <Link href="/student/coding" className="text-xs font-bold uppercase tracking-wide text-sky-700">Coding</Link>
