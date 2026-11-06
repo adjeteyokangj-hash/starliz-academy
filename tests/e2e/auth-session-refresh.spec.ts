@@ -70,10 +70,14 @@ test.describe("Auth/session refresh continuity", () => {
     expect((await page.request.post("/api/children/active", { data: { childId: scenario.child.id } })).status()).toBe(200);
     const selection = (await page.context().cookies()).find(cookie => cookie.name === "starliz_child_selection")?.value;
     expect(selection).toBeTruthy();
+    await page.goto("/parent/dashboard");
+    const billing = page.getByRole("link", { name: "Billing", exact: true }).first();
+    await expect(billing).toBeVisible();
     const previous = await expiredAccess(page, scenario);
-    const response = await page.request.get("/parent/billing", { headers: { RSC: "1", Accept: "text/x-component" } });
-    expect(response.status()).toBe(200); expect(new URL(response.url()).pathname).toBe("/parent/billing");
-    expect(response.headers()["content-type"]).toContain("text/x-component");
+    const rscRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/parent/billing" && request.headers().rsc === "1");
+    await billing.click(); await rscRequest;
+    await expect(page).toHaveURL(url => url.pathname === "/parent/billing");
+    await expect(page.getByRole("heading", { name: "Billing", exact: true })).toBeVisible();
     await expectValidAccess(page, previous, scenario.parent);
     expect((await page.context().cookies()).find(cookie => cookie.name === "starliz_child_selection")?.value).toBe(selection);
     const active = await page.request.get("/api/children/active"); expect((await active.json()).child.id).toBe(scenario.child.id);

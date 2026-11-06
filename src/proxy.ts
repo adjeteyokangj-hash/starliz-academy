@@ -109,9 +109,9 @@ export async function proxy(request: NextRequest) {
   if (process.env.NODE_ENV === "development" && ["/dev/coding", "/api/dev/coding-preview"].includes(pathname)) {
     return withSecurityHeaders(NextResponse.next());
   }
-  const isPrefetch = request.headers.get("purpose") === "prefetch" || request.headers.has("next-router-prefetch");
-  const acceptsHtml = request.headers.get("accept")?.includes("text/html") ?? false;
-  const isDocumentNavigation = request.headers.get("sec-fetch-mode") === "navigate" || acceptsHtml;
+  const isPrefetch = request.headers.get("purpose") === "prefetch"
+    || request.headers.get("sec-purpose")?.includes("prefetch") === true
+    || request.headers.has("next-router-prefetch");
 
   // External API routes authenticate via Authorization: Bearer (generated StarLiz keys).
   // Do not require a browser session here — the route guard enforces key/scope checks.
@@ -149,15 +149,14 @@ export async function proxy(request: NextRequest) {
   const session = await getSessionPayload(request);
   const authenticated = session !== null;
   const hasRefreshToken = Boolean(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
-  // Soft App Router navigations (RSC) often omit sec-fetch-mode=navigate; still refresh
-  // when a refresh cookie exists so active users are not bounced to login.
-  const isSoftNavigation = request.headers.has("rsc") || request.headers.has("next-router-state-tree");
+  // Next 16 strips Flight headers before Proxy. Protected document and RSC GETs
+  // must share this flow; neither HTML Accept nor hidden RSC headers identify both.
+  // The refresh endpoint, not possession of its cookie, validates the session.
   const shouldAttemptRefresh =
     hasRefreshToken
     && request.method === "GET"
     && !isPrefetch
-    && !pathname.startsWith("/api/")
-    && (isDocumentNavigation || isSoftNavigation);
+    && !pathname.startsWith("/api/");
   const adminLoginTarget = request.nextUrl.searchParams.get("next")?.startsWith("/admin") ?? false;
   const shouldClearParentUnlock = Boolean(
     request.cookies.get(PARENT_UNLOCK_COOKIE)?.value

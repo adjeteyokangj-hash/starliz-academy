@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { SHORT_LEARNING_ALLOWED_DURATIONS, SHORT_LEARNING_LEGACY_DURATIONS } from "../src/lib/schools/short-learning-constants";
 import {
   formatUkDateTime,
   formatUkTime,
@@ -89,13 +90,13 @@ test("child entry no longer clears parent unlock cookie", () => {
   assert.doesNotMatch(source, /getParentUnlockCookieName\(\),\s*""/);
 });
 
-test("middleware only clears parent unlock on profiles re-entry", () => {
+test("proxy clears retired parent unlock cookies without reinstating a PIN gate", () => {
   const source = readFileSync(join(process.cwd(), "src/proxy.ts"), "utf8");
-  assert.match(source, /pathname\.startsWith\("\/parent\/profiles"\)/);
-  assert.doesNotMatch(
-    source,
-    /pathname\.startsWith\("\/parent\/profiles"\) \|\| !pathname\.startsWith\("\/parent"\)/,
-  );
+  assert.match(source, /Always clear legacy unlock cookie/);
+  assert.match(source, /session\?\.role === "parent"/);
+  assert.match(source, /response\.cookies\.set\(PARENT_UNLOCK_COOKIE, "",/);
+  assert.match(source, /maxAge: 0/);
+  assert.doesNotMatch(source, /hasParentUnlock|intent=parent&next=/);
 });
 
 test("booking API treats subject as optional and returns resolved subject", () => {
@@ -118,8 +119,11 @@ test("parent panel defaults subject to Let StarLiz choose and keeps honesty chec
   assert.match(panel, /honestyAcknowledged/);
   assert.match(panel, /formatUkDateTimeShort|formatUkTime/);
   assert.match(panel, /no cancellation fee/i);
-  assert.match(panel, /value=\{90\}/);
-  assert.match(panel, /value=\{120\}/);
+  assert.match(panel, /SHORT_LEARNING_ALLOWED_DURATIONS\.map\(\(minutes\)/);
+  assert.match(panel, /<option key=\{minutes\} value=\{minutes\}/);
+  assert.deepEqual(SHORT_LEARNING_ALLOWED_DURATIONS, [45, 60, 70]);
+  assert.deepEqual(SHORT_LEARNING_LEGACY_DURATIONS, [90, 105, 120]);
+  assert.doesNotMatch(panel, /value=\{(?:90|105|120)\}/);
 });
 
 test("student short learning list uses UK datetime helper", () => {
