@@ -1,0 +1,86 @@
+{
+  "recordedAt": "2026-11-06T15:18:59.393Z",
+  "scope": "Supporting source checks observed before final clean-checkout CI; not a production approval",
+  "productionReady": false,
+  "sourceHead": "321a644193f66c307035f7a1da66b59493b5337f",
+  "activityHashesMatched": 440,
+  "practicalExecutionHash": "37fb829f383205db57e5a8ce5c2e9fdf075f80de33e853b3b678af47fc2797f8",
+  "runtimeHash": "233832c551925b30116add8a59d3f12edc6f80758cbb93254701a5372684eba0",
+  "practicalEvidenceReused": true,
+  "practicalProgramsRerun": false,
+  "prismaValidate": "passed locally and in CI",
+  "prismaGenerate": "passed locally and in CI",
+  "typecheck": {
+    "status": "passed",
+    "command": "npx tsc --noEmit --incremental false",
+    "ciRun": 42239878886,
+    "job": 127967819040
+  },
+  "lint": {
+    "status": "passed",
+    "maxWarnings": 0,
+    "ciRun": 42239878886
+  },
+  "unit": {
+    "passed": 183,
+    "failed": 0,
+    "conditionalSkipped": 1,
+    "skip": "DB-backed tutor-shift eligibility without shift/policy fixture"
+  },
+  "focused": {
+    "passed": 349,
+    "failed": 0,
+    "skipped": 0
+  },
+  "browser": {
+    "ciRun": 42239878886,
+    "passed": 21,
+    "failed": 1,
+    "cause": "RSC navigation reached Billing, but the heading selector matched h1 and h2; final correction selects the protected page h1. Original stale parent/admin assertions pass. Final full CI remains required."
+  },
+  "rscDirect": {
+    "status": "passed",
+    "realDisposableDatabase": true,
+    "automaticRefresh": true,
+    "manualRefreshBeforeNavigation": false,
+    "replacementJwtVerified": true,
+    "selectedChildRetained": true
+  },
+  "negativeControl": {
+    "baselineExit": 0,
+    "mutatedExit": 1,
+    "changedBytes": 1,
+    "file": "src/proxy.ts"
+  },
+  "normalBuild": {
+    "command": "npm run build",
+    "prebuildPassedLocally": true,
+    "compilationAndPageGeneration": "Require the final feature-branch CI result; receipt issuance does not establish build success"
+  },
+  "localLimitations": [
+    "Full local TypeScript attempt interrupted under memory pressure; clean CI full TypeScript passed.",
+    "Earlier local Chrome retries had cold-compilation/resource and disposable database pool failures; retained in local diagnostics."
+  ],
+  "finalCi": "https://github.com/adjeteyokangj-hash/starliz-academy/pull/2/checks",
+  "releaseSmoke": "Existing workflow_dispatch / CI_RELEASE_PROFILE opt-in unchanged; conditionally skipped on ordinary PR runs",
+  "reviewCoverage": {
+    "additional": 373,
+    "total": 422,
+    "scenarioRestricted": 12,
+    "remainingEvidenceGaps": 18
+  },
+  "preservation": {
+    "originalUntracked": 512,
+    "originalFilesHashMatched": 513,
+    "indexEmptyInOriginalWorktree": true
+  },
+  "checksums": {
+    "focused-all-final.log": "57e7fe1eb655e1f3b9104193ab401a25e70d1477a1474103ac3e5341944f88a0",
+    "unit-full.log": "b2d596890afbcf7867a21d82d074fa0a6693252f3185ee2364578172fb7dd2f9",
+    "auth-rsc-direct.log": "74bb87f9ae961c69d95ad4c5e75e2a19f49e648a586b6950dfba0b8c0edfab9c",
+    "checkout-before.json": "abda5c9aff9ab7b7ecbc18cbb6dddc7c91676836d8ae0d79b2ad848e57b467c7",
+    "lf-default-baseline.json": "061cdef028933b6a235e314681800fd683aaf7bb6dbe1d55de07eda50fe53ded",
+    "preseal-byte-policy.json": "b62e15de19b547b6e646c307ada95cd26db31655a022f8995eb4469a5ff26bb9"
+  },
+  "evidenceSerialization": "Text evidence stored as UTF-8 LF without extra blank EOF lines; inventories hash actual unnormalized source bytes. Raw local diagnostic logs remain preserved separately."
+}

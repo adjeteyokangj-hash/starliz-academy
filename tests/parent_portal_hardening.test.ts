@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { SHORT_LEARNING_ALLOWED_DURATIONS } from "../src/lib/schools/short-learning-constants";
 
 test("parent Short Learning booking statuses are labelled for parents", () => {
   const source = readFileSync(join(process.cwd(), "src/components/parent/ParentShortLearningPanel.tsx"), "utf8");
@@ -9,8 +10,8 @@ test("parent Short Learning booking statuses are labelled for parents", () => {
   assert.match(source, /Missed \(no-show\)/);
   assert.match(source, /Cancelled \(late\)/);
   assert.doesNotMatch(source, /105/);
-  assert.match(source, /value=\{90\}/);
-  assert.match(source, /value=\{120\}/);
+  assert.match(source, /SHORT_LEARNING_ALLOWED_DURATIONS\.map/);
+  assert.deepEqual([...SHORT_LEARNING_ALLOWED_DURATIONS], [45, 60, 70]);
   assert.match(source, /no cancellation fee/i);
 });
 
@@ -48,7 +49,7 @@ test("active child switch rotates child-selection cookie", () => {
 });
 
 test("parent messages omit actorUserId from parent-facing payload", () => {
-  const source = readFileSync(join(process.cwd(), "src/app/api/parent/messages/route.ts"), "utf8");
+  const source = readFileSync(join(process.cwd(), "src/app/api/parent/messages/route-helpers.ts"), "utf8");
   // Mapping to client payload must not include actorUserId
   assert.match(source, /body: m\.body,/);
   assert.doesNotMatch(source, /actorUserId: m\.actorUserId/);

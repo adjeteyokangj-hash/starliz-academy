@@ -1,5 +1,79 @@
 @import "tailwindcss";
 
+/* Coding Studio: editor-first layout; output panels always retain independent state. */
+.coding-studio { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.studio-learning, .studio-editor, .studio-results { min-width: 0; }
+.studio-learning { overflow: hidden; border: 1px solid #e4def1; border-radius: 1rem; background: white; }
+.studio-guide-content { display: grid; gap: 1rem; padding: .75rem; }
+.studio-guide-content > section, .studio-guide-content > details > section { border: 0; box-shadow: none; padding: 1rem; }
+.studio-panel-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid #e4def1; border-radius: 1rem 1rem 0 0; background: white; }
+.studio-panel-bar h2 { font-size: .875rem; font-weight: 750; color: #382b60; }
+.coding-studio .text-xs { font-size: .875rem; line-height: 1.5; }
+.coding-studio .text-slate-400 { color: #64748b; }
+.coding-studio-early .text-sm, .coding-studio-early .text-xs { font-size: 1rem; line-height: 1.55; }
+.coding-studio-early button, .coding-studio-early summary, .coding-studio-early select { min-height: 48px; }
+.studio-panel-bar h2 { font-size: 1rem; }
+.studio-results { display: grid; gap: 1rem; }
+.studio-results > * { margin-top: 0 !important; }
+.studio-results > section { padding: 12px; }
+.studio-results > section[data-lesson-example] { padding: 0; }
+.studio-results > section h2 { font-size: 1.125rem; }
+.studio-results svg[role="img"] { max-height: 200px; }
+.studio-results [aria-label="Lesson example output"], .studio-results [aria-label="Program output"] { width: min(100%, 200px); margin-inline: auto; }
+.studio-results pre { max-height: 200px; }
+.studio-example-source[open] { max-height: 240px; overflow: auto; }
+.studio-tutor-expanded details[data-studio-tutor] { position: fixed; top: 76px; right: 24px; z-index: 60; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 100px); overflow-y: auto; background: #faf8ff; box-shadow: 0 16px 70px #25203d44; border: 1px solid #bca7e7; border-radius: 16px; }
+.studio-tutor-expanded .studio-learning { z-index: 60; }
+.studio-tutor-expanded details[data-studio-tutor] > summary { padding-right: 130px; background: #eee7fb; font-size: 1rem; }
+.studio-tutor-expanded details[data-studio-tutor] textarea { min-height: 150px; font-size: 1rem; }
+.studio-tutor-expanded details[data-studio-tutor] p { font-size: 1rem; line-height: 1.65; }
+.studio-tutor-close { position: fixed; top: 84px; right: 36px; z-index: 61; }
+.coding-block-editor .blocklyToolbox { min-width: 128px; background: #f0edf8; }
+.coding-block-editor .blocklyToolboxCategory { min-height: 46px; padding: 10px; }
+.coding-block-editor .blocklyToolboxCategoryLabel { font-size: 15px; font-weight: 650; color: #332852; }
+.studio-stage-nav > button { font-size: .875rem; }
+[data-coding-year] > header .text-xs { font-size: .875rem; }
+[data-coding-year="1"] > header p, [data-coding-year="2"] > header p { font-size: 1rem; }
+.studio-output-size { display: none; }
+.studio-brand-mark { display: inline-block; width: 3.5rem; height: 3.5rem; flex-shrink: 0; background: white url('/brand/starliz-logo.png') center/contain no-repeat; }
+.coding-studio-compact .studio-guide-content { display: none; }
+.coding-studio-compact .studio-learning { grid-column: 1 / -1; position: static; max-height: none; }
+.blocklySvg { background: #faf8ff !important; }
+.blocklyToolbox { font-family: "Segoe UI", Arial, sans-serif; }
+.cm-runtime-error { background: #632d3c66; border-left: 3px solid #fda4af; }
+@media (max-width: 759px) {
+  .studio-stage-nav { display: flex; overflow-x: auto; padding-bottom: .5rem; }
+  .studio-stage-nav > button { flex: 0 0 auto; min-width: 88px; }
+  .coding-block-editor .blocklyToolbox { min-width: 94px; }
+  .coding-block-editor .blocklyToolboxCategory { padding: 8px 5px; }
+  .coding-block-editor .blocklyToolboxCategoryLabel { font-size: 14px; }
+  .studio-tutor-expanded details[data-studio-tutor] { top: 16px; right: 16px; max-height: calc(100dvh - 32px); }
+  .studio-tutor-close { top: 24px; right: 28px; }
+}
+@media (min-width: 760px) and (max-width: 1199px) {
+  .coding-studio { grid-template-columns: 235px minmax(0, 1fr); }
+  .studio-results { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .studio-results > * { margin-top: 0 !important; }
+  .coding-studio-compact { grid-template-columns: minmax(0, 1fr); }
+}
+@media (min-width: 1200px) {
+  .coding-studio { grid-template-columns: 230px minmax(0, 1fr) 320px; }
+  .coding-studio-compact { grid-template-columns: minmax(0, 1fr) 320px; }
+  .studio-results { position: sticky; top: 1rem; }
+  .studio-results > section { max-height: 360px; overflow-y: auto; scrollbar-gutter: stable; }
+  .studio-learning { position: sticky; top: 1rem; max-height: calc(100dvh - 2rem); display: flex; flex-direction: column; overflow: hidden; }
+  .studio-learning > .studio-panel-bar { flex-shrink: 0; }
+  .studio-learning > .studio-guide-content { min-height: 0; overflow-y: auto; }
+}
+@media (min-width: 1400px) {
+  .coding-studio { grid-template-columns: 240px minmax(0, 1fr) var(--studio-results, 500px); }
+  .coding-studio-compact { grid-template-columns: minmax(0, 1fr) var(--studio-results, 500px); }
+  .studio-results { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .studio-output-size { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; min-height: 2.75rem; }
+  .studio-results > section { max-height: min(650px, calc(100dvh - 5rem)); }
+}
+@media (prefers-reduced-motion: reduce) { .coding-studio * { scroll-behavior: auto; } }
+
 :root {
   --font-body: "Segoe UI", Arial, sans-serif;
   --font-heading: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
@@ -522,3 +596,90 @@ body::after {
 .app-splash-dot-3 {
   animation-delay: 200ms;
 }
+
+/* Refined comparison panels: readable cards, restrained surfaces and consistent rhythm. */
+.studio-results { gap: 16px; align-items: start; }
+.studio-output-size { padding: 4px 2px 10px; color: #504a63; font-size: 13px; }
+.studio-output-size input { width: 88px; height: 4px; accent-color: #7052d6; cursor: ew-resize; }
+.studio-results > section { border: 1px solid #e2e5ed; border-radius: 16px; background: #fff; box-shadow: 0 2px 4px #26324a04, 0 8px 24px #26324a05; }
+.studio-results > section h2 { font-size: 16px; font-weight: 700; line-height: 1.4; letter-spacing: -.025em; color: #252139; }
+.studio-reference > div:first-child { padding: 20px; border-color: #eceaf3; background: linear-gradient(135deg, #f7f5ff, #fff); }
+.studio-reference > div:first-child > div { flex-wrap: wrap; gap: 8px; }
+.studio-reference > div:first-child span { border: 1px solid #e6e1f1; border-radius: 6px; padding: 4px 7px; background: white; color: #756b89; font-size: 10px; line-height: 1.5; letter-spacing: .04em; white-space: nowrap; }
+.studio-reference > div:first-child p { margin-top: 10px; font-size: 13px; line-height: 1.65; color: #6c7284; }
+.studio-reference > div:nth-child(2) { padding: 20px; }
+.studio-reference button { border: 0; border-radius: 9px; background: #7052d6; box-shadow: 0 3px 6px #7052d61a; font-size: 13px; min-height: 42px; transition: background .15s; }
+.studio-reference button:hover { background: #5d40be; }
+.studio-reference button:disabled { cursor: not-allowed; }
+.studio-results .studio-example-source { padding: 10px 12px; border-color: #e7e9ef; border-radius: 9px; background: #fff; }
+.studio-results .studio-example-source summary { min-height: 24px; font-size: 12px; line-height: 24px; color: #525e73; }
+.studio-reference > div:nth-child(2) > p:last-child { padding: 18px; border-color: #ddd9ec; border-radius: 10px; background: #faf9fd; font-size: 13px; line-height: 1.75; color: #737087; }
+.studio-results > .studio-program { padding: 20px; }
+.studio-program > div:first-child { padding-bottom: 16px; border-bottom: 1px solid #eceef3; gap: 10px; }
+.studio-program > div:first-child > div > p { font-size: 10px; font-weight: 700; letter-spacing: .12em; line-height: 1.5; color: #408574; }
+.studio-program > div:first-child > span { padding: 4px 8px; border: 1px solid #e8ebef; border-radius: 6px; background: #f8fafb; font-size: 11px; }
+.studio-program > p[role="status"] { display: flex; align-items: flex-start; gap: 9px; padding: 12px; border: 1px solid #e8ebf1; border-radius: 9px; background: #f8fafc; font-size: 12px; line-height: 1.6; font-weight: 600; color: #4c586d; }
+.studio-program > p[role="status"]::before { content: ""; flex: 0 0 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: #8e9aaf; }
+.studio-program > .border-sky-200 { padding: 18px; border-color: #e2ecea; border-radius: 10px; background: #f5faf9; font-size: 13px; line-height: 1.75; color: #5f7972; }
+@media (min-width: 1400px) and (max-width: 1799px) { .studio-results { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 759px) { .studio-reference > div:first-child, .studio-reference > div:nth-child(2), .studio-results > .studio-program { padding: 16px; } }
+
+/* Keep lesson guidance readable and use the available coding-page width. */
+[data-coding-year] { max-width: none; }
+.coding-studio .studio-learning { position: static; max-height: none; overflow: visible; display: block; border-color: #d9cff4; box-shadow: 0 3px 16px #5d40be08; }
+.coding-studio .studio-learning > .studio-panel-bar { background: #f5f1ff; gap: 10px; }
+.coding-studio .studio-learning > .studio-panel-bar h2 { flex: 1 0 100%; color: #443078; }
+.coding-studio .studio-learning > .studio-panel-bar button { font-size: 12px; padding-inline: 10px; }
+.coding-studio .studio-learning > .studio-guide-content { overflow: visible; min-height: auto; padding: 8px; }
+.coding-studio .studio-guide-content > section:first-child { padding: 16px; }
+.coding-studio .studio-guide-content > section:first-child > p,
+.coding-studio .studio-guide-content > section:first-child > div { line-height: 1.75; }
+@media (min-width: 760px) and (max-width: 1599px) {
+  .coding-studio, .coding-studio.coding-studio-compact { grid-template-columns: minmax(0, 1fr) minmax(300px, 340px); }
+  .coding-studio .studio-learning { grid-column: 1 / -1; }
+  .coding-studio .studio-learning > .studio-panel-bar h2 { flex: 1; }
+  .coding-studio .studio-results { grid-column: auto; grid-template-columns: minmax(0, 1fr); }
+  .coding-studio .studio-results > section { max-height: none; }
+}
+@media (min-width: 1600px) {
+  .coding-studio { grid-template-columns: minmax(320px, 1fr) minmax(440px, 2.5fr) var(--studio-results, 500px); }
+  .coding-studio.coding-studio-compact { grid-template-columns: minmax(440px, 1fr) var(--studio-results, 500px); }
+  .coding-studio .studio-results { grid-template-columns: minmax(0, 1fr); }
+  .coding-studio .studio-results > section { max-height: none; }
+}
+@media (min-width: 1400px) and (max-width: 1599px) {
+  .coding-studio, .coding-studio.coding-studio-compact { grid-template-columns: minmax(440px, 1fr) var(--studio-results, 500px); }
+}
+
+/* Short reading blocks keep the lesson easy to scan. */
+.studio-lesson-brief .studio-brief-label { margin-bottom: 5px; font-size: 10px; font-weight: 700; letter-spacing: .12em; color: #78658f; }
+.studio-lesson-brief h2 { font-size: 20px; line-height: 1.35; }
+.studio-reading-points { display: grid; gap: 10px; margin-top: 14px; padding: 0; list-style: none; }
+.studio-reading-points li { position: relative; padding-left: 17px; font-size: 15px; line-height: 1.65; color: #46536a; }
+.studio-reading-points li::before { content: ""; position: absolute; left: 0; top: .65em; width: 5px; height: 5px; border-radius: 50%; background: #a594cb; }
+.studio-brief-tip { margin-top: 18px; padding: 14px 16px; border-left: 3px solid #e8c473; border-radius: 0 10px 10px 0; background: #fffaf0; }
+.studio-brief-tip h3 { font-size: 13px; font-weight: 700; color: #785a20; }
+.studio-brief-tip .studio-reading-points { margin-top: 8px; }
+.studio-lesson-brief > details { background: #fafbfc; }
+.studio-lesson-brief > details > summary { font-size: 14px; min-height: 28px; line-height: 28px; }
+.studio-lesson-brief > div > ol { font-size: 14px; line-height: 1.65; }
+/* Reusable language explanations in lessons and the practice playground. */
+.function-guide { margin-bottom: 20px; padding: 20px; border: 1px solid #ded6ee; border-radius: 14px; background: white; color: #3e3850; }
+.function-guide-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: #88719f; }
+.function-guide h3 { margin-top: 5px; font-size: 20px; font-weight: 700; }
+.function-guide p { margin-top: 10px; font-size: 14px; line-height: 1.75; }
+.function-guide .function-guide-prompt { font-size: 12px; color: #82758e; }
+.function-guide-lines { display: grid; gap: 4px; margin-top: 12px; padding: 8px; border-radius: 10px; background: #23243a; }
+.function-guide-lines button { display: flex; align-items: start; gap: 12px; min-height: 44px; padding: 10px; border: 1px solid transparent; border-radius: 6px; color: #e0daef; text-align: left; }
+.function-guide-lines button[aria-pressed=true] { border-color: #a58bd7; background: #39304d; }
+.function-guide-lines button > span { font-size: 12px; color: #a398b7; }
+.function-guide-lines code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.function-guide-explanation { padding: 14px; margin-top: 10px; background: #f6f2fc; border-radius: 9px; }
+.function-guide h4 { font-size: 14px; font-weight: 700; }
+.function-guide-predict { padding-block: 18px; }
+.function-guide-predict button { min-height: 44px; margin-top: 8px; color: #7651ad; font-size: 13px; font-weight: 700; }
+.function-guide details { border-top: 1px solid #ece6f3; padding-top: 12px; }
+.function-guide summary { cursor: pointer; padding-block: 8px; font-size: 14px; font-weight: 650; }
+.function-guide pre { margin-top: 12px; padding: 14px; background: #f5f5fa; border-radius: 8px; white-space: pre-wrap; font-size: 13px; }
+.function-guide-explanation pre { color: #252139; }
+.function-guide button:focus-visible,.function-guide summary:focus-visible { outline: 2px solid #8760c7; outline-offset: 2px; }

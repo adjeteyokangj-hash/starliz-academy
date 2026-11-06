@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import AdminSectionCard from "@/components/admin/AdminSectionCard";
-import type { BrainCentreDetailPayload, BrainDiagnosticIssue } from "@/app/api/admin/brain-centre/[studentId]/route";
+import type { BrainCentreDetailPayload, BrainDiagnosticIssue } from "@/app/api/admin/brain-centre/[studentId]/route-helpers";
 import { toBrainCentreFilterHref } from "@/lib/brain-centre/action-map";
 
 type Props = {

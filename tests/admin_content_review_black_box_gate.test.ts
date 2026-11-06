@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleAdminContentReviewPost } from "../src/app/api/admin/content/[id]/review/route";
+import { handleAdminContentReviewPost } from "../src/app/api/admin/content/[id]/review/route-helpers";
 
 type ReviewDeps = NonNullable<Parameters<typeof handleAdminContentReviewPost>[2]>;
 

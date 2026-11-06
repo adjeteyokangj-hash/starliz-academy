@@ -17,7 +17,7 @@ const bodySchema = z.discriminatedUnion("mode", [
 ]);
 
 type RouteContext = {
-  params: Promise<{ childId: string }> | { childId: string };
+  params: Promise<{ childId: string }>;
 };
 
 export async function POST(request: Request, context: RouteContext) {

@@ -52,7 +52,8 @@ function CoveragePlanner() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setView(normalizeView(searchParams.get("view")));
+    const sync = window.setTimeout(() => setView(normalizeView(searchParams.get("view"))), 0);
+    return () => window.clearTimeout(sync);
   }, [searchParams]);
 
   const load = useCallback(async () => {

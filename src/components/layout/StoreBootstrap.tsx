@@ -6,6 +6,7 @@ import Logo from "@/components/Logo";
 import { getProfile, hydrateActiveProfileFromServer, hydrateProfilesFromServer } from "@/lib/store";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import { decideStudentStoreBootstrap } from "@/lib/student-store-bootstrap";
+import { isDevelopmentCodingPlayground } from "@/lib/coding/development-surface";
 
 type Props = {
   children: React.ReactNode;
@@ -13,7 +14,8 @@ type Props = {
 
 function shouldSkipStoreBootstrap(pathname: string): boolean {
   return (
-    pathname.startsWith("/consent")
+    isDevelopmentCodingPlayground(pathname)
+    || pathname.startsWith("/consent")
     || pathname.startsWith("/privacy")
     || pathname.startsWith("/auth/")
     || pathname.startsWith("/admin")

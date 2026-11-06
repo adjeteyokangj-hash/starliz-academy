@@ -1,0 +1,1 @@
+ALTER TABLE "PricingPlan" ADD COLUMN "priceNote" TEXT;

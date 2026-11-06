@@ -1,0 +1,3 @@
+All 440 activity hashes and the runtime match this build. Publication scope: development; production acceptance is separate.
+(node:16036) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)

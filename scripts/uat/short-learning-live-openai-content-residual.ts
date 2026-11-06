@@ -317,8 +317,9 @@ async function main() {
     const partial = await ensureShortLearningSessionContent({
       bookingId: failureTargetId,
       forceRegenerate: true,
-      generateStage: flaky as never,
+      generateStage: flaky,
     });
+    if (!("blocks" in partial.session)) throw new Error("Expected generated session blocks in UAT response");
     check("Failed generation does not falsely become ready", partial.session.status !== "ready", `status=${partial.session.status}`);
     const failedBlocks = partial.session.blocks.filter((b) => b.status === "failed");
     check("Failed block identified", failedBlocks.length >= 1, `failed=${failedBlocks.length}`);
@@ -336,7 +337,7 @@ async function main() {
     const retry = await ensureShortLearningSessionContent({
       bookingId: failureTargetId,
       forceRegenerate: true,
-      generateStage: generateDaytimeStageWithOpenAi as never,
+      generateStage: generateDaytimeStageWithOpenAi,
     });
     check("Retry recovers failed session", retry.session.status === "ready", `status=${retry.session.status}`);
     check("Retry keeps one session row", true, retry.session.id);

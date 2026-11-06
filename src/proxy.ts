@@ -103,11 +103,15 @@ async function hasChildSelection(request: NextRequest, expectedUserId: string): 
   }
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isPrefetch = request.headers.get("purpose") === "prefetch" || request.headers.has("next-router-prefetch");
-  const acceptsHtml = request.headers.get("accept")?.includes("text/html") ?? false;
-  const isDocumentNavigation = request.headers.get("sec-fetch-mode") === "navigate" || acceptsHtml;
+  // Development-only playground has no learner records or achievement writes.
+  if (process.env.NODE_ENV === "development" && ["/dev/coding", "/api/dev/coding-preview"].includes(pathname)) {
+    return withSecurityHeaders(NextResponse.next());
+  }
+  const isPrefetch = request.headers.get("purpose") === "prefetch"
+    || request.headers.get("sec-purpose")?.includes("prefetch") === true
+    || request.headers.has("next-router-prefetch");
 
   // External API routes authenticate via Authorization: Bearer (generated StarLiz keys).
   // Do not require a browser session here — the route guard enforces key/scope checks.
@@ -145,15 +149,14 @@ export async function middleware(request: NextRequest) {
   const session = await getSessionPayload(request);
   const authenticated = session !== null;
   const hasRefreshToken = Boolean(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
-  // Soft App Router navigations (RSC) often omit sec-fetch-mode=navigate; still refresh
-  // when a refresh cookie exists so active users are not bounced to login.
-  const isSoftNavigation = request.headers.has("rsc") || request.headers.has("next-router-state-tree");
+  // Next 16 strips Flight headers before Proxy. Protected document and RSC GETs
+  // must share this flow; neither HTML Accept nor hidden RSC headers identify both.
+  // The refresh endpoint, not possession of its cookie, validates the session.
   const shouldAttemptRefresh =
     hasRefreshToken
     && request.method === "GET"
     && !isPrefetch
-    && !pathname.startsWith("/api/")
-    && (isDocumentNavigation || isSoftNavigation);
+    && !pathname.startsWith("/api/");
   const adminLoginTarget = request.nextUrl.searchParams.get("next")?.startsWith("/admin") ?? false;
   const shouldClearParentUnlock = Boolean(
     request.cookies.get(PARENT_UNLOCK_COOKIE)?.value
@@ -180,6 +183,13 @@ export async function middleware(request: NextRequest) {
     return withSecurityHeaders(response);
   };
 
+  // Eligible navigation must validate and rotate its refresh token before the
+  // final admin/publication gate. Possession of a refresh cookie grants no access.
+  if (!authenticated && !isPublic && shouldAttemptRefresh) {
+    const next = `${pathname}${request.nextUrl.search}`;
+    return finalize(NextResponse.redirect(new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url)));
+  }
+
   // Platform admin gate (Next.js request interceptor): hard-redirect before any admin UI.
   const adminGate = resolvePlatformAdminGate({
     pathname,
@@ -193,11 +203,6 @@ export async function middleware(request: NextRequest) {
   if (!authenticated && !isPublic) {
     if (pathname.startsWith("/api/")) {
       return finalize(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
-    }
-    if (shouldAttemptRefresh) {
-      const next = `${pathname}${request.nextUrl.search}`;
-      const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
-      return finalize(NextResponse.redirect(refreshTarget));
     }
     return finalize(NextResponse.redirect(new URL("/auth/login", request.url)));
   }

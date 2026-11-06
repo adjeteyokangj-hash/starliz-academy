@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/db"
-import { requireAdmin } from "@/lib/api_guard"
+import { requireAdminPermission } from "@/lib/api_guard"
 import { toPricingFeaturesStorage } from "@/lib/pricing/service"
 
 const pricingPlanUpdate = z.object({
@@ -28,16 +28,18 @@ type RouteContext = {
 }
 
 export async function PUT(request: Request, context: RouteContext) {
-  const { session, response } = await requireAdmin()
+  const { session, response } = await requireAdminPermission("MANAGE_BILLING")
   if (!session) return response
 
   const { id } = await context.params
 
   try {
     const parsed = pricingPlanUpdate.parse(await request.json())
+    const existing = await prisma.pricingPlan.findUnique({ where: { id }, select: { features: true, updatedAt: true } })
+    if (!existing) return NextResponse.json({ error: "Pricing plan not found." }, { status: 404 })
 
     const updated = await prisma.pricingPlan.update({
-      where: { id },
+      where: { id, updatedAt: existing.updatedAt },
       data: {
         name: parsed.name,
         description: parsed.description,
@@ -45,7 +47,7 @@ export async function PUT(request: Request, context: RouteContext) {
         currency: parsed.currency,
         interval: parsed.interval,
         audience: parsed.audience,
-        features: toPricingFeaturesStorage({ features: parsed.features, childLimit: parsed.childLimit }),
+        features: toPricingFeaturesStorage({ features: parsed.features, childLimit: parsed.childLimit, previous: existing.features }),
         priceNote: parsed.priceNote ?? null,
         badge: parsed.badge ?? null,
         ctaLabel: parsed.ctaLabel,
@@ -64,7 +66,7 @@ export async function PUT(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(_: Request, context: RouteContext) {
-  const { session, response } = await requireAdmin()
+  const { session, response } = await requireAdminPermission("MANAGE_BILLING")
   if (!session) return response
 
   const { id } = await context.params

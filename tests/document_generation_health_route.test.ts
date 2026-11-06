@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   handleAdminDocumentGenerationHealthGet,
   type AdminDocumentGenerationHealthPayload,
-} from "../src/app/api/admin/reports/generation-health/route";
+} from "../src/app/api/admin/reports/generation-health/route-helpers";
 import type { DocumentGenerationHealthCounts } from "../src/lib/reports/document-generation-orchestration";
 
 test("document generation health route requires admin reports permission", async () => {

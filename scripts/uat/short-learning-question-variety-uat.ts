@@ -1,3 +1,4 @@
+import type { DaytimeAiStageInput } from "../../src/lib/schools/daytime-ai-stage-generator";
 /** Short Learning question variety local UAT. Run: npx tsx scripts/uat/short-learning-question-variety-uat.ts */
 import "./load-env";
 import { mkdirSync, writeFileSync } from "fs";
@@ -90,7 +91,7 @@ async function main() {
   const parent = await prisma.user.findFirst({
     where: { email: UAT_FIXTURES.parentEmail },
     select: { id: true },
-  });
+  }).then(record => { if (!record) throw new Error("Required parent fixture is missing"); return record; });
   if (!parent) throw new Error(`UAT parent not found: ${UAT_FIXTURES.parentEmail}`);
 
   const primaryStudent = await prisma.schoolStudent.findFirst({
@@ -102,7 +103,7 @@ async function main() {
       child: { select: { yearGroup: true, name: true } },
     },
     orderBy: { joinedAt: "asc" },
-  });
+  }).then(record => { if (!record) throw new Error("Required primaryStudent fixture is missing"); return record; });
   if (!primaryStudent) throw new Error("No active school student for UAT parent");
 
   const secondaryStudent = await prisma.schoolStudent.findFirst({
@@ -139,13 +140,7 @@ async function main() {
   }
 
   function mockGenerate(subject: string, sessionIndex: number) {
-    return async (input: {
-      stageLabel: string;
-      targetMinutes: number;
-      targetItems: number;
-      skillFocus: string;
-      mode: string;
-    }) => {
+    return async (input: DaytimeAiStageInput) => {
       const label = input.stageLabel.toLowerCase();
       const isRecap = label.includes("recap");
       const isReview = label.includes("final review") || (label.includes("review") && !label.includes("progress"));
@@ -229,6 +224,7 @@ async function main() {
         },
         input.mode,
       );
+    if (!pack) throw new Error("UAT stage fixture could not be normalized");
       return {
         pack,
         contentJson: serializeDaytimeStageContentJson(pack),
@@ -236,7 +232,7 @@ async function main() {
         openAiAttempted: true,
         openAiSucceeded: true,
         validationIssues: [],
-        usageTokens: 0,
+        usageTokens: 0, retryCount: 0, generationDurationMs: 0, openAiLatencyMs: 0, validatorDurationMs: 0,
       };
     };
   }
@@ -248,7 +244,7 @@ async function main() {
     openAiAttempted: true,
     openAiSucceeded: false,
     validationIssues: [{ code: "mock_fail", message: "forced offline" }],
-    usageTokens: 0,
+    usageTokens: 0, retryCount: 0, generationDurationMs: 0, openAiLatencyMs: 0, validatorDurationMs: 0,
   });
 
   const subjectResults: Array<{ subject: string; pass: boolean; notes: string[] }> = [];
@@ -451,13 +447,7 @@ async function main() {
   // History exposes probe X; maths then receives an equivalent probe X. Same RUN_ID, never
   // previously consumed by maths in this run. Product exposure must stay subject-scoped.
   function mockIsoProbe(subject: "history" | "maths", variant: "exact" | "near") {
-    return async (input: {
-      stageLabel: string;
-      targetMinutes: number;
-      targetItems: number;
-      skillFocus: string;
-      mode: string;
-    }) => {
+    return async (input: DaytimeAiStageInput) => {
       const prompt = variant === "near" ? ISO_PROBE_NEAR_PROMPT : ISO_PROBE_PROMPT;
       const questions = [
         {
@@ -486,6 +476,7 @@ async function main() {
         },
         input.mode,
       );
+    if (!pack) throw new Error("UAT stage fixture could not be normalized");
       return {
         pack,
         contentJson: serializeDaytimeStageContentJson(pack),
@@ -493,7 +484,7 @@ async function main() {
         openAiAttempted: true,
         openAiSucceeded: true,
         validationIssues: [],
-        usageTokens: 0,
+        usageTokens: 0, retryCount: 0, generationDurationMs: 0, openAiLatencyMs: 0, validatorDurationMs: 0,
       };
     };
   }

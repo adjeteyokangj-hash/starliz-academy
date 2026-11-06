@@ -1,4 +1,5 @@
 'use client';
+import { codingRewardKind, isMasteredCodingPracticeLabel, masteredCodingLessonTitles } from "@/lib/academic-intelligence/codingSignals";
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -14,6 +15,8 @@ import SecuritySettings from "./SecuritySettings";
 import ConsentAuditView from "./ConsentAuditView";
 import NotificationPreferences from "./NotificationPreferences";
 import ParentShortLearningPanel from "./ParentShortLearningPanel";
+import CodingProgressPanel from "@/components/coding/CodingProgressPanel";
+import { describeParentProgressRecord, progressRecordKey, type ParentProgressRecord } from "./progress-record-display";
 import ParentCollapsibleCard from "./ParentCollapsibleCard";
 import CertificatePreview from "@/components/certificates/CertificatePreview";
 import CertificateShareControls from "@/components/certificates/CertificateShareControls";
@@ -204,7 +207,7 @@ type ChildDetail = {
     level: string | null;
     archived: boolean;
   };
-  progressRecords: Array<{ id: string; skill: string; level: string; score: number; updatedAt: string }>;
+  progressRecords: ParentProgressRecord[];
   walletSummary: { balance: number; earned: number; spent: number };
   recentLevelDecisions: Array<{ id: string; reason: string | null; createdAt: string }>;
   purchaseHistory: Array<{ 
@@ -467,7 +470,8 @@ const defaultSchoolWeekSettings: SchoolWeekSettingsPayload = {
 };
 
 function currency(value: number) {
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(value / 100);
+  const amount = Number.isFinite(value) ? value : 0;
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(amount / 100);
 }
 
 function formatLastActivity(dateString: string | null): string {
@@ -1161,6 +1165,21 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
     }
   }
 
+  const progressRows = (Array.isArray(childDetail?.progressRecords) ? childDetail.progressRecords : []).flatMap((record, index) => {
+    const row = describeParentProgressRecord(record);
+    if (!row) return [];
+    return [{ key: progressRecordKey(record, index), ...row }];
+  });
+
+  const masteredCodingTitles = masteredCodingLessonTitles(
+    progressRows
+      .filter((row) => row.subject === "Coding" && codingRewardKind("coding", row.skill) === "mastery")
+      .map((row) => ({ activityType: "coding", activityName: row.skill })),
+  );
+  const visibleFocusTopics = (progressPackSummary?.focusTopics ?? []).filter(
+    (topic) => !isMasteredCodingPracticeLabel(topic.label, masteredCodingTitles),
+  );
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100" data-testid="parent-portal-shell">
       <span className="sr-only" data-testid={`parent-active-section-${activeSection}`}>{activeSection}</span>
@@ -1223,8 +1242,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
         </div>
       </div>
 
-      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:px-8 xl:grid-cols-[1.8fr_1fr]">
-        <div className="space-y-6">
+      <div className="mx-auto grid min-w-0 w-full max-w-7xl grid-cols-1 gap-6 px-4 py-8 sm:px-6 lg:px-8 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-6">
           {loading ? (
             <Panel title="Loading portal" description="Fetching your account, children, and school support data."></Panel>
           ) : null}
@@ -2379,9 +2398,9 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         ? `School attendance present rate: ${progressPackSummary.presentRatePct ?? "—"}%`
                         : "No school attendance link yet."}
                     </p>
-                    {progressPackSummary.focusTopics.length > 0 ? (
+                    {visibleFocusTopics.length > 0 ? (
                       <ul className="mt-2 space-y-1 text-xs">
-                        {progressPackSummary.focusTopics.map((topic) => (
+                        {visibleFocusTopics.map((topic) => (
                           <li key={topic.label}>{topic.label}</li>
                         ))}
                       </ul>
@@ -2390,10 +2409,13 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                     )}
                   </div>
                 ) : null}
+                <div className="mb-4">
+                  <CodingProgressPanel childId={selectedChildId} />
+                </div>
                 {childDetail ? (
                   <div className="grid gap-3 md:grid-cols-3">
-                    {childDetail.progressRecords.slice(0, 6).map((record) => (
-                      <Metric key={record.id} label={record.skill} value={`${record.level} • ${record.score}%`} />
+                    {progressRows.slice(0, 6).map((row) => (
+                      <Metric key={row.key} label={row.skill} value={row.accuracy === null ? row.level : `${row.level} • ${row.accuracy}%`} />
                     ))}
                   </div>
                 ) : (
@@ -2401,7 +2423,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                 )}
               </Panel>
 
-              {childDetail && childDetail.progressRecords.length > 0 ? (
+              {progressRows.length > 0 ? (
                 <Panel title="Subject-skill breakdown" description="All skills organized by subject with accuracy scores">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -2414,15 +2436,19 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {childDetail.progressRecords.map((record) => (
-                          <tr key={record.id} className="hover:bg-white/5">
-                            <td className="px-4 py-3 text-slate-400">{record.skill.split("_")[0] ?? "General"}</td>
-                            <td className="px-4 py-3 text-slate-300">{record.skill}</td>
-                            <td className="px-4 py-3 text-slate-300">{record.level}</td>
+                        {progressRows.map((row) => (
+                          <tr key={row.key} className="hover:bg-white/5">
+                            <td className="px-4 py-3 text-slate-400">{row.subject}</td>
+                            <td className="px-4 py-3 text-slate-300">{row.skill}</td>
+                            <td className="px-4 py-3 text-slate-300">{row.level}</td>
                             <td className="px-4 py-3 text-right">
-                              <span className={record.score >= 80 ? "text-green-400 font-semibold" : record.score >= 60 ? "text-yellow-400" : "text-red-400"}>
-                                {record.score}%
-                              </span>
+                              {row.accuracy === null ? (
+                                <span className="text-slate-400">—</span>
+                              ) : (
+                                <span className={row.accuracy >= 80 ? "text-green-400 font-semibold" : row.accuracy >= 60 ? "text-yellow-400" : "text-red-400"}>
+                                  {row.accuracy}%
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -2658,7 +2684,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
         </div>
 
-        <aside className="space-y-6">
+        <aside className="min-w-0 space-y-6">
           <Panel title="Quick facts" description="Current account and portal snapshot.">
             <div className="space-y-3 text-sm text-slate-300">
               <p>Name: <span className="font-semibold text-white">{account?.account.name ?? "Loading"}</span></p>
@@ -2699,7 +2725,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
 
 function Panel({ title, description, children }: { title: string; description: string; children?: ReactNode }) {
   return (
-    <ParentCollapsibleCard title={title} description={description} storageKey={`parent-portal-panel:${title}`}>
+    <ParentCollapsibleCard title={title} description={description} className="min-w-0" bodyClassName="min-w-0" storageKey={`parent-portal-panel:${title}`}>
       {children}
     </ParentCollapsibleCard>
   );

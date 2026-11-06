@@ -1,0 +1,28 @@
+(node:18912) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ admin subscription status mapping persists suspended state for cancelled and past_due (6.4305ms)
+✔ admin subscription status mapping keeps active accounts active (895.1551ms)
+✔ ui status normalizer preserves failed payment and suspended semantics (0.3458ms)
+(node:34244) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ manual username validation rejects email and short names (3.5962ms)
+✔ suggestAvailableChildUsernames skips taken names (2.2667ms)
+✔ checkChildUsernameAvailability reports available and taken (18.4453ms)
+(node:19616) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ ParentCollapsibleCard toggles with aria-expanded and optional storage key (45.8462ms)
+✔ ParentPortalShell Panel uses ParentCollapsibleCard (48.9ms)
+✔ ConsentAuditView wraps sections in ParentCollapsibleCard (15.6698ms)
+(node:29548) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ resolveParentScope supports student-linked parents (7.227ms)
+✔ student assignments route uses owned child profile (5.3999ms)
+✔ Create Login panel checks username availability (20.37ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21932.7507

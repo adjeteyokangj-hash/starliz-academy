@@ -234,6 +234,9 @@ export default function TeacherSupportPage() {
                           {row.yearGroup ? ` · ${row.yearGroup}` : ""}
                           {row.budgetMinutes != null ? ` · ~${row.budgetMinutes} min budget` : ""}
                         </p>
+                        {row.codingSummary ? (
+                          <p className="mt-1 text-xs text-foreground/70">Coding handoff: {row.codingSummary}</p>
+                        ) : null}
                         {row.supportMode === "SHORT_LEARNING" ? (
                           <p className="mt-1 text-xs text-foreground/45">
                             {row.currentBlockLabel ?? "Current Short Learning block"}

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession, checkRateLimit, getRequestIp } from "@/lib/api_guard";
 import { buildCoachResponse, buildAISystemPrompt, resolveAgeBand } from "@/lib/coach/engine";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
+import { requestCoachJson } from "@/lib/coach/model-json";
 import { validateProgressiveHelp } from "@/lib/coach/progressive-help-gating";
 import { shouldEnforceMasteryCheck, buildMasteryCheckPrompt, attachMasteryCheckToResponse } from "@/lib/coach/mastery-check-enforcement";
 import { recordCoachInteraction, getSkillMastery } from "@/lib/coach/db-helpers";
@@ -426,42 +427,8 @@ async function callOpenAI(
   ctx: CoachContext,
   fallback: CoachResponse,
 ): Promise<CoachResponse | null> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      temperature: 0.3,
-      max_tokens: 600,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `Provide hint level ${ctx.hintCount + 1} coaching for this student.`,
-        },
-      ],
-      response_format: { type: "json_object" },
-    }),
-    signal: AbortSignal.timeout(8000), // 8s timeout — don't block the user
-  });
-
-  if (!res.ok) return null;
-
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) return null;
-
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(content) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
+  const parsed = await requestCoachJson(apiKey, systemPrompt, `Provide hint level ${ctx.hintCount + 1} coaching for this student.`);
+  if (!parsed) return null;
 
   // Merge AI message/steps with deterministic structure for safety
   const enhanced: CoachResponse = {

@@ -180,6 +180,15 @@ function hasMathsSignal(value: string): boolean {
   return /(\d+\s*[+\-x÷*/]\s*\d+|\bequation\b|\bfraction\b|\bdecimal\b|\bratio\b|\bpercentage\b|\bprobability\b|\balgebra\b|\bperimeter\b|\barea\b|\bmean\b|\bmedian\b|\bsequence\b|\bscale\b|\bgraph\b|\bangle\b|\btriangle\b|\bmultiplication\b|\bmultiply(?:ing|ied)?\b|\bdivision\b|\bdivide(?:d|s|ing)?\b|\bremainder\b|\bshare(?:d|s|ing)?\b|\bequal\s+groups?\b|\btimes(?:\s+tables?)?\b|\bhow\s+many\b|\baltogether\b|\btotal\b|\beach\b|\brows?\b|\bgroups?\b)/i.test(value);
 }
 
+function hasMathsTaskSignal(value: string): boolean {
+  const explicit = /(\d+\s*[+\-x÷*/]\s*\d+|\bequation\b|\bfraction\b|\bdecimal\b|\bratio\b|\bpercentage\b|\bprobability\b|\balgebra\b|\bperimeter\b|\bmedian\b|\bangle\b|\btriangle\b|\bmultiplication\b|\bmultiply(?:ing|ied)?\b|\bdivision\b|\bdivide(?:d|s|ing)?\b|\bremainder\b|\btimes\s+tables?\b)/i.test(value);
+  // Ordinary language instructions also use "each", "groups", "mean" and
+  // "share". Require a quantity and an actual quantitative task for these.
+  const wordProblem = /\d/.test(value) && /\b(how\s+many|altogether|total|equal\s+groups?|each\s+(?:box|bag|row|group)|share\s+equally)\b/i.test(value);
+  const quantitativeTask = /\d/.test(value) && /\b(calculate|find|measure|plot|complete)\b/i.test(value) && /\b(area|mean|scale|graph|sequence)\b/i.test(value);
+  return explicit || wordProblem || quantitativeTask;
+}
+
 function isComputeOnlyMaths(prompt: string): boolean {
   const normalized = compact(prompt);
   if (/^(compute|calculate|work out|find)\s+[\d\s+\-x÷*/=.]+$/.test(normalized)) return true;
@@ -302,7 +311,8 @@ export function validateGcseMathsQuality(input: CurriculumQualityInput): Curricu
 
   if (isComputeOnlyMaths(prompt)) blockingIssues.push("gcse_maths_compute_only");
   if (!hasGcseCommandWord(prompt)) blockingIssues.push("gcse_maths_weak_command_word_usage");
-  if (!/\b(algebra|equation|ratio|proportion|probability|sequence|graph|angle|circle|simultaneous|factorise|expand|gradient|percentage|frequency|trigonometry|triangle)\b/i.test(full)) {
+  const algebraicExpression = /(?:\d\s*[a-z]|[a-z]\s*\^\s*\d|[a-z]\s*[+\-*/=]\s*\d|\d\s*[+\-*/=]\s*[a-z])/i.test(prompt) && /\b(solve|simplify|factorise|expand|prove|rearrange)\b/i.test(prompt);
+  if (!algebraicExpression && !/\b(algebra|equation|ratio|proportion|probability|sequence|graph|angle|circle|simultaneous|factorise|expand|gradient|percentage|frequency|trigonometry|triangle)\b/i.test(full)) {
     blockingIssues.push("gcse_maths_topic_depth_missing");
   }
   if (!hasReasoningDemand(full) && !/\bstate\b/i.test(prompt)) warnings.push("gcse_maths_reasoning_or_method_weak");
@@ -371,7 +381,7 @@ export function validateGrammarQuestionQuality(input: CurriculumQualityInput): C
 
   if (!prompt) blockingIssues.push("grammar_missing_prompt");
   if (!answerText(item)) blockingIssues.push("grammar_missing_answer");
-  if (!/\b(noun|verb|adjective|adverb|clause|tense|sentence|agreement|relative|apostrophe|comma|punctuation|rewrite|correct|select)\b/i.test(full)) {
+  if (!/\b(grammar|prefix|suffix|morphology|noun|verb|adjective|adverb|clause|tense|sentence|agreement|relative|apostrophe|comma|punctuation|rewrite|correct|select)\b/i.test(full)) {
     blockingIssues.push("grammar_subject_fit_missing");
   }
   if (containsPlaceholder(full)) blockingIssues.push("placeholder_style_content");
@@ -428,7 +438,7 @@ function validateSpellingOrPhonicsQuality(input: CurriculumQualityInput): Curric
 
   if (!text(item.word) && !questionText(item)) blockingIssues.push("spelling_phonics_missing_word_or_prompt");
   if (!text(item.hint) && !text(item.sentenceContext) && !explanationText(item)) warnings.push("spelling_phonics_support_context_weak");
-  if (hasMathsSignal(full)) blockingIssues.push("spelling_phonics_subject_drift_maths");
+  if (hasMathsTaskSignal(full)) blockingIssues.push("spelling_phonics_subject_drift_maths");
   if (containsPlaceholder(full)) blockingIssues.push("placeholder_style_content");
 
   return createResult({
@@ -496,7 +506,9 @@ export function validateCurriculumContentQuality(input: CurriculumQualityInput &
       return validateGcseMathsQuality({ ...input, item });
     }
     if (type.includes("math")) return validateMathsQuestionQuality({ ...input, item });
-    if ((type.includes("gcse") && type.includes("english")) || (type === "reading" && isGcse(input, item))) {
+    const subject = lower(input.subject ?? item.subject ?? "");
+    const englishReading = !subject || /\benglish\b/.test(subject);
+    if ((type.includes("gcse") && type.includes("english")) || (type === "reading" && englishReading && isGcse(input, item))) {
       return validateGcseEnglishQuality({ ...input, item });
     }
     if (type === "writing") return validateWritingQuestionQuality({ ...input, item });

@@ -1049,3 +1049,83 @@ test("report notes surface homework action-needed patterns", () => {
   assert.match(parentActionNote.toLowerCase(), /action needed/);
   assert.equal(output.nextRecommendedActions[0]?.toLowerCase().includes("homework overdue"), true);
 });
+
+test("coding reward score of 1 is not an academic catch-up", () => {
+  const now = new Date().toISOString();
+  const source = baseSource({
+    progressRecords: (["mastery", "improvement", "persistence"] as const).map((kind) => ({
+      id: kind,
+      activityType: "coding",
+      activityName: `Understanding Loops · ${kind}`,
+      subject: "general",
+      topic: `Understanding Loops · ${kind}`,
+      skill: `Understanding Loops · ${kind}`,
+      completed: true,
+      score: 1,
+      accuracy: kind === "mastery" ? 67 : 50,
+      createdAt: now,
+    })),
+    attempts: [
+      { id: "c1", subject: "coding", topic: "Understanding loops", skill: "Understanding loops", correct: true, hintsUsed: 0, createdAt: now, score: 100 },
+      { id: "c2", subject: "coding", topic: "Understanding loops", skill: "Understanding loops", correct: false, hintsUsed: 0, createdAt: now, score: 0 },
+      { id: "c3", subject: "coding", topic: "Understanding loops", skill: "Understanding loops", correct: false, hintsUsed: 0, createdAt: now, score: 0 },
+      { id: "c4", subject: "coding", topic: "Understanding loops", skill: "Understanding loops", correct: false, hintsUsed: 0, createdAt: now, score: 0 },
+      { id: "r1", subject: "reading", topic: "Inference", skill: "inference", correct: false, hintsUsed: 1, createdAt: now, score: 20 },
+    ],
+    studentSkills: [
+      { skill: "coding_loops", accuracy: 57, attempts: 14, correct: 8, status: "mastered", updatedAt: now },
+    ],
+  });
+
+  const result = buildMasteryMap(source);
+  const rewardTopic = result.masteryMap.find((entry) => /·\s*(mastery|improvement|persistence)/i.test(`${entry.topic ?? ""} ${entry.skill ?? ""}`));
+  assert.equal(rewardTopic, undefined);
+  const loops = result.masteryMap.find((entry) => (entry.subject ?? "").toLowerCase() === "coding" && (entry.topic ?? "").toLowerCase() === "understanding loops");
+  assert.equal(loops?.masteryStatus, "mastered");
+  assert.equal(result.masteryMap.some((entry) => entry.skill === "coding_loops"), false);
+  const reading = result.masteryMap.find((entry) => entry.topic === "Inference");
+  assert.equal(reading?.masteryStatus, "needs_catch_up");
+
+  const triggers = detectCatchUpTriggers({ masteryMap: result.masteryMap, coverageMap: result.curriculumCoverage });
+  assert.equal(triggers.some((trigger) => (trigger.subject ?? "").toLowerCase() === "coding"), false);
+  assert.equal(triggers.some((trigger) => trigger.topic === "Inference"), true);
+
+  const output = buildAcademicIntelligence(source, {
+    existingCatchUpTasks: [
+      {
+        taskId: "false-mastery",
+        studentId: "student-1",
+        recommendationId: "false-mastery",
+        title: "Understanding Loops · mastery catch-up",
+        subject: "general",
+        topic: "Understanding Loops · mastery",
+        skill: "Understanding Loops · mastery",
+        status: "recommended",
+        priority: "high",
+        estimatedMinutes: 15,
+        sourceTrigger: "low_attempt_score",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        taskId: "reading-real",
+        studentId: "student-1",
+        recommendationId: "reading-real",
+        title: "Inference catch-up",
+        subject: "reading",
+        topic: "Inference",
+        skill: "inference",
+        status: "recommended",
+        priority: "high",
+        estimatedMinutes: 15,
+        sourceTrigger: "low_attempt_score",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+  });
+  assert.equal(output.catchUpTasks.some((task) => /mastery|improvement|persistence/i.test(`${task.topic ?? ""} ${task.title}`)), false);
+  assert.equal(output.catchUpTasks.some((task) => task.topic === "Inference"), true);
+  assert.equal(output.schoolWeekModePlan.days.some((day) => /\u00b7\s*(mastery|improvement|persistence)/i.test(day.focus)), false);
+  assert.equal(output.schoolWeekModePlan.dailySchedules.some((day) => day.blocks.some((block) => /\u00b7\s*(mastery|improvement|persistence)/i.test(block.title))), false);
+});

@@ -1,0 +1,18 @@
+"use client";
+import { useId, useState } from "react";
+import type { Json } from "@/lib/coding/learning/types";
+import DeviceExecution from "./DeviceExecution";
+import ScenarioDetails from "./ScenarioDetails";
+import StoryCharacter from "./StoryCharacter";
+const record = (value: Json): Record<string, Json> => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+function Scene({ value }: { value: Json }) {
+  const scene = record(value), positions = Array.isArray(scene.positions) ? scene.positions.map(record) : [];
+  const [step, setStep] = useState(0), gridId = useId();
+  const position = positions[Math.min(step, positions.length - 1)] ?? { x: 0, y: 0 };
+  return <figure className="space-y-3 rounded-xl border border-slate-300 bg-white p-3"><h4 className="font-bold">{String(scene.title ?? "Story scene")}</h4><svg viewBox="0 0 300 300" className="w-full max-w-sm rounded-xl bg-sky-50" role="img" aria-label={`${String(scene.picture ?? "Character")} at column ${Number(position.x) + 1}, row ${Number(position.y) + 1}`}><defs><pattern id={gridId} width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#94a3b8" /></pattern></defs><rect width="300" height="300" fill={`url(#${gridId})`} /><polyline points={positions.slice(0, step + 1).map((point) => `${Number(point.x) * 50 + 25},${Number(point.y) * 50 + 25}`).join(" ")} fill="none" stroke="#0369a1" strokeWidth="4" /><g transform={`translate(${Number(position.x) * 50 + 25} ${Number(position.y) * 50 + 25})`}><StoryCharacter picture={String(scene.picture ?? "fox")} /></g></svg><figcaption>{String(scene.caption ?? "")}</figcaption><label className="block text-sm">Replay move {Math.min(step, positions.length - 1)} of {Math.max(0, positions.length - 1)}<input className="mt-2 block min-h-11 w-full" aria-label={`Replay ${String(scene.title)}`} type="range" min={0} max={Math.max(0, positions.length - 1)} value={Math.min(step, Math.max(0, positions.length - 1))} onChange={(event) => setStep(Number(event.target.value))} /></label><div className="flex flex-wrap gap-2"><button type="button" className="min-h-11 rounded-lg border border-slate-400 px-3" onClick={() => setStep(0)}>Restart scene</button><button type="button" className="min-h-11 rounded-lg border border-slate-400 px-3" disabled={step >= positions.length - 1} onClick={() => setStep((value) => Math.min(positions.length - 1, value + 1))}>Next move</button></div></figure>;
+}
+export default function ScenarioReplay({ output }: { output: Record<string, Json> }) {
+  if (output.practiceOnly !== true) return null;
+  const sourceReview = output.sourceReview ? record(output.sourceReview) : null;
+  return <section className="space-y-4"><h3 className="font-bold">Your practice result</h3>{sourceReview && <p className="rounded-xl border p-3 text-sm">Chosen source: {String(sourceReview.selected ?? "None")} · Suitable for the supplied brief: {sourceReview.suitable ? "Yes" : "No"}. This compares the supplied evidence and permission record; it does not verify a live website.</p>}<ScenarioDetails output={output} /><DeviceExecution outputs={output.deviceOutputs} />{Array.isArray(output.story) && output.story.length > 0 && <div className="grid gap-4 sm:grid-cols-2">{output.story.map((scene, index) => <Scene key={JSON.stringify(scene) + index} value={scene} />)}</div>}<dl className="grid gap-2 text-sm sm:grid-cols-2">{[["Privacy", "privacySafe"], ["Contact stopped", "contactStopped"], ["Trusted adult help chosen", "trustedHelp"], ["Device actions supported", "devicesCorrect"]].map(([label, field]) => <div key={field} className="rounded-lg bg-slate-50 p-3"><dt className="font-semibold">{label}</dt><dd>{output[field!] === true ? "Yes" : "No"}</dd></div>)}</dl></section>;
+}

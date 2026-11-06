@@ -1,0 +1,20 @@
+"use client";
+import type { z } from "zod";
+import { networkDocumentSchema } from "@/lib/coding/learning/studio-engines";
+import type { Json } from "@/lib/coding/learning/types";
+
+type Document = z.infer<typeof networkDocumentSchema>;
+const control = "min-h-11 max-w-full rounded-lg border border-slate-400 bg-white px-3 py-2 text-sm text-slate-950";
+export default function NetworkPacketEditor({ document, fixture, onChange }: { document: Document; fixture: Record<string, Json>; onChange: (patch: Partial<Document>) => void }) {
+  const supplied = networkDocumentSchema.shape.packets.safeParse(fixture.packets);
+  const suppliedCount = networkDocumentSchema.shape.expectedPackets.safeParse(fixture.expectedPackets);
+  const packets = supplied.success ? supplied.data : document.packets;
+  const edit = (index: number, patch: Partial<Document["packets"][number]>) => onChange({ packets: document.packets.map((packet, offset) => offset === index ? { ...packet, ...patch } : packet) });
+  return <fieldset className="min-w-0 space-y-3 rounded-xl border border-slate-300 p-3"><legend className="font-semibold">Packet sequence contract</legend>
+    <p className="text-sm text-slate-700">Sequence numbers start at zero. Declare the expected complete length from the task, including missing packets; receiving fewer packets does not make a shorter message complete. This offline model gives each packet the same calculated route and does not simulate network timing or retransmission.</p>
+    <label className="block text-sm">Expected complete packet count<input className={`${control} ml-2 w-24`} type="number" min={0} max={30} step={1} value={suppliedCount.success ? suppliedCount.data : document.expectedPackets} disabled={suppliedCount.success} onChange={event => { const count = Number(event.target.value); if (Number.isFinite(count)) onChange({ expectedPackets: Math.trunc(Math.max(0, Math.min(30, count))) }); }} /></label>
+    {supplied.success && <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-950">These actual supplied test packets are read only. Repair your model&apos;s contract or connections while keeping the test evidence unchanged.</p>}
+    <div role="region" aria-label="Packet sequence table" tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-300 focus-visible:outline-2 focus-visible:outline-sky-700"><table className="w-full text-left text-sm"><caption className="p-3 text-left font-semibold">{supplied.success ? "Actual supplied packets" : "Your editable packet records"}</caption><thead><tr><th scope="col" className="p-2">Arrival position</th><th scope="col" className="p-2">Sequence</th><th scope="col" className="p-2">Payload text</th>{!supplied.success && <th scope="col" className="p-2">Edit</th>}</tr></thead><tbody>{packets.map((packet, index) => <tr key={index} className="border-t border-slate-200"><th scope="row" className="p-2">{index + 1}</th><td className="p-2">{supplied.success ? packet.sequence : <input className={`${control} w-24`} aria-label={`Packet ${index + 1} sequence`} type="number" min={0} max={100} step={1} value={packet.sequence} onChange={event => { const sequence = Number(event.target.value); if (Number.isFinite(sequence)) edit(index, { sequence: Math.trunc(Math.max(0, Math.min(100, sequence))) }); }} />}</td><td className="max-w-sm break-words p-2">{supplied.success ? packet.text : <textarea className={`${control} w-full min-w-32`} aria-label={`Packet ${index + 1} text`} rows={2} maxLength={1000} value={packet.text} onChange={event => edit(index, { text: event.target.value })} />}</td>{!supplied.success && <td className="p-2"><button type="button" className={control} onClick={() => onChange({ packets: document.packets.filter((_, offset) => offset !== index) })}>Remove packet {index + 1}</button></td>}</tr>)}</tbody></table></div>
+    {!supplied.success && <button type="button" className={control} disabled={document.packets.length >= 30} onClick={() => onChange({ packets: [...document.packets, { sequence: document.packets.length, text: "" }] })}>Add packet</button>}
+  </fieldset>;
+}

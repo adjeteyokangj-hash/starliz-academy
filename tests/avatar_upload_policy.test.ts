@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handleUpload } from "../src/app/api/upload/route";
+import { handleUpload } from "../src/app/api/upload/route-helpers";
 
 function requestFor(file: File, folder: string): Request {
   const form = new FormData();

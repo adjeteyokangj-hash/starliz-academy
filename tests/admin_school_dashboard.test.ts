@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleAdminSchoolDashboardGet } from "../src/app/api/admin/school-dashboard/[schoolId]/route";
-import { handleAdminSchoolGet } from "../src/app/api/admin/schools/[schoolId]/route";
+import { handleAdminSchoolDashboardGet } from "../src/app/api/admin/school-dashboard/[schoolId]/route-helpers";
+import { handleAdminSchoolGet } from "../src/app/api/admin/schools/[schoolId]/route-helpers";
 import { mapSchoolToAdminRecord, mapSchoolToDashboardRecord } from "../src/lib/schools/school-admin-payload";
 
 const now = new Date("2026-07-22T12:00:00.000Z");

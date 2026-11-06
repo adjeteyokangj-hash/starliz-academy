@@ -15,6 +15,7 @@ import {
   selectMasteredReviewSkills,
 } from "@/lib/student-dashboard-sections";
 import { IMPROVING_SESSION_MINUTES } from "@/lib/improving-session";
+import { masteredTotal } from "@/lib/coding/dashboard-lessons";
 
 function accuracyBand(accuracy: number): { label: string; color: string } {
   if (accuracy >= 80) return { label: "Strong", color: "text-emerald-700 bg-emerald-100" };
@@ -105,6 +106,7 @@ export default function SecondaryDashboard({
   bossLaunching,
   pendingAssignmentId,
   dashboardSections,
+  codingLessons = [],
 }: DashboardProps) {
   const router = useRouter();
   const [selectedMetric, setSelectedMetric] = useState<StatMetricKey | null>(null);
@@ -116,8 +118,8 @@ export default function SecondaryDashboard({
   const needsPlacement = Boolean(learningState && !learningState.hasCompletedPlacement);
   const showOnboardingCta = isFirstTimeStudent || needsPlacement || quickLevelFinderRetestEnabled === true;
   const coachAwaitingAssessment = !learningState?.coachUnlocked;
-  const allMasteredSkills = skills.filter((s) => s.status === "mastered");
-  const masteredCount = allMasteredSkills.length;
+  const masteredCount = masteredTotal(skills, codingLessons);
+  const codingMasteredTitles = codingLessons.filter((lesson) => lesson.status === "mastered").map((lesson) => lesson.title);
   const allImprovingSkills = skills.filter((s) => s.status === "improving");
   const improvingCount = allImprovingSkills.length;
   const allWeakSkills = skills.filter((s) => s.status === "weak");
@@ -165,7 +167,8 @@ export default function SecondaryDashboard({
   const masteredReviewAssignment = findAssignmentForSkillPool(activeMasteredReviews) ?? (activeMasteredReviews.length > 0 ? reviewAssignment : null);
   const canStartImprovingBoost = activeImprovingSkills.length > 0 && Boolean(onStartImprovingBoost);
   const focusPracticeAssignment = findAssignmentForSkillPool(activeFocusSkills) ?? (activeFocusSkills.length > 0 ? (weakAssignment ?? focusAssignment) : null);
-  const examReadiness = Math.max(0, Math.min(100, Math.round((masteredCount * 2 + improvingCount - weakCount) * 8)));
+  const examMastered = skills.filter((skill) => skill.status === "mastered" && !codingLessons.some((lesson) => lesson.skillCode === skill.skill)).length;
+  const examReadiness = Math.max(0, Math.min(100, Math.round((examMastered * 2 + improvingCount - weakCount) * 8)));
   const weakTopics = coachRows.filter((row) => row.status === "weak").map((row) => row.label).slice(0, 4);
   const revisionTasks = visibleAssignments.filter((assignment) => {
     const haystack = `${assignment.title} ${assignment.skillFocus ?? ""} ${assignment.subject}`.toLowerCase();
@@ -227,7 +230,7 @@ export default function SecondaryDashboard({
         : masteredCount > 0
           ? "Older mastered skills have automatically rotated out. Keep learning — newer mastery will appear here."
           : "Nothing to review yet. Mastery appears after you finish lessons with consistently strong accuracy.",
-      detailLines: activeMasteredReviews.length > 0 ? masteredLabels : undefined,
+      detailLines: [...(activeMasteredReviews.length > 0 ? masteredLabels : []), ...codingMasteredTitles],
       ctaLabel: activeMasteredReviews.length > 0 && masteredReviewAssignment
         ? "Review mastered work"
         : null,

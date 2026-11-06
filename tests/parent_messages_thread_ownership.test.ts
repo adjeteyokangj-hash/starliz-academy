@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest, NextResponse } from "next/server";
 
-import { handleParentMessagesGet } from "../src/app/api/parent/messages/route";
+import { handleParentMessagesGet } from "../src/app/api/parent/messages/route-helpers";
 
 function makeGet(threadId?: string) {
   const url = threadId
@@ -41,7 +41,7 @@ test("parent messages GET returns 404 and audits foreign threadId", async () => 
     },
     writeAuditLog: async (input) => {
       auditedAction = input.action;
-      return { id: "audit-1", createdAt: new Date() };
+      return;
     },
   });
 
@@ -86,7 +86,7 @@ test("parent messages GET loads owned thread messages only", async () => {
         createdAt: new Date("2026-07-01T00:00:00.000Z"),
       },
     ],
-    writeAuditLog: async () => ({ id: "audit-1", createdAt: new Date() }),
+    writeAuditLog: async () => undefined,
   });
 
   assert.equal(response.status, 200);
@@ -107,7 +107,7 @@ test("unauthenticated parent messages GET returns session response", async () =>
     clearParentUnread: async () => undefined,
     listLatestMessages: async () => [],
     listThreadMessages: async () => [],
-    writeAuditLog: async () => ({ id: "audit-1", createdAt: new Date() }),
+    writeAuditLog: async () => undefined,
   });
   assert.equal(response.status, 401);
 });

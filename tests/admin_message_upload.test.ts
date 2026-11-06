@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { NextResponse } from "next/server";
-import { handleAdminMessageUpload } from "../src/app/api/admin/messages/upload/route";
+import { handleAdminMessageUpload } from "../src/app/api/admin/messages/upload/route-helpers";
 
 function uploadRequest(file: File): Request {
   const form = new FormData();

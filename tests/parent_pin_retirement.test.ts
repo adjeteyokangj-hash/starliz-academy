@@ -25,7 +25,7 @@ test("parent login landing is Parent Portal dashboard, not profiles/PIN", () => 
 });
 
 test("middleware no longer requires Parent PIN unlock for parent portal", () => {
-  const mw = read("middleware.ts");
+  const mw = read("src/proxy.ts");
   assert.doesNotMatch(mw, /hasParentUnlock/);
   assert.doesNotMatch(mw, /intent=parent&next=/);
   assert.match(mw, /Parent PIN pages are retired/);

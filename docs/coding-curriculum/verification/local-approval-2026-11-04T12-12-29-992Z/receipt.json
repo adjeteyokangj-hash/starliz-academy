@@ -1,0 +1,24 @@
+{
+  "approval": "approved all lessons curriculum content",
+  "scope": "local development only",
+  "approvedAt": "2026-11-04T12:12:30.298Z",
+  "activities": 440,
+  "coreLessons": 264,
+  "consolidations": 132,
+  "projects": 44,
+  "contentHashMatches": 440,
+  "practicalExecutionHash": "37fb829f383205db57e5a8ce5c2e9fdf075f80de33e853b3b678af47fc2797f8",
+  "runtimeHash": "c85c9747901ae6caf3ad3303ed22d5df11aada22c0aae743bdcee02254a48669",
+  "preservedEvidence": "docs/coding-curriculum/verification/rc-2026-11-03/activity-index.json",
+  "preservedPracticalChecks": 6162,
+  "practicalProgramsRerun": false,
+  "authenticatedPublicationAcceptance": "pending",
+  "productionReady": false,
+  "productionGates": [
+    "ZDR",
+    "runner security and hosting acceptance",
+    "hosted permissions and private-media checks",
+    "dependency advisories",
+    "accessibility acceptance"
+  ]
+}

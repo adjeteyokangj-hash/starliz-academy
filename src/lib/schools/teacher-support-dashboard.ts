@@ -29,6 +29,7 @@ export type TeacherSupportQueueRow = {
   shortLearningBlockId: string | null;
   bookingWindowLabel: string | null;
   currentBlockLabel: string | null;
+  codingSummary: string | null;
   status: string;
 };
 
@@ -307,6 +308,15 @@ export async function getTeacherSupportDashboard(input: {
     });
     const dayMeta = row.periodId && !row.periodId.startsWith("sl:") ? periodById.get(row.periodId) : null;
     const subject = display.subject ?? dayMeta?.subject ?? dayMeta?.title ?? null;
+    let codingSummary: string | null = null;
+    if (row.metadataJson) {
+      try {
+        const meta = JSON.parse(row.metadataJson) as { codingSummary?: unknown };
+        codingSummary = typeof meta.codingSummary === "string" ? meta.codingSummary : null;
+      } catch {
+        codingSummary = null;
+      }
+    }
     return {
       queueEntryId: row.id,
       childId: row.childId,
@@ -325,6 +335,7 @@ export async function getTeacherSupportDashboard(input: {
       shortLearningBlockId: display.shortLearningBlockId,
       bookingWindowLabel: display.bookingWindowLabel,
       currentBlockLabel: display.currentBlockLabel,
+      codingSummary,
       status: row.status,
     };
   }

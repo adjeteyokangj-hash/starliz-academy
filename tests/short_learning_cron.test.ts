@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { hasCronAccess } from "../src/lib/cron-auth";
-import { handleShortLearningRemindersCron } from "../src/app/api/cron/short-learning-reminders/route";
+import { handleShortLearningRemindersCron } from "../src/app/api/cron/short-learning-reminders/route-helpers";
 
 test("vercel.json schedules Short Learning reminders every 10 minutes", () => {
   const raw = readFileSync(resolve(process.cwd(), "vercel.json"), "utf8");

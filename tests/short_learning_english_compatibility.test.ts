@@ -24,9 +24,9 @@ describe("short learning english content compatibility contracts", () => {
       resolve(process.cwd(), "src/lib/schools/short-learning-session-plan.ts"),
       "utf8",
     );
-    assert.match(plan, /blueprint\(4, "break".*null/s);
-    assert.match(plan, /tutor_support".*null/s);
-    assert.match(plan, /progress_report".*null/s);
+    assert.match(plan, /blueprint\(4, "break"[\s\S]*null/);
+    assert.match(plan, /tutor_support"[\s\S]*null/);
+    assert.match(plan, /progress_report"[\s\S]*null/);
   });
 
   it("assignment safety uses shared playable compatibility helper", () => {

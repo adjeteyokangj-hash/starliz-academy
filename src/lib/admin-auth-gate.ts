@@ -69,6 +69,9 @@ export function resolvePlatformAdminGate(input: {
 
   if (isAdminLoginPath(pathname)) {
     if (session?.role === "admin") {
+      // The secure layout requires reauthentication for inactive/locked admins.
+      // Let that public form clear the old session instead of bouncing forever.
+      if (new URLSearchParams(search).get("reason") === "switch") return { action: "allow" };
       const next = safeAdminNextPath(new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("next"));
       return { action: "redirect", to: next ?? "/admin", status: 307 };
     }

@@ -42,27 +42,28 @@ export default function ResetChildLoginPanel({
   const [checkingUsername, setCheckingUsername] = useState(false);
 
   useEffect(() => {
-    setManualUsername(currentUsername);
+    const sync = window.setTimeout(() => setManualUsername(currentUsername), 0);
+    return () => window.clearTimeout(sync);
   }, [currentUsername]);
 
   useEffect(() => {
     if (loginMode !== "manual") {
-      setUsernameCheck(null);
-      return;
+      const reset = window.setTimeout(() => setUsernameCheck(null), 0);
+      return () => window.clearTimeout(reset);
     }
     const trimmed = manualUsername.trim();
     if (trimmed.length < 3) {
-      setUsernameCheck(null);
-      return;
+      const reset = window.setTimeout(() => setUsernameCheck(null), 0);
+      return () => window.clearTimeout(reset);
     }
     if (trimmed === currentUsername) {
-      setUsernameCheck({
+      const reset = window.setTimeout(() => setUsernameCheck({
         available: true,
         valid: true,
         message: "Keeping the current username.",
         suggestions: [],
-      });
-      return;
+      }), 0);
+      return () => window.clearTimeout(reset);
     }
 
     const timer = window.setTimeout(() => {

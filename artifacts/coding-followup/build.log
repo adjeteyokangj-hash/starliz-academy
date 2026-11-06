@@ -1,0 +1,800 @@
+
+> starliz-academy@0.1.0 prebuild
+> npm run test:curriculum-coverage && npm run audit:ai-curriculum && tsx scripts/coding/verify-curriculum-runtime.ts
+
+
+> starliz-academy@0.1.0 test:curriculum-coverage
+> tsx --test tests/curriculum_coverage.test.ts
+
+(node:19916) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ year 4 punctuation skills are fully mapped (3.6669ms)
+✔ AI Generator exposes parent English for KS1/KS2 while keeping strands internal (1.1301ms)
+✔ KS1 English internal strand skills are mapped for generation (4.4131ms)
+✔ year 4 punctuation examples are generatable paths (0.6438ms)
+✔ all visible curriculum paths have at least one topic (23.7966ms)
+✔ coverage report has no fallback-only or missing paths (59.6091ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2140.9704
+
+> starliz-academy@0.1.0 audit:ai-curriculum
+> tsx scripts/audit_ai_curriculum.ts
+
+AI curriculum coverage report written to C:\Users\edwar\Documents\Projects\starliz-academy\docs\AI_CURRICULUM_COVERAGE_REPORT.md
+(node:30992) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+All 440 activity hashes and the runtime match this build. Publication scope: development; production acceptance is separate.
+(node:31348) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+> starliz-academy@0.1.0 build
+> prisma generate && next build --webpack
+
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+
+✔ Generated Prisma Client (v6.19.3) to .\node_modules\@prisma\client in 2.05s
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+┌─────────────────────────────────────────────────────────┐
+│  Update available 6.19.3 -> 8.0.0-rc.30                 │
+│                                                         │
+
+Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+
+│  This is a major update - please follow the guide at    │
+│  https://pris.ly/d/major-version-upgrade                │
+│                                                         │
+│  Run the following to update                            │
+│    npm i --save-dev prisma@latest                       │
+│    npm i @prisma/client@latest                          │
+└─────────────────────────────────────────────────────────┘
+▲ Next.js 16.4.4 (webpack)
+- Environments: .env.local, .env
+✓ Running next.config.ts took 286ms
+- Experiments (use with caution):
+  · cpus: 1
+  · proxyClientMaxBodySize: "300mb"
+  · serverActions
+  ✓ webpackBuildWorker
+  ✓ webpackMemoryOptimizations
+
+  Creating an optimized production build ...
+  Using tsconfig file: tsconfig.build.json
+(node:31900) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+  Using tsconfig file: tsconfig.build.json
+  Using tsconfig file: tsconfig.build.json
+(node:17272) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✓ Compiled successfully in 4.3min
+  Running TypeScript ...
+  Finished TypeScript in 2.4min ...
+  Collecting page data using 1 worker ...
+  Generating static pages using 1 worker (0/499) ...
+  Generating static pages using 1 worker (124/499) 
+  Generating static pages using 1 worker (249/499) 
+  Generating static pages using 1 worker (374/499) 
+✓ Generating static pages using 1 worker (499/499) in 57s
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /about
+├ ƒ /admin
+├ ƒ /admin/ai
+├ ƒ /admin/ai-generator
+├ ƒ /admin/assessment-readiness
+├ ƒ /admin/assignments
+├ ƒ /admin/audit-logs
+├ ƒ /admin/brain-centre
+├ ƒ /admin/brain-centre/[studentId]
+├ ƒ /admin/branding
+├ ƒ /admin/certificates/analytics
+├ ƒ /admin/certificates/templates
+├ ƒ /admin/coding
+├ ƒ /admin/coding/preview/[lessonId]
+├ ƒ /admin/coding/workbench/[activityId]
+├ ƒ /admin/complaints
+├ ƒ /admin/content
+├ ƒ /admin/content-library
+├ ƒ /admin/content-library/[id]
+├ ƒ /admin/dictionary
+├ ƒ /admin/ga-categories
+├ ƒ /admin/ga-lessons
+├ ƒ /admin/ga-voice
+├ ƒ /admin/ga-word-bank
+├ ƒ /admin/inbox
+├ ƒ /admin/integrations/opswatch
+├ ƒ /admin/integrations/truenumeris
+├ ƒ /admin/knowledge-graph
+├ ƒ /admin/lessons
+├ ƒ /admin/lessons/[id]
+├ ƒ /admin/lessons/[id]/edit
+├ ƒ /admin/lessons/new
+├ ƒ /admin/login
+├ ƒ /admin/messages
+├ ƒ /admin/notifications
+├ ƒ /admin/parents
+├ ƒ /admin/parents/[id]
+├ ƒ /admin/parents/[id]/edit
+├ ƒ /admin/parents/new
+├ ƒ /admin/policy-library
+├ ƒ /admin/policy-library/[slug]
+├ ƒ /admin/policy-library/help
+├ ƒ /admin/pricing
+├ ƒ /admin/recovery-governance
+├ ƒ /admin/reports
+├ ƒ /admin/rewards
+├ ƒ /admin/rewards/[id]/edit
+├ ƒ /admin/rewards/awards
+├ ƒ /admin/rewards/new
+├ ƒ /admin/schools
+├ ƒ /admin/schools/[schoolId]
+├ ƒ /admin/schools/[schoolId]/ai-intelligence
+├ ƒ /admin/schools/[schoolId]/assignments
+├ ƒ /admin/schools/[schoolId]/assignments/new
+├ ƒ /admin/schools/[schoolId]/attendance
+├ ƒ /admin/schools/[schoolId]/attendance-activity
+├ ƒ /admin/schools/[schoolId]/attendance-activity/anomalies
+├ ƒ /admin/schools/[schoolId]/attendance-activity/interventions
+├ ƒ /admin/schools/[schoolId]/attendance-activity/risk-students
+├ ƒ /admin/schools/[schoolId]/attendance/[dayLessonId]
+├ ƒ /admin/schools/[schoolId]/audit
+├ ƒ /admin/schools/[schoolId]/billing-licence
+├ ƒ /admin/schools/[schoolId]/classrooms
+├ ƒ /admin/schools/[schoolId]/classrooms/new
+├ ƒ /admin/schools/[schoolId]/communications
+├ ƒ /admin/schools/[schoolId]/compliance
+├ ƒ /admin/schools/[schoolId]/dashboard
+├ ƒ /admin/schools/[schoolId]/developer-docs
+├ ƒ /admin/schools/[schoolId]/governance
+├ ƒ /admin/schools/[schoolId]/identity-access
+├ ƒ /admin/schools/[schoolId]/interventions
+├ ƒ /admin/schools/[schoolId]/learning
+├ ƒ /admin/schools/[schoolId]/parent-onboarding
+├ ƒ /admin/schools/[schoolId]/profile
+├ ƒ /admin/schools/[schoolId]/readiness
+├ ƒ /admin/schools/[schoolId]/reports
+├ ƒ /admin/schools/[schoolId]/roles
+├ ƒ /admin/schools/[schoolId]/safeguarding
+├ ƒ /admin/schools/[schoolId]/safeguarding/[incidentId]
+├ ƒ /admin/schools/[schoolId]/safeguarding/[incidentId]/escalation
+├ ƒ /admin/schools/[schoolId]/safeguarding/[incidentId]/timeline
+├ ƒ /admin/schools/[schoolId]/safeguarding/new
+├ ƒ /admin/schools/[schoolId]/settings
+├ ƒ /admin/schools/[schoolId]/short-learning
+├ ƒ /admin/schools/[schoolId]/staff
+├ ƒ /admin/schools/[schoolId]/staff/directory
+├ ƒ /admin/schools/[schoolId]/staff/import
+├ ƒ /admin/schools/[schoolId]/staff/new
+├ ƒ /admin/schools/[schoolId]/students
+├ ƒ /admin/schools/[schoolId]/students/import
+├ ƒ /admin/schools/[schoolId]/students/new
+├ ƒ /admin/schools/[schoolId]/support
+├ ƒ /admin/schools/[schoolId]/timetable
+├ ƒ /admin/settings
+├ ƒ /admin/settings/adaptation
+├ ƒ /admin/settings/admin-users
+├ ƒ /admin/settings/api-management
+├ ƒ /admin/settings/backup
+├ ƒ /admin/settings/general
+├ ƒ /admin/settings/integrations
+├ ƒ /admin/settings/integrations/family-link
+├ ƒ /admin/settings/migration
+├ ƒ /admin/settings/production-checklist
+├ ƒ /admin/settings/roles
+├ ƒ /admin/settings/security
+├ ƒ /admin/settings/system-health
+├ ƒ /admin/short-learning
+├ ƒ /admin/short-learning/journeys
+├ ƒ /admin/short-learning/journeys/[journeyId]
+├ ƒ /admin/store
+├ ƒ /admin/store/[id]/edit
+├ ƒ /admin/store/new
+├ ƒ /admin/students
+├ ƒ /admin/students/[id]
+├ ƒ /admin/students/[id]/edit
+├ ƒ /admin/students/new
+├ ƒ /admin/subscriptions
+├ ƒ /admin/support
+├ ƒ /admin/system-health
+├ ƒ /admin/trial-leads
+├ ƒ /admin/voice-media
+├ ○ /ai-use
+├ ƒ /api/account
+├ ƒ /api/account/data
+├ ƒ /api/account/password
+├ ƒ /api/admin/academic-intelligence
+├ ƒ /api/admin/academic-intelligence/catch-up-tasks
+├ ƒ /api/admin/academic-intelligence/homework-tasks
+├ ƒ /api/admin/ai/automation
+├ ƒ /api/admin/ai/generate
+├ ƒ /api/admin/ai/provider-health
+├ ƒ /api/admin/ai/visual-assets
+├ ƒ /api/admin/assignments
+├ ƒ /api/admin/assignments/[id]
+├ ƒ /api/admin/audit-logs
+├ ƒ /api/admin/awards/nominations
+├ ƒ /api/admin/awards/nominations/[nominationId]/review
+├ ƒ /api/admin/billing/settings
+├ ƒ /api/admin/brain-centre
+├ ƒ /api/admin/brain-centre/[studentId]
+├ ƒ /api/admin/brain-centre/[studentId]/actions
+├ ƒ /api/admin/branding
+├ ƒ /api/admin/certificates/[verificationCode]/export
+├ ƒ /api/admin/certificates/analytics
+├ ƒ /api/admin/certificates/ranked/issue
+├ ƒ /api/admin/certificates/templates/settings
+├ ƒ /api/admin/coding/access
+├ ƒ /api/admin/coding/curriculum
+├ ƒ /api/admin/coding/execution
+├ ƒ /api/admin/coding/preview/[lessonId]
+├ ƒ /api/admin/coding/settings
+├ ƒ /api/admin/coding/workbench/[activityId]
+├ ƒ /api/admin/complaints
+├ ƒ /api/admin/complaints/[complaintId]
+├ ƒ /api/admin/content
+├ ƒ /api/admin/content-library
+├ ƒ /api/admin/content/[id]
+├ ƒ /api/admin/content/[id]/archive
+├ ƒ /api/admin/content/[id]/black-box
+├ ƒ /api/admin/content/[id]/duplicate
+├ ƒ /api/admin/content/[id]/publish
+├ ƒ /api/admin/content/[id]/revalidate-import
+├ ƒ /api/admin/content/[id]/review
+├ ƒ /api/admin/content/[id]/unpublish
+├ ƒ /api/admin/content/[id]/verify
+├ ƒ /api/admin/content/governance
+├ ƒ /api/admin/delete-approvals
+├ ƒ /api/admin/delete-approvals/[id]/[action]
+├ ƒ /api/admin/dictionary
+├ ƒ /api/admin/dictionary/[id]
+├ ƒ /api/admin/dictionary/bootstrap
+├ ƒ /api/admin/export
+├ ƒ /api/admin/ga/audio
+├ ƒ /api/admin/ga/audio/[audioAssetId]
+├ ƒ /api/admin/ga/audio/approve
+├ ƒ /api/admin/ga/audio/assets
+├ ƒ /api/admin/ga/audio/audit
+├ ƒ /api/admin/ga/audio/reference
+├ ƒ /api/admin/ga/audio/reject
+├ ƒ /api/admin/ga/audio/replace
+├ ƒ /api/admin/ga/categories
+├ ƒ /api/admin/ga/categories/[categoryId]
+├ ƒ /api/admin/ga/extraction-candidates/[candidateId]
+├ ƒ /api/admin/ga/extraction-candidates/import
+├ ƒ /api/admin/ga/lessons
+├ ƒ /api/admin/ga/lessons/[lessonId]
+├ ƒ /api/admin/ga/lessons/[lessonId]/assignment-content
+├ ƒ /api/admin/ga/lessons/beginner-pack-1
+├ ƒ /api/admin/ga/pdf-sources
+├ ƒ /api/admin/ga/pdf-sources/[sourceFileId]/candidates
+├ ƒ /api/admin/ga/pdf-sources/[sourceFileId]/extract
+├ ƒ /api/admin/ga/songs
+├ ƒ /api/admin/ga/songs/approve
+├ ƒ /api/admin/ga/songs/reject
+├ ƒ /api/admin/ga/sources
+├ ƒ /api/admin/ga/student-recordings
+├ ƒ /api/admin/ga/student-recordings/review
+├ ƒ /api/admin/ga/words
+├ ƒ /api/admin/ga/words/[wordId]
+├ ƒ /api/admin/ga/words/bulk-review
+├ ƒ /api/admin/ga/words/import
+├ ƒ /api/admin/ga/words/recategorise-alphabet
+├ ƒ /api/admin/help-articles
+├ ƒ /api/admin/inbox
+├ ƒ /api/admin/inbox/[msgId]
+├ ƒ /api/admin/inbox/config
+├ ƒ /api/admin/inbox/oauth/callback
+├ ƒ /api/admin/inbox/oauth/start
+├ ƒ /api/admin/inbox/send
+├ ƒ /api/admin/ingestion-health
+├ ƒ /api/admin/integrations/opswatch/settings
+├ ƒ /api/admin/integrations/opswatch/test
+├ ƒ /api/admin/integrations/truenumeris/retry
+├ ƒ /api/admin/integrations/truenumeris/settings
+├ ƒ /api/admin/integrations/truenumeris/status
+├ ƒ /api/admin/integrations/truenumeris/sync
+├ ƒ /api/admin/integrations/truenumeris/test
+├ ƒ /api/admin/jobs/run
+├ ƒ /api/admin/knowledge-graph
+├ ƒ /api/admin/lesson-pack-import/[id]
+├ ƒ /api/admin/lesson-pack-import/[id]/analyse
+├ ƒ /api/admin/lesson-pack-import/analyze
+├ ƒ /api/admin/lesson-pack-import/create-draft
+├ ƒ /api/admin/lesson-pack-import/direct-put
+├ ƒ /api/admin/lesson-pack-import/upload
+├ ƒ /api/admin/lesson-pack-import/upload-session
+├ ƒ /api/admin/lesson-pack-import/upload-session/[id]
+├ ƒ /api/admin/lesson-pack-import/upload-session/[id]/complete
+├ ƒ /api/admin/lessons/build
+├ ƒ /api/admin/lifecycle-health
+├ ƒ /api/admin/me
+├ ƒ /api/admin/messages
+├ ƒ /api/admin/messages/hub-health
+├ ƒ /api/admin/messages/reply
+├ ƒ /api/admin/messages/upload
+├ ƒ /api/admin/migration/export
+├ ƒ /api/admin/migration/import
+├ ƒ /api/admin/misconception-analytics
+├ ƒ /api/admin/monitoring
+├ ƒ /api/admin/ops/health
+├ ƒ /api/admin/ops/live
+├ ƒ /api/admin/parents
+├ ƒ /api/admin/parents/[id]
+├ ƒ /api/admin/parents/[id]/reset-password
+├ ƒ /api/admin/parents/[id]/reset-pin
+├ ƒ /api/admin/policies
+├ ƒ /api/admin/policies/[slug]
+├ ƒ /api/admin/pricing
+├ ƒ /api/admin/pricing/[id]
+├ ƒ /api/admin/pricing/setup-status
+├ ƒ /api/admin/recovery-orchestrator
+├ ƒ /api/admin/release/readiness-health
+├ ƒ /api/admin/reports
+├ ƒ /api/admin/reports/generation-health
+├ ƒ /api/admin/resources/[resource]
+├ ƒ /api/admin/resources/[resource]/[id]
+├ ƒ /api/admin/rewards/ops
+├ ƒ /api/admin/roles
+├ ƒ /api/admin/school-dashboard/[schoolId]
+├ ƒ /api/admin/schools
+├ ƒ /api/admin/schools/[schoolId]
+├ ƒ /api/admin/schools/[schoolId]/attendance
+├ ƒ /api/admin/schools/[schoolId]/attendance/[dayLessonId]
+├ ƒ /api/admin/schools/[schoolId]/safeguarding/incidents
+├ ƒ /api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]
+├ ƒ /api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/audit
+├ ƒ /api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/escalation
+├ ƒ /api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/timeline
+├ ƒ /api/admin/schools/[schoolId]/support
+├ ƒ /api/admin/schools/[schoolId]/support/cases/[caseId]
+├ ƒ /api/admin/schools/[schoolId]/support/export
+├ ƒ /api/admin/schools/[schoolId]/support/queue/[entryId]/reassign
+├ ƒ /api/admin/schools/[schoolId]/support/sessions/[sessionId]/close-abandoned
+├ ƒ /api/admin/schools/[schoolId]/support/sessions/[sessionId]/follow-up
+├ ƒ /api/admin/schools/[schoolId]/support/tutors/[schoolTeacherId]/force-offline
+├ ƒ /api/admin/schools/audit
+├ ƒ /api/admin/schools/bulk-onboarding
+├ ƒ /api/admin/schools/notifications/dispatch
+├ ƒ /api/admin/schools/notifications/events
+├ ƒ /api/admin/schools/notifications/preferences
+├ ƒ /api/admin/schools/provisioning/jobs
+├ ƒ /api/admin/schools/provisioning/jobs/[jobId]
+├ ƒ /api/admin/schools/provisioning/runner
+├ ƒ /api/admin/schools/trusts
+├ ƒ /api/admin/settings/adaptation
+├ ƒ /api/admin/settings/api-keys
+├ ƒ /api/admin/settings/api-keys/test
+├ ƒ /api/admin/settings/api-management/connections
+├ ƒ /api/admin/settings/api-management/connections/[id]
+├ ƒ /api/admin/settings/api-management/connections/[id]/test
+├ ƒ /api/admin/settings/api-management/keys
+├ ƒ /api/admin/settings/api-management/keys/[id]/revoke
+├ ƒ /api/admin/settings/api-management/keys/[id]/rotate
+├ ƒ /api/admin/settings/general
+├ ƒ /api/admin/settings/security
+├ ƒ /api/admin/short-learning
+├ ƒ /api/admin/short-learning/journeys
+├ ƒ /api/admin/short-learning/journeys/[journeyId]
+├ ƒ /api/admin/short-learning/journeys/[journeyId]/blocks/[blockId]/ai-correct
+├ ƒ /api/admin/short-learning/journeys/[journeyId]/blocks/[blockId]/approve
+├ ƒ /api/admin/short-learning/journeys/[journeyId]/blocks/[blockId]/edit
+├ ƒ /api/admin/short-learning/journeys/[journeyId]/blocks/[blockId]/regenerate
+├ ƒ /api/admin/short-learning/journeys/[journeyId]/publish
+├ ƒ /api/admin/short-learning/journeys/[journeyId]/unpublish
+├ ƒ /api/admin/stats
+├ ƒ /api/admin/students
+├ ƒ /api/admin/students/[id]
+├ ƒ /api/admin/students/[id]/attempts
+├ ƒ /api/admin/students/[id]/dashboard-content
+├ ƒ /api/admin/students/[id]/dashboard-sections
+├ ƒ /api/admin/students/[id]/progression-recommendations
+├ ƒ /api/admin/students/[id]/quick-level-finder/retest
+├ ƒ /api/admin/students/[id]/school-week-settings
+├ ƒ /api/admin/students/directory
+├ ƒ /api/admin/subscriptions
+├ ƒ /api/admin/subscriptions/manual
+├ ƒ /api/admin/trial-leads
+├ ƒ /api/admin/usage-events
+├ ƒ /api/admin/users
+├ ƒ /api/admin/users/[id]
+├ ƒ /api/admin/users/[id]/reset-password
+├ ƒ /api/admin/voice/test
+├ ƒ /api/admin/wallet/adjust
+├ ƒ /api/admin/weak-areas
+├ ƒ /api/admin/weekly-homework/generate
+├ ƒ /api/admin/weekly-homework/override
+├ ƒ /api/admin/weekly-homework/status
+├ ƒ /api/ai/generate-targeted
+├ ƒ /api/assignments
+├ ƒ /api/assignments/[id]
+├ ƒ /api/attempts
+├ ƒ /api/auth/forgot-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/outlook/callback
+├ ƒ /api/auth/outlook/connect
+├ ƒ /api/auth/password-reset/confirm
+├ ƒ /api/auth/password-reset/request
+├ ƒ /api/auth/refresh
+├ ƒ /api/auth/register
+├ ƒ /api/auth/reset-password
+├ ƒ /api/auth/signup
+├ ƒ /api/auth/teacher-invite
+├ ƒ /api/billing/portal
+├ ƒ /api/billing/stripe/checkout
+├ ƒ /api/billing/stripe/webhook
+├ ƒ /api/billing/truenumeris/status
+├ ƒ /api/billing/truenumeris/webhook
+├ ƒ /api/branding
+├ ƒ /api/certificates/verify/[verificationCode]
+├ ƒ /api/certificates/verify/[verificationCode]/export
+├ ƒ /api/children
+├ ƒ /api/children/[id]
+├ ƒ /api/children/[id]/coaching-memory
+├ ƒ /api/children/[id]/data
+├ ƒ /api/children/[id]/export
+├ ƒ /api/children/[id]/learning-dna
+├ ƒ /api/children/active
+├ ƒ /api/coach
+├ ƒ /api/coach/dictionary
+├ ƒ /api/coach/word-help
+├ ƒ /api/consent
+├ ƒ /api/consent/withdraw
+├ ƒ /api/content/assigned
+├ ƒ /api/content/browse
+├ ƒ /api/content/next
+├ ƒ /api/cron/academic-year-rollover
+├ ƒ /api/cron/daily
+├ ƒ /api/cron/invite-expiry
+├ ƒ /api/cron/lesson-pack-upload-cleanup
+├ ƒ /api/cron/licence-lifecycle
+├ ƒ /api/cron/opswatch-heartbeat
+├ ƒ /api/cron/short-learning-lifecycle
+├ ƒ /api/cron/short-learning-reminders
+├ ƒ /api/cron/tutor-presence-sweep
+├ ƒ /api/cron/weekly-progress
+├ ƒ /api/dev/coding-preview
+├ ƒ /api/external/v1/database
+├ ƒ /api/external/v1/deployments
+├ ƒ /api/external/v1/discovery
+├ ƒ /api/external/v1/health
+├ ƒ /api/external/v1/integrations
+├ ƒ /api/external/v1/jobs
+├ ƒ /api/external/v1/ping
+├ ƒ /api/external/v1/services
+├ ƒ /api/ga/lessons
+├ ƒ /api/ga/lessons/[lessonId]
+├ ƒ /api/ga/lessons/[lessonId]/progress
+├ ƒ /api/ga/words
+├ ƒ /api/health
+├ ƒ /api/help
+├ ƒ /api/lesson/auto-build
+├ ƒ /api/parent-pin/forgot
+├ ƒ /api/parent-pin/reset
+├ ƒ /api/parent/academic-intelligence
+├ ƒ /api/parent/academic-intelligence/catch-up-tasks
+├ ƒ /api/parent/academic-intelligence/homework-tasks
+├ ƒ /api/parent/children/[childId]/account
+├ ƒ /api/parent/children/[childId]/account/reset
+├ ƒ /api/parent/children/[childId]/pin
+├ ƒ /api/parent/children/accounts
+├ ƒ /api/parent/coding
+├ ƒ /api/parent/coding/demonstrations
+├ ƒ /api/parent/data-requests
+├ ƒ /api/parent/insights
+├ ƒ /api/parent/messages
+├ ƒ /api/parent/profiles
+├ ƒ /api/parent/profiles/verify-child-pin
+├ ƒ /api/parent/progress-report
+├ ƒ /api/parent/reports/export
+├ ƒ /api/parent/short-learning/bookings
+├ ƒ /api/parent/short-learning/bookings/[id]
+├ ƒ /api/parent/short-learning/bookings/[id]/cancel
+├ ƒ /api/parent/short-learning/slots
+├ ƒ /api/parent/students/[studentId]/certificates
+├ ƒ /api/parent/students/[studentId]/certificates/[verificationCode]/export
+├ ƒ /api/parent/students/[studentId]/school-week-settings
+├ ƒ /api/parent/students/[studentId]/subject-selection
+├ ƒ /api/parent/subject-selection-policy
+├ ƒ /api/parent/support
+├ ƒ /api/parent/usernames/availability
+├ ƒ /api/parent/weekly-homework/override
+├ ƒ /api/parent/weekly-homework/status
+├ ƒ /api/pin/refresh
+├ ƒ /api/pin/set
+├ ƒ /api/pin/status
+├ ƒ /api/pin/verify
+├ ƒ /api/portal/mode
+├ ƒ /api/pricing
+├ ƒ /api/progress
+├ ƒ /api/progress/event
+├ ƒ /api/rewards/award
+├ ƒ /api/school-admin/academic-year
+├ ƒ /api/school-admin/academic-year/apply
+├ ƒ /api/school-admin/academic-year/history
+├ ƒ /api/school-admin/academic-year/preview
+├ ƒ /api/school-admin/day-school/actions
+├ ƒ /api/school-admin/day-school/attendance
+├ ƒ /api/school-admin/day-school/dashboard
+├ ƒ /api/school-admin/overview
+├ ƒ /api/school-admin/short-learning/bookings
+├ ƒ /api/school-admin/short-learning/bookings/[id]
+├ ƒ /api/school-admin/short-learning/coverage
+├ ƒ /api/school-admin/short-learning/forecast
+├ ƒ /api/school-admin/short-learning/policies
+├ ƒ /api/school-admin/short-learning/reliability
+├ ƒ /api/school-admin/short-learning/shifts
+├ ƒ /api/school-admin/staff/absences
+├ ƒ /api/school/analytics
+├ ƒ /api/school/assignments
+├ ƒ /api/school/audit
+├ ƒ /api/school/classrooms
+├ ƒ /api/school/classrooms/[id]
+├ ƒ /api/school/communications
+├ ƒ /api/school/compliance
+├ ƒ /api/school/invites
+├ ƒ /api/school/invites/accept
+├ ƒ /api/school/parent-links
+├ ƒ /api/school/progress-report
+├ ƒ /api/school/reports/export
+├ ƒ /api/school/safeguarding
+├ ƒ /api/school/safeguarding/[schoolId]/incidents/[incidentId]/attachments/[attachmentId]/download
+├ ƒ /api/school/safeguarding/upload
+├ ƒ /api/school/students
+├ ƒ /api/school/students/[id]
+├ ƒ /api/school/teachers
+├ ƒ /api/shop/buy
+├ ƒ /api/shop/equip
+├ ƒ /api/shop/items
+├ ƒ /api/shop/owned
+├ ƒ /api/spelling/progress
+├ ƒ /api/spelling/session
+├ ƒ /api/student/academic-intelligence
+├ ƒ /api/student/academic-intelligence/catch-up-tasks
+├ ƒ /api/student/academic-intelligence/homework-tasks
+├ ƒ /api/student/assignment-load-failure
+├ ƒ /api/student/assignments
+├ ƒ /api/student/attendance
+├ ƒ /api/student/boss-battle
+├ ƒ /api/student/certificates
+├ ƒ /api/student/certificates/[verificationCode]/export
+├ ƒ /api/student/certificates/eligibility
+├ ƒ /api/student/certificates/issue
+├ ƒ /api/student/coding
+├ ƒ /api/student/coding/activities
+├ ƒ /api/student/coding/activities/[activityId]
+├ ƒ /api/student/coding/demonstrations
+├ ƒ /api/student/coding/demonstrations/read
+├ ƒ /api/student/coding/evidence
+├ ƒ /api/student/coding/lessons/[lessonId]
+├ ƒ /api/student/coding/next
+├ ƒ /api/student/coding/placement
+├ ƒ /api/student/coding/portfolio
+├ ƒ /api/student/coding/readiness
+├ ƒ /api/student/coding/readiness/[planId]/[activityId]
+├ ƒ /api/student/daily-journey
+├ ƒ /api/student/daily-lesson
+├ ƒ /api/student/dashboard-summary
+├ ƒ /api/student/day-school-access
+├ ƒ /api/student/daytime-period/[dayLessonId]/context
+├ ƒ /api/student/daytime-period/[dayLessonId]/continue
+├ ƒ /api/student/daytime-period/[dayLessonId]/start
+├ ƒ /api/student/daytime-timetable
+├ ƒ /api/student/daytime-tutor
+├ ƒ /api/student/human-support/guidance
+├ ƒ /api/student/improving-session
+├ ƒ /api/student/learning-state
+├ ƒ /api/student/placement-lessons
+├ ƒ /api/student/progress
+├ ƒ /api/student/progression/recommendations
+├ ƒ /api/student/quick-level-finder/answer
+├ ƒ /api/student/quick-level-finder/complete
+├ ƒ /api/student/quick-level-finder/levels
+├ ƒ /api/student/quick-level-finder/session
+├ ƒ /api/student/quick-level-finder/start
+├ ƒ /api/student/session-summary
+├ ƒ /api/student/short-learning/[bookingId]/invite-tutor
+├ ƒ /api/student/short-learning/[bookingId]/session
+├ ƒ /api/student/short-learning/[bookingId]/support-context
+├ ƒ /api/student/skills
+├ ƒ /api/student/weekly-homework/current
+├ ƒ /api/student/weekly-homework/draft
+├ ƒ /api/student/weekly-homework/gate
+├ ƒ /api/student/weekly-homework/override
+├ ƒ /api/student/weekly-homework/submit
+├ ƒ /api/students/[studentId]/skills
+├ ƒ /api/subscription
+├ ƒ /api/subscription/access
+├ ƒ /api/subscription/checkout
+├ ƒ /api/teacher/attendance/[dayLessonId]
+├ ƒ /api/teacher/coding
+├ ƒ /api/teacher/daytime-timetable
+├ ƒ /api/teacher/human-support/sessions/[sessionId]
+├ ƒ /api/teacher/human-support/sessions/[sessionId]/end
+├ ƒ /api/teacher/live/[dayLessonId]
+├ ƒ /api/teacher/misconception-analytics
+├ ƒ /api/teacher/presence
+├ ƒ /api/teacher/progress-report
+├ ƒ /api/teacher/support
+├ ƒ /api/teacher/support/accept
+├ ƒ /api/teacher/support/release
+├ ƒ /api/trial/activity
+├ ƒ /api/trial/restore
+├ ƒ /api/trial/session
+├ ƒ /api/trial/start
+├ ƒ /api/trial/status
+├ ƒ /api/trial/upgrade
+├ ƒ /api/upload
+├ ƒ /api/voice/tts
+├ ƒ /api/wallet/award
+├ ƒ /api/webhooks/payment
+├ ƒ /api/webhooks/revolut
+├ ƒ /api/webhooks/stripe-school
+├ ƒ /api/webhooks/twilio/whatsapp
+├ ○ /auth/forgot-password
+├ ○ /auth/login
+├ ○ /auth/reset-password
+├ ○ /auth/signup
+├ ○ /billing/cancel
+├ ○ /billing/success
+├ ƒ /certificates/verify/[verificationCode]
+├ ○ /consent
+├ ○ /contact
+├ ○ /content
+├ ƒ /content/[...slug]
+├ ○ /cookies
+├ ○ /dashboard
+├ ○ /data-retention
+├ ○ /dev/coding
+├ ○ /faq
+├ ○ /features
+├ ○ /forgot-password
+├ ○ /ga-dictionary
+├ ○ /ga-learning-hub
+├ ƒ /ga-learning-hub/[lessonId]
+├ ○ /games
+├ ○ /games/boss-battle
+├ ○ /games/lesson
+├ ○ /games/math
+├ ○ /games/reading
+├ ○ /games/spelling
+├ ○ /ghana
+├ ○ /goals
+├ ○ /invite/accept
+├ ○ /journey
+├ ○ /knowledge-centre
+├ ƒ /login
+├ ○ /manifest.webmanifest
+├ ○ /mobile-qa-checklist
+├ ƒ /my-profile
+├ ○ /nigeria
+├ ○ /offline
+├ ○ /onboarding
+├ ƒ /parent
+├ ○ /parent-pin
+├ ○ /parent-pin/forgot
+├ ○ /parent-pin/reset
+├ ƒ /parent/[section]
+├ ƒ /parent/dashboard
+├ ƒ /parent/profile
+├ ƒ /parent/profiles
+├ ƒ /parent/short-learning
+├ ƒ /parent/short-learning/bookings/[id]
+├ ƒ /parent/support
+├ ƒ /parent/wallet
+├ ○ /performance
+├ ○ /pet
+├ ○ /policies
+├   /policies/[slug]
+│ ├ ● /policies/terms
+│ ├ ● /policies/privacy
+│ ├ ● /policies/cookies
+│ └ ● [+34 more paths]
+├ ○ /pricing
+├ ○ /privacy
+├ ○ /profile
+├ ƒ /profiles
+├ ○ /progress
+├ ○ /reset-password
+├ ○ /rewards
+├ ○ /roadmap
+├ ○ /robots.txt
+├ ○ /safeguarding-policy
+├ ƒ /school
+├ ƒ /school-admin
+├ ƒ /school-admin/coding
+├ ƒ /school-admin/day-school/attendance
+├ ƒ /school-admin/day-school/classes
+├ ƒ /school-admin/day-school/classes/[classId]
+├ ƒ /school-admin/day-school/classes/[classId]/edit
+├ ƒ /school-admin/day-school/classes/new
+├ ƒ /school-admin/day-school/lesson-review
+├ ƒ /school-admin/day-school/lessons
+├ ƒ /school-admin/day-school/reports
+├ ƒ /school-admin/day-school/students
+├ ƒ /school-admin/day-school/students/[studentId]
+├ ƒ /school-admin/day-school/students/[studentId]/edit
+├ ƒ /school-admin/day-school/students/[studentId]/guardians
+├ ƒ /school-admin/day-school/students/new
+├ ƒ /school-admin/day-school/teachers
+├ ƒ /school-admin/day-school/timetable
+├ ƒ /school-admin/knowledge-library
+├ ƒ /school-admin/knowledge-library/[slug]
+├ ƒ /school-admin/settings
+├ ƒ /school-admin/short-learning
+├ ƒ /school-admin/short-learning/bookings
+├ ƒ /school-admin/short-learning/bookings/[id]
+├ ƒ /school-admin/short-learning/coverage
+├ ƒ /school-admin/short-learning/forecast
+├ ƒ /school-admin/short-learning/policies
+├ ƒ /school-admin/short-learning/reliability
+├ ƒ /school-admin/short-learning/shifts
+├ ƒ /school-portal-unavailable
+├ ○ /school/invites/accept
+├ ○ /shop
+├ ○ /short-learning
+├ ○ /signup
+├ ○ /sitemap.xml
+├ ○ /student
+├ ○ /student/attendance
+├ ○ /student/certificates
+├ ƒ /student/coding
+├ ƒ /student/coding/[lessonId]
+├ ƒ /student/coding/activities/[activityId]
+├ ƒ /student/coding/readiness/[planId]/[activityId]
+├ ○ /student/daily-journey
+├ ○ /student/dashboard
+├ ○ /student/onboarding
+├ ○ /student/profile
+├ ○ /student/recovery-path
+├ ƒ /student/short-learning
+├ ƒ /student/short-learning/[bookingId]
+├ ƒ /student/short-learning/[bookingId]/learn
+├ ƒ /student/short-learning/[bookingId]/stage/[blockId]
+├ ○ /student/today
+├ ○ /subscription
+├ ○ /subscription/cancel
+├ ○ /subscription/success
+├ ƒ /teacher
+├ ƒ /teacher/assignments
+├ ƒ /teacher/assignments/new
+├ ƒ /teacher/attendance/[dayLessonId]
+├ ƒ /teacher/audit
+├ ƒ /teacher/classrooms
+├ ƒ /teacher/classrooms/[id]
+├ ƒ /teacher/classrooms/new
+├ ƒ /teacher/coding
+├ ƒ /teacher/governance
+├ ƒ /teacher/live/[dayLessonId]
+├ ƒ /teacher/operations
+├ ƒ /teacher/progress
+├ ƒ /teacher/students
+├ ƒ /teacher/students/[id]
+├ ƒ /teacher/support
+├ ƒ /teacher/support/history
+├ ƒ /teacher/timetable
+├ ○ /terms
+├ ○ /trial
+├ ○ /trial/dashboard
+├ ○ /trial/learn
+├ ○ /trial/upgrade
+├ ƒ /uk
+└ ○ /upgrade
+
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses generateStaticParams)
+ƒ  (Dynamic)  server-rendered on demand
+

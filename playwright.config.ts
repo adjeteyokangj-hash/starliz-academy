@@ -4,16 +4,17 @@ import * as os from "os";
 import * as path from "path";
 
 // Load .env.local so Prisma clients in test workers have DATABASE_URL / DIRECT_URL
-dotenv.config({ path: path.resolve(__dirname, ".env.local") });
+if (!process.env.CI) dotenv.config({ path: path.resolve(__dirname, ".env.local") });
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
 
 // Store test artifacts outside the OneDrive workspace to avoid EPERM file-lock errors.
-const artifactsDir = path.join(os.tmpdir(), "starliz-playwright");
+const artifactsDir = process.env.CI ? path.resolve(__dirname, "test-results") : path.join(os.tmpdir(), "starliz-playwright");
 
 export default defineConfig({
   testDir: "./tests/e2e",
   outputDir: artifactsDir,
+  reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "list",
   timeout: 120_000,
   expect: {
     timeout: 15_000,
@@ -21,6 +22,8 @@ export default defineConfig({
   use: {
     baseURL,
     headless: true,
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
@@ -28,6 +31,6 @@ export default defineConfig({
         command: "npm run dev -- --hostname 127.0.0.1 --port 3000",
         url: "http://127.0.0.1:3000",
         timeout: 180_000,
-        reuseExistingServer: true,
+        reuseExistingServer: !process.env.CI,
       },
 });

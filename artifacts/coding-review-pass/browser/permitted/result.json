@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "scenario": "permitted",
+  "age": 14,
+  "activity": "Y2.02",
+  "mastered": true,
+  "reviewComplete": true,
+  "provider": {
+    "keyReads": 2,
+    "modelCalls": 2
+  },
+  "externalRequests": 0,
+  "browserErrors": [],
+  "memoryPersistenceOnly": true,
+  "authenticated": false,
+  "historyPreserved": true
+}

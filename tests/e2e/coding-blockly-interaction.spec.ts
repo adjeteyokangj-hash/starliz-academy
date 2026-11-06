@@ -1,0 +1,47 @@
+import {test,expect} from '@playwright/test';
+import {build} from 'esbuild';
+import {codingComponentStyles} from './coding-styles';
+import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
+
+test('connected blocks edit fields, nest by dragging, undo by keyboard and reject detached drafts',async({page})=>{
+  page.setDefaultTimeout(15000);
+  const directory=`artifacts/coding-blockly-interaction/${randomUUID()}`;mkdirSync(directory,{recursive:true});
+  const initial=[{op:'repeat',amount:3,body:[{op:'move',x:1,y:0}]},{op:'move',x:0,y:-1}];
+  const styles=await codingComponentStyles();
+  const built=await build({stdin:{resolveDir:process.cwd(),loader:'tsx',contents:`import React,{useState}from'react';import{createRoot}from'react-dom/client';import Editor from'./src/components/coding/BlockCommandsEditor';import*as B from'blockly/core';window.blocksApi=B;function App(){const[commands,change]=useState(${JSON.stringify(initial)}),[valid,setValid]=useState(true);return <main style={{maxWidth:1000,margin:'auto',padding:20}}><Editor commands={commands} onChange={change} onValidityChange={setValid}/><output data-testid="document">{JSON.stringify(commands)}</output><output data-testid="valid">{String(valid)}</output></main>}createRoot(document.getElementById('root')).render(<App/>);`},bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}});
+  const errors:string[]=[];page.on('pageerror',e=>{errors.push(e.message);writeFileSync(`${directory}/browser-errors.json`,JSON.stringify(errors));});
+  await page.route('**/*',r=>{const path=new URL(r.request().url()).pathname;return path.startsWith('/coding/blockly/')?r.fulfill({body:readFileSync(`public${path}`),contentType:path.endsWith('.svg')?'image/svg+xml':path.endsWith('.png')?'image/png':'application/octet-stream'}):r.abort();});
+  await page.setContent(`<html><head><base href="http://127.0.0.1:3000/"><style>${styles}</style></head><body><div id="root"></div><script>${built.outputFiles[0]!.text.replaceAll('</script','<\\/script')}</script></body></html>`);
+  await expect(page.locator('.blocklySvg').first()).toBeVisible();
+  await expect(page.getByText('Opening the visual workspace…',{exact:false})).toHaveCount(0);
+  await expect(page.getByTestId('document')).toHaveText(JSON.stringify(initial));
+  const autoFit=page.getByRole('checkbox',{name:'Auto fit',exact:true});await expect(autoFit).toBeChecked();
+  await page.locator('svg text').filter({hasText:/^3$/}).first().click();
+  await page.locator('.blocklyHtmlInput').fill('4');await page.locator('.blocklyHtmlInput').press('Enter');
+  await expect(page.getByTestId('document')).toContainText('"amount":4');
+  await expect(autoFit).not.toBeChecked();
+  await page.getByRole('button',{name:'Zoom in',exact:true}).click();
+  const scaleBefore=await page.evaluate(()=>(window as unknown as {blocksApi:{getMainWorkspace:()=>{scale:number}}}).blocksApi.getMainWorkspace().scale);
+  await page.setViewportSize({width:900,height:1100});
+  expect(await page.evaluate(()=>(window as unknown as {blocksApi:{getMainWorkspace:()=>{scale:number}}}).blocksApi.getMainWorkspace().scale)).toBe(scaleBefore);
+  const boxes=await page.evaluate(()=>{
+    const api=(window as unknown as {blocksApi:{getMainWorkspace:()=>{getBlockById:(id:string)=>{getSvgRoot:()=>SVGElement}}}}).blocksApi;
+    const source=api.getMainWorkspace().getBlockById('command.1').getSvgRoot().getBoundingClientRect();
+    const target=api.getMainWorkspace().getBlockById('command.0.body.0').getSvgRoot().getBoundingClientRect();
+    return{source:{x:source.left+35,y:source.top+12},target:{x:target.left+35,y:target.bottom+12}};
+  });
+  await page.mouse.move(boxes.source.x,boxes.source.y);await page.mouse.down();await page.mouse.move(boxes.source.x+15,boxes.source.y+15,{steps:4});await page.mouse.move(boxes.target.x,boxes.target.y,{steps:20});await page.mouse.up();
+  const nested=[{op:'repeat',amount:4,body:[initial[0]!.body![0],initial[1]]}];
+  await expect(page.getByTestId('document')).toHaveText(JSON.stringify(nested));
+  await page.getByRole('button',{name:'Undo blocks',exact:true}).focus();await page.keyboard.press('Enter');
+  await expect(page.getByTestId('document')).toHaveText(JSON.stringify([{...initial[0],amount:4},initial[1]]));
+  await page.getByRole('button',{name:'Redo blocks',exact:true}).click();await expect(page.getByTestId('document')).toHaveText(JSON.stringify(nested));
+  await page.getByRole('button',{name:'Fit blocks',exact:true}).click();
+  await expect(autoFit).toBeChecked();
+  await page.screenshot({path:`${directory}/nested-program.png`,fullPage:true});
+  await page.evaluate(()=>{const api=(window as unknown as {blocksApi:{getMainWorkspace:()=>{getBlockById:(id:string)=>{unplug:()=>void}}}}).blocksApi;api.getMainWorkspace().getBlockById('command.1').unplug();});
+  await expect(page.getByTestId('valid')).toHaveText('false');await expect(page.getByTestId('document')).toHaveText(JSON.stringify(nested));
+  expect(errors).toEqual([]);
+  writeFileSync(`${directory}/result.json`,JSON.stringify({realPointerDragNesting:true,realFieldEdit:true,keyboardUndo:true,redo:true,noOpDocumentUnchanged:true,programmaticDetachedDraftRejected:true,runtimeExecutionClaim:false,browserErrors:errors},null,2));
+});

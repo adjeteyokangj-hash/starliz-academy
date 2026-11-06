@@ -328,8 +328,10 @@ export async function createPricingPlanResolver(): Promise<PricingPlanResolver> 
 export function toPricingFeaturesStorage(input: {
   features: string[]
   childLimit: number
+  previous?: Prisma.JsonValue
 }): Prisma.InputJsonValue {
-  return featuresToStorage(input.features, Math.max(1, Math.floor(input.childLimit || 1)))
+  const previous = input.previous && typeof input.previous === "object" && !Array.isArray(input.previous) ? input.previous : {}
+  return { ...previous, ...featuresToStorage(input.features, Math.max(1, Math.floor(input.childLimit || 1))) as Prisma.InputJsonObject } as Prisma.InputJsonValue
 }
 
 export function planKeyFromPricingPlan(plan: Pick<PricingPlanView, "id" | "name">): string {

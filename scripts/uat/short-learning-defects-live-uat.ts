@@ -1,5 +1,5 @@
 import "./load-env";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { UAT_FIXTURES } from "./local-fixtures";
 import { formatUkDateTime, formatUkTime, londonInstantFromDateAndHm } from "../../src/lib/uk-datetime";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -12,6 +12,7 @@ const PARENT_PIN = process.env.UAT_PARENT_PIN ?? "2580";
 const STUDENT_EMAIL = process.env.UAT_STUDENT_EMAIL ?? "uat.daytime.y6.student@starliz.dev";
 const STUDENT_PASSWORD = process.env.UAT_STUDENT_PASSWORD ?? "UatDaytimeStudent#2026";
 const prisma = new PrismaClient();
+type ApiPayload = Record<string, unknown> & { booking?: { id?: string; subject?: string; subjectSelectionMode?: string; selectionReason?: string } };
 type Jar = { cookie: string };
 type Check = { name: string; ok: boolean; detail?: string };
 const checks: Check[] = [];
@@ -47,10 +48,10 @@ async function request(jar: Jar, path: string, init: RequestInit = {}) {
   const setCookie = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
   jar.cookie = mergeCookies(jar.cookie, setCookie);
   const text = await res.text();
-  let json: any = null;
+  let json: ApiPayload | null = null;
   try { json = JSON.parse(text); } catch { json = null; }
   const location = res.headers.get("location");
-  (evidence.routes as any[]).push({ path, method: init.method ?? "GET", status: res.status, location, cookieNames: cookieNames(jar.cookie) });
+  (evidence.routes as Array<Record<string, unknown>>).push({ path, method: init.method ?? "GET", status: res.status, location, cookieNames: cookieNames(jar.cookie) });
   return { status: res.status, text, json, location };
 }
 async function login(email: string, password: string) {
@@ -72,14 +73,14 @@ async function ensureParentPin(jar: Jar) {
 }
 async function logout(jar: Jar) { await request(jar, "/api/auth/logout", { method: "POST" }); }
 async function assessExistingBookings(schoolStudentId: string | null) {
-  const where: any = schoolStudentId
+  const where: Prisma.StudentLearningBookingWhereInput = schoolStudentId
     ? { schoolStudentId, status: { notIn: ["cancelled", "late_cancelled"] } }
     : { schoolStudent: { child: { name: { contains: "Lizzy", mode: "insensitive" } } }, status: { notIn: ["cancelled", "late_cancelled"] } };
   const rows = await prisma.studentLearningBooking.findMany({
     where, orderBy: { startsAt: "desc" }, take: 50,
     include: { shortLearningSession: { select: { id: true, status: true } }, journey: { select: { id: true, status: true } }, schoolStudent: { include: { child: { select: { name: true } } } } },
   });
-  const affected: any[] = [];
+  const affected: Array<Record<string, unknown>> = [];
   for (const row of rows) {
     const iso = row.startsAt.toISOString();
     const ukTime = formatUkTime(row.startsAt);
@@ -211,7 +212,7 @@ async function main() {
       check("Auto booking reason present (server-owned)", typeof autoBook.json?.booking?.selectionReason === "string" && autoBook.json?.booking?.selectionReason !== "parent_selected", "reason=" + autoBook.json?.booking?.selectionReason);
       if (autoId) {
         const row = await prisma.studentLearningBooking.findUnique({ where: { id: autoId }, include: { shortLearningSession: { select: { status: true } }, journey: { select: { status: true } } } });
-        let meta: any = {};
+        let meta: Record<string, unknown> = {};
         try { meta = row?.metadataJson ? JSON.parse(row.metadataJson) : {}; } catch { meta = {}; }
         check("metadataJson has selection fields", Boolean(meta.subjectSelectionMode && meta.selectionReason));
         check("Content not auto-published", !row?.journey || row.journey.status !== "published", "journey=" + (row?.journey?.status ?? "none") + " session=" + (row?.shortLearningSession?.status ?? "none"));

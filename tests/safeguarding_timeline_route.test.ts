@@ -1,7 +1,8 @@
+import { NextResponse } from "next/server";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleAdminSafeguardingIncidentTimelinePost } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/timeline/route";
+import { handleAdminSafeguardingIncidentTimelinePost } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/timeline/route-helpers";
 import type { SafeguardingIncident, TimelineEvent, AuditEvent } from "../src/app/api/admin/schools/[schoolId]/safeguarding/_lib/contracts";
 
 const adminDeps = {
@@ -179,7 +180,7 @@ test("safeguarding timeline denies callers without MANAGE_SAFEGUARDING", async (
     ...buildTimelineDeps(incident),
     requireSafeguardingAdmin: async () => ({
       session: null,
-      response: new Response(JSON.stringify({ error: "You do not have permission to perform this action." }), {
+      response: new NextResponse(JSON.stringify({ error: "You do not have permission to perform this action." }), {
         status: 403,
         headers: { "Content-Type": "application/json" },
       }),

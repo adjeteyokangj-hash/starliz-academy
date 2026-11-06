@@ -1,0 +1,13 @@
+(node:19948) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ student bootstrap never sends learners to /profiles (23.9122ms)
+✔ student bootstrap leaves student dashboard ready (0.5826ms)
+✔ StoreBootstrap wires student path to active-profile hydrate and no /profiles bounce (0.9845ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2987.5656

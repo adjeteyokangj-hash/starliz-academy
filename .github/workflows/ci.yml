@@ -7,14 +7,38 @@ on:
       - main
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: bash --noprofile --norc -e -o pipefail {0}
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  DATABASE_URL: postgresql://starliz_ci:disposable-ci-only@127.0.0.1:5432/starliz_ci?sslmode=disable
+  DIRECT_URL: postgresql://starliz_ci:disposable-ci-only@127.0.0.1:5432/starliz_ci?sslmode=disable
+  AUTH_SECRET: starliz-ci-only-${{ github.run_id }}-${{ github.run_attempt }}
+  CI_DISPOSABLE_DATABASE: "true"
+  PLAYWRIGHT_HTML_OPEN: never
+  NODE_OPTIONS: --max-old-space-size=6144
+
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: starliz_ci
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: starliz_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U starliz_ci -d starliz_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
 
     steps:
       - name: Checkout
@@ -23,7 +47,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -32,6 +56,9 @@ jobs:
       - name: Prepare diagnostics folder
         run: mkdir -p artifacts
 
+      - name: Initialise fresh disposable schema
+        run: npx tsx scripts/ci/bootstrap-disposable-db.ts
+
       - name: Prisma validate
         run: npx prisma validate
 
@@ -39,15 +66,24 @@ jobs:
         run: npx prisma generate
 
       - name: Typecheck
-        run: npx tsc --noEmit 2>&1 | tee artifacts/typecheck.txt
+        run: npx tsc --noEmit --incremental false 2>&1 | tee artifacts/typecheck.txt
+
+      - name: Verify actual runtime and practical checkout hashes
+        if: ${{ !cancelled() }}
+        run: npx tsx scripts/coding/verify-runtime-checkout.ts 2>&1 | tee artifacts/runtime-checkout.txt
 
       - name: Lint
+        if: ${{ !cancelled() }}
         run: npm run lint -- --max-warnings=0 2>&1 | tee artifacts/lint.txt
 
       - name: Unit tests
-        run: npm test 2>&1 | tee artifacts/unit-tests.txt
+        if: ${{ !cancelled() }}
+        run: |
+          npx tsx --test tests/ci_disposable_database.test.ts 2>&1 | tee artifacts/disposable-db-tests.txt
+          npm test 2>&1 | tee artifacts/unit-tests.txt
 
       - name: Build
+        if: ${{ !cancelled() }}
         run: npm run build 2>&1 | tee artifacts/build.txt
 
       - name: Upload verify diagnostics
@@ -58,10 +94,41 @@ jobs:
           path: artifacts/
           if-no-files-found: warn
 
+  runtime-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify actual Windows checkout bytes and practical executor
+        run: npx tsx scripts/coding/verify-runtime-checkout.ts
+
   e2e-auth:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: verify
+    # Collect real auth results even when an independent verify check fails.
+    # A failed verify job remains a required failure; nothing is masked.
+    if: ${{ !cancelled() }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: starliz_ci
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: starliz_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U starliz_ci -d starliz_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
 
     steps:
       - name: Checkout
@@ -70,7 +137,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -79,8 +146,14 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Initialise fresh disposable schema
+        run: npx tsx scripts/ci/bootstrap-disposable-db.ts
+
       - name: Run key E2E auth flow
-        run: npm run test:e2e:auth
+        run: npm run test:e2e:auth -- --reporter=line,html
+
+      - name: Verify legacy coding responsive layout
+        run: npx playwright test --config playwright.coding-layout.config.ts --workers=1 --reporter=line --output test-results/coding-layout
 
       - name: Upload auth E2E artifacts
         if: always()
@@ -93,10 +166,22 @@ jobs:
           if-no-files-found: warn
 
   e2e-release-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     needs: verify
     if: github.event_name == 'workflow_dispatch' || vars.CI_RELEASE_PROFILE == 'true'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: starliz_ci
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: starliz_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U starliz_ci -d starliz_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
 
     steps:
       - name: Checkout
@@ -105,7 +190,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -115,7 +200,11 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run release smoke journeys
-        run: npm run verify:release:e2e
+        # Same fresh schema setup as auth; each enabled job owns its own service.
+        # No historical migration sequence or hosted security is applied here.
+        run: |
+          npx tsx scripts/ci/bootstrap-disposable-db.ts
+          npm run verify:release:e2e
 
       - name: Upload release smoke artifacts
         if: always()

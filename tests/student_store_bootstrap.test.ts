@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { decideStudentStoreBootstrap } from "../src/lib/student-store-bootstrap";
@@ -23,7 +24,6 @@ test("student bootstrap leaves student dashboard ready", () => {
 });
 
 test("StoreBootstrap wires student path to active-profile hydrate and no /profiles bounce", () => {
-  const fs = require("node:fs");
   const source = fs.readFileSync("src/components/layout/StoreBootstrap.tsx", "utf8");
   assert.match(source, /role === "student"/);
   assert.match(source, /hydrateActiveProfileFromServer/);

@@ -143,7 +143,7 @@ const subjects = [
   },
   {
     title: "KS2 (Years 3-6)",
-    text: "Upper primary progression across English, maths, science, computing, humanities, creative subjects, languages, and wider development.",
+    text: "Upper primary progression across English, maths, science, computing, coding, humanities, creative subjects, languages, and wider development.",
     icon: "🧭",
     color: "from-indigo-600/20 to-indigo-600/5",
     border: "border-indigo-700/40",
@@ -152,7 +152,7 @@ const subjects = [
   },
   {
     title: "KS3 (Years 7-9)",
-    text: "Secondary pathway support across core subjects, science, computing, humanities, languages, creative subjects, and personal development.",
+    text: "Secondary pathway support across core subjects, science, computing, coding, humanities, languages, creative subjects, and personal development.",
     icon: "🎯",
     color: "from-purple-600/20 to-purple-600/5",
     border: "border-purple-700/40",

@@ -16,6 +16,8 @@
 
 # next.js
 /.next/
+/.next-coding-qa/
+/.next-coding-build/
 /out/
 
 # production
@@ -70,3 +72,10 @@ scripts/uat/_tmp-*
 !/artifacts/generated/.gitkeep
 scripts/.uat-*.json
 scripts/.verify-*-evidence.json
+
+# Coding QA records, credentials and machine-specific diagnostics stay local.
+/artifacts/coding-*/
+# This frozen public curriculum inventory is a required compatibility-test fixture.
+!/artifacts/coding-consolidated-final-2026-11-03/
+/artifacts/coding-consolidated-final-2026-11-03/*
+!/artifacts/coding-consolidated-final-2026-11-03/inventory.json

@@ -13,11 +13,14 @@
   ],
   "exclude": [
     "node_modules",
+    "artifacts",
+    ".next-coding-qa",
     "tests",
     "scripts",
     "tmp",
     "run-playable-report.mts",
     "**/*.test.ts",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "**/* - Copy.*"
   ]
 }

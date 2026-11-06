@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   handleAdminCommunicationHubHealthGet,
   type AdminCommunicationHubHealthPayload,
-} from "../src/app/api/admin/messages/hub-health/route";
+} from "../src/app/api/admin/messages/hub-health/route-helpers";
 import type { CommunicationHubHealthCounts } from "../src/lib/notifications/communication-hub";
 
 test("communication hub health route requires admin access", async () => {

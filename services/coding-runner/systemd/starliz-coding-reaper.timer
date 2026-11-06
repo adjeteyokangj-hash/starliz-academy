@@ -1,0 +1,10 @@
+[Unit]
+Description=Reap abandoned StarLiz execution containers
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=30
+AccuracySec=1
+
+[Install]
+WantedBy=timers.target

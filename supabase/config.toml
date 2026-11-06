@@ -1,0 +1,5 @@
+# Backend-only HMAC authentication is enforced inside the function.
+# StarLiz application sessions are not Supabase Auth JWTs.
+[functions.coding-execution]
+verify_jwt = false
+entrypoint = "./functions/coding-execution/index.js"

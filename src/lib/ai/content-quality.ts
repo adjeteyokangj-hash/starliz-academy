@@ -993,7 +993,8 @@ export function validateAiContentQuality(input: QualityInput): QualityResult {
     const validated = validateSpellingItems(records, input);
     const curriculumQuality = evaluateCurriculumQuality(input, validated.cleaned.length ? validated.cleaned : records);
     let meta = attachCurriculumQuality(validated.meta, curriculumQuality);
-    if (!curriculumQuality.passed) {
+    // Specific structural/subject failures take precedence; quality diagnostics remain in meta.
+    if (!curriculumQuality.passed && !(validated.meta.errors.length > 0 && (input.mode !== "repair" || !validated.cleaned.length))) {
       if (canSoftenCurriculumBlocking(input, validated.cleaned.length, curriculumQuality)) {
         const softenedWarnings = curriculumQuality.blockingIssues.map((issue) => `softened_curriculum_issue:${issue}`);
         meta = {
@@ -1038,7 +1039,8 @@ export function validateAiContentQuality(input: QualityInput): QualityResult {
   const curriculumQuality = evaluateCurriculumQuality(input, validated.cleaned.length ? validated.cleaned : records);
   let meta = attachCurriculumQuality(validated.meta, curriculumQuality);
 
-  if (!curriculumQuality.passed) {
+  // Specific structural/subject failures take precedence; quality diagnostics remain in meta.
+  if (!curriculumQuality.passed && !(validated.meta.errors.length > 0 && (input.mode !== "repair" || !validated.cleaned.length))) {
     if (canSoftenCurriculumBlocking(input, validated.cleaned.length, curriculumQuality)) {
       const softenedWarnings = curriculumQuality.blockingIssues.map((issue) => `softened_curriculum_issue:${issue}`);
       meta = {

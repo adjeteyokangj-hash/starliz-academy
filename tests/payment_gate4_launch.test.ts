@@ -39,7 +39,7 @@ test("Dedicated Stripe webhook fails closed without secret and disables fallback
 });
 
 test("Admin cannot activate paid access and has no refund action", () => {
-  const route = read("src/app/api/admin/subscriptions/route.ts");
+  const route = read("src/app/api/admin/subscriptions/route-helpers.ts");
   assert.match(route, /"activate"/);
   assert.match(route, /REJECTED_ACTIONS|cannot activate paid access/i);
   assert.doesNotMatch(route, /action:\s*z\.literal\("refund"\)/);

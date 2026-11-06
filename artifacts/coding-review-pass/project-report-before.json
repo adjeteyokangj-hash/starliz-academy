@@ -1,0 +1,244 @@
+{
+  "date": "2026-11-06",
+  "scope": "Local consolidated StarLiz Coding correction pass",
+  "outcomes": [
+    {
+      "id": 1,
+      "issue": "Younger-learner Review",
+      "status": "Partially resolved",
+      "result": "Objective-specific local Review increased from six to 49 activities: all 40 Year 1 activities and nine introductory Python lessons. Both independent variations were verified. The other 391 still require permitted evidence-grounded explanation review; each unresolved objective is listed in the coverage file. No pending reviews were bulk-completed."
+    },
+    {
+      "id": 2,
+      "issue": "Playground completion",
+      "status": "Fixed",
+      "result": "Execution success is distinct from task completion. Actual output, parsed constructs, executed function calls, independently inspected HTML/CSS and real click results determine completion. Editing clears stale completion."
+    },
+    {
+      "id": 3,
+      "issue": "Website continuity",
+      "status": "Fixed",
+      "result": "HTML and CSS carry forward once; existing downstream drafts are retained. Browser-local drafts survive refresh and resume. Reset affects only the current file, including collision-safe scaffold IDs. Legacy serialized shapes are accepted. Work already lost under the old memory-only refresh behaviour cannot be recovered."
+    },
+    {
+      "id": 4,
+      "issue": "Beginner teaching",
+      "status": "Fixed",
+      "result": "Discover introduces small explanations of actual example/starter syntax. Build, Practise and Debug retain contextual guidance. Coverage includes Python text/numbers/calls/assignment/blocks/functions/return, HTML tags/nesting/attributes/void elements, CSS rules/declarations/units and the actual JavaScript DOM/output/event/callback syntax. Writing still begins at Build."
+    },
+    {
+      "id": 5,
+      "issue": "Functions guide selection",
+      "status": "Fixed",
+      "result": "Python metadata and parsed function definitions determine applicability. Genuine functions lessons retain the guide; Y11.13 does not. Main-lesson breakdowns use the actual lesson example."
+    },
+    {
+      "id": 6,
+      "issue": "Studio width and responsive layout",
+      "status": "Fixed",
+      "result": "Later CSS respects the 440–620px results-width control. Desktop/mobile checks passed. Visual inspection found and corrected the inherited grid-column rule that squeezed the mobile playground editor."
+    },
+    {
+      "id": 7,
+      "issue": "Development bootstrap",
+      "status": "Fixed",
+      "result": "The exact development playground skips unrelated profile bootstrap. Production exclusion, request bounds, same-origin checks and rate limits remain. Real learner authentication, consent, entitlement and ownership gates remain."
+    },
+    {
+      "id": 8,
+      "issue": "Portal information",
+      "status": "Fixed",
+      "result": "Counts distinguish authored, environment-published and prerequisite-free activities. Dashboard cards require existing access, matching ownership, year eligibility and unlocked prerequisites/readiness. Original Understanding Loops remains separate from the 440 requirements."
+    },
+    {
+      "id": 9,
+      "issue": "Verification",
+      "status": "Partially resolved",
+      "result": "Functional checks, changed-file lint, TypeScript and the direct Next.js build passed. Repository-wide lint retains 14 pre-existing errors and 10 warnings outside this correction pass. The npm build wrapper was blocked by Windows EPERM regenerating a loaded Prisma DLL; Next.js compilation used the unchanged existing client."
+    },
+    {
+      "id": 10,
+      "issue": "Evidence reconciliation",
+      "status": "Fixed for local development",
+      "result": "Existing approval and full-runtime commands generated a current development-only receipt after matching all 440 content hashes and the practical executor hash. Previous approvals were backed up. productionReady remains false."
+    }
+  ],
+  "additionalCorrections": [
+    "The preview iframe now mounts after its trusted document identity exists, fixing blank previews in the actual app.",
+    "Code-explanation text has explicit contrast against the existing pale background."
+  ],
+  "filesChanged": [
+    "docs/coding-curriculum/CORRECTION_PASS_2026-11-06.json",
+    "docs/coding-curriculum/verification/local-approval-2026-11-06T08-13-36-942Z/previous-release-manifest.json",
+    "docs/coding-curriculum/verification/local-approval-2026-11-06T08-13-36-942Z/previous-runtime-build.json",
+    "docs/coding-curriculum/verification/local-approval-2026-11-06T08-13-36-942Z/receipt.json",
+    "eslint.config.mjs",
+    "scripts/coding/verify-correction-browser.ts",
+    "scripts/coding/verify-correction-layout.ts",
+    "scripts/coding/verify-correction-reviews.ts",
+    "scripts/coding/verify-curriculum-runtime.ts",
+    "src/app/admin/(secure)/coding/page.tsx",
+    "src/app/api/dev/coding-preview/route.ts",
+    "src/app/api/student/coding/activities/[activityId]/route.ts",
+    "src/app/api/student/coding/readiness/[planId]/[activityId]/route.ts",
+    "src/app/globals.css",
+    "src/app/school-admin/coding/page.tsx",
+    "src/components/coding/CodingPlayground.module.css",
+    "src/components/coding/CodingPlayground.tsx",
+    "src/components/coding/FunctionCodeGuide.tsx",
+    "src/components/coding/LearningWorkspace.tsx",
+    "src/components/coding/ProjectPreview.tsx",
+    "src/components/coding/SyntaxGuide.tsx",
+    "src/components/layout/StoreBootstrap.tsx",
+    "src/lib/coding/dashboard-access.ts",
+    "src/lib/coding/dashboard-lessons.ts",
+    "src/lib/coding/development-surface.ts",
+    "src/lib/coding/learning/beginner-playground.ts",
+    "src/lib/coding/learning/code-guidance.ts",
+    "src/lib/coding/learning/playground-assessment.ts",
+    "src/lib/coding/learning/playground-drafts.ts",
+    "src/lib/coding/learning/public-view.ts",
+    "src/lib/coding/learning/publication-summary.ts",
+    "src/lib/coding/learning/release-manifest.json",
+    "src/lib/coding/learning/runtime-build.json",
+    "src/lib/coding/learning/structured-review.ts",
+    "src/lib/coding/learning/teacher.ts",
+    "src/lib/coding/learning/visual-review.ts",
+    "src/lib/coding/learning/workspace-store.ts",
+    "src/lib/student-learning-brain/dashboard-shell.ts",
+    "tests/coding_correction_privacy.test.ts",
+    "tests/coding_correction_publication.test.ts",
+    "tests/coding_corrections.test.ts"
+  ],
+  "preservation": {
+    "identitiesContentAndPrerequisites": "All 440 match the pre-pass snapshot; hierarchy is unchanged.",
+    "stages": [
+      "Discover",
+      "Predict",
+      "Build",
+      "Practise",
+      "Debug",
+      "Create",
+      "Review"
+    ],
+    "records": "No learner records were written. Existing progress, project versions, ownership, assistance and award rules are retained.",
+    "controls": "Prerequisites, readiness evidence, independent-work eligibility, subscriptions, consent and access controls remain enforced.",
+    "unrelatedFiles": "Existing unrelated changes were retained. The unrelated report generated by prebuild was archived in artifacts and its previous workspace content restored.",
+    "migration": false,
+    "migrationReset": false,
+    "productionConfigurationChanged": false,
+    "productionDataChanged": false,
+    "commit": false,
+    "push": false,
+    "deployment": false,
+    "proof": "artifacts/coding-correction/preservation.json"
+  },
+  "verification": {
+    "regressionRun": {
+      "passed": 293,
+      "failed": 0,
+      "log": "artifacts/coding-correction/regression-tests.log"
+    },
+    "finalFocusedRun": {
+      "passed": 51,
+      "failed": 0,
+      "log": "artifacts/coding-correction/corrections-final.log",
+      "note": "Overlaps the regression run; these are per-run counts, not a unique-test total."
+    },
+    "normalEnvironmentTransportAndPreview": {
+      "passed": 7,
+      "failed": 0,
+      "log": "artifacts/coding-correction/normal-environment-tests.log"
+    },
+    "reviewCoverage": {
+      "total": 440,
+      "local": 49,
+      "independentVariantsVerified": 98,
+      "permittedExplanationStillRequired": 391,
+      "report": "artifacts/coding-correction/reviews/coverage.json"
+    },
+    "practicalRerun": {
+      "activities": 10,
+      "checks": 146,
+      "passed": true,
+      "report": "artifacts/coding-curriculum-verification/1faf3797-aa84-4e43-9863-f8682122cb26/result.json"
+    },
+    "actualPythonBrowser": "artifacts/coding-correction/browser-8444ddf4-ca37-49f8-bddc-6f06dd636b51/result.json",
+    "actualWebBrowser": "artifacts/coding-correction/browser-d968eeaa-9412-4b1c-a77a-5484377399fb/result.json",
+    "responsiveFollowup": {
+      "actualApplication": true,
+      "viewports": [
+        1920,
+        820,
+        390
+      ],
+      "execution": "Recorded real runner output for this UI-only follow-up",
+      "log": "artifacts/coding-correction/preview-responsive-final.log",
+      "passed": true
+    },
+    "previewResizeRegression": {
+      "passed": 1,
+      "nativeInputPreserved": true,
+      "log": "artifacts/coding-correction/preview-size-final.log"
+    },
+    "prebuild": {
+      "curriculumChecksPassed": 6,
+      "aiCurriculumAuditPassed": true
+    },
+    "lintChangedFiles": {
+      "passed": true,
+      "log": "artifacts/coding-correction/lint-changed-final.log"
+    },
+    "lintRepository": {
+      "passed": false,
+      "errors": 14,
+      "warnings": 10,
+      "log": "artifacts/coding-correction/lint-full-final.log"
+    },
+    "typeScript": {
+      "passed": true,
+      "heapMB": 6144,
+      "initialLog": "artifacts/coding-correction/typecheck-normal.log",
+      "finalLog": "artifacts/coding-correction/next-build-final.log"
+    },
+    "npmBuild": {
+      "passed": false,
+      "reason": "Windows EPERM renaming the existing loaded Prisma engine DLL; schema unchanged.",
+      "log": "artifacts/coding-correction/build-final.log"
+    },
+    "nextBuild": {
+      "passed": true,
+      "staticPages": 499,
+      "existingPrismaClient": true,
+      "typeCheckingEnabled": true,
+      "log": "artifacts/coding-correction/next-build-final.log"
+    },
+    "fullRuntime": {
+      "passed": true,
+      "matchingActivityHashes": 440,
+      "runtimeHash": "48f47b985c81127c45865b47ace9131b292d6fb0a9bd5676eb6dd311c9d3dd55",
+      "practicalExecutionHash": "37fb829f383205db57e5a8ce5c2e9fdf075f80de33e853b3b678af47fc2797f8",
+      "historicalPracticalChecksReused": 6162,
+      "receipt": "docs/coding-curriculum/verification/local-approval-2026-11-06T08-13-36-942Z/receipt.json",
+      "log": "artifacts/coding-correction/full-runtime-final.log",
+      "productionReady": false
+    },
+    "additionalFocusedRun": {
+      "passed": 74,
+      "failed": 0,
+      "log": "artifacts/coding-correction/final-focused-tests.log",
+      "note": "Includes dashboard, bootstrap, origin and privacy regressions; overlaps other runs."
+    },
+    "diffWhitespaceCheck": {
+      "passed": true
+    }
+  },
+  "remainingDependencies": [
+    "391 objectives need permitted evidence-grounded explanation review or further validated local rubrics. Unknown age is treated conservatively. Restricted context is never sent to an unverified provider.",
+    "Production provider ZDR, runner security/hosting acceptance, hosted permissions/private-media checks, dependency advisories and accessibility acceptance remain separate gates.",
+    "Authenticated live-account publication acceptance was not performed. Isolated fixtures and existing access-protection tests were used without real learner writes.",
+    "Earlier browser attempts encountered intermittent runner unavailability and the subsequently corrected preview-mounting defect. Failed attempts remain in artifacts and are not counted as passes.",
+    "The actual-app browser resize follow-up encountered a driver stability timeout. Fresh-viewports are checked separately; the existing component resize regression passed.",
+    "The user development server configuration was retained. Real execution tests used temporary owned app/runner processes and process-local credentials, then stopped those processes."
+  ]
+}

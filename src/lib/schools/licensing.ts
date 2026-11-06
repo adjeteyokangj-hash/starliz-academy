@@ -237,11 +237,12 @@ export async function evaluateUserSchoolLoginAccess(userId: string): Promise<Sch
   });
 }
 
-export async function evaluateStudentAssignmentAccess(studentId: string): Promise<SchoolLicenceDecision> {
+export async function evaluateStudentAssignmentAccess(studentId: string, schoolId?: string): Promise<SchoolLicenceDecision> {
   const link = await prisma.schoolStudent.findFirst({
     where: {
       childId: studentId,
       status: "active",
+      ...(schoolId ? { schoolId } : {}),
     },
     orderBy: { updatedAt: "desc" },
     select: {
@@ -264,7 +265,7 @@ export async function evaluateStudentAssignmentAccess(studentId: string): Promis
   });
 
   if (!link) {
-    return { allowed: true };
+    return schoolId ? { allowed: false, reason: "NO_SCHOOL", schoolId } : { allowed: true };
   }
 
   const licenceDecision = formatLicenceDecision({

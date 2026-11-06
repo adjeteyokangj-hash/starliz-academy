@@ -42,8 +42,11 @@ export default function ParentCollapsibleCard({
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setOpen(readStoredOpen(resolvedKey, defaultOpen));
-    setHydrated(true);
+    const hydrate = window.requestAnimationFrame(() => {
+      setOpen(readStoredOpen(resolvedKey, defaultOpen));
+      setHydrated(true);
+    });
+    return () => window.cancelAnimationFrame(hydrate);
   }, [resolvedKey, defaultOpen]);
 
   function toggle() {

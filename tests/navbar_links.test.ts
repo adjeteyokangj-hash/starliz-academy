@@ -20,6 +20,7 @@ test("student navigation hides Day School when the school switch is off and keep
     [
       { href: "/student/dashboard", label: "Home" },
       { href: "/student/short-learning", label: "Short Learning" },
+      { href: "/student/coding", label: "Coding" },
     ],
   );
 });
@@ -40,6 +41,7 @@ test("student navigation is lean: Home, Day School, Short Learning only by defau
       { href: "/student/dashboard", label: "Home" },
       { href: "/student/today", label: "Day School" },
       { href: "/student/short-learning", label: "Short Learning" },
+      { href: "/student/coding", label: "Coding" },
     ],
   );
   assert.equal(links.some((link) => link.label === "Ga Learning Hub"), false);
@@ -78,6 +80,7 @@ test("parent-in-child navigation keeps unique keys and Parent Area on /parent/da
       { href: "/student/dashboard", label: "Child Dashboard" },
       { href: "/student/today", label: "Today" },
       { href: "/student/short-learning", label: "Short Learning" },
+      { href: "/student/coding", label: "Coding" },
       { href: "/parent/dashboard", label: "Parent Area" },
     ],
   );
@@ -148,6 +151,7 @@ test("unresolved auth on a student page must not show Ga Learning Hub or My Prof
       { href: "/student/dashboard", label: "Home" },
       { href: "/student/today", label: "Day School" },
       { href: "/student/short-learning", label: "Short Learning" },
+      { href: "/student/coding", label: "Coding" },
     ],
   );
   assert.equal(links.some((link) => link.label === "Ga Learning Hub"), false);

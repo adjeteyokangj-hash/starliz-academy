@@ -57,11 +57,11 @@ test("Super Admin and explicit safeguarding role can manage safeguarding", () =>
 
 test("Admin safeguarding routes no longer hard-code DSL bypass", () => {
   for (const rel of [
-    "src/app/api/admin/schools/[schoolId]/safeguarding/incidents/route.ts",
-    "src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/route.ts",
-    "src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/timeline/route.ts",
-    "src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/escalation/route.ts",
-    "src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/audit/route.ts",
+    "src/app/api/admin/schools/[schoolId]/safeguarding/incidents/route-helpers.ts",
+    "src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/route-helpers.ts",
+    "src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/timeline/route-helpers.ts",
+    "src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/escalation/route-helpers.ts",
+    "src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/audit/route-helpers.ts",
   ]) {
     const source = read(rel);
     assert.doesNotMatch(source, /normalizeRole\("dsl"\)/);
@@ -125,13 +125,13 @@ test("invite token redaction helper is idempotent", () => {
 });
 
 test("hard delete of safeguarding cases is rejected", () => {
-  const source = read("src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/route.ts");
+  const source = read("src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/route-helpers.ts");
   assert.match(source, /HARD_DELETE_FORBIDDEN/);
   assert.match(source, /export async function DELETE/);
 });
 
 test("school invite accept paths are publicly reachable", () => {
-  const source = read("middleware.ts");
+  const source = read("src/proxy.ts");
   assert.match(source, /\/school\/invites\/accept/);
   assert.match(source, /\/api\/school\/invites\/accept/);
 });

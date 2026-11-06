@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { accessibleCodingDashboardLessons } from "@/lib/coding/dashboard-access";
 import { getNextShortLearningBookingForChild } from "@/lib/schools/short-learning-bookings";
 import {
   buildActiveLanguageModules,
@@ -25,7 +26,7 @@ function assignmentHref(contentType: string, assignmentId: string): string {
 }
 
 export async function getStudentDashboardShell(studentId: string) {
-  const [assignmentRows, skills, nextShortLearning] = await Promise.all([
+  const [assignmentRows, skills, nextShortLearning, codingLessons] = await Promise.all([
     prisma.assignment.findMany({
       where: {
         studentId,
@@ -63,6 +64,7 @@ export async function getStudentDashboardShell(studentId: string) {
       },
     }),
     getNextShortLearningBookingForChild(studentId),
+    accessibleCodingDashboardLessons(studentId),
   ]);
 
   const assignments = assignmentRows.map((assignment) => ({
@@ -92,5 +94,6 @@ export async function getStudentDashboardShell(studentId: string) {
     assignedWork,
     smartCoach: buildSmartCoachSummary({ skills: skillRows }),
     nextShortLearning,
+    codingLessons,
   };
 }

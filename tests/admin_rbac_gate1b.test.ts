@@ -138,7 +138,7 @@ test("admin user routes always require MANAGE_ADMINS", () => {
 });
 
 test("critical route families use server-side permission checks", () => {
-  assert.match(read("src/app/api/admin/subscriptions/route.ts"), /contextHasPermission|MANAGE_SUBSCRIPTIONS/);
+  assert.match(read("src/app/api/admin/subscriptions/route-helpers.ts"), /contextHasPermission|MANAGE_SUBSCRIPTIONS/);
   assert.match(read("src/app/api/admin/audit-logs/route.ts"), /requireAdminPermission\("VIEW_AUDIT_LOGS"\)/);
   assert.doesNotMatch(read("src/app/api/admin/audit-logs/route.ts"), /skip if no role assigned/);
   assert.match(read("src/app/api/admin/settings/general/route.ts"), /requireAdminPermission\("MANAGE_SETTINGS"\)/);

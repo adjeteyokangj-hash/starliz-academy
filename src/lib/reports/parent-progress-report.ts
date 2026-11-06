@@ -5,6 +5,8 @@ import { summarizeWalletTransactions } from "@/lib/wallet_ledger";
 import { isGcseYearGroup } from "@/lib/curriculum";
 import { parseWeakAreaMetadata } from "@/lib/weakAreas";
 import { buildAcademicIntelligence } from "@/lib/academic-intelligence/academicIntelligence";
+import { isMasteredCodingPracticeLabel, masteredCodingLessonTitles } from "@/lib/academic-intelligence/codingSignals";
+import { filterMasteredCodingCatchUps, filterMasteredCodingReportText } from "@/lib/academic-intelligence/parentReportCodingFilter";
 import { buildParentProgressPack } from "@/lib/progress-reporting";
 import type { AttendanceSummary, SanitizedFocusTopic } from "@/lib/progress-reporting";
 
@@ -224,13 +226,14 @@ export async function buildParentProgressReportData(input: {
     throw new Error("Child not found for this parent account.");
   }
 
-  const [attempts, walletTransactions, assignments, weakAreaSignals, progressPack] = await Promise.all([
+  const [attempts, walletTransactions, assignments, weakAreaSignals, progressPack, codingProgress] = await Promise.all([
     prisma.attempt.findMany({
       where: {
         studentId: child.id,
         ...(since ? { createdAt: { gte: since } } : {}),
       },
       select: {
+        subject: true,
         skillFocus: true,
         correct: true,
         spellingMode: true,
@@ -297,6 +300,21 @@ export async function buildParentProgressReportData(input: {
       childId: child.id,
       windowDays: input.range === "all" ? 90 : RANGE_TO_DAYS[input.range],
     }),
+    prisma.progressRecord.findMany({
+      where: { childId: child.id, activityType: "coding" },
+      select: {
+        id: true,
+        activityType: true,
+        activityName: true,
+        score: true,
+        accuracy: true,
+        correct: true,
+        completed: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+
+    }),
   ]);
 
   const totalAttempts = attempts.length;
@@ -307,8 +325,10 @@ export async function buildParentProgressReportData(input: {
     skillFocus: attempt.skillFocus,
     correct: attempt.correct,
   })));
-  const strengths = topics.filter((topic) => topic.accuracy >= 80).slice(0, 5);
-  const weakAreas = topics.filter((topic) => topic.accuracy < 80).slice(0, 5);
+  const masteredCodingTitles = masteredCodingLessonTitles(codingProgress);
+  const openPractice = (value: string) => !isMasteredCodingPracticeLabel(value, masteredCodingTitles);
+  const strengths = topics.filter((topic) => topic.accuracy >= 80 && openPractice(topic.topic)).slice(0, 5);
+  const weakAreas = topics.filter((topic) => topic.accuracy < 80 && openPractice(topic.topic)).slice(0, 5);
 
   const activity = buildActivity(attempts.map((attempt) => attempt.createdAt), input.range);
   const learningMode = resolveLearningMode(attempts.map((attempt) => attempt.spellingMode));
@@ -350,14 +370,14 @@ export async function buildParentProgressReportData(input: {
     })),
     attempts: attempts.map((entry, index) => ({
       id: `${index + 1}`,
-      subject: "general",
+      subject: entry.subject.trim().toLowerCase() === "coding" ? "coding" : "general",
       topic: entry.skillFocus,
       skill: entry.skillFocus,
       correct: entry.correct,
       score: entry.correct ? 100 : 0,
       createdAt: entry.createdAt.toISOString(),
     })),
-    weakAreas: weakAreaSignals.map((entry) => ({
+    weakAreas: weakAreaSignals.filter((entry) => openPractice(entry.skillFocus)).map((entry) => ({
       id: entry.id,
       subject: entry.subject,
       topic: entry.skillFocus,
@@ -373,7 +393,7 @@ export async function buildParentProgressReportData(input: {
     })),
     studentSkills: [],
     coachUsage: [],
-    dictionarySignals: weakAreaSignals.flatMap((entry) => parseWeakAreaMetadata(entry.metadataJson).weakWords.map((word) => ({
+    dictionarySignals: weakAreaSignals.filter((entry) => openPractice(entry.skillFocus)).flatMap((entry) => parseWeakAreaMetadata(entry.metadataJson).weakWords.map((word) => ({
       word,
       subject: entry.subject,
       topic: entry.skillFocus,
@@ -382,10 +402,31 @@ export async function buildParentProgressReportData(input: {
       difficult: true,
       source: "weak_area_metadata",
     }))),
-    progressRecords: [],
+    progressRecords: codingProgress.map((record) => ({
+      id: record.id,
+      activityType: record.activityType,
+      activityName: record.activityName,
+      subject: "coding",
+      topic: record.activityName,
+      skill: record.activityName,
+      completed: record.completed,
+      correct: record.correct,
+      accuracy: record.accuracy,
+      score: record.score,
+      createdAt: record.createdAt.toISOString(),
+    })),
     assessmentHistory: [],
     generatedAt: new Date().toISOString(),
   });
+
+  const visibleCatchUps = filterMasteredCodingCatchUps(
+    academicOutput.catchUpRecommendations,
+    masteredCodingTitles,
+  );
+  const visibleNextActions = filterMasteredCodingReportText(
+    academicOutput.nextRecommendedActions,
+    masteredCodingTitles,
+  );
 
   const recommendations = buildRecommendations({
     averageAccuracy,
@@ -398,9 +439,10 @@ export async function buildParentProgressReportData(input: {
     interventionTrackingCount,
   });
 
-  const focusTopics = progressPack.totals.focusTopics;
+  const focusTopics = progressPack.totals.focusTopics.filter((topic) => openPractice(`${topic.label} ${topic.skillFocus}`));
+  const visibleRecommendations = recommendations.filter((item) => openPractice(item));
   if (focusTopics[0]) {
-    recommendations.unshift(`Focus practice on ${focusTopics[0].skillFocus} this week.`);
+    visibleRecommendations.unshift(`Focus practice on ${focusTopics[0].skillFocus} this week.`);
   }
 
   const attendanceSummary = progressPack.totals.attendance;
@@ -442,26 +484,31 @@ export async function buildParentProgressReportData(input: {
       earnedPence: rewards.totalEarned,
       spentPence: rewards.totalSpent,
     },
-    recommendations: recommendations.slice(0, 5),
+    recommendations: visibleRecommendations.slice(0, 5),
     academicIntelligence: {
-      masteryStatus: academicOutput.summary.needsCatchUpCount > 0
+      masteryStatus: visibleCatchUps.some((item) => item.status !== "completed" && item.status !== "waived")
         ? "needs_catch_up"
         : academicOutput.summary.needsRevisionCount > 0
           ? "needs_revision"
           : "on_track",
       curriculumCoverage: `${academicOutput.summary.coveredCount}/${academicOutput.summary.totalTopics} covered`,
-      catchUpRequired: academicOutput.catchUpRecommendations.length,
-      catchUpCompleted: academicOutput.catchUpRecommendations.filter((item) => item.status === "completed").length,
-      unresolvedCatchUp: academicOutput.catchUpRecommendations.filter((item) => item.status !== "completed" && item.status !== "waived").length,
+      catchUpRequired: visibleCatchUps.length,
+      catchUpCompleted: visibleCatchUps.filter((item) => item.status === "completed").length,
+      unresolvedCatchUp: visibleCatchUps.filter((item) => item.status !== "completed" && item.status !== "waived").length,
       assessmentRecommended: academicOutput.assessmentRecommendations.length,
-      weakTopic: academicOutput.catchUpRecommendations[0]?.topic ?? null,
+      weakTopic: visibleCatchUps[0]?.topic ?? null,
       overdueRevision: academicOutput.curriculumCoverage.filter((item) => item.coverageStatus === "overdue_revision").length,
       gcseReadiness: academicOutput.gcseReadiness ? academicOutput.gcseReadiness.readinessStatus : null,
-      parentAdminRecommendedAction: academicOutput.nextRecommendedActions[0] ?? "Review weekly progress.",
+      parentAdminRecommendedAction: visibleNextActions[0] ?? "Review weekly progress.",
       graphSummary: {
-        recommendationReasons: academicOutput.curriculumIntelligenceGraph.reportSummary.recommendationReasons,
-        parentSummary: academicOutput.curriculumIntelligenceGraph.reportSummary.parentSummary,
-        reportSignals: academicOutput.curriculumIntelligenceGraph.reportSummary.reportSignals,
+        recommendationReasons: filterMasteredCodingReportText(academicOutput.curriculumIntelligenceGraph.reportSummary.recommendationReasons, masteredCodingTitles),
+        parentSummary: isMasteredCodingPracticeLabel(
+          academicOutput.curriculumIntelligenceGraph.reportSummary.parentSummary,
+          masteredCodingTitles,
+        )
+          ? "Review current learning progress and recommended next steps."
+          : academicOutput.curriculumIntelligenceGraph.reportSummary.parentSummary,
+        reportSignals: filterMasteredCodingReportText(academicOutput.curriculumIntelligenceGraph.reportSummary.reportSignals, masteredCodingTitles),
       },
     },
     attendanceSummary,
