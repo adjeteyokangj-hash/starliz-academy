@@ -1,0 +1,19 @@
+{
+  "status": 307,
+  "location": "/api/auth/refresh?next=%2Fadmin",
+  "securityHeaders": {
+    "frame": "DENY",
+    "contentType": "nosniff"
+  },
+  "manifest": {
+    "version": 3,
+    "middleware": {},
+    "sortedMiddleware": [],
+    "functions": {}
+  },
+  "generatedNodeEntrypoint": ".next/dev/server/middleware.js",
+  "registeredImplementation": [
+    "R.m(\"[project]/node_modules/next/dist/esm/build/templates/middleware.js { INNER_MIDDLEWARE_MODULE => \\\"[project]/src/proxy.ts [middleware] (ecmascript)\\\" } [middleware] (ecmascript)\")",
+    "module.exports=R.m(\"[project]/node_modules/next/dist/esm/build/templates/middleware.js { INNER_MIDDLEWARE_MODULE => \\\"[project]/src/proxy.ts [middleware] (ecmascript)\\\" } [middleware] (ecmascript)\").exports"
+  ]
+}

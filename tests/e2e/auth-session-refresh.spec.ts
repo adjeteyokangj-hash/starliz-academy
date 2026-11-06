@@ -81,7 +81,7 @@ test.describe("Auth/session refresh continuity", () => {
     const rscRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/parent/billing" && request.headers().rsc === "1");
     await billing.click(); await rscRequest;
     await expect(page).toHaveURL(url => url.pathname === "/parent/billing");
-    await expect(page.getByRole("heading", { name: "Billing", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Billing", level: 1, exact: true })).toBeVisible();
     await expectValidAccess(page, previous, scenario.parent);
     expect((await page.context().cookies()).find(cookie => cookie.name === "starliz_child_selection")?.value).toBe(selection);
     const active = await page.request.get("/api/children/active"); expect((await active.json()).child.id).toBe(scenario.child.id);

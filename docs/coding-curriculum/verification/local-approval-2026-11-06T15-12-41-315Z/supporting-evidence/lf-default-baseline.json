@@ -1,0 +1,2770 @@
+{
+  "method": "Clean checkout at 0539eaf4 with per-command core.autocrlf=false and original committed attributes; actual Linux execution is checked separately in CI",
+  "files": [
+    {
+      "file": "middleware.ts",
+      "originalHash": "2662c403d23fb41b503a62973762764eb4895e810511ffb8a625e9355cc88952",
+      "checkoutHash": "6234655b6a8e641a200cc3ee3cdc34ed61360b01ee902bb43394d1bbd0b19ac8",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "package-lock.json",
+      "originalHash": "9291eeff82bcb99105b1d593a005d22904f073b96e16f60f28917421f378c799",
+      "checkoutHash": "9291eeff82bcb99105b1d593a005d22904f073b96e16f60f28917421f378c799",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "package.json",
+      "originalHash": "625269a00efec74b3c344b0a19e87d9c9e997bacdf0c8dc820b7e01fb81f2380",
+      "checkoutHash": "625269a00efec74b3c344b0a19e87d9c9e997bacdf0c8dc820b7e01fb81f2380",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "prisma/schema.prisma",
+      "originalHash": "32ea12cab2e5397d12592fe84e380e24f1fb488ea0d5ccec94e8701fe0fa9330",
+      "checkoutHash": "32ea12cab2e5397d12592fe84e380e24f1fb488ea0d5ccec94e8701fe0fa9330",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "scripts/coding/verify-curriculum-runtime.ts",
+      "originalHash": "9a7f663df8086878eae22c66795e237861bb919526ab96792283df6f49b592f6",
+      "checkoutHash": "9a7f663df8086878eae22c66795e237861bb919526ab96792283df6f49b592f6",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/Dockerfile.dom",
+      "originalHash": "58a945778f89dd7e5886d27a21d9d8514bf60a13b0f6b4dfa5a7fbefe33dce1e",
+      "checkoutHash": "58a945778f89dd7e5886d27a21d9d8514bf60a13b0f6b4dfa5a7fbefe33dce1e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/Dockerfile.media",
+      "originalHash": "e909e098284d54201cf3d2e08844b3dff6267ecc10a5b0c1515e5ad7461fa03b",
+      "checkoutHash": "e909e098284d54201cf3d2e08844b3dff6267ecc10a5b0c1515e5ad7461fa03b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/container.mjs",
+      "originalHash": "aa438fa72c4536e91da1c29df1ca398064c9ede4d68a0906b71489d94db2c256",
+      "checkoutHash": "aa438fa72c4536e91da1c29df1ca398064c9ede4d68a0906b71489d94db2c256",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/local-dev-server.mjs",
+      "originalHash": "2dcbdd698057d4c3b9304e27a9eb1aa7f781b0c31d10d50967056757e70f94c1",
+      "checkoutHash": "2dcbdd698057d4c3b9304e27a9eb1aa7f781b0c31d10d50967056757e70f94c1",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/local-media-server.mjs",
+      "originalHash": "c219e557bf96c989a3f1d37849156c868c2207f27ec056f81925534a310096d0",
+      "checkoutHash": "c219e557bf96c989a3f1d37849156c868c2207f27ec056f81925534a310096d0",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/media-container.mjs",
+      "originalHash": "e40170b4020e76b7aab4019a35e69ce4e48e45a5e46fbe3b83d4cf542293e9a3",
+      "checkoutHash": "e40170b4020e76b7aab4019a35e69ce4e48e45a5e46fbe3b83d4cf542293e9a3",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/media-validate.py",
+      "originalHash": "7d6e563ecc7023586d0586eeaa337a2ab3c77e3c59702a3114bb709a9a738fba",
+      "checkoutHash": "7d6e563ecc7023586d0586eeaa337a2ab3c77e3c59702a3114bb709a9a738fba",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/protocol.d.mts",
+      "originalHash": "74c8267e5b914de2c98c8ff50c83f6d3e21f2c8d1c02c017b52cc5936feb833a",
+      "checkoutHash": "74c8267e5b914de2c98c8ff50c83f6d3e21f2c8d1c02c017b52cc5936feb833a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/protocol.mjs",
+      "originalHash": "ddb902870b01438707213094d20d58904a296b686aff26f7bec84aaf5b94d7fb",
+      "checkoutHash": "ddb902870b01438707213094d20d58904a296b686aff26f7bec84aaf5b94d7fb",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/reap-expired.mjs",
+      "originalHash": "45ded296b16e6d6a2a1f8a6238ec174f5c36a2b8c15b7d11b4660fa02b1264ef",
+      "checkoutHash": "45ded296b16e6d6a2a1f8a6238ec174f5c36a2b8c15b7d11b4660fa02b1264ef",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/server.mjs",
+      "originalHash": "26667522b6444a9c81a014295dd18ae73e154433c7cf3f5ee55c9efd2a089a65",
+      "checkoutHash": "26667522b6444a9c81a014295dd18ae73e154433c7cf3f5ee55c9efd2a089a65",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "services/coding-runner/supabase-gateway.mjs",
+      "originalHash": "e4230491b303a7c0eb9d48e5d8f0cc706ed158bea3f1c86bfc885a43b4ca312e",
+      "checkoutHash": "e4230491b303a7c0eb9d48e5d8f0cc706ed158bea3f1c86bfc885a43b4ca312e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/admin/(secure)/coding/page.tsx",
+      "originalHash": "9eab6242b7481628be62684f6df134a6a3b43a9a85e6de56744da97f5dc6afe0",
+      "checkoutHash": "fd137f417fca219760faa0d27a53413eb3029732a7bc9a9d83dd4ff408eae7a9",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/admin/(secure)/coding/preview/[lessonId]/page.tsx",
+      "originalHash": "b311297ebfecc51d40ed3ecf9148b58a2612048752d1462f4b27ce3bfc2a72cd",
+      "checkoutHash": "b311297ebfecc51d40ed3ecf9148b58a2612048752d1462f4b27ce3bfc2a72cd",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/admin/(secure)/coding/workbench/[activityId]/page.tsx",
+      "originalHash": "98e317398e6897a75b24d73f3ac8e2ddd90ef526fa145bb3f90e076f1990352a",
+      "checkoutHash": "98e317398e6897a75b24d73f3ac8e2ddd90ef526fa145bb3f90e076f1990352a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/admin/coding/access/route.ts",
+      "originalHash": "82d1998359d508e14d9b2ea7452d3367a60bd475a59f5ce2b82e4162c0d9885a",
+      "checkoutHash": "82d1998359d508e14d9b2ea7452d3367a60bd475a59f5ce2b82e4162c0d9885a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/admin/coding/curriculum/route.ts",
+      "originalHash": "d812175772460efd98f30394ec9435f52b71070611ba79f757a1570140169d77",
+      "checkoutHash": "d812175772460efd98f30394ec9435f52b71070611ba79f757a1570140169d77",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/admin/coding/execution/route.ts",
+      "originalHash": "1c443ba186f4cc9b4d3b91c1736a88fc2ca603175d2ab85f96abe1243f1fbb0d",
+      "checkoutHash": "1c443ba186f4cc9b4d3b91c1736a88fc2ca603175d2ab85f96abe1243f1fbb0d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/admin/coding/preview/[lessonId]/route.ts",
+      "originalHash": "dcbfe126505ddab3770e6b08890026df077f280e6a70ed3c2499a55331fe7c60",
+      "checkoutHash": "dcbfe126505ddab3770e6b08890026df077f280e6a70ed3c2499a55331fe7c60",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/admin/coding/settings/route.ts",
+      "originalHash": "42294ff6338e5ddf5f77931102c3cebff77b1d5e5ea1ad4f01b9e5e7ee837f15",
+      "checkoutHash": "42294ff6338e5ddf5f77931102c3cebff77b1d5e5ea1ad4f01b9e5e7ee837f15",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/admin/coding/workbench/[activityId]/route.ts",
+      "originalHash": "797447b75fb2cfc8ca6d497c9a234ae4612d7e3d1e4bb035e94617c830aabf61",
+      "checkoutHash": "797447b75fb2cfc8ca6d497c9a234ae4612d7e3d1e4bb035e94617c830aabf61",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/coach/route.ts",
+      "originalHash": "c3b4654fd37f6ce559b5ef116094798ec6933c47fe48b3e11dad782ad4308790",
+      "checkoutHash": "c3b4654fd37f6ce559b5ef116094798ec6933c47fe48b3e11dad782ad4308790",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/dev/coding-preview/route.ts",
+      "originalHash": "c24747c735856d0976504bcce984b1cc02404167866036f47fcc10fdce23dbf6",
+      "checkoutHash": "f39c247bac26fecf00aa76ec33082c6aa1e9b05fb70e22082435d7ba6525000a",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/parent/coding/demonstrations/route.ts",
+      "originalHash": "95c702c5a96ab182d95117cae6a245675d2984679ec0b7993387103b49a44fbf",
+      "checkoutHash": "95c702c5a96ab182d95117cae6a245675d2984679ec0b7993387103b49a44fbf",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/parent/coding/route.ts",
+      "originalHash": "9e2d815b9603af46b687946313e010b3b3d54f9b9baa9d04b2feabe9649a1013",
+      "checkoutHash": "9e2d815b9603af46b687946313e010b3b3d54f9b9baa9d04b2feabe9649a1013",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/activities/[activityId]/route.ts",
+      "originalHash": "ac52ea0aa65c1be88896cf3a1ae95d44f756d6bba0490e6139ad7c551d005d12",
+      "checkoutHash": "ac52ea0aa65c1be88896cf3a1ae95d44f756d6bba0490e6139ad7c551d005d12",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/activities/route.ts",
+      "originalHash": "e3e3bed9526e395f2484faa4dd2efd5711e65495a8ca1687e6395fe61a6b800d",
+      "checkoutHash": "e3e3bed9526e395f2484faa4dd2efd5711e65495a8ca1687e6395fe61a6b800d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/demonstrations/read/route.ts",
+      "originalHash": "a44e0df02507d5aa99b0482e1f96c2eab4f27a17e6206085c47fafece27fa79b",
+      "checkoutHash": "a44e0df02507d5aa99b0482e1f96c2eab4f27a17e6206085c47fafece27fa79b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/demonstrations/route.ts",
+      "originalHash": "2c4a8e6f0caa2012e2a4aa7fa013cb742bfb862165f3c686cda7135ca3e1acf6",
+      "checkoutHash": "2c4a8e6f0caa2012e2a4aa7fa013cb742bfb862165f3c686cda7135ca3e1acf6",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/evidence/route.ts",
+      "originalHash": "7625f7936be9aff6fc6e29b8a8d84872878954633a8940341a97cf136da78c32",
+      "checkoutHash": "7625f7936be9aff6fc6e29b8a8d84872878954633a8940341a97cf136da78c32",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/lessons/[lessonId]/route.ts",
+      "originalHash": "577b8cb5b7da9ad494e0ac799af22a5f0037fe0a7bc57af151467044726ca0db",
+      "checkoutHash": "577b8cb5b7da9ad494e0ac799af22a5f0037fe0a7bc57af151467044726ca0db",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/next/route.ts",
+      "originalHash": "3c6fed76c8d300604d926b3a7c9bf825e4d8c63e9382016584ed0ef3a699bdee",
+      "checkoutHash": "3c6fed76c8d300604d926b3a7c9bf825e4d8c63e9382016584ed0ef3a699bdee",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/placement/route.ts",
+      "originalHash": "35df8d01c46951579fc56a3dd32f80dbcfcec776b802e79a2b08218abd34e56b",
+      "checkoutHash": "35df8d01c46951579fc56a3dd32f80dbcfcec776b802e79a2b08218abd34e56b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/portfolio/route.ts",
+      "originalHash": "76b4bde9079bac502be09c39ec0e420c50fe8f9e9b4b306f382751816b80a6de",
+      "checkoutHash": "76b4bde9079bac502be09c39ec0e420c50fe8f9e9b4b306f382751816b80a6de",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/readiness/[planId]/[activityId]/route.ts",
+      "originalHash": "d3f6c4cd70b5bfb348523688c867a5b85c736eff777d1ba7d0a73ac050a86459",
+      "checkoutHash": "d3f6c4cd70b5bfb348523688c867a5b85c736eff777d1ba7d0a73ac050a86459",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/readiness/route.ts",
+      "originalHash": "1d641615ba3ef7dc842f665cc3ef9546950aab59ad86d5387397f17b1f0781c6",
+      "checkoutHash": "1d641615ba3ef7dc842f665cc3ef9546950aab59ad86d5387397f17b1f0781c6",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/student/coding/route.ts",
+      "originalHash": "beb296c505b7f7d431a147755b50319f82fdd7d66e82b67c3022fe6cdb4571c5",
+      "checkoutHash": "beb296c505b7f7d431a147755b50319f82fdd7d66e82b67c3022fe6cdb4571c5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/api/teacher/coding/route.ts",
+      "originalHash": "807527c651168e5375bc8d25cf1eb654b43302d8fd1ec1d077f1bf2291d129e5",
+      "checkoutHash": "807527c651168e5375bc8d25cf1eb654b43302d8fd1ec1d077f1bf2291d129e5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/dev/coding/page.tsx",
+      "originalHash": "c73fcfff9cd5035c79664ae6e57fe150ec9d1d989c37d786c513b4ae8f173b73",
+      "checkoutHash": "cf50e967f98e6a4a20a2de877eac2cdff4aa9b4a0ccbd9dee3417ea88e186c42",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/globals.css",
+      "originalHash": "edee49fb7e733884a9046067791921f010684c806181c41aa55fcc8bb1980b85",
+      "checkoutHash": "a9f65d87ec41fcfe4520360fa94cba30f516e460653e627b5e518b321048fd4f",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/school-admin/coding/page.tsx",
+      "originalHash": "593493e30820dc5fed4c92f6f196e4a7b97cf5d022810ece0836920d16881212",
+      "checkoutHash": "7645d0f3302c0fa813679a77850f8aed65790365035612a652d4a9af8f883b52",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/student/coding/[lessonId]/page.tsx",
+      "originalHash": "f582e747c4630c1d4c6f817f9cace6ae20a78e0aed1cb02469ae74eef85d08e2",
+      "checkoutHash": "f582e747c4630c1d4c6f817f9cace6ae20a78e0aed1cb02469ae74eef85d08e2",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/student/coding/activities/[activityId]/page.tsx",
+      "originalHash": "ec173c717daf69a5fb55be0e60f513a7e03e8659e17f3f383b937719ab441602",
+      "checkoutHash": "ec173c717daf69a5fb55be0e60f513a7e03e8659e17f3f383b937719ab441602",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/student/coding/page.tsx",
+      "originalHash": "eadc611b712dffe26ea0c32fafb01f410e8300211e44285434660cf0cd2229eb",
+      "checkoutHash": "eadc611b712dffe26ea0c32fafb01f410e8300211e44285434660cf0cd2229eb",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/student/coding/readiness/[planId]/[activityId]/page.tsx",
+      "originalHash": "e39a47acfbc7fae503e89401cd6af42c85c83301b443e6d55d7c2991b368d1b1",
+      "checkoutHash": "e39a47acfbc7fae503e89401cd6af42c85c83301b443e6d55d7c2991b368d1b1",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/app/teacher/coding/page.tsx",
+      "originalHash": "f88a1ca50f793f0e82d8a8de35d0f30e2da3ca80e47b55b3f2e99d410addd10b",
+      "checkoutHash": "83ee462e5994febcc593c7cd9962865367dbb4c082408220a97ff6e0d37336ba",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ActivityLoader.tsx",
+      "originalHash": "318f6bc2e134c9c48a918ffe4f681dd9e61a38178307f9eb9ad36f16fc058c08",
+      "checkoutHash": "318f6bc2e134c9c48a918ffe4f681dd9e61a38178307f9eb9ad36f16fc058c08",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/BlockCommandsEditor.tsx",
+      "originalHash": "c9cf897465032fea7a641dd3e185faafce21b0f94a984138f25ec979f1d2ec30",
+      "checkoutHash": "c9cf897465032fea7a641dd3e185faafce21b0f94a984138f25ec979f1d2ec30",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ClassifierExecution.tsx",
+      "originalHash": "cf76452d9326fafd23a800f9f2197f5f44fb44814923f46aacf4daab121f13ce",
+      "checkoutHash": "cf76452d9326fafd23a800f9f2197f5f44fb44814923f46aacf4daab121f13ce",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ClassifierStudio.tsx",
+      "originalHash": "31e1bf36339cac68c393512f71198a59408c576aa11098b369b3b3e1f6b71051",
+      "checkoutHash": "31e1bf36339cac68c393512f71198a59408c576aa11098b369b3b3e1f6b71051",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CodingAssistanceSettings.tsx",
+      "originalHash": "098fbf67723e41cc527b65e2caad8df4a3109341578f2aa28d3165759f9b6d5c",
+      "checkoutHash": "098fbf67723e41cc527b65e2caad8df4a3109341578f2aa28d3165759f9b6d5c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CodingHome.tsx",
+      "originalHash": "b1b9f56d33f6895bf1e4735c86e51f4e312dae15f67eb91228b92c85f8997263",
+      "checkoutHash": "b1b9f56d33f6895bf1e4735c86e51f4e312dae15f67eb91228b92c85f8997263",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CodingLessonWorkspace.tsx",
+      "originalHash": "bb9ae1f490f9e16e06e1fb5613cb5e8cc35ba467dc0345f344c8c2400977d3b5",
+      "checkoutHash": "bb9ae1f490f9e16e06e1fb5613cb5e8cc35ba467dc0345f344c8c2400977d3b5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CodingNextStep.tsx",
+      "originalHash": "80f134e57ee20ae59eb18119d7ca6686c1d6639fdb24a6dd2f58953656e30366",
+      "checkoutHash": "80f134e57ee20ae59eb18119d7ca6686c1d6639fdb24a6dd2f58953656e30366",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CodingPlanAccess.tsx",
+      "originalHash": "b6a66f571962b50674d924e38283268293d06354fa63f78e3970c7d5ad608e7c",
+      "checkoutHash": "b6a66f571962b50674d924e38283268293d06354fa63f78e3970c7d5ad608e7c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CodingPlayground.module.css",
+      "originalHash": "2f7b8ef4dbe88d11e2dd3f0967c94d9956fd6b1f6f4a447796f0eb4ad59e9bdc",
+      "checkoutHash": "6937c88ae51178dda08b93b0b041b91f0fe617dbd0b248cb1058fb613efd5a72",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CodingPlayground.tsx",
+      "originalHash": "ac9c7812718bf51664e32a3807e62469df16d6788f0f0e447dcc12c44a8757de",
+      "checkoutHash": "5b564610440ea8c1cbcb611d8d2c338e4ec13a42238eb5a44e0271228856d5b2",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CodingProgressPanel.tsx",
+      "originalHash": "aed8d93932f2d7399fc43d0a91b36b2aec4977fc9dbcf432a9ee1e7e268448c6",
+      "checkoutHash": "aed8d93932f2d7399fc43d0a91b36b2aec4977fc9dbcf432a9ee1e7e268448c6",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CodingProjectReplay.tsx",
+      "originalHash": "4a4ac9098d37ff3c15b09439d2210cf0c40568084190fbf614d2a944f3c90195",
+      "checkoutHash": "4a4ac9098d37ff3c15b09439d2210cf0c40568084190fbf614d2a944f3c90195",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CodingStudioFrame.tsx",
+      "originalHash": "74ff6e7a558c1f9b9d0f079643ea3b5f4b44534add418cb2386b4f5b1c9edf45",
+      "checkoutHash": "74ff6e7a558c1f9b9d0f079643ea3b5f4b44534add418cb2386b4f5b1c9edf45",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/CurriculumDraftPreview.tsx",
+      "originalHash": "bdad325dc3d176c411de2e6f26848415ee61d1aa508ea7d308855b6a29529497",
+      "checkoutHash": "bdad325dc3d176c411de2e6f26848415ee61d1aa508ea7d308855b6a29529497",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/DataExecution.tsx",
+      "originalHash": "4aa67afac208d0d97676b986d7ddb3188fa1067ae3e444be7dba4157e05329cf",
+      "checkoutHash": "4aa67afac208d0d97676b986d7ddb3188fa1067ae3e444be7dba4157e05329cf",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/DataRepresentationEditor.tsx",
+      "originalHash": "1b4d6cb0ddf48ce34379669fd08621a77aa4b20cadcc9ce52f77f7118271fbe7",
+      "checkoutHash": "1b4d6cb0ddf48ce34379669fd08621a77aa4b20cadcc9ce52f77f7118271fbe7",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/DataRepresentationExecution.tsx",
+      "originalHash": "c7c5bfc0e858bf07048fb6c892a4185a551c49d3cac391b977eb6f8e357e2dc3",
+      "checkoutHash": "c7c5bfc0e858bf07048fb6c892a4185a551c49d3cac391b977eb6f8e357e2dc3",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/DataStudio.tsx",
+      "originalHash": "8e41dccfaec5fdd6ae7c7ceaa976c733c4d94317ad3b08f4da6836586b21a491",
+      "checkoutHash": "8e41dccfaec5fdd6ae7c7ceaa976c733c4d94317ad3b08f4da6836586b21a491",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/DemonstrationRecorder.tsx",
+      "originalHash": "b355d5912846ec9ab530bad5b5c8f079d438d9de047a2ee19c9a9bc2a152899f",
+      "checkoutHash": "b355d5912846ec9ab530bad5b5c8f079d438d9de047a2ee19c9a9bc2a152899f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/DeviceExecution.tsx",
+      "originalHash": "6a1f14fbbd844140945ee521424e2c4cc0737fa9a57126f8352a51cdd7eddd73",
+      "checkoutHash": "6a1f14fbbd844140945ee521424e2c4cc0737fa9a57126f8352a51cdd7eddd73",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/DualProgramEditor.tsx",
+      "originalHash": "207e764693d6f1aaac4d6d6131ad1f583b2c65124ca0f529aa4e1581fcdf52b8",
+      "checkoutHash": "207e764693d6f1aaac4d6d6131ad1f583b2c65124ca0f529aa4e1581fcdf52b8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/EngineeringExecution.tsx",
+      "originalHash": "4f11bf79ec91eab7d680513c2d6d81b04a2b2916a449459547e261ca6ebce365",
+      "checkoutHash": "4f11bf79ec91eab7d680513c2d6d81b04a2b2916a449459547e261ca6ebce365",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/EngineeringProjectDetails.tsx",
+      "originalHash": "9ebe7d11ff607a8290082f8ad428bb21bda277f168e40c0204f7536b0f92fb7e",
+      "checkoutHash": "9ebe7d11ff607a8290082f8ad428bb21bda277f168e40c0204f7536b0f92fb7e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/EngineeringStudio.tsx",
+      "originalHash": "fa20a4c5de567029b68440dc50240f64e53960541ff7b4e839c8bcf7d3567f09",
+      "checkoutHash": "fa20a4c5de567029b68440dc50240f64e53960541ff7b4e839c8bcf7d3567f09",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/EvidenceControls.tsx",
+      "originalHash": "c9b9e9c27a733043c925fe0bd9262bffdba72b38f60740e504997b7e10162dea",
+      "checkoutHash": "c9b9e9c27a733043c925fe0bd9262bffdba72b38f60740e504997b7e10162dea",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/EvidencePreview.tsx",
+      "originalHash": "fdafb52d25609f3115e374e708512a606d079a16e29109e465c6bc57534e7c88",
+      "checkoutHash": "fdafb52d25609f3115e374e708512a606d079a16e29109e465c6bc57534e7c88",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/EvidenceSelection.tsx",
+      "originalHash": "719c5f831c7047e48b0bd03c94ab5c50d97cd5d43991f2229f31e57ba9019de0",
+      "checkoutHash": "719c5f831c7047e48b0bd03c94ab5c50d97cd5d43991f2229f31e57ba9019de0",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/EvidenceStudio.tsx",
+      "originalHash": "1b20f582a7645b8d81bc686e45b07179dc7fcbe195fcc36f4075d916dbeaefb7",
+      "checkoutHash": "1b20f582a7645b8d81bc686e45b07179dc7fcbe195fcc36f4075d916dbeaefb7",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/FixtureServiceExecution.tsx",
+      "originalHash": "cb51f6d0fc40d2ce3a4bcb4ab9e350f4daad948aef03d6765b0c1fae483e90a4",
+      "checkoutHash": "cb51f6d0fc40d2ce3a4bcb4ab9e350f4daad948aef03d6765b0c1fae483e90a4",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/FunctionCodeGuide.tsx",
+      "originalHash": "afdddd516a94d0b2fc11d2afe700961249dab75b081d7be450ba85e691152fba",
+      "checkoutHash": "d1c897981cd267b18df9d4a169e677fe4dc9d91093b24174768297966c036350",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/GameState.tsx",
+      "originalHash": "b5e4a9dc6da6b24dbe645aebb2fb2ab869ab81b0f9eff22f34792fde94cdcd52",
+      "checkoutHash": "b5e4a9dc6da6b24dbe645aebb2fb2ab869ab81b0f9eff22f34792fde94cdcd52",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/GameStudio.tsx",
+      "originalHash": "2f1b9065d21896bbd1eabbbd73a6edcaa7276a0fdfbd6621d9480d6d86d58179",
+      "checkoutHash": "2f1b9065d21896bbd1eabbbd73a6edcaa7276a0fdfbd6621d9480d6d86d58179",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/InvestigationExecution.tsx",
+      "originalHash": "0dcfc5cc08abd653eb1011bd3b4d146ea1c59233698f695a789a9488bf6637dc",
+      "checkoutHash": "0dcfc5cc08abd653eb1011bd3b4d146ea1c59233698f695a789a9488bf6637dc",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/InvestigationStudio.tsx",
+      "originalHash": "f00979019986c48b629985c8f7702de1f1cdb2dfe8a3dac665daabecf0bcc4bf",
+      "checkoutHash": "f00979019986c48b629985c8f7702de1f1cdb2dfe8a3dac665daabecf0bcc4bf",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/LearnerProjectLibrary.tsx",
+      "originalHash": "07b88708c8508cb392655fea3429ee583ff3acd2fdd3ab0ec2476163f5d55cf8",
+      "checkoutHash": "07b88708c8508cb392655fea3429ee583ff3acd2fdd3ab0ec2476163f5d55cf8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/LearningCatalogue.tsx",
+      "originalHash": "fda89708798684015db1c1d8d39adcb414af0aff91c50d15b370f1d367aef778",
+      "checkoutHash": "fda89708798684015db1c1d8d39adcb414af0aff91c50d15b370f1d367aef778",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/LearningExecution.tsx",
+      "originalHash": "e64e1937fecfa4698dac0c18adaf379b774f50529b5545433334e2a3d2ca5983",
+      "checkoutHash": "e64e1937fecfa4698dac0c18adaf379b774f50529b5545433334e2a3d2ca5983",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/LearningGameControls.tsx",
+      "originalHash": "0c5db117188254d4cad0bf87fc7673d9e5bbdb3004e56da25efffcf30786ad6a",
+      "checkoutHash": "0c5db117188254d4cad0bf87fc7673d9e5bbdb3004e56da25efffcf30786ad6a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/LearningWorkspace.tsx",
+      "originalHash": "74ff2de9da6ee7d52a91f331470295d093641bc8a6f6b38a8677881131266d1d",
+      "checkoutHash": "74ff2de9da6ee7d52a91f331470295d093641bc8a6f6b38a8677881131266d1d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/LessonExample.tsx",
+      "originalHash": "17572c89e575b18e7b99b775d29fd63cad0ad367d5962da5b88d17147124e838",
+      "checkoutHash": "17572c89e575b18e7b99b775d29fd63cad0ad367d5962da5b88d17147124e838",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/MediaLayerTools.tsx",
+      "originalHash": "5c6b5526bb14b5e2aa46442f368a6081d60254810cee491613ae247a1338f6cf",
+      "checkoutHash": "5c6b5526bb14b5e2aa46442f368a6081d60254810cee491613ae247a1338f6cf",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/MediaLibraryEditor.tsx",
+      "originalHash": "7030f9633dad7315bb9f384380ed943d397b62cc4beb2fa152f06e6525f676ea",
+      "checkoutHash": "7030f9633dad7315bb9f384380ed943d397b62cc4beb2fa152f06e6525f676ea",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/MediaWordChoices.tsx",
+      "originalHash": "18ee754672ffabb7aa70ec3eca650ad0ffdac67eb4c36e151321a1c60274f555",
+      "checkoutHash": "18ee754672ffabb7aa70ec3eca650ad0ffdac67eb4c36e151321a1c60274f555",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/NetworkDiagram.tsx",
+      "originalHash": "29249fa127dcfda7aa4ac2d09ef08fdbe7500c15500b1fccfe5963089aa259ce",
+      "checkoutHash": "29249fa127dcfda7aa4ac2d09ef08fdbe7500c15500b1fccfe5963089aa259ce",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/NetworkExecution.tsx",
+      "originalHash": "b4188ceaf99d49c584de718cc9afe5d18a26712ab5ecd4270266d5c5c24d5949",
+      "checkoutHash": "b4188ceaf99d49c584de718cc9afe5d18a26712ab5ecd4270266d5c5c24d5949",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/NetworkPacketEditor.tsx",
+      "originalHash": "e268e0ea94c46619286c2e7718455141c495066274ec82736f8e2ac384c4a326",
+      "checkoutHash": "e268e0ea94c46619286c2e7718455141c495066274ec82736f8e2ac384c4a326",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/NetworkStudio.tsx",
+      "originalHash": "e5d56dc2cb755c24db3d6d802078f9aeb203df9516595f48adf831ad878dc00c",
+      "checkoutHash": "e5d56dc2cb755c24db3d6d802078f9aeb203df9516595f48adf831ad878dc00c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ParentProjectPortfolio.tsx",
+      "originalHash": "5f72be61e77d62c59ea9def63076016e7a2361305c07b482f47c31b6e8fbddbc",
+      "checkoutHash": "5f72be61e77d62c59ea9def63076016e7a2361305c07b482f47c31b6e8fbddbc",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/PrivateDemonstrationPlayer.tsx",
+      "originalHash": "3f3802f0a830036f1d5328dc932b884305244ae951542dd80894f1d822bdc36f",
+      "checkoutHash": "3f3802f0a830036f1d5328dc932b884305244ae951542dd80894f1d822bdc36f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ProjectFilesEditor.tsx",
+      "originalHash": "45d3c6e1c6c31bfaa372940b79d571dc1c23ebcb45c571db079c5b28f30fdb30",
+      "checkoutHash": "45d3c6e1c6c31bfaa372940b79d571dc1c23ebcb45c571db079c5b28f30fdb30",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ProjectPreview.tsx",
+      "originalHash": "97dd9712617fe9077537028908a17eb1932c596b726d8677d512d15414d9ff91",
+      "checkoutHash": "97dd9712617fe9077537028908a17eb1932c596b726d8677d512d15414d9ff91",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ProvidedMaterials.tsx",
+      "originalHash": "1cfb318e17ddaf26af448c6af88626f484150560c8becb72977cb295741434a7",
+      "checkoutHash": "1cfb318e17ddaf26af448c6af88626f484150560c8becb72977cb295741434a7",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ReadinessBridges.tsx",
+      "originalHash": "222d08048562c462bceb73c7b8b2759f738f946654bbef7c895371a0043470b4",
+      "checkoutHash": "222d08048562c462bceb73c7b8b2759f738f946654bbef7c895371a0043470b4",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/RoutePlanEditor.tsx",
+      "originalHash": "1559693a74e9be872e1a860e7d1ca2e7ae1db1446ca715e4ce344489ff1b83b8",
+      "checkoutHash": "1559693a74e9be872e1a860e7d1ca2e7ae1db1446ca715e4ce344489ff1b83b8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/SavedEvidenceLibrary.tsx",
+      "originalHash": "a250a9655ae66d3228650e86a5c86d5c6b829470fbf248d2ead8b7c96ee9f155",
+      "checkoutHash": "a250a9655ae66d3228650e86a5c86d5c6b829470fbf248d2ead8b7c96ee9f155",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ScenarioDetails.tsx",
+      "originalHash": "59f06f947cb178fc6f9655c81dc30a08bb8e1099c29b184aa032b824c95139ad",
+      "checkoutHash": "59f06f947cb178fc6f9655c81dc30a08bb8e1099c29b184aa032b824c95139ad",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ScenarioEditor.tsx",
+      "originalHash": "11f3568f84e4ca5e82b80844add2a3b5bc715584d19fc412cd79f3f5fbe9b6f8",
+      "checkoutHash": "11f3568f84e4ca5e82b80844add2a3b5bc715584d19fc412cd79f3f5fbe9b6f8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ScenarioReplay.tsx",
+      "originalHash": "87de661763291969cf061be6c852ede14a9ff041441869bfaed0b0b6d11c10aa",
+      "checkoutHash": "87de661763291969cf061be6c852ede14a9ff041441869bfaed0b0b6d11c10aa",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/ScenarioStoryEditor.tsx",
+      "originalHash": "12ea768685af49c29a56407d29de53d4bcf6b9d033c3a3980c006a4e05d18e81",
+      "checkoutHash": "12ea768685af49c29a56407d29de53d4bcf6b9d033c3a3980c006a4e05d18e81",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/SourceEditor.tsx",
+      "originalHash": "b3abc6935ac6e5879ae2ca4dfa2230bf5f6746e8396319b9b739fb576853437a",
+      "checkoutHash": "b3abc6935ac6e5879ae2ca4dfa2230bf5f6746e8396319b9b739fb576853437a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/SourceTestInputs.tsx",
+      "originalHash": "c466fbd45581e783c53158d8daead6fe8d940ee1656886007c55aa77e59e963c",
+      "checkoutHash": "c466fbd45581e783c53158d8daead6fe8d940ee1656886007c55aa77e59e963c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/SqlExecution.tsx",
+      "originalHash": "6cded5a6b14313ab1462c643d8a8d449367e417762440028e2021a739de664f1",
+      "checkoutHash": "6cded5a6b14313ab1462c643d8a8d449367e417762440028e2021a739de664f1",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/StateTransitionDiagram.tsx",
+      "originalHash": "08ffc7924e44c87486e91a4d1f4468f0c2d5fb5f1ee82e84f090b0a1bcb6e01c",
+      "checkoutHash": "08ffc7924e44c87486e91a4d1f4468f0c2d5fb5f1ee82e84f090b0a1bcb6e01c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/StoryCharacter.tsx",
+      "originalHash": "8d8abc47cdf925196811e7a9c2bc9eb7887c214c27bdbb4a0baee50c5f75ecfc",
+      "checkoutHash": "8d8abc47cdf925196811e7a9c2bc9eb7887c214c27bdbb4a0baee50c5f75ecfc",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/StoryExecution.tsx",
+      "originalHash": "259f622ce666bf8ff05c87c847e067f4e746c452b6b71bd73b98cca0e38c7d11",
+      "checkoutHash": "259f622ce666bf8ff05c87c847e067f4e746c452b6b71bd73b98cca0e38c7d11",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/SyntaxGuide.tsx",
+      "originalHash": "1925734c81159d328021f91bd0fd620090b9fe5db414f1cbfa5b30a5ff10e227",
+      "checkoutHash": "1925734c81159d328021f91bd0fd620090b9fe5db414f1cbfa5b30a5ff10e227",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/SystemsExecution.tsx",
+      "originalHash": "9cf3267ba0ab2d77d260b80c90ab0ccbba734fac02fd8d9624126480cc81dd96",
+      "checkoutHash": "9cf3267ba0ab2d77d260b80c90ab0ccbba734fac02fd8d9624126480cc81dd96",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/SystemsStudio.tsx",
+      "originalHash": "9004a8139b0c46efb4b398ddbdbac8a8929348a1ae4e6022449126a829f81427",
+      "checkoutHash": "9004a8139b0c46efb4b398ddbdbac8a8929348a1ae4e6022449126a829f81427",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/TeacherActivityDesk.tsx",
+      "originalHash": "dcb0635de0a2cac6b2abad6c3028d5ffa919ea4f8e9c985b0c6b929a58285f9d",
+      "checkoutHash": "dcb0635de0a2cac6b2abad6c3028d5ffa919ea4f8e9c985b0c6b929a58285f9d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/TeacherCodingDesk.tsx",
+      "originalHash": "1728bfc409037b3848a1432225ee5ca9ceb5e863aa4fd1a5da89e87ce85f8bf5",
+      "checkoutHash": "1728bfc409037b3848a1432225ee5ca9ceb5e863aa4fd1a5da89e87ce85f8bf5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/VisualProgramEditor.tsx",
+      "originalHash": "870a271396e4438034830864d2c6a84f91d9cde6169bf7f62a712e26d505273a",
+      "checkoutHash": "870a271396e4438034830864d2c6a84f91d9cde6169bf7f62a712e26d505273a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/VisualReviewPanel.tsx",
+      "originalHash": "fa00325780b327d40eaf9cff3e2d407152faeff8237d583cf10b6a8cf4e25243",
+      "checkoutHash": "fa00325780b327d40eaf9cff3e2d407152faeff8237d583cf10b6a8cf4e25243",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/coding/WebInspection.tsx",
+      "originalHash": "d74e742bcec9a7d9575c42ce08821847fc25c5d54c2e9d94a87bcd77c0d2eeac",
+      "checkoutHash": "d74e742bcec9a7d9575c42ce08821847fc25c5d54c2e9d94a87bcd77c0d2eeac",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/components/layout/StoreBootstrap.tsx",
+      "originalHash": "1d1ba143417da272b4b10209f9457319c896d1fff3d6a111385f0dc66f1b398e",
+      "checkoutHash": "e7b39a5c206c5aef2d91960a963cc3e070152b811e370a299528dec51611f0cc",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/activeChild.ts",
+      "originalHash": "d668b21ae0fbf44190ac0280281d415a719cf1e81585a4bce2d5081c7fd6bc72",
+      "checkoutHash": "d668b21ae0fbf44190ac0280281d415a719cf1e81585a4bce2d5081c7fd6bc72",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/admin-permissions.ts",
+      "originalHash": "303f0ad391d84b9ed980f1245117982c3bad81f79130ced4c0e82165322c68f6",
+      "checkoutHash": "303f0ad391d84b9ed980f1245117982c3bad81f79130ced4c0e82165322c68f6",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/api-key-config.ts",
+      "originalHash": "4e9962033ef391d06e7fe64ce0657a9b777f4c796412222987516baf8772bf56",
+      "checkoutHash": "4e9962033ef391d06e7fe64ce0657a9b777f4c796412222987516baf8772bf56",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/api_guard.ts",
+      "originalHash": "065d02915553cf559bb8e3f03dbcd70692e29bedcd1bc6e559e97d685e69af3f",
+      "checkoutHash": "065d02915553cf559bb8e3f03dbcd70692e29bedcd1bc6e559e97d685e69af3f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/auth.ts",
+      "originalHash": "0e0963079e56a3103cbf4eb406b44d56d21133ece89a1dc6fa827ca0049a7b39",
+      "checkoutHash": "0e0963079e56a3103cbf4eb406b44d56d21133ece89a1dc6fa827ca0049a7b39",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/auth_sessions.ts",
+      "originalHash": "1051be42ca1514be87192a3c1431ab175b341c6d653989c4752c3d3d86acb428",
+      "checkoutHash": "1051be42ca1514be87192a3c1431ab175b341c6d653989c4752c3d3d86acb428",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/context-injectors.ts",
+      "originalHash": "ead9009162422f03c77f9a42b8555678d4a3493c684dffcb108b18ac23c0d129",
+      "checkoutHash": "ead9009162422f03c77f9a42b8555678d4a3493c684dffcb108b18ac23c0d129",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/db-helpers.ts",
+      "originalHash": "aacdc3beb549097e06f69f16bd487f68bd342a9d559780b7d97ef91c51f1a545",
+      "checkoutHash": "aacdc3beb549097e06f69f16bd487f68bd342a9d559780b7d97ef91c51f1a545",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/engine.ts",
+      "originalHash": "74f5be1fdcc01075f92fbf6912f82cd4e9981664853d7d75447338f50d77b5d9",
+      "checkoutHash": "74f5be1fdcc01075f92fbf6912f82cd4e9981664853d7d75447338f50d77b5d9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/english-hints.ts",
+      "originalHash": "97b390daa19f2461d5830dd8f58d5a45d51f9d02f549460c2488cd9d499e20b5",
+      "checkoutHash": "97b390daa19f2461d5830dd8f58d5a45d51f9d02f549460c2488cd9d499e20b5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/mastery-check-enforcement.ts",
+      "originalHash": "23bb49fd2ad5ca65e8ca265ce074dafc05023d6d76e33e3ca670ac723786e0b5",
+      "checkoutHash": "23bb49fd2ad5ca65e8ca265ce074dafc05023d6d76e33e3ca670ac723786e0b5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/maths-steps.ts",
+      "originalHash": "4622c0d1d0f23fa79d785d7c42c44f87b3a53f4e490c66a8b350a6d999e126ac",
+      "checkoutHash": "4622c0d1d0f23fa79d785d7c42c44f87b3a53f4e490c66a8b350a6d999e126ac",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/model-json.ts",
+      "originalHash": "75f7a83d2923998a1c461da944a4adbcfa7f0d30118cc63c84900fae3c18adc9",
+      "checkoutHash": "75f7a83d2923998a1c461da944a4adbcfa7f0d30118cc63c84900fae3c18adc9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/progressive-help-gating.ts",
+      "originalHash": "2e48422bb7f0982cae71b518cd195d3dc94219ac5f28f7805aadc5d6f9b47be6",
+      "checkoutHash": "2e48422bb7f0982cae71b518cd195d3dc94219ac5f28f7805aadc5d6f9b47be6",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/reading-hints.ts",
+      "originalHash": "d861fc7d9db608955036a8b70114c14b0ea1b5582a60879038142aa5555c930b",
+      "checkoutHash": "d861fc7d9db608955036a8b70114c14b0ea1b5582a60879038142aa5555c930b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/science-hints.ts",
+      "originalHash": "fcdca08fcaf36628205a6867f6b82ceaf806fcf2d5001aaa4a358dde9728a708",
+      "checkoutHash": "fcdca08fcaf36628205a6867f6b82ceaf806fcf2d5001aaa4a358dde9728a708",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/session-memory.ts",
+      "originalHash": "f685b4ae7a002a6e5a279b1f4d04aef9c9ba0de6bbcf3f3c983333e70aa77f1a",
+      "checkoutHash": "f685b4ae7a002a6e5a279b1f4d04aef9c9ba0de6bbcf3f3c983333e70aa77f1a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/spelling-hints.ts",
+      "originalHash": "e73cc01fb9c8876145ea20348e737094d3e6ebc82ddc9b854fb1b4606990614c",
+      "checkoutHash": "e73cc01fb9c8876145ea20348e737094d3e6ebc82ddc9b854fb1b4606990614c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coach/types.ts",
+      "originalHash": "a28e056c7880db6d9a9a627f883b70218acb804ff9cb0ec8ebe8a1e2625c6b70",
+      "checkoutHash": "a28e056c7880db6d9a9a627f883b70218acb804ff9cb0ec8ebe8a1e2625c6b70",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/answers.ts",
+      "originalHash": "f224a58d556398bb6b90868ba63f8510b4c2f2765de1888417da06702ad38275",
+      "checkoutHash": "f224a58d556398bb6b90868ba63f8510b4c2f2765de1888417da06702ad38275",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/assessment.ts",
+      "originalHash": "274aa81d36ede4b7cf59eedeb483b92cd369d7e56dbc86e92b594b85dd29c630",
+      "checkoutHash": "274aa81d36ede4b7cf59eedeb483b92cd369d7e56dbc86e92b594b85dd29c630",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/blockly-adapter.ts",
+      "originalHash": "847609d7341f3ec29191d54fe820b31b0681f445a06736d88388f29a3a485d05",
+      "checkoutHash": "847609d7341f3ec29191d54fe820b31b0681f445a06736d88388f29a3a485d05",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/catalog.ts",
+      "originalHash": "e4ab38b4ae902b1774bf3010d77570a1dc7f4c5c077341b41cd9d55cbf4bedc3",
+      "checkoutHash": "e4ab38b4ae902b1774bf3010d77570a1dc7f4c5c077341b41cd9d55cbf4bedc3",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/curriculum/contracts.ts",
+      "originalHash": "01aa966d8b256135e47066786a5770848ef19e5a96d7fe8c35d2dbe72f51a9e4",
+      "checkoutHash": "01aa966d8b256135e47066786a5770848ef19e5a96d7fe8c35d2dbe72f51a9e4",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/curriculum/first-instructions.ts",
+      "originalHash": "6a12919cd8a9b73da12f925f65100ce7a922f3fa89dac8fea8f76158c2827a20",
+      "checkoutHash": "6a12919cd8a9b73da12f925f65100ce7a922f3fa89dac8fea8f76158c2827a20",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/curriculum/prediction.ts",
+      "originalHash": "2945730d42c5b4771eba39ec7f82a52be3ec158ddaee63e8170c82d1f012986d",
+      "checkoutHash": "2945730d42c5b4771eba39ec7f82a52be3ec158ddaee63e8170c82d1f012986d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/curriculum/registry.ts",
+      "originalHash": "54e72da7479faf56e2a70899424170b89f417af7849fd1771b74c4eab88842f1",
+      "checkoutHash": "54e72da7479faf56e2a70899424170b89f417af7849fd1771b74c4eab88842f1",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/curriculum/route-engine.ts",
+      "originalHash": "dc86f69b7bfe8ad6b4721a9a7246d75ea767e660aa4e97283b8dad39c5062af8",
+      "checkoutHash": "dc86f69b7bfe8ad6b4721a9a7246d75ea767e660aa4e97283b8dad39c5062af8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/dashboard-access.ts",
+      "originalHash": "43e08ecda1e09fb80f94b724484b9a7aa45415d41a8f4313b1886a167ddea664",
+      "checkoutHash": "43e08ecda1e09fb80f94b724484b9a7aa45415d41a8f4313b1886a167ddea664",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/dashboard-lessons.ts",
+      "originalHash": "40eb26fc3efcd6610f3f6241fe871d6e63742da02c3358d583f02ae5319224a5",
+      "checkoutHash": "40eb26fc3efcd6610f3f6241fe871d6e63742da02c3358d583f02ae5319224a5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/development-surface.ts",
+      "originalHash": "76b240554be85af40bad6319681aaa435bb5b35ab1a1831d01b826b937e9863d",
+      "checkoutHash": "76b240554be85af40bad6319681aaa435bb5b35ab1a1831d01b826b937e9863d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/draft-validation.ts",
+      "originalHash": "2113b14f1cf6c38d80c942f411cae8959dccfb8d57df8a3d1d947beeec84b20f",
+      "checkoutHash": "2113b14f1cf6c38d80c942f411cae8959dccfb8d57df8a3d1d947beeec84b20f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/editor.ts",
+      "originalHash": "622b4978490f6595d52ece00da4dddf741100f4ef030a74d8d07fc707b0e858f",
+      "checkoutHash": "622b4978490f6595d52ece00da4dddf741100f4ef030a74d8d07fc707b0e858f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/execution/client.ts",
+      "originalHash": "2024690a5909349a3e7d790916383ce09503d86e23439c1d01773803e88a693b",
+      "checkoutHash": "2024690a5909349a3e7d790916383ce09503d86e23439c1d01773803e88a693b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/human-support.ts",
+      "originalHash": "0641f89a82f7e09e2ec8f283ad139c98f34dfd62bb529bb5b683f4782b5a513b",
+      "checkoutHash": "0641f89a82f7e09e2ec8f283ad139c98f34dfd62bb529bb5b683f4782b5a513b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/independent-challenge.ts",
+      "originalHash": "7978cb891627bca0d38b2c706bc312790600a3e4f51b6585eda232c3047e16c4",
+      "checkoutHash": "7978cb891627bca0d38b2c706bc312790600a3e4f51b6585eda232c3047e16c4",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/author-preview.ts",
+      "originalHash": "bec56c1e87c384edeceb4911cb1b36088cf6777a17d76dd493ec50abe0ce4c49",
+      "checkoutHash": "bec56c1e87c384edeceb4911cb1b36088cf6777a17d76dd493ec50abe0ce4c49",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/authoring.ts",
+      "originalHash": "e90b623d5400e4cd17f8037d1cd751a26992ccf5da57110cd14031c59a5c7837",
+      "checkoutHash": "e90b623d5400e4cd17f8037d1cd751a26992ccf5da57110cd14031c59a5c7837",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/beginner-playground.ts",
+      "originalHash": "31339c2f85e1459cd2baabcea540af596e5a2bb8c0222d35247c33196f8b6961",
+      "checkoutHash": "d7cbfa19259275326189105fb05216f99c3a015a2c03d3d3bba43f53c3b1a3b6",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/bridge-context.ts",
+      "originalHash": "c2c700ae3012e416f2f795a3293d135bd713bbf840ea2f66f2a437f00e1c27fd",
+      "checkoutHash": "c2c700ae3012e416f2f795a3293d135bd713bbf840ea2f66f2a437f00e1c27fd",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/catalogue.ts",
+      "originalHash": "e6dad3c31887535be2da45861d4c384db827408058bb0a8afd5cfb6086a4e5bf",
+      "checkoutHash": "e6dad3c31887535be2da45861d4c384db827408058bb0a8afd5cfb6086a4e5bf",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/checks.ts",
+      "originalHash": "7ed8b12c6593dbffd50d8e667735b184add4a0f0d32ef01aadf22a56132f4159",
+      "checkoutHash": "7ed8b12c6593dbffd50d8e667735b184add4a0f0d32ef01aadf22a56132f4159",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/classifier-contract.ts",
+      "originalHash": "f38aceb6e8455efef8a36a6118c1b60a5c4e245f44613ff4bbd9a089ab289242",
+      "checkoutHash": "f38aceb6e8455efef8a36a6118c1b60a5c4e245f44613ff4bbd9a089ab289242",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/code-guidance.ts",
+      "originalHash": "1bf3f4442c4ba8f1ea600c08255c7a6d8218a17796594d9e576d51eced05d918",
+      "checkoutHash": "1bf3f4442c4ba8f1ea600c08255c7a6d8218a17796594d9e576d51eced05d918",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/completion.ts",
+      "originalHash": "03823db4789363f6dbf20c7b62d50af6e2a44984c7d96f7baf90f54e025a5dfc",
+      "checkoutHash": "03823db4789363f6dbf20c7b62d50af6e2a44984c7d96f7baf90f54e025a5dfc",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/ai-suggestion-check.ts",
+      "originalHash": "1a25c0689738af5ce21db6ce2fd3a83810380acb8ecebb6bfaa505113fe0d5d7",
+      "checkoutHash": "1a25c0689738af5ce21db6ce2fd3a83810380acb8ecebb6bfaa505113fe0d5d7",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/algorithm-evaluation-lessons.ts",
+      "originalHash": "1e5f5cc5de3a480ebd2703b81f6ae1e0850b8ad21a30a73bcbd0d31899f4d6f8",
+      "checkoutHash": "1e5f5cc5de3a480ebd2703b81f6ae1e0850b8ad21a30a73bcbd0d31899f4d6f8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/algorithm-evaluation-portfolio.ts",
+      "originalHash": "60e3e4e7556fb553b0f7cad9bf08d7331dc64a33518770d1764c50b20564679f",
+      "checkoutHash": "60e3e4e7556fb553b0f7cad9bf08d7331dc64a33518770d1764c50b20564679f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/algorithm-evaluation-retrieval.ts",
+      "originalHash": "ae6080f0fad2b27d33fbba52b5f8b3ddd329223b79e0db550571a7f1e3c6b067",
+      "checkoutHash": "ae6080f0fad2b27d33fbba52b5f8b3ddd329223b79e0db550571a7f1e3c6b067",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/algorithm-evaluation-tools.ts",
+      "originalHash": "a5dbb9df2da01ce13cc30dd52583f42c84a50cb7a6a89e66231deba92021c50f",
+      "checkoutHash": "a5dbb9df2da01ce13cc30dd52583f42c84a50cb7a6a89e66231deba92021c50f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/algorithm-growth-lessons.ts",
+      "originalHash": "b63ce0df344bca660c599ce510b7b97c94ff67d56bd0a8f98d97ef550bb7ac3d",
+      "checkoutHash": "b63ce0df344bca660c599ce510b7b97c94ff67d56bd0a8f98d97ef550bb7ac3d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/algorithms-lessons.ts",
+      "originalHash": "1d8ff382ba2ddd1849e8226e0ea4679b20278612ef04bd5622a274ec7612c7b2",
+      "checkoutHash": "1d8ff382ba2ddd1849e8226e0ea4679b20278612ef04bd5622a274ec7612c7b2",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/algorithms-retrieval.ts",
+      "originalHash": "4792911fd153feb3fac38d7c803efda0df4eb0516d2c52334a8332f8b16bcb90",
+      "checkoutHash": "4792911fd153feb3fac38d7c803efda0df4eb0516d2c52334a8332f8b16bcb90",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/algorithms-tools.ts",
+      "originalHash": "f026dc81f9282e5ac83f92e6c60c899f1f9d71c2c764eb6aa8ab482c15680740",
+      "checkoutHash": "f026dc81f9282e5ac83f92e6c60c899f1f9d71c2c764eb6aa8ab482c15680740",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/animated-stories.ts",
+      "originalHash": "6419772ad6f35a8d5ef6c5f1026a29741f293e0f73a6cb48ec400bd50c003a02",
+      "checkoutHash": "6419772ad6f35a8d5ef6c5f1026a29741f293e0f73a6cb48ec400bd50c003a02",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/animation-builders.ts",
+      "originalHash": "a6453dbdc97de192ee7d6a6c60bead045a2d97642dfc533004546fc293db286c",
+      "checkoutHash": "a6453dbdc97de192ee7d6a6c60bead045a2d97642dfc533004546fc293db286c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/animation-retrieval.ts",
+      "originalHash": "863b1c9824d1790ccc81ea77b1a0cc0e1ee2656185a3e2d1a987fc354f60acef",
+      "checkoutHash": "863b1c9824d1790ccc81ea77b1a0cc0e1ee2656185a3e2d1a987fc354f60acef",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/api-contract-lessons.ts",
+      "originalHash": "3f379529a0ef830d34bd82f8d6979ff8024b2d4fffc75815144ce916f19368a9",
+      "checkoutHash": "3f379529a0ef830d34bd82f8d6979ff8024b2d4fffc75815144ce916f19368a9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/api-dashboard-lessons.ts",
+      "originalHash": "91ce164917ae167045afbad12da40c4b8bb422d6590748ecd00681adf277ff0e",
+      "checkoutHash": "91ce164917ae167045afbad12da40c4b8bb422d6590748ecd00681adf277ff0e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/api-network-retrieval.ts",
+      "originalHash": "50ba15296d7df0796587efbd9bd32e06f8c5eeb4b78e02cb5dfd15cabaa80922",
+      "checkoutHash": "50ba15296d7df0796587efbd9bd32e06f8c5eeb4b78e02cb5dfd15cabaa80922",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/audience-games.ts",
+      "originalHash": "9de2b7af4d6431fb4a4ff54d4b0a1806697bbc775f452b0770f14d437731aa57",
+      "checkoutHash": "9de2b7af4d6431fb4a4ff54d4b0a1806697bbc775f452b0770f14d437731aa57",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/calculator-components.ts",
+      "originalHash": "0385f2867f2afb6f738be9dc2fedaeb7a9f207aea3f13918687e3c2b8cb116ee",
+      "checkoutHash": "0385f2867f2afb6f738be9dc2fedaeb7a9f207aea3f13918687e3c2b8cb116ee",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/calculator-design-review.ts",
+      "originalHash": "5e546cc907af01ae9edb9350804dc85ac41574a687fa17bb98348e78c3357dcd",
+      "checkoutHash": "5e546cc907af01ae9edb9350804dc85ac41574a687fa17bb98348e78c3357dcd",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/calculator-evidence-page.ts",
+      "originalHash": "61822634bc1652e97ba3c656bdcb7b4746b3c7866526ed18354cb68d9c74c661",
+      "checkoutHash": "61822634bc1652e97ba3c656bdcb7b4746b3c7866526ed18354cb68d9c74c661",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/calculator-integration-retrieval.ts",
+      "originalHash": "b101d456490d427e320796eae62c6eeefd67606cae48009a399de9d9b939d82a",
+      "checkoutHash": "b101d456490d427e320796eae62c6eeefd67606cae48009a399de9d9b939d82a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/calculator-portfolio.ts",
+      "originalHash": "c13fe8e3778f239922a78bdce21d72f7b677ea48187dc33b6158e410b84d98fc",
+      "checkoutHash": "c13fe8e3778f239922a78bdce21d72f7b677ea48187dc33b6158e410b84d98fc",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/calculator-recovery.ts",
+      "originalHash": "f20058568e97d5fd511f2fd4d5e45c25fa45c51f30c7fcde3f24cf86e1d5160d",
+      "checkoutHash": "f20058568e97d5fd511f2fd4d5e45c25fa45c51f30c7fcde3f24cf86e1d5160d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/calculator-resume-retrieval.ts",
+      "originalHash": "3915509ef8c3c26ca9b9d7ed8cc6f00d111dafaec75c71a46842e7e1f43bfbb5",
+      "checkoutHash": "3915509ef8c3c26ca9b9d7ed8cc6f00d111dafaec75c71a46842e7e1f43bfbb5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/calculator-test-retrieval.ts",
+      "originalHash": "de6d252d4bc6feb0590db65f382e84e01084e1b589b05c23300e5d74b90921dc",
+      "checkoutHash": "de6d252d4bc6feb0590db65f382e84e01084e1b589b05c23300e5d74b90921dc",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/capstone-lessons.ts",
+      "originalHash": "fc920a6bcc49be23a791e0e64cb034d8a4b8788a954333e85911d5b2e9b7f9f7",
+      "checkoutHash": "fc920a6bcc49be23a791e0e64cb034d8a4b8788a954333e85911d5b2e9b7f9f7",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/capstone-retrieval.ts",
+      "originalHash": "406d6cda1641c2668b72086c9a90654eefa2b50afd3245f3999ede19a1e1ae03",
+      "checkoutHash": "406d6cda1641c2668b72086c9a90654eefa2b50afd3245f3999ede19a1e1ae03",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/capstone-tools.ts",
+      "originalHash": "d6cc2cfb48efb9df7228e0e4318bdc23b4cd8d8946fccf7c067f54ac9303fb01",
+      "checkoutHash": "d6cc2cfb48efb9df7228e0e4318bdc23b4cd8d8946fccf7c067f54ac9303fb01",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/card-retrieval.ts",
+      "originalHash": "6a35a1dc9c722c3d515af863708bef85abf9831a0e14ec78bc60c84611299998",
+      "checkoutHash": "6a35a1dc9c722c3d515af863708bef85abf9831a0e14ec78bc60c84611299998",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/community-creators.ts",
+      "originalHash": "00e834f2533f8b6f1a7fc0c07a09c657da83d19cc597ff01f8a268fba4cca554",
+      "checkoutHash": "00e834f2533f8b6f1a7fc0c07a09c657da83d19cc597ff01f8a268fba4cca554",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/community-retrieval.ts",
+      "originalHash": "b6d842280920e0a92dba4b5827604fd5f54295a787a4709286722f117e490554",
+      "checkoutHash": "b6d842280920e0a92dba4b5827604fd5f54295a787a4709286722f117e490554",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/connected-web.ts",
+      "originalHash": "d7986f010293a64538c3a8ab8f816e20b081058985dd051dc923aeab2685d12c",
+      "checkoutHash": "d7986f010293a64538c3a8ab8f816e20b081058985dd051dc923aeab2685d12c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/data-ai-foundations.ts",
+      "originalHash": "c51d45838d8f501fb43ba67f5928043de2d167bcfe16c543cc6d2ee7d1245d4c",
+      "checkoutHash": "c51d45838d8f501fb43ba67f5928043de2d167bcfe16c543cc6d2ee7d1245d4c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/data-ai-project.ts",
+      "originalHash": "603e5873529df88636b743d8b3b8b1d7d9921671bccd460274de042f6d1f5160",
+      "checkoutHash": "603e5873529df88636b743d8b3b8b1d7d9921671bccd460274de042f6d1f5160",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/data-ai-retrieval.ts",
+      "originalHash": "c217babacae87d4294d8337f7d17d60d0cdd0c4d0836fa83d42892bd9d488640",
+      "checkoutHash": "c217babacae87d4294d8337f7d17d60d0cdd0c4d0836fa83d42892bd9d488640",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/data-retrieval.ts",
+      "originalHash": "5e53ca2b4435d9629cd256d3cac4a09360a6a5eb0fe93e7950fb45180b0427b7",
+      "checkoutHash": "5e53ca2b4435d9629cd256d3cac4a09360a6a5eb0fe93e7950fb45180b0427b7",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/data-tool-lessons.ts",
+      "originalHash": "6bf580635875e87c0499adbae9ee1cfc8eb67fb692a4d5bbda2c249e2e0b74e6",
+      "checkoutHash": "6bf580635875e87c0499adbae9ee1cfc8eb67fb692a4d5bbda2c249e2e0b74e6",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/defensive-security-lessons.ts",
+      "originalHash": "b34370296adc594f4b9e5bd16ce9297c4db433750e7a256f5b36f0378aa07c25",
+      "checkoutHash": "b34370296adc594f4b9e5bd16ce9297c4db433750e7a256f5b36f0378aa07c25",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/defensive-security-projects.ts",
+      "originalHash": "7f72446d60ff4dd68847cd36026f45488e8981831690bd51234322996b6ccb23",
+      "checkoutHash": "7f72446d60ff4dd68847cd36026f45488e8981831690bd51234322996b6ccb23",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/defensive-security-retrieval.ts",
+      "originalHash": "a01919e3a1cf9c95212405b0c3ee418c36ec79663f1f45c6fc138035aaf985f1",
+      "checkoutHash": "a01919e3a1cf9c95212405b0c3ee418c36ec79663f1f45c6fc138035aaf985f1",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/engineering-review-lessons.ts",
+      "originalHash": "7e548750871ca15d6d1798bf7241c52152cf1941813e2d425b43375bb01b8bd9",
+      "checkoutHash": "7e548750871ca15d6d1798bf7241c52152cf1941813e2d425b43375bb01b8bd9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/engineering-studio-lessons.ts",
+      "originalHash": "ec0f1347bbec1338112621aa56ecaada8531c6ee54714b37e7f6ac3f04efe5f3",
+      "checkoutHash": "ec0f1347bbec1338112621aa56ecaada8531c6ee54714b37e7f6ac3f04efe5f3",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/engineering-studio-retrieval.ts",
+      "originalHash": "a352d3b4e0436cdeef1d0b7068c39bf7cc09123dc84e7a6f054f0975bf1f92e9",
+      "checkoutHash": "a352d3b4e0436cdeef1d0b7068c39bf7cc09123dc84e7a6f054f0975bf1f92e9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/evidence-posters.ts",
+      "originalHash": "2c0eb562a4db2ece1634a4bed7103c45dc157acf87ab475d588ec1cd5533150c",
+      "checkoutHash": "2c0eb562a4db2ece1634a4bed7103c45dc157acf87ab475d588ec1cd5533150c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/evidence-retrieval.ts",
+      "originalHash": "b0e7d8d5faf57fba06e85537651cad2c5799a043e83d27b879c3da2baeaaa188",
+      "checkoutHash": "b0e7d8d5faf57fba06e85537651cad2c5799a043e83d27b879c3da2baeaaa188",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/first-route-retrieval.ts",
+      "originalHash": "107b698bce9dbca1253cd703afd416645c1bbbf5e4d5f9e1b42476048fc9301a",
+      "checkoutHash": "107b698bce9dbca1253cd703afd416645c1bbbf5e4d5f9e1b42476048fc9301a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/function-data-retrieval.ts",
+      "originalHash": "18862f8e85556aacd1846fb90ecaafd5acfa5c2aaa80fc67ef1b144235a413ad",
+      "checkoutHash": "18862f8e85556aacd1846fb90ecaafd5acfa5c2aaa80fc67ef1b144235a413ad",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/functions-and-data.ts",
+      "originalHash": "a0c27a8d9cd8e6a287448375e61bd10e624757e7ff8b2d786d019a9d065ecddc",
+      "checkoutHash": "a0c27a8d9cd8e6a287448375e61bd10e624757e7ff8b2d786d019a9d065ecddc",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/http-fixture-tools.ts",
+      "originalHash": "94e436c3de1afeefa92de749a1d54d3ff2406d1b4ccd5d7075dba461584abed9",
+      "checkoutHash": "94e436c3de1afeefa92de749a1d54d3ff2406d1b4ccd5d7075dba461584abed9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/intelligent-feature-lessons.ts",
+      "originalHash": "d0212eb14ff2ec529f76407cff194ae113269435d73cf07d4a8735994ef234ac",
+      "checkoutHash": "d0212eb14ff2ec529f76407cff194ae113269435d73cf07d4a8735994ef234ac",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/intelligent-feature-tools.ts",
+      "originalHash": "2fb7624fa11e68b36f5675306c1b634930a78905e6d227fdf3c7a9b95c5702f9",
+      "checkoutHash": "2fb7624fa11e68b36f5675306c1b634930a78905e6d227fdf3c7a9b95c5702f9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/intelligent-system-lessons.ts",
+      "originalHash": "1107ca6a33a6bcfe3be6f043b7ee464d0a3144025463627b2c530b73620f442b",
+      "checkoutHash": "1107ca6a33a6bcfe3be6f043b7ee464d0a3144025463627b2c530b73620f442b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/intelligent-system-projects.ts",
+      "originalHash": "5759442e7f898c26f30ae972e372fc64e9eba0ead38a282d2b3688083b451858",
+      "checkoutHash": "5759442e7f898c26f30ae972e372fc64e9eba0ead38a282d2b3688083b451858",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/intelligent-system-tools.ts",
+      "originalHash": "d2c43d7ac9b50388bea6f7c9a185058cdef23f4eec74a39e4dd0c09c0a4094a2",
+      "checkoutHash": "d2c43d7ac9b50388bea6f7c9a185058cdef23f4eec74a39e4dd0c09c0a4094a2",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/interface-retrieval.ts",
+      "originalHash": "d0af2d7dcf11ef4807b4fd72f8d593421ca7f9eca213ac3efeb544aa253d5669",
+      "checkoutHash": "d0af2d7dcf11ef4807b4fd72f8d593421ca7f9eca213ac3efeb544aa253d5669",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/inventory-api-lessons.ts",
+      "originalHash": "ce274bf435d61abbc8f96747dddc0a2da860f28748808216793718074071bdfe",
+      "checkoutHash": "ce274bf435d61abbc8f96747dddc0a2da860f28748808216793718074071bdfe",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/inventory-api-tools.ts",
+      "originalHash": "5a9dc0ea44725e4f328368926b3ae5128f89215ff3612a74eeebfb52c670c611",
+      "checkoutHash": "5a9dc0ea44725e4f328368926b3ae5128f89215ff3612a74eeebfb52c670c611",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/inventory-database-lessons.ts",
+      "originalHash": "d6723280749c44f1117e8cf474958f2487de0d9449827951f3f8f83bce5badda",
+      "checkoutHash": "d6723280749c44f1117e8cf474958f2487de0d9449827951f3f8f83bce5badda",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/inventory-service-retrieval.ts",
+      "originalHash": "5a46c9030e8bff4bf435d506a85bd1f5ddbad7607f75b1775a4f18d142758a18",
+      "checkoutHash": "5a46c9030e8bff4bf435d506a85bd1f5ddbad7607f75b1775a4f18d142758a18",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/inventory-service-tools.ts",
+      "originalHash": "bac7289a95e7a3dc7687e361d39826ed50414ed1cb8e28004b2358399d4fb09a",
+      "checkoutHash": "bac7289a95e7a3dc7687e361d39826ed50414ed1cb8e28004b2358399d4fb09a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/inventory-web-tools.ts",
+      "originalHash": "60a17bf90d953dfe113f0580090bc93e33a5759b9d4e97741b6270a4128c15cf",
+      "checkoutHash": "60a17bf90d953dfe113f0580090bc93e33a5759b9d4e97741b6270a4128c15cf",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/maze-builders.ts",
+      "originalHash": "09a6ace1a9935d6e4f6151886e6dc75bfcf5aef4e6349cca9e3dd4c50840cdf8",
+      "checkoutHash": "09a6ace1a9935d6e4f6151886e6dc75bfcf5aef4e6349cca9e3dd4c50840cdf8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/maze-retrieval.ts",
+      "originalHash": "67703722d040b36b2710a342c064bbb51387a303656ebfcc2d1b462296ebb16d",
+      "checkoutHash": "67703722d040b36b2710a342c064bbb51387a303656ebfcc2d1b462296ebb16d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/media-cards.ts",
+      "originalHash": "1413945b22a20cf88221fe970784477ffa1e7c3f29096e6d9212fe540fd8be71",
+      "checkoutHash": "1413945b22a20cf88221fe970784477ffa1e7c3f29096e6d9212fe540fd8be71",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/model-control-foundations.ts",
+      "originalHash": "20133c43ac996001be397672076dc510331eaf7b8cd8acd7ae5685641feea961",
+      "checkoutHash": "20133c43ac996001be397672076dc510331eaf7b8cd8acd7ae5685641feea961",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/model-control-mission.ts",
+      "originalHash": "dcae8cc9ce929f145398e15a65002596bc998f9029d218fad392b22c7995d00c",
+      "checkoutHash": "dcae8cc9ce929f145398e15a65002596bc998f9029d218fad392b22c7995d00c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/model-control-retrieval.ts",
+      "originalHash": "31f58191c464f78c56aa3a45cb4010118ffec9ac549f12acb1e6d8390565d69c",
+      "checkoutHash": "31f58191c464f78c56aa3a45cb4010118ffec9ac549f12acb1e6d8390565d69c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/model-control-tools.ts",
+      "originalHash": "a8ee15c110f9fd1931b12ccb545f5ffb9802d00ed4483adc4a5261fd1712dac2",
+      "checkoutHash": "a8ee15c110f9fd1931b12ccb545f5ffb9802d00ed4483adc4a5261fd1712dac2",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/model-observation.ts",
+      "originalHash": "7455be86fcebcc20341c09ee31c4dac5b327d8672c8b50a1a2d03209dca4c080",
+      "checkoutHash": "7455be86fcebcc20341c09ee31c4dac5b327d8672c8b50a1a2d03209dca4c080",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/network-builders.ts",
+      "originalHash": "4d7d5ff3312ec1361bbedb54aeeba71ca0321f5d2c63a4b68a18fc43ea8ab02e",
+      "checkoutHash": "4d7d5ff3312ec1361bbedb54aeeba71ca0321f5d2c63a4b68a18fc43ea8ab02e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/network-retrieval.ts",
+      "originalHash": "8940c3ff93e659cefc54cb5a7213696392a0217b531c1fd2305b70566a79b062",
+      "checkoutHash": "8940c3ff93e659cefc54cb5a7213696392a0217b531c1fd2305b70566a79b062",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/packet-lessons.ts",
+      "originalHash": "15d96dd2ab2818f88d6ed616092ee1c359e1124e1d3590a3f7ea3c188a352d9a",
+      "checkoutHash": "15d96dd2ab2818f88d6ed616092ee1c359e1124e1d3590a3f7ea3c188a352d9a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/pattern-retrieval.ts",
+      "originalHash": "3b15f4d74af15c6f6d05d7ba3afdec0b56cc5349075bc6e10c30ea109b270dcc",
+      "checkoutHash": "3b15f4d74af15c6f6d05d7ba3afdec0b56cc5349075bc6e10c30ea109b270dcc",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/patterns.ts",
+      "originalHash": "0aa4b31e91b509957753d9b23356db291cf6f062f7f64e2e710ad497119ba349",
+      "checkoutHash": "0aa4b31e91b509957753d9b23356db291cf6f062f7f64e2e710ad497119ba349",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/persistent-component-lessons.ts",
+      "originalHash": "b853000131c6733fa5dbe84f56725a4be5c035861ffb1c2ba2f1c614cfbd9192",
+      "checkoutHash": "b853000131c6733fa5dbe84f56725a4be5c035861ffb1c2ba2f1c614cfbd9192",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/picture-data.ts",
+      "originalHash": "4991988a9e758dc3c7d3aae5e03dc9a1bfd94e472dd6ac5f1e80f171f830ea39",
+      "checkoutHash": "4991988a9e758dc3c7d3aae5e03dc9a1bfd94e472dd6ac5f1e80f171f830ea39",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/private-web-evidence.ts",
+      "originalHash": "bb7fc23e0de2f2f2b7b3f9f35ec311cc09dd1ff02fb71208d7c1f96a7ab60d03",
+      "checkoutHash": "bb7fc23e0de2f2f2b7b3f9f35ec311cc09dd1ff02fb71208d7c1f96a7ab60d03",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/private-web-retrieval.ts",
+      "originalHash": "976203039accec655fb14d174674da8edb627f323940bd43ecf81d7f38e613ea",
+      "checkoutHash": "976203039accec655fb14d174674da8edb627f323940bd43ecf81d7f38e613ea",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/product-brief-lessons.ts",
+      "originalHash": "9a2bba882e322be98059390ae12bf071f7593e133b4339fec13db6e4f4eaccaf",
+      "checkoutHash": "9a2bba882e322be98059390ae12bf071f7593e133b4339fec13db6e4f4eaccaf",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/product-planner-tools.ts",
+      "originalHash": "d244987aabe059d0dbde4cdd41af5f08cf584559ba85f032b6c9001f209dc9b8",
+      "checkoutHash": "d244987aabe059d0dbde4cdd41af5f08cf584559ba85f032b6c9001f209dc9b8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/product-review-lessons.ts",
+      "originalHash": "677178a1d52df571fb1c02eb96fad06c9ee43360a1af17c00b69ea9ae3719aa5",
+      "checkoutHash": "677178a1d52df571fb1c02eb96fad06c9ee43360a1af17c00b69ea9ae3719aa5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/product-studio-portfolio.ts",
+      "originalHash": "79c70add8fa6a2a8eaefcb8ead15bfdf0b932e688011e8523b1048563789c20c",
+      "checkoutHash": "79c70add8fa6a2a8eaefcb8ead15bfdf0b932e688011e8523b1048563789c20c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/product-studio-retrieval.ts",
+      "originalHash": "856a524d0d34fbadebfebc1ccdb265a092919e91ac797c8e09ff9557838bb65f",
+      "checkoutHash": "856a524d0d34fbadebfebc1ccdb265a092919e91ac797c8e09ff9557838bb65f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/product-version-lessons.ts",
+      "originalHash": "7b2ecd49c2eacdf0fd3653b33028985b63e65765ab264e64d47a08ad311a2e3f",
+      "checkoutHash": "7b2ecd49c2eacdf0fd3653b33028985b63e65765ab264e64d47a08ad311a2e3f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/professional-evidence-tools.ts",
+      "originalHash": "46cfa8b9acaffafe2ea2c0ea330d7ba064b9bd8ffa8173d563e25b393e6c58a3",
+      "checkoutHash": "46cfa8b9acaffafe2ea2c0ea330d7ba064b9bd8ffa8173d563e25b393e6c58a3",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/professional-media-tools.ts",
+      "originalHash": "7df094650d59f75ae2ab570acdeb3a037b48795e8a35e3b6e65aca9e211915f8",
+      "checkoutHash": "7df094650d59f75ae2ab570acdeb3a037b48795e8a35e3b6e65aca9e211915f8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/professional-portfolio-lessons.ts",
+      "originalHash": "44e20b37c6060dd23a4b3fda6e27cbed34930c7b040bb8e4faaed21d7b4f85ec",
+      "checkoutHash": "44e20b37c6060dd23a4b3fda6e27cbed34930c7b040bb8e4faaed21d7b4f85ec",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/professional-portfolio-retrieval.ts",
+      "originalHash": "eb25b46644d90fc35d4148efd6d409161c2b4f6e6588a3f617060d6067ae36cb",
+      "checkoutHash": "eb25b46644d90fc35d4148efd6d409161c2b4f6e6588a3f617060d6067ae36cb",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/professional-release-tools.ts",
+      "originalHash": "c4ae1e5ef8087742834c88c71ef3c8ef0e557d4b8bb5eb326fc97cfd30683062",
+      "checkoutHash": "c4ae1e5ef8087742834c88c71ef3c8ef0e557d4b8bb5eb326fc97cfd30683062",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/python-bridge.ts",
+      "originalHash": "6347c3f78b6e1aa1fa963760afb0085d7d954407382d14ffd0bc9ba5fe5d84da",
+      "checkoutHash": "6347c3f78b6e1aa1fa963760afb0085d7d954407382d14ffd0bc9ba5fe5d84da",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/python-decision-retrieval.ts",
+      "originalHash": "0bafcce0af02939b19c597f0b7635b69b5e14884d22d4b6c46b2ccbb89fe41b8",
+      "checkoutHash": "0bafcce0af02939b19c597f0b7635b69b5e14884d22d4b6c46b2ccbb89fe41b8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/python-decisions.ts",
+      "originalHash": "0348ec32cfea77621f81ab43650cc6000ac06b1415ecaa9e9ab9723e415e0314",
+      "checkoutHash": "0348ec32cfea77621f81ab43650cc6000ac06b1415ecaa9e9ab9723e415e0314",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/python-start-retrieval.ts",
+      "originalHash": "48c253b26d66aef1105ae7b12892ecdf9335096f127d07baa6eb032b5d932f66",
+      "checkoutHash": "48c253b26d66aef1105ae7b12892ecdf9335096f127d07baa6eb032b5d932f66",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/python-start.ts",
+      "originalHash": "c18b361f947bac611bcb57344e2f6bf31cb3ed6e7989858437f7797efbaafdfe",
+      "checkoutHash": "c18b361f947bac611bcb57344e2f6bf31cb3ed6e7989858437f7797efbaafdfe",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/python-variable-retrieval.ts",
+      "originalHash": "126fcb328817a65558c3b3dfa43e7265dfd776b50a8c5d2c43128635a04580a5",
+      "checkoutHash": "126fcb328817a65558c3b3dfa43e7265dfd776b50a8c5d2c43128635a04580a5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/relational-data-lessons.ts",
+      "originalHash": "aa7b8012aad627e863194bf27334e7e5d3f25624bae6d616743a14f380d3dece",
+      "checkoutHash": "aa7b8012aad627e863194bf27334e7e5d3f25624bae6d616743a14f380d3dece",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/relational-data-retrieval.ts",
+      "originalHash": "ba097ae6e6508a29c47c42f0961b09c70a65fa79dd6c5505ec6a286df973879f",
+      "checkoutHash": "ba097ae6e6508a29c47c42f0961b09c70a65fa79dd6c5505ec6a286df973879f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/relational-validation-lessons.ts",
+      "originalHash": "1fb679989030d61675e0148749a80c2cdcba0c079d6bfa3bdc8d6525d046aaca",
+      "checkoutHash": "1fb679989030d61675e0148749a80c2cdcba0c079d6bfa3bdc8d6525d046aaca",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/reliable-service-lessons.ts",
+      "originalHash": "3564494ef9d54b36e03a6affa0aa2e67fa361f6aa516dae571f5c5812f2bdcff",
+      "checkoutHash": "3564494ef9d54b36e03a6affa0aa2e67fa361f6aa516dae571f5c5812f2bdcff",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/reliable-service-retrieval.ts",
+      "originalHash": "3cc1d2da781d4eacb08fbc593f11fceecf0cfd3f9d91a931d5b16f59c50f2c44",
+      "checkoutHash": "3cc1d2da781d4eacb08fbc593f11fceecf0cfd3f9d91a931d5b16f59c50f2c44",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/reliable-service-tools.ts",
+      "originalHash": "414507483bc4b868aa0c551d2cc5884ff34e4228061d5a863bb4702ed874576a",
+      "checkoutHash": "414507483bc4b868aa0c551d2cc5884ff34e4228061d5a863bb4702ed874576a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/representation-lessons.ts",
+      "originalHash": "e485e5b4088a550c22929e0ecc69979ec07d91fbe5c380f598655fc603673547",
+      "checkoutHash": "e485e5b4088a550c22929e0ecc69979ec07d91fbe5c380f598655fc603673547",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/representation-tools.ts",
+      "originalHash": "c08a53b5db3bf8b5f6018c2f51d22fab63ec3447ae3c0b8bdfe04b88493fe6ce",
+      "checkoutHash": "c08a53b5db3bf8b5f6018c2f51d22fab63ec3447ae3c0b8bdfe04b88493fe6ce",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/rescue-algorithms.ts",
+      "originalHash": "9c430740abd8bb7014a2127f216f2ac771c7e40d325f44c0dd2064e2d245a72e",
+      "checkoutHash": "9c430740abd8bb7014a2127f216f2ac771c7e40d325f44c0dd2064e2d245a72e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/rescue-retrieval.ts",
+      "originalHash": "24c1336d847a0d7d998cb62de15d09c830aa1446fed2246a70821fe2e5b28e6f",
+      "checkoutHash": "24c1336d847a0d7d998cb62de15d09c830aa1446fed2246a70821fe2e5b28e6f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/responsible-data-lessons.ts",
+      "originalHash": "30cd2c06cf36eaa12af2c7a5c562f8eeaed94b90204a562f7e592bf5ac7298e3",
+      "checkoutHash": "30cd2c06cf36eaa12af2c7a5c562f8eeaed94b90204a562f7e592bf5ac7298e3",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/responsible-data-tools.ts",
+      "originalHash": "9c57fb05c7b7ce541a3b5307df8fc4803d3c07c8f1059fd1b0b1c89364a72df2",
+      "checkoutHash": "9c57fb05c7b7ce541a3b5307df8fc4803d3c07c8f1059fd1b0b1c89364a72df2",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/responsible-feature-retrieval.ts",
+      "originalHash": "15c169a03645e8973cff33b77a118d69349fa7f921d00c2418e36dce4ac5fddd",
+      "checkoutHash": "15c169a03645e8973cff33b77a118d69349fa7f921d00c2418e36dce4ac5fddd",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/responsible-portfolio.ts",
+      "originalHash": "57cefc4fa5b48f99a6be71253556b9d89db17faec423f44f14c2b3c7282854c5",
+      "checkoutHash": "57cefc4fa5b48f99a6be71253556b9d89db17faec423f44f14c2b3c7282854c5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/responsible-retrieval.ts",
+      "originalHash": "baf4a786bd14f98ef06e522c2463ca4c27425d3ce981633132637b4316b67a5b",
+      "checkoutHash": "baf4a786bd14f98ef06e522c2463ca4c27425d3ce981633132637b4316b67a5b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/reusable-retrieval.ts",
+      "originalHash": "4e4a809da251048b7dc2e0109069af466643250f04bdd1af6b88b95230a210ee",
+      "checkoutHash": "4e4a809da251048b7dc2e0109069af466643250f04bdd1af6b88b95230a210ee",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/reusable-stories.ts",
+      "originalHash": "49bfda4c8d63d1861ecadcc887046723146955dec72aabd5a642343d7ec5ad2e",
+      "checkoutHash": "49bfda4c8d63d1861ecadcc887046723146955dec72aabd5a642343d7ec5ad2e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/revision-site-tools.ts",
+      "originalHash": "558f3a2ac22d43b1e583d375da5ca90fe96d7c7062447e66f043f94bdb053d3d",
+      "checkoutHash": "558f3a2ac22d43b1e583d375da5ca90fe96d7c7062447e66f043f94bdb053d3d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/robot-inputs.ts",
+      "originalHash": "906925e920ef6d7127968ba5bd5c2c016968da88e3ba3e9718f29f5e4263900b",
+      "checkoutHash": "906925e920ef6d7127968ba5bd5c2c016968da88e3ba3e9718f29f5e4263900b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/robot-retrieval.ts",
+      "originalHash": "f3de57dd631470e0007521a518ab3652e098bd890f09bccc470c274185c672df",
+      "checkoutHash": "f3de57dd631470e0007521a518ab3652e098bd890f09bccc470c274185c672df",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/routes.ts",
+      "originalHash": "8b4b1ba70b9779646cbb291261436312ab189382356862124ceaf62103513dee",
+      "checkoutHash": "8b4b1ba70b9779646cbb291261436312ab189382356862124ceaf62103513dee",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/safe-choices.ts",
+      "originalHash": "ff71913c7ecec7d832eedaa8ce66f4a573e3ec5c978509c25f6d23b56c8e3f54",
+      "checkoutHash": "ff71913c7ecec7d832eedaa8ce66f4a573e3ec5c978509c25f6d23b56c8e3f54",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/safe-creator-retrieval.ts",
+      "originalHash": "b35fda9d02c9829c45c7d2357d50900be3fbabc252693508a564846b25a20ead",
+      "checkoutHash": "b35fda9d02c9829c45c7d2357d50900be3fbabc252693508a564846b25a20ead",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/security-fixture-tools.ts",
+      "originalHash": "df17243a783ce3286a4da14958f7a983d55a694554882a5557661cbc7e938f4d",
+      "checkoutHash": "df17243a783ce3286a4da14958f7a983d55a694554882a5557661cbc7e938f4d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/semantic-interface-tools.ts",
+      "originalHash": "b655cff2cf19c1a3cb2bfba332f65fbad07c3f570c9a4495da6400e532b5d564",
+      "checkoutHash": "b655cff2cf19c1a3cb2bfba332f65fbad07c3f570c9a4495da6400e532b5d564",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/semantic-interfaces.ts",
+      "originalHash": "47d6f392e5dd7706740788ab56a0f422092eb0cbff45c5b0d99f4a292ea8a96a",
+      "checkoutHash": "47d6f392e5dd7706740788ab56a0f422092eb0cbff45c5b0d99f4a292ea8a96a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/semantic-web.ts",
+      "originalHash": "3eb9a8a1063f35e44d629707f678cd0dd31a31a50fa8419544893b760b7ca5fb",
+      "checkoutHash": "3eb9a8a1063f35e44d629707f678cd0dd31a31a50fa8419544893b760b7ca5fb",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/sensor-retrieval.ts",
+      "originalHash": "cbb6ca3286bb3957e42a39717cc35289c634a496ccbfb458f2da8b4b08fc772c",
+      "checkoutHash": "cbb6ca3286bb3957e42a39717cc35289c634a496ccbfb458f2da8b4b08fc772c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/sensor-robots.ts",
+      "originalHash": "00a434b8b6ca9243d07a9f3784d220430fe5647f6ba7b27a162baac4adf679b6",
+      "checkoutHash": "00a434b8b6ca9243d07a9f3784d220430fe5647f6ba7b27a162baac4adf679b6",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/service-portfolio.ts",
+      "originalHash": "26b4947bf5bbb45fc69ca7707ad8926350a8df4be6a9a48f302424c4bedec855",
+      "checkoutHash": "26b4947bf5bbb45fc69ca7707ad8926350a8df4be6a9a48f302424c4bedec855",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/state-games.ts",
+      "originalHash": "d74bef97d6be91e5b27c65b60163f8ff5bc4f02f65f608e8f30b890f4027f698",
+      "checkoutHash": "d74bef97d6be91e5b27c65b60163f8ff5bc4f02f65f608e8f30b890f4027f698",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/state-retrieval.ts",
+      "originalHash": "4bcd3ed243bfd1fe6299b8809e1f7dd25d9e35a207bffb43647fc46ebf354ea0",
+      "checkoutHash": "4bcd3ed243bfd1fe6299b8809e1f7dd25d9e35a207bffb43647fc46ebf354ea0",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/story-retrieval.ts",
+      "originalHash": "c208a87709b1d89a2451caf5d7b6721bc47f785d5f163708d5fa9fb2247204ee",
+      "checkoutHash": "c208a87709b1d89a2451caf5d7b6721bc47f785d5f163708d5fa9fb2247204ee",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/systems-foundations.ts",
+      "originalHash": "548c04b82e586e3357df08552d9dfdbb35eb21bf7814b7881837b3ca8ea1d3c6",
+      "checkoutHash": "548c04b82e586e3357df08552d9dfdbb35eb21bf7814b7881837b3ca8ea1d3c6",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/systems-retrieval.ts",
+      "originalHash": "5b12640b8e16449083ed7ab5b78e4834037e235be3252e845186335b4a84d080",
+      "checkoutHash": "5b12640b8e16449083ed7ab5b78e4834037e235be3252e845186335b4a84d080",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/team-application-lessons.ts",
+      "originalHash": "09168e4600813e3ee3665e789511f8084175dbfe24afa77d83817eb56afe91c1",
+      "checkoutHash": "09168e4600813e3ee3665e789511f8084175dbfe24afa77d83817eb56afe91c1",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/team-application-tools.ts",
+      "originalHash": "be58ed0386d20d4b8fc4bacd0b8bb26abdd008a281a5380dc2e7af72c8fc2465",
+      "checkoutHash": "be58ed0386d20d4b8fc4bacd0b8bb26abdd008a281a5380dc2e7af72c8fc2465",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/team-increment-lessons.ts",
+      "originalHash": "2d43528a77823e2b8bb8b60f567e62e9902b5aa17443862c625368fc19badb18",
+      "checkoutHash": "2d43528a77823e2b8bb8b60f567e62e9902b5aa17443862c625368fc19badb18",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/team-retrieval.ts",
+      "originalHash": "e10c563667f9954a9ce8eebaae45671cd0ebde7c7cbaefeebb2331b00ea0d44a",
+      "checkoutHash": "e10c563667f9954a9ce8eebaae45671cd0ebde7c7cbaefeebb2331b00ea0d44a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/team-review-lessons.ts",
+      "originalHash": "3e32d2ad159f17799ff08e7b949ffca57cd07d24d75e04b2aa8a10fa09edcd2f",
+      "checkoutHash": "3e32d2ad159f17799ff08e7b949ffca57cd07d24d75e04b2aa8a10fa09edcd2f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/team-roles.ts",
+      "originalHash": "bbf0772b77d2f20b69ee5899f7a89a4a3ed978abf3312b7130263e780f353b26",
+      "checkoutHash": "bbf0772b77d2f20b69ee5899f7a89a4a3ed978abf3312b7130263e780f353b26",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/team-safety.ts",
+      "originalHash": "f166ef5a3be0fd54baf3f0e6494d7923621bbe8757049e8cf57ad5ee6a0b43d9",
+      "checkoutHash": "f166ef5a3be0fd54baf3f0e6494d7923621bbe8757049e8cf57ad5ee6a0b43d9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/team-software-portfolio.ts",
+      "originalHash": "222a827bfacf44c93d86563d5bb672ad7c7b9f2645d7571fa8f07559e7389762",
+      "checkoutHash": "222a827bfacf44c93d86563d5bb672ad7c7b9f2645d7571fa8f07559e7389762",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/tested-component-lessons.ts",
+      "originalHash": "8a471cc9306c1f62b1714b858c20204113eb13f77fe287a4fa377ddc13f6e801",
+      "checkoutHash": "8a471cc9306c1f62b1714b858c20204113eb13f77fe287a4fa377ddc13f6e801",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/tested-component-retrieval.ts",
+      "originalHash": "6decc79a73cae181cfd47c85f460be874940376605887ade154cbf2caadb540e",
+      "checkoutHash": "6decc79a73cae181cfd47c85f460be874940376605887ade154cbf2caadb540e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/tested-component-tools.ts",
+      "originalHash": "8eea553a7d6cf7da8d6252870c80e02911087a21a563220c4771ded36a22154b",
+      "checkoutHash": "8eea553a7d6cf7da8d6252870c80e02911087a21a563220c4771ded36a22154b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/user-report.ts",
+      "originalHash": "709ced6db8771c7e12bfe3d78841e9aec4920f0be4fbb4d2fd1c7e0ce087664d",
+      "checkoutHash": "709ced6db8771c7e12bfe3d78841e9aec4920f0be4fbb4d2fd1c7e0ce087664d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/waypoint-control-portfolio.ts",
+      "originalHash": "d2e856ff8c1af4078b005fc13a3d8f144f8920318d821a8bd8ddc20049ce6250",
+      "checkoutHash": "d2e856ff8c1af4078b005fc13a3d8f144f8920318d821a8bd8ddc20049ce6250",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/web-guide-assets.ts",
+      "originalHash": "77ce0d55425a8885414a9c783eb57010e837f831cdadabadeccb6d08b5c17f06",
+      "checkoutHash": "77ce0d55425a8885414a9c783eb57010e837f831cdadabadeccb6d08b5c17f06",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/web-guide-contexts.ts",
+      "originalHash": "8cf92f243a8c23948d0852a90959d6a66f7974ffa1177b9831f4f3c704acf185",
+      "checkoutHash": "8cf92f243a8c23948d0852a90959d6a66f7974ffa1177b9831f4f3c704acf185",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/web-pages.ts",
+      "originalHash": "223356aee24ea13a683f07ace606cacd9a8eb3793060156fd8491e31f747dd5f",
+      "checkoutHash": "223356aee24ea13a683f07ace606cacd9a8eb3793060156fd8491e31f747dd5f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/content/web-retrieval.ts",
+      "originalHash": "de1f82fa9fb7e381511ce32fee835da782503de8ee1268eac2e122c3f2762810",
+      "checkoutHash": "de1f82fa9fb7e381511ce32fee835da782503de8ee1268eac2e122c3f2762810",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/demonstration-contract.ts",
+      "originalHash": "5d43f653c0c71d0ee4898428942df3b652a16d969e7b4bf2d277d216130da872",
+      "checkoutHash": "5d43f653c0c71d0ee4898428942df3b652a16d969e7b4bf2d277d216130da872",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/demonstration-response.ts",
+      "originalHash": "dc646c276fbdec3d9f3bcde1e3e286241b53fcbf7f23c77b969a150bc4728755",
+      "checkoutHash": "dc646c276fbdec3d9f3bcde1e3e286241b53fcbf7f23c77b969a150bc4728755",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/demonstration-storage.ts",
+      "originalHash": "0aef7ebf9652dad58152c3256bc5f12bc5061d82b597d5e315c25f3de22a7a4e",
+      "checkoutHash": "0aef7ebf9652dad58152c3256bc5f12bc5061d82b597d5e315c25f3de22a7a4e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/demonstration-validation.ts",
+      "originalHash": "7f2ce51b1dd8fce6af0f044d7fdac87523689aa39f2306f4e25d931ddb23f4cb",
+      "checkoutHash": "7f2ce51b1dd8fce6af0f044d7fdac87523689aa39f2306f4e25d931ddb23f4cb",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/development-qa.ts",
+      "originalHash": "f6891018e633cf6312ee749ab33f8d771d98ac4f99577c64808bc9ed133204c4",
+      "checkoutHash": "f6891018e633cf6312ee749ab33f8d771d98ac4f99577c64808bc9ed133204c4",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/dom-inspection.ts",
+      "originalHash": "ca056973fb417d01614db9f853cd44fb7fef04d9f0e4aa4b0cf0ee9f9b50c660",
+      "checkoutHash": "ca056973fb417d01614db9f853cd44fb7fef04d9f0e4aa4b0cf0ee9f9b50c660",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/dom-service-contract.ts",
+      "originalHash": "40af463d672b07fd1007775fbae37bc0ddc93e3b1be26e68b1edd3b1d5a90198",
+      "checkoutHash": "40af463d672b07fd1007775fbae37bc0ddc93e3b1be26e68b1edd3b1d5a90198",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/dom-service-runtime.ts",
+      "originalHash": "fdb44d7df95d05529fdb4b06fd6c003ca66d49702cefefa9d30c2c528707305e",
+      "checkoutHash": "fdb44d7df95d05529fdb4b06fd6c003ca66d49702cefefa9d30c2c528707305e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/dual-contract.ts",
+      "originalHash": "bd4744929a10fbaebe1d12d944b7fb39e761faebae510b86e58fca4a701ccb48",
+      "checkoutHash": "bd4744929a10fbaebe1d12d944b7fb39e761faebae510b86e58fca4a701ccb48",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/dual-engine.ts",
+      "originalHash": "e76b7af9cfc1938601ed07a7cd0183c307cd1b5d5cf2362d497f6c240756bdfe",
+      "checkoutHash": "e76b7af9cfc1938601ed07a7cd0183c307cd1b5d5cf2362d497f6c240756bdfe",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/engineering-contract.ts",
+      "originalHash": "5a12aed932bd7270bd8d83373ece71a4046cf81e06f309ffbb137dd70ea76b5e",
+      "checkoutHash": "5a12aed932bd7270bd8d83373ece71a4046cf81e06f309ffbb137dd70ea76b5e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/engineering-engine.ts",
+      "originalHash": "7a793b13c1ddcd7637d4201267b0855f7e522540484c3191cc2dfa78659a25d7",
+      "checkoutHash": "7a793b13c1ddcd7637d4201267b0855f7e522540484c3191cc2dfa78659a25d7",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/entitlements.ts",
+      "originalHash": "eeabd7b84ff5e909b0c7aae88b0156e7454dc3c9e5c0c43fbfcdc22b0516cf5d",
+      "checkoutHash": "eeabd7b84ff5e909b0c7aae88b0156e7454dc3c9e5c0c43fbfcdc22b0516cf5d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/evidence-engine.ts",
+      "originalHash": "09f2b8fd7f4c208126c85b50197ba6c79bd490c8c335bb44cc6902045f48bb52",
+      "checkoutHash": "09f2b8fd7f4c208126c85b50197ba6c79bd490c8c335bb44cc6902045f48bb52",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/evidence-links.ts",
+      "originalHash": "04ed9d0e33c4fb9f748743acfd578c7dcb664db22c031a071fadad8ae4ec6492",
+      "checkoutHash": "04ed9d0e33c4fb9f748743acfd578c7dcb664db22c031a071fadad8ae4ec6492",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/explanation-evidence.ts",
+      "originalHash": "6c239b111a55f85eb5e584e7c84f6524483152a33a4489a8f395e6b35831e58d",
+      "checkoutHash": "6c239b111a55f85eb5e584e7c84f6524483152a33a4489a8f395e6b35831e58d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/extended-review.ts",
+      "originalHash": "7c1789f98712a1712030f5bee1083a9c774dabcef4f96a1a231f5911a2f3bcd0",
+      "checkoutHash": "7c1789f98712a1712030f5bee1083a9c774dabcef4f96a1a231f5911a2f3bcd0",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/game-engine.ts",
+      "originalHash": "37bcd63c2d20fbf0eb90ccbd9a9276fa5f37b380b4f0b17da2e40b9983e259f1",
+      "checkoutHash": "37bcd63c2d20fbf0eb90ccbd9a9276fa5f37b380b4f0b17da2e40b9983e259f1",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/investigation-engine.ts",
+      "originalHash": "0fbc66d42a2390e680a8c48b7cc76143d044762228a336ba928a67d35129a192",
+      "checkoutHash": "0fbc66d42a2390e680a8c48b7cc76143d044762228a336ba928a67d35129a192",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/media-library.ts",
+      "originalHash": "a339281234ea41c486b1d30528c40ea7fd418763d079ce1b14c84a9f0d4e7de2",
+      "checkoutHash": "a339281234ea41c486b1d30528c40ea7fd418763d079ce1b14c84a9f0d4e7de2",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/owned-evidence.ts",
+      "originalHash": "39c169d1e701514c29bc02d43679c5092e12055424ff53acd3eede039bde378c",
+      "checkoutHash": "39c169d1e701514c29bc02d43679c5092e12055424ff53acd3eede039bde378c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/parent-portfolio.ts",
+      "originalHash": "a0bf5aba097c6e0309dd3d0cfc55c0e0152521f9971666d504ad21e04a30a60e",
+      "checkoutHash": "a0bf5aba097c6e0309dd3d0cfc55c0e0152521f9971666d504ad21e04a30a60e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/personal-input.ts",
+      "originalHash": "b2118f1f985f3cdc076607640aeb1c495ff115d0c655590cb9d029d3cf1a1302",
+      "checkoutHash": "b2118f1f985f3cdc076607640aeb1c495ff115d0c655590cb9d029d3cf1a1302",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/playground-assessment.ts",
+      "originalHash": "e85c2ab4d8e250527dace09932c04a9b6418ed970976fbc3b5a050e7d18f24e9",
+      "checkoutHash": "e85c2ab4d8e250527dace09932c04a9b6418ed970976fbc3b5a050e7d18f24e9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/playground-drafts.ts",
+      "originalHash": "da777ae435bf45f405634da3a890e43cb798af3e0537ac8050690f1face4923c",
+      "checkoutHash": "da777ae435bf45f405634da3a890e43cb798af3e0537ac8050690f1face4923c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/public-view.ts",
+      "originalHash": "cf4251865cfda9dbd5b2c4c3ef0a5d41a26fc92dddb030de32c0b1ca25498a75",
+      "checkoutHash": "cf4251865cfda9dbd5b2c4c3ef0a5d41a26fc92dddb030de32c0b1ca25498a75",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/publication-summary.ts",
+      "originalHash": "300c54e14d4a0c6c63bbb6350b872612baac7f19eb5c3f400e191b1b87e4821e",
+      "checkoutHash": "300c54e14d4a0c6c63bbb6350b872612baac7f19eb5c3f400e191b1b87e4821e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/readiness.ts",
+      "originalHash": "d127efc9f4370347d54a8deb73d6a197d672483f485292aab85186267f2647d2",
+      "checkoutHash": "d127efc9f4370347d54a8deb73d6a197d672483f485292aab85186267f2647d2",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/request.ts",
+      "originalHash": "12a9d49a204fdb5944b9c7f45af5840e79a66c7b68e5d551b0114be1996953a5",
+      "checkoutHash": "12a9d49a204fdb5944b9c7f45af5840e79a66c7b68e5d551b0114be1996953a5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/review-contracts.ts",
+      "originalHash": "22f93500b1e619330e27b37695edcc715138761eccf5aa1a9e18c30e1d6f7f10",
+      "checkoutHash": "22f93500b1e619330e27b37695edcc715138761eccf5aa1a9e18c30e1d6f7f10",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/review-material.ts",
+      "originalHash": "24df42de243274ccd10b13e9e12d37453982f9cce036012f79394dabf2e38322",
+      "checkoutHash": "24df42de243274ccd10b13e9e12d37453982f9cce036012f79394dabf2e38322",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/runtime-pins.json",
+      "originalHash": "7627426999a60bd67b6397c2d6ef3e6f6edcd7cf33099e2e15b1e343edb85fcd",
+      "checkoutHash": "7627426999a60bd67b6397c2d6ef3e6f6edcd7cf33099e2e15b1e343edb85fcd",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/runtime.ts",
+      "originalHash": "20ce7ab1aa797189045764f5694c87458c1dba0927c151678719445368b2fb66",
+      "checkoutHash": "20ce7ab1aa797189045764f5694c87458c1dba0927c151678719445368b2fb66",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/saved-evidence-contract.ts",
+      "originalHash": "671b2a850fd8a106349dc034f0d5a3ff3c74691e1097be47dd507e730fa0b137",
+      "checkoutHash": "671b2a850fd8a106349dc034f0d5a3ff3c74691e1097be47dd507e730fa0b137",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/saved-evidence.ts",
+      "originalHash": "8afe64ef0e32116e4657c4a2d3175e322b28a0cb0ff282f53fb96a784a425d11",
+      "checkoutHash": "8afe64ef0e32116e4657c4a2d3175e322b28a0cb0ff282f53fb96a784a425d11",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/scenario-engine.ts",
+      "originalHash": "e305763c011f0df1e50456fedb07a727c2efe872dac069b99c576234756a4a8f",
+      "checkoutHash": "e305763c011f0df1e50456fedb07a727c2efe872dac069b99c576234756a4a8f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/source-execution.ts",
+      "originalHash": "aa32a919dfd176ed9615ef896c068db3371c1f8bde7f741e52549efa40aef8d2",
+      "checkoutHash": "aa32a919dfd176ed9615ef896c068db3371c1f8bde7f741e52549efa40aef8d2",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/stage-files.ts",
+      "originalHash": "0133ba083f3dd78711947ebc4463687c2ae5c5f3a9cb2605e2973368cf576703",
+      "checkoutHash": "0133ba083f3dd78711947ebc4463687c2ae5c5f3a9cb2605e2973368cf576703",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/state-diagram-contract.ts",
+      "originalHash": "d49bb94a1127e56a9b8cacfaf2b2c30e4b1e452d4385cb63812f7b8ee2aa2b80",
+      "checkoutHash": "d49bb94a1127e56a9b8cacfaf2b2c30e4b1e452d4385cb63812f7b8ee2aa2b80",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/state-machine.ts",
+      "originalHash": "82791ca563ed963d71f4dfe8d527dfeae7d69cb02e08691034b6d0b0170ee0f7",
+      "checkoutHash": "82791ca563ed963d71f4dfe8d527dfeae7d69cb02e08691034b6d0b0170ee0f7",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/structured-review.ts",
+      "originalHash": "4952825691dafeb55c26e5fc7b2c3519c8b9f5424eda6e999758b7d2e7bd1cc0",
+      "checkoutHash": "4952825691dafeb55c26e5fc7b2c3519c8b9f5424eda6e999758b7d2e7bd1cc0",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/studio-engines.ts",
+      "originalHash": "57600aa480e47fd8ba7b0e5a4eae03f167db3e098f5f8d4596ce2778da84ab7d",
+      "checkoutHash": "57600aa480e47fd8ba7b0e5a4eae03f167db3e098f5f8d4596ce2778da84ab7d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/systems-contract.ts",
+      "originalHash": "c5b0209e4ebf82a46302bc380b0bd2a5515d7ae79a599ceee4ba40e924f098b9",
+      "checkoutHash": "c5b0209e4ebf82a46302bc380b0bd2a5515d7ae79a599ceee4ba40e924f098b9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/systems-engine.ts",
+      "originalHash": "2e306e68b763d02772e6dba3993e4cddebaca0dd01e88895d1c95ac9e08e37c5",
+      "checkoutHash": "2e306e68b763d02772e6dba3993e4cddebaca0dd01e88895d1c95ac9e08e37c5",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/teacher.ts",
+      "originalHash": "264e19de80e51d3495a916cf689dea4a1e3283dcc8c1db455cbc7c8f2a58b47b",
+      "checkoutHash": "264e19de80e51d3495a916cf689dea4a1e3283dcc8c1db455cbc7c8f2a58b47b",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/tutor-privacy.ts",
+      "originalHash": "48e1a5ed788424178197b9abf143541121e313f425b2024180f78106e25aa4cd",
+      "checkoutHash": "48e1a5ed788424178197b9abf143541121e313f425b2024180f78106e25aa4cd",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/tutor-safety.ts",
+      "originalHash": "2c87330847030678a58fb213dcce44a275e3d4a840af0a7b37f0a455a4da1533",
+      "checkoutHash": "2c87330847030678a58fb213dcce44a275e3d4a840af0a7b37f0a455a4da1533",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/types.ts",
+      "originalHash": "625f838c1a51fdc0fb2e801b95ff2ba500ccfe2f1f7e310266706dbda9bbb9d8",
+      "checkoutHash": "625f838c1a51fdc0fb2e801b95ff2ba500ccfe2f1f7e310266706dbda9bbb9d8",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/upload-origin.ts",
+      "originalHash": "e31bcbb08a4064d5d186c9a1dc5c957af65eec930567d8b67a1419e462db6906",
+      "checkoutHash": "e31bcbb08a4064d5d186c9a1dc5c957af65eec930567d8b67a1419e462db6906",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/visual-events.ts",
+      "originalHash": "8ff6b2df1c010183ab154b81362c2341220434013ad4a82fb078c4585eafeeac",
+      "checkoutHash": "8ff6b2df1c010183ab154b81362c2341220434013ad4a82fb078c4585eafeeac",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/visual-machine.ts",
+      "originalHash": "4eeedbf78744d6870c9f80de22985dd3692697cd7ec5e9d6df1f5b581243612f",
+      "checkoutHash": "4eeedbf78744d6870c9f80de22985dd3692697cd7ec5e9d6df1f5b581243612f",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/visual-review.ts",
+      "originalHash": "3934afab8aa0386c627dae961f77bf8073dc529ebf0edd489b9117890217de41",
+      "checkoutHash": "3934afab8aa0386c627dae961f77bf8073dc529ebf0edd489b9117890217de41",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/visual-workspace.ts",
+      "originalHash": "ac79ffddafd6808b939f59480788805a0f25f5afb395859752311cdceb1857e4",
+      "checkoutHash": "ac79ffddafd6808b939f59480788805a0f25f5afb395859752311cdceb1857e4",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/learning/workspace-store.ts",
+      "originalHash": "e62d28aba5856e16c6f2e4fe5543e6df67f123e996810836b3f29c264ca0b447",
+      "checkoutHash": "e62d28aba5856e16c6f2e4fe5543e6df67f123e996810836b3f29c264ca0b447",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/model-tutor.ts",
+      "originalHash": "7df2e546ddbd48e9dc36e1c99d5367a1e79752a334aa5f23d0c70e4a50772f1e",
+      "checkoutHash": "7df2e546ddbd48e9dc36e1c99d5367a1e79752a334aa5f23d0c70e4a50772f1e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/next-step.ts",
+      "originalHash": "672b23c60fb753fec85794cf19d6bd69ccb22cfb3646942255f577ac9531c9d6",
+      "checkoutHash": "672b23c60fb753fec85794cf19d6bd69ccb22cfb3646942255f577ac9531c9d6",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/placement.ts",
+      "originalHash": "e03932813f977a68b1b2e45f8d2a640df80b3d3d296f90e7867baaa44b09dbf1",
+      "checkoutHash": "e03932813f977a68b1b2e45f8d2a640df80b3d3d296f90e7867baaa44b09dbf1",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/project-evidence.ts",
+      "originalHash": "c531dc3102281b9dc60ccdac8c704cb2682b2bf9a712bd4cc77cac3b0bb5bc68",
+      "checkoutHash": "c531dc3102281b9dc60ccdac8c704cb2682b2bf9a712bd4cc77cac3b0bb5bc68",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/rewards.ts",
+      "originalHash": "27739ec5ab17036a36ff18530b29c3cf6ce641ef029e0c9e0d4f9310788a28e9",
+      "checkoutHash": "27739ec5ab17036a36ff18530b29c3cf6ce641ef029e0c9e0d4f9310788a28e9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/runner.ts",
+      "originalHash": "ac845fe317cf8a1dfe6b4ac54b12b93b5d0df02844d05f1ec3ebf3100e290461",
+      "checkoutHash": "ac845fe317cf8a1dfe6b4ac54b12b93b5d0df02844d05f1ec3ebf3100e290461",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/settings.ts",
+      "originalHash": "5283b6ca3214c96bb4b83d9274a622ce188474a06e0775d18f9ad6f7519400a9",
+      "checkoutHash": "5283b6ca3214c96bb4b83d9274a622ce188474a06e0775d18f9ad6f7519400a9",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/student-context.ts",
+      "originalHash": "c040cfebd5e1a3c7125482088e75fbbac8dc7a1ae29ba986f20cf616e0329e24",
+      "checkoutHash": "c040cfebd5e1a3c7125482088e75fbbac8dc7a1ae29ba986f20cf616e0329e24",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/support-handoff.ts",
+      "originalHash": "59bbc6e7f79eb9f65c9601cc130ff732606f48bb589fe86773c85a0b6c1687d0",
+      "checkoutHash": "59bbc6e7f79eb9f65c9601cc130ff732606f48bb589fe86773c85a0b6c1687d0",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/support-policy.ts",
+      "originalHash": "92ed9daf1e6c04ce325ad65ea902a5a84edc48ca325b1212083008b2d7477086",
+      "checkoutHash": "92ed9daf1e6c04ce325ad65ea902a5a84edc48ca325b1212083008b2d7477086",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/teacher-activities.ts",
+      "originalHash": "b316a8398d201072bfd2a408426e1ce17113fc33174bb79522f6207704d185b3",
+      "checkoutHash": "b316a8398d201072bfd2a408426e1ce17113fc33174bb79522f6207704d185b3",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/teacher-feedback-policy.ts",
+      "originalHash": "3a5ab9b1da3c63641e97e0ce161c965b5c29b7812dc947d749a50069a3372d0a",
+      "checkoutHash": "3a5ab9b1da3c63641e97e0ce161c965b5c29b7812dc947d749a50069a3372d0a",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/tutor.ts",
+      "originalHash": "2634a0455edb35a913b71cc8b8b65388a9dde43ef32d2de1f3852d6741e7788c",
+      "checkoutHash": "2634a0455edb35a913b71cc8b8b65388a9dde43ef32d2de1f3852d6741e7788c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/types.ts",
+      "originalHash": "92e991c4dc2db731f04df84cd5566b06c3b7757dfdf8c6bd73fc447e710fbc59",
+      "checkoutHash": "92e991c4dc2db731f04df84cd5566b06c3b7757dfdf8c6bd73fc447e710fbc59",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/coding/workspace-store.ts",
+      "originalHash": "d2dbd333ffe40f87521dd87ab6da4c86ffbbc5848c48ce119f28df346af677f4",
+      "checkoutHash": "d2dbd333ffe40f87521dd87ab6da4c86ffbbc5848c48ce119f28df346af677f4",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/db.ts",
+      "originalHash": "86dcdab73a9e2d3e64890e50355cf48b0f74e3572279f165ecc4b587db2cb23d",
+      "checkoutHash": "86dcdab73a9e2d3e64890e50355cf48b0f74e3572279f165ecc4b587db2cb23d",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/parent_scope.ts",
+      "originalHash": "b9222c2ef8441d5165ac5399dfc0903da07dce56363675cbfc6f1ed00fc128bc",
+      "checkoutHash": "b9222c2ef8441d5165ac5399dfc0903da07dce56363675cbfc6f1ed00fc128bc",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/schools/licensing.ts",
+      "originalHash": "39a51575986aec5d510283e596803e0c556ad3ac3e60c1c31e8ae308a6117e63",
+      "checkoutHash": "39a51575986aec5d510283e596803e0c556ad3ac3e60c1c31e8ae308a6117e63",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/schools/short-learning-bookings.ts",
+      "originalHash": "ca3819b7b34a2ebd2ea451e03887e9b91217dda9082d825175c1572203c2a363",
+      "checkoutHash": "ca3819b7b34a2ebd2ea451e03887e9b91217dda9082d825175c1572203c2a363",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/schools/support-eligibility.ts",
+      "originalHash": "856953e3b25c09aff8c58e38a858e1ec11e7ab3dd24fabb22aaba431064a0166",
+      "checkoutHash": "856953e3b25c09aff8c58e38a858e1ec11e7ab3dd24fabb22aaba431064a0166",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/student-learning-brain/dashboard-shell.ts",
+      "originalHash": "ea8668cd4cd4277bef9266b7675ace003616bf1fb7f4c5e2f291e67b24fae46d",
+      "checkoutHash": "90b58a338c454982f76f9059b9258c8981d25baa526ea52f11086031912ac4db",
+      "equal": false,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/subscriptions/enforcement.ts",
+      "originalHash": "37703cb7d108b65bf710c1009942f4f5d7c256e9773af1877c4e5bdbb932044e",
+      "checkoutHash": "37703cb7d108b65bf710c1009942f4f5d7c256e9773af1877c4e5bdbb932044e",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "src/lib/subscriptions/learning-access.ts",
+      "originalHash": "312b69e0c38cc49123055bfdc089b8bfc214df953958e968d44330cb40f3223c",
+      "checkoutHash": "312b69e0c38cc49123055bfdc089b8bfc214df953958e968d44330cb40f3223c",
+      "equal": true,
+      "normalizedEqual": true
+    },
+    {
+      "file": "supabase/functions/coding-execution/index.js",
+      "originalHash": "0b703550db4d7c1795fa203ea564047892e3d97b81c9d8d69db78e87c65cb937",
+      "checkoutHash": "0b703550db4d7c1795fa203ea564047892e3d97b81c9d8d69db78e87c65cb937",
+      "equal": true,
+      "normalizedEqual": true
+    }
+  ]
+}
