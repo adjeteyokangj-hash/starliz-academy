@@ -1,10 +1,12 @@
 "use client"
+import { useRouter } from "next/navigation"
 
 export default function UpgradePrompt({
   reason,
 }: {
   reason: "trial" | "locked" | "limit"
 }) {
+  const router = useRouter()
   const messageMap = {
     trial: "Great progress so far. Unlock unlimited learning to continue.",
     locked: "This lesson adapts to your child — unlock it to continue.",
@@ -23,7 +25,7 @@ export default function UpgradePrompt({
       </ul>
 
       <button
-        onClick={() => (window.location.href = "/pricing")}
+        onClick={() => router.push("/pricing")}
         className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700"
       >
         Upgrade Now

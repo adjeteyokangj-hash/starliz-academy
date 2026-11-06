@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 
@@ -73,6 +74,7 @@ function intervalLabel(interval: PricingInterval): string {
 }
 
 export default function SubscriptionPage() {
+  const router = useRouter();
   const [nowTs] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -113,7 +115,7 @@ export default function SubscriptionPage() {
       });
 
       if (response.status === 401) {
-        window.location.assign("/signup");
+        router.push("/signup");
         return;
       }
 
