@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CODING_GRID_SIZE, type CodingProgram, type CodingRunResult } from "@/lib/coding/types";
 
-export default function CodingProjectReplay({ project }: { project: { program: CodingProgram; run: CodingRunResult; updatedAt: string; evidenceStatus?: string } }) {
+export default function CodingProjectReplay({ project, audience = "parent" }: { project: { program: CodingProgram; run: CodingRunResult; updatedAt: string; evidenceStatus?: string }; audience?: "parent" | "learner" }) {
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
@@ -16,7 +16,7 @@ export default function CodingProjectReplay({ project }: { project: { program: C
   }, [playing, frame, project.run.frames.length]);
   const point = project.run.frames[Math.min(frame, project.run.frames.length - 1)] ?? { x: 0, y: 0 };
   return <div className="mt-4 rounded-xl border border-white/15 p-4">
-    <p className="font-bold">Your child’s saved project</p>
+    <p className="font-bold">{audience === "learner" ? "Your saved project" : "Your child’s saved project"}</p>
     <p className="mt-1 text-xs text-slate-300">{project.evidenceStatus === "assessed-version" ? "This version supplied the independent mastery evidence." : "This is saved draft work. Mastery evidence is tracked separately."}</p>
     <p className="mt-1 text-xs text-slate-400">Saved {new Date(project.updatedAt).toLocaleString("en-GB")}. Private to your family and authorised teachers.</p>
     <div className="mt-3 grid max-w-xs grid-cols-6 gap-1" role="img" aria-label={`Saved program replay. Character at column ${point.x}, row ${point.y}.`}>

@@ -105,6 +105,10 @@ async function hasChildSelection(request: NextRequest, expectedUserId: string): 
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  // Development-only playground has no learner records or achievement writes.
+  if (process.env.NODE_ENV === "development" && ["/dev/coding", "/api/dev/coding-preview"].includes(pathname)) {
+    return withSecurityHeaders(NextResponse.next());
+  }
   const isPrefetch = request.headers.get("purpose") === "prefetch" || request.headers.has("next-router-prefetch");
   const acceptsHtml = request.headers.get("accept")?.includes("text/html") ?? false;
   const isDocumentNavigation = request.headers.get("sec-fetch-mode") === "navigate" || acceptsHtml;

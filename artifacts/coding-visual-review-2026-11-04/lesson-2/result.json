@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "nativePracticalReassessment": true,
+  "noTyping": true,
+  "savedChoicesResumed": true,
+  "wrongAnswerRejected": true,
+  "masteryAndNextActivity": true,
+  "responsiveWidths": [
+    1440,
+    820,
+    390
+  ],
+  "modelRequests": 0,
+  "browserErrors": [],
+  "authenticated": false
+}

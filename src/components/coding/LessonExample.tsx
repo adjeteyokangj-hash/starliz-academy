@@ -36,8 +36,8 @@ export default function LessonExample({ example, endpoint, bookingId, activityId
     } catch (cause) { setError(cause instanceof Error ? cause.message : "The example could not run."); }
     finally { setBusy(false); }
   }
-  return <section aria-label="Lesson Example" tabIndex={0} className="min-w-0 overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-sm focus-visible:outline-2 focus-visible:outline-violet-600" data-lesson-example={activityId}>
-    <div className="border-b border-indigo-100 bg-indigo-50/80 p-4"><div className="flex items-center justify-between gap-3"><h2 className="text-base font-bold text-indigo-950">Lesson Example</h2><span className="rounded-full border border-indigo-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700">Read only</span></div><p className="mt-2 text-xs leading-5 text-slate-600">Your reference stays here while you build. Running it never changes your program.</p></div>
+  return <section aria-label="Lesson Example" tabIndex={0} className="studio-reference min-w-0 overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-sm focus-visible:outline-2 focus-visible:outline-violet-600" data-lesson-example={activityId}>
+    <div className="border-b border-indigo-100 bg-indigo-50/80 p-4"><div className="flex items-center justify-between gap-3"><h2 className="text-base font-bold text-indigo-950">Lesson Example</h2><span className="rounded-full border border-indigo-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700">Read only</span></div><p className="mt-2 text-xs leading-5 text-slate-600">Explore the example while you build. Your work stays separate.</p></div>
     <div className="space-y-3 p-4">
 
       <button type="button" onClick={() => void run()} disabled={busy || predictionLocked} className="min-h-11 w-full rounded-xl border border-indigo-200 bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50">{busy ? "Running example…" : "Run lesson example"}</button>

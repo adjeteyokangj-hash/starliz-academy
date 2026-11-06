@@ -1,3 +1,5 @@
+import type { ReviewScope } from "./extended-review";
+import { extendedReviewUnavailableReason, hasExtendedReview } from "./extended-review";
 import { getOpenAiApiKey } from "@/lib/api-key-config";
 import { requestCoachJson } from "@/lib/coach/model-json";
 import type { ActivityContent, ActivityState, Execution, PracticalArtifact } from "./types";
@@ -6,6 +8,8 @@ import type { TeachingTurn } from "./state-machine";
 import { groundedExplanation } from "./explanation-evidence";
 import { personalisedTutorAllowed, redactTutorData, redactTutorText, type TutorScope } from "./tutor-privacy";
 import { safeTeachingMessage } from "./tutor-safety";
+import { usesVisualReview, checkVisualReview, visualReview } from "./visual-review";
+import { unresolvedReviewRequirement } from "./structured-review";
 export { safeTeachingMessage } from "./tutor-safety";
 
 const strategies = {
@@ -35,7 +39,9 @@ export function teachingContext(activity: ActivityContent, state: ActivityState,
       execution: state.lastExecution ? JSON.stringify(redactTutorData({ ok: state.lastExecution.ok, error: state.lastExecution.error, output: state.lastExecution.output, trace: state.lastExecution.trace.slice(0, 12) })).slice(0, 10000) : null } : {}) };
 }
 export async function teachActivity(activity: ActivityContent, state: ActivityState, stage: CodingStage, artifact: PracticalArtifact, question?: string, scope: TutorScope = "learner"): Promise<TeachingTurn> {
-  const independent = stage === "create" || stage === "review" || stage === "predict";
+  if (stage === "predict") return { message: "Read the question in Your prediction. Follow the teaching program one action at a time, then choose the answer you expect. Select Record prediction before running the Lesson Example to compare.", source: "fallback", revealing: false, context: "curriculum" };
+  if (stage === "review" && usesVisualReview(activity, scope)) return { message: "Inspect your saved result. Choose your answers in Show what you learned. You do not need to type.", source: "fallback", revealing: false, context: "curriculum" };
+  const independent = stage === "create" || stage === "review";
   const personalised = personalisedTutorAllowed(scope);
   const fallback = independent ? strategies.evidence : `${activity.instruction.exampleReasoning[Math.min(state.hints[stage] ?? 0, activity.instruction.exampleReasoning.length - 1)]} ${strategies.trace}`;
   try {
@@ -59,8 +65,14 @@ export async function teachActivity(activity: ActivityContent, state: ActivitySt
   } catch { return { message: fallback, source: "fallback", revealing: !independent }; }
 }
 
-export async function reviewExplanation(activity: ActivityContent, artifact: PracticalArtifact, run: Execution, explanation: string, scope: TutorScope = "learner"): Promise<{ passed: boolean; message: string; source: "model" | "evidence"; confidence: number; pending?: boolean }> {
+export async function reviewExplanation(activity: ActivityContent, artifact: PracticalArtifact, run: Execution, explanation: string, scope: ReviewScope = "learner"): Promise<{ passed: boolean; message: string; source: "model" | "evidence"; confidence: number; pending?: boolean }> {
+  if (usesVisualReview(activity, scope)) {
+    if (!visualReview(activity, artifact, run, scope !== null && typeof scope === "object" && scope.reviewVariant !== undefined ? { ownershipKey: scope.reviewContext ?? "", independentVariant: scope.reviewVariant } : scope !== null && typeof scope === "object" ? scope.reviewContext : undefined)) return { passed: false, source: "evidence", confidence: 0, pending: true, message: `Your work is saved. No mastery has been awarded. Review must establish: ${activity.objective} ` + (hasExtendedReview(activity) ? extendedReviewUnavailableReason(activity, artifact, run, scope !== null && typeof scope === "object" ? scope.reviewVariant : undefined) : unresolvedReviewRequirement(activity)) };
+    return checkVisualReview(activity, artifact, run, explanation, scope !== null && typeof scope === "object" && scope.reviewVariant !== undefined ? { ownershipKey: scope.reviewContext ?? "", independentVariant: scope.reviewVariant } : scope !== null && typeof scope === "object" ? scope.reviewContext : undefined);
+  }
   const meaningful = groundedExplanation(activity, run, explanation);
+  if (!personalisedTutorAllowed(scope)) return { passed: false, source: "evidence", confidence: 0, pending: true,
+    message: "Your practical work and explanation are saved. Explanation review is blocked by the current learner privacy settings. No AI review is running, and mastery has not been awarded. " + unresolvedReviewRequirement(activity) };
   try {
     const key = await getOpenAiApiKey();
     if (key && personalisedTutorAllowed(scope)) {
@@ -76,6 +88,6 @@ export async function reviewExplanation(activity: ActivityContent, artifact: Pra
       }
     }
   } catch { /* Continue with explicit observable evidence, never model assertion alone. */ }
-  return { passed: false, message: meaningful ? "Your practical work and explanation are saved. A verified explanation review is still needed before mastery can be awarded."
+  return { passed: false, message: meaningful ? "Your practical work and explanation are saved, but the explanation review service could not complete verification. No review is running in the background. Try the review again when the service is available; mastery has not been awarded."
     : "Name one concept you used, then point to a value or action in your actual output and explain why it happened. Short, plain wording is enough.", source: "evidence", confidence: meaningful ? 0 : 0.4, pending: meaningful };
 }

@@ -11,14 +11,14 @@ const root = resolve(typeof __dirname === "string" ? __dirname : dirname(fileURL
 function files(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = resolve(directory, entry.name);
-    return entry.isDirectory() ? files(path) : /\.(ts|tsx|mjs|mts)$/.test(entry.name) && !entry.name.includes(" - Copy.") ? [path] : [];
+    return entry.isDirectory() ? files(path) : /\.(ts|tsx|mjs|mts|css)$/.test(entry.name) && !entry.name.includes(" - Copy.") ? [path] : [];
   });
 }
 export function curriculumRuntimeHash() {
   // Publication must also become stale when an ownership, assistance, access
   // or provider boundary changes, including the frozen-evidence readers.
-  const directories = ["src/lib/coding", "services/coding-runner", "src/components/coding", "src/app/student/coding", "src/app/api/student/coding", "src/app/api/parent/coding", "src/app/api/admin/coding", "src/app/api/teacher/coding", "src/lib/coach"];
-  const shared = ["src/lib/api_guard.ts", "src/lib/auth.ts", "src/lib/auth_sessions.ts", "src/lib/activeChild.ts", "src/lib/parent_scope.ts", "src/lib/admin-permissions.ts", "src/lib/db.ts", "src/lib/api-key-config.ts", "src/lib/subscriptions/enforcement.ts", "src/lib/subscriptions/learning-access.ts", "src/lib/schools/licensing.ts", "src/lib/schools/short-learning-bookings.ts", "src/lib/schools/support-eligibility.ts", "src/app/api/coach/route.ts", "supabase/functions/coding-execution/index.js", "prisma/schema.prisma", "package.json", "package-lock.json"];
+  const directories = ["src/lib/coding", "services/coding-runner", "src/components/coding", "src/app/student/coding", "src/app/api/student/coding", "src/app/api/parent/coding", "src/app/api/admin/coding", "src/app/api/teacher/coding", "src/lib/coach", "src/app/dev/coding", "src/app/api/dev/coding-preview", "src/app/admin/(secure)/coding", "src/app/school-admin/coding", "src/app/teacher/coding"];
+  const shared = ["middleware.ts", "src/app/globals.css", "src/components/layout/StoreBootstrap.tsx", "src/lib/student-learning-brain/dashboard-shell.ts", "scripts/coding/verify-curriculum-runtime.ts", "src/lib/api_guard.ts", "src/lib/auth.ts", "src/lib/auth_sessions.ts", "src/lib/activeChild.ts", "src/lib/parent_scope.ts", "src/lib/admin-permissions.ts", "src/lib/db.ts", "src/lib/api-key-config.ts", "src/lib/subscriptions/enforcement.ts", "src/lib/subscriptions/learning-access.ts", "src/lib/schools/licensing.ts", "src/lib/schools/short-learning-bookings.ts", "src/lib/schools/support-eligibility.ts", "src/app/api/coach/route.ts", "supabase/functions/coding-execution/index.js", "prisma/schema.prisma", "package.json", "package-lock.json"];
   const paths = [...new Set([...directories.flatMap((directory) => files(resolve(root, directory))), ...shared.map((file) => resolve(root, file))])].sort();
   const hash = createHash("sha256");
   for (const path of paths) hash.update(relative(root, path).replaceAll("\\", "/")).update("\0").update(readFileSync(path)).update("\0");
@@ -41,10 +41,13 @@ export async function practicalExecutionHash() {
   for (const path of paths) hash.update(relative(root, path).replaceAll("\\", "/")).update("\0").update(readFileSync(path)).update("\0");
   return hash.digest("hex");
 }
+export function verifyCurriculumRuntime() {
 const actual = curriculumRuntimeHash();
 if (!release.verificationRun && !Object.keys(release.activities).length) {
   console.log("Expanded Coding curriculum remains unpublished; no completion claim or release seal exists.");
 } else {
   if (actual !== build.runtimeHash || release.verificationRun !== build.verificationRun || !validateReleaseSeal(release, actual)) throw new Error("The Coding release does not match its verified curriculum and execution sources.");
-  console.log("All 440 activity hashes and the verified runtime match this build.");
+  console.log(`All 440 activity hashes and the runtime match this build. Publication scope: ${release.publicationScope ?? "unspecified"}; production acceptance is separate.`);
 }
+}
+if (process.argv[1]?.replaceAll("\\", "/").endsWith("/verify-curriculum-runtime.ts")) verifyCurriculumRuntime();

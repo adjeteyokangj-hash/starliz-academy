@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "scenario": "pending",
+  "age": null,
+  "activity": "Y6.08",
+  "mastered": false,
+  "reviewComplete": false,
+  "provider": {
+    "keyReads": 0,
+    "modelCalls": 0
+  },
+  "externalRequests": 0,
+  "browserErrors": [],
+  "memoryPersistenceOnly": true,
+  "authenticated": false,
+  "historyPreserved": true
+}

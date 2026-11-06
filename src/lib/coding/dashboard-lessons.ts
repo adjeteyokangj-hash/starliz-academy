@@ -27,6 +27,15 @@ export function toCodingDashboardLessons(
   });
 }
 
+export function toExpandedCodingDashboardLessons(activities: Array<{ id: string; title: string; status: string; year: number; unlocked: boolean }>, yearGroup: string | null): CodingDashboardLesson[] {
+  const year = Number(yearGroup?.match(/\d+/)?.[0]);
+  if (!Number.isInteger(year) || year < 1 || year > 11) return [];
+  return activities.filter(activity => activity.unlocked && activity.year <= year).map(activity => ({
+    id: `curriculum:${activity.id}`, title: activity.title, status: activity.status,
+    href: `/student/coding/activities/${encodeURIComponent(activity.id)}`, skillCode: `coding_curriculum_${activity.id}`,
+  }));
+}
+
 /** Count mastered lessons once when the same coding skill is also stored as a skill row. */
 export function masteredTotal(
   skills: Array<{ skill: string; status: string }>,

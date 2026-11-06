@@ -125,8 +125,8 @@ export default function ProjectPreview({ html, css = "", title = "Your project",
   return <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-300 bg-white text-slate-950">
     {resizable && <label className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 text-sm font-semibold">Preview size<select className="min-h-11 max-w-full rounded-lg border border-slate-400 bg-white px-3 font-normal" value={viewport} onChange={(event) => setViewport(["320", "768", "1024"].includes(event.target.value) ? event.target.value : "fit")}><option value="fit">Fit workspace</option><option value="320">Phone (320px)</option><option value="768">Tablet (768px)</option><option value="1024">Desktop (1024px)</option></select></label>}
     <div className="max-w-full overflow-x-auto" tabIndex={resizable ? 0 : undefined} role={resizable ? "region" : undefined} aria-label={resizable ? "Scrollable project preview" : undefined}>
-      <iframe ref={frame} title={title} srcDoc={document} sandbox="allow-scripts" referrerPolicy="no-referrer"
-        className="block w-full border-0" style={{ height, width: fixedWidth, maxWidth: fixedWidth ? "none" : undefined }} />
+      {identity ? <iframe ref={frame} title={title} srcDoc={document} sandbox="allow-scripts" referrerPolicy="no-referrer"
+        className="block w-full border-0" style={{ height, width: fixedWidth, maxWidth: fixedWidth ? "none" : undefined }} /> : <p role="status" className="p-4 text-sm text-slate-600">Preparing your preview…</p>}
     </div>
     <p className="border-t border-slate-200 px-3 py-2 text-xs text-slate-600">{interactive ? "Leave a field to apply your entry; Enter also applies single-line fields. Use buttons to try your project." : "Saved project preview"}</p>
   </div>;

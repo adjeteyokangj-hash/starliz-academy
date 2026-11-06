@@ -10,7 +10,7 @@ import { emptyProgram, parseCodingProgram, runCodingProgram } from "@/lib/coding
 import { buildCodingSupportHandoff, type CodingSupportHandoff } from "@/lib/coding/support-handoff";
 import { codingTeacherTurn } from "@/lib/coding/model-tutor";
 import { independentChallenge, nextIndependentVariant } from "@/lib/coding/independent-challenge";
-import { encodeMasteryProgram, readMasteryProgram } from "@/lib/coding/project-evidence";
+import { encodeMasteryProgram, readMasteryProgram, restoredReviewProject } from "@/lib/coding/project-evidence";
 import {
   CODING_STAGES,
   PLACEMENT_LESSON_ID,
@@ -379,23 +379,26 @@ function toView(input: {
     yearGroup: string | null;
   };
   placement: PlacementRecommendation | null;
+  assessedProject?: ReturnType<typeof readMasteryProgram>;
 }): CodingWorkspaceView {
   const completedStages = readCompleted(input.row.completedStagesJson);
   const stage = visibleCodingStage(asStage(input.row.stage), completedStages);
   const programs = readPrograms(input.row.programsJson);
   const hints = readHints(input.row.hintCountsJson);
   const run = readJson(input.row.lastRunJson);
-  const explained = programs.create;
+  const lesson = independentChallenge(input.lesson, hints.independentVariant);
+  const explained = input.assessedProject?.program ?? programs.create;
+  const review = stage === "review" ? restoredReviewProject(explained, stageBrief(lesson, "create").goal, input.assessedProject) : null;
   return {
-    lesson: independentChallenge(input.lesson, hints.independentVariant),
+    lesson,
     stage,
     completedStages,
-    program: programFor(programs, input.lesson, stage),
+    program: review?.program ?? programFor(programs, input.lesson, stage),
     explainedProgram: explained && explained.blocks.length > 0 ? explained : null,
     evidence: readEvidence(input.row.evidenceJson),
     skillStatus: asStatus(input.row.skillStatus),
     feedback: input.row.lastFeedback,
-    run: isRecord(run) ? run as CodingRunResult : null,
+    run: review?.run ?? (isRecord(run) ? run as CodingRunResult : null),
     teacherFeedback: input.row.teacherFeedback,
     privateProject: input.row.privateProject,
     assignmentStatus: input.row.assignmentStatus,
@@ -420,7 +423,8 @@ export async function loadCodingWorkspace(childId: string, lessonId: string, yea
   if (!lesson) return null;
   const row = await ensureWorkspace(childId, lessonId, yearGroup);
   if (!row) return null;
-  return toView({ lesson, row, placement: await placementFor(childId) });
+  const assessed = row.skillStatus === "mastered" ? await prisma.codingProjectVersion.findFirst({ where: { workspaceId: row.id, label: "mastery-evidence" }, orderBy: { createdAt: "desc" }, select: { programJson: true } }) : null;
+  return toView({ lesson, row, placement: await placementFor(childId), assessedProject: assessed ? readMasteryProgram(assessed.programJson) : null });
 }
 
 export async function loadCodingHome(childId: string, yearGroup: string | null) {
@@ -496,7 +500,7 @@ export async function openCodingStage(input: { childId: string; lessonId: string
   }
   const saved = await prisma.codingWorkspace.update({
     where: { id: row.id },
-    data: { stage: input.stage, lastRunJson: null },
+    data: { stage: input.stage, lastRunJson: null, lastFeedback: null },
   });
   return { ok: true as const, workspace: toView({ lesson, row: saved, placement: await placementFor(input.childId) }) };
 }
@@ -938,6 +942,13 @@ export async function parentCodingSummary(childId: string) {
       evidenceStatus: parsedAssessed ? "assessed-version" : "saved-draft",
     } : null,
   };
+}
+
+/** Caller must resolve and authorise the active learner before reading. */
+export async function learnerLegacyProjects(childId: string) {
+  const summary = await parentCodingSummary(childId);
+  if (summary.skillStatus !== "mastered" || !("projectPreview" in summary) || !summary.projectPreview) return [];
+  return [{ lessonId: UNDERSTANDING_LOOPS.id, title: summary.lessonTitle, projectTitle: summary.project, preview: summary.projectPreview }];
 }
 
 export async function teacherCodingRows(childIds: string[]) {

@@ -1,0 +1,90 @@
+import { test, expect } from '@playwright/test';
+import { build } from 'esbuild';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { codingComponentStyles } from './coding-styles';
+import { UNDERSTANDING_LOOPS } from '../../src/lib/coding/catalog';
+import { assessCodingStage, deriveSkillStatus } from '../../src/lib/coding/assessment';
+import type { CodingEvidence, CodingProgram, CodingStage } from '../../src/lib/coding/types';
+import { runCodingProgram } from '../../src/lib/coding/runner';
+
+// Real review component and existing assessment logic. Fictional API state;
+// not authenticated database, live model or production acceptance evidence.
+test('review gives inline retry, pending-evidence and server-confirmed mastery feedback', async ({ page }) => {
+  test.setTimeout(180000);
+  const directory = 'artifacts/coding-review-feedback-2026-11-04'; mkdirSync(directory, { recursive: true });
+  const styles = await codingComponentStyles();
+  const built = await build({ stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `import React from'react';import{createRoot}from'react-dom/client';import Workspace from'./src/components/coding/CodingLessonWorkspace';createRoot(document.getElementById('root')).render(<Workspace lessonId="understanding-loops"/>);` }, bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' } });
+  const program: CodingProgram = { blocks: [{ id: 'right', kind: 'repeat', times: 2, body: [{ id: 'right-move', kind: 'move', direction: 'right' }] }, { id: 'up', kind: 'repeat', times: 2, body: [{ id: 'up-move', kind: 'move', direction: 'up' }] }] };
+  const workspace = { lesson: UNDERSTANDING_LOOPS, stage: 'review', completedStages: ['discover', 'predict', 'build', 'practise', 'debug', 'create'] as CodingStage[], program, explainedProgram: program, evidence: { prediction: true, practical: true, debugging: true, explanation: false, independent: true } as CodingEvidence, skillStatus: 'practising', feedback: null as string | null, run: runCodingProgram(program, { x: 2, y: 2 }), teacherFeedback: null, hintCount: 0, attemptCount: 0, checksPassed: 0 };
+  let requests = 0, fail = false;
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/*', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/student/coding/next') return route.fulfill({ json: { state: 'caught-up' } });
+    if (path === '/__review') return route.fulfill({ contentType: 'text/html', body: `<html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${styles}</style></head><body><div id="root"></div><script>window.process={env:{NODE_ENV:"production"}};</script><script>${built.outputFiles[0]!.text.replaceAll('</script', '<\\/script')}</script></body></html>` });
+    if (path.startsWith('/coding/blockly/')) return route.fulfill({ body: readFileSync(`public${path}`), contentType: path.endsWith('.svg') ? 'image/svg+xml' : 'application/octet-stream' });
+    if (path === '/api/student/coding/lessons/understanding-loops') {
+      if (route.request().method() === 'GET') return route.fulfill({ json: { workspace } });
+      requests++;
+      if (fail) return route.fulfill({ status: 503, json: { error: 'Synthetic service unavailable. Try again.' } });
+      const action = route.request().postDataJSON();
+      expect(action.action).toBe('review');
+      const assessed = assessCodingStage({ lesson: UNDERSTANDING_LOOPS, stage: 'review', program, evidence: workspace.evidence, explanation: action.explanation, revealingHints: 0 });
+      workspace.evidence = assessed.evidence;
+      workspace.feedback = assessed.feedback;
+      workspace.skillStatus = deriveSkillStatus(true, assessed.evidence);
+      if (assessed.passed && !workspace.completedStages.includes('review')) workspace.completedStages.push('review');
+      return route.fulfill({ json: { ok: true, passed: assessed.passed, feedback: assessed.feedback, workspace } });
+    }
+    return route.abort();
+  });
+  await page.goto('/__review');
+  const review = page.getByRole('region', { name: 'Review your learning' });
+  const text = review.getByRole('textbox', { name: 'Explain your finished program' });
+  const submit = review.getByRole('button', { name: 'Send explanation', exact: true });
+  await expect(review).toBeVisible();
+  const own = page.getByRole('region', { name: 'My Program', exact: true });
+  await expect(own.locator('[aria-label="Program output"]')).toBeVisible();
+  await expect(own.getByRole('button', { name: 'Replay My Program', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Run my blocks', exact: true })).toBeHidden();
+  await submit.click();
+  await expect(review.getByRole('status')).toContainText('Write your explanation first');
+  expect(requests).toBe(0);
+  await text.fill('moved right 2 time'); await submit.click();
+  await expect(review.getByRole('heading', { name: 'Your review needs another try' })).toBeVisible();
+  await expect(review.getByRole('status')).toContainText('full sentence');
+  await expect(text).toHaveValue('moved right 2 time');
+  await expect(review.getByRole('status')).toBeFocused();
+  expect(workspace.skillStatus).toBe('practising');
+  await page.screenshot({ path: `${directory}/retry.png`, fullPage: true });
+  const explanation = 'My first loop repeats a move right 2 times and my next loop repeats a move up 2 times.';
+  await text.fill(explanation); fail = true; await submit.click();
+  await expect(review.getByRole('status')).toContainText('Synthetic service unavailable');
+  await expect(text).toHaveValue(explanation);
+  fail = false; workspace.evidence.independent = false;
+  await submit.click();
+  await expect(review.getByRole('heading', { name: 'Explanation accepted — one more check' })).toBeVisible();
+  await expect(review.getByRole('status')).toContainText('Independent challenge');
+  await expect(review.getByText('Lesson mastered — well done!', { exact: true })).toHaveCount(0);
+  expect(workspace.skillStatus).toBe('practising');
+  workspace.evidence.independent = true;
+  await submit.click();
+  await expect(review.getByRole('heading', { name: 'Lesson mastered — well done!' })).toBeVisible();
+  await expect(review.getByText('You’ve completed all currently available lessons.', { exact: true })).toBeVisible();
+  await expect(review.getByRole('link', { name: 'Return to Coding learning', exact: false })).toHaveAttribute('href', '/student/coding');
+  expect(workspace.skillStatus).toBe('mastered');
+  for (const width of [1600, 820, 390]) {
+    await page.setViewportSize({ width, height: 1100 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `${directory}/${width}.png`, fullPage: true });
+  }
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Review your learning' }).getByRole('heading', { name: 'Lesson mastered — well done!' })).toBeVisible();
+  await expect(own.locator('[aria-label="Program output"]')).toBeVisible();
+  const example = await page.getByRole('region', { name: 'Lesson Example', exact: true }).locator('[aria-label="Lesson example output"]').innerHTML();
+  await own.getByRole('button', { name: 'Replay My Program', exact: true }).click();
+  await expect(own.getByText('Running your program', { exact: false })).toBeVisible();
+  expect(await page.getByRole('region', { name: 'Lesson Example', exact: true }).locator('[aria-label="Lesson example output"]').innerHTML()).toBe(example);
+  expect(requests).toBe(4);
+  expect(errors).toEqual([]);
+});

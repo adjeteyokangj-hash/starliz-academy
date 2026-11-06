@@ -1,0 +1,19 @@
+(node:32852) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ backend client verifies a signed result for the exact requested program job (162.9449ms)
+✔ backend client rejects an unsigned result instead of grading it (26.597ms)
+✔ a configured remote runner cannot use plain HTTP (2.3285ms)
+(node:22404) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ the trusted preview bridge is valid JavaScript and does not interpolate student markup (3.5108ms)
+✔ real browser previews block student scripts, active markup and network while retaining accessible controls (12070.3303ms)
+✔ inert previews retain snapshot styles and keyboard-operable local links without running learner scripts (2769.9415ms)
+✔ evidence navigation forwards only a fixed slot and never a student-selected URL (3232.1972ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20903.6744

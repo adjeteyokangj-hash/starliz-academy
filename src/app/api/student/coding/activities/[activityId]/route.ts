@@ -24,7 +24,7 @@ export async function GET(request: Request, context: Context) {
     const { child, response } = await requireCodingLearner({ bookingId: new URL(request.url).searchParams.get("bookingId") });
     if (!child) return response;
     const { activityId } = await context.params;
-    return NextResponse.json({ workspace: await loadActivityWorkspace(child.id, activityId, child.yearGroup), humanAssistanceEnabled: await codingAssistanceEnabled() }, { headers });
+    return NextResponse.json({ workspace: await loadActivityWorkspace(child.id, activityId, child.yearGroup, undefined, child.age), humanAssistanceEnabled: await codingAssistanceEnabled() }, { headers });
   } catch (error) { return failure(error); }
 }
 export async function POST(request: Request, context: Context) {

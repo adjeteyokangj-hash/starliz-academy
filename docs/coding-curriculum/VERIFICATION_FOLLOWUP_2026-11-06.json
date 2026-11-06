@@ -1,0 +1,167 @@
+{
+  "scope": "Bounded Coding verification follow-up, 2026-11-06",
+  "lint": {
+    "command": "npm run lint",
+    "exitCode": 0,
+    "errors": 0,
+    "warnings": 10,
+    "log": "artifacts/coding-followup/lint-normal.log",
+    "notes": "No lint rules disabled or broad ignores added. Existing warnings do not fail the configured normal command."
+  },
+  "build": {
+    "command": "npm run build -- --webpack",
+    "prismaGeneration": "passed, v6.19.3, unchanged schema",
+    "status": "passed",
+    "dllHolder": {
+      "serverPid": 27252,
+      "launcherPid": 32540,
+      "workspace": "C:/Users/edwar/Documents/Projects/starliz-academy",
+      "command": "next dev --turbopack",
+      "port": 3000
+    },
+    "restoration": "Restored Next dev --turbopack on port 3000; /dev/coding returned HTTP 200 in restored-dev.log.",
+    "log": "artifacts/coding-followup/build.log",
+    "exitCode": 0,
+    "typeScript": "passed, type checking enabled"
+  },
+  "resize": {
+    "previousFailure": "artifacts/coding-correction/preview-responsive-resize-attempt.log",
+    "reproduction": "artifacts/coding-followup/resize-reproduction.log",
+    "cause": "Playwright inner-frame scrollIntoViewIfNeeded stalled waiting for stability after the containing page resized; editor and preview DOM remained present. Scrolling the host iframe directly in the parent viewport removes the nested-frame scroll assumption.",
+    "correction": "Test scroll target only; no application resize change.",
+    "samePageWidths": [
+      1600,
+      1920,
+      820,
+      390
+    ],
+    "result": "passed with visible editor and preview and no horizontal overflow",
+    "log": "artifacts/coding-followup/resize-corrected.log",
+    "studioWidthAndStacking": "passed actual components: width 440–620px, same-page transitions 1920 to 390 to 820 to 390 to 1920, saved editor value and visible preview retained",
+    "studioLog": "artifacts/coding-followup/layout.log"
+  },
+  "review": {
+    "byYear": {
+      "2": {
+        "lesson": 24,
+        "consolidation": 12,
+        "project": 4
+      },
+      "3": {
+        "lesson": 24,
+        "consolidation": 12,
+        "project": 4
+      },
+      "4": {
+        "lesson": 24,
+        "consolidation": 12,
+        "project": 4
+      },
+      "5": {
+        "lesson": 20,
+        "consolidation": 12,
+        "project": 4
+      },
+      "6": {
+        "lesson": 19,
+        "consolidation": 12,
+        "project": 4
+      },
+      "7": {
+        "lesson": 24,
+        "consolidation": 12,
+        "project": 4
+      },
+      "8": {
+        "lesson": 24,
+        "consolidation": 12,
+        "project": 4
+      },
+      "9": {
+        "lesson": 24,
+        "consolidation": 12,
+        "project": 4
+      },
+      "10": {
+        "lesson": 24,
+        "consolidation": 12,
+        "project": 4
+      },
+      "11": {
+        "lesson": 24,
+        "consolidation": 12,
+        "project": 4
+      }
+    },
+    "categories": {
+      "existing-material-deterministic-candidate": 88,
+      "additional-assessment-authoring": 289,
+      "explanation-or-authorised-human-judgement": 14
+    },
+    "currentProviderDependent": 391,
+    "confirmedIntrinsicallyProviderOnly": 0,
+    "notes": [
+      "Planning triage from the existing objective/workbench inventory, not newly validated assessment coverage.",
+      "All 49 validated paths and all 391 explanation requirements are preserved.",
+      "No activity has been proved intrinsically impossible to assess deterministically. The current implementation makes all 391 provider-dependent; a generic quiz cannot remove that dependency."
+    ],
+    "inventory": "artifacts/coding-correction/reviews/coverage.json",
+    "representativeObjectives": {
+      "candidate": "Y2.01: represent a picture route and predict its endpoint; Y3.14: sensor threshold decisions.",
+      "additionalAuthoring": "Y7.05: functions with testable interfaces; Y8.02: responsive layout at three widths. Practical checks alone do not establish the explanation.",
+      "judgement": "Y11.13: define a meaningful problem, exclusions and feasible evidence plan; portfolio peer review and evidence/provenance decisions."
+    },
+    "eligibleCompletion": "All 391 already have provider explanation review for eligible learners aged 13+, or under-13/unknown-age learners when provider ZDR is verified, provided the provider is configured/available and practical/independence requirements pass.",
+    "blocked": "Under-13 and unknown-age without verified ZDR have no permitted current path for these 391. Provider unavailability can leave any learner pending.",
+    "human": "An authorised human review would require an explicitly supported workflow. This follow-up does not invent one or award mastery.",
+    "qualification": "The 88/289/14 split is planning triage, with objective-specific refinement of the evidence/version/peer fixtures. It is not validated deterministic equivalence. No objective has been proved intrinsically provider-only; all 391 currently depend on permitted provider review."
+  },
+  "checks": {
+    "bootstrap": {
+      "passed": 3,
+      "log": "artifacts/coding-followup/focused-tests.log"
+    },
+    "affectedRegressions": {
+      "passed": 12,
+      "log": "artifacts/coding-followup/affected-regressions.log"
+    },
+    "runtime": {
+      "passed": true,
+      "log": "artifacts/coding-followup/runtime-normal-final.log",
+      "receiptRegenerated": false,
+      "reason": "Content, executor and existing full-runtime fingerprint still match."
+    }
+  },
+  "filesChanged": [
+    "scripts/uat/_diag-sl-variety-one.ts",
+    "scripts/uat/_inspect-sl-bookings.ts",
+    "scripts/uat/_patch-report.cjs",
+    "scripts/uat/_repair-all-adjei-sl.ts",
+    "scripts/uat/short-learning-defects-live-uat.ts",
+    "tests/student_store_bootstrap.test.ts",
+    "src/app/admin/(secure)/subscriptions/page.tsx",
+    "src/app/school-admin/short-learning/coverage/page.tsx",
+    "src/components/parent/CreateChildLoginPanel.tsx",
+    "src/components/parent/ParentCollapsibleCard.tsx",
+    "scripts/coding/verify-resize-followup.ts",
+    "artifacts/coding-correction/reviews/coverage.json",
+    "artifacts/coding-followup/review-breakdown.json",
+    "docs/coding-curriculum/VERIFICATION_FOLLOWUP_2026-11-06.json"
+  ],
+  "preservation": {
+    "validatedReviewPaths": 49,
+    "remainingExplanationRequirements": 391,
+    "activities": 440,
+    "stages": 7,
+    "learnerWrites": false,
+    "schemaChanged": false,
+    "migration": false,
+    "reset": false,
+    "productionConfigurationChanged": false,
+    "commit": false,
+    "push": false,
+    "deployment": false,
+    "productionReady": false
+  },
+  "remainingProductionGates": "Hosted runner/privacy/ZDR/publication, permissions, dependency and accessibility acceptance remain separate."
+}
