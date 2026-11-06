@@ -73,6 +73,9 @@ test.describe("Auth/session refresh continuity", () => {
     await page.goto("/parent/dashboard");
     const billing = page.getByRole("link", { name: "Billing", exact: true }).first();
     await expect(billing).toBeVisible();
+    // Expire a settled page: overlapping dashboard bootstrap requests would
+    // independently exercise POST refresh and consume this single-use token.
+    await page.waitForLoadState("networkidle");
     const previous = await expiredAccess(page, scenario);
     const rscRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/parent/billing" && request.headers().rsc === "1");
     await billing.click(); await rscRequest;
