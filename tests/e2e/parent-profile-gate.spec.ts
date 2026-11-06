@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { login, seedAuthScenario, type AuthScenario } from "./helpers/auth-fixtures";
 
 test.describe("Current parent sign-in and child profile protections", () => {
-  test.describe.configure({ mode: "serial", timeout: 180000 });
+  test.describe.configure({ timeout: 180000 });
   let scenario: AuthScenario;
   test.beforeAll(async () => { scenario = await seedAuthScenario("profile-gate"); });
   test.afterAll(async () => { await scenario?.prisma.$disconnect(); });
@@ -53,6 +53,7 @@ test.describe("Current parent sign-in and child profile protections", () => {
 
   test("parent can disable a child PIN while the student cannot switch ownership", async ({ page }) => {
     await login(page, scenario);
+    expect((await page.request.post(`/api/parent/children/${scenario.child.id}/pin`, { data: { enablePin: true, pin: "2486" } })).status()).toBe(200);
     expect((await page.request.post(`/api/parent/children/${scenario.child.id}/pin`, { data: { enablePin: false } })).status()).toBe(200);
     expect((await page.request.post("/api/parent/profiles/verify-child-pin", { data: { childId: scenario.child.id } })).status()).toBe(200);
     await login(page, scenario, scenario.student);

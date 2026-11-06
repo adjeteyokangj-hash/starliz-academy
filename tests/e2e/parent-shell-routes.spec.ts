@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { login, seedAuthScenario, type AuthScenario } from "./helpers/auth-fixtures";
 
 test.describe("Parent shell with email/password sessions", () => {
-  test.describe.configure({ mode: "serial", timeout: 180000 });
+  test.describe.configure({ timeout: 180000 });
   let scenario: AuthScenario;
   test.beforeAll(async () => { scenario = await seedAuthScenario("parent-shell"); });
   test.afterAll(async () => { await scenario?.prisma.$disconnect(); });

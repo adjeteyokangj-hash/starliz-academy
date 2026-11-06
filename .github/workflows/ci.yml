@@ -20,6 +20,7 @@ env:
   DIRECT_URL: postgresql://starliz_ci:disposable-ci-only@127.0.0.1:5432/starliz_ci?sslmode=disable
   AUTH_SECRET: starliz-ci-only-${{ github.run_id }}-${{ github.run_attempt }}
   CI_DISPOSABLE_DATABASE: "true"
+  PLAYWRIGHT_HTML_OPEN: never
   NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
@@ -129,7 +130,7 @@ jobs:
         run: npx tsx scripts/ci/bootstrap-disposable-db.ts
 
       - name: Run key E2E auth flow
-        run: npm run test:e2e:auth
+        run: npm run test:e2e:auth -- --reporter=line,html
 
       - name: Upload auth E2E artifacts
         if: always()

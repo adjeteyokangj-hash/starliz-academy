@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { login, seedAuthScenario, staleAccess, type AuthScenario } from "./helpers/auth-fixtures";
 
 test.describe("Auth/session refresh continuity", () => {
-  test.describe.configure({ mode: "serial", timeout: 180000 });
+  test.describe.configure({ timeout: 180000 });
   let scenario: AuthScenario;
   test.beforeAll(async () => { scenario = await seedAuthScenario("refresh"); });
   test.afterAll(async () => { await scenario?.prisma.$disconnect(); });
@@ -11,7 +11,7 @@ test.describe("Auth/session refresh continuity", () => {
     await page.goto("/auth/login");
     await page.getByLabel("Email or username").fill(scenario.parent.email);
     await page.getByLabel("Password", { exact: true }).fill(scenario.password);
-    await page.getByRole("button", { name: "Login", exact: true }).click();
+    await page.getByRole("button", { name: "Sign in to Parent Portal", exact: true }).click();
     await expect(page).toHaveURL(/\/parent\/dashboard/);
     expect((await page.context().cookies()).some(cookie => cookie.name === "starliz_parent_unlock")).toBe(false);
   });
