@@ -153,9 +153,7 @@ jobs:
         run: npm run test:e2e:auth -- --reporter=line,html
 
       - name: Verify legacy coding responsive layout
-        env:
-          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3177
-        run: npx playwright test tests/e2e/coding-legacy-layout-component.spec.ts --workers=1 --reporter=line --output test-results/coding-layout
+        run: npx playwright test --config playwright.coding-layout.config.ts --workers=1 --reporter=line --output test-results/coding-layout
 
       - name: Upload auth E2E artifacts
         if: always()
