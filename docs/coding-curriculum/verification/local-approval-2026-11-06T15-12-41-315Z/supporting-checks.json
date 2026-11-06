@@ -82,5 +82,5 @@
     "lf-default-baseline.json": "061cdef028933b6a235e314681800fd683aaf7bb6dbe1d55de07eda50fe53ded",
     "preseal-byte-policy.json": "b62e15de19b547b6e646c307ada95cd26db31655a022f8995eb4469a5ff26bb9"
   },
-  "evidenceSerialization": "Text evidence stored as UTF-8 LF; inventories hash actual unnormalized source bytes. Raw local diagnostic logs remain preserved separately."
+  "evidenceSerialization": "Text evidence stored as UTF-8 LF without extra blank EOF lines; inventories hash actual unnormalized source bytes. Raw local diagnostic logs remain preserved separately."
 }
