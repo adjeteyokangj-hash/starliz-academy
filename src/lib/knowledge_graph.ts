@@ -1,6 +1,6 @@
 import type { DictionaryWordRecord } from "@/lib/dictionary";
 import { decodeDictionaryWordRelationships } from "@/lib/dictionary_relationships";
-import { normalizeDictionaryWord } from "@/lib/dictionary";
+import { normalizeDictionaryWord } from "@/lib/dictionary-normalize";
 import { GA_LANGUAGE_PROFILE, buildLanguageGraphNodeData } from "@/lib/language-profiles";
 
 export type KnowledgeNodeType =

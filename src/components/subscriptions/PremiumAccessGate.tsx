@@ -6,7 +6,7 @@ import LockedPreview from "@/components/paywall/LockedPreview";
 import SoftPaywallBanner from "@/components/paywall/SoftPaywallBanner";
 import { getClientAccess, useTrialSession as consumeTrialSession } from "@/lib/access";
 import { trackUsageEvent } from "@/lib/admin-tracking";
-import { shouldBypassLearningAccessForAssignedSession } from "@/lib/subscriptions/learning-access";
+import { shouldBypassLearningAccessForAssignedSession } from "@/lib/subscriptions/assigned-session-bypass";
 
 type Props = {
   children: React.ReactNode;
