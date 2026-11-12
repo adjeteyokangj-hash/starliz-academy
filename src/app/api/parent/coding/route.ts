@@ -1,3 +1,4 @@
+import { worldPracticeSummaries } from "@/lib/coding/world/oversight";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
@@ -32,8 +33,8 @@ export async function GET(request: Request) {
     const project = versionId.length > 0 && versionId.length <= 100 ? await parentActivityProject(child.id, versionId) : null;
     return project ? NextResponse.json({ project }, { headers: { "Cache-Control": "private, no-store" } }) : NextResponse.json({ error: "Assessed project not found for this child." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
   }
-  const [summary, portfolio, readiness, progress] = await Promise.all([parentCodingSummary(child.id), parentActivityPortfolio(child.id), readinessOverview(child.id), codingActivityProgress(child.id)]);
+  const [summary, portfolio, readiness, progress, worlds] = await Promise.all([parentCodingSummary(child.id), parentActivityPortfolio(child.id), readinessOverview(child.id), codingActivityProgress(child.id), worldPracticeSummaries([child.id])]);
   const curriculum = { available: progress.length, started: progress.filter(activity => activity.status !== "not_started").length, mastered: progress.filter(activity => activity.status === "mastered").length,
     lessons: progress.filter(activity => activity.kind === "lesson" && activity.status === "mastered").length, consolidations: progress.filter(activity => activity.kind === "consolidation" && activity.status === "mastered").length, projects: progress.filter(activity => activity.kind === "project" && activity.status === "mastered").length };
-  return NextResponse.json({ summary, portfolio, readiness, curriculum }, { headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json({ summary, portfolio, readiness, curriculum, worldPractice: worlds[0] ?? null }, { headers: { "Cache-Control": "private, no-store" } });
 }

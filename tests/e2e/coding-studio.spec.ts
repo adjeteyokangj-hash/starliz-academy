@@ -122,8 +122,8 @@ test("studio authoring, native run, save/resume and five age bands render in rea
         await page.getByRole('button',{name:'Close tutor',exact:true}).click();
       }
     }
-    await page.getByRole('button',{name:'Focus editor',exact:true}).click();await expect(example).toBeVisible();await expect(own).toBeVisible();
-    await page.getByRole('button',{name:'Open guide',exact:true}).click();
+    await page.getByRole('button',{name:'Collapse Learn & Explore',exact:true}).click();await expect(example).toBeVisible();await expect(own).toBeVisible();
+    await page.getByRole('button',{name:'Show Learn & Explore',exact:true}).click();
     await page.getByRole('button',{name:'Expand AI tutor',exact:true}).click();
     const question=page.getByRole('textbox',{name:'What are you thinking about?',exact:true});
     await expect(question).toBeFocused();await question.fill('Where should I look for the repeating pattern?');

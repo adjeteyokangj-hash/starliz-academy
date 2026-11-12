@@ -5,6 +5,7 @@ import { pathwayForYear, pathwaySummary } from "@/lib/coding/catalog";
 import { requireCodingLearner } from "@/lib/coding/student-context";
 import { loadCodingHome } from "@/lib/coding/workspace-store";
 import { publishedLessonValidation } from "@/lib/coding/draft-validation";
+import { releasedActivities } from "@/lib/coding/learning/catalogue";
 
 export async function GET() {
   const { child, response } = await requireCodingLearner();
@@ -13,13 +14,15 @@ export async function GET() {
   const yearPathway = pathwayForYear(child.yearGroup);
   const yearPathwayTitle = pathwaySummary(yearPathway).title;
   const publishedPathways = publishedPathwayIds();
+  const curriculum = releasedActivities();
   return NextResponse.json({
     learnerId: child.id,
     learnerName: child.name,
     yearGroup: child.yearGroup,
     yearPathway,
     yearPathwayTitle,
-    intro: codingPathwayIntro({
+    curriculumPublished: curriculum.length === 440,
+    intro: curriculum.length ? `Your year-group pathway is ${yearPathwayTitle}. Open your learning journey below to continue with activities whose prerequisites you have completed.` : codingPathwayIntro({
       yearGroup: child.yearGroup,
       yearPathwayTitle,
       yearPathwayPublished: publishedPathways.includes(yearPathway),

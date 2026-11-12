@@ -1,7 +1,12 @@
 "use client";
+import type { LocationId } from "@/lib/coding/world/model";
+import GuidedMissionContext from "./world/GuidedMissionContext";
+import { guidedHref } from "@/lib/coding/world/guided-mapping";
+import WorldRouteView from "./world/WorldRouteView";
 
 import Link from "next/link";
 import CodingStudioFrame from "./CodingStudioFrame";
+import CodingNextStep from "./CodingNextStep";
 import BlockCommandsEditor from "./BlockCommandsEditor";
 import { runCodingProgram } from "@/lib/coding/runner";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -63,28 +68,29 @@ const EVIDENCE: Array<{ id: string; label: string }> = [
   { id: "independent", label: "Independent challenge" },
 ];
 
-function LegacyLessonExample({ brief }: { brief: StageBrief }) {
+function LegacyLessonExample({ brief, worldLocation }: { brief: StageBrief; worldLocation?: LocationId }) {
   const result = brief.example ? runCodingProgram(brief.example, brief.goal) : null;
-  const [frame, setFrame] = useState<number | null>(null), [playing, setPlaying] = useState(false);
+  const [frame, setFrame] = useState(0), [playing, setPlaying] = useState(false);
   const count = result?.frames.length ?? 0;
   useEffect(() => {
     if (!playing || !count) return;
     const timer = window.setInterval(() => setFrame(current => {
-      const next = (current ?? 0) + 1;
+      const next = current + 1;
       if (next >= count) { setPlaying(false); return count - 1; }
       return next;
     }), 450);
     return () => window.clearInterval(timer);
   }, [playing, count]);
-  const position = result?.frames[Math.min(frame ?? count - 1, count - 1)] ?? { x: 0, y: 0 };
+  const position = result?.frames[Math.min(frame, count - 1)] ?? { x: 0, y: 0 };
   return <section aria-label="Lesson Example" tabIndex={0} className="rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm">
     <div className="flex items-center justify-between gap-2"><h2 className="text-base font-bold text-indigo-950">Lesson Example</h2><span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">Read only</span></div>
-    <p className="mt-2 text-xs leading-5 text-slate-600">Your reference stays here while you build. Its output is separate from yours.</p>
-    {result && <div className="mt-3 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-2" aria-label="Lesson example output">{Array.from({ length: CODING_GRID_SIZE ** 2 }, (_, index) => {
+    <p className="mt-2 text-sm leading-5 text-slate-600">Reference example: three moves right. Your current task’s target is shown in My Program.</p>
+    {result && (worldLocation ? <WorldRouteView location={worldLocation} goal={brief.goal} actors={[{ name: "Lesson example", visits: result.frames.slice(0, frame + 1) }]}/> : <div className="mt-3 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-2" aria-label="Lesson example output">{Array.from({ length: CODING_GRID_SIZE ** 2 }, (_, index) => {
       const x = index % CODING_GRID_SIZE, y = CODING_GRID_SIZE - 1 - Math.floor(index / CODING_GRID_SIZE);
-      return <div key={index} className="flex aspect-square items-center justify-center rounded-lg border border-slate-200 bg-white text-xl">{position.x === x && position.y === y ? "🙂" : brief.goal?.x === x && brief.goal.y === y ? "⭐" : ""}</div>;
-    })}</div>}
-    <p className="mt-2 text-xs text-slate-500">Column {position.x}, row {position.y} · executed teaching example</p>
+      const destination = brief.goal?.x === x && brief.goal.y === y;
+      return <div key={index} className={`relative flex aspect-square items-center justify-center rounded-lg border bg-white text-xl ${destination ? "border-amber-500 ring-2 ring-amber-300" : "border-slate-200"}`} aria-label={destination ? "Example destination" : undefined}>{position.x === x && position.y === y ? "🙂" : ""}{destination && <span aria-hidden="true" className="absolute right-0 top-0 text-xs">⭐</span>}</div>;
+    })}</div>)}
+    <p role="status" className="mt-2 text-sm font-semibold text-indigo-900">{frame === 0 ? "Start here. Press Replay Example to watch." : frame === count - 1 && result?.reachedGoal ? "The example reached the star!" : `Move ${frame} of ${Math.max(0, count - 1)}`}</p>
     <button type="button" disabled={!result} onClick={() => { if (!playing) setFrame(0); setPlaying(!playing); }} className="mt-3 min-h-11 w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">{playing ? "Pause Example" : "Replay Example"}</button>
     {brief.example && <details className="mt-3 rounded-xl bg-indigo-50 p-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold text-indigo-900">Example blocks</summary><ProgramOutline program={brief.example} /></details>}
   </section>;
@@ -98,20 +104,28 @@ type Props = {
   lessonId: string;
   bookingId?: string;
   daytimePeriodId?: string;
+  worldLocation?: LocationId;
 };
 
-export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeriodId }: Props) {
+export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeriodId, worldLocation }: Props) {
   const [blocksValid, setBlocksValid] = useState(true), [accessibleBlocks, setAccessibleBlocks] = useState(false);
   const [humanAssistanceEnabled, setHumanAssistanceEnabled] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [stage, setStage] = useState<CodingStage>("discover");
+  const boundLearner = useRef<string | null>(null);
+  const currentStage = useRef<CodingStage>("discover");
   const [program, setProgram] = useState<CodingProgram>({ blocks: [] });
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [stageMessage, setStageMessage] = useState<string | null>(null);
+  const stageHeading = useRef<HTMLHeadingElement>(null);
   const [editorNote, setEditorNote] = useState<string | null>(null);
   const [choice, setChoice] = useState("");
   const [explanation, setExplanation] = useState("");
+  const [reviewResult, setReviewResult] = useState<{ passed: boolean; message: string } | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const reviewFeedback = useRef<HTMLDivElement>(null);
   const [tutor, setTutor] = useState<string | null>(null);
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -128,22 +142,32 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
   }, [dirty]);
 
   const apply = useCallback((next: Workspace, message?: string | null) => {
-    setStage((current) => {
-      if (current !== next.stage) {
-        setFrame(0);
-        setPlaybackLabel(null);
-        setSelected(null);
-        if (timer.current) window.clearInterval(timer.current);
-        timer.current = null;
-        setPlaying(false);
-      }
-      return next.stage;
-    });
+    if (currentStage.current !== next.stage) {
+      setFrame(0);
+      setPlaybackLabel(null);
+      setSelected(null);
+      if (timer.current) window.clearInterval(timer.current);
+      timer.current = null;
+      setPlaying(false);
+      setChoice("");
+      setTutor(null);
+      setNotice(null);
+    }
+    currentStage.current = next.stage;
+    setStage(next.stage);
     setWorkspace(next);
     setProgram(next.program);
+    if (next.stage === "review" && next.explainedProgram && next.run?.frames.length) {
+      if (timer.current) window.clearInterval(timer.current);
+      timer.current = null;
+      setPlaying(false);
+      setFrame(next.run.frames.length - 1);
+      setPlaybackLabel("learner");
+      setRunSignature(JSON.stringify(next.program));
+    }
     setEditorNote(null);
     if (message) setNotice(message);
-  }, []);
+  }, [setChoice, setTutor, setNotice]);
 
   useEffect(() => {
     void (async () => {
@@ -155,6 +179,7 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
         setError(typeof data.error === "string" ? data.error : "This lesson could not be opened.");
         return;
       }
+      boundLearner.current = response.headers.get("X-Coding-Learner");
       apply(data.workspace as Workspace);
     })();
   }, [apply, lessonId, bookingId]);
@@ -196,11 +221,13 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
     }
     setBusy(true);
     setError(null);
+    setNotice(null);
+    setStageMessage(null);
     try {
       const response = await fetchWithRefreshRetry(`/api/student/coding/lessons/${lessonId}`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(boundLearner.current ? { "X-Coding-Learner": boundLearner.current } : {}) },
         body: JSON.stringify({ stage, program, bookingId, daytimePeriodId, ...body }),
       });
       const data = await response.json().catch(() => ({}));
@@ -208,12 +235,20 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
         throw new Error(typeof data.error === "string" ? data.error : "That action did not work.");
       }
       if (data.workspace) apply(data.workspace as Workspace, typeof data.feedback === "string" ? data.feedback : data.message);
-      if (body.action === "run") setPlaybackLabel(data.runSource === "example" ? "example" : "learner");
-      if (body.action === "run" && data.runSource === "learner") setRunSignature(JSON.stringify(data.workspace?.program ?? program));
+      const changedStage = data.workspace && data.workspace.stage !== stage;
+      if (changedStage && ["run", "discover", "predict"].includes(String(body.action))) {
+        const finished = workspace?.lesson.stages.find(item => item.stage === stage)?.title ?? stage;
+        const next = data.workspace.lesson.stages.find((item: StageBrief) => item.stage === data.workspace.stage)?.title ?? data.workspace.stage;
+        setStageMessage(`${finished} complete. You are now on ${next}. ${data.feedback ?? "Your progress has been saved."}`);
+        setNotice(null);
+      } else if (body.action === "open") { setStageMessage(null); setNotice(null); }
+      if (body.action === "run" && !changedStage) setPlaybackLabel(data.runSource === "example" ? "example" : "learner");
+      if (body.action === "run" && data.runSource === "learner" && !changedStage) setRunSignature(JSON.stringify(data.workspace?.program ?? program));
       if (data.tutor?.message) setTutor(data.tutor.message);
       if (data.message && body.action === "support") setNotice(data.message);
       const frames = data.run?.frames ?? data.workspace?.run?.frames;
-      if (Array.isArray(frames) && (body.action === "run" || body.action === "discover")) play(frames);
+      if (!changedStage && Array.isArray(frames) && body.action === "run") play(frames);
+      if (changedStage || body.action === "open") requestAnimationFrame(() => { stageHeading.current?.focus(); stageHeading.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); });
       return data;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "That action did not work.");
@@ -229,6 +264,24 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-GB";
     window.speechSynthesis.speak(utterance);
+  }
+
+  async function submitReview() {
+    if (busy || reviewSubmitting) return;
+    if (!explanation.trim()) {
+      setReviewResult({ passed: false, message: "Write your explanation first. Describe each repeat in your finished program." });
+      reviewFeedback.current?.focus();
+      return;
+    }
+    setReviewSubmitting(true);
+    setReviewResult(null);
+    try {
+      const result = await post({ action: "review", explanation });
+      setReviewResult({ passed: result?.passed === true, message: result ? typeof result.feedback === "string" ? result.feedback : "Your explanation has been checked. Look at your progress below." : "Your explanation could not be checked. Your text is still here; please try again." });
+    } finally {
+      setReviewSubmitting(false);
+      requestAnimationFrame(() => { reviewFeedback.current?.focus(); reviewFeedback.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); });
+    }
   }
 
   function addBlock(block: Block) {
@@ -269,13 +322,20 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
   const position = frames[Math.min(frame, frames.length - 1)] ?? { x: 0, y: 0 };
   const goal = brief.goal;
   const instruction = `${brief.title}. ${brief.prompt}`;
+  const EditorContainer = stage === "review" ? "details" : "div";
+  const stageIndex = CODING_STAGES.indexOf(stage);
+  const previousStage = CODING_STAGES[stageIndex - 1];
+  const nextStage = CODING_STAGES[stageIndex + 1];
+  const stageComplete = workspace.completedStages.includes(stage);
+  const nextTitle = workspace.lesson.stages.find(item => item.stage === nextStage)?.title;
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1440px] space-y-5 rounded-3xl bg-slate-50 px-4 py-6 text-slate-900 sm:px-6">
+      {worldLocation && <GuidedMissionContext location={worldLocation} objective={workspace.lesson.learningObjective} stage={brief.title}/>}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <Link href="/student/coding" className="text-xs font-bold uppercase tracking-wide text-sky-700">Coding</Link>
-          <h1 className="text-2xl font-black">{workspace.lesson.title}</h1>
+          <h1 className="text-2xl font-black">{workspace.lesson.title}</h1>{!worldLocation && <Link className="inline-flex min-h-11 items-center text-sm font-bold text-emerald-800" href={guidedHref("lesson", lessonId, { bookingId, daytimePeriodId })} onClick={event => { if (dirty) { event.preventDefault(); setNotice("Save your current program before opening the world mission."); } }}>Open this lesson as a world mission →</Link>}
           <p className="text-sm text-slate-600">
             {workspace.lesson.pathwayTitle} · {workspace.lesson.courseTitle} · {workspace.lesson.moduleTitle} · {workspace.lesson.yearBand}
           </p>
@@ -291,7 +351,7 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
+      <nav aria-label="Lesson stages" className="flex flex-wrap gap-2">
         {CODING_STAGES.map((item) => {
           const open = stageUnlocked(item, workspace.completedStages);
           return (
@@ -299,17 +359,29 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
               key={item}
               type="button"
               disabled={!open || busy}
+              aria-label={workspace.lesson.stages.find(entry => entry.stage === item)?.title ?? item}
+              title={workspace.completedStages.includes(item) ? "Completed. Revisit this stage." : open ? "Open this stage." : "Complete the earlier stages first."}
+              aria-current={stage === item ? "step" : undefined}
               onClick={() => void post({ action: "open", stage: item })}
               className={`min-h-11 rounded-xl px-3 py-2 text-xs font-bold uppercase tracking-wide ${stage === item ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-700"} disabled:opacity-40`}
             >
               {workspace.lesson.stages.find((entry) => entry.stage === item)?.title ?? item}
+              {workspace.completedStages.includes(item) && <span className="ml-1" aria-hidden="true">✓</span>}
             </button>
           );
         })}
-      </div>
+      </nav>
+      <section aria-label="Stage navigation" className="rounded-2xl border border-sky-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3"><p className="font-bold text-sky-950">Step {stageIndex + 1} of {CODING_STAGES.length} · {brief.title}{stageComplete ? " · Completed" : " · In progress"}</p><div className="flex flex-wrap gap-2"><button type="button" disabled={!previousStage || busy} onClick={() => previousStage && void post({ action: "open", stage: previousStage })} className="min-h-11 rounded-xl border border-sky-300 px-4 py-2 font-bold text-sky-900 disabled:opacity-40">Previous stage</button>{nextStage && <button type="button" disabled={busy || !stageComplete || !stageUnlocked(nextStage, workspace.completedStages)} onClick={() => void post({ action: "open", stage: nextStage })} className="min-h-11 rounded-xl bg-sky-700 px-4 py-2 font-bold text-white disabled:opacity-40">Continue to {nextTitle} →</button>}</div></div>
+        {nextStage && !stageComplete && <p className="mt-2 text-sm text-slate-600">{stage === "discover" ? "Watch the example, then choose I can see the goal to continue." : stage === "predict" ? "Choose and check your prediction to continue." : "Run your blocks to check this task. When your program passes, your progress is saved and the next stage opens."}</p>}
+        {stageComplete && nextStage && <p className="mt-2 text-sm text-slate-600">You have already completed this stage. Continue without repeating its assessment, or revisit your saved work.</p>}
+        {stageMessage && <p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-950">{stageMessage}</p>}
+        {notice && !stageMessage && <p role="status" className="mt-3 rounded-xl bg-sky-50 p-3 text-sm font-semibold text-sky-950">{notice}</p>}
+        {error && <p role="alert" className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
+      </section>
       <p role="status" className="text-xs font-semibold text-slate-600">{busy ? "Saving your work…" : dirty ? "You have unsaved changes. Save before leaving this lesson." : "Your workspace matches the saved version."}</p>
 
-      <CodingStudioFrame year={4} learning={<>        <section className="order-1 rounded-2xl border border-slate-200 bg-white p-4">
+      <CodingStudioFrame year={4} beginner learning={<>        <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-black uppercase tracking-wide text-slate-500">Instructions</h2>
           <p className="mt-2 text-sm font-semibold">{workspace.lesson.learningObjective}</p>
           <p className="mt-3 text-sm leading-6">{brief.prompt}</p>
@@ -319,14 +391,14 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
               <ProgramOutline program={workspace.explainedProgram} />
             </div>
           ) : null}
-          {workspace.lesson.voiceHelp ? (
+          {workspace.lesson.voiceHelp && !worldLocation ? (
             <button type="button" onClick={() => speak(instruction)} className="mt-3 text-sm font-bold text-sky-800">
               Read this aloud
             </button>
           ) : null}
         </section>
 
-<details data-studio-tutor open className="rounded-xl border border-violet-200"><summary className="min-h-11 cursor-pointer p-3 font-bold text-violet-900">✦ StarLiz AI tutor</summary>      <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+<details data-studio-tutor open={Boolean(tutor)} className="rounded-xl border border-violet-200"><summary className="min-h-11 cursor-pointer p-3 font-bold text-violet-900">✦ Help from StarLiz AI</summary>      <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
         <h2 className="text-sm font-black uppercase tracking-wide text-violet-800">Coding tutor</h2>
         <p className="mt-1 text-sm text-violet-950">The tutor asks a question before it shows a fuller hint. It uses the blocks you have now.</p>
         {tutor ? <p role="status" className="mt-2 text-sm">{tutor}</p> : null}
@@ -339,7 +411,7 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
             Ask a person
           </button>
         </div>
-      </section></details>        <section className="order-5 rounded-2xl border border-slate-200 bg-white p-4">
+      </section></details>        <details className="order-5 rounded-2xl border border-slate-200 bg-white p-4"><summary className="min-h-11 cursor-pointer text-sm font-bold text-slate-700">My progress & project details</summary>
           <ul className="space-y-1 text-xs text-slate-600">
             {EVIDENCE.map((item) => (
               <li key={item.id}>{workspace.evidence[item.id] ? "Done" : "Still to show"} · {item.label}</li>
@@ -347,14 +419,15 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
           </ul>
           <p className="mt-3 text-xs text-slate-500">Attempts {workspace.attemptCount} · Checks passed {workspace.checksPassed} · Hints on this part {workspace.hintCount}</p>
           <p className="mt-2 text-xs text-slate-500">This project stays private to you, your teachers and your parent account.</p>
-        </section>
+        </details>
 
-</>} outputs={<>        <LegacyLessonExample key={lessonId} brief={workspace.lesson.stages.find(item => item.stage === "discover")!} />
+</>} outputs={<>        <LegacyLessonExample worldLocation={worldLocation} key={lessonId} brief={workspace.lesson.stages.find(item => item.stage === "discover")!} />
         <section aria-label="My Program" tabIndex={0} className="order-4 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
           <h2 className="text-base font-bold text-emerald-950">My Program</h2>
           <p className="mt-2 text-xs text-slate-600">Your blocks. Your actual execution.</p>
           {playbackLabel === "learner" && runSignature !== JSON.stringify(program) && <p role="status" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">Your blocks have changed. This is your previous run; run again to update it.</p>}
-          {playbackLabel === "learner" ? <div className="mt-3 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-2" aria-label="Program output">
+          {playbackLabel !== "learner" && <p className="mt-3 text-sm font-semibold text-emerald-950">Your target for {brief.title}. Run your blocks to see the movement.</p>}
+          {worldLocation ? <WorldRouteView location={worldLocation} goal={goal} actors={[{ name: "My Program", visits: frames.slice(0, frame + 1) }]}/> : <div className="mt-3 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-2" aria-label="Program output">
             {Array.from({ length: CODING_GRID_SIZE * CODING_GRID_SIZE }, (_, index) => {
               const x = index % CODING_GRID_SIZE;
               const y = CODING_GRID_SIZE - 1 - Math.floor(index / CODING_GRID_SIZE);
@@ -366,13 +439,13 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
                 </div>
               );
             })}
-          </div> : <p className="mt-3 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 p-5 text-sm leading-6 text-emerald-950">Run my blocks to see your own program here.</p>}
+          </div>}
           <p className="mt-2 text-xs text-slate-500">
             {playbackLabel === "example"
               ? (playing ? "Running the lesson example" : "Showing the lesson example")
               : playbackLabel === "learner"
                 ? (playing ? "Running your program" : "Showing your program")
-                : (playing ? "Running…" : "Stopped")}
+                : "This task has not been run in this view"}
             {" · "}column {position.x}, row {position.y}
           </p>
           <button type="button" disabled={busy || playbackLabel !== "learner" || !workspace.run} onClick={() => { if (playing) stopPlayback(); else play(workspace.run?.frames ?? []); }} className="mt-3 min-h-11 rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{playing && playbackLabel === "learner" ? "Pause My Program" : "Replay My Program"}</button>
@@ -380,7 +453,7 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
             <p className="mt-1 text-xs text-slate-600">The example is the lesson. Your program is the blocks you built.</p>
           ) : null}
           <div role="status" className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">
-            {error ?? notice ?? workspace.feedback ?? "Run the blocks to see what happens."}
+            {error ?? (dirty ? "Your blocks have changed. Run them to check this task." : notice ?? (playbackLabel === "learner" ? workspace.feedback ?? workspace.run?.error ?? (workspace.run?.reachedGoal ? "Your program reached the star!" : "Inspect your program’s result.") : "Run your blocks to check the current task."))}
           </div>
           {workspace.teacherFeedback ? (
             <p className="mt-3 text-sm"><span className="font-bold">Teacher: </span>{workspace.teacherFeedback}</p>
@@ -388,10 +461,32 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
         </section>
 
 </>}>        <section className="order-3 rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="text-sm font-black uppercase tracking-wide text-slate-500">Blocks</h2>
+          <h2 ref={stageHeading} tabIndex={-1} className="text-lg font-black text-slate-900 focus-visible:outline-2 focus-visible:outline-sky-700">{stage === "discover" ? "Try a repeating move" : brief.title}</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-700">{stage === "discover" ? "1. Replay the Lesson Example. 2. Connect a move inside repeat. 3. Run your blocks and watch My Program." : brief.prompt}</p>
+          {stage === "predict" && brief.choices && <fieldset disabled={busy} className="mt-4 space-y-2 rounded-xl border border-sky-200 bg-sky-50 p-4"><legend className="font-bold">Your prediction</legend><p className="text-sm">Predict the Lesson Example before checking your answer.</p>{brief.choices.map(item => <label key={item.id} className="flex min-h-11 items-center gap-3 text-sm"><input type="radio" name="predict" checked={choice === item.id} onChange={() => setChoice(item.id)} />{item.label}</label>)}<button type="button" disabled={busy || !choice} onClick={() => void post({ action: "predict", choiceId: choice })} className="min-h-11 rounded-xl bg-sky-700 px-4 py-2 font-bold text-white disabled:opacity-50">Check my prediction</button></fieldset>}
+          {stage === "review" && <section aria-label="Review your learning" className="mt-4 space-y-4">
+            <div className="rounded-xl bg-sky-50 p-4"><h3 className="font-bold">Your finished program</h3><ProgramOutline program={workspace.explainedProgram ?? program} /></div>
+            {workspace.skillStatus !== "mastered" && <div>
+              <label className="text-base font-bold" htmlFor="coding-explanation">Explain your finished program</label>
+              <p id="coding-review-help" className="mt-1 text-sm leading-6 text-slate-600">Describe every repeat: which way does it move, and how many times? Tell us why repeating is useful. Use your own words.</p>
+              <textarea id="coding-explanation" aria-describedby="coding-review-help" disabled={busy || reviewSubmitting} value={explanation} onChange={(event) => { setExplanation(event.target.value); setReviewResult(null); setError(null); }} className="mt-2 w-full rounded-xl border border-slate-400 p-3 text-base focus-visible:outline-2 focus-visible:outline-sky-700" rows={4} />
+              <button type="button" disabled={busy || reviewSubmitting} onClick={() => void submitReview()} className="mt-2 min-h-12 rounded-xl bg-sky-700 px-5 py-3 text-base font-bold text-white disabled:opacity-60">{reviewSubmitting ? "Checking your explanation…" : "Send explanation"}</button>
+            </div>}
+            <div ref={reviewFeedback} tabIndex={-1} role="status" aria-live="polite" aria-atomic="true" className={`rounded-xl border p-4 focus-visible:outline-2 focus-visible:outline-sky-700 ${workspace.skillStatus === "mastered" ? "border-emerald-300 bg-emerald-50" : "border-sky-200 bg-sky-50"}`}>
+              {reviewSubmitting ? <p>Checking your explanation. Please wait…</p> : workspace.skillStatus === "mastered" ? <><h3 className="font-bold text-emerald-950">Lesson mastered — well done!</h3><p className="mt-2 text-sm">Your lesson progress has been saved. This completes Understanding Loops, not the whole pathway.</p><CodingNextStep lessonId={lessonId} bookingId={bookingId} /></> : <><h3 className="font-bold">{error ? "Your explanation could not be checked" : reviewResult ? reviewResult.passed ? "Explanation accepted — one more check" : "Your review needs another try" : "Ready for your explanation"}</h3><p className="mt-2 text-sm">{error ?? reviewResult?.message ?? "Send your explanation to finish the review. We will show the result here."}</p>{reviewResult?.passed && <p className="mt-2 text-sm">Still to show: {EVIDENCE.filter(item => !workspace.evidence[item.id]).map(item => item.label).join(", ") || "your remaining lesson progress"}. Open the relevant lesson stage to finish.</p>}</>}
+            </div>
+          </section>}
+          <EditorContainer className="mt-4">
+          {stage === "review" && <summary className="min-h-11 cursor-pointer font-semibold text-slate-600">Open program editor & replay controls</summary>}
           <fieldset disabled={busy}>
           <legend className="sr-only">Edit and run your program</legend>
-          <button type="button" className="my-3 min-h-11 rounded-xl border border-violet-200 px-3 text-sm font-semibold" onClick={() => { setAccessibleBlocks(!accessibleBlocks); setBlocksValid(true); }}>{accessibleBlocks ? "Open connected blocks" : "Use accessible action controls"}</button>
+          <div className="my-4 flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => void post({ action: "run", runSource: "learner" })} className="min-h-11 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60">Run my blocks</button>
+            {playing && <button type="button" onClick={stopPlayback} className="min-h-11 rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-white">Stop</button>}
+            <button type="button" disabled={busy} onClick={() => void post({ action: "save" })} className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold disabled:opacity-60">Save</button>
+            {stage === "discover" && !stageComplete && <button type="button" disabled={busy} onClick={() => void post({ action: "discover" })} className="min-h-11 rounded-xl bg-sky-700 px-4 py-2 text-sm font-bold text-white">I can see the goal — next</button>}
+          </div>
+          <details className="my-3 text-sm"><summary className="min-h-11 cursor-pointer font-semibold text-slate-600">Choose another way to edit</summary><button type="button" aria-pressed={accessibleBlocks} className="my-2 min-h-11 rounded-xl border border-violet-200 px-3 text-sm font-semibold" onClick={() => { setAccessibleBlocks(!accessibleBlocks); setBlocksValid(true); }}>{accessibleBlocks ? "Open connected blocks" : "Use accessible action controls"}</button></details>
           {accessibleBlocks ? <>          <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" onClick={addRepeat} className="min-h-11 rounded-lg bg-violet-100 px-3 py-2 text-sm font-bold text-violet-900">Add repeat</button>
             <button type="button" onClick={() => setSelected(null)} aria-pressed={selected === null} className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-800">Add at the top</button>
@@ -421,41 +516,12 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
           <p className="mt-3 text-xs text-slate-600">{selected ? "The next block goes inside the selected repeat. Tap Add at the top to place a block outside it." : "Tap a Repeat to put the next block inside it. Tap Add at the top to keep a block outside. Use Up and Down to change the order."}</p>
           {editorNote ? <p className="mt-2 text-xs font-semibold text-slate-700">{editorNote}</p> : null}
 </> : <BlockCommandsEditor commands={program.blocks} legacy year={4} readOnly={busy} onValidityChange={setBlocksValid} onChange={blocks => setProgram({ blocks: blocks as Block[] })} />}
-          <div className="mt-4 flex flex-wrap gap-2">
-
-            <button type="button" disabled={busy} onClick={() => void post({ action: "run", runSource: "learner" })} className="min-h-11 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60">Run my blocks</button>
-            <button type="button" onClick={stopPlayback} className="min-h-11 rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-white">Stop</button>
-            <button type="button" disabled={busy} onClick={() => void post({ action: "save" })} className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold disabled:opacity-60">Save</button>
+          <details className="mt-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold text-slate-600">More program options</summary><div className="mt-2 flex flex-wrap gap-2">
             <button type="button" disabled={busy} onClick={() => void post({ action: "undo" })} className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold disabled:opacity-60">Undo</button>
             <button type="button" disabled={busy} onClick={() => void post({ action: "restore" })} className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold disabled:opacity-60">Restore starter</button>
-          </div>
-          {stage === "discover" ? (
-            <button type="button" disabled={busy} onClick={() => void post({ action: "discover" })} className="mt-3 text-sm font-bold text-sky-800">I can see the goal</button>
-          ) : null}
-          {stage === "predict" && brief.choices ? (
-            <fieldset className="mt-3 space-y-1">
-              <legend className="text-sm font-semibold">Your prediction</legend>
-              {brief.choices.map((item) => (
-                <label key={item.id} className="flex gap-2 text-sm">
-                  <input type="radio" name="predict" checked={choice === item.id} onChange={() => setChoice(item.id)} />
-                  {item.label}
-                </label>
-              ))}
-              <button type="button" disabled={busy || !choice} onClick={() => void post({ action: "predict", choiceId: choice })} className="mt-2 rounded-xl bg-sky-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60">
-                Check my prediction
-              </button>
-            </fieldset>
-          ) : null}
-          {stage === "review" ? (
-            <div className="mt-3">
-              <label className="text-sm font-semibold" htmlFor="coding-explanation">Your explanation</label>
-              <textarea id="coding-explanation" value={explanation} onChange={(event) => setExplanation(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-2 text-sm" rows={4} />
-              <button type="button" disabled={busy} onClick={() => void post({ action: "review", explanation })} className="mt-2 rounded-xl bg-sky-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60">
-                Send explanation
-              </button>
-            </div>
-          ) : null}
+          </div></details>
           </fieldset>
+          </EditorContainer>
         </section>
 </CodingStudioFrame>
     </div>

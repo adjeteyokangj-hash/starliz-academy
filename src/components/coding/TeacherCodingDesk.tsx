@@ -1,4 +1,5 @@
 "use client";
+import type { WorldPracticeSummary } from "@/lib/coding/world/oversight";
 
 import { useEffect, useState } from "react";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
@@ -24,6 +25,7 @@ type Workspace = {
 };
 
 export default function TeacherCodingDesk() {
+  const [worlds, setWorlds] = useState<WorldPracticeSummary[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activities, setActivities] = useState<TeacherActivity[]>([]), [activityRows, setActivityRows] = useState<TeacherActivityIndex>([]), [assistanceEnabled, setAssistanceEnabled] = useState(false);
@@ -43,7 +45,7 @@ export default function TeacherCodingDesk() {
     setError(null);
     setStudents(data.students ?? []);
     setWorkspaces(data.workspaces ?? []);
-    setActivities(data.activities ?? []); setActivityRows(data.activityWorkspaces ?? []); setAssistanceEnabled(data.humanAssistanceEnabled === true);
+    setWorlds(data.worldPractice ?? []); setActivities(data.activities ?? []); setActivityRows(data.activityWorkspaces ?? []); setAssistanceEnabled(data.humanAssistanceEnabled === true);
     if (data.lesson?.title) setLessonTitle(data.lesson.title);
   }
 
@@ -59,7 +61,7 @@ export default function TeacherCodingDesk() {
       setError(null);
       setStudents(data.students ?? []);
       setWorkspaces(data.workspaces ?? []);
-      setActivities(data.activities ?? []); setActivityRows(data.activityWorkspaces ?? []); setAssistanceEnabled(data.humanAssistanceEnabled === true);
+      setWorlds(data.worldPractice ?? []); setActivities(data.activities ?? []); setActivityRows(data.activityWorkspaces ?? []); setAssistanceEnabled(data.humanAssistanceEnabled === true);
       if (data.lesson?.title) setLessonTitle(data.lesson.title);
     });
     return () => {
@@ -110,6 +112,7 @@ export default function TeacherCodingDesk() {
       </header>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
+      {worlds.length > 0 && <section className="rounded-xl border border-emerald-700 bg-emerald-950 p-4"><h2 className="font-bold text-white">Coding Game World · practice overview</h2><p className="mt-2 text-xs text-emerald-100">Practice results do not award formal curriculum mastery.</p>{worlds.map(world => <p key={world.childId} className="mt-2 text-sm text-emerald-50">{students.find(student => student.id === world.childId)?.name ?? "Learner"}: {world.recoveryRequired ? "Saved world needs recovery" : `${world.completed} inventions · ${world.stars} practice stars · ${world.hints} hints`}</p>)}</section>}
       <TeacherActivityDesk students={students} activities={activities} rows={activityRows} humanAssistanceEnabled={assistanceEnabled} onSaved={load} />
       <section className="flex flex-wrap items-end gap-3 rounded-xl border border-border p-4">
         <label className="text-sm">

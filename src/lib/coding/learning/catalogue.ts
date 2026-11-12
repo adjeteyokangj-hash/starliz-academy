@@ -234,7 +234,11 @@ export function activityContentHash(activity: ActivityContent): string { return 
 export const approvedCatalogue = inventory;
 export const expectedActivityCounts = { lessons: 264, consolidations: 132, projects: 44, total: 440 } as const;
 
-export type ReleaseSeal = { version: string; runtimeHash: string; activities: Record<string, string>; verificationRun: string };
+export type ReleaseSeal = { version: string; runtimeHash: string; activities: Record<string, string>; verificationRun: string; publicationScope?: string };
+/** Content approval for local learning cannot authorise a production release. */
+export function publicationScopeAllowed(seal: ReleaseSeal, environment = process.env.NODE_ENV): boolean {
+  return seal.publicationScope === "production" || seal.publicationScope === "development" && environment === "development";
+}
 export function validateReleaseSeal(seal: ReleaseSeal, runtimeHash: string, activities = authoredActivities): boolean {
   if (seal.version !== ACTIVITY_VERSION || !/^[a-f0-9]{64}$/.test(runtimeHash) || seal.runtimeHash !== runtimeHash || !seal.verificationRun || activities.length !== expectedActivityCounts.total || Object.keys(seal.activities).length !== expectedActivityCounts.total) return false;
   if (new Set(activities.map((activity) => activity.id)).size !== activities.length) return false;
@@ -256,6 +260,6 @@ export function validateReleaseSeal(seal: ReleaseSeal, runtimeHash: string, acti
 
 export function activityReleased(id: string): boolean {
   const activity = activityDefinition(id);
-  return Boolean(activity && validateReleaseSeal(release, build.runtimeHash) && (release.activities as Record<string, string>)[activity.id] === activityContentHash(activity));
+  return Boolean(activity && publicationScopeAllowed(release) && validateReleaseSeal(release, build.runtimeHash) && (release.activities as Record<string, string>)[activity.id] === activityContentHash(activity));
 }
-export function releasedActivities(): readonly ActivityContent[] { return validateReleaseSeal(release, build.runtimeHash) ? authoredActivities : []; }
+export function releasedActivities(): readonly ActivityContent[] { return publicationScopeAllowed(release) && validateReleaseSeal(release, build.runtimeHash) ? authoredActivities : []; }

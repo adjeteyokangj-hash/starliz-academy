@@ -2,6 +2,7 @@ import { CODING_STAGES, stageUnlocked } from "@/lib/coding/types";
 import { currentVariant, stageArtifact, stageCases, artifactHash, recordedPlanHash, variantFingerprint } from "./state-machine";
 import type { ActivityContent, ActivityState, Json, Predicate } from "./types";
 import { stageProjectFiles } from "./stage-files";
+import { visualReview, hasVisualReview } from "./visual-review";
 
 function mapTarget(predicates: Predicate[]) {
   const coordinate = (path: string) => { const check = predicates.find((item) => item.path === path && "equals" in item); return check && "equals" in check && typeof check.equals === "number" ? check.equals : null; };
@@ -33,6 +34,8 @@ export function publicActivityView(activity: ActivityContent, state: ActivitySta
     independentTask: state.stage === "create" || state.stage === "review" ? variant.task : null,
     planRecorded: Boolean(recordedPlanHash(stageArtifact(activity, state, state.stage)) && state.workflow?.[state.stage]?.planHash === recordedPlanHash(stageArtifact(activity, state, state.stage))),
     explanation: state.explanation, explanationReview: state.explanationReview ?? null, files: stageProjectFiles(state, state.stage), retainedFiles: state.retainedFiles ?? {},
+    visualReviewSupported: hasVisualReview(activity),
+    visualReview: state.stage === "review" && showRun && state.lastExecution ? visualReview(activity, stageArtifact(activity, state, "review"), state.lastExecution)?.public ?? null : null,
     demonstration: state.demonstrations?.[state.stage === "review" ? "create" : state.stage] ?? null,
     independentFingerprint: variantFingerprint(activity, state),
     demonstrationMatchesArtifact: state.demonstrations?.[state.stage === "review" ? "create" : state.stage]?.metadata.artifactHash === artifactHash(stageArtifact(activity, state, state.stage)) && state.demonstrations?.[state.stage === "review" ? "create" : state.stage]?.metadata.taskHash === variantFingerprint(activity, state),

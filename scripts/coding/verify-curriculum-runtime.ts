@@ -41,10 +41,13 @@ export async function practicalExecutionHash() {
   for (const path of paths) hash.update(relative(root, path).replaceAll("\\", "/")).update("\0").update(readFileSync(path)).update("\0");
   return hash.digest("hex");
 }
+export function verifyCurriculumRuntime() {
 const actual = curriculumRuntimeHash();
 if (!release.verificationRun && !Object.keys(release.activities).length) {
   console.log("Expanded Coding curriculum remains unpublished; no completion claim or release seal exists.");
 } else {
   if (actual !== build.runtimeHash || release.verificationRun !== build.verificationRun || !validateReleaseSeal(release, actual)) throw new Error("The Coding release does not match its verified curriculum and execution sources.");
-  console.log("All 440 activity hashes and the verified runtime match this build.");
+  console.log(`All 440 activity hashes and the runtime match this build. Publication scope: ${release.publicationScope ?? "unspecified"}; production acceptance is separate.`);
 }
+}
+if (process.argv[1]?.replaceAll("\\", "/").endsWith("/verify-curriculum-runtime.ts")) verifyCurriculumRuntime();

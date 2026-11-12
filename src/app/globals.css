@@ -37,6 +37,7 @@
 .studio-output-size { display: none; }
 .studio-brand-mark { display: inline-block; width: 3.5rem; height: 3.5rem; flex-shrink: 0; background: white url('/brand/starliz-logo.png') center/contain no-repeat; }
 .coding-studio-compact .studio-guide-content { display: none; }
+.coding-studio-compact .studio-learning { grid-column: 1 / -1; position: static; max-height: none; }
 .blocklySvg { background: #faf8ff !important; }
 .blocklyToolbox { font-family: "Segoe UI", Arial, sans-serif; }
 .cm-runtime-error { background: #632d3c66; border-left: 3px solid #fda4af; }
@@ -53,18 +54,20 @@
   .coding-studio { grid-template-columns: 235px minmax(0, 1fr); }
   .studio-results { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
   .studio-results > * { margin-top: 0 !important; }
-  .coding-studio-compact { grid-template-columns: 150px minmax(0, 1fr); }
+  .coding-studio-compact { grid-template-columns: minmax(0, 1fr); }
 }
 @media (min-width: 1200px) {
   .coding-studio { grid-template-columns: 230px minmax(0, 1fr) 320px; }
-  .coding-studio-compact { grid-template-columns: 150px minmax(0, 1fr) 320px; }
+  .coding-studio-compact { grid-template-columns: minmax(0, 1fr) 320px; }
   .studio-results { position: sticky; top: 1rem; }
   .studio-results > section { max-height: 360px; overflow-y: auto; scrollbar-gutter: stable; }
-  .studio-learning { position: sticky; top: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; }
+  .studio-learning { position: sticky; top: 1rem; max-height: calc(100dvh - 2rem); display: flex; flex-direction: column; overflow: hidden; }
+  .studio-learning > .studio-panel-bar { flex-shrink: 0; }
+  .studio-learning > .studio-guide-content { min-height: 0; overflow-y: auto; }
 }
 @media (min-width: 1400px) {
   .coding-studio { grid-template-columns: 240px minmax(0, 1fr) var(--studio-results, 500px); }
-  .coding-studio-compact { grid-template-columns: 150px minmax(0, 1fr) var(--studio-results, 500px); }
+  .coding-studio-compact { grid-template-columns: minmax(0, 1fr) var(--studio-results, 500px); }
   .studio-results { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .studio-output-size { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; min-height: 2.75rem; }
   .studio-results > section { max-height: min(650px, calc(100dvh - 5rem)); }

@@ -1,3 +1,4 @@
+import { worldPracticeSummaries } from "@/lib/coding/world/oversight";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/api_guard";
@@ -63,6 +64,7 @@ export async function GET(request: Request) {
   }
   const rows = await teacherCodingRows(students.map((student) => student.child.id));
   return NextResponse.json({
+    worldPractice: await worldPracticeSummaries(students.map(student => student.child.id)),
     humanAssistanceEnabled: await codingAssistanceEnabled(),
     activities: releasedActivities().map((activity) => ({ id: activity.id, title: activity.title, year: activity.year, kind: activity.kind, objective: activity.objective })),
     activityWorkspaces: await teacherActivityIndex(students.map((student) => student.child.id)),

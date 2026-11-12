@@ -1,0 +1,31 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS launcher constructs a clean environment before loading the test application. */
+const { execFileSync, execFile, spawn } = require('node:child_process');
+const { resolve } = require('node:path');
+const { randomBytes, randomUUID, createHash } = require('node:crypto');
+const { mkdirSync, writeFileSync, readFileSync, appendFileSync } = require('node:fs');
+// Never inherit DATABASE_URL, NODE_OPTIONS, cloud keys, or dotenv configuration.
+const env = Object.fromEntries(['SystemRoot','WINDIR','PATH','PATHEXT','USERPROFILE','LOCALAPPDATA','APPDATA','TEMP','TMP','COMSPEC'].flatMap(k=>process.env[k] ? [[k,process.env[k]]] : []));
+const container = 'starliz-consolidated-ci-20261106';
+const config = JSON.parse(execFileSync('docker',['inspect','--format','{{json .Config.Env}}',container],{encoding:'utf8',windowsHide:true}));
+const get = key => config.find(v=>v.startsWith(key+'='))?.slice(key.length+1);
+const user = get('POSTGRES_USER') || 'postgres', password = get('POSTGRES_PASSWORD');
+if (!password) throw Error('Missing local PostgreSQL credential');
+const db = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@127.0.0.1:55432/starliz_game_world_test?sslmode=disable&connection_limit=3`;
+require('./world-test-guard.cjs').assertTarget(db);
+const runId = randomUUID(), directory=resolve('artifacts','world-database-integration',runId);
+const envHash=createHash('sha256').update(readFileSync('.env.local')).digest('hex');
+mkdirSync(directory,{recursive:true});
+Object.assign(env,{STARLIZ_WORLD_DB_QA:'1',DATABASE_URL:db,DIRECT_URL:db,NODE_ENV:'development',AUTH_SECRET:randomBytes(48).toString('hex'),NEXTAUTH_SECRET:randomBytes(48).toString('hex'),CODING_DEMONSTRATION_SECRET:randomBytes(48).toString('hex'),API_KEY_ENCRYPTION_SECRET:randomBytes(32).toString('hex'),CODING_QA_DISABLE_LIVE_MODEL:'true',CODING_AI_ZERO_DATA_RETENTION_VERIFIED:'',CODING_WORLD_CONTENT_PUBLICATION_ENABLED:'false',STARLIZ_ENABLE_DEV_ADMIN_FALLBACK:'false',NEXT_TELEMETRY_DISABLED:'1',WORLD_QA_DIRECTORY:directory,CODING_QA_BUILD_ID:runId,NODE_OPTIONS:`--max-old-space-size=2048 --require=${resolve('scripts/coding/world-test-guard.cjs')}`});
+env.WORLD_QA_PROBE_TOKEN=randomBytes(48).toString('hex');
+env.WORLD_QA_BROWSER_ONLY=process.argv.includes('--browser-only')?'1':'';
+env.WORLD_QA_PARENT_TEACHER=process.argv.includes('--parent-teacher')?'1':'';
+env.WORLD_QA_GUIDED_ONLY=process.argv.includes('--guided-only')?'1':'';
+const regressions=process.argv.includes('--regressions');
+const regressionFiles=['coding_world','coding_world_source','coding_world_companion','coding_world_content','coding_world_continuation','coding_world_routes','coding_world_origin','coding_world_db_identity','coding_project_evidence','student_store_bootstrap','coding_editor','coding_learning_engines','coding_teacher_feedback','coding_learning_game','coding_learning_source_contract','coding_learning_entitlements','prisma_database_url'].map(name=>`tests/${name}.test.ts`);
+const args=regressions?['--max-old-space-size=768','--import','tsx','--test','--test-concurrency=1',...regressionFiles,'tests/coding_world_guard.test.cjs','tests/coding_qa_redaction.test.cjs']:['--import','tsx','scripts/coding/world-database-integration.ts'];
+const child=spawn(process.execPath,args,{env,windowsHide:true,stdio:'inherit'});
+let sampling=false;
+const sample=()=>{if(sampling)return;sampling=true;const sql=`SELECT json_build_object('database',current_database(),'maxConnections',current_setting('max_connections'),'clusterConnections',(SELECT count(*) FROM pg_stat_activity),'sessions',coalesce((SELECT json_agg(s) FROM (SELECT pid,state,wait_event_type,wait_event,extract(epoch FROM clock_timestamp()-xact_start) AS transaction_seconds,extract(epoch FROM clock_timestamp()-query_start) AS query_seconds,split_part(ltrim(query),' ',1) AS operation FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()) s),'[]'::json));`;execFile('docker',['exec',container,'psql','-U',user,'-d','starliz_game_world_test','-At','-v','ON_ERROR_STOP=1','-c',sql],{encoding:'utf8',windowsHide:true,timeout:10000},(error,stdout)=>{sampling=false;try{const observation=JSON.parse(stdout);if(observation.database!=='starliz_game_world_test'){child.kill();throw Error('WORLD_QA_DATABASE_MONITOR_STOP');}appendFileSync(resolve(directory,'postgres-observations.ndjson'),JSON.stringify({at:new Date().toISOString(),...observation})+'\n');}catch{if(error)appendFileSync(resolve(directory,'postgres-monitor-errors.log'),'Local observation unavailable\n');}});};
+const monitor=setInterval(sample,5000);sample();
+child.once('exit',code=>{clearInterval(monitor);const unchanged=createHash('sha256').update(readFileSync('.env.local')).digest('hex')===envHash;const path=resolve(directory,'result.json');try{const report=regressions?{scope:'isolated-regressions',exitCode:code}:JSON.parse(readFileSync(path,'utf8'));report.environmentFileUnchanged=unchanged;writeFileSync(path,JSON.stringify(report,null,2));}catch{}process.exitCode=unchanged?(code??1):1;});
+child.once('error',()=>{writeFileSync(resolve(directory,'launch-failed.txt'),'Isolated worker failed to start.');process.exitCode=1;});

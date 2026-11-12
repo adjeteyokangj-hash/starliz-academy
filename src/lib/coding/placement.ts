@@ -92,7 +92,9 @@ export function recommendCodingPathway(input: {
       yearPathway,
       recommended: yearPathway,
       adjustment: "year-band",
-      note: `Your year group starts on ${summary.title}. You can take the short placement when you are ready.`,
+      note: input.answers.length
+        ? `Your starting guidance remains ${summary.title} for your year group. Practise with an available lesson to build confidence, then try this check again.`
+        : `Your year group starts on ${summary.title}. You can take the short placement when you are ready.`,
       correctCount,
     };
   }

@@ -36,7 +36,7 @@ export async function GET(request: Request, context: Context) {
   const { lessonId } = await context.params;
   const workspace = await loadCodingWorkspace(child.id, lessonId, child.yearGroup);
   if (!workspace) return NextResponse.json({ error: "This coding lesson is not published yet." }, { status: 404 });
-  return NextResponse.json({ workspace, humanAssistanceEnabled: await codingAssistanceEnabled() });
+  return NextResponse.json({ workspace, humanAssistanceEnabled: await codingAssistanceEnabled() }, { headers: { "Cache-Control": "private, no-store", "X-Coding-Learner": child.id } });
 }
 
 export async function POST(request: Request, context: Context) {
@@ -45,6 +45,7 @@ export async function POST(request: Request, context: Context) {
     const body = bodySchema.parse(await request.json());
     const { child, response } = await requireCodingLearner({ bookingId: body.bookingId });
     if (!child) return response;
+    if (request.headers.get("X-Coding-Learner") && request.headers.get("X-Coding-Learner") !== child.id) return NextResponse.json({ error: "Your active learner changed. Keep your work and reopen the lesson for the selected learner.", code: "LEARNER_CHANGED" }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
     if (body.action === "hint") {
       const limit = checkRateLimit({ key: `coding-teacher:${child.id}`, limit: 15, windowMs: 60_000 });
       if (!limit.allowed) return NextResponse.json({ error: "Your tutor needs a short pause. Try your blocks, then ask again." }, { status: 429 });

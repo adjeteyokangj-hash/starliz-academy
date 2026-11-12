@@ -7,10 +7,10 @@ import { executeSource } from "../src/lib/coding/learning/source-execution";
 import { executionResultSchema } from "../src/lib/coding/execution/client";
 import type { executeCodingSource } from "../src/lib/coding/execution/client";
 import type { Json } from "../src/lib/coding/learning/types";
+import { isolationLaunch } from "../scripts/coding/certification-host";
 
 const python = "python@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30";
 const javascript = "sha256:4dda2383bfc88c245be66c59a6f7cebbdd593111c349d1f34c3e43ae179e3457";
-const broker = "/mnt/c/Users/edwar/Documents/Projects/starliz-academy/scripts/coding/execute-local-test-job.mjs";
 
 test("real runsc execution verifies teaching wrappers, persisted files, HTTP, SQLite and the DOM engine", {
   skip: process.env.CODING_RUNNER_CONTAINER_TESTS !== "1" ? "Requires the existing Ubuntu Docker/runsc engine; not a simulated isolation pass." : false,
@@ -23,7 +23,8 @@ test("real runsc execution verifies teaching wrappers, persisted files, HTTP, SQ
     const image = input.language === "javascript" ? javascript : python;
     const job = { jobId: randomUUID(), language: input.language, source: input.source, stdin: input.stdin ?? "", timeLimitMs: input.timeLimitMs ?? 5000 };
     const result = await new Promise<unknown>((resolve, reject) => {
-      const child = spawn("wsl", ["-d", "Ubuntu", "--exec", "/usr/bin/env", "CODING_RUNNER_CONTAINER_TESTS=1", "/usr/bin/node", broker], { windowsHide: true });
+      const launch = isolationLaunch("job");
+      const child = spawn(launch.command, launch.args, { windowsHide: true, ...(launch.env ? { env: launch.env } : {}) });
       let output = "", errors = "";
       const deadline = setTimeout(() => { child.kill(); reject(new Error("Local test transport exceeded its deadline.")); }, 30000);
       child.stdout.on("data", (chunk) => { output += String(chunk); });

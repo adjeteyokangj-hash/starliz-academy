@@ -22,6 +22,11 @@ test("container invocation has explicit isolation and no host filesystem mount",
   assert.ok(args.includes("--env=UV_THREADPOOL_SIZE=1"), "Asynchronous Node APIs stay inside the reviewed guest thread budget");
   assert.equal(args.some((arg) => arg === "-v" || arg.startsWith("--mount") || arg.startsWith("--volume")), false);
   assert.equal(args.includes("--privileged"), false);
+  const javascript = containerArguments({ ...job(), language: "javascript", source: "console.log(1)" }, `node@sha256:${"b".repeat(64)}`);
+  assert.equal(javascript[javascript.indexOf("--entrypoint") + 1], "node");
+  assert.equal(javascript.includes("docker-entrypoint.sh"), false);
+  assert.ok(javascript.includes("--ulimit=nproc=8:8"));
+  assert.equal(javascript.at(-2), "-e");
 });
 
 test("request proof binds method, path, time, nonce and exact body", () => {
