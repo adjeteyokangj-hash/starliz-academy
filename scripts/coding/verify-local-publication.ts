@@ -4,7 +4,17 @@ import release from "../../src/lib/coding/learning/release-manifest.json";
 import { releasedActivities } from "../../src/lib/coding/learning/catalogue";
 import { verifyCurriculumRuntime } from "./verify-curriculum-runtime";
 
-verifyCurriculumRuntime();
+const recorded: string[] = [];
+const writeLine = console.log;
+console.log = (message?: unknown, ...rest: unknown[]) => {
+  recorded.push([message, ...rest].map((part) => String(part)).join(" "));
+};
+try {
+  verifyCurriculumRuntime();
+} finally {
+  console.log = writeLine;
+}
+if (recorded.length) console.error(recorded.join("\n"));
 const activities = releasedActivities();
 const environment = process.env.NODE_ENV;
 const expected = release.publicationScope === "production" ? 440 : environment === "development" ? 440 : 0;

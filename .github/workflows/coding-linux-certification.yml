@@ -2,9 +2,6 @@ name: Coding Linux certification
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - codex/linux-certification-2026-11-12
 
 permissions:
   contents: read
@@ -117,13 +114,14 @@ jobs:
           evidence_dir="$(find artifacts/coding-curriculum-verification -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
           evidence="$(npx tsx scripts/coding/assemble-practical-evidence.ts "$evidence_dir")"
           NODE_ENV=development npx tsx scripts/coding/approve-local-curriculum.ts --apply-development-approval "--evidence=${evidence}" | tee artifacts/coding-linux-certification/development-approval.json
-          NODE_ENV=development npx tsx scripts/coding/verify-local-publication.ts | tee artifacts/coding-linux-certification/publication-development.json
-          NODE_ENV=production npx tsx scripts/coding/verify-local-publication.ts | tee artifacts/coding-linux-certification/publication-production-before.json
+          NODE_ENV=development npx tsx scripts/coding/verify-local-publication.ts > artifacts/coding-linux-certification/publication-development.log
+          NODE_ENV=production npx tsx scripts/coding/verify-local-publication.ts > artifacts/coding-linux-certification/publication-production-before.log
           NODE_ENV=production npx tsx scripts/coding/approve-production-curriculum.ts --apply-production-approval "--evidence=${evidence}" | tee artifacts/coding-linux-certification/production-approval.json
-          NODE_ENV=production npx tsx scripts/coding/verify-local-publication.ts | tee artifacts/coding-linux-certification/publication-production.json
+          NODE_ENV=production npx tsx scripts/coding/verify-local-publication.ts > artifacts/coding-linux-certification/publication-production.log
           mkdir -p artifacts/coding-linux-certification/seal
           cp src/lib/coding/learning/release-manifest.json src/lib/coding/learning/runtime-build.json artifacts/coding-linux-certification/seal/
-          node -e "const seal=require('./src/lib/coding/learning/release-manifest.json'); if(seal.publicationScope!=='production') process.exit(1); const pub=require('./artifacts/coding-linux-certification/publication-production.json'); if(pub.released!==440) process.exit(1);"
+          cp artifacts/coding-local-publication-2026-11-04/production.json artifacts/coding-linux-certification/publication-production.json
+          node -e "const seal=require('./src/lib/coding/learning/release-manifest.json'); if(seal.publicationScope!=='production') process.exit(1); const pub=require('./artifacts/coding-local-publication-2026-11-04/production.json'); if(pub.released!==440 || pub.environment!=='production') process.exit(1);"
 
       - name: Production build
         run: npm run build

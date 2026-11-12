@@ -1,8 +1,8 @@
 {
   "version": "starliz-coding-2026.11-v1",
-  "publicationScope": "development",
-  "runtimeHash": "5e5230f4dbe54973fd2ca76e1ad4e4b189ed76304ae492f06f914599b031507f",
-  "verificationRun": "docs/coding-curriculum/verification/local-approval-2026-11-04T15-06-43-175Z",
+  "publicationScope": "production",
+  "runtimeHash": "a45f442b67b528ac20a03873229cf5c7d1d5ff622ecb53a2ed8543099c639959",
+  "verificationRun": "docs/coding-curriculum/verification/production-approval-2026-11-12T21-34-29-931Z",
   "activities": {
     "what-is-an-instruction": "5ad54503a077a24517a972ce2d3614d7da4153a76cc2f5405974635c77ea3c8f",
     "put-steps-in-order": "9c540767972d793a0846b773ea4f2252d21c336b7165461f274d9ded3aef6de8",
@@ -317,7 +317,7 @@
     "y11-01": "4d16d487d7eb2aca19a1bdc6d590dfb622a30bc30a6588ce57af552eef75de54",
     "y11-02": "df453e19112709c516f379325feca34e8e0f91f96876310a0c9d0e11f6dbb39d",
     "y11-03": "c246c147b562be7b3004c34dc5b3cec6fa89e9298a668f1c21361fa173e5ee4f",
-    "y11-04": "ade2f07d0e813b43b08e4fb68364f9757c1066056457bdbb026cc309a1441f3d",
+    "y11-04": "792035843c04a327cf7da98a1f5b10a5ea7b7eb8c22295e3d1609667f5b43c22",
     "y11-05": "abde47dea1c0ca486ff43b62203521eb1c922c4031eb3ec78df89143ffb375f2",
     "y11-06": "d7eb00c423d19a3f098e5506ba493cdc3f762caee4dcb918ec027e1a872350ef",
     "c-y11-1-1": "3099643f4d2a6ecf19838e63ac5e5f966e4ebca65065e52760a11ffb44e14553",

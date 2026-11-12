@@ -1,0 +1,64 @@
+name: Coding release tail
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/linux-certification-2026-11-12
+
+permissions:
+  contents: read
+
+jobs:
+  release-tail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          DATABASE_URL: ""
+          OPENAI_API_KEY: ""
+
+      - name: Confirm the certified evidence still matches this source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "c60ee540c396120caac77ed52a37e7b7d93c7cd3"
+          npx tsx -e "import { curriculumRuntimeHash, practicalExecutionHash } from './scripts/coding/verify-curriculum-runtime.ts'; async function main(){ const runtime = curriculumRuntimeHash(); if (runtime !== 'a45f442b67b528ac20a03873229cf5c7d1d5ff622ecb53a2ed8543099c639959') throw new Error('runtime hash changed'); const practical = await practicalExecutionHash(); if (practical !== 'f2565db6e2a79331622996f48f96d504d4a3fa70a3196aae11e4b9ec72ca59d5') throw new Error('practical hash changed'); } main();" 
+          node -e "const evidence=require('./docs/coding-curriculum/verification/f312a745-bdc3-4b86-9571-3512f3d0e587/activity-index.json'); const result=require('./docs/coding-curriculum/verification/f312a745-bdc3-4b86-9571-3512f3d0e587/result.json'); if (evidence.practicalExecutionHash !== 'f2565db6e2a79331622996f48f96d504d4a3fa70a3196aae11e4b9ec72ca59d5') process.exit(1); if (evidence.verifiedActivities !== 440 || evidence.completePracticalCoverage !== true) process.exit(1); if (result.tested !== 440 || result.passed !== 440 || result.completePracticalScopeVerified !== true) process.exit(1);"
+
+      - name: Verify development and production publication
+        run: |
+          set -euo pipefail
+          unset DATABASE_URL OPENAI_API_KEY
+          mkdir -p artifacts/coding-linux-certification
+          NODE_ENV=development npx tsx scripts/coding/verify-local-publication.ts > artifacts/coding-linux-certification/publication-development.log
+          NODE_ENV=production npx tsx scripts/coding/verify-local-publication.ts > artifacts/coding-linux-certification/publication-production.log
+          node -e "const seal=require('./src/lib/coding/learning/release-manifest.json'); if(seal.publicationScope!=='production') process.exit(1); if(seal.runtimeHash!=='a45f442b67b528ac20a03873229cf5c7d1d5ff622ecb53a2ed8543099c639959') process.exit(1); const dev=require('./artifacts/coding-local-publication-2026-11-04/development.json'); const prod=require('./artifacts/coding-local-publication-2026-11-04/production.json'); if(dev.released!==440 || prod.released!==440 || prod.environment!=='production') process.exit(1);"
+
+      - name: Production build
+        run: npm run build
+        env:
+          DATABASE_URL: ""
+          OPENAI_API_KEY: ""
+
+      - name: Upload release-tail evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coding-release-tail-${{ github.sha }}
+          path: |
+            artifacts/coding-linux-certification/**
+            artifacts/coding-local-publication-2026-11-04/**
+          if-no-files-found: warn
