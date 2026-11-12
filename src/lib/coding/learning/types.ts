@@ -58,6 +58,7 @@ export type Predicate =
   | { path: string; equals: Json; description: string }
   | { path: string; includes: Json; description: string }
   | { path: string; ordered: Json[]; description: string }
+  | { path: string; unordered: Json[]; description: string }
   | { path: string; containsText: string; description: string }
   | { path: string; min?: number; max?: number; description: string };
 export type PracticalCase = { id: string; input: Json; assertions: Predicate[] };
