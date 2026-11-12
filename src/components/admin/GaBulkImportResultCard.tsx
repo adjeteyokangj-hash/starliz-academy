@@ -1,4 +1,4 @@
-import type { GaBulkImportDuplicateStrategy } from "@/lib/ga-word-bank";
+import type { GaBulkImportDuplicateStrategy } from "@/lib/ga-browser";
 
 type GaBulkImportResultSummary = {
   totalRows: number;

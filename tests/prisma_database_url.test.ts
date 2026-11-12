@@ -23,7 +23,7 @@ test("encodePostgresUserinfo is stable when the password is already encoded", ()
 
 test("normalizePrismaDatabaseUrl raises connect timeout and local pool size", () => {
   const previous = process.env.NODE_ENV;
-  Object.assign(process.env, { NODE_ENV: "development" });
+  process.env.NODE_ENV = "development";
   delete process.env.VERCEL;
   try {
     const normalized = normalizePrismaDatabaseUrl(
@@ -37,7 +37,6 @@ test("normalizePrismaDatabaseUrl raises connect timeout and local pool size", ()
     assert.equal(parsed.searchParams.get("sslmode"), "require");
     assert.equal(parsed.hostname, "aws-0-eu-west-1.pooler.supabase.com");
   } finally {
-    if (previous === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
-    else Object.assign(process.env, { NODE_ENV: previous });
+    process.env.NODE_ENV = previous;
   }
 });

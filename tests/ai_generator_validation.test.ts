@@ -379,7 +379,7 @@ test("English grammar difficulty 5 accepts reasoning, error correction, and just
     difficulty: 5,
     items: [{
       question: "Detect and correct the prefix error in this sentence, then justify how the revised word changes the meaning in context: The team will preview the match after it has ended.",
-      answer: "review, because re- shows doing something again",
+      answer: "Review is better because re- means again, while preview means seeing something before it happens.",
       options: [
         "review, because re- shows doing something again",
         "preview, because pre- shows doing something again",
@@ -488,7 +488,7 @@ test("Year 4 division word problems with remainders are recognised as maths", ()
     items: [{
       id: "Q1",
       question: "A baker has 120 cookies and wants to pack them into boxes. Each box can hold 8 cookies. If he wants to pack all the cookies into boxes, how many boxes will he need? If he only fills some boxes completely, how many cookies will be left over? Explain your reasoning.",
-      answer: "15 boxes, 0 left over",
+      answer: "15 boxes and 0 cookies left over.",
       explanation: "120 divided by 8 equals 15 because 8 times 15 is 120. Therefore all cookies fit exactly, so there is no remainder left over.",
       choices: ["15 boxes, 0 left over", "14 boxes, 8 left over", "16 boxes, 0 left over"],
       yearGroup: "Year 4",
@@ -599,7 +599,7 @@ test("history and geography prompts must match selected skill/topic", () => {
     skillFocus: "Source analysis",
     topic: "Industrial Revolution",
     difficulty: 4,
-    items: [{ passage: "The source evidence from the Industrial Revolution period shows harsh factory conditions and social change. A worker describes long shifts beside noisy machines, crowded rooms, and little time for rest. The account helps historians investigate how factory production changed everyday working life and the treatment of families.", question: "What does this source suggest about Industrial Revolution working life?", answer: "Working conditions were harsh during the Industrial Revolution." }],
+    items: [{ passage: "The source evidence from the Industrial Revolution period shows harsh factory conditions and social change.", question: "What does this source suggest about Industrial Revolution working life?", answer: "Working conditions were harsh during the Industrial Revolution." }],
   });
   assert.equal(history.ok, true);
 
@@ -992,7 +992,7 @@ test("Year 10 GCSE Science Physics AQA creates valid preview items", () => {
       question: "Describe the difference between weight and mass, using correct SI units and Newton's Law of Gravitation.",
       answer: "Mass is measured in kg (scalar); weight is a force measured in Newtons (N = kg × g).",
       explanation: "Weight = mass × gravitational field strength (W = m × g). Mass is constant; weight varies with gravity.",
-      choices: ["Mass is force, weight is mass", "Mass is measured in kg (scalar); weight is a force measured in Newtons (N = kg × g).", "Both measured in kg"],
+      choices: ["Mass is force, weight is mass", "Mass in kg, weight in N", "Both measured in kg"],
       yearGroup: "Year 10",
       skillFocus: "Forces",
       difficulty: 3,
@@ -1024,7 +1024,7 @@ test("Year 10 GCSE Science Physics Edexcel creates valid preview items", () => {
       question: "Explain Newton's Second Law and calculate the force on a 500 g object accelerating at 4 m/s² (Edexcel GCSE Physics).",
       answer: "F = m × a = 0.5 × 4 = 2 N in the direction of acceleration.",
       explanation: "Newton's Second Law: resultant force (N) = mass (kg) × acceleration (m/s²). Convert 500 g to 0.5 kg first.",
-      choices: ["F = m × a = 0.5 × 4 = 2 N in the direction of acceleration.", "F = m × a = 5 × 4 = 20 N in the direction of acceleration.", "F = m ÷ a = 0.5 ÷ 4 = 0.125 N in the direction of acceleration."],
+      choices: ["2 N", "20 N", "0.125 N"],
       yearGroup: "Year 10",
       skillFocus: "Forces",
       difficulty: 4,
@@ -1054,7 +1054,7 @@ test("Year 10 GCSE Science Chemistry AQA creates valid preview items", () => {
       question: "Explain what happens during a chemical reaction in terms of atoms, bond energy, and whether the reaction is exothermic or endothermic.",
       answer: "Atoms rearrange to form new substances. Bond breaking absorbs energy; bond forming releases energy. Net difference determines exothermic or endothermic.",
       explanation: "AQA GCSE Chemistry: exothermic reactions release energy (e.g. combustion); endothermic reactions absorb energy (e.g. thermal decomposition).",
-      choices: ["Atoms are created", "Atoms rearrange to form new substances. Bond breaking absorbs energy; bond forming releases energy. Net difference determines exothermic or endothermic.", "Atoms disappear"],
+      choices: ["Atoms are created", "Atoms rearrange: bond energy determines heat change", "Atoms disappear"],
       yearGroup: "Year 10",
       skillFocus: "Chemical reactions",
       difficulty: 3,
@@ -1064,7 +1064,7 @@ test("Year 10 GCSE Science Chemistry AQA creates valid preview items", () => {
       question: "Describe the structure of an atom in terms of protons, neutrons and electrons. State where each particle is found.",
       answer: "Protons and neutrons are in the nucleus; electrons orbit the nucleus in shells.",
       explanation: "The nucleus contains protons (positive charge) and neutrons (no charge). Electrons carry negative charge and are found in energy levels around the nucleus.",
-      choices: ["All particles in the nucleus", "Protons and neutrons are in the nucleus; electrons orbit the nucleus in shells.", "Electrons in the nucleus"],
+      choices: ["All particles in the nucleus", "Nucleus: protons+neutrons; electrons in shells", "Electrons in the nucleus"],
       yearGroup: "Year 10",
       skillFocus: "Atomic structure",
       difficulty: 3,
@@ -1095,7 +1095,7 @@ test("Year 10 GCSE Science Chemistry Edexcel creates valid preview items", () =>
       question: "Explain the difference between an element, a compound and a mixture. Give one example of each in an Edexcel GCSE Chemistry context.",
       answer: "Element: one type of atom (e.g. oxygen). Compound: atoms chemically bonded in fixed ratios (e.g. water H₂O). Mixture: substances not chemically combined (e.g. salt water).",
       explanation: "Edexcel GCSE Chemistry: elements cannot be broken down further. Compounds have fixed ratios of atoms. Mixtures can be separated by physical means.",
-      choices: ["Element has mixed atoms", "Element: one type of atom (e.g. oxygen). Compound: atoms chemically bonded in fixed ratios (e.g. water H₂O). Mixture: substances not chemically combined (e.g. salt water).", "Compound is a mixture"],
+      choices: ["Element has mixed atoms", "Element: one atom type; compound: bonded elements; mixture: unbonded", "Compound is a mixture"],
       yearGroup: "Year 10",
       skillFocus: "Elements compounds mixtures",
       difficulty: 3,
@@ -1356,7 +1356,7 @@ test("buildGenerationMetadata produces correct usedFallback and validationStatus
 test("generationDisplayLabel returns correct labels for each source", () => {
   assert.equal(generationDisplayLabel({ generationSource: "openai" }), "Generated by OpenAI");
   assert.equal(generationDisplayLabel({ generationSource: "repair" }), "Generated by OpenAI");
-  assert.equal(generationDisplayLabel({ generationSource: "fallback" }), "Generated using fallback");
+  assert.equal(generationDisplayLabel({ generationSource: "fallback" }), "Generated by fallback");
   assert.equal(generationDisplayLabel({ generationSource: "mock" }), null);
   assert.equal(generationDisplayLabel(null), null);
   assert.equal(generationDisplayLabel(undefined), null);

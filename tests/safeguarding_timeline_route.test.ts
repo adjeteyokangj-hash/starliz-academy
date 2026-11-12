@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -180,7 +179,7 @@ test("safeguarding timeline denies callers without MANAGE_SAFEGUARDING", async (
     ...buildTimelineDeps(incident),
     requireSafeguardingAdmin: async () => ({
       session: null,
-      response: new NextResponse(JSON.stringify({ error: "You do not have permission to perform this action." }), {
+      response: new Response(JSON.stringify({ error: "You do not have permission to perform this action." }), {
         status: 403,
         headers: { "Content-Type": "application/json" },
       }),

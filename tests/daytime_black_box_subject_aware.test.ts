@@ -17,17 +17,15 @@ import {
 import { repairHintForIssues } from "../src/lib/schools/daytime-ai-stage-generator";
 import { evaluateDaytimeLessonHealth } from "../src/lib/schools/daytime-lesson-health";
 
-function kindFor(label: string) { const result = normalizeDaytimeActivityKind(label); assert(result.ok); return result.kind; }
-
 describe("activity kind normalization", () => {
   it("maps known aliases", () => {
-    assert.equal(kindFor("vocabulary preview"), "vocabulary");
-    assert.equal(kindFor("guided explanation"), "teacher-explanation");
-    assert.equal(kindFor("practice questions"), "short-answer");
-    assert.equal(kindFor("movement drill"), "practical");
-    assert.equal(kindFor("group game"), "practical");
-    assert.equal(kindFor("think and explain"), "reasoning");
-    assert.equal(kindFor("fluency/vocabulary"), "fluency");
+    assert.equal(normalizeDaytimeActivityKind("vocabulary preview").ok && normalizeDaytimeActivityKind("vocabulary preview").kind, "vocabulary");
+    assert.equal(normalizeDaytimeActivityKind("guided explanation").ok && normalizeDaytimeActivityKind("guided explanation").kind, "teacher-explanation");
+    assert.equal(normalizeDaytimeActivityKind("practice questions").ok && normalizeDaytimeActivityKind("practice questions").kind, "short-answer");
+    assert.equal(normalizeDaytimeActivityKind("movement drill").ok && normalizeDaytimeActivityKind("movement drill").kind, "practical");
+    assert.equal(normalizeDaytimeActivityKind("group game").ok && normalizeDaytimeActivityKind("group game").kind, "practical");
+    assert.equal(normalizeDaytimeActivityKind("think and explain").ok && normalizeDaytimeActivityKind("think and explain").kind, "reasoning");
+    assert.equal(normalizeDaytimeActivityKind("fluency/vocabulary").ok && normalizeDaytimeActivityKind("fluency/vocabulary").kind, "fluency");
   });
 
   it("rejects unknown kinds safely", () => {

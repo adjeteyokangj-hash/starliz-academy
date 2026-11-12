@@ -1,7 +1,14 @@
-import * as fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decideStudentStoreBootstrap } from "../src/lib/student-store-bootstrap";
+import { readFileSync } from "node:fs";
+import { decideStudentStoreBootstrap, verifiedBootstrapRole } from "../src/lib/student-store-bootstrap";
+
+test("session failures never establish a parent bootstrap role", async () => {
+  for (const role of ["parent", "student", "teacher", "admin"]) assert.equal(await verifiedBootstrapRole({ ok: true, json: async () => ({ user: { role } }) }), role);
+  await assert.rejects(verifiedBootstrapRole({ ok: false, json: async () => ({ user: { role: "parent" } }) }));
+  await assert.rejects(verifiedBootstrapRole({ ok: true, json: async () => ({}) }));
+  await assert.rejects(verifiedBootstrapRole({ ok: true, json: async () => { throw Error("Interrupted response"); } }));
+});
 
 test("student bootstrap never sends learners to /profiles", () => {
   assert.deepEqual(decideStudentStoreBootstrap("/profiles"), {
@@ -24,7 +31,7 @@ test("student bootstrap leaves student dashboard ready", () => {
 });
 
 test("StoreBootstrap wires student path to active-profile hydrate and no /profiles bounce", () => {
-  const source = fs.readFileSync("src/components/layout/StoreBootstrap.tsx", "utf8");
+  const source = readFileSync("src/components/layout/StoreBootstrap.tsx", "utf8");
   assert.match(source, /role === "student"/);
   assert.match(source, /hydrateActiveProfileFromServer/);
   assert.match(source, /decideStudentStoreBootstrap/);

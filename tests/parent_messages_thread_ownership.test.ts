@@ -41,7 +41,7 @@ test("parent messages GET returns 404 and audits foreign threadId", async () => 
     },
     writeAuditLog: async (input) => {
       auditedAction = input.action;
-      return;
+      return { id: "audit-1", createdAt: new Date() };
     },
   });
 
@@ -86,7 +86,7 @@ test("parent messages GET loads owned thread messages only", async () => {
         createdAt: new Date("2026-07-01T00:00:00.000Z"),
       },
     ],
-    writeAuditLog: async () => undefined,
+    writeAuditLog: async () => ({ id: "audit-1", createdAt: new Date() }),
   });
 
   assert.equal(response.status, 200);
@@ -107,7 +107,7 @@ test("unauthenticated parent messages GET returns session response", async () =>
     clearParentUnread: async () => undefined,
     listLatestMessages: async () => [],
     listThreadMessages: async () => [],
-    writeAuditLog: async () => undefined,
+    writeAuditLog: async () => ({ id: "audit-1", createdAt: new Date() }),
   });
   assert.equal(response.status, 401);
 });

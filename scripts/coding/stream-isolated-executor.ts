@@ -3,6 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { executionResultSchema, type executeCodingSource } from "../../src/lib/coding/execution/client";
 import pins from "../../src/lib/coding/learning/runtime-pins.json";
+import { isolationLaunch } from "./certification-host";
 
 export function transportDiagnosticKind(text: string): "system-resources" | "entrypoint" | "unclassified" {
   const value = text.replaceAll("\0", "").slice(0, 4096);
@@ -11,9 +12,8 @@ export function transportDiagnosticKind(text: string): "system-resources" | "ent
 }
 
 export function streamIsolatedExecutor(evidencePath: string): typeof executeCodingSource & { close: () => Promise<void> } {
-  if (process.platform !== "win32" || process.env.CODING_RUNNER_CONTAINER_TESTS !== "1") throw new Error("Explicit authorised Windows-to-Ubuntu isolation verification is required.");
-  const environment: NodeJS.ProcessEnv = { ...Object.fromEntries(["SystemRoot", "WINDIR", "PATH", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "TEMP", "TMP"].flatMap((key) => process.env[key] ? [[key, process.env[key]!]] : [])), NODE_ENV: "test", WSLENV: "" };
-  const child = spawn("wsl", ["-d", "Ubuntu", "--exec", "/usr/bin/env", "-i", "PATH=/usr/bin:/usr/sbin:/bin:/sbin", "DOCKER_HOST=unix:///var/run/docker.sock", "CODING_RUNNER_CONTAINER_TESTS=1", "/usr/bin/node", "/mnt/c/Users/edwar/Documents/Projects/starliz-academy/scripts/coding/stream-local-test-jobs.mjs"], { windowsHide: true, env: environment });
+  const launch = isolationLaunch("stream");
+  const child = spawn(launch.command, launch.args, { windowsHide: true, ...(launch.env ? { env: launch.env } : {}) });
   const pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   const diagnosticKinds = new Set<string>();
   const note = (event: string, metadata: Record<string, string | number | boolean | null> = {}) => appendFileSync(evidencePath, JSON.stringify({ event, sourceExecutionVerified: false, ...metadata }) + "\n");

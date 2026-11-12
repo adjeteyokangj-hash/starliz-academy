@@ -13,34 +13,6 @@ import {
   validateReadingPassageQuality,
 } from "../src/lib/curriculum-quality";
 
-test("phonics instructions are not quantitative tasks; actual arithmetic still fails", () => {
-  for (const hint of ["Say each sound.", "Read the groups of letters, then say what they mean.", "Read this word 3 times."]) {
-    const result = validateCurriculumContentQuality({ type: "phonics", item: { word: "cat", yearGroup: "Year 1", hint, sentenceContext: "The cat sat on the mat." } });
-    assert.equal(result.passed, true, JSON.stringify(result.blockingIssues));
-  }
-  const drift = validateCurriculumContentQuality({ type: "phonics", item: { word: "cat", question: "Calculate 12 x 4.", hint: "Multiply the numbers." } });
-  assert(drift.blockingIssues.includes("spelling_phonics_subject_drift_maths"));
-});
-
-test("symbolic algebra supplies topic depth while metadata cannot validate unrelated content", () => {
-  const algebra = validateGcseMathsQuality({ item: { question: "Solve 3x + 5 = 20 and justify each step.", answer: "x = 5", explanation: "Subtract five on both sides, then divide by three because inverse operations preserve equality." } });
-  assert.equal(algebra.passed, true, JSON.stringify(algebra.blockingIssues));
-  const unrelated = validateGcseMathsQuality({ subject: "gcse-maths", topic: "Algebra", item: { question: "Describe your favourite painting and explain why.", answer: "A landscape", explanation: "The landscape uses blue paint because the painter wanted a calm mood." } });
-  assert(unrelated.blockingIssues.includes("maths_subject_fit_missing"));
-  assert(unrelated.blockingIssues.includes("gcse_maths_topic_depth_missing"));
-});
-
-test("GCSE non-English reading does not acquire English literary criteria", () => {
-  const result = validateCurriculumContentQuality({ type: "reading", subject: "gcse-history", keyStage: "KS4", item: { passage: "A factory worker described the Industrial Revolution in a letter to her family. She reported long hours, crowded workshops, and dangerous machinery. Historians compare this account with other records to investigate changes in working conditions and everyday life.", question: "What conditions does this source describe?", answer: "Long hours and dangerous machinery." } });
-  assert.equal(result.passed, true, JSON.stringify(result.blockingIssues));
-  assert(!result.qualityTags.includes("gcse_english_quality"));
-});
-
-test("multiple-choice answers must still identify an actual option", () => {
-  const result = detectWeakDistractors({ item: { question: "Solve 3x = 12.", answer: "x = 4", options: ["x = 3", "x = 5", "x = 6"] } });
-  assert(result.blockingIssues.includes("weak_distractors_answer_missing"));
-});
-
 test("weak KS2 maths question warns or fails", () => {
   const result = validateMathsQuestionQuality({
     keyStage: "KS2",

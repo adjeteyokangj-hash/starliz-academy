@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { trackUsageEvent } from "@/lib/admin-tracking"
 
 type StripeCheckoutButtonProps = {
@@ -17,7 +16,6 @@ export function StripeCheckoutButton({
   className = "rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700",
   children = "Start with Stripe",
 }: StripeCheckoutButtonProps) {
-  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,7 +39,7 @@ export function StripeCheckoutButton({
       })
 
       if (response.status === 401) {
-        router.push("/signup")
+        window.location.href = "/signup"
         return
       }
 

@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.coding-world.json",
+  "include": [
+    "next-env.d.ts",
+    "scripts/coding/world-database-integration.ts",
+    "src/app/api/auth/world-qa-environment/route.ts",
+    "src/components/layout/StoreBootstrap.tsx",
+    "src/lib/coding/world/request-origin.ts"
+  ]
+}

@@ -117,10 +117,7 @@ export default function SubscriptionsPage() {
     });
   }, [rows, search, statusFilter]);
 
-  useEffect(() => {
-    const boot = window.setTimeout(() => void loadRows(false), 0);
-    return () => window.clearTimeout(boot);
-  }, [loadRows]);
+  useEffect(() => { void loadRows(false); }, [loadRows]);
 
   return (
     <AdminSectionCard title="Subscriptions" eyebrow="Billing & Access" className="border-slate-700/80 bg-slate-950/90">

@@ -16,9 +16,17 @@ type SessionLike = {
   role: string;
 };
 
-export type GuardResult<Context = undefined> =
-  | { session: SessionLike; response: null; context?: Context }
-  | { session: null; response: NextResponse; context?: never };
+/**
+ * Placeholder response for the authorised path of the require* guards.
+ * Callers use these guards as `if (!session) return response;`, so `response` is
+ * only ever returned when the request is rejected. Typing it as a non-null
+ * `NextResponse` keeps every route handler's inferred return type as
+ * `Promise<NextResponse>` (required by the Next.js 16 route type contract).
+ * The runtime value remains null on the authorised path and is never dereferenced.
+ */
+function nullGuardResponse(): NextResponse {
+  return null as unknown as NextResponse;
+}
 
 type RateLimitRecord = {
   count: number;
@@ -68,10 +76,13 @@ export function checkRateLimit(input: {
   return { allowed: true, retryAfterSeconds: 0 };
 }
 
-export async function requireSession(): Promise<GuardResult> {
+export async function requireSession() {
   const session = await readSessionFromCookie();
   if (session) {
-    return { session, response: null };
+    // `response` is only ever consumed via `if (!session) return response;` early-returns.
+    // Typing it non-null keeps route handlers' return type `Promise<NextResponse>` (Next 16 route contract);
+    // the runtime value stays null on the authorised path and is never dereferenced.
+    return { session, response: nullGuardResponse() };
   }
 
   // Local development fallback only.
@@ -114,7 +125,7 @@ export async function requireSession(): Promise<GuardResult> {
         email: devAdmin.email,
         role: devAdmin.role,
       };
-      return { session: devSession, response: null };
+      return { session: devSession, response: nullGuardResponse() };
     }
 
     return { session: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
@@ -123,10 +134,14 @@ export async function requireSession(): Promise<GuardResult> {
   if (!session) {
     return { session: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
-  return { session, response: null };
+  return { session, response: nullGuardResponse() };
 }
 
-export async function requireAdmin(): Promise<GuardResult<AdminAuthContext>> {
+export async function requireAdmin(): Promise<{
+  session: SessionLike | null;
+  response: NextResponse;
+  context?: AdminAuthContext;
+}> {
   const { session, response } = await requireSession();
   if (!session) return { session: null, response };
 
@@ -155,7 +170,7 @@ export async function requireAdmin(): Promise<GuardResult<AdminAuthContext>> {
     };
   }
 
-  return { session, response: null, context };
+  return { session, response: nullGuardResponse(), context };
 }
 
 /**
@@ -163,7 +178,11 @@ export async function requireAdmin(): Promise<GuardResult<AdminAuthContext>> {
  * Accepts canonical MANAGE_* tokens or legacy colon aliases; maps centrally.
  * Missing/invalid role assignment fails closed (no Super Admin bypass).
  */
-export async function requireAdminPermission(permission: string): Promise<GuardResult<AdminAuthContext>> {
+export async function requireAdminPermission(permission: string): Promise<{
+  session: SessionLike | null;
+  response: NextResponse;
+  context?: AdminAuthContext;
+}> {
   const { session, response } = await requireSession();
   if (!session) return { session: null, response };
 
@@ -230,7 +249,7 @@ export async function requireAdminPermission(permission: string): Promise<GuardR
     };
   }
 
-  return { session, response: null, context };
+  return { session, response: nullGuardResponse(), context };
 }
 
 export async function requireParentUnlocked() {

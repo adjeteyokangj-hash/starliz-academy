@@ -188,7 +188,7 @@ async function exhaustAiAndEnqueue(input: {
 }
 
 async function main() {
-  const report: Record<string, unknown> & { evidence: Record<string, unknown> } = {
+  const report: Record<string, unknown> = {
     startedAt: new Date().toISOString(),
     baseUrl: BASE,
     trace: {},
@@ -497,7 +497,7 @@ async function main() {
     fakeEligible.push({
       childId: `synthetic-child-${fakeEligible.length}`,
       humanTutorEligible: true,
-      assignmentId: `synthetic-assignment-${fakeEligible.length}`,
+      assignmentId: null,
       questionKey: "q-synthetic",
     });
   }

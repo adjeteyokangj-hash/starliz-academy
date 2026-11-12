@@ -29,6 +29,7 @@ export function sql(source: string): PracticalArtifact { return { type: "source"
 export function eq(path: string, value: Json, description: string): Predicate { return { path, equals: value, description }; }
 export function range(path: string, min: number, max: number, description: string): Predicate { return { path, min, max, description }; }
 export function includes(path: string, value: Json, description: string): Predicate { return { path, includes: value, description }; }
+export function unordered(path: string, value: Json[], description: string): Predicate { return { path, unordered: value, description }; }
 export function containsText(path: string, value: string, description: string): Predicate { return { path, containsText: value, description }; }
 export function scenario(id: string, input: unknown, ...assertions: Predicate[]): PracticalCase { return { id, input: jsonValue.parse(input), assertions }; }
 

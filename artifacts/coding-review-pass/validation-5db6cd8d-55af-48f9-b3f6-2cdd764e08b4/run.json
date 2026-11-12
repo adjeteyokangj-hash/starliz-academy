@@ -1,8 +1,0 @@
-{
-  "directory": "artifacts/coding-review-pass/validation-5db6cd8d-55af-48f9-b3f6-2cdd764e08b4",
-  "sourceFingerprint": "dc90a7cc923f4310b5129b59afe1e722b7d27b2c38ca8f0d9ee5b9b1cc1df64e",
-  "materialHash": "24df42de243274ccd10b13e9e12d37453982f9cce036012f79394dabf2e38322",
-  "isolatedExecutionRequested": true,
-  "reusedExecutionDirectory": "artifacts/coding-review-pass/validation-81203569-41fb-4a8a-a6f2-f131758da339",
-  "reuseRule": "Only successful executions with matching current content/executor hashes and identical workbench, full artifact and input. Every Review assertion is rerun."
-}

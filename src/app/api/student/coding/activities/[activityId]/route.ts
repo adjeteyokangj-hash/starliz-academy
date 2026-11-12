@@ -24,7 +24,7 @@ export async function GET(request: Request, context: Context) {
     const { child, response } = await requireCodingLearner({ bookingId: new URL(request.url).searchParams.get("bookingId") });
     if (!child) return response;
     const { activityId } = await context.params;
-    return NextResponse.json({ workspace: await loadActivityWorkspace(child.id, activityId, child.yearGroup, undefined, child.age), humanAssistanceEnabled: await codingAssistanceEnabled() }, { headers });
+    return NextResponse.json({ workspace: await loadActivityWorkspace(child.id, activityId, child.yearGroup), humanAssistanceEnabled: await codingAssistanceEnabled() }, { headers: { ...headers, "X-Coding-Learner": child.id } });
   } catch (error) { return failure(error); }
 }
 export async function POST(request: Request, context: Context) {
@@ -32,6 +32,7 @@ export async function POST(request: Request, context: Context) {
     if (new URL(request.url).searchParams.get("lessonExample") === "1") {
       const query = z.object({ bookingId: z.string().max(100).optional() }).strict().parse(await readActivityBody(request));
       const { child, response } = await requireCodingLearner({ bookingId: query.bookingId }); if (!child) return response;
+      if (request.headers.get("X-Coding-Learner") && request.headers.get("X-Coding-Learner") !== child.id) return NextResponse.json({ error: "Your active learner changed. Reopen this activity for the selected learner.", code: "LEARNER_CHANGED" }, { status: 409, headers });
       const { activityId } = await context.params;
 
       if (!checkRateLimit({ key: `coding-activity:execute:${child.id}`, limit: 20, windowMs: 60000 }).allowed) return NextResponse.json({ error: "Pause briefly before replaying the example." }, { status: 429, headers: { ...headers, "Retry-After": "60" } });
@@ -40,6 +41,7 @@ export async function POST(request: Request, context: Context) {
     const body = activityActionSchema.parse(await readActivityBody(request));
     const { child, response, billing } = await requireCodingLearner({ bookingId: body.bookingId });
     if (!child) return response;
+    if (request.headers.get("X-Coding-Learner") && request.headers.get("X-Coding-Learner") !== child.id) return NextResponse.json({ error: "Your active learner changed. Keep your work and reopen this activity for the selected learner.", code: "LEARNER_CHANGED" }, { status: 409, headers });
     const { activityId } = await context.params;
     const expensive = ["run", "check", "reflect", "teach", "hint", "support"].includes(body.action);
     const limit = checkRateLimit({ key: `coding-activity:${expensive ? "execute" : "save"}:${child.id}`, limit: expensive ? 20 : 100, windowMs: 60000 });

@@ -1,24 +1,14 @@
 import { prisma } from "@/lib/db";
-import { GA_CATEGORIES, GA_LEVELS, toStudentSafeGaWord } from "@/lib/ga-word-bank";
+import { BEGINNER_PACK_1_LESSONS, GA_CATEGORIES, GA_LESSON_STATUSES, GA_LEVELS } from "@/lib/ga-browser";
+import { toStudentSafeGaWord } from "@/lib/ga-word-bank";
 import { GA_VOICE_ACTIVITY_TYPES, canServeGaAudioToStudent } from "@/lib/ga-voice";
 import { listGaPronunciationReferences, serializeGaPronunciationReference } from "@/lib/ga-audio";
 import { resolveGaCategoryAgainstAllowed } from "@/lib/ga-categories";
 import { GA_LANGUAGE_PROFILE } from "@/lib/language-profiles";
 
-export const GA_LESSON_STATUSES = ["Draft", "Published", "Archived"] as const;
+export { BEGINNER_PACK_1_LESSONS, GA_LESSON_STATUSES };
 export const GA_ACTIVITY_TYPES = ["flashcards", "quiz", ...GA_VOICE_ACTIVITY_TYPES] as const;
 export const GA_QUIZ_TYPES = ["english_to_ga", "ga_to_english", "review"] as const;
-
-export const BEGINNER_PACK_1_LESSONS = [
-  { title: "Hello, Yes, No", slug: "beginner-pack-1-hello-yes-no", category: "Greetings", level: "Foundation", objective: "Recognise and practise hello, yes, and no.", lessonOrder: 1 },
-  { title: "Today, Tomorrow, Yesterday", slug: "beginner-pack-1-today-tomorrow-yesterday", category: "Time", level: "Beginner 1", objective: "Recognise basic time words.", lessonOrder: 2 },
-  { title: "Numbers 0-6", slug: "beginner-pack-1-numbers-0-6", category: "Numbers", level: "Beginner 1", objective: "Practise numbers zero to six.", lessonOrder: 3 },
-  { title: "Family 1", slug: "beginner-pack-1-family-1", category: "Family", level: "Beginner 1", objective: "Learn first family words.", lessonOrder: 4 },
-  { title: "Animals 1", slug: "beginner-pack-1-animals-1", category: "Animals", level: "Beginner 1", objective: "Learn first animal words.", lessonOrder: 5 },
-  { title: "Food 1", slug: "beginner-pack-1-food-1", category: "Food", level: "Beginner 1", objective: "Learn first food words.", lessonOrder: 6 },
-  { title: "Body Parts 1", slug: "beginner-pack-1-body-parts-1", category: "Body", level: "Beginner 1", objective: "Learn first body-part words.", lessonOrder: 7 },
-  { title: "Review Quiz", slug: "beginner-pack-1-review-quiz", category: "Grammar", level: "Beginner 1", objective: "Review Beginner Pack 1 words.", lessonOrder: 8 },
-] as const;
 
 type GaWordLike = {
   id: string;

@@ -289,7 +289,7 @@ async function main() {
     // (client login pages + middleware wiring; HTTP middleware 3xx can be opaque under RSC/Turbopack fetch)
     const authLoginSrc = readFileSync(resolve("src/app/auth/login/page.tsx"), "utf8");
     const publicLoginSrc = readFileSync(resolve("src/app/login/page.tsx"), "utf8");
-    const middlewareSrc = readFileSync(resolve("src/proxy.ts"), "utf8");
+    const middlewareSrc = readFileSync(resolve("middleware.ts"), "utf8");
     const loginPagesWireTeacherHome =
       /role === ["']teacher["']/.test(authLoginSrc)
       && authLoginSrc.includes('"/teacher"')

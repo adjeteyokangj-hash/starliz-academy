@@ -1,4 +1,8 @@
 "use client";
+import type { LocationId } from "@/lib/coding/world/model";
+import GuidedMissionContext from "./world/GuidedMissionContext";
+import { guidedHref } from "@/lib/coding/world/guided-mapping";
+import WorldRouteView from "./world/WorldRouteView";
 
 import Link from "next/link";
 import CodingStudioFrame from "./CodingStudioFrame";
@@ -64,7 +68,7 @@ const EVIDENCE: Array<{ id: string; label: string }> = [
   { id: "independent", label: "Independent challenge" },
 ];
 
-function LegacyLessonExample({ brief }: { brief: StageBrief }) {
+function LegacyLessonExample({ brief, worldLocation }: { brief: StageBrief; worldLocation?: LocationId }) {
   const result = brief.example ? runCodingProgram(brief.example, brief.goal) : null;
   const [frame, setFrame] = useState(0), [playing, setPlaying] = useState(false);
   const count = result?.frames.length ?? 0;
@@ -81,11 +85,11 @@ function LegacyLessonExample({ brief }: { brief: StageBrief }) {
   return <section aria-label="Lesson Example" tabIndex={0} className="rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm">
     <div className="flex items-center justify-between gap-2"><h2 className="text-base font-bold text-indigo-950">Lesson Example</h2><span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">Read only</span></div>
     <p className="mt-2 text-sm leading-5 text-slate-600">Reference example: three moves right. Your current task’s target is shown in My Program.</p>
-    {result && <div className="mt-3 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-2" aria-label="Lesson example output">{Array.from({ length: CODING_GRID_SIZE ** 2 }, (_, index) => {
+    {result && (worldLocation ? <WorldRouteView location={worldLocation} goal={brief.goal} actors={[{ name: "Lesson example", visits: result.frames.slice(0, frame + 1) }]}/> : <div className="mt-3 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-2" aria-label="Lesson example output">{Array.from({ length: CODING_GRID_SIZE ** 2 }, (_, index) => {
       const x = index % CODING_GRID_SIZE, y = CODING_GRID_SIZE - 1 - Math.floor(index / CODING_GRID_SIZE);
       const destination = brief.goal?.x === x && brief.goal.y === y;
       return <div key={index} className={`relative flex aspect-square items-center justify-center rounded-lg border bg-white text-xl ${destination ? "border-amber-500 ring-2 ring-amber-300" : "border-slate-200"}`} aria-label={destination ? "Example destination" : undefined}>{position.x === x && position.y === y ? "🙂" : ""}{destination && <span aria-hidden="true" className="absolute right-0 top-0 text-xs">⭐</span>}</div>;
-    })}</div>}
+    })}</div>)}
     <p role="status" className="mt-2 text-sm font-semibold text-indigo-900">{frame === 0 ? "Start here. Press Replay Example to watch." : frame === count - 1 && result?.reachedGoal ? "The example reached the star!" : `Move ${frame} of ${Math.max(0, count - 1)}`}</p>
     <button type="button" disabled={!result} onClick={() => { if (!playing) setFrame(0); setPlaying(!playing); }} className="mt-3 min-h-11 w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">{playing ? "Pause Example" : "Replay Example"}</button>
     {brief.example && <details className="mt-3 rounded-xl bg-indigo-50 p-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold text-indigo-900">Example blocks</summary><ProgramOutline program={brief.example} /></details>}
@@ -100,13 +104,15 @@ type Props = {
   lessonId: string;
   bookingId?: string;
   daytimePeriodId?: string;
+  worldLocation?: LocationId;
 };
 
-export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeriodId }: Props) {
+export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeriodId, worldLocation }: Props) {
   const [blocksValid, setBlocksValid] = useState(true), [accessibleBlocks, setAccessibleBlocks] = useState(false);
   const [humanAssistanceEnabled, setHumanAssistanceEnabled] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [stage, setStage] = useState<CodingStage>("discover");
+  const boundLearner = useRef<string | null>(null);
   const currentStage = useRef<CodingStage>("discover");
   const [program, setProgram] = useState<CodingProgram>({ blocks: [] });
   const [selected, setSelected] = useState<string | null>(null);
@@ -173,6 +179,7 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
         setError(typeof data.error === "string" ? data.error : "This lesson could not be opened.");
         return;
       }
+      boundLearner.current = response.headers.get("X-Coding-Learner");
       apply(data.workspace as Workspace);
     })();
   }, [apply, lessonId, bookingId]);
@@ -220,7 +227,7 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
       const response = await fetchWithRefreshRetry(`/api/student/coding/lessons/${lessonId}`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(boundLearner.current ? { "X-Coding-Learner": boundLearner.current } : {}) },
         body: JSON.stringify({ stage, program, bookingId, daytimePeriodId, ...body }),
       });
       const data = await response.json().catch(() => ({}));
@@ -323,11 +330,12 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
   const nextTitle = workspace.lesson.stages.find(item => item.stage === nextStage)?.title;
 
   return (
-    <div data-coding-year={4} className="mx-auto w-full min-w-0 max-w-none space-y-5 rounded-3xl bg-slate-50 px-4 py-6 text-slate-900 sm:px-6">
+    <div className="mx-auto w-full min-w-0 max-w-[1440px] space-y-5 rounded-3xl bg-slate-50 px-4 py-6 text-slate-900 sm:px-6">
+      {worldLocation && <GuidedMissionContext location={worldLocation} objective={workspace.lesson.learningObjective} stage={brief.title}/>}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <Link href="/student/coding" className="text-xs font-bold uppercase tracking-wide text-sky-700">Coding</Link>
-          <h1 className="text-2xl font-black">{workspace.lesson.title}</h1>
+          <h1 className="text-2xl font-black">{workspace.lesson.title}</h1>{!worldLocation && <Link className="inline-flex min-h-11 items-center text-sm font-bold text-emerald-800" href={guidedHref("lesson", lessonId, { bookingId, daytimePeriodId })} onClick={event => { if (dirty) { event.preventDefault(); setNotice("Save your current program before opening the world mission."); } }}>Open this lesson as a world mission →</Link>}
           <p className="text-sm text-slate-600">
             {workspace.lesson.pathwayTitle} · {workspace.lesson.courseTitle} · {workspace.lesson.moduleTitle} · {workspace.lesson.yearBand}
           </p>
@@ -383,7 +391,7 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
               <ProgramOutline program={workspace.explainedProgram} />
             </div>
           ) : null}
-          {workspace.lesson.voiceHelp ? (
+          {workspace.lesson.voiceHelp && !worldLocation ? (
             <button type="button" onClick={() => speak(instruction)} className="mt-3 text-sm font-bold text-sky-800">
               Read this aloud
             </button>
@@ -413,13 +421,13 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
           <p className="mt-2 text-xs text-slate-500">This project stays private to you, your teachers and your parent account.</p>
         </details>
 
-</>} outputs={<>        <LegacyLessonExample key={lessonId} brief={workspace.lesson.stages.find(item => item.stage === "discover")!} />
+</>} outputs={<>        <LegacyLessonExample worldLocation={worldLocation} key={lessonId} brief={workspace.lesson.stages.find(item => item.stage === "discover")!} />
         <section aria-label="My Program" tabIndex={0} className="order-4 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
           <h2 className="text-base font-bold text-emerald-950">My Program</h2>
           <p className="mt-2 text-xs text-slate-600">Your blocks. Your actual execution.</p>
           {playbackLabel === "learner" && runSignature !== JSON.stringify(program) && <p role="status" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">Your blocks have changed. This is your previous run; run again to update it.</p>}
           {playbackLabel !== "learner" && <p className="mt-3 text-sm font-semibold text-emerald-950">Your target for {brief.title}. Run your blocks to see the movement.</p>}
-          <div className="mt-3 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-2" aria-label="Program output">
+          {worldLocation ? <WorldRouteView location={worldLocation} goal={goal} actors={[{ name: "My Program", visits: frames.slice(0, frame + 1) }]}/> : <div className="mt-3 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-2" aria-label="Program output">
             {Array.from({ length: CODING_GRID_SIZE * CODING_GRID_SIZE }, (_, index) => {
               const x = index % CODING_GRID_SIZE;
               const y = CODING_GRID_SIZE - 1 - Math.floor(index / CODING_GRID_SIZE);
@@ -431,7 +439,7 @@ export default function CodingLessonWorkspace({ lessonId, bookingId, daytimePeri
                 </div>
               );
             })}
-          </div>
+          </div>}
           <p className="mt-2 text-xs text-slate-500">
             {playbackLabel === "example"
               ? (playing ? "Running the lesson example" : "Showing the lesson example")

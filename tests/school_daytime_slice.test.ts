@@ -341,8 +341,17 @@ test("bootstrap restores enrolment class assignment without recreating the stude
 });
 
 test("updateSchoolDayLesson persists tutor, room, and time", async () => {
-  const row: NonNullable<Awaited<ReturnType<UpdateSchoolDayLessonDeps["findDayLesson"]>>> = {
- dayOfWeek: 1, classroomId: null, lessonType: "standard", status: "active",
+  const row: {
+    id: string;
+    schoolId: string;
+    teacherId: string | null;
+    room: string | null;
+    startsAt: string;
+    endsAt: string;
+    subject: string;
+    title: string;
+    lessonId: string | null;
+  } = {
     id: "day-1",
     schoolId: "school-1",
     teacherId: "teacher-1",
@@ -354,7 +363,6 @@ test("updateSchoolDayLesson persists tutor, room, and time", async () => {
     lessonId: null,
   };
   const deps: UpdateSchoolDayLessonDeps = {
- findSiblingPeriods: async () => [],
     findDayLesson: async () => row,
     findTeacherInSchool: async () => ({ id: "teacher-2" }),
     findLesson: async () => null,
@@ -392,9 +400,7 @@ test("updateSchoolDayLesson rejects invalid time ranges", async () => {
       endsAt: "10:00",
     },
     {
- findSiblingPeriods: async () => [],
       findDayLesson: async () => ({
- dayOfWeek: 1, classroomId: null, lessonType: "standard", status: "active",
         id: "day-1",
         schoolId: "school-1",
         teacherId: null,
@@ -430,9 +436,7 @@ test("updateSchoolDayLesson rejects cross-school tutor assignment", async () => 
       teacherId: "foreign-teacher",
     },
     {
- findSiblingPeriods: async () => [],
       findDayLesson: async () => ({
- dayOfWeek: 1, classroomId: null, lessonType: "standard", status: "active",
         id: "day-1",
         schoolId: "school-1",
         teacherId: null,

@@ -48,9 +48,13 @@ export function containerArguments(job, image, runtime = "runsc") {
     "--network=none", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges:true",
     "--pids-limit=32", job.language === "javascript" ? "--ulimit=nproc=8:8" : "--ulimit=nproc=2:2", "--ulimit=nofile=128:128", "--memory=128m", "--memory-swap=128m", "--cpus=0.5",
     "--user=65534:65534", "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=16777216,mode=1777", "--workdir=/tmp",
-    "--env=PYTHONDONTWRITEBYTECODE=1", "--env=PYTHONUNBUFFERED=1", "--env=UV_THREADPOOL_SIZE=1", image];
+    "--env=PYTHONDONTWRITEBYTECODE=1", "--env=PYTHONUNBUFFERED=1", "--env=UV_THREADPOOL_SIZE=1",
+    // The pinned JavaScript image starts through docker-entrypoint.sh. That
+    // shell lookup is infrastructure work and, on a cold runsc sandbox, holds
+    // the interpreter past the readiness window. Node is the reviewed command.
+    ...(job.language === "javascript" ? ["--entrypoint", "node"] : []), image];
   return [...limits, ...(job.language === "javascript"
-    ? ["node", "-e", javascriptBootstrap]
+    ? ["-e", javascriptBootstrap]
     : ["python", "-I", "-S", "-c", job.language === "sql" ? sqlBootstrap : pythonBootstrap])];
 }
 
@@ -117,7 +121,10 @@ export async function executeContainer(job, image, docker = "docker", runtime = 
       // Cold container/interpreter startup is infrastructure time. No learner
       // source is sent, and no assessment clock starts, before this fixed
       // bootstrap proves that the interpreter is ready to read its payload.
-      timer = setTimeout(() => cleanupJob(null, true), 10000);
+      // The reviewed DOM image loads its trusted library before that marker.
+      // On this host that cold start can pass ten seconds; the learner budget
+      // below stays capped at five seconds.
+      timer = setTimeout(() => cleanupJob(null, true), 20000);
       const execution = spawn(docker, ["start", "--attach", "--interactive", createdId], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
       activeProcess = execution;
       let ready = false, startupOutput = "";

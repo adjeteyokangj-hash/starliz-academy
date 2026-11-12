@@ -193,7 +193,6 @@ test("support handoff carries the task, code, error and hints", () => {
   });
   assert.equal(handoff.subject, "coding");
   assert.equal(handoff.privateProject, true);
-  assert("blocks" in handoff.program);
   assert.equal(handoff.program.blocks[0]?.kind, "repeat");
   assert.match(handoff.task, /wrong way/i);
   assert.deepEqual(handoff.hintsAttempted, ["Which way is the star?"]);

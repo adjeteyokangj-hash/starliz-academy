@@ -1,4 +1,3 @@
-import type { DaytimeAiStageInput } from "../../src/lib/schools/daytime-ai-stage-generator";
 /**
  * Short Learning English content compatibility — repair + authenticated journey UAT.
  * Usage: npx tsx scripts/uat/short-learning-english-compatibility-uat.ts
@@ -219,7 +218,7 @@ async function main() {
   const assignmentId = (postStart.json as { assignmentId?: string }).assignmentId
     ?? englishStart?.assignmentId;
   const firstBlockOrder = (postStart.json as { block?: { order?: number } }).block?.order
-    ?? englishStart?.block?.order
+    ?? englishStart?.block.order
     ?? 0;
   if (assignmentId) {
     await prisma.assignment.update({
@@ -314,7 +313,16 @@ async function main() {
     "../../src/lib/schools/daytime-stage-validators"
   );
   let regenCalls = 0;
-  const mockGenerate = async (input: DaytimeAiStageInput) => {
+  const mockGenerate = async (input: {
+    stage: string;
+    stageLabel: string;
+    subject: string;
+    targetMinutes: number;
+    targetItems: number;
+    yearGroup: string;
+    skillFocus: string;
+    mode: string;
+  }) => {
     regenCalls += 1;
     const pack = normalizeDaytimeStagePack({
       subjectType: input.mode,
@@ -342,8 +350,7 @@ async function main() {
         },
       ],
       generationStatus: "ok",
-    }, input.mode);
-    if (!pack) throw new Error("UAT stage fixture could not be normalized");
+    });
     return {
       pack,
       contentJson: serializeDaytimeStageContentJson(pack),
@@ -351,7 +358,7 @@ async function main() {
       openAiAttempted: true,
       openAiSucceeded: true,
       validationIssues: [],
-      usageTokens: 0, retryCount: 0, generationDurationMs: 0, openAiLatencyMs: 0, validatorDurationMs: 0,
+      usageTokens: 0,
     };
   };
 

@@ -1,4 +1,4 @@
-import { normalizeQuestionText } from "@/lib/question-duplicate-detection";
+import { normalizeQuestionText, questionFingerprint } from "@/lib/question-duplicate-detection";
 
 /**
  * Educational equivalence for Short Learning question rotation.
@@ -179,6 +179,8 @@ export function compareQuestionEquivalence(left: ComparableQuestion, right: Comp
   const rightAnswer = normalizeQuestionText(right.answer);
   if (!answersCompatible(leftAnswer, rightAnswer)) return null;
 
+  const leftFingerprint = left.fingerprint || questionFingerprint({ prompt: leftPrompt, answer: left.answer, choices: [] });
+  const rightFingerprint = right.fingerprint || questionFingerprint({ prompt: rightPrompt, answer: right.answer, choices: [] });
   if (left.fingerprint && right.fingerprint && left.fingerprint === right.fingerprint) return "exact";
 
   const leftCanonical = canonicalPrompt(leftPrompt);

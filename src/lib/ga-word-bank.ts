@@ -1,6 +1,17 @@
 import { prisma } from "@/lib/db";
-import { GA_APPROVED_CATEGORIES, normalizeGaCategory } from "@/lib/ga-word-categories";
+import { normalizeGaCategory } from "@/lib/ga-word-categories";
 import { resolveGaCategoryAgainstAllowed } from "@/lib/ga-categories";
+import {
+  GA_AUDIO_STATUSES,
+  GA_BULK_IMPORT_HEADERS,
+  GA_BULK_IMPORT_TEMPLATE,
+  GA_CATEGORIES,
+  GA_LEVELS,
+  GA_REVIEW_STATUSES,
+  GA_WORD_TYPES,
+  formatGaEnglishDisplayWord,
+  type GaBulkImportDuplicateStrategy,
+} from "@/lib/ga-browser";
 import {
   GA_LANGUAGE_PROFILE,
   languageRequiresVerifiedWordBank,
@@ -8,27 +19,17 @@ import {
 } from "@/lib/language-profiles";
 import { isCaseInsensitiveWordDuplicate, normalizeWordForDuplicate } from "@/lib/ga-word-normalization";
 
-export const GA_WORD_TYPES = ["noun", "verb", "adjective", "pronoun", "expression", "conjunction", "determiner"] as const;
-export const GA_CATEGORIES = GA_APPROVED_CATEGORIES;
-export const GA_LEVELS = ["Foundation", "Beginner 1", "Beginner 2", "Intermediate"] as const;
-export const GA_REVIEW_STATUSES = ["Pending", "Reviewed", "Approved", "Rejected"] as const;
-export const GA_AUDIO_STATUSES = ["Not Started", "Draft", "Needs Review", "Approved"] as const;
-export const GA_BULK_IMPORT_HEADERS = [
-  "englishWord",
-  "gaWord",
-  "wordType",
-  "category",
-  "level",
-  "sourcePage",
-  "reviewStatus",
-  "audioStatus",
-  "quizReady",
-  "storyReady",
-  "notes",
-  "sourceId",
-  "sourceName",
-] as const;
-export const GA_BULK_IMPORT_TEMPLATE = "englishWord,gaWord,wordType,category,level,sourcePage,reviewStatus,audioStatus,quizReady,storyReady,notes,sourceName";
+export {
+  GA_AUDIO_STATUSES,
+  GA_BULK_IMPORT_HEADERS,
+  GA_BULK_IMPORT_TEMPLATE,
+  GA_CATEGORIES,
+  GA_LEVELS,
+  GA_REVIEW_STATUSES,
+  GA_WORD_TYPES,
+  formatGaEnglishDisplayWord,
+  type GaBulkImportDuplicateStrategy,
+};
 
 export type GaReviewStatus = typeof GA_REVIEW_STATUSES[number];
 export type GaWordInput = {
@@ -77,8 +78,6 @@ export type GaWordFilters = {
   limit?: number | null;
 };
 
-export type GaBulkImportDuplicateStrategy = "skip" | "update";
-
 export type GaBulkImportSource = {
   id: string;
   sourceName: string;
@@ -90,34 +89,6 @@ export type GaBulkImportExistingWord = {
   gaWord: string;
   category: string;
   sourcePage: number | null;
-};
-
-const ENGLISH_NUMBER_WORD_TO_DIGIT: Record<string, string> = {
-  zero: "0",
-  one: "1",
-  two: "2",
-  three: "3",
-  four: "4",
-  five: "5",
-  six: "6",
-  seven: "7",
-  eight: "8",
-  nine: "9",
-  ten: "10",
-};
-
-const ENGLISH_NUMBER_DIGIT_TO_WORD: Record<string, string> = {
-  "0": "zero",
-  "1": "one",
-  "2": "two",
-  "3": "three",
-  "4": "four",
-  "5": "five",
-  "6": "six",
-  "7": "seven",
-  "8": "eight",
-  "9": "nine",
-  "10": "ten",
 };
 
 export type GaBulkImportParsedRow = {
@@ -524,23 +495,6 @@ export function buildGaWordData(input: GaWordInput, options: GaWordBuildOptions 
 export function isGaWordStudentSafe(word: { reviewStatus: string }): boolean {
   if (!languageRequiresVerifiedWordBank(GA_LANGUAGE_PROFILE)) return word.reviewStatus === "Approved";
   return word.reviewStatus === "Approved";
-}
-
-export function formatGaEnglishDisplayWord(
-  word: { englishWord: string; category?: string | null },
-  mode: "source" | "digit" | "letters" = "source",
-) {
-  const englishWord = cleanText(word.englishWord);
-  const category = cleanText(word.category);
-  if (category !== "Numbers") return englishWord;
-
-  const normalizedWord = englishWord.toLowerCase();
-  const asDigit = ENGLISH_NUMBER_WORD_TO_DIGIT[normalizedWord];
-  const asWord = ENGLISH_NUMBER_DIGIT_TO_WORD[englishWord];
-
-  if (mode === "digit") return asDigit ?? englishWord;
-  if (mode === "letters") return asWord ?? englishWord;
-  return englishWord;
 }
 
 export function toStudentSafeGaWord(word: {

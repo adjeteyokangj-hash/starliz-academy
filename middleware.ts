@@ -1,0 +1,340 @@
+﻿import { jwtVerify } from "jose";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { resolvePlatformAdminGate } from "@/lib/admin-auth-gate";
+import { isExternalApiRoute } from "@/lib/api-management/external-path";
+import {
+  isPublicTrialCtaEnabled,
+  isRoadmapPublicEnabled,
+  resolveLaunchScopeRedirect,
+  resolveTeacherPortalBounce,
+} from "@/lib/launch-scope";
+
+const COOKIE_NAME = "starliz_session";
+const REFRESH_COOKIE_NAME = "starliz_refresh";
+const PARENT_UNLOCK_COOKIE = "starliz_parent_unlock";
+const CHILD_SELECTION_COOKIE = "starliz_child_selection";
+
+const PUBLIC_PATHS = [
+  "/",
+  "/about",
+  "/api/pricing",
+  "/auth/forgot-password",
+  "/admin/login",
+  "/auth/reset-password",
+  "/billing/cancel",
+  "/billing/success",
+  "/contact",
+  "/features",
+  "/forgot-password",
+  "/login",
+  "/pricing",
+  "/short-learning",
+  "/reset-password",
+  "/signup",
+  "/policies",
+  "/terms",
+  "/auth/login",
+  "/auth/signup",
+  "/privacy",
+  "/faq",
+  "/cookies",
+  "/safeguarding-policy",
+  "/data-retention",
+  "/ai-use",
+  "/knowledge-centre",
+  "/offline",
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/invite/accept",
+  "/school/invites/accept",
+  "/school-portal-unavailable",
+  // Country-specific public landing pages
+  "/uk",
+  "/ghana",
+  "/nigeria",
+];
+
+type DecodedSession = { userId: string; email: string; role: string };
+
+function withSecurityHeaders(response: NextResponse): NextResponse {
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("Permissions-Policy", "microphone=(), camera=(), geolocation=()");
+  return response;
+}
+
+function getSecret(): Uint8Array {
+  const raw = process.env.AUTH_SECRET;
+  if (!raw) {
+    throw new Error("AUTH_SECRET is required. Set it in your environment before starting the app.");
+  }
+  return new TextEncoder().encode(raw);
+}
+
+async function getSessionPayload(request: NextRequest): Promise<DecodedSession | null> {
+  const token = request.cookies.get(COOKIE_NAME)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, getSecret());
+    return {
+      userId: String(payload.userId ?? ""),
+      email: String(payload.email ?? ""),
+      role: String(payload.role ?? "parent"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function hasChildSelection(request: NextRequest, expectedUserId: string): Promise<boolean> {
+  const token = request.cookies.get(CHILD_SELECTION_COOKIE)?.value;
+  if (!token) return false;
+  try {
+    const { payload } = await jwtVerify(token, getSecret());
+    return (
+      String(payload.scope ?? "") === "child-selection"
+      && String(payload.userId ?? "") === expectedUserId
+      && String(payload.childId ?? "").trim().length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const isPrefetch = request.headers.get("purpose") === "prefetch" || request.headers.has("next-router-prefetch");
+  const acceptsHtml = request.headers.get("accept")?.includes("text/html") ?? false;
+  const isDocumentNavigation = request.headers.get("sec-fetch-mode") === "navigate" || acceptsHtml;
+
+  // External API routes authenticate via Authorization: Bearer (generated StarLiz keys).
+  // Do not require a browser session here — the route guard enforces key/scope checks.
+  // Still do NOT bypass /api/admin, /api/student, or /api/teacher.
+  if (
+    pathname.startsWith("/_next")
+    || pathname === "/api/branding"
+    || pathname.startsWith("/api/auth")
+    || isExternalApiRoute(pathname)
+    || pathname === "/api/school/invites/accept"
+    || pathname.startsWith("/api/cron")
+    || pathname === "/api/billing/stripe/webhook"
+    || pathname === "/api/webhooks/stripe-school"
+    || pathname.startsWith("/icons")
+    || pathname.startsWith("/screenshots")
+    || pathname.includes(".")
+  ) {
+    return withSecurityHeaders(NextResponse.next());
+  }
+
+  if (
+    process.env.NODE_ENV === "production"
+    && request.method === "POST"
+    && /^\/api\/admin\/students\/[^/]+\/attempts$/.test(pathname)
+  ) {
+    return withSecurityHeaders(NextResponse.json({ error: "Forbidden" }, { status: 403 }));
+  }
+
+  const launchFlagPublicPaths = [
+    ...(isPublicTrialCtaEnabled() ? ["/trial"] : []),
+    ...(isRoadmapPublicEnabled() ? ["/roadmap"] : []),
+  ];
+  const isPublic = [...PUBLIC_PATHS, ...launchFlagPublicPaths]
+    .some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  const session = await getSessionPayload(request);
+  const authenticated = session !== null;
+  const hasRefreshToken = Boolean(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
+  // Soft App Router navigations (RSC) often omit sec-fetch-mode=navigate; still refresh
+  // when a refresh cookie exists so active users are not bounced to login.
+  const isSoftNavigation = request.headers.has("rsc") || request.headers.has("next-router-state-tree");
+  const shouldAttemptRefresh =
+    hasRefreshToken
+    && request.method === "GET"
+    && !isPrefetch
+    && !pathname.startsWith("/api/")
+    && (isDocumentNavigation || isSoftNavigation);
+  const adminLoginTarget = request.nextUrl.searchParams.get("next")?.startsWith("/admin") ?? false;
+  const shouldClearParentUnlock = Boolean(
+    request.cookies.get(PARENT_UNLOCK_COOKIE)?.value
+    && (
+      // Always clear legacy unlock cookie once observed — Parent PIN is retired.
+      !authenticated
+      || session?.role === "parent"
+      || pathname.startsWith("/auth/login")
+      || pathname.startsWith("/login")
+      || pathname.startsWith("/parent-pin")
+    ),
+  );
+
+  const finalize = (response: NextResponse): NextResponse => {
+    if (shouldClearParentUnlock) {
+      response.cookies.set(PARENT_UNLOCK_COOKIE, "", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 0,
+      });
+    }
+    return withSecurityHeaders(response);
+  };
+
+  // Platform admin gate (Next.js request interceptor): hard-redirect before any admin UI.
+  const adminGate = resolvePlatformAdminGate({
+    pathname,
+    search: request.nextUrl.search,
+    session: authenticated ? { role: session!.role } : null,
+  });
+  if (adminGate.action === "redirect") {
+    return finalize(NextResponse.redirect(new URL(adminGate.to, request.url), adminGate.status));
+  }
+
+  if (!authenticated && !isPublic) {
+    if (pathname.startsWith("/api/")) {
+      return finalize(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
+    }
+    if (shouldAttemptRefresh) {
+      const next = `${pathname}${request.nextUrl.search}`;
+      const refreshTarget = new URL(`/api/auth/refresh?next=${encodeURIComponent(next)}`, request.url);
+      return finalize(NextResponse.redirect(refreshTarget));
+    }
+    return finalize(NextResponse.redirect(new URL("/auth/login", request.url)));
+  }
+
+  if (authenticated && (pathname === "/login" || pathname === "/signup" || pathname === "/auth/login" || pathname === "/auth/signup") && !adminLoginTarget) {
+    if (session.role === "admin") {
+      return finalize(NextResponse.redirect(new URL("/admin", request.url)));
+    }
+    if (session.role === "student") {
+      return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+    }
+    if (session.role === "teacher") {
+      // School owners land on /school-admin; classroom-only teachers are bounced to /teacher by that layout.
+      return finalize(NextResponse.redirect(new URL("/school-admin", request.url)));
+    }
+    return finalize(NextResponse.redirect(new URL("/parent/dashboard", request.url)));
+  }
+
+  const launchScopeRedirect = resolveLaunchScopeRedirect({
+    pathname,
+    authenticated,
+    role: session?.role,
+  });
+  if (launchScopeRedirect) {
+    return finalize(NextResponse.redirect(new URL(launchScopeRedirect, request.url)));
+  }
+
+  if (authenticated && session.role === "teacher") {
+    const bounce = resolveTeacherPortalBounce({
+      pathname,
+      role: session.role,
+    });
+    if (bounce) {
+      return finalize(NextResponse.redirect(new URL(bounce, request.url)));
+    }
+  }
+
+  if (authenticated && session.role === "student") {
+    if (pathname === "/my-profile") {
+      return finalize(NextResponse.redirect(new URL("/student/profile", request.url)));
+    }
+
+    if (pathname.startsWith("/parent/profile")) {
+      return finalize(NextResponse.redirect(new URL("/student/profile", request.url)));
+    }
+
+    if (pathname.startsWith("/parent") || pathname.startsWith("/parent-pin")) {
+      return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+    }
+
+    if (pathname.startsWith("/billing") || pathname.startsWith("/subscription")) {
+      return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+    }
+  }
+
+  if (authenticated && pathname.startsWith("/student/profile") && session.role !== "student") {
+    const fallback = session.role === "admin" ? "/admin" : "/my-profile";
+    return finalize(NextResponse.redirect(new URL(fallback, request.url)));
+  }
+
+  if (authenticated && pathname === "/my-profile") {
+    if (session.role === "parent") {
+      return finalize(NextResponse.redirect(new URL("/parent/profile", request.url)));
+    }
+    if (session.role === "admin") {
+      return finalize(NextResponse.redirect(new URL("/admin", request.url)));
+    }
+  }
+
+  // Teacher / school-admin portal: must be authenticated (role check happens in each page/layout)
+  if ((pathname.startsWith("/teacher") || pathname.startsWith("/school-admin")) && !authenticated) {
+    return finalize(NextResponse.redirect(new URL(`/auth/login?next=${encodeURIComponent(pathname)}`, request.url)));
+  }
+
+  if (authenticated && pathname.startsWith("/school-admin") && session.role !== "teacher" && session.role !== "admin") {
+    const fallback =
+      session.role === "parent" ? "/parent/dashboard"
+      : session.role === "student" ? "/student/dashboard"
+      : "/";
+    return finalize(NextResponse.redirect(new URL(fallback, request.url)));
+  }
+
+  // Parent PIN pages are retired — send authenticated parents to the portal.
+  if (authenticated && pathname.startsWith("/parent-pin")) {
+    if (session.role === "parent") {
+      return finalize(NextResponse.redirect(new URL("/parent/dashboard", request.url)));
+    }
+    return finalize(NextResponse.redirect(new URL("/auth/login", request.url)));
+  }
+
+  const parentProtectedRoute =
+    pathname === "/parent"
+    || pathname.startsWith("/parent/");
+
+  if (authenticated && parentProtectedRoute) {
+    if (session.role !== "parent") {
+      const fallback =
+        session.role === "admin" ? "/admin"
+        : session.role === "teacher" ? "/teacher"
+        : "/student/dashboard";
+      return finalize(NextResponse.redirect(new URL(fallback, request.url)));
+    }
+
+    if (pathname === "/parent") {
+      return finalize(NextResponse.redirect(new URL("/parent/dashboard", request.url)));
+    }
+  }
+
+  if (authenticated && session.role === "parent" && (pathname === "/dashboard" || pathname.startsWith("/student"))) {
+    // Parent session + child-selection cookie is no longer the primary student-login path.
+    // Keep a transitional allow-through only when a selection cookie is already present;
+    // otherwise send parents to the Parent Portal.
+    const selectedChild = await hasChildSelection(request, session.userId);
+    if (!selectedChild) {
+      return finalize(NextResponse.redirect(new URL("/parent/dashboard", request.url)));
+    }
+  }
+
+  // Billing and subscription routes require parent role
+  if (
+    authenticated &&
+    (pathname.startsWith("/billing") || pathname.startsWith("/subscription")) &&
+    session.role !== "parent" &&
+    session.role !== "admin"
+  ) {
+    return finalize(NextResponse.redirect(new URL("/student/dashboard", request.url)));
+  }
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+  requestHeaders.set("x-admin-login", pathname === "/admin/login" || pathname.startsWith("/admin/login/") ? "1" : "0");
+  return finalize(NextResponse.next({ request: { headers: requestHeaders } }));
+}
+
+// Next.js AST-extracts only a literal `config` export for matchers (not a re-export).
+export const config = {
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)",
+  ],
+};

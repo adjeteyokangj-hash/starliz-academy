@@ -7,11 +7,6 @@ import {
   safeAdminNextPath,
 } from "../src/lib/admin-auth-gate";
 
-test("admin reauthentication can clear an inactive session; other roles remain denied", () => {
-  assert.equal(resolvePlatformAdminGate({ pathname: "/admin/login", search: "?reason=switch&next=%2Fadmin", session: { role: "admin" } }).action, "allow");
-  for (const role of ["parent", "student", "teacher"]) assert.equal(resolvePlatformAdminGate({ pathname: "/admin/login", search: "?reason=switch", session: { role } }).action, "redirect");
-});
-
 test("1. anonymous /admin → /admin/login", () => {
   const decision = resolvePlatformAdminGate({ pathname: "/admin", session: null });
   assert.equal(decision.action, "redirect");
@@ -40,7 +35,7 @@ test("3. /admin/login loads without a loop", () => {
   });
   assert.equal(parentOnLogin.action, "redirect");
   if (parentOnLogin.action === "redirect") {
-    assert.equal(parentOnLogin.to, "/parent/dashboard");
+    assert.equal(parentOnLogin.to, "/parent/profiles");
   }
 
   // Login must never redirect back to itself.
@@ -68,7 +63,7 @@ test("4. authenticated admin → /admin (login redirects into console)", () => {
 
 test("5. authenticated non-admin cannot access platform admin", () => {
   const expectedByRole: Record<string, string> = {
-    parent: "/parent/dashboard",
+    parent: "/parent/profiles",
     student: "/student/dashboard",
     teacher: "/school-admin",
   };

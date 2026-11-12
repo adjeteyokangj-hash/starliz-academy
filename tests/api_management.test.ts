@@ -432,7 +432,7 @@ test("middleware allows /api/external through and still protects /api/admin", ()
   assert.equal(isBrowserSessionApiRoute("/api/teacher/x"), true);
   assert.equal(isBrowserSessionApiRoute("/api/external/v1/ping"), false);
 
-  const mw = read("src/proxy.ts");
+  const mw = read("middleware.ts");
   assert.match(mw, /isExternalApiRoute\(pathname\)/);
   assert.match(mw, /api-management\/external-path/);
   assert.doesNotMatch(mw, /pathname\.startsWith\("\/api\/admin"\)/);
@@ -451,13 +451,13 @@ test("missing / invalid / valid / wrong-scope external key decisions", () => {
     rateLimitAllowed: true,
   };
   assert.deepEqual(evaluateApiKeyAuth(base), { ok: true });
-  assert.equal(deniedApiKeyStatus({ ...base, status: "revoked" }), 401);
-  assert.equal(deniedApiKeyStatus({ ...base, expiresAt: new Date(Date.now() - 1000) }), 401);
+  assert.equal(evaluateApiKeyAuth({ ...base, status: "revoked" }).httpStatus, 401);
+  assert.equal(evaluateApiKeyAuth({ ...base, expiresAt: new Date(Date.now() - 1000) }).httpStatus, 401);
   assert.equal(
-    deniedApiKeyStatus({ ...base, scopes: ["api:write"], requiredScopes: ["api:read"] }),
+    evaluateApiKeyAuth({ ...base, scopes: ["api:write"], requiredScopes: ["api:read"] }).httpStatus,
     403,
   );
-  assert.equal(deniedApiKeyStatus({ ...base, status: "inactive" }), 401);
+  assert.equal(evaluateApiKeyAuth({ ...base, status: "inactive" }).httpStatus, 401);
 });
 
 test("ping route keeps authenticateExternalApiKey guard after middleware bypass", () => {
@@ -465,5 +465,3 @@ test("ping route keeps authenticateExternalApiKey guard after middleware bypass"
   assert.match(src, /authenticateExternalApiKey/);
   assert.match(src, /requiredScopes:\s*\["api:read"\]/);
 });
-
-function deniedApiKeyStatus(input: Parameters<typeof evaluateApiKeyAuth>[0]) { const result = evaluateApiKeyAuth(input); assert(!result.ok); return result.httpStatus; }

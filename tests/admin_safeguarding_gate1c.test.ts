@@ -131,7 +131,7 @@ test("hard delete of safeguarding cases is rejected", () => {
 });
 
 test("school invite accept paths are publicly reachable", () => {
-  const source = read("src/proxy.ts");
+  const source = read("middleware.ts");
   assert.match(source, /\/school\/invites\/accept/);
   assert.match(source, /\/api\/school\/invites\/accept/);
 });

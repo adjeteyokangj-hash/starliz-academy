@@ -374,7 +374,7 @@ async function main() {
   const preserved = await prisma.supportTicket.findUnique({ where: { id: ticket.id } });
   record(
     "Archived support ticket retains subject/message",
-    preserved?.status === "closed" && Boolean(preserved.message?.includes("Must survive")),
+    preserved?.status === "closed" && preserved.message.includes("Must survive"),
   );
 
   const restrictedDelete = await jsonFetch(`/api/admin/resources/support/${ticket.id}`, restrictedCookie, {

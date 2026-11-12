@@ -148,6 +148,10 @@ export default function CodingHome() {
   return (
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8 text-slate-900">
       {dashboardNavigation}
+      <section aria-label="Coding Game World" className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+        <div><p className="text-xs font-bold uppercase tracking-wide text-emerald-800">The StarLiz Inventors Adventure</p><h2 className="mt-1 text-xl font-black">A world of coding inventions</h2><p className="mt-2 text-sm text-slate-700">Explore six locations and create your own helpful routines in Free Practice.</p></div>
+        <Link href="/student/coding/world" className="inline-flex min-h-12 items-center rounded-xl bg-emerald-800 px-5 py-3 font-bold text-white">Explore Coding Game World →</Link>
+      </section>
       <header>
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">Coding</p>
         <h1 className="mt-1 text-3xl font-black">Learn to give a computer instructions</h1>

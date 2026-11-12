@@ -200,6 +200,7 @@ async function main() {
         : [];
       const grounded = passage
         ? questions.filter((prompt) => {
+            const hay = `${prompt} ${passage.text}`.toLowerCase();
             return /passage|paragraph|text|evidence|author|character|according/i.test(prompt)
               || tokenizeOverlap(prompt, passage.text);
           }).length

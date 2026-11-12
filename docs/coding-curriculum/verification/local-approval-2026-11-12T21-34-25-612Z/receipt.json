@@ -1,0 +1,25 @@
+{
+  "approval": "approved all lessons curriculum content",
+  "scope": "local development only",
+  "approvedAt": "2026-11-12T21:34:25.762Z",
+  "activities": 440,
+  "coreLessons": 264,
+  "consolidations": 132,
+  "projects": 44,
+  "contentHashMatches": 440,
+  "practicalExecutionHash": "f2565db6e2a79331622996f48f96d504d4a3fa70a3196aae11e4b9ec72ca59d5",
+  "runtimeHash": "a45f442b67b528ac20a03873229cf5c7d1d5ff622ecb53a2ed8543099c639959",
+  "preservedEvidence": "/home/runner/work/starliz-academy/starliz-academy/artifacts/coding-curriculum-verification/f312a745-bdc3-4b86-9571-3512f3d0e587/activity-index.json",
+  "preservedPracticalChecks": 6162,
+  "practicalProgramsRerun": false,
+  "authenticatedPublicationAcceptance": "pending",
+  "productionReady": false,
+  "productionGates": [
+    "ZDR",
+    "runner security and hosting acceptance",
+    "hosted permissions and private-media checks",
+    "dependency advisories",
+    "accessibility acceptance"
+  ],
+  "verificationRun": "docs/coding-curriculum/verification/local-approval-2026-11-12T21-34-25-612Z"
+}

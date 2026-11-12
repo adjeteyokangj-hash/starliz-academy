@@ -1,5 +1,0 @@
-(node:4924) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-Readable editor and rendered preview at 1920
-Readable editor and rendered preview at 820
-Readable editor and rendered preview at 390

@@ -154,7 +154,6 @@ function makeBrain(input: {
   const dataState = input.dataState ?? "active_with_qlf";
   return {
     studentId: input.studentId,
-    source: { studentId: input.studentId, assignments: [], attempts: [], weakAreas: [], studentSkills: [], coachUsage: [], dictionarySignals: [], progressRecords: [], assessmentHistory: [] },
     heartbeatSummary: input.heartbeat ?? heartbeat(),
     academicIntelligence: {
       generatedAt: now,
@@ -182,7 +181,7 @@ function makeBrain(input: {
       confidenceBand: dataState === "active_with_qlf" ? "high" : dataState === "new_no_activity" ? "insufficient" : "medium",
       recommendationHonesty: dataState === "active_with_qlf" ? "ready" : dataState === "new_no_activity" ? "insufficient_data" : "limited_evidence",
       evidenceCitations: dataState === "active_with_qlf" ? ["attempts:1", "qlf:completed"] : [],
-    } satisfies import("../src/lib/student-learning-brain/studentDataNormalisation").StudentDataNormalisationResult,
+    },
     generatedAt: now,
   };
 }

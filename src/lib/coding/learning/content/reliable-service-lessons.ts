@@ -1,4 +1,4 @@
-import { authorLesson, scenario, eq, containsText } from "../authoring";
+import { authorLesson, scenario, eq, containsText, unordered } from "../authoring";
 import { reliableServiceArtifact, type ReliabilityFault } from "./reliable-service-tools";
 import type { Json } from "../types";
 
@@ -20,13 +20,19 @@ export function reliabilityCases(id: string, index: number, mode: ReliabilityFau
     if (variant && mode === "architecture") { requests = [adjust(-move, 0, "first"), adjust(-move, 0, "first"), read()]; statuses = [200, 200, 200]; }
     const after = { store: { quantity: final, revision }, workshop: { quantity: mode === "scope" ? 1 : 0, revision: mode === "scope" ? 1 : 0 } };
     const logs = requests.map((request, position) => ({ method: request.method, path: request.path, status: statuses[position]! }));
-    const assertions = [eq("result.http.responses", requests.map((request, position): Json => {
+    const responses = requests.map((request, position): Json => {
       const status = statuses[position]!;
       if (status !== 200) { const body: Json = { error: status === 503 ? "transaction-not-accepted" : status === 404 ? "not-found" : mode === "key-binding" ? "key-reused" : "revision-or-quantity-conflict" }; return { status, body }; }
       const current = mode === "compatibility" ? { quantity, revision: 0 } : mode === "scope" && position === 1 ? after.workshop : after.store;
       const body: Json = request.path === "/v2/stock" ? { item: current, schema: 2 } : current;
       return { status, body };
-    }), "Actual socket responses preserve the versioned success, refusal and retry contracts"), eq("result.after", after, "Actual stored quantities and revisions agree with the accepted operations, including zero and other scopes"), eq("result.recovered", after, "A newly opened SQLite connection recovers the actual accepted state"), eq("result.receipts", receipts, "The transaction stores exactly one durable request receipt per distinct accepted scoped key"), eq("result.logs", logs, "Observed route/status evidence omits tokens, bodies and invented checks"), containsText("result.http.transport", "actual isolated loopback HTTP", "The outcome comes from real job-local HTTP, without a public-hosting claim"), containsText("/files/reliability-evidence.json", '"recovered"', "The project saves a reproducible evidence file from actual recovery")];
+    });
+    // Both concurrent clients observed revision zero. Either connection may be
+    // served first, so the contract is one success and one conflict, not a fixed winner.
+    const responseContract = mode === "revision" && variant === 1
+      ? unordered("result.http.responses", responses, "Actual socket responses preserve the versioned success, refusal and retry contracts")
+      : eq("result.http.responses", responses, "Actual socket responses preserve the versioned success, refusal and retry contracts");
+    const assertions = [responseContract, eq("result.after", after, "Actual stored quantities and revisions agree with the accepted operations, including zero and other scopes"), eq("result.recovered", after, "A newly opened SQLite connection recovers the actual accepted state"), eq("result.receipts", receipts, "The transaction stores exactly one durable request receipt per distinct accepted scoped key"), eq("result.logs", logs, "Observed route/status evidence omits tokens, bodies and invented checks"), containsText("result.http.transport", "actual isolated loopback HTTP", "The outcome comes from real job-local HTTP, without a public-hosting claim"), containsText("/files/reliability-evidence.json", '"recovered"', "The project saves a reproducible evidence file from actual recovery")];
     return scenario(`${id}-${variant}`, { variables: { quantity, requests, concurrent: mode === "revision" && variant === 1, fail_before_receipt: mode === "rollback" } }, ...assertions);
   });
 }

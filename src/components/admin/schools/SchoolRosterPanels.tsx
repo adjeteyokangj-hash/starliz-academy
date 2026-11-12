@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { postSchoolAction } from "@/components/admin/schools/school-actions";
 import { useSchoolDashboardRecord } from "@/components/admin/schools/school-dashboard-data";
 import { formatStudentId } from "@/lib/student-id";
-import { SCHOOL_YEAR_CLASS_GROUPS } from "@/lib/schools/ensure-year-classes";
+import { SCHOOL_YEAR_CLASS_GROUPS } from "@/lib/schools/year-class-groups";
 
 function shortDate(iso: string | null | undefined): string {
   if (!iso) return "-";

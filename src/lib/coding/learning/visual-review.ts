@@ -1,26 +1,14 @@
 import { createHash } from "node:crypto";
 import type { ActivityContent, Execution, PracticalArtifact } from "./types";
-import { structuredReview, structuredReviewRubrics } from "./structured-review";
-import { personalisedTutorAllowed, type TutorScope } from "./tutor-privacy";
-import { extendedReview, hasExtendedReview } from "./extended-review";
 
-export type VisualReview = { binding: string; task?: string; groups?: Array<{ title: string; questionIds: string[] }>; questions: Array<{ id: string; prompt: string; choices: Array<{ id: string; text: string }> }> };
-export type ReviewBindingContext = string | { ownershipKey: string; independentVariant: number };
-export type ReviewChallenge = { public: VisualReview; correct: Record<string, string>; accepted?: Record<string, string[]> };
+export type VisualReview = { binding: string; questions: Array<{ id: string; prompt: string; choices: Array<{ id: string; text: string }> }> };
 const introductoryRubrics = new Set(["Y1.01", "Y1.02", "Y1.03", "Y1.04", "Y1.05", "Y1.06"]);
 // Each introductory route objective has its own rubric below. Other engines
 // and objectives do not inherit these movement questions.
-export function hasIntroductoryVisualReview(activity: ActivityContent): boolean {
+export function hasVisualReview(activity: ActivityContent): boolean {
   return introductoryRubrics.has(activity.inventoryId) && activity.year === 1 && activity.workbench === "route" && activity.kind === "lesson";
 }
-export function hasVisualReview(activity: ActivityContent): boolean {
-  return hasIntroductoryVisualReview(activity) || hasExtendedReview(activity) || structuredReviewRubrics[activity.inventoryId]?.engine === activity.workbench && activity.workbench !== undefined;
-}
-export function usesVisualReview(activity: ActivityContent, scope: TutorScope = "learner") {
-  return hasIntroductoryVisualReview(activity) || !personalisedTutorAllowed(scope) && hasVisualReview(activity);
-}
-export function visualReview(activity: ActivityContent, artifact: PracticalArtifact, run: Execution, ownershipContext: ReviewBindingContext = ""): ReviewChallenge | null {
-  if (!hasIntroductoryVisualReview(activity)) return hasExtendedReview(activity) ? extendedReview(activity, artifact, run, ownershipContext) : structuredReview(activity, artifact, run);
+export function visualReview(activity: ActivityContent, artifact: PracticalArtifact, run: Execution): { public: VisualReview; correct: Record<string, string> } | null {
   if (!hasVisualReview(activity) || !run.ok || !run.output || typeof run.output !== "object" || Array.isArray(run.output)) return null;
   const visits = run.output.visits;
   if (!Array.isArray(visits) || visits.length < 2 || visits.length > 1000) return null;
@@ -68,14 +56,14 @@ export function visualReview(activity: ActivityContent, artifact: PracticalArtif
   });
   return { public: { binding, questions }, correct };
 }
-export function checkVisualReview(activity: ActivityContent, artifact: PracticalArtifact, run: Execution, submission: string, ownershipContext: ReviewBindingContext = "") {
-  const challenge = visualReview(activity, artifact, run, ownershipContext);
+export function checkVisualReview(activity: ActivityContent, artifact: PracticalArtifact, run: Execution, submission: string) {
+  const challenge = visualReview(activity, artifact, run);
   const fail = (message: string) => ({ passed: false, message, source: "evidence" as const, confidence: 0 });
   if (!challenge) return fail("Replay your saved program, then try the picture review again. Your work is safe.");
   try {
     const value = JSON.parse(submission);
     if (value?.type !== "visual-review-v1" || value.binding !== challenge.public.binding || !value.answers || typeof value.answers !== "object" || Array.isArray(value.answers) || Object.keys(value.answers).length !== challenge.public.questions.length) return fail("This review does not match your saved program. Choose your answers for the current program and try again.");
-    if (!challenge.public.questions.every(question => typeof value.answers[question.id] === "string" && (challenge.accepted?.[question.id] ?? [challenge.correct[question.id]!]).includes(value.answers[question.id]))) return fail("Not quite yet. Inspect your saved result and the lesson idea, then try your choices again.");
-    return { passed: true, message: activity.inventoryId === "Y1.01" ? "You showed what a command does and how changing its arrow changes the move. Your saved program and review passed!" : "You matched your review to your saved work and the lesson idea. Your practical work and review passed!", source: "evidence" as const, confidence: 1 };
+    if (!challenge.public.questions.every(question => typeof value.answers[question.id] === "string" && value.answers[question.id] === challenge.correct[question.id])) return fail("Not quite yet. Replay My Program and check the first arrow. Then try your choices again.");
+    return { passed: true, message: activity.inventoryId === "Y1.01" ? "You showed what a command does and how changing its arrow changes the move. Your saved program and review passed!" : "You matched your answers to your saved route. Your practical program and review passed!", source: "evidence" as const, confidence: 1 };
   } catch { return fail("Choose an answer for each picture question. You do not need to type an explanation."); }
 }

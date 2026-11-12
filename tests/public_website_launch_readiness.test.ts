@@ -28,7 +28,7 @@ test("public launch CTAs do not hard-link disabled trial or roadmap routes", () 
   assert.doesNotMatch(roadmap, /<Link\s+href="\/trial"/)
   assert.match(roadmap, /showTrialCta \? "\/trial" : "\/signup"/)
 
-  const middleware = source("src/proxy.ts")
+  const middleware = source("middleware.ts")
   assert.match(middleware, /isPublicTrialCtaEnabled\(\) \? \["\/trial"\]/)
   assert.match(middleware, /isRoadmapPublicEnabled\(\) \? \["\/roadmap"\]/)
 })

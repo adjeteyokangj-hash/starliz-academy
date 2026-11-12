@@ -36,13 +36,13 @@ export default function CreateChildLoginPanel({ childId, childName, onSuccess, o
 
   useEffect(() => {
     if (loginMode !== "manual") {
-      const reset = window.setTimeout(() => setUsernameCheck(null), 0);
-      return () => window.clearTimeout(reset);
+      setUsernameCheck(null);
+      return;
     }
     const trimmed = manualUsername.trim();
     if (trimmed.length < 3) {
-      const reset = window.setTimeout(() => setUsernameCheck(null), 0);
-      return () => window.clearTimeout(reset);
+      setUsernameCheck(null);
+      return;
     }
 
     const timer = window.setTimeout(() => {

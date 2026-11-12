@@ -1,4 +1,5 @@
 "use client";
+import type { WorldPracticeSummary } from "@/lib/coding/world/oversight";
 
 import { useEffect, useState } from "react";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
@@ -41,7 +42,7 @@ const EVIDENCE = [
 ] as const;
 
 export default function CodingProgressPanel({ childId }: { childId: string | null }) {
-  const [panel, setPanel] = useState<{ childId: string; summary: Summary | null; error: string | null; portfolio?: ParentPortfolio; readiness?: Awaited<ReturnType<typeof readinessOverview>>; curriculum?: { available: number; started: number; mastered: number; lessons: number; consolidations: number; projects: number } } | null>(null);
+  const [panel, setPanel] = useState<{ childId: string; summary: Summary | null; error: string | null; worldPractice?: WorldPracticeSummary | null; portfolio?: ParentPortfolio; readiness?: Awaited<ReturnType<typeof readinessOverview>>; curriculum?: { available: number; started: number; mastered: number; lessons: number; consolidations: number; projects: number } } | null>(null);
 
   useEffect(() => {
     if (!childId) return;
@@ -61,7 +62,7 @@ export default function CodingProgressPanel({ childId }: { childId: string | nul
         });
         return;
       }
-      setPanel({ childId: requestedChildId, summary: data.summary as Summary, portfolio: data.portfolio ?? [], readiness: data.readiness, curriculum: data.curriculum, error: null });
+      setPanel({ childId: requestedChildId, summary: data.summary as Summary, portfolio: data.portfolio ?? [], readiness: data.readiness, curriculum: data.curriculum, worldPractice: data.worldPractice, error: null });
     }).catch(() => {
       if (!cancelled) setPanel({ childId: requestedChildId, summary: null, error: "Coding progress could not be loaded. Please try again." });
     });
@@ -79,6 +80,7 @@ export default function CodingProgressPanel({ childId }: { childId: string | nul
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
       {panel?.childId === childId && Boolean(panel.curriculum?.started) && <section className="mb-4 rounded-xl border border-sky-700 bg-sky-950 p-4"><h3 className="font-bold text-white">Coding Learning progress</h3><p className="mt-2 text-sky-50">{panel.curriculum!.mastered} of {panel.curriculum!.available} learning activities independently verified.</p><p className="mt-2 text-xs text-sky-100">{panel.curriculum!.lessons} core lessons · {panel.curriculum!.consolidations} consolidation sessions · {panel.curriculum!.projects} portfolio projects. Practical entry bridges are reported separately.</p></section>}
+      {panel?.childId === childId && panel.worldPractice && <section className="mb-4 rounded-xl border border-emerald-700 bg-emerald-950 p-4"><h3 className="font-bold text-white">Coding Game World · Free Practice</h3>{panel.worldPractice.recoveryRequired ? <p>The saved world needs recovery. Its original data has been retained.</p> : <><p className="mt-2 text-emerald-50">{panel.worldPractice.completed} inventions completed · {panel.worldPractice.stars} practice stars · {panel.worldPractice.hints} hints used.</p><p className="mt-2 text-xs text-emerald-100">{panel.worldPractice.locations.map(location => `${location.title}: ${location.completed}`).join(" · ")}</p></>}<p className="mt-2 text-xs text-emerald-100">Practice progress is separate from formal lesson mastery and teacher assessment.</p></section>}
       <details open={!panel?.curriculum?.started}><summary className="min-h-11 cursor-pointer font-semibold">Earlier Coding lesson record</summary>
       <p className="font-semibold text-white">Coding · {summary.pathwayTitle}</p>
       <p className="mt-1">{summary.lessonTitle} · {STATUS[summary.skillStatus] ?? summary.skillStatus}</p>

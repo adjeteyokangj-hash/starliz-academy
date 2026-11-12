@@ -1,3 +1,0 @@
-(node:28632) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-{"passed":true,"realDatabase":true,"automaticRscRefresh":true,"manualRefreshBeforeNavigation":false,"protectedRscStatus":200,"replacementJwtVerified":true,"selectedChildRetained":true}

@@ -81,8 +81,6 @@ test("ops overview surfaces conflict alerts and drops conflict limitation", () =
     changesNeedingReview: 0,
     timetableConflictBlocking: 2,
     timetableRoomWarnings: 1,
-    staffAbsentToday: 0,
-    periodsWithAbsentTeacher: 0,
     includeSafeguarding: false,
   } satisfies SchoolOpsSignalCounts);
   assert.equal(alerts.some((a) => a.id === "timetable-conflict-blocking"), true);

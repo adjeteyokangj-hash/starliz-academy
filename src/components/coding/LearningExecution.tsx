@@ -1,4 +1,6 @@
 "use client";
+import type { LocationId } from "@/lib/coding/world/model";
+import WorldRouteView from "./world/WorldRouteView";
 import EngineeringExecution from "./EngineeringExecution";
 import SqlExecution from "./SqlExecution";
 import FixtureServiceExecution from "./FixtureServiceExecution";
@@ -37,7 +39,7 @@ function VariableTrace({ trace }: { trace: Json[] }) {
   return <section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50 p-4"><h3 className="font-bold text-slate-900">Interpreter debugger</h3><p className="text-sm text-slate-700">State before Python line {String(frame.line)}. Move forward to see the effect of the statement that just ran.</p><div className="flex flex-wrap items-center gap-2"><button type="button" className="min-h-11 rounded-lg border border-slate-400 bg-white px-3 text-sm disabled:opacity-50" disabled={index === 0} onClick={() => setSelected(index - 1)}>Previous step</button><label className="flex min-w-36 flex-1 items-center gap-2 text-sm">Trace step {index + 1} / {frames.length}<input className="min-w-20 flex-1" type="range" min={0} max={frames.length - 1} value={index} aria-label="Interpreter trace step" onChange={(event) => setSelected(Number(event.currentTarget.value))} /></label><button type="button" className="min-h-11 rounded-lg border border-slate-400 bg-white px-3 text-sm disabled:opacity-50" disabled={index === frames.length - 1} onClick={() => setSelected(index + 1)}>Next step</button></div><Values values={record(frame.variables)} caption={`Values before line ${String(frame.line)}`} /></section>;
 }
 
-function RoutePlayback({ output, input, goal, stops, replayContext }: { output: Record<string, Json>; input: Record<string, Json>; goal?: { x: number; y: number } | null; stops?: Json[]; replayContext?: "example" | "program" }) {
+function RoutePlayback({ output, input, goal, stops, replayContext, worldLocation }: { output: Record<string, Json>; input: Record<string, Json>; goal?: { x: number; y: number } | null; stops?: Json[]; replayContext?: "example" | "program"; worldLocation?: LocationId }) {
   const actors = output.actors ? Object.entries(record(output.actors)) : output.left ? [["Program A", output.left], ["Program B", output.right]] as const : [["Your character", output]] as const;
   const paths = actors.map(([name, actor]) => ({ name, visits: points(record(actor as Json).visits), headings: Array.isArray(record(actor as Json).headings) ? record(actor as Json).headings as Json[] : [] }));
   const maximum = Math.max(0, ...paths.map((path) => path.visits.length - 1));
@@ -50,7 +52,7 @@ function RoutePlayback({ output, input, goal, stops, replayContext }: { output: 
     const timer = setInterval(() => { if (current >= maximum) setPlaying(false); else setPosition((value) => Math.min(maximum, value + 1)); }, 500);
     return () => clearInterval(timer);
   }, [playing, maximum, current]);
-  return <div className="space-y-3"><svg viewBox={`0 0 ${width * cell} ${height * cell}`} role="img" aria-label={`Executed movement trail at movement ${current} of ${maximum}`} className="mx-auto rounded-xl border border-slate-300 bg-white" style={{ display: "block", width: "100%", maxWidth: 480, height: "auto" }}>
+  return <div className="space-y-3">{worldLocation ? <WorldRouteView location={worldLocation} width={width} height={height} actors={paths.map(path => ({ name: path.name, visits: path.visits.slice(0, current + 1) }))} goal={goal} obstacles={points(input.obstacles)} track={points(input.track)} stops={points(stops as Json)}/> : <svg viewBox={`0 0 ${width * cell} ${height * cell}`} role="img" aria-label={`Executed movement trail at movement ${current} of ${maximum}`} className="mx-auto rounded-xl border border-slate-300 bg-white" style={{ display: "block", width: "100%", maxWidth: 480, height: "auto" }}>
     {Array.from({ length: width * height }, (_, index) => <rect key={index} x={index % width * cell} y={Math.floor(index / width) * cell} width={cell} height={cell} fill="none" stroke="#cbd5e1" />)}
     {points(input.track).length > 0 && <polyline points={points(input.track).map((point) => `${(point.x + .5) * cell},${(height - point.y - .5) * cell}`).join(" ")} fill="none" stroke="#86efac" strokeWidth={16}><title>Supplied marked robot path</title></polyline>}
     {points(input.obstacles).map((point, i) => <rect key={`wall-${i}`} x={point.x * cell + 3} y={(height - point.y - 1) * cell + 3} width={cell - 6} height={cell - 6} rx={5} fill="#475569" />)}
@@ -60,14 +62,14 @@ function RoutePlayback({ output, input, goal, stops, replayContext }: { output: 
       const visited = path.visits.slice(0, current + 1), here = visited.at(-1), colour = colours[index % colours.length];
       return <g key={path.name}><polyline points={visited.map((p) => `${(p.x + .5) * cell},${(height - p.y - .5) * cell}`).join(" ")} fill="none" stroke={colour} strokeWidth={4} opacity={.7} />{here && <g transform={`translate(${(here.x + .5) * cell} ${(height - here.y - .5) * cell})`}><circle r={12} fill={colour}><title>{path.name}: column {here.x + 1}, row {here.y + 1}</title></circle>{typeof path.headings[Math.min(current, path.headings.length - 1)] === "number" && <path d="M-5-5L7 0L-5 5Z" fill="white" transform={`rotate(${Number(path.headings[Math.min(current, path.headings.length - 1)]) * 90})`} />}</g>}</g>;
     })}
-  </svg><div className="flex flex-wrap items-center gap-3"><button type="button" className="min-h-11 rounded-lg bg-sky-800 px-4 py-2 font-semibold text-white" onClick={() => { if (!playing && current >= maximum) setPosition(0); setPlaying(!playing); }}>{replayContext === "example" ? playing ? "Pause Example" : "Replay Example" : replayContext === "program" ? playing ? "Pause My Program" : "Replay My Program" : playing ? "Pause replay" : "Replay actual movements"}</button><label className="flex min-w-36 flex-1 items-center gap-2 text-sm text-slate-700">Movement {current} / {maximum}<input className="min-w-20 flex-1" type="range" min={0} max={maximum} value={current} aria-label="Replay movement" onChange={(event) => { setPlaying(false); setPosition(Number(event.currentTarget.value)); }} /></label></div>
+  </svg>}<div className="flex flex-wrap items-center gap-3"><button type="button" className="min-h-11 rounded-lg bg-sky-800 px-4 py-2 font-semibold text-white" onClick={() => { if (!playing && current >= maximum) setPosition(0); setPlaying(!playing); }}>{replayContext === "example" ? playing ? "Pause Example" : "Replay Example" : replayContext === "program" ? playing ? "Pause My Program" : "Replay My Program" : playing ? "Pause replay" : "Replay actual movements"}</button><label className="flex min-w-36 flex-1 items-center gap-2 text-sm text-slate-700">Movement {current} / {maximum}<input className="min-w-20 flex-1" type="range" min={0} max={maximum} value={current} aria-label="Replay movement" onChange={(event) => { setPlaying(false); setPosition(Number(event.currentTarget.value)); }} /></label></div>
     <ul className="space-y-1 text-sm text-slate-700">{paths.map((path) => { const here = path.visits[Math.min(current, path.visits.length - 1)]; return <li key={path.name}>{path.name}: {here ? `column ${here.x + 1}, row ${here.y + 1} (x=${here.x}, y=${here.y})` : "no movement recorded"}</li>; })}</ul>
   </div>;
 }
 
-export default function LearningExecution({ execution, input = {}, map, onInteraction, evidence = [], onEvidence, stylesheet = "", resizablePreview = false, previewBusy = false, previewError = "", replayContext }: {
+export default function LearningExecution({ execution, input = {}, map, onInteraction, evidence = [], onEvidence, stylesheet = "", resizablePreview = false, previewBusy = false, previewError = "", replayContext, worldLocation }: {
   execution: Execution | null; input?: Json; map?: { goal: { x: number; y: number } | null; stops: Json[] }; onInteraction?: (interaction: ProjectInteraction) => void; stylesheet?: string; resizablePreview?: boolean; previewBusy?: boolean; previewError?: string;
-  evidence?: EvidenceManifest; onEvidence?: (slot: "first" | "second") => void; replayContext?: "example" | "program";
+  evidence?: EvidenceManifest; onEvidence?: (slot: "first" | "second") => void; replayContext?: "example" | "program"; worldLocation?: LocationId;
 }) {
   if (!execution) return <p className="rounded-xl border-2 border-dashed border-slate-300 p-6 text-slate-600">Run your work to see what it actually does. Your result and trace will appear here.</p>;
   const output = record(execution.output), result = record(output.result), media = record(output.document);
@@ -81,7 +83,7 @@ export default function LearningExecution({ execution, input = {}, map, onIntera
     <EvidenceControls output={output} onInteraction={onInteraction} />
     <LearningGameControls output={output} onInteraction={onInteraction} />
     {!execution.ok && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">{execution.error ?? "The program stopped. Inspect its output and repair the cause."}</p>}
-    {route && <RoutePlayback key={execution.sourceHash ?? JSON.stringify(output)} output={output} input={record(input)} goal={map?.goal} stops={map?.stops} replayContext={replayContext} />}
+    {route && <RoutePlayback key={execution.sourceHash ?? JSON.stringify(output)} output={output} input={record(input)} goal={map?.goal} stops={map?.stops} replayContext={replayContext} worldLocation={worldLocation} />}
     <StoryExecution output={output} input={record(input)} />
     <NetworkExecution output={output} />
     <EngineeringExecution output={output} />

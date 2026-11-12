@@ -13,9 +13,9 @@ function pickLeastRecent(
 ): string {
   const recent = recentSubjects
     .map((s) => normalizeShortLearningSubjectInput(s))
-    .filter((s): s is Exclude<typeof s, null | "starliz_choose"> => s !== null && s !== "starliz_choose");
+    .filter((s): s is string => Boolean(s) && s !== "starliz_choose");
   for (const candidate of candidates) {
-    if (!recent.some(subject => subject === candidate)) return candidate;
+    if (!recent.includes(candidate)) return candidate;
   }
   const last = recent[0];
   const withoutLast = candidates.filter((c) => c !== last);

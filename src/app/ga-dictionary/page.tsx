@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { formatGaEnglishDisplayWord } from "@/lib/ga-word-bank";
+import { formatGaEnglishDisplayWord } from "@/lib/ga-browser";
 
 type GaWord = {
   id: string;

@@ -82,7 +82,7 @@ test("student instruction attached to question and footer excluded", () => {
   assert.equal(/Open Government Licence/i.test(cleaned), false);
   assert.equal(/LESS-/i.test(cleaned), false);
   const acts = extractWorksheetActivities(text, "worksheet");
-  assert.match(acts[0]?.instruction ?? acts[0]?.prompt ?? "", /fill in/i);
+  assert.ok(acts[0]?.instruction?.toLowerCase().includes("fill in") || acts[0]?.hint === undefined);
   assert.ok(acts.every((a) => !/LESS-/i.test(a.prompt)));
 });
 

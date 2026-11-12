@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/db";
+import { normalizeDictionaryWord } from "@/lib/dictionary-normalize";
 import {
   decodeDictionaryWordRelationships,
   encodeDictionaryWordRelationships,
   type DictionaryWordRelationships,
 } from "@/lib/dictionary_relationships";
+
+export { normalizeDictionaryWord };
 
 export type DictionaryWordRecord = {
   id: string;
@@ -120,10 +123,6 @@ type DictionaryMutationContext = {
 
 function cleanText(value: unknown): string {
   return String(value ?? "").trim();
-}
-
-export function normalizeDictionaryWord(word: string): string {
-  return cleanText(word).toLowerCase();
 }
 
 function toOptionalText(value: unknown): string | null {

@@ -1,5 +1,0 @@
-(node:10536) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-[
-  'Actual studio component/CSS: desktop width is 440–620px, editor survives, mobile stacks and hides slider'
-]

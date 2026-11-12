@@ -1,4 +1,3 @@
-import { reviewOwnershipContext } from "./extended-review";
 import { createHash, randomInt } from "node:crypto";
 import { Prisma, type CodingWorkspace } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -66,9 +65,9 @@ async function published(id: string, childId: string) {
 async function versions(workspaceId: string) {
   return prisma.codingProjectVersion.findMany({ where: { workspaceId }, orderBy: { createdAt: "desc" }, take: 100, select: { id: true, stage: true, label: true, createdAt: true } });
 }
-export async function loadActivityWorkspace(childId: string, id: string, yearGroup: string | null, placement?: ReadinessPlan, learnerAge: number | null = null) {
+export async function loadActivityWorkspace(childId: string, id: string, yearGroup: string | null, placement?: ReadinessPlan) {
   const activity = await published(id, childId), row = await getWorkspace(childId, activity, yearGroup, placement), state = readState(row, activity);
-  return { ...publicActivityView(activity, state, "learner", { kind: "learner", age: learnerAge, reviewContext: reviewOwnershipContext(childId, activity.id, state), reviewVariant: state.independentVariant }), teacherFeedback: row.teacherFeedback, revision: revision(row), versions: await versions(row.id) };
+  return { ...publicActivityView(activity, state), teacherFeedback: row.teacherFeedback, revision: revision(row), versions: await versions(row.id) };
 }
 
 /** Run only the published teaching artifact. No action transition, workspace
@@ -175,7 +174,7 @@ export async function actOnActivityWorkspace(childId: string, id: string, yearGr
     catch (error) { if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") throw new LearningError("Another tab changed this workspace. Reload before requesting support.", 409); throw error; }
     const support = await requestCodingAssistanceForHandoff({ childId, bookingId: action.bookingId, daytimePeriodId: action.daytimePeriodId }, handoff);
     if (!support.ok) throw new LearningError(support.error, support.status);
-    return { ...publicActivityView(activity, state, "learner", { kind: "learner", age: learnerAge, reviewContext: reviewOwnershipContext(childId, activity.id, state), reviewVariant: state.independentVariant }), teacherFeedback: saved.teacherFeedback, revision: revision(saved), message: support.message, versions: await versions(row.id), support: { queued: support.queued, continueAi: support.continueAi } };
+    return { ...publicActivityView(activity, state), teacherFeedback: saved.teacherFeedback, revision: revision(saved), message: support.message, versions: await versions(row.id), support: { queued: support.queued, continueAi: support.continueAi } };
   }
   if (action.action === "version") {
     const version = await prisma.codingProjectVersion.findFirst({ where: { id: action.versionId ?? "", workspaceId: row.id }, select: { programJson: true } });
@@ -205,7 +204,7 @@ export async function actOnActivityWorkspace(childId: string, id: string, yearGr
       state.lastExecution = null; state.lastChecks = [];
     }
   }
-  const scope = { kind: "learner" as const, age: learnerAge, reviewContext: reviewOwnershipContext(childId, activity.id, state), reviewVariant: state.independentVariant };
+  const scope = { kind: "learner" as const, age: learnerAge };
   const evidenceStage = action.stage === "review" ? "create" : action.stage;
   if (activity.workflow?.originalDemonstration && evidenceStage === "create" && ["check", "reflect"].includes(action.action) && state.demonstrations?.create) await readDemonstration(childId, state.demonstrations.create, activity.id);
   let manifest = state.evidenceBindings?.[evidenceStage];
@@ -260,7 +259,7 @@ export async function actOnActivityWorkspace(childId: string, id: string, yearGr
     if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2025", "P2034"].includes(error.code)) throw new LearningError("Another tab saved this activity first. Your editor is retained; reload the saved revision before retrying.", 409);
     throw error;
   }
-  return { ...publicActivityView(activity, transition.state, "learner", { ...scope, reviewContext: reviewOwnershipContext(childId, activity.id, transition.state), reviewVariant: transition.state.independentVariant }), teacherFeedback: saved.teacherFeedback, revision: revision(saved), message: transition.message, passed: transition.passed, versions: await versions(row.id) };
+  return { ...publicActivityView(activity, transition.state), teacherFeedback: saved.teacherFeedback, revision: revision(saved), message: transition.message, passed: transition.passed, versions: await versions(row.id) };
 }
 
 export async function codingActivityProgress(childId: string) {

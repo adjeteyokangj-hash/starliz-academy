@@ -462,6 +462,7 @@ async function main() {
         americanisms: americans,
         internalLeak,
         moneyOk,
+        yearGroup: content?.yearGroup,
         playableContentType: content?.contentType,
         ok:
           openAiMeta
@@ -477,7 +478,7 @@ async function main() {
         (blockVerdict as { ok: boolean }).ok = blockVerdict.ok && (hasPassage || issues.length === 0);
         check(
           `${input.label} block ${block.order} (${block.blockType}) has pupil passage or valid non-passage pack`,
-          hasPassage || (pack?.questions.length ?? 0) > 0,
+          hasPassage || pack?.questions.length > 0,
           `passageWords=${pack?.passage?.wordCount ?? 0} qs=${prompts.length}`,
         );
       }
@@ -924,9 +925,8 @@ async function main() {
     const partial = await ensureShortLearningSessionContent({
       bookingId: failBookingId,
       forceRegenerate: true,
-      generateStage: flaky,
+      generateStage: flaky as never,
     });
-    if (!("blocks" in partial.session)) throw new Error("Expected generated session blocks in UAT response");
     check(
       "Failed generation does not falsely become ready",
       partial.session.status !== "ready",

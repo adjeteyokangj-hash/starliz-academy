@@ -6,14 +6,14 @@ import GaBulkImportResultCard from "@/components/admin/GaBulkImportResultCard";
 import GaRecategoriseResultCard from "@/components/admin/GaRecategoriseResultCard";
 import GaWordBankTableToolbar from "@/components/admin/GaWordBankTableToolbar";
 import {
-  GA_BULK_IMPORT_TEMPLATE,
   GA_AUDIO_STATUSES,
-  type GaBulkImportDuplicateStrategy,
+  GA_BULK_IMPORT_TEMPLATE,
   GA_LEVELS,
   GA_REVIEW_STATUSES,
   GA_WORD_TYPES,
   formatGaEnglishDisplayWord,
-} from "@/lib/ga-word-bank";
+  type GaBulkImportDuplicateStrategy,
+} from "@/lib/ga-browser";
 import {
   clearGaWordAdminTableFilters,
   type GaWordAdminSort,

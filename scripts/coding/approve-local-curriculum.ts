@@ -10,7 +10,8 @@ import { curriculumRuntimeHash, practicalExecutionHash } from "./verify-curricul
 async function main() {
   assert(process.argv.includes("--apply-development-approval"), "Explicit local approval flag required");
   assert.equal(process.env.NODE_ENV, "development", "Local approval must run in development");
-  const evidencePath = "docs/coding-curriculum/verification/rc-2026-11-03/activity-index.json";
+  const evidenceArg = process.argv.find(argument => argument.startsWith("--evidence="));
+  const evidencePath = evidenceArg ? evidenceArg.slice("--evidence=".length) : "docs/coding-curriculum/verification/rc-2026-11-03/activity-index.json";
   const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
   assert.equal(authoredActivities.length, 440);
   assert.equal(evidence.activities.length, 440);

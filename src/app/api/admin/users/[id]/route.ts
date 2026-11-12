@@ -22,8 +22,7 @@ const updateSchema = z.object({
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { session, response, context } = await requireAdminPermission("MANAGE_ADMINS");
-  if (!session) return response;
-  if (!context) return NextResponse.json({ error: "Forbidden: admin context required" }, { status: 403 });
+  if (!session || !context) return response;
 
   const { id } = await params;
 
@@ -100,8 +99,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { session, response, context } = await requireAdminPermission("MANAGE_ADMINS");
-  if (!session) return response;
-  if (!context) return NextResponse.json({ error: "Forbidden: admin context required" }, { status: 403 });
+  if (!session || !context) return response;
 
   const { id } = await params;
   const actor = await loadAdminAuthContext(session.userId);

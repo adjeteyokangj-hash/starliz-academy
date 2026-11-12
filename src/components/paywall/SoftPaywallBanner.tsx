@@ -1,8 +1,6 @@
 "use client";
-import { useRouter } from "next/navigation";
 
 export default function SoftPaywallBanner({ sessionsLeft }: { sessionsLeft: number }) {
-  const router = useRouter();
   if (sessionsLeft > 2) return null;
 
   return (
@@ -13,7 +11,7 @@ export default function SoftPaywallBanner({ sessionsLeft }: { sessionsLeft: numb
       </div>
 
       <button
-        onClick={() => router.push("/pricing")}
+        onClick={() => (window.location.href = "/pricing")}
         className="ml-4 rounded-lg bg-indigo-600 px-3 py-1 text-sm text-white"
       >
         Upgrade

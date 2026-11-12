@@ -32,7 +32,7 @@ async function defaultPathForRole(userId: string, role: string, portalMode?: str
 }
 
 function resolveRefreshNextPath(nextPath: string | null | undefined, role: string): string | null {
-  if (!nextPath || !nextPath.startsWith("/") || nextPath.startsWith("//") || /[\\\r\n]/.test(nextPath)) {
+  if (!nextPath || !nextPath.startsWith("/") || nextPath.startsWith("//")) {
     return null;
   }
   // Never dump a parent/student session onto /admin after access-token refresh.
@@ -45,14 +45,6 @@ function resolveRefreshNextPath(nextPath: string | null | undefined, role: strin
   return nextPath;
 }
 
-function redirectWithinOrigin(path: string): NextResponse {
-  const target = new URL(path, "http://starliz.invalid");
-  if (!path.startsWith("/") || target.origin !== "http://starliz.invalid") throw new Error("Internal redirect required");
-  // Next may expose an internal hostname. Relative Location preserves the
-  // incoming browser origin and its host-only cookies, including behind proxies.
-  return new NextResponse(null, { status: 307, headers: { Location: target.pathname + target.search + target.hash } });
-}
-
 async function refreshSession(request: Request, nextPath?: string | null) {
   const refreshCookieName = getRefreshCookieName();
   const authCookieName = getAuthCookieName();
@@ -60,8 +52,9 @@ async function refreshSession(request: Request, nextPath?: string | null) {
   const loginTarget = nextPath?.startsWith("/admin") ? "/admin/login" : "/auth/login";
 
   const buildError = (status = 401, message = "Session expired", clearCookies = hasRedirect) => {
+    const target = hasRedirect ? new URL(loginTarget, request.url) : null;
     const res = hasRedirect
-      ? redirectWithinOrigin(loginTarget)
+      ? NextResponse.redirect(target!)
       : NextResponse.json({ error: message }, { status });
     if (hasRedirect && status >= 400) {
       res.headers.set("x-refresh-error", message);
@@ -144,7 +137,7 @@ async function refreshSession(request: Request, nextPath?: string | null) {
     resolveRefreshNextPath(nextPath, user.role)
     ?? await defaultPathForRole(user.id, user.role, portalMode);
   const response = hasRedirect
-    ? redirectWithinOrigin(safeNext)
+    ? NextResponse.redirect(new URL(safeNext, request.url))
     : NextResponse.json({
       ok: true,
       refreshed: true,
@@ -187,8 +180,9 @@ export async function GET(request: Request) {
     console.error("Auth refresh failed", error);
     const hasRedirect = Boolean(next && next.startsWith("/"));
     const targetPath = hasRedirect && next?.startsWith("/admin") ? "/admin/login" : "/auth/login";
+    const target = hasRedirect ? new URL(targetPath, request.url) : null;
     const res = hasRedirect
-      ? redirectWithinOrigin(targetPath)
+      ? NextResponse.redirect(target!)
       : NextResponse.json({ error: "Session refresh failed" }, { status: 503 });
     res.headers.set("x-refresh-error", "refresh_exception");
     res.cookies.set(getAuthCookieName(), "", {

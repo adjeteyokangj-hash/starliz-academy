@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import {
   canApprovePlayableLesson,
   parsePlayableLessonContent,
-} from "../../src/lib/schools/parse-playable-lesson-content";
+} from "../../src/lib/schools/parse-playable-lesson-content.ts";
 
 loadEnvConfig(process.cwd());
 const prisma = new PrismaClient();

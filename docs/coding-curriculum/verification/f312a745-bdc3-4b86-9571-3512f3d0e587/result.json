@@ -1,0 +1,15 @@
+{
+  "runId": "f312a745-bdc3-4b86-9571-3512f3d0e587",
+  "directory": "artifacts/coding-curriculum-verification/f312a745-bdc3-4b86-9571-3512f3d0e587",
+  "authorDrafts": false,
+  "selected": 440,
+  "tested": 440,
+  "passed": 440,
+  "interrupted": false,
+  "unavailableActivities": [],
+  "approvedTotal": 440,
+  "practicalExecutionHash": "f2565db6e2a79331622996f48f96d504d4a3fa70a3196aae11e4b9ec72ca59d5",
+  "completePracticalScopeVerified": true,
+  "completeScopeVerified": false,
+  "note": "Actual author practical checks do not verify authenticated progression, model review, original recordings or production readiness, and cannot publish the curriculum."
+}

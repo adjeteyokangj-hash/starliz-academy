@@ -26,12 +26,25 @@ export function checkExecution(run: Execution, predicates: Predicate[]) {
     const passed = run.ok && ("equals" in predicate ? sameJson(value, predicate.equals)
       : "includes" in predicate ? Array.isArray(value) && value.some((item) => sameJson(item, predicate.includes))
         : "ordered" in predicate ? orderedSubsequence(value, predicate.ordered)
+          : "unordered" in predicate ? unorderedEqual(value, predicate.unordered)
           : "containsText" in predicate ? typeof value === "string" && Boolean(predicate.containsText.trim()) && value.toLowerCase().replace(/\s+/g, " ").includes(predicate.containsText.toLowerCase().replace(/\s+/g, " ").trim())
         : typeof value === "number" && (predicate.min === undefined || value >= predicate.min) && (predicate.max === undefined || value <= predicate.max));
     return { description: predicate.description, passed };
   });
 }
 
+// Concurrent clients can commit in either order. Every required response must
+// occur once; a different sequence is still the same success and refusal pair.
+export function unorderedEqual(value: Json | undefined, required: Json[]): boolean {
+  if (!Array.isArray(value) || value.length !== required.length) return false;
+  const remaining = required.slice();
+  for (const item of value) {
+    const index = remaining.findIndex((candidate) => sameJson(item, candidate));
+    if (index < 0) return false;
+    remaining.splice(index, 1);
+  }
+  return true;
+}
 // Each required stop consumes a distinct visit. Reaching the right destination
 // or visiting every stop in the wrong order does not satisfy a delivery route.
 export function orderedSubsequence(value: Json | undefined, required: Json[]): boolean {

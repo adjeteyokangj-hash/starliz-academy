@@ -121,7 +121,7 @@ test("coding workspaces stay inside the signed-in learner and role", async () =>
         account: { role: "student", username: { startsWith: "uat." } },
       },
       select: { id: true, account: { select: { id: true, email: true, role: true, username: true } } },
-    }).then(record => { if (!record || !record.account) throw new Error("Required otherChild fixture is missing"); return { ...record, account: record.account }; });
+    });
     assert.ok(otherChild?.account?.username?.startsWith("uat."), "No second fixture student is available.");
     beforeB = await prisma.codingWorkspace.findUnique({
       where: { childId_lessonId: { childId: otherChild.id, lessonId: PUBLISHED_CODING_LESSON_ID } },

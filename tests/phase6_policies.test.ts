@@ -312,7 +312,7 @@ test("canonical public routes exist as page modules", () => {
 });
 
 test("middleware allowlists policy public paths", () => {
-  const interceptorPath = ["src/proxy.ts", "proxy.ts", "middleware.ts"]
+  const interceptorPath = ["proxy.ts", "middleware.ts"]
     .map((name) => resolve(process.cwd(), name))
     .find((path) => {
       try {

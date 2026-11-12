@@ -45,7 +45,6 @@ describe("Short Learning support context helpers", () => {
     assert.equal(meta.supportMode, "SHORT_LEARNING");
     assert.equal(meta.shortLearningBookingId, "b1");
     assert.equal(meta.shortLearningBlockId, "bl1");
-    assert("questionId" in meta);
     assert.equal(meta.questionId, "q1");
   });
 

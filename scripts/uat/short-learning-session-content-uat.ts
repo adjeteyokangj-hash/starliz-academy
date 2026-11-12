@@ -1,4 +1,3 @@
-import type { DaytimeAiStageInput } from "../../src/lib/schools/daytime-ai-stage-generator";
 /**
  * Short Learning Daytime Engine Integration — authenticated live UAT.
  * Usage: npx tsx scripts/uat/short-learning-session-content-uat.ts
@@ -155,7 +154,7 @@ async function main() {
     const slots = await api(
       jar,
       "GET",
-      `/api/parent/short-learning/slots?schoolId=${encodeURIComponent(schoolId ?? "")}&date=${dateIso}&durationMinutes=${duration}`,
+      `/api/parent/short-learning/slots?schoolId=${encodeURIComponent(schoolId)}&date=${dateIso}&durationMinutes=${duration}`,
     );
     const slotList = ((slots.json as { slots?: Array<{ startsAt: string }> })?.slots ?? []);
     const pick = slotList.find((s) => new Date(s.startsAt) > new Date())?.startsAt ?? slotList[0]?.startsAt;
@@ -192,7 +191,17 @@ async function main() {
   );
 
   let generateCalls = 0;
-  const mockGenerate = async (input: DaytimeAiStageInput) => {
+  const mockGenerate = async (input: {
+    stage: string;
+    stageLabel: string;
+    subject: string;
+    targetMinutes: number;
+    targetItems: number;
+    yearGroup: string;
+    skillFocus: string;
+    lessonTitle: string;
+    mode: string;
+  }) => {
     generateCalls += 1;
     const pack = normalizeDaytimeStagePack({
       subjectType: input.mode,
@@ -226,8 +235,7 @@ async function main() {
         },
       })),
       generationStatus: "ok",
-    }, input.mode);
-    if (!pack) throw new Error("UAT stage fixture could not be normalized");
+    });
     return {
       pack,
       contentJson: serializeDaytimeStageContentJson(pack),
@@ -235,7 +243,7 @@ async function main() {
       openAiAttempted: true,
       openAiSucceeded: true,
       validationIssues: [],
-      usageTokens: 0, retryCount: 0, generationDurationMs: 0, openAiLatencyMs: 0, validatorDurationMs: 0,
+      usageTokens: 0,
     };
   };
 

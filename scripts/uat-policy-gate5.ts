@@ -128,7 +128,7 @@ async function main() {
   const parentCookie = await cookieFor({ id: parent.id, email: parent.email, role: "parent" });
 
   const slug = `g5-launch-${stamp}`;
-  const draftBody: import("../src/lib/policies/types").PolicyDocument = {
+  const draftBody = {
     id: slug,
     slug,
     title: `Gate 5 Launch Policy ${stamp}`,
@@ -138,7 +138,7 @@ async function main() {
     lastReviewed: "2026-07-26",
     nextReview: "2027-01-26",
     owner: "StarLiz Compliance",
-    audience: ["Public", "Parent"],
+    audience: ["Public", "Parent"] as const,
     category: "legal" as const,
     purpose: "UAT policy",
     scope: "Gate 5",

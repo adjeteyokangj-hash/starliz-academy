@@ -3211,3 +3211,25 @@ model CodingProjectVersion {
 
   @@index([workspaceId, createdAt])
 }
+
+/// Versioned, data-only Game World practice content. Applying the additive
+/// migration requires separate database authorisation; never reset a database.
+model CodingWorldContentVersion {
+  id           String   @id @default(cuid())
+  missionId    String
+  version      Int
+  status       String   @default("draft")
+  title        String
+  objective    String
+  dialogue     String
+  metadataJson String   @default("{}")
+  createdBy    String
+  approvedBy   String?
+  publishedBy  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([missionId, version])
+  @@index([missionId, status])
+  @@index([status, updatedAt])
+}
