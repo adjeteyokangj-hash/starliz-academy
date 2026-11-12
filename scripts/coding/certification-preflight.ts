@@ -84,7 +84,10 @@ function signedCertification(language: Language, root: string) {
     env: { PATH: "/usr/bin:/usr/sbin:/bin:/sbin", DOCKER_HOST: "unix:///var/run/docker.sock", CODING_RUNNER_CONTAINER_TESTS: "1", NODE_ENV: "test" },
   });
   const passed = result.status === 0 && result.stdout.includes(`"${language}":"passed"`);
-  if (!passed) throw new Error(`${language} signed certification failed.`);
+  if (!passed) {
+    const detail = [result.error?.message, result.stderr, result.stdout].filter(Boolean).join("\n").slice(0, 4000);
+    throw new Error(`${language} signed certification failed.\n${detail}`);
+  }
 }
 
 async function main() {
