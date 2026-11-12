@@ -101,6 +101,55 @@ Its purpose is to improve the learner experience and provide room for future exp
 
 **All 40 choices form the approved design baseline. No previous decision is superseded unless explicitly agreed.**
 
+### Release acceptance — 12 November 2026
+
+The certified release is deployed from `12ec32483d2c8f06d33d0696bd0dc99f033a1f3d`. Its tree matches the Linux certification of `c60ee540c396120caac77ed52a37e7b7d93c7cd3`: signed Python and JavaScript runsc passed, 440 activities passed, and the runtime hash `a45f442b67b528ac20a03873229cf5c7d1d5ff622ecb53a2ed8543099c639959` and practical hash `f2565db6e2a79331622996f48f96d504d4a3fa70a3196aae11e4b9ec72ca59d5` still match. Production publication returned 440 activities. These labels do not replace the approved specification above.
+
+| # | Status |
+| - | ------ |
+| 1 | VERIFIED COMPLETE |
+| 2 | VERIFIED COMPLETE |
+| 3 | VERIFIED COMPLETE |
+| 4 | VERIFIED COMPLETE |
+| 5 | VERIFIED COMPLETE |
+| 6 | VERIFIED COMPLETE |
+| 7 | VERIFIED COMPLETE |
+| 8 | REQUIRES EXTERNAL STAFFED-TUTOR ACCEPTANCE |
+| 9 | VERIFIED COMPLETE |
+| 10 | VERIFIED COMPLETE |
+| 11 | VERIFIED COMPLETE |
+| 12 | VERIFIED COMPLETE |
+| 13 | VERIFIED COMPLETE |
+| 14 | VERIFIED COMPLETE |
+| 15 | REQUIRES PHYSICAL DEVICE ACCEPTANCE |
+| 16 | VERIFIED COMPLETE |
+| 17 | VERIFIED COMPLETE |
+| 18 | VERIFIED COMPLETE |
+| 19 | VERIFIED COMPLETE |
+| 20 | VERIFIED COMPLETE |
+| 21 | VERIFIED COMPLETE |
+| 22 | VERIFIED COMPLETE |
+| 23 | VERIFIED COMPLETE |
+| 24 | REQUIRES PHYSICAL DEVICE ACCEPTANCE |
+| 25 | VERIFIED COMPLETE |
+| 26 | VERIFIED COMPLETE |
+| 27 | VERIFIED COMPLETE |
+| 28 | REQUIRES PHYSICAL DEVICE ACCEPTANCE |
+| 29 | VERIFIED COMPLETE |
+| 30 | VERIFIED COMPLETE |
+| 31 | VERIFIED COMPLETE |
+| 32 | VERIFIED COMPLETE |
+| 33 | VERIFIED COMPLETE |
+| 34 | VERIFIED COMPLETE |
+| 35 | VERIFIED COMPLETE |
+| 36 | BLOCKED BY SPECIFIC EXTERNAL CONDITION |
+| 37 | REQUIRES PHYSICAL DEVICE ACCEPTANCE |
+| 38 | BLOCKED BY SPECIFIC EXTERNAL CONDITION |
+| 39 | VERIFIED COMPLETE |
+| 40 | VERIFIED COMPLETE |
+
+Decision 8 still needs a staffed tutor to accept the live human-support handoff. Decisions 15, 24, 28, and 37 still need a physical tablet or phone for touch, joystick, offline progress, and on-device performance. Decision 36 remains blocked because independent accessibility acceptance is a separate external gate; safeguarding route checks passed, and this is not a full WCAG claim. Decision 38 remains blocked because Coding Game World content publication stays switched off until a separate publication approval. The 440 Coding Learning activities are published. Decision 40 is the consolidated software release that was certified and deployed; it does not close the device, tutor, accessibility, or game-content publication gates above.
+
 ---
 
 ## 3. The Connected Game World
