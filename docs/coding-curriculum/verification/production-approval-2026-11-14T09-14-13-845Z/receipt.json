@@ -1,0 +1,17 @@
+{
+  "approval": "production curriculum publication",
+  "scope": "production",
+  "approvedAt": "2026-11-14T09:14:13.858Z",
+  "activities": 440,
+  "practicalExecutionHash": "f2565db6e2a79331622996f48f96d504d4a3fa70a3196aae11e4b9ec72ca59d5",
+  "runtimeHash": "b919fcccb8f95e0c16b7d8a0c265dd12ff93515ae3d884a8a5cec3b4ef1e56ae",
+  "preservedEvidence": "docs/coding-curriculum/verification/f312a745-bdc3-4b86-9571-3512f3d0e587/activity-index.json",
+  "developmentVerificationRun": "docs/coding-curriculum/verification/local-approval-2026-11-14T09-14-01-218Z",
+  "productionReady": true,
+  "externalGatesStillSeparate": [
+    "ZDR",
+    "hosted permissions and private-media checks",
+    "dependency advisories",
+    "accessibility acceptance"
+  ]
+}

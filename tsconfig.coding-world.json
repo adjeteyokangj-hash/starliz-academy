@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/lib/coding/world/**/*.ts",
+    "src/components/coding/world/**/*.tsx",
+    "src/app/student/coding/world/**/*.tsx",
+    "src/app/api/student/coding/world/**/*.ts",
+    "src/components/coding/CodingHome.tsx",
+    "src/components/coding/CodingProgressPanel.tsx",
+    "src/components/coding/TeacherCodingDesk.tsx",
+    "src/app/api/parent/coding/route.ts",
+    "src/app/api/teacher/coding/route.ts",
+    "src/app/api/admin/coding/world/**/*.ts",
+    "src/app/admin/(secure)/coding/world/**/*.tsx",
+    "src/app/api/student/coding/lessons/[lessonId]/route.ts",
+    "src/app/api/student/coding/activities/[activityId]/route.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/* - Copy.*"
+  ]
+}

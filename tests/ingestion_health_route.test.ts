@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   handleAdminIngestionHealthGet,
   type AdminIngestionHealthPayload,
-} from "../src/app/api/admin/ingestion-health/route";
+} from "../src/app/api/admin/ingestion-health/route-helpers";
 import type { IngestionMonitoringCounts } from "../src/lib/stomach/ingestionTypes";
 
 test("ingestion health route requires admin access", async () => {

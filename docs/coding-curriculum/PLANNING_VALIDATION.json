@@ -1,0 +1,26 @@
+{
+  "date": "2026-11-02",
+  "kind": "planning integrity only; not runtime, educational or accreditation validation",
+  "passed": true,
+  "errors": [],
+  "counts": {
+    "pathways": 5,
+    "courses": 11,
+    "modules": 44,
+    "lessons": 264,
+    "projects": 44,
+    "consolidationSessions": 132,
+    "originalLessonsReviewed": 66,
+    "requirements": 26
+  },
+  "allLessonsProposed": true,
+  "preservedPublishedRuntimeId": "understanding-loops",
+  "preservation": {
+    "baselineFileCount": 1869,
+    "changedFiles": []
+  },
+  "localDocumentLinks": {
+    "passed": true,
+    "brokenLinks": []
+  }
+}

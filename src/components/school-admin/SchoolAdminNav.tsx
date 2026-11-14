@@ -27,6 +27,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/school-admin/day-school/teachers", label: "Staff" },
       { href: "/school-admin/day-school/attendance", label: "Attendance" },
       { href: "/school-admin/day-school/lessons", label: "Lessons" },
+      { href: "/school-admin/coding", label: "Coding" },
       { href: "/school-admin/day-school/lesson-review", label: "Lesson Review" },
       { href: "/school-admin/day-school/reports", label: "Reports" },
     ],

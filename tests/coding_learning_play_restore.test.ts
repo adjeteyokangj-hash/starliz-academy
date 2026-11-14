@@ -1,0 +1,35 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { firstRouteActivities } from "../src/lib/coding/learning/content/routes";
+import { initialActivityState, transitionActivity } from "../src/lib/coding/learning/state-machine";
+import { executePractical } from "../src/lib/coding/learning/runtime";
+import { publicActivityView } from "../src/lib/coding/learning/public-view";
+import { atPath } from "../src/lib/coding/learning/checks";
+
+test("normal resume retains actual play while version/starter restore cannot inherit later events", async () => {
+  const activity = firstRouteActivities[0]!;
+  const state = initialActivityState(activity); state.stage = "build"; state.completed = ["discover", "predict"]; state.artifacts.build = activity.reference;
+  const deps = { run: executePractical, teach: async () => ({ message: "Unused", source: "fallback" as const, revealing: false }), reflect: async () => ({ passed: false, message: "Unused", source: "evidence" as const, confidence: 0 }) };
+  const play = { action: "run" as const, stage: "build" as const, revision: "unit", interaction: { type: "click" as const, target: "start" } };
+  const first = await transitionActivity(activity, state, play, deps);
+  assert.equal(first.state.lastExecution?.ok, true);
+  assert.equal(first.state.webInteractions?.events.length, 1);
+  const saved = await transitionActivity(activity, first.state, { action: "save", stage: "build", revision: "unit" }, deps);
+  const resumed = await transitionActivity(activity, JSON.parse(JSON.stringify(saved.state)), play, deps);
+  assert.equal(resumed.state.webInteractions?.events.length, 2, "Ordinary save/resume preserves the actual event history");
+  const restored = await transitionActivity(activity, resumed.state, { action: "version", stage: "build", revision: "unit", artifact: activity.reference }, deps);
+  assert.equal(restored.state.webInteractions, undefined, "Restoring identical source starts a fresh play instead of retaining later events");
+  assert.equal(restored.state.lastExecution, null);
+  assert.equal(publicActivityView(activity, restored.state).lastExecution, null);
+  assert.equal(restored.state.workflow?.build?.restoredHash, restored.state.workflow?.build?.savedHash);
+  const replay = await transitionActivity(activity, restored.state, play, deps);
+  assert.equal(replay.state.lastExecution?.ok, true);
+  assert.equal(replay.state.webInteractions?.events.length, 1);
+  const events = atPath(replay.state.lastExecutionInput!, "events");
+  assert.ok(Array.isArray(events)); assert.equal(events.length, 2, "The native engine receives one initial start and only the new requested event");
+  const starter = await transitionActivity(activity, replay.state, { action: "restore", stage: "build", revision: "unit" }, deps);
+  assert.equal(starter.state.webInteractions, undefined);
+  assert.equal(starter.state.lastExecutionInput, undefined);
+  assert.equal(starter.state.mastered, false);
+  assert.equal(resumed.state.webInteractions?.events.length, 2, "Restoring does not mutate the original saved state");
+});

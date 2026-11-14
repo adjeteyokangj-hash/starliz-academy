@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
 import { getProfile, hydrateActiveProfileFromServer, hydrateProfilesFromServer } from "@/lib/store";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
-import { decideStudentStoreBootstrap } from "@/lib/student-store-bootstrap";
+import { decideStudentStoreBootstrap, verifiedBootstrapRole } from "@/lib/student-store-bootstrap";
 
 type Props = {
   children: React.ReactNode;
@@ -71,13 +71,24 @@ export default function StoreBootstrap({ children }: Props) {
     const bootstrap = async () => {
       // Teachers/staff are not parents/learners — never require a child profile.
       try {
-        const meRes = await fetchWithRefreshRetry("/api/auth/me", {
-          credentials: "include",
-          signal: AbortSignal.timeout(12_000),
-        });
-        if (meRes.ok) {
-          const me = await meRes.json() as { user?: { role?: string } };
-          const role = me.user?.role;
+        // A dev compile can queue this request until the 12s probe abort fires.
+        // Retry the same session read. A failed or aborted probe still cannot
+        // establish a role, skip consent, or open the protected page.
+        let meRes: Response | undefined;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            meRes = await fetchWithRefreshRetry("/api/auth/me", {
+              credentials: "include",
+              signal: AbortSignal.timeout(12_000),
+            });
+            break;
+          } catch (error) {
+            if (attempt === 2 || !mounted) throw error;
+          }
+        }
+        if (!meRes) throw new Error("Session verification is unavailable.");
+        {
+          const role = await verifiedBootstrapRole(meRes);
           if (role === "teacher" || role === "admin") {
             if (
               pathname.startsWith("/profiles")
@@ -114,7 +125,13 @@ export default function StoreBootstrap({ children }: Props) {
           }
         }
       } catch {
-        // Fall through to parent/learner bootstrap if session probe fails.
+        // A failed probe has not established a parent role. Retain this route
+        // and retry rather than sending an independent learner to consent.
+        if (mounted) {
+          window.clearTimeout(failsafeId);
+          setShowFallback(true);
+        }
+        return;
       }
 
       const isProfilesPage = pathname.startsWith("/profiles") || pathname.startsWith("/parent/profiles");
@@ -179,10 +196,10 @@ export default function StoreBootstrap({ children }: Props) {
           {showFallback ? (
             <button
               type="button"
-              onClick={() => window.location.replace("/parent/dashboard")}
+              onClick={() => window.location.reload()}
               className="mt-5 inline-flex rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500"
             >
-              Continue to parent dashboard
+              Try again
             </button>
           ) : null}
         </div>

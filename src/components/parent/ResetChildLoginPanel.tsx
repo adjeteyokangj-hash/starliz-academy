@@ -41,27 +41,19 @@ export default function ResetChildLoginPanel({
   const [usernameCheck, setUsernameCheck] = useState<UsernameCheck | null>(null);
   const [checkingUsername, setCheckingUsername] = useState(false);
 
-  useEffect(() => {
+  const [previousUsername, setPreviousUsername] = useState(currentUsername);
+
+  if (previousUsername !== currentUsername) {
+    setPreviousUsername(currentUsername);
     setManualUsername(currentUsername);
-  }, [currentUsername]);
+  }
 
   useEffect(() => {
     if (loginMode !== "manual") {
-      setUsernameCheck(null);
       return;
     }
     const trimmed = manualUsername.trim();
-    if (trimmed.length < 3) {
-      setUsernameCheck(null);
-      return;
-    }
-    if (trimmed === currentUsername) {
-      setUsernameCheck({
-        available: true,
-        valid: true,
-        message: "Keeping the current username.",
-        suggestions: [],
-      });
+    if (trimmed.length < 3 || trimmed === currentUsername) {
       return;
     }
 
@@ -114,6 +106,17 @@ export default function ResetChildLoginPanel({
     return () => window.clearTimeout(timer);
   }, [childName, currentUsername, loginMode, manualUsername]);
 
+  const effectiveUsernameCheck: UsernameCheck | null =
+    loginMode !== "manual" || manualUsername.trim().length < 3
+      ? null
+      : manualUsername.trim() === currentUsername
+        ? {
+            available: true,
+            valid: true,
+            message: "Keeping the current username.",
+            suggestions: [],
+          }
+        : usernameCheck;
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
@@ -193,14 +196,14 @@ export default function ResetChildLoginPanel({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => setLoginMode("generated")}
+          onClick={() => { setUsernameCheck(null); setLoginMode("generated"); }}
           className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
             loginMode === "generated"
               ? "bg-amber-600 text-white"
               : "bg-white/5 text-slate-300 hover:bg-white/10"
           }`}
         >
-          Generate new password
+          Generate automatically
         </button>
         <button
           type="button"
@@ -250,19 +253,19 @@ export default function ResetChildLoginPanel({
             <p className="text-xs text-slate-400">Checking username availability…</p>
           ) : null}
 
-          {usernameCheck ? (
+          {effectiveUsernameCheck ? (
             <div className="space-y-2">
               <p
                 className={`text-sm font-medium ${
-                  usernameCheck.available ? "text-emerald-300" : "text-amber-200"
+                  effectiveUsernameCheck.available ? "text-emerald-300" : "text-amber-200"
                 }`}
               >
-                {usernameCheck.message}
+                {effectiveUsernameCheck.message}
               </p>
-              {!usernameCheck.available && usernameCheck.suggestions.length > 0 ? (
+              {!effectiveUsernameCheck.available && effectiveUsernameCheck.suggestions.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   <span className="text-xs text-slate-400 self-center">Suggestions:</span>
-                  {usernameCheck.suggestions.map((suggestion) => (
+                  {effectiveUsernameCheck.suggestions.map((suggestion) => (
                     <button
                       key={suggestion}
                       type="button"
@@ -287,13 +290,13 @@ export default function ResetChildLoginPanel({
           disabled={
             saving
             || (loginMode === "manual"
-              && usernameCheck !== null
-              && usernameCheck.valid
-              && !usernameCheck.available)
+              && effectiveUsernameCheck !== null
+              && effectiveUsernameCheck.valid
+              && !effectiveUsernameCheck.available)
           }
           className="bg-amber-600 hover:bg-amber-700"
         >
-          {saving ? "Resetting…" : "Reset Login"}
+          {saving ? "Resetting…" : loginMode === "generated" ? "Generate & Reset Password" : "Reset Login"}
         </Button>
         <Button type="button" onClick={onCancel} disabled={saving} className="bg-white/10 hover:bg-white/15">
           Cancel

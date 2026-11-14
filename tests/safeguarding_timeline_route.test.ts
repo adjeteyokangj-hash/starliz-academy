@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleAdminSafeguardingIncidentTimelinePost } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/timeline/route";
+import { handleAdminSafeguardingIncidentTimelinePost } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/timeline/route-helpers";
 import type { SafeguardingIncident, TimelineEvent, AuditEvent } from "../src/app/api/admin/schools/[schoolId]/safeguarding/_lib/contracts";
 
 const adminDeps = {

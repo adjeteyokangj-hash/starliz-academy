@@ -1,0 +1,2 @@
+-- No-op: this migration was generated only to align schema history.
+-- The previous SQL attempted to drop a SQLite autoindex, which is not allowed.

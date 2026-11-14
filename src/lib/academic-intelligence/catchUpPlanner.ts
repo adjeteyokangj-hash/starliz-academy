@@ -138,6 +138,7 @@ export function detectCatchUpTriggers(input: {
   const triggers: CatchUpTrigger[] = [];
 
   for (const entry of input.masteryMap) {
+    if (normalize(entry.subject) === "coding" && entry.masteryStatus === "mastered") continue;
     const subject = entry.subject;
     const topic = entry.topic ?? "General";
     const skill = entry.skill ?? null;

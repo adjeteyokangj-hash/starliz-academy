@@ -5,14 +5,14 @@ import { NextResponse } from "next/server";
 import {
   handleAdminSafeguardingIncidentCreatePost,
   handleAdminSafeguardingIncidentListGet,
-} from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/route";
+} from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/route-helpers";
 import {
   handleAdminSafeguardingIncidentDetailGet,
   handleAdminSafeguardingIncidentPatch,
-} from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/route";
-import { handleAdminSafeguardingIncidentAuditGet } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/audit/route";
-import { handleAdminSafeguardingIncidentEscalationPost } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/escalation/route";
-import { handleAdminSafeguardingIncidentTimelinePost } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/timeline/route";
+} from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/route-helpers";
+import { handleAdminSafeguardingIncidentAuditGet } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/audit/route-helpers";
+import { handleAdminSafeguardingIncidentEscalationPost } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/escalation/route-helpers";
+import { handleAdminSafeguardingIncidentTimelinePost } from "../src/app/api/admin/schools/[schoolId]/safeguarding/incidents/[incidentId]/timeline/route-helpers";
 import { handleAdminUsageEventsPost } from "../src/app/api/admin/usage-events/route.handler";
 
 function deniedResponse() {
@@ -20,6 +20,10 @@ function deniedResponse() {
 }
 
 const deniedDeps = {
+  requireSafeguardingAdmin: async () => ({
+    session: null,
+    response: deniedResponse(),
+  }),
   requireAdmin: async () => ({
     session: null,
     response: deniedResponse(),

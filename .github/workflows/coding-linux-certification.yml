@@ -1,0 +1,142 @@
+name: Coding Linux certification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      CODING_RUNNER_CONTAINER_TESTS: "1"
+    steps:
+      - name: Check out certification SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Report host
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/coding-linux-certification
+          {
+            echo "sha=${{ github.sha }}"
+            echo "ref=${{ github.ref }}"
+            uname -a
+            nproc
+            free -h
+            uptime
+            df -T /var/lib/docker || df -T /
+          } | tee artifacts/coding-linux-certification/host.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Expose the Linux Node binary
+        run: |
+          set -euo pipefail
+          node_bin="$(command -v node)"
+          sudo ln -sfn "$node_bin" /usr/bin/node
+          /usr/bin/node --version | tee artifacts/coding-linux-certification/node.txt
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          DATABASE_URL: ""
+          OPENAI_API_KEY: ""
+
+      - name: Install and register runsc
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+          curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y runsc
+          sudo runsc install
+          sudo systemctl restart docker
+          docker info --format '{{.DockerRootDir}} {{.Driver}}' | tee artifacts/coding-linux-certification/docker-root.txt
+          docker info --format '{{range $name, $runtime := .Runtimes}}{{println $name $runtime.Path}}{{end}}' | tee artifacts/coding-linux-certification/runtimes.txt
+          grep -q '^runsc ' artifacts/coding-linux-certification/runtimes.txt
+
+      - name: Verify pinned runner images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python_pin="$(node -p "require('./src/lib/coding/learning/runtime-pins.json').python")"
+          js_pin="$(node -p "require('./src/lib/coding/learning/runtime-pins.json').javascript")"
+          if gh release download linux-cert-images --repo "${{ github.repository }}" --pattern pinned-runner-images.tar --dir /tmp; then
+            docker load -i /tmp/pinned-runner-images.tar
+          fi
+          docker image inspect "$python_pin" >/dev/null 2>&1 || docker pull "python@${python_pin}"
+          docker image inspect "$js_pin" --format '{{.Id}}' | tee artifacts/coding-linux-certification/javascript-image.txt
+          docker image inspect "$python_pin" --format '{{.Id}}' | tee artifacts/coding-linux-certification/python-image.txt
+          grep -q "$js_pin" artifacts/coding-linux-certification/javascript-image.txt
+          grep -q "$python_pin" artifacts/coding-linux-certification/python-image.txt
+
+      - name: Certification preflight
+        run: |
+          set -euo pipefail
+          unset DATABASE_URL OPENAI_API_KEY
+          npx tsx scripts/coding/certification-preflight.ts | tee artifacts/coding-linux-certification/preflight.log
+
+      - name: Signed Python certification
+        run: |
+          set -euo pipefail
+          unset DATABASE_URL OPENAI_API_KEY
+          node scripts/coding/world-runner-verification.mjs python | tee artifacts/coding-linux-certification/python.log
+
+      - name: Signed JavaScript certification
+        run: |
+          set -euo pipefail
+          unset DATABASE_URL OPENAI_API_KEY
+          node scripts/coding/world-runner-verification.mjs javascript | tee artifacts/coding-linux-certification/javascript.log
+
+      - name: Verify all 440 activities
+        run: |
+          set -euo pipefail
+          unset DATABASE_URL OPENAI_API_KEY
+          npx tsx scripts/coding/verify-authored-activities.ts | tee artifacts/coding-linux-certification/activities.log
+
+      - name: Calculate fresh hashes and approve the certified tree
+        run: |
+          set -euo pipefail
+          unset DATABASE_URL OPENAI_API_KEY
+          npx tsx -e "import { curriculumRuntimeHash, practicalExecutionHash } from './scripts/coding/verify-curriculum-runtime.ts'; console.log('runtime '+curriculumRuntimeHash()); practicalExecutionHash().then(hash => console.log('practical '+hash));" | tee artifacts/coding-linux-certification/hashes.txt
+          evidence_dir="$(find artifacts/coding-curriculum-verification -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
+          evidence="$(npx tsx scripts/coding/assemble-practical-evidence.ts "$evidence_dir")"
+          NODE_ENV=development npx tsx scripts/coding/approve-local-curriculum.ts --apply-development-approval "--evidence=${evidence}" | tee artifacts/coding-linux-certification/development-approval.json
+          NODE_ENV=development npx tsx scripts/coding/verify-local-publication.ts > artifacts/coding-linux-certification/publication-development.log
+          NODE_ENV=production npx tsx scripts/coding/verify-local-publication.ts > artifacts/coding-linux-certification/publication-production-before.log
+          NODE_ENV=production npx tsx scripts/coding/approve-production-curriculum.ts --apply-production-approval "--evidence=${evidence}" | tee artifacts/coding-linux-certification/production-approval.json
+          NODE_ENV=production npx tsx scripts/coding/verify-local-publication.ts > artifacts/coding-linux-certification/publication-production.log
+          mkdir -p artifacts/coding-linux-certification/seal
+          cp src/lib/coding/learning/release-manifest.json src/lib/coding/learning/runtime-build.json artifacts/coding-linux-certification/seal/
+          cp artifacts/coding-local-publication-2026-11-04/production.json artifacts/coding-linux-certification/publication-production.json
+          node -e "const seal=require('./src/lib/coding/learning/release-manifest.json'); if(seal.publicationScope!=='production') process.exit(1); const pub=require('./artifacts/coding-local-publication-2026-11-04/production.json'); if(pub.released!==440 || pub.environment!=='production') process.exit(1);"
+
+      - name: Production build
+        run: npm run build
+        env:
+          DATABASE_URL: ""
+          OPENAI_API_KEY: ""
+
+      - name: Upload certification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coding-linux-certification-${{ github.sha }}
+          path: |
+            artifacts/coding-linux-certification/**
+            artifacts/world-runner-verification/**
+            artifacts/coding-curriculum-verification/**
+            artifacts/coding-local-publication-2026-11-04/**
+          if-no-files-found: warn

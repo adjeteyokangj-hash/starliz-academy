@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import GaHubAccordionSection from "@/components/admin/GaHubAccordionSection";
-import { GA_CATEGORIES, GA_LEVELS } from "@/lib/ga-word-bank";
+import { GA_CATEGORIES, GA_LEVELS } from "@/lib/ga-browser";
 import { GA_AUDIO_ENHANCEMENT_STATUSES, GA_AUDIO_QUALITY_STATUSES } from "@/lib/ga-voice";
 
 type VoiceMetrics = {

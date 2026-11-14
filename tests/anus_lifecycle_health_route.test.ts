@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   handleAdminLifecycleHealthGet,
   type AdminLifecycleHealthPayload,
-} from "../src/app/api/admin/lifecycle-health/route";
+} from "../src/app/api/admin/lifecycle-health/route-helpers";
 import type { LifecycleMonitoringCounts } from "../src/lib/anus/lifecycleHealth";
 
 test("lifecycle health route requires admin access", async () => {

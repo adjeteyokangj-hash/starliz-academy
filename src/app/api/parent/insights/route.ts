@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/api_guard";
 import { resolveParentScope } from "@/lib/parent_scope";
 import { getStudentLearningBrain, toParentLearningBrainView } from "@/lib/student-learning-brain";
 import { learningActivityTopicBuckets, type LearningActivityEvent } from "@/lib/learning-activity-aggregation";
+import { codingLessonTitle, codingRewardKind, isCodingRewardName } from "@/lib/academic-intelligence/codingSignals";
 
 export async function GET(request: Request) {
   const { session, response } = await requireSession();
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
       score: attempt.correct ? 100 : 0,
       createdAt: attempt.createdAt,
     })),
-    ...brain.source.progressRecords.map((record) => ({
+    ...brain.source.progressRecords.filter((record) => !codingRewardKind(record.activityType, record.activityName)).map((record) => ({
       id: record.id,
       studentId: brain.studentId,
       source: "progress_record" as const,
@@ -84,8 +85,15 @@ export async function GET(request: Request) {
     .filter((item) => item.accuracy >= 80)
     .slice(0, 5);
 
+  const masteredCodingTopics = new Set(
+    brainViews.flatMap(({ brain }) => brain.source.progressRecords)
+      .filter((record) => codingRewardKind(record.activityType, record.activityName) === "mastery")
+      .map((record) => codingLessonTitle(record.activityName).toLowerCase()),
+  );
   const weaknesses = allTopics
     .filter((item) => item.accuracy < 80)
+    .filter((item) => !isCodingRewardName(item.topic))
+    .filter((item) => !masteredCodingTopics.has(item.topic.trim().toLowerCase()))
     .slice(0, 5);
 
   // Calculate overall metrics

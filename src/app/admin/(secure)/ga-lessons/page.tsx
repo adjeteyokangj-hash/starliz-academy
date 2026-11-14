@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import GaHubAccordionSection from "@/components/admin/GaHubAccordionSection";
-import { GA_LEVELS } from "@/lib/ga-word-bank";
-import { BEGINNER_PACK_1_LESSONS, GA_LESSON_STATUSES } from "@/lib/ga-lessons";
+import { BEGINNER_PACK_1_LESSONS, GA_LESSON_STATUSES, GA_LEVELS } from "@/lib/ga-browser";
 import { GA_APPROVED_CATEGORIES } from "@/lib/ga-word-categories";
 import {
   buildLessonEditorStateById,

@@ -40,14 +40,14 @@ export default function AdminCollapsibleCard({
 
   return (
     <section
-      className={`overflow-hidden rounded-[var(--admin-radius-lg)] border border-[var(--admin-border)] ${className}`}
+      className={`starliz-panel overflow-hidden rounded-[var(--admin-radius-lg)] border border-[var(--admin-border)] ${className}`}
       style={{
         background: raised ? "var(--admin-surface-raised)" : "var(--admin-surface)",
         boxShadow: "var(--admin-shadow-sm)",
       }}
     >
       <div
-        className={`flex items-start gap-3 ${paddingClass[padding]} ${open ? "pb-3" : ""}`}
+        className={`flex flex-wrap items-start gap-3 ${paddingClass[padding]} ${open ? "pb-3" : ""}`}
       >
         <button
           type="button"
@@ -75,7 +75,7 @@ export default function AdminCollapsibleCard({
             ▾
           </span>
         </button>
-        {action ? <div className="shrink-0 pt-0.5">{action}</div> : null}
+        {action ? <div className="max-w-full pt-0.5">{action}</div> : null}
       </div>
       {open ? (
         <div

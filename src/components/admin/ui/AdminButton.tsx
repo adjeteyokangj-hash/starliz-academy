@@ -26,7 +26,7 @@ const sizeClass: Record<Size, string> = {
 };
 
 function classes(variant: Variant, size: Size, className: string) {
-  return `inline-flex items-center justify-center gap-2 rounded-[var(--admin-radius)] font-semibold transition disabled:cursor-not-allowed disabled:opacity-55 ${variantClass[variant]} ${sizeClass[size]} ${className}`;
+  return `inline-flex max-w-full wrap-anywhere items-center justify-center gap-2 rounded-[var(--admin-radius)] font-semibold transition disabled:cursor-not-allowed disabled:opacity-55 ${variantClass[variant]} ${sizeClass[size]} ${className}`;
 }
 
 type ButtonProps = CommonProps & ButtonHTMLAttributes<HTMLButtonElement>;

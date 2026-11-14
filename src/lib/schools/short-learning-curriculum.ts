@@ -41,6 +41,13 @@ const YEAR_SKILLS: Record<ShortLearningSubjectKey, Record<"ks1" | "lks2" | "uks2
     ks3: ["Programming constructs", "Data representation", "Networks", "Cyber security"],
     ks4: ["Algorithms", "Programming", "Computer systems", "Exam technique"],
   },
+  coding: {
+    ks1: ["Instructions and sequencing", "Patterns", "Simple repetition", "Finding mistakes"],
+    lks2: ["Events", "Loops", "Conditions", "Simple variables"],
+    uks2: ["Variables and functions", "Debugging", "Introductory HTML and CSS", "Introductory Python"],
+    ks3: ["Python", "HTML, CSS and JavaScript", "Algorithms", "Data"],
+    ks4: ["Decomposition", "Searching and sorting", "Files and testing", "Secure coding principles"],
+  },
   history: {
     ks1: ["Toys then and now", "Homes in the past", "Significant people", "Then and now"],
     lks2: ["Stone Age to Iron Age", "Ancient Egypt", "The Romans in Britain", "Local history"],
@@ -232,7 +239,7 @@ export function shortLearningSubjectMode(subject: string, skillFocus?: string | 
     return "guided-reading";
   }
   if (key === "science") return "science";
-  if (key === "computing") return "computing";
+  if (key === "computing" || key === "coding") return "computing";
   if (key === "physical-education") return "practical-pe";
   if (key === "art-and-design" || key === "design-and-technology") return "practical-arts";
   if (key === "music") return "practical-music";

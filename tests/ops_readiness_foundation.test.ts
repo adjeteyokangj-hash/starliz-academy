@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleHealthGet } from "../src/app/api/health/route";
+import { handleHealthGet } from "../src/app/api/health/route-helpers";
 import { summarizeJobHealth, type JobRunSnapshot } from "../src/lib/ops/job-status";
 import { redactSensitiveLogData } from "../src/lib/ops/log-redaction";
 import { buildSafeApiError } from "../src/lib/ops/safe-error";

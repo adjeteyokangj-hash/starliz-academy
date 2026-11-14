@@ -22,6 +22,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/teacher/progress", label: "Progress", icon: "📊", permission: "viewProgress" },
   { href: "/teacher/operations", label: "Operations", icon: "🧭", permission: "viewProgress" },
   { href: "/teacher/assignments", label: "Assignments", icon: "📝", permission: "issueAssignment" },
+  { href: "/teacher/coding", label: "Coding", icon: "💻", permission: "viewProgress" },
   { href: "/teacher/audit", label: "Audit Log", icon: "🔍", permission: "viewAuditLog" },
   { href: "/teacher/governance", label: "Governance", icon: "🛡️", permission: "viewAuditLog" },
 ];

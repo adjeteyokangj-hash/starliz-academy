@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   handleAdminReleaseReadinessHealthGet,
   type AdminReleaseReadinessHealthPayload,
-} from "../src/app/api/admin/release/readiness-health/route";
+} from "../src/app/api/admin/release/readiness-health/route-helpers";
 import type { ProductionReadinessCounts } from "../src/lib/release/production-readiness-health";
 
 test("release readiness health route requires admin permission", async () => {

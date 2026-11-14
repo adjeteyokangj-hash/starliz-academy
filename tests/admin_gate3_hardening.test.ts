@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { SHORT_LEARNING_ADMIN_DURATIONS, isShortLearningAdminDuration, isShortLearningPlanDuration } from "../src/lib/schools/short-learning-session-plan";
 
 const ROOT = process.cwd();
 function read(rel: string) {
@@ -55,12 +56,14 @@ test("Support retention and audit filter accessibility labels", () => {
   assert.match(auditUi, /role="alert"/);
 });
 
-test("Short Learning 105 remains unavailable for Admin authoring", () => {
-  const plan = read("src/lib/schools/short-learning-session-plan.ts");
-  assert.match(plan, /SHORT_LEARNING_ADMIN_DURATIONS = \[90, 120\]/);
-  assert.match(plan, /105 is legacy-only/);
+test("retired Short Learning lengths remain readable but unavailable for new Admin authoring", () => {
+  assert.deepEqual([...SHORT_LEARNING_ADMIN_DURATIONS], [45, 60, 70]);
+  for (const minutes of [90, 105, 120]) {
+    assert.equal(isShortLearningAdminDuration(minutes), false);
+    assert.equal(isShortLearningPlanDuration(minutes), true);
+  }
   const journey = read("src/lib/schools/short-learning-journey.ts");
-  assert.match(journey, /105 is not available/);
+  assert.match(journey, /!isShortLearningAdminDuration\(input\.durationMinutes\)/);
 });
 
 test("Admin sidebar exposes keyboard-friendly controls", () => {
@@ -72,7 +75,7 @@ test("Admin sidebar exposes keyboard-friendly controls", () => {
 });
 
 test("Financial integrity contracts remain fail-closed", () => {
-  const subs = read("src/app/api/admin/subscriptions/route.ts");
+  const subs = read("src/app/api/admin/subscriptions/route-helpers.ts");
   assert.match(subs, /createPricingPlanResolver/);
   assert.match(subs, /cannot activate paid access|Payment status is payment-provider truth/);
 });

@@ -78,6 +78,7 @@ async function handleDashboardSummaryGet(request: Request) {
       schoolEnrolment: null,
       assignments: [],
       skills: [],
+      codingLessons: [],
       today: { nextActivity: null },
       assignedWorkSummary: { total: 0, active: 0, completed: 0, nextTitle: null },
       activeLanguageModules: [],
@@ -240,6 +241,7 @@ async function handleDashboardSummaryGet(request: Request) {
     activeLanguageModules: dashboardShell.activeLanguageModules,
     assignedLanguageLessons: dashboardShell.assignedLanguageLessons,
     skills: dashboardShell.skills,
+    codingLessons: dashboardShell.codingLessons,
     today: {
       nextActivity: dashboardShell.assignedWork.nextActivity,
     },

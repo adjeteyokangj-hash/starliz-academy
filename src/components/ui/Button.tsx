@@ -13,7 +13,7 @@ export default function Button({ variant = "primary", className = "", ...props }
 
   return (
     <button
-      className={`min-h-11 rounded-2xl px-4 py-2.5 font-bold transition active:scale-[0.98] disabled:opacity-50 disabled:shadow-none sm:px-5 sm:py-3 ${styleMap[variant]} ${className}`}
+      className={`max-w-full wrap-anywhere min-h-11 rounded-2xl px-4 py-2.5 font-bold transition active:scale-[0.98] disabled:opacity-50 disabled:shadow-none sm:px-5 sm:py-3 ${styleMap[variant]} ${className}`}
       {...props}
     />
   );

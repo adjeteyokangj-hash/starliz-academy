@@ -47,7 +47,7 @@ export default async function TeacherLayout({
     <div className="flex min-h-screen bg-background">
       <SessionKeepAlive loginPath="/auth/login" />
       <TeacherNav schoolName={ctx.schoolName} role={ctx.role} />
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="starliz-page flex-1">{children}</main>
     </div>
   );
 }

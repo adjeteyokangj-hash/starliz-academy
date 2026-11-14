@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api_guard";
 import { fromDbRecord } from "@/lib/child_profile_db";
-import { parseWalletMetadata, summarizeWalletTransactions } from "@/lib/wallet_ledger";
+import { parentWalletMoney, parseWalletMetadata, summarizeWalletTransactions } from "@/lib/wallet_ledger";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { session, response } = await requireSession();
@@ -28,7 +28,14 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   ]);
 
   const normalizedChild = fromDbRecord(child);
-  const walletSummary = summarizeWalletTransactions(walletTransactions, child.coins);
+  const ledger = summarizeWalletTransactions(walletTransactions, child.coins);
+  const money = parentWalletMoney(walletTransactions, child.coins);
+  const walletSummary = {
+    ...ledger,
+    balance: money.balance,
+    earned: money.earned,
+    spent: money.spent,
+  };
   const purchaseHistory = walletTransactions
     .filter((entry) => entry.type === "spend" && Boolean(entry.itemId))
     .map((entry) => ({

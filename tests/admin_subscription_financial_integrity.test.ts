@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { accountStatusFromSubscription, toUiStatus } from "../src/app/api/admin/subscriptions/route";
+import { accountStatusFromSubscription, toUiStatus } from "../src/app/api/admin/subscriptions/route-helpers";
 import { formatParentSubscriptionStatus } from "../src/lib/subscriptions/parent-subscription-access";
 
 const ROOT = process.cwd();
@@ -33,7 +33,7 @@ test("ui status normalizer preserves failed payment and suspended semantics", ()
 });
 
 test("admin subscriptions route rejects unsafe local overrides", () => {
-  const source = read("src/app/api/admin/subscriptions/route.ts");
+  const source = read("src/app/api/admin/subscriptions/route-helpers.ts");
   assert.match(source, /unsafe_local_override_disabled/);
   assert.match(source, /payment_derived_field_tamper/);
   assert.match(source, /admin_subscription_change_rejected/);
@@ -48,7 +48,7 @@ test("admin subscriptions route rejects unsafe local overrides", () => {
 });
 
 test("fake payment reminder stub is removed", () => {
-  const source = read("src/app/api/admin/subscriptions/route.ts");
+  const source = read("src/app/api/admin/subscriptions/route-helpers.ts");
   assert.doesNotMatch(source, /Payment reminder queued/);
   assert.match(source, /enqueueAdminPaymentLifecycleReminder/);
   const reminder = read("src/lib/subscriptions/admin-payment-reminder.ts");

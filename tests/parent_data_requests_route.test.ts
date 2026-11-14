@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import {
   handleParentDataRequestsGet,
   handleParentDataRequestsPost,
-} from "../src/app/api/parent/data-requests/route";
+} from "../src/app/api/parent/data-requests/route-helpers";
 
 function makePostRequest(body: unknown) {
   return new Request("http://localhost/api/parent/data-requests", {

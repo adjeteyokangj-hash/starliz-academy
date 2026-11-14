@@ -67,7 +67,7 @@ test("ops health distinguishes misconfigured from healthy", () => {
 });
 
 test("subscription list uses batched pricing resolver", () => {
-  const route = read("src/app/api/admin/subscriptions/route.ts");
+  const route = read("src/app/api/admin/subscriptions/route-helpers.ts");
   assert.match(route, /createPricingPlanResolver/);
   assert.doesNotMatch(route, /await resolveCurrentPricingPlan/);
 });

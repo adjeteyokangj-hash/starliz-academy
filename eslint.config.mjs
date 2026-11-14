@@ -21,6 +21,7 @@ const eslintConfig = defineConfig([
     ".vercel/**",
     // Local / temporary artefacts (not committed):
     "tmp/**",
+    "**/* - Copy.*",
     ".dev-port-check.txt",
     "package.json.full-backup.json",
     "package.json.surgical-backup.json",

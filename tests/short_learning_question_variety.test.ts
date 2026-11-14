@@ -51,6 +51,13 @@ const SUBJECT_CASES: Record<string, {
     different: "What does a search engine do?",
     differentAnswer: "finds web pages that match key words",
   },
+  coding: {
+    seen: "A loop is used to…",
+    seenAnswer: "repeat instructions",
+    cosmetic: "A loop is used to… (check the subject carefully.)",
+    different: "An event in a program is…",
+    differentAnswer: "something that starts an action",
+  },
   history: {
     seen: "Who built many straight roads in Britain?",
     seenAnswer: "the Romans",

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { accountStatusFromSubscription, toUiStatus } from "../src/app/api/admin/subscriptions/route";
+import { accountStatusFromSubscription, toUiStatus } from "../src/app/api/admin/subscriptions/route-helpers";
 
 test("admin subscription status mapping persists suspended state for cancelled and past_due", () => {
   assert.equal(accountStatusFromSubscription("cancelled"), "suspended");

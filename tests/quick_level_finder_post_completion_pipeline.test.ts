@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { applyAnswerRouteCompletionPipeline } from "../src/app/api/student/quick-level-finder/answer/route";
+import { applyAnswerRouteCompletionPipeline } from "../src/app/api/student/quick-level-finder/answer/route-helpers";
 import type {
   QlfPostCompletionDeps,
   QlfPostCompletionInput,

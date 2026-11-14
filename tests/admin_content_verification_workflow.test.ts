@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleAdminContentVerifyPost } from "../src/app/api/admin/content/[id]/verify/route";
+import { handleAdminContentVerifyPost } from "../src/app/api/admin/content/[id]/verify/route-helpers";
 import { runContentRuntimeBlackBoxTest } from "../src/lib/ai/content-runtime-black-box-test";
 
 type VerifyDeps = NonNullable<Parameters<typeof handleAdminContentVerifyPost>[2]>;
@@ -245,7 +245,7 @@ test("needs_changes records academic validation reason and syncs LessonPackImpor
   assert.ok(meta.reviewHistory?.some((h) => h.action === "needs_changes" && h.notes === REASON));
 
   const { readFileSync } = await import("node:fs");
-  const routeSrc = readFileSync("src/app/api/admin/content/[id]/verify/route.ts", "utf8");
+  const routeSrc = readFileSync("src/app/api/admin/content/[id]/verify/route-helpers.ts", "utf8");
   assert.match(routeSrc, /status:\s*"changes_requested"/);
   assert.match(routeSrc, /lesson_pack_import\.changes_requested/);
 });

@@ -17,7 +17,7 @@ test("canonical learning evidence contract documents the rollout boundaries", ()
 });
 
 test("attempt writes are routed through the canonical writer without direct route-level Attempt creation", () => {
-  const route = read("src/app/api/attempts/route.ts");
+  const route = read("src/app/api/attempts.handler.ts");
 
   assert.match(route, /writeLearningActivity/);
   assert.doesNotMatch(route, /prisma\.attempt\.create/);
@@ -35,7 +35,7 @@ test("student progress keeps legacy ProgressRecord history but routes learning s
 
 test("Quick Level Finder remains placement evidence and does not use the normal activity writer", () => {
   const files = [
-    "src/app/api/student/quick-level-finder/answer/route.ts",
+    "src/app/api/student/quick-level-finder/answer/route-helpers.ts",
     "src/app/api/student/quick-level-finder/complete/route.ts",
     "src/app/api/student/quick-level-finder/levels/route.ts",
     "src/app/api/student/quick-level-finder/session/route.ts",

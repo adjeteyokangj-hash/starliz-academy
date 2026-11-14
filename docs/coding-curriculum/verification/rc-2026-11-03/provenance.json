@@ -1,0 +1,36 @@
+{
+  "rawLocalEvidencePreserved": true,
+  "authoredOnlyPracticalSources": [
+    {
+      "file": "practical/first-sweep-results.jsonl",
+      "source": "artifacts/coding-curriculum-verification/0ee89f25-772e-4999-8e60-15c67655cca9/activities.jsonl",
+      "sha256": "5e6aedc71ad108cb1bd85afde57d2bd344cb3cc1f6d54d0109e8884e8a2dad8f",
+      "bytes": 569135,
+      "scope": "Authored reference/variation programs only; not saved learner or private QA submissions"
+    },
+    {
+      "file": "practical/first-sweep-jobs.jsonl",
+      "source": "artifacts/coding-curriculum-verification/0ee89f25-772e-4999-8e60-15c67655cca9/actual-jobs.jsonl",
+      "sha256": "47e1b739f64de5820e720fccdc273460cbc139a874b47e4eac40667f5b845fa5",
+      "bytes": 28087762,
+      "scope": "Authored reference/variation programs only; not saved learner or private QA submissions"
+    },
+    {
+      "file": "practical/affected-rerun-results.jsonl",
+      "source": "artifacts/coding-curriculum-verification/fb7d0ee1-c144-4f3b-baa4-f8bedbfd3eab/activities.jsonl",
+      "sha256": "47472ddbe19401a4ba24744f867dff6dd07f6ecd7a30b58667f2fe460e53a978",
+      "bytes": 6917,
+      "scope": "Authored reference/variation programs only; not saved learner or private QA submissions"
+    },
+    {
+      "file": "practical/affected-rerun-jobs.jsonl",
+      "source": "artifacts/coding-curriculum-verification/fb7d0ee1-c144-4f3b-baa4-f8bedbfd3eab/actual-jobs.jsonl",
+      "sha256": "ea007e1240a5e665c54da43411fc4a2bdcc8e6a3ccda5989dbb9c8cee9150ea9",
+      "bytes": 1105526,
+      "scope": "Authored reference/variation programs only; not saved learner or private QA submissions"
+    }
+  ],
+  "privateQaLogsAndAccountIdentifiersExported": false,
+  "modelPayloadsExported": false,
+  "secretsExported": false
+}

@@ -69,7 +69,10 @@ export function subjectGlyph(input: {
   if (hay.includes("art") || hay.includes("music") || hay.includes("drama")) {
     return { glyph: "🎨", shortLabel: "Arts" };
   }
-  if (hay.includes("computing") || hay.includes("coding") || hay.includes("ict")) {
+  if (hay.includes("coding")) {
+    return { glyph: "💻", shortLabel: "Coding" };
+  }
+  if (hay.includes("computing") || hay.includes("ict")) {
     return { glyph: "💻", shortLabel: "Computing" };
   }
 
