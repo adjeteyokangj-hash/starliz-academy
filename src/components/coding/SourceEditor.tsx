@@ -77,5 +77,5 @@ export default function SourceEditor({ value, onChange, language, label = "Your 
     const marks = line >= 1 && line <= view.state.doc.lines ? Decoration.set([Decoration.line({ class: "cm-runtime-error" }).range(view.state.doc.line(line).from)]) : Decoration.none;
     view.dispatch({ effects: diagnostics.current.reconfigure(EditorView.decorations.of(marks)) });
   }, [executionError, value]);
-  return <div className="min-w-0"><div ref={host} /><p className="mt-2 text-xs text-slate-500">Line numbers, syntax highlighting, completion suggestions, undo and search. Ctrl+Space opens suggestions. Tab moves to the next control; use spaces to indent.</p>{executionError && <p role="alert" className="mt-3 whitespace-pre-wrap rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{executionError}</p>}</div>;
+  return <div className="starliz-panel"><div ref={host} /><p className="mt-2 text-xs text-slate-500">Line numbers, syntax highlighting, completion suggestions, undo and search. Ctrl+Space opens suggestions. Tab moves to the next control; use spaces to indent.</p>{executionError && <p role="alert" className="mt-3 whitespace-pre-wrap rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{executionError}</p>}</div>;
 }

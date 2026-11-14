@@ -4,6 +4,7 @@ import { requireCodingLearner } from "@/lib/coding/student-context";
 import { checkRateLimit } from "@/lib/api_guard";
 import { parentActivityPortfolio, parentActivityProject } from "@/lib/coding/learning/parent-portfolio";
 import { learnerLegacyProjects } from "@/lib/coding/workspace-store";
+import { savedReviewAnswers } from "@/lib/coding/learning/saved-review-answers";
 export const runtime = "nodejs";
 const headers = { "Cache-Control": "private, no-store" };
 const querySchema = z.object({ versionId: z.string().min(1).max(100).optional(), bookingId: z.string().min(1).max(100).optional() }).strict();
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
     if (!checkRateLimit({ key: `coding-portfolio:${child.id}`, limit: 60, windowMs: 60000 }).allowed) return NextResponse.json({ error: "Pause briefly before opening another saved creation." }, { status: 429, headers: { ...headers, "Retry-After": "60" } });
     if (query.versionId) {
       const project = await parentActivityProject(child.id, query.versionId);
-      return project ? NextResponse.json({ project }, { headers }) : NextResponse.json({ error: "This saved creation is not available to your account." }, { status: 404, headers });
+      return project ? NextResponse.json({ project, reviewAnswers: savedReviewAnswers(project.activity.id, project.artifact, project.execution, project.explanation) }, { headers }) : NextResponse.json({ error: "This saved creation is not available to your account." }, { status: 404, headers });
     }
     const [projects, legacyProjects] = await Promise.all([parentActivityPortfolio(child.id), learnerLegacyProjects(child.id)]);
     return NextResponse.json({ learnerId: child.id, projects, legacyProjects }, { headers });

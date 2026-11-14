@@ -42,6 +42,8 @@ export default function ParentCollapsibleCard({
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    // Stored open state is only available after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate the saved card state once localStorage can be read
     setOpen(readStoredOpen(resolvedKey, defaultOpen));
     setHydrated(true);
   }, [resolvedKey, defaultOpen]);
@@ -60,9 +62,9 @@ export default function ParentCollapsibleCard({
 
   return (
     <section
-      className={`rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-2xl shadow-slate-950/30 sm:p-5 lg:p-6 ${className}`}
+      className={`starliz-panel rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-2xl shadow-slate-950/30 sm:p-5 lg:p-6 ${className}`}
     >
-      <div className={`flex items-start gap-3 ${open && children ? "mb-4" : ""}`}>
+      <div className={`flex flex-wrap items-start gap-3 ${open && children ? "mb-4" : ""}`}>
         <button
           type="button"
           onClick={toggle}
@@ -81,7 +83,7 @@ export default function ParentCollapsibleCard({
             ▾
           </span>
         </button>
-        {headerExtra ? <div className="shrink-0 pt-0.5">{headerExtra}</div> : null}
+        {headerExtra ? <div className="max-w-full pt-0.5">{headerExtra}</div> : null}
       </div>
       {open || !hydrated ? (
         <div id={panelId} hidden={!open && hydrated} className={bodyClassName}>

@@ -17,6 +17,7 @@ test("practical bridge cards retain keyboard access and readable layout on phone
     const page = await browser.newPage(); const pageErrors: string[] = []; proof.pageErrors = pageErrors; page.on("pageerror", error => pageErrors.push(error.message));
     await page.route("https://coding-readiness.test/**", route => route.request().url().includes("/api/student/coding/readiness") ? route.fulfill({ json: { plans, entryYear: 1, scope: "Synthetic presentation fixture only." } }) : route.fulfill({ contentType: "text/html", body: `<html lang="en"><head><style>${styles.replaceAll("</style", "<\\/style")}</style></head><body><div id="root"></div></body></html>` }));
     await page.goto("https://coding-readiness.test/fixture"); await page.addScriptTag({ content: bundle.outputFiles[0]!.text });
+    await page.getByText("Browse practical bridges", { exact: true }).click();
     const selection = page.getByLabel("Choose a practical bridge", { exact: true }); await selection.waitFor();
     assert.equal(await selection.inputValue(), "applied");
     assert.equal(await page.getByRole("status").count(), 0, "Year-group presentation alone cannot claim verified entry readiness.");

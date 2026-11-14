@@ -1447,7 +1447,7 @@ export default function StudentDashboardPage() {
   return (
     <main className="min-h-screen bg-[#f6f8ff] text-slate-900">
       <Navbar />
-      <section className="mx-auto max-w-6xl px-6 py-8">
+      <section className="starliz-page mx-auto max-w-6xl px-4 py-8 sm:px-6">
         {loading ? (
           <div className="space-y-6">
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">

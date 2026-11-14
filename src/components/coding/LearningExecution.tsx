@@ -18,6 +18,7 @@ import DataRepresentationExecution from "./DataRepresentationExecution";
 import StoryExecution from "./StoryExecution";
 import NetworkExecution from "./NetworkExecution";
 import GameState from "./GameState";
+import SavedValues from "./SavedValues";
 import EvidenceControls from "./EvidenceControls";
 import type { Execution, Json } from "@/lib/coding/learning/types";
 import type { EvidenceManifest } from "@/lib/coding/learning/evidence-links";
@@ -67,9 +68,9 @@ function RoutePlayback({ output, input, goal, stops, replayContext, worldLocatio
   </div>;
 }
 
-export default function LearningExecution({ execution, input = {}, map, onInteraction, evidence = [], onEvidence, stylesheet = "", resizablePreview = false, previewBusy = false, previewError = "", replayContext, worldLocation }: {
+export default function LearningExecution({ execution, input = {}, map, onInteraction, evidence = [], onEvidence, stylesheet = "", resizablePreview = false, previewBusy = false, previewError = "", replayContext, worldLocation, portfolioView = false }: {
   execution: Execution | null; input?: Json; map?: { goal: { x: number; y: number } | null; stops: Json[] }; onInteraction?: (interaction: ProjectInteraction) => void; stylesheet?: string; resizablePreview?: boolean; previewBusy?: boolean; previewError?: string;
-  evidence?: EvidenceManifest; onEvidence?: (slot: "first" | "second") => void; replayContext?: "example" | "program"; worldLocation?: LocationId;
+  evidence?: EvidenceManifest; onEvidence?: (slot: "first" | "second") => void; replayContext?: "example" | "program"; worldLocation?: LocationId; portfolioView?: boolean;
 }) {
   if (!execution) return <p className="rounded-xl border-2 border-dashed border-slate-300 p-6 text-slate-600">Run your work to see what it actually does. Your result and trace will appear here.</p>;
   const output = record(execution.output), result = record(output.result), media = record(output.document);
@@ -115,6 +116,6 @@ export default function LearningExecution({ execution, input = {}, map, onIntera
     {output.service && typeof output.service === "object" && !Array.isArray(output.service) && <FixtureServiceExecution service={output.service} />}
     {execution.stdout && <div><h3 className="mb-2 text-sm font-semibold text-slate-800">Program output</h3><pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-950 p-4 font-mono text-sm text-slate-100">{execution.stdout}</pre></div>}
     {execution.stderr && <pre className="max-h-52 overflow-auto whitespace-pre-wrap rounded-xl bg-amber-50 p-3 text-sm text-amber-950">{execution.stderr}</pre>}
-    <details className="rounded-xl border border-slate-300 p-3"><summary className="min-h-8 cursor-pointer font-semibold text-slate-800">Inspect returned values and execution trace</summary><pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs text-slate-800">{JSON.stringify({ output: execution.output, trace: execution.trace }, null, 2)}</pre></details>
+    <details className="rounded-xl border border-slate-300 p-3"><summary className="min-h-8 cursor-pointer font-semibold text-slate-800">{portfolioView ? "View recorded steps and results" : "Inspect returned values and execution trace"}</summary>{portfolioView ? <div className="mt-3 max-h-80 space-y-3 overflow-auto text-sm"><h4 className="font-semibold">Results</h4><SavedValues value={execution.output} /><h4 className="font-semibold">Recorded steps</h4><SavedValues value={execution.trace} /></div> : <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs text-slate-800">{JSON.stringify({ output: execution.output, trace: execution.trace }, null, 2)}</pre>}</details>
   </section>;
 }

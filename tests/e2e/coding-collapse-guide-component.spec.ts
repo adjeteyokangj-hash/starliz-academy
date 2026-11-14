@@ -38,16 +38,19 @@ test('collapsing the guide gives its column to the editor without losing work or
     await expect.poll(async () => (await canvas.boundingBox())!.height).toBe(400);
     await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowRight');
     await expect.poll(async () => (await canvas.boundingBox())!.height).toBe(600);
-    for (const width of [1440,820,390]) {
+    for (const width of [1440,1024,768,390]) {
       await page.setViewportSize({width,height:1000});
       const editor = page.locator('.studio-editor');
       const before = (await editor.boundingBox())!;
-      const collapse = page.getByRole('button',{name:'Collapse Learn & Explore',exact:true});
+      expect(before.width).toBeGreaterThan(width - 40);
+      const collapse = page.getByText("Instructions", { exact: true });
+      await collapse.click();
+      await expect(page.getByRole("heading", { name: "Lesson instructions" })).toBeVisible();
       await collapse.focus(); await page.keyboard.press('Enter');
-      const reopen = page.getByRole('button',{name:'Show Learn & Explore',exact:true});
-      await expect(reopen).toHaveAttribute('aria-expanded','false');
+      const reopen = collapse;
+
       await expect(page.getByRole('heading',{name:'Lesson instructions'})).toBeHidden();
-      await expect.poll(async () => (await editor.boundingBox())!.width).toBeGreaterThan(width>=760?before.width+200:before.width-1);
+      await expect.poll(async () => (await editor.boundingBox())!.width).toBeCloseTo(before.width, 0);
       const after = (await editor.boundingBox())!;
       await expect(page.getByRole('textbox',{name:'My draft',exact:true})).toHaveValue('Keep my program');
       await expect(page.getByRole('region',{name:'Lesson Example',exact:true})).toBeVisible();
@@ -58,8 +61,8 @@ test('collapsing the guide gives its column to the editor without losing work or
       measurements.push({year,width,editorBefore:before.width,editorAfter:after.width});
       await reopen.click();
       await expect(page.getByRole('heading',{name:'Lesson instructions'})).toBeVisible();
+      await reopen.click();
     }
-    await page.getByRole('button',{name:'Collapse Learn & Explore',exact:true}).click();
     await page.getByRole('button',{name:year===4?'Ask AI for help':'Expand AI tutor',exact:true}).click();
     await expect(page.getByRole('textbox',{name:'Tutor question',exact:true})).toBeFocused();
     await page.keyboard.press('Escape');

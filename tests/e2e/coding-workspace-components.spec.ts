@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { build } from "esbuild";
+import { codingComponentStyles } from "./coding-styles";
 import { UNDERSTANDING_LOOPS, stageBrief } from "../../src/lib/coding/catalog";
 import { REFERENCE_PROGRAMS } from "../../src/lib/coding/answers";
 import { runCodingProgram } from "../../src/lib/coding/runner";
@@ -9,9 +10,8 @@ import { EMPTY_EVIDENCE } from "../../src/lib/coding/types";
 // log in, write learner records or represent authenticated end-to-end UAT.
 let bundle = "";
 let styles = "";
-test.beforeAll(async ({ request }) => {
-  const html = await (await request.get("/auth/login")).text();
-  styles = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]*>/g)].map((match) => match[0]).join("");
+test.beforeAll(async () => {
+  styles = `<style>${await codingComponentStyles()}</style>`;
   const result = await build({
     stdin: { contents: `import React from 'react'; import { createRoot } from 'react-dom/client';
       import Workspace from './src/components/coding/CodingLessonWorkspace';
@@ -50,10 +50,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 768, height: 1024 
     });
     await page.goto("/__coding-harness");
     await expect(page.getByRole("heading", { name: "Understanding Loops", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Ask AI for help" }).click();
     await expect(page.getByRole("button", { name: "Ask a person" })).toBeDisabled();
+    await page.getByRole("button", { name: "Close tutor" }).click();
     await expect(page.getByRole("button", { name: "Create", exact: true })).toBeDisabled();
+    await page.getByText("Choose another way to edit", { exact: true }).click();
+    await page.getByRole("button", { name: "Use accessible action controls" }).click();
     await page.getByRole("button", { name: "Add repeat", exact: true }).click();
     await expect(page.getByText("You have unsaved changes.", { exact: false })).toBeVisible();
+    await page.getByRole("button", { name: "Ask AI for help" }).click();
     await page.getByRole("button", { name: "Ask for a hint" }).click();
     await expect(page.getByText("Which number would repeat this move four times?")).toBeVisible();
     await expect(page.getByText("Your workspace matches the saved version.")).toBeVisible();
@@ -100,4 +105,71 @@ test("admin assistance control starts disabled and saves an explicit enable", as
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(page.getByRole("status")).toHaveText("Coding assistance settings saved.");
   expect(enabled).toBe(true);
+});
+
+test("PP and EN wait for workspace responses and reject unsuccessful saves", async ({ page }) => {
+  const learner = "guide-response-fixture";
+  const guide = "coding-project:first:understanding-loops:build";
+  const workspace = {
+    lesson: UNDERSTANDING_LOOPS, stage: "build", completedStages: ["discover", "predict"],
+    program: REFERENCE_PROGRAMS.create, explainedProgram: null, evidence: { ...EMPTY_EVIDENCE },
+    skillStatus: "learning", feedback: null, run: null, teacherFeedback: null,
+    hintCount: 0, attemptCount: 0, checksPassed: 0,
+  };
+  await page.route("http://guide-response.test/__coding-harness", route => route.fulfill({
+    contentType: "text/html",
+    body: `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">${styles}<div id="root"></div><script>${bundle.replaceAll("</script", "<\\/script")}</script>`,
+  }));
+  let release: (() => void) | undefined;
+  let status = 200;
+  let result: object = {};
+  await page.route("**/api/student/coding/lessons/understanding-loops", async route => {
+    if (route.request().method() === "GET") return route.fulfill({ headers: { "X-Coding-Learner": learner }, json: { workspace } });
+    await new Promise<void>(resolve => { release = resolve; });
+    return route.fulfill({ status, json: result });
+  });
+  await page.addInitScript(({ learner, guide }) => {
+    const key = "starliz-guide:" + learner;
+    if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({
+      enabled: true, character: "StarLiz Guide", level: "full", completed: [], progress: { [guide]: "run" },
+    }));
+  }, { learner, guide });
+  await page.goto("http://guide-response.test/__coding-harness");
+  const step = () => page.evaluate(({ learner, guide }) => JSON.parse(localStorage.getItem("starliz-guide:" + learner)!).progress[guide], { learner, guide });
+  const pending = async (button: string) => {
+    release = undefined;
+    await page.getByRole("button", { name: button, exact: true }).click();
+    await expect.poll(() => Boolean(release)).toBe(true);
+  };
+  await pending("Run my blocks");
+  expect(await step()).toBe("run");
+  result = { ok: true, workspace, run: { ...runCodingProgram(workspace.program, stageBrief(UNDERSTANDING_LOOPS, "build").goal), reachedGoal: true } };
+  release!();
+  await expect.poll(step).toBe("result");
+  await page.evaluate(({ learner, guide }) => {
+    const key = "starliz-guide:" + learner;
+    const prefs = JSON.parse(localStorage.getItem(key)!);
+    prefs.progress[guide] = "save";
+    localStorage.setItem(key, JSON.stringify(prefs));
+  }, { learner, guide });
+  await page.reload();
+
+  for (const rejected of [409, 200]) {
+    status = rejected;
+    result = { ok: false, error: "Fixture save rejected" };
+    await pending("Save");
+    expect(await step()).toBe("save");
+    await expect(page.getByText("Work saved. Reopen this lesson", { exact: false })).toHaveCount(0);
+    release!();
+    await expect(page.getByText("Fixture save rejected").first()).toBeVisible();
+    expect(await step()).toBe("save");
+    await expect(page.getByText("Work saved. Reopen this lesson", { exact: false })).toHaveCount(0);
+  }
+  status = 200;
+  result = { ok: true, workspace };
+  await pending("Save");
+  expect(await step()).toBe("save");
+  release!();
+  await expect.poll(step).toBe("check");
+  await expect(page.getByText("Work saved. Reopen this lesson", { exact: false })).toBeVisible();
 });

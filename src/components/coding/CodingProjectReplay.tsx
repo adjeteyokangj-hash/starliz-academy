@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CODING_GRID_SIZE, type CodingProgram, type CodingRunResult } from "@/lib/coding/types";
+import { CODING_GRID_SIZE, type CodingBlock, type CodingProgram, type CodingRunResult } from "@/lib/coding/types";
+
+function SavedBlocks({ blocks }: { blocks: CodingBlock[] }) {
+  return <ol className="list-decimal space-y-1 pl-5 text-sm">{blocks.map(block => <li key={block.id}>
+    {block.kind === "move" ? `Move ${block.direction}` : <>Repeat {block.times} times<SavedBlocks blocks={block.body} /></>}
+  </li>)}</ol>;
+}
 
 export default function CodingProjectReplay({ project, audience = "parent" }: { project: { program: CodingProgram; run: CodingRunResult; updatedAt: string; evidenceStatus?: string }; audience?: "parent" | "learner" }) {
   const [frame, setFrame] = useState(0);
@@ -32,6 +38,6 @@ export default function CodingProjectReplay({ project, audience = "parent" }: { 
       <button type="button" className="rounded-lg border border-white/20 px-3 py-2" onClick={() => { setPlaying(false); setFrame((value) => Math.min(value + 1, project.run.frames.length - 1)); }}>Next step</button>
     </div>
     <p role="status" className="mt-2 text-xs">Step {frame} of {Math.max(0, project.run.frames.length - 1)}{project.run.error ? ` · ${project.run.error}` : ""}</p>
-    <details className="mt-3"><summary className="cursor-pointer">Inspect saved blocks</summary><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(project.program, null, 2)}</pre></details>
+    <details className="mt-3"><summary className="cursor-pointer">Inspect saved blocks</summary>{audience === "learner" ? <div className="mt-2"><SavedBlocks blocks={project.program.blocks} /></div> : <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(project.program, null, 2)}</pre>}</details>
   </div>;
 }

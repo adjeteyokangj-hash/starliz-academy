@@ -16,7 +16,7 @@ test('completed Discover shows its next step and teaching checks never appear as
   const view=()=>({...publicActivityView(activity,state),revision:'fictional-revision',versions:[]});
   const initial=view();
   const styles=await codingComponentStyles();
-  const built=await build({stdin:{resolveDir:process.cwd(),loader:'tsx',contents:`import React from'react';import{createRoot}from'react-dom/client';import Workspace from'./src/components/coding/LearningWorkspace';createRoot(document.getElementById('root')).render(<Workspace initial={${JSON.stringify(initial)}}/>);`},bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}});
+  const built=await build({stdin:{resolveDir:process.cwd(),loader:'tsx',contents:`import React from'react';import{createRoot}from'react-dom/client';import Workspace from'./src/components/coding/LearningWorkspace';createRoot(document.getElementById('root')).render(<Workspace boundLearner="guide-fixture" initial={${JSON.stringify(initial)}}/>);`},bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}});
   const actions:string[]=[];const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/*',route=>{
     const url=new URL(route.request().url());
@@ -32,10 +32,27 @@ test('completed Discover shows its next step and teaching checks never appear as
   await expect(own.getByText('Execution finished',{exact:false})).toHaveCount(0);
   await expect(own.getByText('Run your work to see what it actually does.',{exact:false})).toHaveCount(0);
   await expect(own.getByText('Watch the independent Lesson Example',{exact:false})).toBeVisible();
+  const guide = page.locator(".starliz-guide-widget");
+  const task = page.locator("[data-guide-target='coding-task-description']").first();
+  await expect(task).toBeHidden();
+  await guide.getByText("Helper settings", { exact: true }).click();
+  await page.getByRole("dialog", { name: "Helper settings" }).getByRole("button", { name: "Find instructions" }).click();
+  await expect(task).toBeVisible();
+  await expect(task).toHaveAttribute("data-guide-highlight", "");
+  for (const width of [1440, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const showMe = page.getByRole("button", { name: "Show me" });
+    if (await showMe.isVisible()) await showMe.click();
+    await expect(task).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: `${directory}/instructions-${width}.png` });
+  }
+  await page.getByRole("dialog", { name: "Helper settings" }).getByRole("button", { name: "Close" }).click();
+  await guide.getByRole("button", { name: "Minimise helper" }).click();
   const panel=page.locator('.studio-guide-content');await panel.evaluate(node=>{node.scrollTop=node.scrollHeight;});
-  const collapse=page.getByRole('button',{name:'Collapse Learn & Explore',exact:true});
-  await expect(collapse).toBeInViewport();await collapse.click();
-  await expect(page.getByRole('button',{name:'Show Learn & Explore',exact:true})).toBeVisible();
+  const collapse=page.getByText("Instructions", { exact: true });
+  await expect(collapse).toBeVisible();await collapse.click();
+  await expect(collapse).toBeVisible();
   await page.screenshot({path:`${directory}/completed-discover.png`,fullPage:true});
   const nav=page.getByRole('region',{name:'Stage navigation',exact:true});
   await expect(nav).toContainText('Discover · Completed');

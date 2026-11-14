@@ -1181,7 +1181,7 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
   );
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100" data-testid="parent-portal-shell">
+    <main className="starliz-page min-h-screen bg-slate-950 text-slate-100" data-testid="parent-portal-shell">
       <span className="sr-only" data-testid={`parent-active-section-${activeSection}`}>{activeSection}</span>
       <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.22),transparent_35%),linear-gradient(135deg,rgba(15,23,42,0.98),rgba(2,6,23,1))]">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
@@ -1221,8 +1221,8 @@ export default function ParentPortalShell({ section }: { section: PortalSection 
             </div>
           </div>
 
-          <div className="-mx-1 overflow-x-auto">
-            <div className="flex min-w-max gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
             {sections.map((item) => (
               <Link
                 key={item.id}

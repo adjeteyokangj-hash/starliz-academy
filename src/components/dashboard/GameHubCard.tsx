@@ -34,7 +34,7 @@ export default function GameHubCard({ cardKey, href, title, description, badge, 
         onDropOnCard?.(cardKey);
       }}
       onDragEnd={() => onDragEnd?.()}
-      className={`group rounded-[28px] bg-[color:var(--surface-strong)] p-5 shadow-sm ring-1 ring-[color:var(--ring-color)] transition hover:-translate-y-1 hover:shadow-xl ${dragging ? "opacity-55 ring-2 ring-offset-2" : ""}`}
+      className={`starliz-panel group rounded-[28px] bg-[color:var(--surface-strong)] p-5 shadow-sm ring-1 ring-[color:var(--ring-color)] transition hover:-translate-y-1 hover:shadow-xl ${dragging ? "opacity-55 ring-2 ring-offset-2" : ""}`}
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -49,7 +49,7 @@ export default function GameHubCard({ cardKey, href, title, description, badge, 
           <p className="mt-2 max-w-xs text-sm leading-6 text-slate-600">{description}</p>
         </div>
         <div
-          className="flex h-16 w-16 items-center justify-center rounded-3xl text-3xl shadow-inner"
+          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl text-3xl shadow-inner"
           style={{ background: accent }}
         >
           {emoji}

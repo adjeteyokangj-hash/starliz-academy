@@ -62,7 +62,7 @@ export default async function SchoolDashboardPage() {
 
   if (!school) {
     return (
-      <main className="mx-auto w-full max-w-5xl px-4 py-8">
+      <main className="starliz-page mx-auto max-w-5xl px-4 py-8">
         <section className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6 text-slate-200">
           <p className="text-xs uppercase tracking-[0.2em] text-indigo-300">School Dashboard</p>
           <h1 className="mt-2 text-3xl font-black text-white">No school workspace found</h1>
@@ -93,7 +93,7 @@ export default async function SchoolDashboardPage() {
     : 0;
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8">
+    <main className="starliz-page mx-auto max-w-6xl space-y-6 px-4 py-8">
       <section className="rounded-3xl border border-slate-800 bg-linear-to-br from-indigo-900/40 via-slate-950 to-blue-900/30 p-6">
         <p className="text-xs uppercase tracking-[0.2em] text-blue-200">School Dashboard</p>
         <h1 className="mt-2 text-3xl font-black text-white">{school.name}</h1>

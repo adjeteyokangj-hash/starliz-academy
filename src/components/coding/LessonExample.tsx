@@ -37,7 +37,7 @@ export default function LessonExample({ example, endpoint, bookingId, activityId
     } catch (cause) { setError(cause instanceof Error ? cause.message : "The example could not run."); }
     finally { setBusy(false); }
   }
-  return <section aria-label="Lesson Example" tabIndex={0} className="min-w-0 overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-sm focus-visible:outline-2 focus-visible:outline-violet-600" data-lesson-example={activityId}>
+  return <section data-guide-target="coding-lesson-example" aria-label="Lesson Example" tabIndex={0} className="min-w-0 overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-sm focus-visible:outline-2 focus-visible:outline-violet-600" data-lesson-example={activityId}>
     <div className="border-b border-indigo-100 bg-indigo-50/80 p-4"><div className="flex items-center justify-between gap-3"><h2 className="text-base font-bold text-indigo-950">Lesson Example</h2><span className="rounded-full border border-indigo-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700">Read only</span></div><p className="mt-2 text-xs leading-5 text-slate-600">Your reference stays here while you build. Running it never changes your program.</p></div>
     <div className="space-y-3 p-4">
 

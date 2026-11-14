@@ -4,10 +4,9 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithRefreshRetry } from "@/lib/refresh_client";
 import type { CodingPathwayId } from "@/lib/coding/types";
+import StarLizHelper from "@/components/guidance/StarLizHelper";
+import { homeGuide } from "@/components/guidance/coding-guides";
 import LearningCatalogue from "./LearningCatalogue";
-import LearnerProjectLibrary from "./LearnerProjectLibrary";
-import SavedEvidenceLibrary from "./SavedEvidenceLibrary";
-import ReadinessBridges from "./ReadinessBridges";
 import CodingNextStep from "./CodingNextStep";
 import { PUBLISHED_CODING_LESSON_ID } from "@/lib/coding/types";
 
@@ -42,12 +41,9 @@ type HomePayload = {
   lesson: { skillStatus: string; stage: string; assignmentStatus: string } | null;
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  not_started: "Not started",
-  learning: "Learning",
-  practising: "Practising",
-  mastered: "Mastered",
-};
+function hasEstablishedStart(home: HomePayload) {
+  return Boolean(home.curriculumPublished || (home.lesson && home.lesson.skillStatus !== "not_started"));
+}
 
 export default function CodingHome() {
   const [home, setHome] = useState<HomePayload | null>(null);
@@ -125,7 +121,7 @@ export default function CodingHome() {
   const nextLesson = published.find(lesson => lesson.pathwayId === home?.placement?.recommended) ?? published[0];
 
   const dashboardNavigation = (
-    <nav aria-label="Coding navigation">
+    <nav aria-label="Coding navigation" className="flex flex-wrap items-center gap-3">
       <Link
         href="/student/dashboard"
         className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm font-bold text-sky-800 shadow-sm hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
@@ -133,45 +129,46 @@ export default function CodingHome() {
         <span aria-hidden="true">←</span>
         Return to dashboard
       </Link>
+      {home && (
+        <Link href="/student/coding/portfolio" className="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-bold text-sky-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2">
+          Coding portfolio
+        </Link>
+      )}
     </nav>
   );
 
   if (error || !home) {
     return (
-      <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
+      <div className="starliz-page mx-auto max-w-[1600px] space-y-6 px-4 sm:px-6 lg:px-8 py-8">
         {dashboardNavigation}
         {error ? <p role="alert" className="text-sm text-rose-700">{error}</p> : <p role="status" className="text-sm text-slate-600">Loading coding…</p>}
       </div>
     );
   }
 
+  const showStartingPoint = !hasEstablishedStart(home);
+
   return (
-    <div className="mx-auto max-w-5xl space-y-8 px-4 py-8 text-slate-900">
+    <div className="starliz-page mx-auto max-w-[1600px] space-y-6 px-4 sm:px-6 lg:px-8 py-6 text-slate-900 sm:py-8">
       {dashboardNavigation}
-      <section aria-label="Coding Game World" className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-        <div><p className="text-xs font-bold uppercase tracking-wide text-emerald-800">The StarLiz Inventors Adventure</p><h2 className="mt-1 text-xl font-black">A world of coding inventions</h2><p className="mt-2 text-sm text-slate-700">Explore six locations and create your own helpful routines in Free Practice.</p></div>
-        <Link href="/student/coding/world" className="inline-flex min-h-12 items-center rounded-xl bg-emerald-800 px-5 py-3 font-bold text-white">Explore Coding Game World →</Link>
-      </section>
+      <StarLizHelper learner={home.learnerId} guide="coding-home" steps={homeGuide} established={home.lesson?.skillStatus === "mastered"} />
       <header>
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">Coding</p>
         <h1 className="mt-1 text-3xl font-black">Learn to give a computer instructions</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-600">
           {home.intro ?? (home.yearGroup ? `${home.yearGroup} starts on ${home.yearPathwayTitle}.` : `The usual starting pathway is ${home.yearPathwayTitle}.`)}
         </p>
-        {home.curriculumPublished && <Link href="#coding-curriculum" className="mt-4 inline-flex min-h-12 items-center rounded-xl bg-sky-800 px-5 py-3 font-bold text-white">Open my learning journey →</Link>}
+        <div className="mt-4 flex flex-wrap gap-3">
+          {home.curriculumPublished && <Link data-guide-target="coding-learning-journey" href="#coding-curriculum" className="inline-flex min-h-12 items-center rounded-xl bg-sky-800 px-5 py-3 font-bold text-white">Open my learning journey →</Link>}
+          <Link data-guide-target="coding-world" data-guide-action="open-world" href="/student/coding/world" className="inline-flex min-h-12 items-center rounded-xl bg-emerald-800 px-5 py-3 font-bold text-white">Explore Coding Game World →</Link>
+        </div>
       </header>
 
-      {home.lesson ? (
-        <p className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm">
-          Understanding Loops is <strong>{STATUS_LABEL[home.lesson.skillStatus] ?? home.lesson.skillStatus}</strong>
-          {home.lesson.assignmentStatus === "assigned" ? " and has been assigned." : "."}
-        </p>
-      ) : null}
-
-      <section aria-label="Available Coding lessons" className="grid gap-4 md:grid-cols-2">
+      <section aria-label="Available Coding lessons" className="grid gap-4 md:grid-cols-2 md:[&>*:last-child:nth-child(odd)]:col-span-2">
         {published.map((lesson) => (
           <Link
             key={lesson.id}
+            data-guide-target="coding-current-lesson"
             href={`/student/coding/${lesson.id}`}
             className="group rounded-2xl border-2 border-sky-300 bg-gradient-to-br from-sky-50 to-white p-6 shadow-md transition hover:border-sky-600 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-700"
           >
@@ -185,7 +182,8 @@ export default function CodingHome() {
         ))}
       </section>
 
-      {home.lesson?.skillStatus === "mastered" ? <section aria-label="Your next learning step" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><h2 className="text-lg font-black text-emerald-950">Your learning continues from your achievement</h2><p className="mt-2 text-sm text-slate-700">You’ve mastered Understanding Loops. You do not need to repeat the starting-point check. Your year-group pathway remains {home.yearPathwayTitle}.</p><CodingNextStep lessonId={PUBLISHED_CODING_LESSON_ID} showReturnLink={false} /><Link href="#coding-portfolio" className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">View my saved project →</Link></section> : <section aria-labelledby="coding-starting-point" className="rounded-2xl border border-slate-200 bg-white p-5">
+      {home.lesson?.skillStatus === "mastered" ? <section aria-label="Your next learning step" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><h2 className="text-lg font-black text-emerald-950">Your learning continues from your achievement</h2><p className="mt-2 text-sm text-slate-700">You’ve mastered Understanding Loops. You do not need to repeat the starting-point check. Your year-group pathway remains {home.yearPathwayTitle}.</p><CodingNextStep lessonId={PUBLISHED_CODING_LESSON_ID} showReturnLink={false} /><Link href="/student/coding/portfolio#coding-portfolio" className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">View my saved project →</Link></section> : null}
+      {showStartingPoint ? <section aria-labelledby="coding-starting-point" className="rounded-2xl border border-slate-200 bg-white p-5">
         <h2 id="coding-starting-point" className="text-lg font-black">Find a starting point</h2>
         <p className="mt-1 text-sm text-slate-600">Answer this short check, then open an available lesson to practise. This saves guidance; it does not change your year group or unlock unpublished lessons.</p>
         <div className="mt-4 space-y-4">
@@ -221,31 +219,10 @@ export default function CodingHome() {
         {home.placement && <div role="status" aria-live="polite" className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-4">
           <h3 className="font-bold text-sky-950">{placementSaved ? "Your starting point is saved" : "Your saved guidance"}</h3>
           <p className="mt-2 text-sm text-slate-700">{home.curriculumPublished ? `Your year-group pathway is ${home.yearPathwayTitle}. Use the learning journey and practical readiness bridge to find eligible activities.` : home.placement.note}</p>
-          {home.curriculumPublished ? <Link href="#coding-curriculum" className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">Open my learning journey →</Link> : nextLesson ? <><p className="mt-2 text-sm text-slate-700">{nextLesson.pathwayId === home.placement.recommended ? "Your next available lesson:" : "While your recommended pathway awaits publication, you can practise with:"} <strong>{nextLesson.title}</strong></p><Link href={`/student/coding/${nextLesson.id}`} className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-sky-700 px-4 py-2 font-bold text-white hover:bg-sky-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">Open {nextLesson.title}<span aria-hidden="true" className="ml-2">→</span></Link></> : <p className="mt-2 text-sm text-slate-700">Your guidance is saved. Lessons will appear here when they are published.</p>}
+          {home.curriculumPublished ? <Link data-guide-target="coding-learning-journey" href="#coding-curriculum" className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-sky-700 px-4 py-2 font-bold text-white">Open my learning journey →</Link> : nextLesson ? <><p className="mt-2 text-sm text-slate-700">{nextLesson.pathwayId === home.placement.recommended ? "Your next available lesson:" : "While your recommended pathway awaits publication, you can practise with:"} <strong>{nextLesson.title}</strong></p><Link href={`/student/coding/${nextLesson.id}`} className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-sky-700 px-4 py-2 font-bold text-white hover:bg-sky-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">Open {nextLesson.title}<span aria-hidden="true" className="ml-2">→</span></Link></> : <p className="mt-2 text-sm text-slate-700">Your guidance is saved. Lessons will appear here when they are published.</p>}
         </div>}
-      </section>
-
-      }
+      </section> : null}
       <div id="coding-curriculum"><LearningCatalogue key={`curriculum:${home.learnerId}`} yearGroup={home.yearGroup} /></div>
-      <ReadinessBridges key={`readiness:${home.learnerId}`} yearGroup={home.yearGroup} />
-      <LearnerProjectLibrary key={`projects:${home.learnerId}`} />
-      <SavedEvidenceLibrary childId={home.learnerId} />
-
-      <section>
-        <h2 className="text-lg font-black">Pathways</h2>
-        <div className="mt-3 grid gap-3">
-          {home.pathways.map((pathway) => (
-            <article key={pathway.id} className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="font-black">{pathway.title}</h3>
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{pathway.years}</p>
-              </div>
-              <p className="mt-1 text-sm text-slate-600">{pathway.mainLearning}</p>
-              <p className="mt-2 text-xs text-slate-500">Projects: {pathway.exampleProjects.join("; ")}</p>
-            </article>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }

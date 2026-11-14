@@ -16,7 +16,7 @@ import { initialWorld, transitionWorld, worldActionSchema } from "../../src/lib/
 test.use(process.platform === "win32" ? { channel: "msedge" } : {});
 // Component acceptance only: synthetic API responses, actual component/Blockly/runtime.
 // No production, authentication or database writes are involved.
-for (const width of [1440, 1280, 768, 390]) test(`world exploration, authoring, playback, versions and preferences at ${width}px`, async ({ page }) => {
+for (const width of [1440, 1280, 1024, 768, 390]) test(`world exploration, authoring, playback, versions and preferences at ${width}px`, async ({ page }) => {
   test.setTimeout(180000);
   await page.setViewportSize({ width, height: 1000 });
   const bundled = await build({ stdin: { resolveDir: process.cwd(), loader: "tsx", contents: `import React from 'react';import{createRoot}from'react-dom/client';import World from './src/components/coding/world/CodingWorld';createRoot(document.getElementById('root')).render(<World/>);` }, bundle: true, write: false, outdir: "out", platform: "browser", format: "iife", jsx: "automatic", define: { "process.env.NODE_ENV": '"production"' } });
@@ -33,7 +33,7 @@ for (const width of [1440, 1280, 768, 390]) test(`world exploration, authoring, 
       if (route.request().method() === "GET") return route.fulfill({ json: { learnerId: "synthetic-world", state, versions } });
       const body = route.request().postDataJSON(); expect(body.learnerId).toBe("synthetic-world"); expect(body.revision).toBe(state.revision);
       const action = worldActionSchema.parse(body.action), result = transitionWorld(state, action); state = result.state;
-      if (action.type === "snapshot") versions.push({ id: "v1", label: action.missionId, missionId: action.missionId, commands: action.commands, createdAt: new Date().toISOString() });
+      if (action.type === "snapshot" || action.type === "source-snapshot") versions.push({ id: `v${versions.length + 1}`, label: action.missionId, missionId: action.missionId, projectId: "projectId" in action ? action.projectId : undefined, commands: "commands" in action ? action.commands : undefined, source: "source" in action ? action.source : undefined, language: "language" in action ? action.language : undefined, createdAt: new Date().toISOString() });
       return route.fulfill({ json: { ...result, versions } });
     }
     return route.abort();
@@ -76,9 +76,11 @@ for (const width of [1440, 1280, 768, 390]) test(`world exploration, authoring, 
   await page.getByRole("button", { name: "Run invention" }).click();
   await expect(page.getByText("Your routine stopped early. Next, the simulation needs plant.")).toBeVisible();
   await page.getByText("Simple keyboard and touch controls", { exact: true }).click();
-  for (const action of ["plant", "water", "grow", "harvest"]) {
+  const farmActions = ["plant", "water", "grow", "harvest"];
+  for (const [index, action] of farmActions.entries()) {
     await page.getByLabel("Action name").selectOption(action);
     await page.getByRole("button", { name: "Add action", exact: true }).click();
+    await expect.poll(() => state.programs["farm-sequence"]?.map(command => command.name)).toEqual(farmActions.slice(0, index + 1));
   }
   await page.getByRole("button", { name: "Run invention" }).click();
   await expect(page.getByText("Your invention works! Try stepping through to explain each action.")).toBeVisible();
@@ -95,10 +97,12 @@ for (const width of [1440, 1280, 768, 390]) test(`world exploration, authoring, 
   await expect.poll(() => versions.length).toBe(1);
   await page.getByRole("button", { name: "Write Python", exact: true }).click();
   await expect(page.getByText("Write", { exact: false }).filter({ hasText: "solve(world)" }).first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.getByRole("button", { name: "Visual blocks", exact: true }).click();
   await page.getByRole("button", { name: "Clear program", exact: true }).click();
   await expect.poll(() => state.programs["farm-sequence"]?.length).toBe(0);
   await page.getByRole("button", { name: "My clubhouse" }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.getByLabel("My companion").selectOption("Pixel");
   await expect.poll(() => state.companion).toBe("Pixel");
   await page.getByRole("button", { name: "Room square 1,1: empty", exact: true }).click();
@@ -115,9 +119,11 @@ for (const width of [1440, 1280, 768, 390]) test(`world exploration, authoring, 
   await expect.poll(() => state.highContrast).toBe(true);
   await page.getByRole("button", { name: "Inventions & skills" }).click();
   await expect(page.getByText("Practice achievements stay separate from formal lesson mastery.")).toBeVisible();
-  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   mkdirSync("artifacts/coding-world", { recursive: true });
   await page.screenshot({ path: `artifacts/coding-world/portfolio-${width}.png`, fullPage: true });
+  const minimise = page.getByRole("button", { name: "Minimise helper" });
+  if (await minimise.isVisible()) await minimise.click();
   await page.getByRole("button", { name: "Restore as draft", exact: true }).click();
   await expect.poll(() => state.programs["farm-sequence"]?.length).toBe(4);
   await page.getByRole("button", { name: "Explore world" }).click();
@@ -131,6 +137,7 @@ for (const width of [1440, 1280, 768, 390]) test(`world exploration, authoring, 
   await expect(page.getByRole("button", { name: "Run invention" })).toBeEnabled();
   await page.reload();
   await expect(page.getByRole("region", { name: "Happy Farm living simulation" }).getByText("Weather:", { exact: false })).toContainText("Harvest 2/2");
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.screenshot({ path: `artifacts/coding-world/world-${width}.png`, fullPage: true });
   expect(errors).toEqual([]);
 });

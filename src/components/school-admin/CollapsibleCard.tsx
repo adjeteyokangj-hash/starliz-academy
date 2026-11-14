@@ -27,7 +27,7 @@ export default function CollapsibleCard({
   return (
     <div
       id={id}
-      className={`overflow-hidden rounded-xl border border-border bg-card ${className}`.trim()}
+      className={`starliz-panel overflow-hidden rounded-xl border border-border bg-card ${className}`.trim()}
     >
       <button
         type="button"

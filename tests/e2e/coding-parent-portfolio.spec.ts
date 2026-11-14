@@ -110,6 +110,7 @@ test("a parent sees the actual frozen fixture project while other families and s
       await expect(learnerPage.getByRole("heading", { name: "Your saved work evidence", exact: true })).toBeVisible();
       await expect(learnerPage.getByRole("combobox", { name: "Choose saved evidence", exact: true })).toBeVisible();
       await expect(learnerPage.getByRole("region", { name: "Private saved work evidence", exact: true }).getByText("Inspect this frozen source and files", { exact: true })).toBeVisible();
+      await learnerPage.getByText("View evidence", { exact: true }).click();
       await expect(learnerPage.getByText("Synthetic portfolio fixture: the executed instructions reach the stated destination.", { exact: true })).toBeVisible();
       for (const width of [390, 820, 1440]) { await learnerPage.setViewportSize({ width, height: 1000 }); expect(await learnerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); await learnerPage.screenshot({ path: `${directory}/learner-${width}.png`, fullPage: true }); }
     } finally { await learnerContext.close(); }
